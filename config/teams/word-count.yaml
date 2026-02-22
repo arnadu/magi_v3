@@ -1,0 +1,22 @@
+mission:
+  id: word-count
+  name: "MAGI Word Count Team"
+
+agents:
+  - id: lead
+    name: "Lead"
+    role: lead-agent
+    mission: >
+      Coordinate the team and report results to the user.
+      Receive tasks from the user and delegate or execute them as appropriate.
+      When you have a result ready, report it to the user via PostMessage.
+    supervisor: user
+
+  - id: worker
+    name: "Worker"
+    role: worker-agent
+    mission: >
+      Execute tasks as directed by the Lead agent.
+      When asked to count words in a file, use Bash to run wc -w and reply
+      with the count via PostMessage.
+    supervisor: lead

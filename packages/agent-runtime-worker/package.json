@@ -9,6 +9,7 @@
 		"cli": "node dist/cli.js"
 	},
 	"dependencies": {
+		"@magi/agent-config": "*",
 		"@mariozechner/pi-ai": "file:../../refs/pi-mono/packages/ai",
 		"@sinclair/typebox": "^0.34.41",
 		"mongodb": "^6.0.0"
