@@ -82,6 +82,8 @@ export async function runOrchestrationLoop(
 		rl.on("line", (line) => {
 			if (line.trim()) inputBuffer.push(line.trim());
 		});
+		// readline intercepts Ctrl+C on stdin; re-raise as a process SIGINT.
+		rl.on("SIGINT", () => process.emit("SIGINT"));
 	}
 
 	const agentCtx = {

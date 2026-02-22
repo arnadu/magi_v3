@@ -96,8 +96,9 @@ function getModel() {
 function makeAbortController(): AbortController {
 	const ac = new AbortController();
 	process.on("SIGINT", () => {
-		console.log("\n[cli] Interrupted — aborting...");
+		console.log("\n[cli] Interrupted — exiting...");
 		ac.abort();
+		process.exit(130); // 128 + SIGINT(2)
 	});
 	return ac;
 }
