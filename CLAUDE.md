@@ -22,11 +22,15 @@ npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY in 
 npm run lint              # Biome check (lint + format)
 npm run lint:fix          # Biome auto-fix
 
-# CLI — run the inner loop manually against a real directory
+# Sprint 1 CLI — run the inner loop manually against a real directory
 cd packages/agent-runtime-worker
 npm run build
 SESSION_ID=my-session npm run cli -- "your task here"
 # Rerun with same SESSION_ID to resume the previous conversation
+
+# Sprint 2 CLI — run the orchestration loop with a team config (planned)
+TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words"
+TEAM_CONFIG=config/teams/word-count.yaml npm run cli --step -- "count the words"  # pause after each agent
 ```
 
 Type-check without building:
@@ -66,6 +70,8 @@ Each agent has a stable enterprise-style identity:
 Low-risk orchestration tasks run in shared runtime workers. Code execution, data processing, and browser automation run in the agent's assigned execution environment with their persistent home and allowed shared folders mounted.
 
 **Sprint 2 simplification:** Agents are defined in a YAML team config and given home directories at `workspaces/{agent-id}/`. Linux uid/gid enforcement is deferred to Sprint 4. Each agent has a `supervisor` field (another agent's id, or `"user"`); agents escalate by calling `PostMessage` to their supervisor. The outer loop uses inbox-poll scheduling: an agent runs when it has unread messages; the turn ends when no agent has unread messages. No `nextAction` structured output is used — the inner loop terminates naturally when the LLM stops calling tools.
+
+The orchestrator calls only `runAgent(agentId, signal)`, which encapsulates both the outer and inner loops. The inner loop is not visible to the orchestrator, keeping the concurrency upgrade path (Sprint 3) trivial. The CLI supports buffered readline injection for live user input, a `--step` flag for pause-and-inspect mode, and Ctrl+C abort via `AbortSignal`.
 
 ### Agent Communication
 

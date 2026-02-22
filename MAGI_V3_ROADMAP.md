@@ -150,11 +150,30 @@ MongoDB document per agent, HTML with stable section IDs:
 
 **Outer loop (`runOuterLoop`):**
 
-Same LLM→tool→LLM pattern as `runInnerLoop` but with the planning prompt and constrained toolset (`ListTeam`, `ListMessages`, `ReadMessage`, `PostMessage`, `UpdateMentalMap`). Terminates when the LLM stops calling tools; the outer loop then checks inboxes and dispatches the inner loop for execution tasks as needed.
+Same LLM→tool→LLM pattern as `runInnerLoop` but with the planning prompt and constrained toolset (`ListTeam`, `ListMessages`, `ReadMessage`, `PostMessage`, `UpdateMentalMap`). Terminates when the LLM stops calling tools. After termination, if the agent's Mental Map `#tasks` section is non-empty, `runOuterLoop` calls `runInnerLoop` directly — the decision is internal and not visible to the orchestrator.
 
 **Agent runner:**
 
-A `runAgent(agentId, config)` function that loops: outer loop → inner loop → outer loop → … Each agent runs independently; the orchestrator runs N agents concurrently (initially `Promise.all`, Temporal in Sprint 3).
+`runAgent(agentId, signal)` is the only function the orchestrator calls. It owns the full outer→inner cycle and is fully opaque to the caller:
+
+```
+runAgent(agentId, signal):
+  runOuterLoop(agentId, signal)     // read mail, update mental map
+  if mentalMap.#tasks not empty:
+    runInnerLoop(agentId, task, signal)   // execute
+```
+
+The orchestrator only knows: "run this agent; it will do the right thing." When Sprint 3 moves to Temporal/concurrent execution, `runAgent` becomes a Temporal Activity with no internal changes.
+
+**CLI interaction model:**
+
+The CLI runs an orchestration loop that is sequential but supports live user interaction:
+
+- **Immediate output**: when any agent posts a message with `to` containing `"user"`, the `PostMessage` tool prints it to stdout immediately — before the current LLM turn returns.
+- **Buffered input**: a `readline` listener runs concurrently with the loop. Any line the user types is buffered. At the start of each orchestration cycle, the buffer is drained and each line is posted as a message from `"user"` to the lead agent's inbox.
+- **Step mode** (`--step` flag): after each `runAgent()` call, the loop pauses and prints a summary of what the agent did, then prompts `"Press Enter to continue, or type a message:"`. The user can inspect state before the next agent runs. Useful during development; omit for unattended operation.
+- **Abort**: Ctrl+C triggers `AbortController.abort()`. The `AbortSignal` is threaded through `runAgent` → `runOuterLoop` → `runInnerLoop`; the current LLM turn completes cleanly and the loop exits.
+- **Cycle guard**: a `maxCycles` limit (default 50) prevents runaway chains. If reached, the loop aborts with a warning.
 
 ### Deliverables
 
