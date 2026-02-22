@@ -23,6 +23,11 @@
 
 import { randomUUID } from "node:crypto";
 import { loadTeamConfig } from "@magi/agent-config";
+import { config as dotenvConfig } from "dotenv";
+
+// Load .env from the project root before reading any env vars.
+dotenvConfig({ quiet: true });
+
 import type {
 	AssistantMessage,
 	Message,
