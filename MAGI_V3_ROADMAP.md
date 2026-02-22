@@ -141,29 +141,56 @@ Escalation to the supervisor is handled purely through `PostMessage`; the outer 
 **Mental Map:**
 
 MongoDB document per agent, HTML with stable section IDs:
-- `#tasks` — prioritised task queue
-- `#waiting-for` — tasks blocked on inbound replies, with the message id being awaited
+- `#waiting-for` — messages sent that are awaiting a reply
 - `#working-notes` — scratch space the agent manages itself
 - `#mission-context` — injected at startup from the team config (role, mission, supervisor, teammates)
 
-`UpdateMentalMap` tool: `replace`, `append`, `remove` operations targeting elements by id. Available to the outer loop only.
+`UpdateMentalMap` tool: `replace`, `append`, `remove` operations targeting elements by CSS id. Available to all tools in the agent loop.
 
-**Outer loop (`runOuterLoop`):**
+**Agent loop (`runAgent`):**
 
-Same LLM→tool→LLM pattern as `runInnerLoop` but with the planning prompt and constrained toolset (`ListTeam`, `ListMessages`, `ReadMessage`, `PostMessage`, `UpdateMentalMap`). Terminates when the LLM stops calling tools. After termination, if the agent's Mental Map `#tasks` section is non-empty, `runOuterLoop` calls `runInnerLoop` directly — the decision is internal and not visible to the orchestrator.
+A single LLM→tool→LLM call sequence. No outer/inner split — the LLM decides freely whether to PostMessage, run Bash, update the mental map, or any combination. Tool ACL enforcement (restricting which tools are available in which context) is deferred to Sprint 4.
 
-**Agent runner:**
-
-`runAgent(agentId, signal)` is the only function the orchestrator calls. It owns the full outer→inner cycle and is fully opaque to the caller:
+The orchestrator pre-fetches the agent's unread messages from the mailbox, marks them as read, and passes them as the opening user turn. The agent does not need to call `ListMessages` to find out what to act on.
 
 ```
-runAgent(agentId, signal):
-  runOuterLoop(agentId, signal)     // read mail, update mental map
-  if mentalMap.#tasks not empty:
-    runInnerLoop(agentId, task, signal)   // execute
+runAgent(agentId, messages, signal):
+  systemPrompt = buildSystemPrompt(agent, team, mentalMap)
+  userTurn     = formatMessages(messages)
+  runLoop(systemPrompt, userTurn, tools, signal)
 ```
 
-The orchestrator only knows: "run this agent; it will do the right thing." When Sprint 3 moves to Temporal/concurrent execution, `runAgent` becomes a Temporal Activity with no internal changes.
+`runAgent` is the only function the orchestrator calls. When Sprint 3 moves to Temporal/concurrent execution, it becomes a single Temporal Activity with no internal changes.
+
+**System prompt structure:**
+
+Built at runtime from three sources:
+
+```
+You are [Name], the [role] of the [team.name].
+
+## Mission
+[agent.mission]
+
+## Your team
+[teammates: id, name, role, supervisor]
+
+## Your supervisor
+[agent.supervisor — "user (operator)" or agent name]
+
+## Your mental map
+[current mental map HTML, fetched fresh from MongoDB before each run]
+
+## How to work
+Your new messages are shown in the conversation. Process them and act:
+- Use PostMessage to reply to teammates or report to your supervisor
+- Use Bash, WriteFile, or EditFile for file or shell work
+- Use UpdateMentalMap to record progress and notes
+- When done, stop calling tools
+Do the work now. If blocked, escalate via PostMessage to your supervisor.
+```
+
+The mental map section is the only dynamic part (re-fetched each run). Identity, team, and instructions are assembled once at mission start.
 
 **CLI interaction model:**
 
@@ -172,18 +199,18 @@ The CLI runs an orchestration loop that is sequential but supports live user int
 - **Immediate output**: when any agent posts a message with `to` containing `"user"`, the `PostMessage` tool prints it to stdout immediately — before the current LLM turn returns.
 - **Buffered input**: a `readline` listener runs concurrently with the loop. Any line the user types is buffered. At the start of each orchestration cycle, the buffer is drained and each line is posted as a message from `"user"` to the lead agent's inbox.
 - **Step mode** (`--step` flag): after each `runAgent()` call, the loop pauses and prints a summary of what the agent did, then prompts `"Press Enter to continue, or type a message:"`. The user can inspect state before the next agent runs. Useful during development; omit for unattended operation.
-- **Abort**: Ctrl+C triggers `AbortController.abort()`. The `AbortSignal` is threaded through `runAgent` → `runOuterLoop` → `runInnerLoop`; the current LLM turn completes cleanly and the loop exits.
+- **Abort**: Ctrl+C triggers `AbortController.abort()`. The `AbortSignal` is threaded into `runAgent`; the current LLM turn completes cleanly and the loop exits.
 - **Cycle guard**: a `maxCycles` limit (default 50) prevents runaway chains. If reached, the loop aborts with a warning.
 
 ### Deliverables
 
 - `packages/agent-config` — YAML schema + TypeScript types + loader/validator for team configs
-- `config/teams/equity-research.yaml` — reference team config
-- `packages/agent-runtime-worker/src/mailbox.ts` — `MailboxRepository` (MongoDB) + the four mailbox tools
+- `config/teams/word-count.yaml` — team config for integration test; `config/teams/equity-research.yaml` — reference team config
+- `packages/agent-runtime-worker/src/mailbox.ts` — `MailboxRepository` (MongoDB) + `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools
 - `packages/agent-runtime-worker/src/mental-map.ts` — `MentalMapRepository` (MongoDB) + `UpdateMentalMap` tool
-- `packages/agent-runtime-worker/src/outer-loop.ts` — `runOuterLoop(config)`
-- `packages/agent-runtime-worker/src/agent-runner.ts` — `runAgent(agentId, teamConfig, missionContext)`
-- Updated CLI: loads team config, provisions home dirs, starts N agents concurrently, polls "user" inbox and prints operator messages
+- `packages/agent-runtime-worker/src/prompt.ts` — `buildSystemPrompt(agent, team, mentalMap)` + `formatMessages(messages)`
+- `packages/agent-runtime-worker/src/agent-runner.ts` — `runAgent(agentId, messages, signal)`; `runOrchestrationLoop(teamConfig, signal)`
+- Updated CLI: loads team config, provisions home dirs, runs orchestration loop, buffers readline input, supports `--step` flag
 - **Integration tests**:
   - *Single-agent*: extends the Sprint 1 file-editing test but wrapped in the full outer loop; confirms the outer loop scaffolding does not break the inner loop.
   - *Two-agent word count*: Lead + Worker team; one file (`greeting.txt`) contains "HELLO WORLD" plus additional words (total 11); Lead's task is "Find the file containing HELLO WORLD, pass its name to Worker, and report the word count"; Worker reads its inbox, runs `wc -w greeting.txt`, replies "11 words"; Lead reads the reply and reports the total. Assertion: Lead's final message contains "11". This covers YAML config loading, inbox-poll scheduling, both directions of mailbox exchange, and a deterministic verifiable result.

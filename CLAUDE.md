@@ -69,9 +69,9 @@ Each agent has a stable enterprise-style identity:
 
 Low-risk orchestration tasks run in shared runtime workers. Code execution, data processing, and browser automation run in the agent's assigned execution environment with their persistent home and allowed shared folders mounted.
 
-**Sprint 2 simplification:** Agents are defined in a YAML team config and given home directories at `workspaces/{agent-id}/`. Linux uid/gid enforcement is deferred to Sprint 4. Each agent has a `supervisor` field (another agent's id, or `"user"`); agents escalate by calling `PostMessage` to their supervisor. The outer loop uses inbox-poll scheduling: an agent runs when it has unread messages; the turn ends when no agent has unread messages. No `nextAction` structured output is used — the inner loop terminates naturally when the LLM stops calling tools.
+**Sprint 2 simplification:** Single unified agent loop — no outer/inner split. `runAgent(agentId, messages, signal)` is the only function the orchestrator calls. The orchestrator pre-fetches unread messages from the mailbox, marks them as read, builds the system prompt (agent config + live mental map fetched fresh each run), passes messages as the opening user turn, and runs one LLM→tool→LLM sequence with all tools available. The LLM decides freely whether to PostMessage, run Bash, update the mental map, or any combination. Tool ACL enforcement is deferred to Sprint 4.
 
-The orchestrator calls only `runAgent(agentId, signal)`, which encapsulates both the outer and inner loops. The inner loop is not visible to the orchestrator, keeping the concurrency upgrade path (Sprint 3) trivial. The CLI supports buffered readline injection for live user input, a `--step` flag for pause-and-inspect mode, and Ctrl+C abort via `AbortSignal`.
+Each agent has a `supervisor` field (another agent's id, or `"user"`); agents escalate by calling `PostMessage` to their supervisor. The orchestration loop is inbox-poll scheduled: an agent runs when it has unread messages; the mission turn ends when no agent has unread messages. The CLI supports buffered readline injection for live user input, a `--step` flag for pause-and-inspect mode, and Ctrl+C abort via `AbortSignal`.
 
 ### Agent Communication
 
@@ -98,12 +98,12 @@ Agents share artifact references (datasets, code patches, notebooks, charts, rep
 **Sprint 1 — built:**
 - `Bash`, `WriteFile`, `EditFile`
 
-**Sprint 2 — next (outer loop only, not available to inner loop):**
-- `ListTeam` — read agent roster from team config: id, name, role, supervisor
-- `ListMessages` — inbox headers: from, subject, timestamp; supports `since`, `search`, `limit`
-- `ReadMessage` — read full message by id; marks as read
+**Sprint 2 — next (all available in the unified agent loop):**
 - `PostMessage` — send to one or more agent ids (or `"user"` to reach the operator)
 - `UpdateMentalMap` — surgical HTML patching of the agent's Mental Map document
+- `ListTeam` — read agent roster from team config: id, name, role, supervisor
+- `ListMessages` — inbox headers for older messages: from, subject, timestamp
+- `ReadMessage` — read full older message by id
 
 **Sprint 3–5 (planned):**
 1. `ExecProgram` / `ProgramStatus` / `ReadLogs` / `StopProgram` — sandboxed process execution
