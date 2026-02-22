@@ -49,6 +49,38 @@ const DEFAULT_SYSTEM_PROMPT =
 	"When you are finished, summarise what you did.";
 
 // ---------------------------------------------------------------------------
+// Verbose message logging
+// ---------------------------------------------------------------------------
+
+/**
+ * Print a human-readable summary of a single inner-loop message.
+ * prefix is prepended to every line (e.g. "  [lead] " in multi-agent mode).
+ */
+function logMessage(msg: Message, prefix = ""): void {
+	if (msg.role === "user") return; // task is already printed in the header
+	if (msg.role === "assistant") {
+		for (const block of (msg as AssistantMessage).content) {
+			if (block.type === "text" && block.text.trim()) {
+				console.log(`${prefix}[assistant] ${block.text.trim()}`);
+			} else if (block.type === "toolCall") {
+				const args = JSON.stringify(block.arguments);
+				const preview = args.length > 120 ? `${args.slice(0, 120)}…` : args;
+				console.log(`${prefix}→ ${block.name}(${preview})`);
+			}
+		}
+	} else {
+		const tr = msg as ToolResultMessage;
+		const text = tr.content
+			.filter((b) => b.type === "text")
+			.map((b) => b.text)
+			.join("")
+			.trim();
+		const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
+		console.log(`${prefix}← ${tr.toolName}: ${preview}`);
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Shared setup
 // ---------------------------------------------------------------------------
 
@@ -121,6 +153,7 @@ async function runMultiAgent(
 			model,
 			workdir,
 			step,
+			onAgentMessage: (agentId, msg) => logMessage(msg, `  [${agentId}] `),
 		},
 		ac.signal,
 	);
@@ -161,7 +194,7 @@ async function runSingleAgent(
 
 	const ac = makeAbortController();
 
-	const { messages, turnCount } = await runInnerLoop({
+	const { turnCount } = await runInnerLoop({
 		model,
 		systemPrompt,
 		task,
@@ -170,27 +203,11 @@ async function runSingleAgent(
 		previousMessages: isResume ? previousMessages : undefined,
 		onMessage: async (msg: Message, allMessages: Message[]) => {
 			await repository.save(sessionId, allMessages);
-			const label =
-				msg.role === "user"
-					? "[user]"
-					: msg.role === "assistant"
-						? "[assistant]"
-						: `[tool:${(msg as ToolResultMessage).toolName}]`;
-			console.log(label);
+			logMessage(msg);
 		},
 	});
 
 	console.log(`\n--- Done in ${turnCount} turn(s) ---\n`);
-
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (msg.role === "assistant") {
-			for (const block of (msg as AssistantMessage).content) {
-				if (block.type === "text") process.stdout.write(`${block.text}\n`);
-			}
-			break;
-		}
-	}
 }
 
 // ---------------------------------------------------------------------------

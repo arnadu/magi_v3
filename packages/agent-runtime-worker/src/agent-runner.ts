@@ -1,5 +1,5 @@
 import type { TeamConfig } from "@magi/agent-config";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Message, Model } from "@mariozechner/pi-ai";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
@@ -21,6 +21,8 @@ export interface AgentRunContext {
 	workdir: string;
 	/** Called immediately when the agent posts a message to "user". */
 	onUserMessage?: (msg: MailboxMessage) => void;
+	/** Called for every message produced by the inner loop (for logging/streaming). */
+	onMessage?: (msg: Message, allMessages: Message[]) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,5 +68,6 @@ export async function runAgent(
 		task,
 		tools,
 		signal,
+		onMessage: ctx.onMessage,
 	});
 }

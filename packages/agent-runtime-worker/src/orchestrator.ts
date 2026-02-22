@@ -1,6 +1,6 @@
 import * as readline from "node:readline";
 import type { TeamConfig } from "@magi/agent-config";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
@@ -29,6 +29,8 @@ export interface OrchestratorConfig {
 	step?: boolean;
 	/** Called immediately when an agent posts a message to "user". */
 	onUserMessage?: (msg: MailboxMessage) => void;
+	/** Called for every inner-loop message produced by any agent (for logging/streaming). */
+	onAgentMessage?: (agentId: string, msg: Message) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +170,19 @@ export async function runOrchestrationLoop(
 					`\n[orchestrator] Running ${agent?.name ?? agentId} (${messages.length} message(s))`,
 				);
 
-				await runAgent(agentId, messages, agentCtx, signal);
+				await runAgent(
+					agentId,
+					messages,
+					{
+						...agentCtx,
+						onMessage: config.onAgentMessage
+							? async (msg: Message) => {
+									config.onAgentMessage?.(agentId, msg);
+								}
+							: undefined,
+					},
+					signal,
+				);
 
 				if (step && rl) {
 					const input = await promptUser(
