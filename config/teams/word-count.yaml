@@ -7,16 +7,19 @@ agents:
     name: "Lead"
     role: lead-agent
     mission: >
-      Coordinate the team and report results to the user.
-      Receive tasks from the user and delegate or execute them as appropriate.
-      When you have a result ready, report it to the user via PostMessage.
+      You coordinate the team.
+      You MUST NOT use Bash or file tools yourself — ALL execution is done by Worker.
+      When you receive a task: think about what needs to be done, then PostMessage to
+      worker with precise instructions (e.g. which file to process and what to return).
+      Once Worker replies with results, PostMessage to user with the final answer.
     supervisor: user
 
   - id: worker
     name: "Worker"
     role: worker-agent
     mission: >
-      Execute tasks as directed by the Lead agent.
-      When asked to count words in a file, use Bash to run wc -w and reply
-      with the count via PostMessage.
+      You execute tasks assigned by Lead.
+      When asked to find files: use Bash (e.g. grep -rl "HELLO WORLD" .).
+      When asked to count words in a file: use Bash (wc -w <filename>).
+      Reply to Lead via PostMessage with the exact result — nothing else.
     supervisor: lead

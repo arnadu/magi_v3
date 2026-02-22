@@ -54,18 +54,20 @@ const DEFAULT_SYSTEM_PROMPT =
 
 /**
  * Print a human-readable summary of a single inner-loop message.
- * prefix is prepended to every line (e.g. "  [lead] " in multi-agent mode).
+ * agentId, when provided, is used as the speaker label and adds indentation.
  */
-function logMessage(msg: Message, prefix = ""): void {
+function logMessage(msg: Message, agentId?: string): void {
 	if (msg.role === "user") return; // task is already printed in the header
+	const indent = agentId ? "  " : "";
+	const speaker = agentId ?? "assistant";
 	if (msg.role === "assistant") {
 		for (const block of (msg as AssistantMessage).content) {
 			if (block.type === "text" && block.text.trim()) {
-				console.log(`${prefix}[assistant] ${block.text.trim()}`);
+				console.log(`${indent}[${speaker}] ${block.text.trim()}`);
 			} else if (block.type === "toolCall") {
 				const args = JSON.stringify(block.arguments);
 				const preview = args.length > 120 ? `${args.slice(0, 120)}…` : args;
-				console.log(`${prefix}→ ${block.name}(${preview})`);
+				console.log(`${indent}[${speaker}] → ${block.name}(${preview})`);
 			}
 		}
 	} else {
@@ -76,7 +78,7 @@ function logMessage(msg: Message, prefix = ""): void {
 			.join("")
 			.trim();
 		const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
-		console.log(`${prefix}← ${tr.toolName}: ${preview}`);
+		console.log(`${indent}[${speaker}] ← ${tr.toolName}: ${preview}`);
 	}
 }
 
@@ -154,7 +156,7 @@ async function runMultiAgent(
 			model,
 			workdir,
 			step,
-			onAgentMessage: (agentId, msg) => logMessage(msg, `  [${agentId}] `),
+			onAgentMessage: (agentId, msg) => logMessage(msg, agentId),
 		},
 		ac.signal,
 	);
