@@ -1,0 +1,27 @@
+{
+  "name": "magi-v3",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "biome check packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
+    "lint:fix": "biome check --write --unsafe packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
+    "@types/node": "^22.0.0",
+    "dotenv": "^17.3.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

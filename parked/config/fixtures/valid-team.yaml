@@ -1,0 +1,40 @@
+mission:
+  id: equity-research-001
+  name: Equity Research Team
+  mandate: Monitor tech sector and produce daily morning briefs with full citation lineage.
+
+agents:
+  - id: lead-analyst-001
+    role: lead_analyst
+    displayName: Lead Analyst
+    environment: prod
+    models:
+      outerLoop: claude-haiku-4-5-20251001
+      innerLoop: claude-sonnet-4-6
+    tools:
+      outerLoop:
+        - ReadMailbox
+        - AckMailboxMessage
+        - UpdateMentalMap
+        - SendMailboxMessage
+        - ReadArtifact
+      innerLoop:
+        - ReadFile
+        - EditFile
+        - WriteFile
+        - ListDir
+        - FindFiles
+        - GrepFiles
+        - Bash
+        - BrowseWeb
+        - FetchData
+        - AnalyzeData
+        - PublishArtifact
+        - SendMailboxMessage
+        - ReadMailbox
+    workspace:
+      sharedPaths:
+        - role: junior_analyst
+          access: read
+        - role: data_scientist
+          access: read

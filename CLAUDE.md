@@ -1,0 +1,250 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+MAGI V3 is an autonomous multi-agent system where teams of AI agents run long-horizon research and operations missions. The primary anchor use case is an **equity research team** (Lead Analyst, Junior Analysts, Data Scientists, Watcher/Alert agents) that produces daily market briefs, weekly sector reports, and event-driven alerts with source citations.
+
+The system builds on MAGI v2's autonomous loop, tool system, and stateless architecture. V3's main additions are: durable orchestration, sandboxed execution, and multi-agent coordination.
+
+**Key documents:**
+- [MAGI_V3_SPEC.md](MAGI_V3_SPEC.md) — full technical specification (agent loop, Mental Map, prompt construction, tool system, Temporal model, identity, mailbox, artifacts)
+- [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) — sprint roadmap (backend-first; 9 sprints to launch)
+- [MAGI_V3_USE_CASE_PORTFOLIO.md](MAGI_V3_USE_CASE_PORTFOLIO.md) — 11 use case definitions
+
+## Commands
+
+```bash
+npm run build             # compile all packages (tsc)
+npm test                  # unit tests (no LLM calls, no network)
+npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY in .env
+npm run lint              # Biome check (lint + format)
+npm run lint:fix          # Biome auto-fix
+
+# CLI — run the inner loop manually against a real directory
+cd packages/agent-runtime-worker
+npm run build
+SESSION_ID=my-session npm run cli -- "your task here"
+# Rerun with same SESSION_ID to resume the previous conversation
+```
+
+Type-check without building:
+```bash
+npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
+```
+
+## Architecture
+
+### Control Plane + Execution Plane split
+
+**Control Plane** (stable, changes slowly):
+- `mission-api` — create/update missions, team composition, mandates, policies
+- `orchestrator` — Temporal workflows for all agent lifecycles (retries, heartbeats, pause/resume, schedules)
+- `identity-access-service` — agent identities, roles, uid/gid mapping, folder ACL policy
+- `mailbox-service` — durable inter-agent messaging and task routing via Redis Streams
+- `artifact-promotion-service` — controlled dev-to-prod release path (Sprint 5+)
+- `state-store` — MongoDB for conversation/history/memory with indexed event records
+- `observability` — OpenTelemetry traces/metrics/log correlation
+
+**Execution Plane** (evolvable backends):
+- `agent-runtime-worker` — executes LLM turns and tool selection logic
+- `workspace-manager` — provisions agent home dirs and shared mission folders with ACL templates
+- `execution-runner` — shared worker pool + isolated per-agent/per-env execution pools
+- `browser-runner` — Playwright-based browsing/download pipeline
+- `data-processing-runner` — parsers, ETL, feature extraction, analytics jobs
+- `artifact-store` — MinIO (local) / S3-compatible (cloud) object storage
+
+### Agent Identity Model
+
+Each agent has a stable enterprise-style identity:
+- `agent_id`, Linux `uid/gid`, role, policy tags
+- Private home: `/home/agents/{agent_id}`
+- Shared mission folders: `/missions/{mission_id}/shared/{team_or_role}`
+- `dev` and `prod` workspaces are isolated; cross-environment exchange only via promoted artifacts
+
+Low-risk orchestration tasks run in shared runtime workers. Code execution, data processing, and browser automation run in the agent's assigned execution environment with their persistent home and allowed shared folders mounted.
+
+**Sprint 2 simplification:** Agents are defined in a YAML team config and given home directories at `workspaces/{agent-id}/`. Linux uid/gid enforcement is deferred to Sprint 4. Each agent has a `supervisor` field (another agent's id, or `"user"`); agents escalate by calling `PostMessage` to their supervisor. The outer loop uses inbox-poll scheduling: an agent runs when it has unread messages; the turn ends when no agent has unread messages. No `nextAction` structured output is used — the inner loop terminates naturally when the LLM stops calling tools.
+
+### Agent Communication
+
+Agents communicate with structured, durable mailbox messages (not free-form chat). Message schema:
+- `mission_id`, `sender_agent_id`, `recipient_role|agent_id`
+- `intent`: `task_request`, `data_request`, `result_submit`, `risk_alert`
+- `artifact_refs`, `deadline`, `priority`, `status`
+
+Agents share artifact references (datasets, code patches, notebooks, charts, reports, alert payloads), not raw data.
+
+## Current Implementation (Sprint 1)
+
+`packages/agent-runtime-worker` is the only package built so far. Key files:
+
+- `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop using `completeSimple` from `@mariozechner/pi-ai`. Terminates when `stopReason !== "toolUse"`. Fires `onMessage` callback after every message for incremental persistence and streaming. Supports `previousMessages` for session resumption.
+- `src/tools.ts` — three tools: `Bash` (shell command), `WriteFile` (create/overwrite), `EditFile` (string replace). Bash subsumes read/list/find/grep.
+- `src/db.ts` — `ConversationRepository` interface; `InMemoryConversationRepository` (tests); `createMongoRepository()` (production).
+- `src/models.ts` — `CLAUDE_SONNET` constant; `anthropicModel()` factory.
+- `src/cli.ts` — CLI wrapper: reads env vars, loads prior session from repo, runs loop, saves incrementally via `onMessage`.
+- `tests/loop.integration.test.ts` — real LLM integration test.
+
+## Tool Capabilities (Implementation Priority Order)
+
+**Sprint 1 — built:**
+- `Bash`, `WriteFile`, `EditFile`
+
+**Sprint 2 — next (outer loop only, not available to inner loop):**
+- `ListTeam` — read agent roster from team config: id, name, role, supervisor
+- `ListMessages` — inbox headers: from, subject, timestamp; supports `since`, `search`, `limit`
+- `ReadMessage` — read full message by id; marks as read
+- `PostMessage` — send to one or more agent ids (or `"user"` to reach the operator)
+- `UpdateMentalMap` — surgical HTML patching of the agent's Mental Map document
+
+**Sprint 3–5 (planned):**
+1. `ExecProgram` / `ProgramStatus` / `ReadLogs` / `StopProgram` — sandboxed process execution
+2. `BrowseWeb` — Playwright-based browser worker
+3. `FetchData` — HTTP pull with provenance metadata
+4. `AnalyzeData` — scripts/notebooks in execution sandbox
+5. `PublishArtifact` — register outputs with lineage metadata
+6. `PromoteArtifact` (Sprint 5+) — dev-to-prod artifact promotion
+
+## Sprint Roadmap
+
+| Sprint | Status | Focus |
+|--------|--------|-------|
+| 0 | ✅ Done | Architecture freeze: six ADRs in `docs/adr/` |
+| 1 | ✅ Done | Inner loop: `runInnerLoop`, 3 tools, MongoDB persistence, CLI, integration test |
+| 2 | Next | Multi-agent scaffolding: team YAML config, MongoDB mailbox, outer loop, supervisor chain |
+| 3 | | Durability: Temporal workflows, Redis Streams mailbox, crash recovery |
+| 4 | | Identity, workspace, ACL enforcement |
+| 5 | | Execution, web, and data tools |
+| 6 | | Equity research team MVP |
+| 7 | | Reliability + evaluation harness (5-day unattended run) |
+| 8 | | Work Product Layer UI |
+| 9 | | Cloud burst and scale-out |
+| 10 | | Hardening and launch prep |
+
+## Testing Approach
+
+Three tiers — apply the right one to the right layer:
+
+- **Unit tests** — pure, deterministic logic only: config validation, ACL policy evaluation, `UpdateMentalMap` HTML patching. `npm test`, no LLM calls, no network.
+- **Integration tests** — real LLM calls with carefully chosen prompts whose outcomes are deterministic. Tests the full stack end-to-end including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` in `.env`. Current scenarios:
+  - Sprint 1: single agent finds `greeting.txt` (contains "HELLO WORLD") and appends "GOODBYE".
+  - Sprint 2 (planned): two-agent word count — Lead finds the file containing "HELLO WORLD", delegates word-counting to Worker via mailbox, reads Worker's reply, and reports the total (11). Assertion: Lead's final message contains "11".
+- **Evaluation tests** (`eval/`) — golden scenarios asserting structural/policy outcomes (citation coverage, `nextAction` validity, policy enforcement), not content. Run on demand, not in CI.
+
+Test runner: **vitest** — native ESM, no build step needed. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.
+
+Do not write unit or integration tests for: prompt wording, LLM tool selection choices, or report content quality — those belong in the evaluation harness.
+
+## Configuration-First Approach (Portfolio and Team Design)
+
+Until Portfolio/Team Design UIs ship, all configuration is done through validated YAML files:
+- Portfolio configs: `config/portfolios/*.yaml`
+- Team design configs: `config/teams/*.yaml`
+
+Required support: schema validation + linting, dry-run compile to runtime policy objects, config diff/change history for auditability.
+
+## UI Layer Priority
+
+Build in this order:
+1. **Work Product Layer** (first): Mission Inbox, Report Center, Alert Center, Ask Console, Evidence Explorer
+2. **Portfolio Layer** (deferred): manage teams, mandates, health, budgets
+3. **Team Design Layer** (deferred): agent roster, role-capability matrix, routing, ACL editing
+
+Evaluate `pi-mono/packages/web-ui` vs MAG_v2 frontend reuse for the Work Product Layer. Decision rule: adopt `pi-web-ui` if it integrates cleanly and accelerates delivery; otherwise use MAG_v2 as primary.
+
+## Key Architecture Decisions (Sprint 0)
+
+Pending final decisions at Sprint 0:
+1. Orchestration engine: Temporal vs queue-first stopgap
+2. Runtime topology: shared workers vs dedicated isolated pools per role
+3. Identity and ACL model: Linux users/groups/ACL + cloud-equivalent enforcement
+4. Cross-container communication contract: addressing, retry, ordering, ack semantics
+5. Frontend path: MAG_v2 UI reuse vs `pi-web-ui` scope
+6. Artifact storage backend: MinIO locally, S3-compatible in cloud
+
+## Quality Requirements
+
+- Every claim in a report requires source references and links to evidence lineage in the UI
+- Confidence scores required for forecasts
+- Conflicting signals force a review task (no silent averaging)
+- Alert actions (`ack`, `escalate`, `snooze`) must be durable and auditable
+- Permission denials must be visible and actionable, not silent failures
+
+## Technology Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Language | TypeScript throughout (backend, frontend, tooling) |
+| Durable orchestration | Temporal (workflows, schedules, child workflows, message passing) |
+| Browser automation | Playwright |
+| Object storage | MinIO (local) / S3-compatible (cloud) |
+| State store / memory | MongoDB |
+| Messaging / streams | Redis Streams with consumer groups |
+| Observability | OpenTelemetry (traces, metrics, logs) |
+| Container isolation | Docker rootless + seccomp, or gVisor / Firecracker |
+| Cloud scale-out | Kubernetes (namespaces, Jobs, CronJobs, Pod Security Standards) |
+| Filesystem permissions | Linux ACLs (`setfacl`) |
+
+## MAGI v2 Baseline (`refs/MAG_v2` → `/home/remyh/ml/MAGI_v2/MAG_v2`)
+
+V3 reuses V2's agent loop logic as Temporal worker activities rather than rewriting from scratch. Key V2 patterns to carry forward:
+
+**Stack**: TypeScript monorepo (npm workspaces) — `backend/` (Node.js/Express), `frontend/` (Vue.js), `packages/shared-types/`.
+
+**Dev commands** (run from repo root):
+```
+npm run dev      # start backend + frontend + types concurrently
+npm run build    # build types → frontend → backend
+npm test         # backend integration tests
+npm run lint     # ESLint on all workspaces
+```
+
+**Stateless backend pattern**: On every request, the entire conversation history is reloaded from MongoDB, state is reconstructed, processing occurs, results are persisted, and session state is discarded. This enables horizontal scaling and consistency across restarts. V3 should preserve this principle — Temporal workers are stateless; all durable state lives in MongoDB and the Temporal workflow history.
+
+**Agent loop**: Iterative LLM → tool → LLM cycles streamed to the frontend via SSE. The loop runs until a completion condition is met or max turns is reached. Tool calls are executed sequentially; each call + result is saved to MongoDB and broadcast to the frontend before the next LLM call.
+
+**Existing tools in V2** (defined in `backend/src/services/tools/`):
+- `Editor` — modifies the Mental Map Document (shared HTML doc with id-targeted elements)
+- `ResearchTool` / `LibrarianTool` — RAG-based document search
+- `CritiqueTool` — self-assessment / reflection
+- `WebSearchService`, `FetchService` — web search and content fetch
+- `InspectImageTool`, `ImageGenerationTool` — vision and image generation
+- `SubAgentService` — sub-agent delegation pattern
+
+**Multi-LLM abstraction**: `backend/src/services/llm/` wraps OpenAI, Anthropic Claude, Google Vertex AI (Gemini), TogetherAI, and HuggingFace behind a unified provider interface.
+
+**Design docs** (in `refs/MAG_v2/`):
+- `DESIGN-ARCHITECTURE.md` — stateless backend, Mental Map concept, SSE patterns
+- `DESIGN-AGENT-SYSTEM.md` — agent loop, tool integration, completion detection, sub-agents
+- `DESIGN-LLM-INTEGRATION.md` — multi-provider abstraction, structured output, prompt engineering
+- `DESIGN-DATA.md` — MongoDB schemas, vector search, rollback system
+- `DESIGN-FRONTEND.md` — Vue.js client, SSE integration, Mental Map UI
+
+## pi-mono (`refs/pi-mono` → `/home/remyh/ml/MAGI_v2/pi-mono`)
+
+A separate TypeScript monorepo with reusable AI agent primitives. Two packages are strong candidates for direct use in V3:
+
+**`@mariozechner/pi-agent-core`** (`packages/agent/`) — production-ready agent loop with streaming, mid-run steering, follow-up messages, abort signals, and context window compaction. Planned adoption in a later sprint when those capabilities are needed; Sprint 1 uses `@mariozechner/pi-ai` directly (see below).
+
+**`@mariozechner/pi-ai`** (`packages/ai/`) — used directly in Sprint 1: `completeSimple(model, context, options?) => Promise<AssistantMessage>` is the non-streaming LLM call used by `runInnerLoop`.
+
+**`@mariozechner/pi-web-ui`** (`packages/web-ui/`) — Lit-based web components for AI chat UIs:
+- `<pi-chat-panel>` — top-level shell: wires agent, artifacts panel, and interface together; responsive (overlay vs side-by-side at 800px breakpoint)
+- `<agent-interface>` — input area with attachments, model selector, thinking level selector
+- `<message-list>` + message components: `UserMessage`, `AssistantMessage`, `ToolMessage`, `ThinkingBlock`, `StreamingMessageContainer`
+- Artifact rendering: `ArtifactsPanel`, `HtmlArtifact`, `MarkdownArtifact`, `ImageArtifact`, `SvgArtifact`, `TextArtifact`
+- Tool renderer registry: `registerToolRenderer("toolName", renderer)` — pluggable per-tool result display
+- Dialogs: `ModelSelector`, `SessionListDialog`, `SettingsDialog`, `ApiKeyPromptDialog`
+- Storage: `SessionsStore`, `ProviderKeysStore`, `SettingsStore` backed by IndexedDB
+
+**`@mariozechner/pi-ai`** (`packages/ai/`) — unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) with `completeSimple`, `streamSimple`, and `EventStream` primitives.
+
+**Build commands** (run from `refs/pi-mono/`):
+```
+npm install       # install all dependencies
+npm run build     # build all packages
+npm run check     # lint, format, type-check (requires build first)
+./test.sh         # run tests (skips LLM-dependent tests without API keys)
+```

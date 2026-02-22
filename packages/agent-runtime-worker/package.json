@@ -1,0 +1,16 @@
+{
+	"name": "@magi/agent-runtime-worker",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"main": "./dist/index.js",
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"cli": "node dist/cli.js"
+	},
+	"dependencies": {
+		"@mariozechner/pi-ai": "file:../../refs/pi-mono/packages/ai",
+		"@sinclair/typebox": "^0.34.41",
+		"mongodb": "^6.0.0"
+	}
+}
