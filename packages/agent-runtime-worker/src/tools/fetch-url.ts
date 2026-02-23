@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import type { Model, UserMessage } from "@mariozechner/pi-ai";
+import { completeSimple } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
 import { Type } from "@sinclair/typebox";
 import { JSDOM } from "jsdom";
@@ -20,6 +22,27 @@ const MAX_IMAGES = 10;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB per image
 /** Scale factor when rendering PDF pages to PNG. 1.5 ≈ 108 DPI — good for vision. */
 const PDF_RENDER_SCALE = 1.5;
+
+/**
+ * MIME types accepted by the vision LLM for auto-description.
+ * SVG and AVIF are excluded — Anthropic's vision API does not accept them.
+ */
+const VISION_MIMES = new Set([
+	"image/jpeg",
+	"image/png",
+	"image/gif",
+	"image/webp",
+]);
+
+/**
+ * Prompt used when automatically describing images during a FetchUrl call.
+ * Kept brief so the LLM returns a compact 2-4 sentence summary rather than
+ * an exhaustive description. Agents can use InspectImage for detailed queries.
+ */
+const AUTO_DESCRIBE_PROMPT =
+	"Briefly describe what this image shows. " +
+	"Focus on key information, visible text, charts, diagrams, or notable visual elements. " +
+	"Two to four sentences.";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,7 +82,10 @@ function contentTypeFromPath(path: string): string {
 	const lower = path.toLowerCase();
 	if (lower.endsWith(".pdf")) return "application/pdf";
 	if (lower.endsWith(".txt")) return "text/plain";
-	return "text/html"; // default for file:// sources
+	for (const [mime, ext] of Object.entries(MIME_TO_EXT)) {
+		if (lower.endsWith(`.${ext}`)) return mime;
+	}
+	return "text/html";
 }
 
 /**
@@ -85,12 +111,12 @@ async function fetchResource(
 
 /**
  * Fetch a single image. Returns null if the image exceeds the size limit or
- * the request fails.
+ * the request fails. Returns bytes + resolved MIME type for vision use.
  */
 async function fetchImage(
 	imgUrl: string,
 	signal?: AbortSignal,
-): Promise<{ bytes: Buffer; ext: string } | null> {
+): Promise<{ bytes: Buffer; ext: string; mimeType: string } | null> {
 	try {
 		const parsed = new URL(imgUrl);
 		let bytes: Buffer;
@@ -112,13 +138,124 @@ async function fetchImage(
 		}
 
 		if (bytes.length > MAX_IMAGE_BYTES) return null;
-		const ext =
-			MIME_TO_EXT[mimeType.split(";")[0].trim()] ??
-			extFromPath(parsed.pathname);
-		return { bytes, ext };
+		const cleanMime = mimeType.split(";")[0].trim();
+		const ext = MIME_TO_EXT[cleanMime] ?? extFromPath(parsed.pathname);
+		return { bytes, ext, mimeType: cleanMime };
 	} catch {
 		return null;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Vision auto-description
+// ---------------------------------------------------------------------------
+
+/**
+ * Call the vision LLM for a brief auto-description of an image.
+ *
+ * Non-fatal: returns undefined if the model lacks image capability, the MIME
+ * type is not accepted by the vision API, or the call fails for any reason.
+ * Callers continue without a description rather than failing.
+ */
+async function autoDescribeImage(
+	bytes: Buffer,
+	mimeType: string,
+	model: Model<string>,
+	signal?: AbortSignal,
+): Promise<string | undefined> {
+	if (!model.input.includes("image")) return undefined;
+	if (!VISION_MIMES.has(mimeType)) return undefined;
+
+	try {
+		const msg: UserMessage = {
+			role: "user",
+			timestamp: Date.now(),
+			content: [
+				{ type: "text", text: AUTO_DESCRIBE_PROMPT },
+				{ type: "image", data: bytes.toString("base64"), mimeType },
+			],
+		};
+		const response = await completeSimple(
+			model,
+			{ messages: [msg] },
+			{ signal },
+		);
+		if (response.stopReason === "error" || response.stopReason === "aborted") {
+			return undefined;
+		}
+		const text = response.content
+			.filter((b) => b.type === "text")
+			.map((b) => (b as { type: "text"; text: string }).text)
+			.join("\n")
+			.trim();
+		return text || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Direct image processing
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle FetchUrl called on a direct image URL (mimeType starts with "image/").
+ * Saves the image and its auto-description as an artifact.
+ */
+async function processDirectImage(
+	bytes: Buffer,
+	mimeType: string,
+	workdir: string,
+	rawUrl: string,
+	model: Model<string>,
+	signal?: AbortSignal,
+): Promise<ToolResult> {
+	const cleanMime = mimeType.split(";")[0].trim();
+	const ext = MIME_TO_EXT[cleanMime] ?? extFromPath(new URL(rawUrl).pathname);
+	const filename = `image.${ext}`;
+
+	const description = await autoDescribeImage(bytes, cleanMime, model, signal);
+	const contentText = description
+		? `# Image\n\n${description}`
+		: `# Image\n\n(Visual description unavailable — use InspectImage for analysis.)`;
+
+	const artifactId = generateArtifactId(rawUrl);
+	const meta: ArtifactMeta = {
+		"@type": "ImageObject",
+		id: artifactId,
+		name: filename,
+		url: rawUrl,
+		dateCreated: new Date().toISOString(),
+		encodingFormat: cleanMime,
+		images: [filename],
+	};
+
+	try {
+		await saveArtifact(
+			workdir,
+			artifactId,
+			[
+				{ name: "content.md", content: contentText },
+				{ name: filename, content: bytes },
+			],
+			meta,
+		);
+	} catch (e) {
+		return toolErr(
+			`FetchUrl: failed to save image artifact — ${(e as Error).message}`,
+		);
+	}
+
+	const lines = [
+		`Fetched image: ${rawUrl}`,
+		`Artifact id: ${artifactId}`,
+		`  artifacts/${artifactId}/${filename}`,
+		`  artifacts/${artifactId}/content.md`,
+		"",
+		`Use \`cat artifacts/${artifactId}/content.md\` to read the auto-description.`,
+		`Use InspectImage with path "artifacts/${artifactId}/${filename}" for a focused analysis.`,
+	];
+	return ok(lines.join("\n"));
 }
 
 // ---------------------------------------------------------------------------
@@ -127,12 +264,15 @@ async function fetchImage(
 
 /**
  * Extract text and render pages from a PDF using mupdf.
- * Returns the artifact files and a summary string.
+ * Each page's rendered PNG is auto-described and the description is embedded
+ * directly after the page's extracted text in content.md.
  */
 async function processPdf(
 	bytes: Buffer,
 	workdir: string,
 	rawUrl: string,
+	model: Model<string>,
+	signal?: AbortSignal,
 ): Promise<ToolResult> {
 	let doc: mupdf.Document;
 	try {
@@ -161,22 +301,35 @@ async function processPdf(
 
 		// Text extraction
 		const pageText = page.toStructuredText().asText().trim();
-		if (pageText) textParts.push(`## Page ${i + 1}\n\n${pageText}`);
+		let pageSection = `## Page ${i + 1}`;
+		if (pageText) pageSection += `\n\n${pageText}`;
 
-		// Page render → PNG
+		// Page render → PNG + auto-description embedded inline
 		try {
 			const pixmap = page.toPixmap(matrix, mupdf.ColorSpace.DeviceRGB, false);
-			const pngBytes = pixmap.asPNG();
+			const pngBytes = Buffer.from(pixmap.asPNG());
 			const filename = `page-${i + 1}.png`;
-			imageFiles.push({ name: filename, content: Buffer.from(pngBytes) });
+			imageFiles.push({ name: filename, content: pngBytes });
 			imageRelPaths.push(filename);
+
+			const description = await autoDescribeImage(
+				pngBytes,
+				"image/png",
+				model,
+				signal,
+			);
+			if (description) {
+				pageSection += `\n\n**Page visual:** ${description}`;
+			}
 		} catch {
 			// Non-fatal: skip page render on error
 		}
+
+		textParts.push(pageSection);
 	}
 
 	const contentText =
-		textParts.join("\n\n---\n\n") || "(No text content extracted from PDF)";
+		textParts.join("\n\n---\n\n") || "(No content extracted from PDF)";
 
 	const artifactId = generateArtifactId(rawUrl);
 	const meta: ArtifactMeta = {
@@ -205,11 +358,11 @@ async function processPdf(
 	const lines = [
 		`Fetched PDF: ${rawUrl}`,
 		`Artifact id: ${artifactId}`,
-		`  artifacts/${artifactId}/content.md  (${contentText.length} chars, ${pageCount} pages)`,
+		`  artifacts/${artifactId}/content.md  (${contentText.length} chars, ${pageCount} pages, visual descriptions included)`,
 		...imageRelPaths.map((p) => `  artifacts/${artifactId}/${p}`),
 		"",
-		`Use \`cat artifacts/${artifactId}/content.md\` to read the extracted text.`,
-		`Use InspectImage with a page path (e.g. "artifacts/${artifactId}/page-1.png") to visually analyse a page.`,
+		`Use \`cat artifacts/${artifactId}/content.md\` to read extracted text and page descriptions.`,
+		`Use InspectImage on a page path for a focused follow-up question.`,
 	];
 
 	return ok(lines.join("\n"));
@@ -222,30 +375,40 @@ async function processPdf(
 /**
  * Create the FetchUrl tool.
  *
- * Fetches a URL and saves the content as an artifact under
- * `{workdir}/artifacts/{id}/`:
- *   - HTML: processed with Readability (clean text) + embedded images downloaded
- *   - PDF:  text extracted + each page rendered to PNG with mupdf
+ * Fetches a URL and saves content as an artifact under
+ * `{workdir}/artifacts/{id}/`. Image descriptions are automatically generated
+ * and embedded in content.md — the agent does not need to call InspectImage
+ * for a basic overview. InspectImage remains available for focused questions.
  *
- * The artifact id is returned so agents can use
- * `cat artifacts/<id>/content.md` or InspectImage on any saved file.
+ * Supported content types:
+ *   HTML   — Readability text + embedded images downloaded. Each image is
+ *             auto-described and descriptions appended as an "## Images" section.
+ *   PDF    — mupdf text extraction + per-page PNG render. Each page's visual
+ *             description is embedded right after its extracted text.
+ *   image  — image saved + auto-described; description written to content.md.
+ *   plain text — saved as-is.
  */
-export function createFetchUrlTool(workdir: string): MagiTool {
+export function createFetchUrlTool(
+	workdir: string,
+	model: Model<string>,
+): MagiTool {
 	return {
 		name: "FetchUrl",
 		description:
 			"Fetch a URL and save its content as an artifact in artifacts/. " +
-			"Supports HTML pages (extracts clean article text and downloads embedded images) " +
-			"and PDF files (extracts text and renders each page as a PNG). " +
-			"Returns the artifact id; use `cat artifacts/<id>/content.md` to read the text " +
-			"or InspectImage to visually analyse downloaded images or PDF pages.",
+			"Supports HTML (article text + images), PDF (text + per-page visuals), " +
+			"and direct image URLs. " +
+			"Image descriptions are auto-generated and embedded in content.md so you " +
+			"can read everything with a single `cat artifacts/<id>/content.md`. " +
+			"Use InspectImage for focused follow-up questions about a specific image.",
 		parameters: Type.Object({
 			url: Type.String({
 				description: "URL to fetch (http://, https://, or file://)",
 			}),
 			download_images: Type.Optional(
 				Type.Boolean({
-					description: "Download <img> images from HTML pages (default: true)",
+					description:
+						"Download and describe <img> images from HTML pages (default: true)",
 				}),
 			),
 		}),
@@ -280,7 +443,18 @@ export function createFetchUrlTool(workdir: string): MagiTool {
 
 			// --- Route by content type -----------------------------------------
 			if (mimeType === "application/pdf") {
-				return processPdf(bytes, workdir, rawUrl);
+				return processPdf(bytes, workdir, rawUrl, model, signal);
+			}
+
+			if (mimeType.startsWith("image/")) {
+				return processDirectImage(
+					bytes,
+					mimeType,
+					workdir,
+					rawUrl,
+					model,
+					signal,
+				);
 			}
 
 			if (
@@ -288,7 +462,7 @@ export function createFetchUrlTool(workdir: string): MagiTool {
 				!mimeType.startsWith("text/plain")
 			) {
 				return toolErr(
-					`FetchUrl: unsupported content type "${mimeType}". Supported: HTML, PDF, plain text.`,
+					`FetchUrl: unsupported content type "${mimeType}". Supported: HTML, PDF, images, plain text.`,
 				);
 			}
 
@@ -304,11 +478,12 @@ export function createFetchUrlTool(workdir: string): MagiTool {
 				parsedUrl.pathname.split("/").pop() ||
 				"Untitled";
 
-			const contentText = article?.textContent?.trim() || html;
+			const articleText = article?.textContent?.trim() || html;
 
-			// --- Download images -----------------------------------------------
+			// --- Download images and auto-describe each one -------------------
 			const imageFiles: FileEntry[] = [];
 			const imageRelPaths: string[] = [];
+			const imageDescriptions: string[] = [];
 
 			if (downloadImages) {
 				const imgEls = Array.from(
@@ -333,8 +508,29 @@ export function createFetchUrlTool(workdir: string): MagiTool {
 					const filename = `image-${idx}.${result.ext}`;
 					imageFiles.push({ name: filename, content: result.bytes });
 					imageRelPaths.push(filename);
+
+					const description = await autoDescribeImage(
+						result.bytes,
+						result.mimeType,
+						model,
+						signal,
+					);
+					imageDescriptions.push(description ?? "");
 					idx++;
 				}
+			}
+
+			// --- Assemble content.md -------------------------------------------
+			// Article text first, then an "## Images" section if images were found.
+			let contentText = articleText;
+			if (imageRelPaths.length > 0) {
+				const imageSections = imageRelPaths.map((filename, i) => {
+					const desc = imageDescriptions[i];
+					return desc
+						? `### ${filename}\n${desc}`
+						: `### ${filename}\n(Visual description unavailable — use InspectImage for analysis.)`;
+				});
+				contentText += `\n\n## Images\n\n${imageSections.join("\n\n")}`;
 			}
 
 			// --- Save artifact -------------------------------------------------
@@ -363,21 +559,18 @@ export function createFetchUrlTool(workdir: string): MagiTool {
 			}
 
 			// --- Return summary ------------------------------------------------
+			const hasDescriptions = imageDescriptions.some((d) => d);
 			const lines = [
 				`Fetched: ${rawUrl}`,
 				`Artifact id: ${artifactId}`,
-				`  artifacts/${artifactId}/content.md  (${contentText.length} chars)`,
-			];
-			for (const p of imageRelPaths) {
-				lines.push(`  artifacts/${artifactId}/${p}`);
-			}
-			lines.push(
+				`  artifacts/${artifactId}/content.md  (${contentText.length} chars${imageRelPaths.length > 0 ? `, including ${imageRelPaths.length} image description${imageRelPaths.length !== 1 ? "s" : ""}` : ""})`,
+				...imageRelPaths.map((p) => `  artifacts/${artifactId}/${p}`),
 				"",
-				`Use \`cat artifacts/${artifactId}/content.md\` to read the article.`,
-			);
+				`Use \`cat artifacts/${artifactId}/content.md\` to read the article${hasDescriptions ? " and image descriptions" : ""}.`,
+			];
 			if (imageRelPaths.length > 0) {
 				lines.push(
-					`Use InspectImage with path "artifacts/${artifactId}/${imageRelPaths[0]}" to analyse images.`,
+					`Use InspectImage for focused follow-up questions about a specific image.`,
 				);
 			}
 

@@ -64,7 +64,7 @@ export async function runAgent(
 			onUserMessage: ctx.onUserMessage,
 		}),
 		createMentalMapTool(ctx.mentalMapRepo, agentId),
-		createFetchUrlTool(ctx.workdir),
+		createFetchUrlTool(ctx.workdir, ctx.model),
 		createInspectImageTool(ctx.workdir, ctx.model),
 		...(searchWebTool ? [searchWebTool] : []),
 	];

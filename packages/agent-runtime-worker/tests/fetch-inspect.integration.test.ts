@@ -85,7 +85,7 @@ describe("integration: FetchUrl + InspectImage", () => {
 					"(2) a description of each image you inspected.",
 				tools: [
 					...createFileTools(workdir),
-					createFetchUrlTool(workdir),
+					createFetchUrlTool(workdir, CLAUDE_SONNET),
 					createInspectImageTool(workdir, CLAUDE_SONNET),
 				],
 			});
