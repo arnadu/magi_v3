@@ -47,11 +47,11 @@ export async function runAgent(
 	// Initialise mental map if this agent has never run before.
 	let mentalMapHtml = await ctx.mentalMapRepo.load(agentId);
 	if (!mentalMapHtml) {
-		mentalMapHtml = initMentalMap(agent, ctx.teamConfig);
+		mentalMapHtml = initMentalMap(agent);
 		await ctx.mentalMapRepo.save(agentId, mentalMapHtml);
 	}
 
-	const systemPrompt = buildSystemPrompt(agent, ctx.teamConfig, mentalMapHtml);
+	const systemPrompt = buildSystemPrompt(agent, mentalMapHtml);
 	const task = formatMessages(messages);
 
 	const tools = [

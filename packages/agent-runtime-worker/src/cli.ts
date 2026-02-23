@@ -1,27 +1,21 @@
 #!/usr/bin/env node
 
 /**
- * CLI runner for MAGI V3 agent(s).
+ * CLI runner for MAGI V3 agent teams.
  *
- * Single-agent mode (Sprint 1):
- *   node dist/cli.js "<task>" ["<system-prompt>"]
- *
- * Multi-agent mode (Sprint 2):
  *   TEAM_CONFIG=<path-to-yaml> node dist/cli.js "<initial-task>" [--step]
  *
  * Environment variables:
  *   ANTHROPIC_API_KEY  required
+ *   TEAM_CONFIG        required — path to team config YAML
  *   MODEL              optional — model id (default: claude-sonnet-4-6)
- *   TEAM_CONFIG        optional — path to team config YAML (enables multi-agent mode)
- *   MONGODB_URI        optional — enables persistence (single-agent only in Sprint 2)
- *   SESSION_ID         optional — stable session id for resumption (single-agent only)
+ *   MONGODB_URI        optional — use MongoDB mailbox instead of in-memory
  *   AGENT_WORKDIR      optional — working directory for file tools (default: cwd)
  *
  * Flags:
- *   --step             pause after each agent run (multi-agent mode only)
+ *   --step             pause after each agent run
  */
 
-import { randomUUID } from "node:crypto";
 import { loadTeamConfig } from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
 
@@ -33,8 +27,6 @@ import type {
 	Message,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
-import { createMongoRepository, InMemoryConversationRepository } from "./db.js";
-import { runInnerLoop } from "./loop.js";
 import {
 	createMongoMailboxRepository,
 	InMemoryMailboxRepository,
@@ -42,22 +34,13 @@ import {
 import { InMemoryMentalMapRepository } from "./mental-map.js";
 import { anthropicModel, CLAUDE_SONNET } from "./models.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
-import { createFileTools } from "./tools.js";
-
-const DEFAULT_SYSTEM_PROMPT =
-	"You are a helpful AI agent. Complete the given task using the available tools. " +
-	"When you are finished, summarise what you did.";
 
 // ---------------------------------------------------------------------------
 // Verbose message logging
 // ---------------------------------------------------------------------------
 
-/**
- * Print a human-readable summary of a single inner-loop message.
- * agentId, when provided, is used as the speaker label and adds indentation.
- */
 function logMessage(msg: Message, agentId?: string): void {
-	if (msg.role === "user") return; // task is already printed in the header
+	if (msg.role === "user") return;
 	const indent = agentId ? "  " : "";
 	const speaker = agentId ?? "assistant";
 	if (msg.role === "assistant") {
@@ -83,7 +66,7 @@ function logMessage(msg: Message, agentId?: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Shared setup
+// Helpers
 // ---------------------------------------------------------------------------
 
 function getModel() {
@@ -100,20 +83,36 @@ function makeAbortController(): AbortController {
 	process.on("SIGINT", () => {
 		console.log("\n[cli] Interrupted — exiting...");
 		ac.abort();
-		process.exit(130); // 128 + SIGINT(2)
+		process.exit(130);
 	});
 	return ac;
 }
 
 // ---------------------------------------------------------------------------
-// Multi-agent mode
+// Entry point
 // ---------------------------------------------------------------------------
 
-async function runMultiAgent(
-	teamConfigPath: string,
-	initialTask: string,
-	step: boolean,
-): Promise<void> {
+async function main(): Promise<void> {
+	const rawArgs = process.argv.slice(2);
+	const args = rawArgs.filter((a) => !a.startsWith("--"));
+	const flags = new Set(rawArgs.filter((a) => a.startsWith("--")));
+
+	const teamConfigPath = process.env.TEAM_CONFIG;
+
+	if (args.length === 0 || flags.has("--help") || !teamConfigPath) {
+		console.error(
+			"Usage: TEAM_CONFIG=<yaml> cli <task> [--step]\n\n" +
+				"Env vars: ANTHROPIC_API_KEY (required), TEAM_CONFIG (required), " +
+				"MODEL, MONGODB_URI, AGENT_WORKDIR",
+		);
+		process.exit(1);
+	}
+
+	if (!process.env.ANTHROPIC_API_KEY) {
+		console.error("Error: ANTHROPIC_API_KEY environment variable is required");
+		process.exit(1);
+	}
+
 	const teamConfig = loadTeamConfig(teamConfigPath);
 	const { modelId, model } = getModel();
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
@@ -132,18 +131,19 @@ async function runMultiAgent(
 	);
 	console.log(`Model:    ${modelId}`);
 	console.log(`Workdir:  ${workdir}`);
-	console.log(`Agents:   ${teamConfig.agents.map((a) => a.name).join(", ")}`);
-	console.log(`Step:     ${step}`);
-	console.log(`Task:     ${initialTask}`);
+	console.log(
+		`Agents:   ${teamConfig.agents.map((a) => a.name ?? a.id).join(", ")}`,
+	);
+	console.log(`Step:     ${flags.has("--step")}`);
+	console.log(`Task:     ${args[0]}`);
 	console.log(`\n--- Starting mission ---\n`);
 
-	// Seed the lead agent's inbox with the initial task.
 	await mailboxRepo.post({
 		missionId: teamConfig.mission.id,
 		from: "user",
 		to: [leadAgent.id],
 		subject: "Initial task",
-		body: initialTask,
+		body: args[0],
 	});
 
 	const ac = makeAbortController();
@@ -155,96 +155,11 @@ async function runMultiAgent(
 			mentalMapRepo,
 			model,
 			workdir,
-			step,
+			step: flags.has("--step"),
 			onAgentMessage: (agentId, msg) => logMessage(msg, agentId),
 		},
 		ac.signal,
 	);
-}
-
-// ---------------------------------------------------------------------------
-// Single-agent mode (Sprint 1, unchanged)
-// ---------------------------------------------------------------------------
-
-async function runSingleAgent(
-	task: string,
-	systemPrompt: string,
-): Promise<void> {
-	const { modelId, model } = getModel();
-
-	const mongoUri = process.env.MONGODB_URI;
-	const repository = mongoUri
-		? await createMongoRepository(mongoUri)
-		: new InMemoryConversationRepository();
-
-	const sessionId = process.env.SESSION_ID ?? randomUUID();
-	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
-	const tools = createFileTools(workdir);
-
-	const previousMessages = await repository.load(sessionId);
-	const isResume = previousMessages.length > 0;
-
-	console.log(`Session:  ${sessionId}${isResume ? " (resuming)" : ""}`);
-	console.log(`Model:    ${modelId}`);
-	console.log(`Workdir:  ${workdir}`);
-	if (isResume) {
-		console.log(
-			`History:  ${previousMessages.length} message(s) from previous run`,
-		);
-	}
-	console.log(`Task:     ${task}`);
-	console.log(`\n--- Running ---\n`);
-
-	const ac = makeAbortController();
-
-	const { turnCount } = await runInnerLoop({
-		model,
-		systemPrompt,
-		task,
-		tools,
-		signal: ac.signal,
-		previousMessages: isResume ? previousMessages : undefined,
-		onMessage: async (msg: Message, allMessages: Message[]) => {
-			await repository.save(sessionId, allMessages);
-			logMessage(msg);
-		},
-	});
-
-	console.log(`\n--- Done in ${turnCount} turn(s) ---\n`);
-}
-
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
-async function main(): Promise<void> {
-	const rawArgs = process.argv.slice(2);
-	const args = rawArgs.filter((a) => !a.startsWith("--"));
-	const flags = new Set(rawArgs.filter((a) => a.startsWith("--")));
-
-	if (args.length === 0 || flags.has("--help")) {
-		console.error(
-			"Usage:\n" +
-				"  Single-agent: cli <task> [system-prompt]\n" +
-				"  Multi-agent:  TEAM_CONFIG=<yaml> cli <task> [--step]\n\n" +
-				"Env vars: ANTHROPIC_API_KEY (required), MODEL, TEAM_CONFIG, " +
-				"MONGODB_URI, SESSION_ID, AGENT_WORKDIR",
-		);
-		process.exit(1);
-	}
-
-	if (!process.env.ANTHROPIC_API_KEY) {
-		console.error("Error: ANTHROPIC_API_KEY environment variable is required");
-		process.exit(1);
-	}
-
-	const teamConfigPath = process.env.TEAM_CONFIG;
-
-	if (teamConfigPath) {
-		await runMultiAgent(teamConfigPath, args[0], flags.has("--step"));
-	} else {
-		await runSingleAgent(args[0], args[1] ?? DEFAULT_SYSTEM_PROMPT);
-	}
 }
 
 main().catch((e) => {

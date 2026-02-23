@@ -1,4 +1,4 @@
-import type { AgentConfig, TeamConfig } from "@magi/agent-config";
+import type { AgentConfig } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import type { MagiTool, ToolResult } from "./tools.js";
 
@@ -7,29 +7,11 @@ import type { MagiTool, ToolResult } from "./tools.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Build the initial mental map HTML for a new agent.
- * The #mission-context section is populated from the team config.
+ * Return the initial mental map HTML for a new agent.
+ * Reads agent.initialMentalMap from the team YAML.
  */
-export function initMentalMap(agent: AgentConfig, team: TeamConfig): string {
-	const teammates = team.agents
-		.filter((a) => a.id !== agent.id)
-		.map((a) => `${a.id} (${a.name}, ${a.role})`)
-		.join(", ");
-
-	const supervisorLabel =
-		agent.supervisor === "user"
-			? "user (operator)"
-			: (() => {
-					const sup = team.agents.find((a) => a.id === agent.supervisor);
-					return sup ? `${sup.id} (${sup.name})` : agent.supervisor;
-				})();
-
-	return `<section id="mission-context">
-  <p>Team: ${team.mission.name} | Role: ${agent.role} | Supervisor: ${supervisorLabel}</p>
-  <p>Teammates: ${teammates || "none"}</p>
-</section>
-<section id="working-notes"><p></p></section>
-<ul id="waiting-for"></ul>`;
+export function initMentalMap(agent: AgentConfig): string {
+	return agent.initialMentalMap;
 }
 
 // ---------------------------------------------------------------------------

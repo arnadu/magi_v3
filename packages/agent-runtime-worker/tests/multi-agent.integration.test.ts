@@ -7,6 +7,8 @@
  *   - Worker runs wc -w on greeting.txt, replies to Lead.
  *   - Lead reports the count (12) back to the user.
  *
+ * Team config loaded from: config/teams/word-count.yaml
+ *
  * Requires ANTHROPIC_API_KEY in environment or .env file.
  *
  * Run:
@@ -17,7 +19,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseTeamConfig } from "@magi/agent-config";
+import { fileURLToPath } from "node:url";
+import { loadTeamConfig } from "@magi/agent-config";
 import { describe, expect, it } from "vitest";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { InMemoryMailboxRepository } from "../src/mailbox.js";
@@ -25,32 +28,10 @@ import { InMemoryMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
 
-const WORD_COUNT_TEAM_YAML = `
-mission:
-  id: word-count-test
-  name: Word Count Mission
-
-agents:
-  - id: lead
-    name: Lead
-    role: Lead Agent
-    supervisor: user
-    mission: |
-      You coordinate the team.
-      You MUST NOT use Bash or file tools yourself — ALL execution is done by Worker.
-      When you receive a task: PostMessage to worker with precise instructions.
-      Once Worker replies with results, PostMessage to user with the final answer.
-
-  - id: worker
-    name: Worker
-    role: Worker Agent
-    supervisor: lead
-    mission: |
-      You execute tasks assigned by Lead.
-      When asked to find files: use Bash (e.g. grep -rl "HELLO WORLD" .).
-      When asked to count words in a file: use Bash (wc -w <filename>).
-      Reply to Lead via PostMessage with the exact result — nothing else.
-`;
+// Resolve path to the shared team config YAML (project root / config / teams).
+const TEAM_CONFIG_PATH = fileURLToPath(
+	new URL("../../../config/teams/word-count.yaml", import.meta.url),
+);
 
 describe("integration: two-agent word-count", () => {
 	it("Lead delegates to Worker and reports word count to user", async () => {
@@ -64,7 +45,7 @@ describe("integration: two-agent word-count", () => {
 		const userMessages: MailboxMessage[] = [];
 
 		try {
-			const teamConfig = parseTeamConfig(WORD_COUNT_TEAM_YAML);
+			const teamConfig = loadTeamConfig(TEAM_CONFIG_PATH);
 			const mailboxRepo = new InMemoryMailboxRepository();
 			const mentalMapRepo = new InMemoryMentalMapRepository();
 

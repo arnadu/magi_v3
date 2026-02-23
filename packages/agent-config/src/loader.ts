@@ -1,9 +1,37 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
-import type { AgentConfig, TeamConfig } from "./types.js";
+import { ZodError, z } from "zod";
+
+// ---------------------------------------------------------------------------
+// Schemas — single source of truth for both validation and TypeScript types
+// ---------------------------------------------------------------------------
+
+const AgentSchema = z
+	.object({
+		id: z.string().trim().min(1),
+		supervisor: z.string().trim().min(1),
+		systemPrompt: z.string().trim().min(1),
+		initialMentalMap: z.string().trim().min(1),
+	})
+	.catchall(z.string().trim());
+
+const TeamConfigSchema = z.object({
+	mission: z.object({
+		id: z.string().trim().min(1),
+		name: z.string().trim().min(1),
+	}),
+	agents: z.array(AgentSchema).min(1),
+});
+
+export type AgentConfig = z.infer<typeof AgentSchema>;
+export type TeamConfig = z.infer<typeof TeamConfigSchema>;
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 /**
- * Parse a team config YAML string into a typed TeamConfig.
+ * Parse a team config YAML string into a validated TeamConfig.
  * Throws with a descriptive message on validation failure.
  */
 export function parseTeamConfig(yamlContent: string): TeamConfig {
@@ -14,54 +42,19 @@ export function parseTeamConfig(yamlContent: string): TeamConfig {
 		throw new Error(`Team config YAML parse error: ${(e as Error).message}`);
 	}
 
-	if (typeof raw !== "object" || raw === null) {
-		throw new Error("Team config must be a YAML object");
+	try {
+		return TeamConfigSchema.parse(raw);
+	} catch (e) {
+		if (e instanceof ZodError) {
+			const issues = e.issues
+				.map(
+					(issue) => `  ${issue.path.map(String).join(".")}: ${issue.message}`,
+				)
+				.join("\n");
+			throw new Error(`Team config validation failed:\n${issues}`);
+		}
+		throw e;
 	}
-
-	const obj = raw as Record<string, unknown>;
-
-	// Validate mission
-	if (typeof obj.mission !== "object" || obj.mission === null) {
-		throw new Error("Team config must have a 'mission' object");
-	}
-	const mission = obj.mission as Record<string, unknown>;
-	if (typeof mission.id !== "string" || !mission.id) {
-		throw new Error("mission.id is required");
-	}
-	if (typeof mission.name !== "string" || !mission.name) {
-		throw new Error("mission.name is required");
-	}
-
-	// Validate agents
-	if (!Array.isArray(obj.agents) || obj.agents.length === 0) {
-		throw new Error("Team config must have at least one agent");
-	}
-
-	const agents: AgentConfig[] = obj.agents.map(
-		(a: unknown, i: number): AgentConfig => {
-			if (typeof a !== "object" || a === null) {
-				throw new Error(`agents[${i}] must be an object`);
-			}
-			const agent = a as Record<string, unknown>;
-			for (const field of ["id", "name", "role", "mission", "supervisor"]) {
-				if (typeof agent[field] !== "string" || !agent[field]) {
-					throw new Error(`agents[${i}].${field} is required`);
-				}
-			}
-			return {
-				id: agent.id as string,
-				name: agent.name as string,
-				role: agent.role as string,
-				mission: (agent.mission as string).trim(),
-				supervisor: agent.supervisor as string,
-			};
-		},
-	);
-
-	return {
-		mission: { id: mission.id as string, name: mission.name as string },
-		agents,
-	};
 }
 
 /**
