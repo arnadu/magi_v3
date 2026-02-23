@@ -18,7 +18,7 @@ import type { MagiTool, ToolResult } from "../tools.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_IMAGES = 10;
+const DEFAULT_MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB per image
 /** Scale factor when rendering PDF pages to PNG. 1.5 ≈ 108 DPI — good for vision. */
 const PDF_RENDER_SCALE = 1.5;
@@ -411,11 +411,20 @@ export function createFetchUrlTool(
 						"Download and describe <img> images from HTML pages (default: true)",
 				}),
 			),
+			max_images: Type.Optional(
+				Type.Number({
+					description: `Maximum number of images to download and describe (default: ${DEFAULT_MAX_IMAGES}, max: 10). Increase only when a page's visual content is central to the task.`,
+				}),
+			),
 		}),
 
 		async execute(_id, args, signal) {
 			const rawUrl = args.url as string;
 			const downloadImages = args.download_images !== false;
+			const maxImages = Math.min(
+				Math.max(1, (args.max_images as number | undefined) ?? DEFAULT_MAX_IMAGES),
+				10,
+			);
 
 			// --- Validate URL --------------------------------------------------
 			let parsedUrl: URL;
@@ -486,9 +495,15 @@ export function createFetchUrlTool(
 			const imageDescriptions: string[] = [];
 
 			if (downloadImages) {
+				// Query images from Readability's cleaned article HTML, not the full
+				// document — this filters out nav/sidebar/footer decorative icons.
+				// Fall back to the full document if Readability returned nothing.
+				const articleDom = article?.content
+					? new JSDOM(article.content, { url: parsedUrl.toString() })
+					: dom;
 				const imgEls = Array.from(
-					dom.window.document.querySelectorAll("img"),
-				).slice(0, MAX_IMAGES);
+					articleDom.window.document.querySelectorAll("img"),
+				).slice(0, maxImages);
 
 				let idx = 0;
 				for (const img of imgEls) {
