@@ -85,6 +85,31 @@ export interface FileEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Internal helper
+// ---------------------------------------------------------------------------
+
+async function writeDirectory(
+	dir: string,
+	files: FileEntry[],
+	meta: ArtifactMeta | UploadMeta,
+): Promise<string> {
+	await mkdir(dir, { recursive: true });
+	for (const f of files) {
+		if (typeof f.content === "string") {
+			await writeFile(join(dir, f.name), f.content, "utf8");
+		} else {
+			await writeFile(join(dir, f.name), f.content);
+		}
+	}
+	await writeFile(
+		join(dir, "meta.json"),
+		JSON.stringify(meta, null, 2),
+		"utf8",
+	);
+	return dir;
+}
+
+// ---------------------------------------------------------------------------
 // saveArtifact
 // ---------------------------------------------------------------------------
 
@@ -102,23 +127,7 @@ export async function saveArtifact(
 	files: FileEntry[],
 	meta: ArtifactMeta,
 ): Promise<string> {
-	const dir = join(workdir, "artifacts", id);
-	await mkdir(dir, { recursive: true });
-
-	for (const f of files) {
-		if (typeof f.content === "string") {
-			await writeFile(join(dir, f.name), f.content, "utf8");
-		} else {
-			await writeFile(join(dir, f.name), f.content);
-		}
-	}
-
-	await writeFile(
-		join(dir, "meta.json"),
-		JSON.stringify(meta, null, 2),
-		"utf8",
-	);
-	return dir;
+	return writeDirectory(join(workdir, "artifacts", id), files, meta);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,21 +148,5 @@ export async function saveUpload(
 	files: FileEntry[],
 	meta: UploadMeta,
 ): Promise<string> {
-	const dir = join(workdir, "uploads", id);
-	await mkdir(dir, { recursive: true });
-
-	for (const f of files) {
-		if (typeof f.content === "string") {
-			await writeFile(join(dir, f.name), f.content, "utf8");
-		} else {
-			await writeFile(join(dir, f.name), f.content);
-		}
-	}
-
-	await writeFile(
-		join(dir, "meta.json"),
-		JSON.stringify(meta, null, 2),
-		"utf8",
-	);
-	return dir;
+	return writeDirectory(join(workdir, "uploads", id), files, meta);
 }

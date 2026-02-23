@@ -46,6 +46,11 @@ export interface InnerLoopConfig {
 	 * Does NOT fire for previousMessages — those are already persisted.
 	 */
 	onMessage?: (msg: Message, allMessages: Message[]) => Promise<void>;
+	/**
+	 * Maximum milliseconds to wait for a single tool call before recording a
+	 * timeout error and continuing the loop. Default: 120_000 (2 minutes).
+	 */
+	toolTimeoutMs?: number;
 }
 
 export interface LoopResult {
@@ -67,7 +72,15 @@ export interface LoopResult {
 export async function runInnerLoop(
 	config: InnerLoopConfig,
 ): Promise<LoopResult> {
-	const { model, systemPrompt, task, tools, signal, onMessage } = config;
+	const {
+		model,
+		systemPrompt,
+		task,
+		tools,
+		signal,
+		onMessage,
+		toolTimeoutMs = 120_000,
+	} = config;
 	const completeFn: CompleteFn = config.completeFn ?? completeSimple;
 
 	// Seed with prior history if resuming; onMessage does not fire for these.
@@ -129,7 +142,11 @@ export async function runInnerLoop(
 				toolResult = makeError(block, `Tool "${block.name}" not found`);
 			} else {
 				try {
-					const result = await tool.execute(block.id, block.arguments, signal);
+					const result = await withTimeout(
+						tool.execute(block.id, block.arguments, signal),
+						toolTimeoutMs,
+						block.name,
+					);
 					toolResult = {
 						role: "toolResult",
 						toolCallId: block.id,
@@ -156,6 +173,34 @@ export async function runInnerLoop(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Race a promise against a timeout. Rejects with a descriptive Error if the
+ * timeout fires first. The original promise is not cancelled — this only
+ * controls how long the caller waits.
+ */
+function withTimeout<T>(
+	promise: Promise<T>,
+	ms: number,
+	label: string,
+): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(
+			() => reject(new Error(`Tool "${label}" timed out after ${ms}ms`)),
+			ms,
+		);
+		promise.then(
+			(v) => {
+				clearTimeout(timer);
+				resolve(v);
+			},
+			(e) => {
+				clearTimeout(timer);
+				reject(e);
+			},
+		);
+	});
+}
 
 function makeError(
 	toolCall: { id: string; name: string },

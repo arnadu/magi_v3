@@ -19,6 +19,7 @@ import type { MagiTool, ToolResult } from "../tools.js";
 // ---------------------------------------------------------------------------
 
 const DEFAULT_MAX_IMAGES = 3;
+const DEFAULT_MAX_PDF_PAGES = 5;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB per image
 /** Scale factor when rendering PDF pages to PNG. 1.5 ≈ 108 DPI — good for vision. */
 const PDF_RENDER_SCALE = 1.5;
@@ -272,6 +273,7 @@ async function processPdf(
 	workdir: string,
 	rawUrl: string,
 	model: Model<string>,
+	maxPages: number,
 	signal?: AbortSignal,
 ): Promise<ToolResult> {
 	let doc: mupdf.Document;
@@ -282,6 +284,7 @@ async function processPdf(
 	}
 
 	const pageCount = doc.countPages();
+	const pagesToProcess = Math.min(pageCount, maxPages);
 	const textParts: string[] = [];
 	const imageFiles: FileEntry[] = [];
 	const imageRelPaths: string[] = [];
@@ -296,7 +299,7 @@ async function processPdf(
 		0,
 	];
 
-	for (let i = 0; i < pageCount; i++) {
+	for (let i = 0; i < pagesToProcess; i++) {
 		const page = doc.loadPage(i);
 
 		// Text extraction
@@ -413,7 +416,12 @@ export function createFetchUrlTool(
 			),
 			max_images: Type.Optional(
 				Type.Number({
-					description: `Maximum number of images to download and describe (default: ${DEFAULT_MAX_IMAGES}, max: 10). Increase only when a page's visual content is central to the task.`,
+					description: `Maximum number of images to download and describe from HTML pages (default: ${DEFAULT_MAX_IMAGES}, max: 10).`,
+				}),
+			),
+			max_pages: Type.Optional(
+				Type.Number({
+					description: `Maximum number of PDF pages to extract and describe (default: ${DEFAULT_MAX_PDF_PAGES}, max: 20). Increase for longer documents when all pages are needed.`,
 				}),
 			),
 		}),
@@ -422,8 +430,18 @@ export function createFetchUrlTool(
 			const rawUrl = args.url as string;
 			const downloadImages = args.download_images !== false;
 			const maxImages = Math.min(
-				Math.max(1, (args.max_images as number | undefined) ?? DEFAULT_MAX_IMAGES),
+				Math.max(
+					1,
+					(args.max_images as number | undefined) ?? DEFAULT_MAX_IMAGES,
+				),
 				10,
+			);
+			const maxPages = Math.min(
+				Math.max(
+					1,
+					(args.max_pages as number | undefined) ?? DEFAULT_MAX_PDF_PAGES,
+				),
+				20,
 			);
 
 			// --- Validate URL --------------------------------------------------
@@ -452,7 +470,7 @@ export function createFetchUrlTool(
 
 			// --- Route by content type -----------------------------------------
 			if (mimeType === "application/pdf") {
-				return processPdf(bytes, workdir, rawUrl, model, signal);
+				return processPdf(bytes, workdir, rawUrl, model, maxPages, signal);
 			}
 
 			if (mimeType.startsWith("image/")) {
@@ -491,8 +509,10 @@ export function createFetchUrlTool(
 
 			// --- Download images and auto-describe each one -------------------
 			const imageFiles: FileEntry[] = [];
-			const imageRelPaths: string[] = [];
-			const imageDescriptions: string[] = [];
+			const imageEntries: Array<{
+				filename: string;
+				description: string | null;
+			}> = [];
 
 			if (downloadImages) {
 				// Query images from Readability's cleaned article HTML, not the full
@@ -522,15 +542,14 @@ export function createFetchUrlTool(
 
 					const filename = `image-${idx}.${result.ext}`;
 					imageFiles.push({ name: filename, content: result.bytes });
-					imageRelPaths.push(filename);
-
-					const description = await autoDescribeImage(
-						result.bytes,
-						result.mimeType,
-						model,
-						signal,
-					);
-					imageDescriptions.push(description ?? "");
+					const description =
+						(await autoDescribeImage(
+							result.bytes,
+							result.mimeType,
+							model,
+							signal,
+						)) ?? null;
+					imageEntries.push({ filename, description });
 					idx++;
 				}
 			}
@@ -538,13 +557,12 @@ export function createFetchUrlTool(
 			// --- Assemble content.md -------------------------------------------
 			// Article text first, then an "## Images" section if images were found.
 			let contentText = articleText;
-			if (imageRelPaths.length > 0) {
-				const imageSections = imageRelPaths.map((filename, i) => {
-					const desc = imageDescriptions[i];
-					return desc
-						? `### ${filename}\n${desc}`
-						: `### ${filename}\n(Visual description unavailable — use InspectImage for analysis.)`;
-				});
+			if (imageEntries.length > 0) {
+				const imageSections = imageEntries.map(({ filename, description }) =>
+					description
+						? `### ${filename}\n${description}`
+						: `### ${filename}\n(Visual description unavailable — use InspectImage for analysis.)`,
+				);
 				contentText += `\n\n## Images\n\n${imageSections.join("\n\n")}`;
 			}
 
@@ -557,7 +575,9 @@ export function createFetchUrlTool(
 				url: rawUrl,
 				dateCreated: new Date().toISOString(),
 				encodingFormat: mimeType,
-				...(imageRelPaths.length > 0 ? { images: imageRelPaths } : {}),
+				...(imageEntries.length > 0
+					? { images: imageEntries.map((e) => e.filename) }
+					: {}),
 			};
 
 			const files: FileEntry[] = [
@@ -574,16 +594,16 @@ export function createFetchUrlTool(
 			}
 
 			// --- Return summary ------------------------------------------------
-			const hasDescriptions = imageDescriptions.some((d) => d);
+			const hasDescriptions = imageEntries.some((e) => e.description);
 			const lines = [
 				`Fetched: ${rawUrl}`,
 				`Artifact id: ${artifactId}`,
-				`  artifacts/${artifactId}/content.md  (${contentText.length} chars${imageRelPaths.length > 0 ? `, including ${imageRelPaths.length} image description${imageRelPaths.length !== 1 ? "s" : ""}` : ""})`,
-				...imageRelPaths.map((p) => `  artifacts/${artifactId}/${p}`),
+				`  artifacts/${artifactId}/content.md  (${contentText.length} chars${imageEntries.length > 0 ? `, including ${imageEntries.length} image description${imageEntries.length !== 1 ? "s" : ""}` : ""})`,
+				...imageEntries.map((e) => `  artifacts/${artifactId}/${e.filename}`),
 				"",
 				`Use \`cat artifacts/${artifactId}/content.md\` to read the article${hasDescriptions ? " and image descriptions" : ""}.`,
 			];
-			if (imageRelPaths.length > 0) {
+			if (imageEntries.length > 0) {
 				lines.push(
 					`Use InspectImage for focused follow-up questions about a specific image.`,
 				);

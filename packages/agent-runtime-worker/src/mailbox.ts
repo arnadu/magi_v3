@@ -103,8 +103,11 @@ export class InMemoryMailboxRepository implements MailboxRepository {
 					m.body.toLowerCase().includes(q),
 			);
 		}
-		results = results.slice(-(opts.limit ?? 50));
-		return results;
+		// Sort newest-first to match the MongoDB implementation.
+		results = [...results].sort(
+			(a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
+		);
+		return results.slice(0, opts.limit ?? 50);
 	}
 
 	async get(messageId: string): Promise<MailboxMessage | null> {
@@ -231,7 +234,7 @@ export function createMailboxTools(
 			if (to.length === 0) return err("PostMessage: to[] must not be empty");
 
 			const msg = await repo.post({
-				missionId: "sprint2",
+				missionId: teamConfig.mission.id,
 				from: fromAgentId,
 				to,
 				subject,

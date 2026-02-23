@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { resolve, sep } from "node:path";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
@@ -80,6 +80,18 @@ export function createInspectImageTool(
 			const userPrompt =
 				(args.prompt as string | undefined) ?? "Describe this image in detail.";
 
+			// --- Guard: path must stay within workdir (prevent traversal) ---------
+			const safeWorkdir = resolve(workdir);
+			const resolvedPath = resolve(workdir, imagePath);
+			if (
+				resolvedPath !== safeWorkdir &&
+				!resolvedPath.startsWith(safeWorkdir + sep)
+			) {
+				return toolErr(
+					`InspectImage: path "${imagePath}" is outside the working directory`,
+				);
+			}
+
 			// --- Guard: model must support images ---------------------------------
 			if (!model.input.includes("image")) {
 				return toolErr(
@@ -99,7 +111,7 @@ export function createInspectImageTool(
 			// --- Read image -------------------------------------------------------
 			let imageBytes: Buffer;
 			try {
-				imageBytes = await readFile(join(workdir, imagePath));
+				imageBytes = await readFile(resolvedPath);
 			} catch (e) {
 				return toolErr(
 					`InspectImage: could not read "${imagePath}" — ${(e as Error).message}`,

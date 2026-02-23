@@ -1,5 +1,6 @@
 import type { AgentConfig } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
+import { JSDOM } from "jsdom";
 import type { MagiTool, ToolResult } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -19,37 +20,39 @@ export function initMentalMap(agent: AgentConfig): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Apply a surgical patch to a mental map HTML string.
+ * Apply a surgical patch to a mental map HTML fragment.
  *
  * - replace: set the inner content of element id="elementId" to `content`
  * - append:  append `content` to the inner content
  * - remove:  clear the inner content
  *
- * Returns the original HTML unchanged if the element is not found.
+ * Returns `null` if no element with the given id is found (the caller can
+ * then surface a clear error to the agent instead of silently doing nothing).
+ * Uses jsdom for robust HTML manipulation rather than fragile regex.
  */
 export function patchMentalMap(
 	html: string,
 	operation: "replace" | "append" | "remove",
 	elementId: string,
 	content?: string,
-): string {
-	// Match <tagName ... id="elementId" ...>innerContent</tagName>
-	// The tag name capture (group 2) is used as a back-reference in the closing tag.
-	const pattern = new RegExp(
-		`(<(\\w+)[^>]*\\sid="${elementId}"[^>]*>)([\\s\\S]*?)(<\\/\\2>)`,
-	);
-	const match = pattern.exec(html);
-	if (!match) return html;
+): string | null {
+	const dom = new JSDOM(html);
+	const el = dom.window.document.getElementById(elementId);
+	if (!el) return null;
 
-	const [fullMatch, openTag, , currentContent, closeTag] = match;
-	const newContent =
-		operation === "replace"
-			? (content ?? "")
-			: operation === "append"
-				? currentContent + (content ?? "")
-				: ""; // remove
+	switch (operation) {
+		case "replace":
+			el.innerHTML = content ?? "";
+			break;
+		case "append":
+			el.innerHTML += content ?? "";
+			break;
+		case "remove":
+			el.innerHTML = "";
+			break;
+	}
 
-	return html.replace(fullMatch, `${openTag}${newContent}${closeTag}`);
+	return dom.window.document.body.innerHTML;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +178,7 @@ export function createMentalMapTool(
 			}
 
 			const updated = patchMentalMap(current, operation, elementId, content);
-			if (updated === current && operation !== "remove") {
+			if (updated === null) {
 				return err(
 					`UpdateMentalMap: element id="${elementId}" not found in mental map`,
 				);
