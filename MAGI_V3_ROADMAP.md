@@ -61,167 +61,120 @@ Deliberately deferred (not needed to start Sprint 1):
 
 ---
 
-## Sprint 2 — Multi-Agent Scaffolding, Outer Loop, and Mailbox
+## Sprint 2 — Multi-Agent Scaffolding, Outer Loop, and Mailbox ✅ COMPLETED
 
-**Goal: multiple agents defined in a team config can communicate through a shared mailbox. Each agent runs an outer loop that reads its inbox, decides what to do next, dispatches its inner loop for execution, and sends replies. A supervisor chain lets any agent escalate to its supervisor; top-level agents escalate to the operator ("user").**
+**Goal: multiple agents defined in a team config can communicate through a shared mailbox. Each agent runs a unified loop that reads its inbox, acts, and sends replies. A supervisor chain lets any agent escalate to its supervisor; top-level agents escalate to the operator ("user").**
 
-### Design
+### What was built
 
-**Team config (YAML, loaded at mission startup):**
+**Team config (YAML):**
+
+Each agent entry carries its full `systemPrompt` (a template with a `{{mentalMap}}` placeholder) and `initialMentalMap` (HTML). All agent behaviour is defined in the YAML; no prompts are hardcoded in the application.
 
 ```yaml
 mission:
   id: equity-research
   name: "Equity Research Team"
-  agents:
-    - id: lead-analyst
-      name: "Alexandra"
-      role: lead-analyst
-      supervisor: user
-      mission: >
-        You are the Lead Analyst. You coordinate the research team, synthesise
-        findings from your analysts, and produce the morning brief.
-    - id: junior-analyst-1
-      name: "Bob"
-      role: junior-analyst
-      supervisor: lead-analyst
-      mission: >
-        You are a Junior Analyst. You research and collect market data as
-        directed by the Lead Analyst and report your findings back.
+
+agents:
+  - id: lead-analyst
+    name: "Alexandra"
+    role: lead-analyst
+    supervisor: user
+    systemPrompt: |
+      You are Alexandra, the lead-analyst of the Equity Research Team.
+      ...
+      ## Your mental map
+      {{mentalMap}}
+      ...
+    initialMentalMap: |
+      <section id="mission-context">...</section>
+      <section id="working-notes"><p></p></section>
+      <ul id="waiting-for"></ul>
 ```
 
-Each agent is given its own home directory (`workspaces/{agent-id}/`) as its working directory for file tools. Linux uid/gid enforcement is deferred to Sprint 4.
+`AgentConfig = Record<string, string>` — a flat bag of YAML fields. Required fields (`id`, `supervisor`, `systemPrompt`, `initialMentalMap`) are validated at load time by a **Zod schema**; all other fields pass through as strings. `TeamConfig` is the only typed interface callers use.
 
-**MongoDB mailbox:**
+**Mailbox:**
 
-One `mailbox` collection shared across all agents in a mission. Each message document:
+One `mailbox` collection shared across all agents in a mission. Message schema:
 
 ```typescript
 interface MailboxMessage {
   id: string;
   missionId: string;
-  from: string;          // agent id or "user"
-  to: string[];          // agent ids or ["user"]
+  from: string;       // agent id or "user"
+  to: string[];       // agent ids or ["user"]
   subject: string;
   body: string;
   timestamp: Date;
-  readBy: string[];      // agent ids that have called ReadMessage on this
+  readBy: string[];   // ids that have marked this read
 }
 ```
 
-**Four mailbox tools** (available to the outer loop):
+Five tools available in every agent loop:
 
 | Tool | Arguments | Returns |
 |------|-----------|---------|
+| `PostMessage` | `to[]`, `subject`, `body` | Confirmation; `to` may include `"user"` |
+| `UpdateMentalMap` | `operation`, `elementId`, `content?` | Confirmation |
 | `ListTeam` | — | All agents: `id`, `name`, `role`, `supervisor` |
-| `ListMessages` | `since?`, `search?`, `limit?` | Inbox headers: `id`, `from`, `subject`, `timestamp` |
-| `ReadMessage` | `id` | Full message body; marks as read for this agent |
-| `PostMessage` | `to[]`, `subject`, `body` | Confirmation; `to` can include `"user"` for operator escalation |
+| `ListMessages` | `since?`, `limit?` | Inbox headers: `id`, `from`, `subject`, `timestamp` |
+| `ReadMessage` | `id` | Full message body; marks as read |
 
-`ListTeam` reads directly from the loaded team config — it is not a mailbox query.
+Plus the Sprint 1 file tools (`Bash`, `WriteFile`, `EditFile`) — all seven tools are available in every agent loop.
 
-**Supervisor chain:**
+**Inbox-poll scheduling with seniority ordering:**
 
-Every agent's system prompt includes its supervisor's id. When an agent is blocked or cannot proceed, it uses `PostMessage` to escalate to its supervisor. Top-level agents (supervisor = `"user"`) post to the operator inbox. The CLI (and later an API endpoint) polls `user`'s inbox and surfaces those messages.
-
-**No `nextAction` structured output:**
-
-The inner loop terminates naturally when the LLM stops calling tools (same as Sprint 1). No forced structured-output turn is needed: modern LLMs are robust enough to decide correctly when to stop, post a message, or escalate. The outer loop uses inbox state rather than a structured signal to determine what to do next.
-
-**Outer loop scheduling — inbox-poll model:**
-
-An agent runs when it has unread messages in its inbox. The outer loop terminates when no agent has unread messages. This replaces the `nextAction: waiting/done/escalate` mechanism entirely:
-
-- **Initial run**: the orchestrator delivers the initial task by posting a message to the lead agent's inbox, which immediately makes it runnable.
-- **Subsequent runs**: after each agent's inner loop exits, the outer loop checks every agent's inbox; any with unread messages are dispatched next.
-- **Termination**: no agent has unread messages → mission turn complete.
-
-Escalation to the supervisor is handled purely through `PostMessage`; the outer loop does not need to inspect a structured result to know this happened.
-
-**Mental Map:**
-
-MongoDB document per agent, HTML with stable section IDs:
-- `#waiting-for` — messages sent that are awaiting a reply
-- `#working-notes` — scratch space the agent manages itself
-- `#mission-context` — injected at startup from the team config (role, mission, supervisor, teammates)
-
-`UpdateMentalMap` tool: `replace`, `append`, `remove` operations targeting elements by CSS id. Available to all tools in the agent loop.
+An agent runs when it has unread messages. When multiple agents have mail in the same cycle, they are sorted by supervisor depth (depth 0 = reports to `"user"`), so senior agents always run before their reports within a cycle. The loop terminates when no agent has unread messages.
 
 **Agent loop (`runAgent`):**
 
-A single LLM→tool→LLM call sequence. No outer/inner split — the LLM decides freely whether to PostMessage, run Bash, update the mental map, or any combination. Tool ACL enforcement (restricting which tools are available in which context) is deferred to Sprint 4.
-
-The orchestrator pre-fetches the agent's unread messages from the mailbox, marks them as read, and passes them as the opening user turn. The agent does not need to call `ListMessages` to find out what to act on.
-
 ```
-runAgent(agentId, messages, signal):
-  systemPrompt = buildSystemPrompt(agent, team, mentalMap)
-  userTurn     = formatMessages(messages)
-  runLoop(systemPrompt, userTurn, tools, signal)
+runAgent(agentId, messages, ctx, signal):
+  mentalMapHtml = repo.load(agentId) ?? initFromYaml(agent)
+  systemPrompt  = agent.systemPrompt.replace("{{mentalMap}}", mentalMapHtml)
+  userTurn      = formatMessages(messages)
+  runInnerLoop(systemPrompt, userTurn, allTools, signal)
 ```
 
-`runAgent` is the only function the orchestrator calls. When Sprint 3 moves to Temporal/concurrent execution, it becomes a single Temporal Activity with no internal changes.
+`runAgent` is the only function the orchestrator calls. Sprint 3 will wrap it as a Temporal Activity unchanged.
 
-**System prompt structure:**
+**CLI:**
 
-Built at runtime from three sources:
-
-```
-You are [Name], the [role] of the [team.name].
-
-## Mission
-[agent.mission]
-
-## Your team
-[teammates: id, name, role, supervisor]
-
-## Your supervisor
-[agent.supervisor — "user (operator)" or agent name]
-
-## Your mental map
-[current mental map HTML, fetched fresh from MongoDB before each run]
-
-## How to work
-Your new messages are shown in the conversation. Process them and act:
-- Use PostMessage to reply to teammates or report to your supervisor
-- Use Bash, WriteFile, or EditFile for file or shell work
-- Use UpdateMentalMap to record progress and notes
-- When done, stop calling tools
-Do the work now. If blocked, escalate via PostMessage to your supervisor.
-```
-
-The mental map section is the only dynamic part (re-fetched each run). Identity, team, and instructions are assembled once at mission start.
-
-**CLI interaction model:**
-
-The CLI runs an orchestration loop that is sequential but supports live user interaction:
-
-- **Immediate output**: when any agent posts a message with `to` containing `"user"`, the `PostMessage` tool prints it to stdout immediately — before the current LLM turn returns.
-- **Buffered input**: a `readline` listener runs concurrently with the loop. Any line the user types is buffered. At the start of each orchestration cycle, the buffer is drained and each line is posted as a message from `"user"` to the lead agent's inbox.
-- **Step mode** (`--step` flag): after each `runAgent()` call, the loop pauses and prints a summary of what the agent did, then prompts `"Press Enter to continue, or type a message:"`. The user can inspect state before the next agent runs. Useful during development; omit for unattended operation.
-- **Abort**: Ctrl+C triggers `AbortController.abort()`. The `AbortSignal` is threaded into `runAgent`; the current LLM turn completes cleanly and the loop exits.
-- **Cycle guard**: a `maxCycles` limit (default 50) prevents runaway chains. If reached, the loop aborts with a warning.
+Multi-agent only; `TEAM_CONFIG` is required. Single-agent mode removed — use a one-agent YAML instead. Supports `--step` flag, live buffered readline input, and Ctrl+C abort.
 
 ### Deliverables
 
-- `packages/agent-config` — YAML schema + TypeScript types + loader/validator for team configs
-- `config/teams/word-count.yaml` — team config for integration test; `config/teams/equity-research.yaml` — reference team config
-- `packages/agent-runtime-worker/src/mailbox.ts` — `MailboxRepository` (MongoDB) + `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools
-- `packages/agent-runtime-worker/src/mental-map.ts` — `MentalMapRepository` (MongoDB) + `UpdateMentalMap` tool
-- `packages/agent-runtime-worker/src/prompt.ts` — `buildSystemPrompt(agent, team, mentalMap)` + `formatMessages(messages)`
-- `packages/agent-runtime-worker/src/agent-runner.ts` — `runAgent(agentId, messages, signal)`; `runOrchestrationLoop(teamConfig, signal)`
-- Updated CLI: loads team config, provisions home dirs, runs orchestration loop, buffers readline input, supports `--step` flag
-- **Integration tests**:
-  - *Single-agent*: extends the Sprint 1 file-editing test but wrapped in the full outer loop; confirms the outer loop scaffolding does not break the inner loop.
-  - *Two-agent word count*: Lead + Worker team; one file (`greeting.txt`) contains "HELLO WORLD" plus additional words (total 11); Lead's task is "Find the file containing HELLO WORLD, pass its name to Worker, and report the word count"; Worker reads its inbox, runs `wc -w greeting.txt`, replies "11 words"; Lead reads the reply and reports the total. Assertion: Lead's final message contains "11". This covers YAML config loading, inbox-poll scheduling, both directions of mailbox exchange, and a deterministic verifiable result.
+- `packages/agent-config` — Zod-validated YAML loader; `AgentConfig` and `TeamConfig` types derived from schema; `types.ts` eliminated
+- `config/teams/word-count.yaml`, `config/teams/equity-research.yaml` — full agent configs with system prompts and initial mental maps
+- `packages/agent-runtime-worker/src/mailbox.ts` — `MailboxRepository` (in-memory + MongoDB); five mailbox/team tools
+- `packages/agent-runtime-worker/src/mental-map.ts` — `MentalMapRepository`; `UpdateMentalMap` tool; `patchMentalMap` pure function
+- `packages/agent-runtime-worker/src/prompt.ts` — `buildSystemPrompt(agent, mentalMapHtml)` (template substitution only); `formatMessages`
+- `packages/agent-runtime-worker/src/agent-runner.ts` — `runAgent`
+- `packages/agent-runtime-worker/src/orchestrator.ts` — `runOrchestrationLoop`; supervisor-depth sort; step mode; readline input
+- `packages/agent-runtime-worker/src/cli.ts` — multi-agent CLI; verbose per-agent logging
+- **Integration tests** (both passing, `npm run test:integration`):
+  - *Sprint 1*: single agent finds and edits `greeting.txt` — unchanged, still passes
+  - *Sprint 2*: two-agent word count — Lead delegates to Worker via mailbox; Worker runs `wc -w`; Lead reports count to user. Config loaded from `config/teams/word-count.yaml`. Assertion: Lead's reply to user contains "12".
 
-### Exit criteria
+### Deviations from plan
 
-Two agents defined in a YAML config start up, communicate through the MongoDB mailbox, and complete the word-count task collaboratively. Lead's final message contains the correct word count ("11"). The outer loop terminates cleanly when no agent has unread messages. `npm run test:integration` passes end-to-end.
+| Plan | What was built | Reason |
+|------|----------------|--------|
+| System prompt built from code templates | Full `systemPrompt` stored in YAML | Everything in config; zero hardcoded prompts |
+| Manual validation in loader | Zod schema validation | Less code, better error messages, type inference |
+| Single-agent + multi-agent CLI modes | Multi-agent only | Single agent = one-agent YAML; no duplication |
+| Agents run in YAML declaration order | Supervisor-depth sort | Senior agents run before juniors regardless of YAML order |
+| MongoDB mailbox only | In-memory + MongoDB (interface-swappable) | In-memory used in tests; MongoDB for production |
+
+### Exit criteria — met
+
+Two agents communicate through the mailbox and complete the word-count task. Lead's reply to the user contains "12". The orchestrator terminates cleanly in 3 cycles. `npm run test:integration` passes in ~20s.
 
 ---
 
-## Sprint 3 — Durability: Temporal and Redis Mailbox
+## Sprint 3 — Durability: Temporal and Redis Mailbox ← NEXT
 
 **Goal: replace the Sprint 2 in-process orchestration and MongoDB mailbox with production-grade durability. Agent workflows survive worker crashes. Mailbox delivery is guaranteed even if the receiving agent's worker dies.**
 

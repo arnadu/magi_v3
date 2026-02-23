@@ -22,15 +22,13 @@ npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY in 
 npm run lint              # Biome check (lint + format)
 npm run lint:fix          # Biome auto-fix
 
-# Sprint 1 CLI — run the inner loop manually against a real directory
-cd packages/agent-runtime-worker
-npm run build
-SESSION_ID=my-session npm run cli -- "your task here"
-# Rerun with same SESSION_ID to resume the previous conversation
-
-# Sprint 2 CLI — run the orchestration loop with a team config (planned)
+# CLI — run the orchestration loop with a team config
+cd packages/agent-runtime-worker && npm run build   # build first
 TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words"
-TEAM_CONFIG=config/teams/word-count.yaml npm run cli --step -- "count the words"  # pause after each agent
+TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words" --step  # pause after each agent
+
+# Env vars: ANTHROPIC_API_KEY (required), TEAM_CONFIG (required),
+#           MODEL, MONGODB_URI, AGENT_WORKDIR
 ```
 
 Type-check without building:
@@ -69,9 +67,9 @@ Each agent has a stable enterprise-style identity:
 
 Low-risk orchestration tasks run in shared runtime workers. Code execution, data processing, and browser automation run in the agent's assigned execution environment with their persistent home and allowed shared folders mounted.
 
-**Sprint 2 simplification:** Single unified agent loop — no outer/inner split. `runAgent(agentId, messages, signal)` is the only function the orchestrator calls. The orchestrator pre-fetches unread messages from the mailbox, marks them as read, builds the system prompt (agent config + live mental map fetched fresh each run), passes messages as the opening user turn, and runs one LLM→tool→LLM sequence with all tools available. The LLM decides freely whether to PostMessage, run Bash, update the mental map, or any combination. Tool ACL enforcement is deferred to Sprint 4.
+**Sprint 2 implementation:** Single unified agent loop — no outer/inner split. `runAgent(agentId, messages, ctx, signal)` is the only function the orchestrator calls. The orchestrator pre-fetches unread messages from the mailbox, marks them as read, builds the system prompt by substituting `{{mentalMap}}` into `agent.systemPrompt` (read from YAML), passes messages as the opening user turn, and runs one LLM→tool→LLM sequence with all tools available. Tool ACL enforcement is deferred to Sprint 4.
 
-Each agent has a `supervisor` field (another agent's id, or `"user"`); agents escalate by calling `PostMessage` to their supervisor. The orchestration loop is inbox-poll scheduled: an agent runs when it has unread messages; the mission turn ends when no agent has unread messages. The CLI supports buffered readline injection for live user input, a `--step` flag for pause-and-inspect mode, and Ctrl+C abort via `AbortSignal`.
+Each agent has a `supervisor` field (another agent's id, or `"user"`); agents escalate by calling `PostMessage` to their supervisor. The orchestration loop is inbox-poll scheduled: agents run in supervisor-depth order (depth 0 = reports to user; seniors always run before juniors within a cycle). The mission turn ends when no agent has unread messages. The CLI supports buffered readline injection for live user input, a `--step` flag for pause-and-inspect mode, and Ctrl+C abort via `AbortSignal`.
 
 ### Agent Communication
 
@@ -82,23 +80,31 @@ Agents communicate with structured, durable mailbox messages (not free-form chat
 
 Agents share artifact references (datasets, code patches, notebooks, charts, reports, alert payloads), not raw data.
 
-## Current Implementation (Sprint 1)
+## Current Implementation (Sprints 1–2)
 
-`packages/agent-runtime-worker` is the only package built so far. Key files:
+Two packages are built. Key files:
 
-- `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop using `completeSimple` from `@mariozechner/pi-ai`. Terminates when `stopReason !== "toolUse"`. Fires `onMessage` callback after every message for incremental persistence and streaming. Supports `previousMessages` for session resumption.
-- `src/tools.ts` — three tools: `Bash` (shell command), `WriteFile` (create/overwrite), `EditFile` (string replace). Bash subsumes read/list/find/grep.
-- `src/db.ts` — `ConversationRepository` interface; `InMemoryConversationRepository` (tests); `createMongoRepository()` (production).
+**`packages/agent-config`** (Sprint 2):
+- `src/loader.ts` — `loadTeamConfig(path)` / `parseTeamConfig(yaml)`: Zod schema validation; exports `AgentConfig = Record<string,string>` and `TeamConfig`. Required agent fields: `id`, `supervisor`, `systemPrompt`, `initialMentalMap`.
+
+**`packages/agent-runtime-worker`** (Sprints 1–2):
+- `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop via `completeSimple`. Terminates when the LLM stops calling tools. Fires `onMessage` after every message.
+- `src/tools.ts` — `Bash`, `WriteFile`, `EditFile`. Bash covers all read/list/find/grep needs.
+- `src/mailbox.ts` — `MailboxRepository` (in-memory + MongoDB); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools.
+- `src/mental-map.ts` — `MentalMapRepository` (in-memory + MongoDB); `UpdateMentalMap` tool; `patchMentalMap` pure function.
+- `src/prompt.ts` — `buildSystemPrompt(agent, mentalMapHtml)`: substitutes `{{mentalMap}}` in `agent.systemPrompt`. `formatMessages(messages)` formats the inbox as the opening user turn.
+- `src/agent-runner.ts` — `runAgent(agentId, messages, ctx, signal)`: initialises mental map, builds system prompt, runs inner loop with all tools.
+- `src/orchestrator.ts` — `runOrchestrationLoop(config, signal)`: inbox-poll scheduling; runs agents in supervisor-depth order (seniors first); supports `--step` mode and live readline input; terminates when no agent has unread messages.
+- `src/cli.ts` — multi-agent CLI; requires `TEAM_CONFIG`; logs all tool calls and results per agent.
 - `src/models.ts` — `CLAUDE_SONNET` constant; `anthropicModel()` factory.
-- `src/cli.ts` — CLI wrapper: reads env vars, loads prior session from repo, runs loop, saves incrementally via `onMessage`.
-- `tests/loop.integration.test.ts` — real LLM integration test.
+- `src/db.ts` — `ConversationRepository` (retained for the Sprint 1 loop integration test).
+- `tests/loop.integration.test.ts` — Sprint 1: real LLM finds and edits `greeting.txt`.
+- `tests/multi-agent.integration.test.ts` — Sprint 2: Lead delegates word-count to Worker; asserts Lead reports "12" to user. Loads config from `config/teams/word-count.yaml`.
 
 ## Tool Capabilities (Implementation Priority Order)
 
-**Sprint 1 — built:**
-- `Bash`, `WriteFile`, `EditFile`
-
-**Sprint 2 — next (all available in the unified agent loop):**
+**Sprints 1–2 — built:**
+- `Bash`, `WriteFile`, `EditFile` — file and shell work
 - `PostMessage` — send to one or more agent ids (or `"user"` to reach the operator)
 - `UpdateMentalMap` — surgical HTML patching of the agent's Mental Map document
 - `ListTeam` — read agent roster from team config: id, name, role, supervisor
@@ -119,8 +125,8 @@ Agents share artifact references (datasets, code patches, notebooks, charts, rep
 |--------|--------|-------|
 | 0 | ✅ Done | Architecture freeze: six ADRs in `docs/adr/` |
 | 1 | ✅ Done | Inner loop: `runInnerLoop`, 3 tools, MongoDB persistence, CLI, integration test |
-| 2 | Next | Multi-agent scaffolding: team YAML config, MongoDB mailbox, outer loop, supervisor chain |
-| 3 | | Durability: Temporal workflows, Redis Streams mailbox, crash recovery |
+| 2 | ✅ Done | Multi-agent: YAML team config (Zod), mailbox, orchestration loop, supervisor-depth ordering, 5 tools |
+| 3 | Next | Durability: Temporal workflows, Redis Streams mailbox, crash recovery |
 | 4 | | Identity, workspace, ACL enforcement |
 | 5 | | Execution, web, and data tools |
 | 6 | | Equity research team MVP |
@@ -136,7 +142,7 @@ Three tiers — apply the right one to the right layer:
 - **Unit tests** — pure, deterministic logic only: config validation, ACL policy evaluation, `UpdateMentalMap` HTML patching. `npm test`, no LLM calls, no network.
 - **Integration tests** — real LLM calls with carefully chosen prompts whose outcomes are deterministic. Tests the full stack end-to-end including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` in `.env`. Current scenarios:
   - Sprint 1: single agent finds `greeting.txt` (contains "HELLO WORLD") and appends "GOODBYE".
-  - Sprint 2 (planned): two-agent word count — Lead finds the file containing "HELLO WORLD", delegates word-counting to Worker via mailbox, reads Worker's reply, and reports the total (11). Assertion: Lead's final message contains "11".
+  - Sprint 2: two-agent word count — Lead delegates to Worker via mailbox; Worker runs `wc -w`, replies; Lead reports the total (12) to user. Config loaded from `config/teams/word-count.yaml`. Assertion: Lead's final message contains "12".
 - **Evaluation tests** (`eval/`) — golden scenarios asserting structural/policy outcomes (citation coverage, `nextAction` validity, policy enforcement), not content. Run on demand, not in CI.
 
 Test runner: **vitest** — native ESM, no build step needed. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.
