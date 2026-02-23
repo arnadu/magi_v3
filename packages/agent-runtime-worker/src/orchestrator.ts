@@ -101,6 +101,10 @@ export async function runOrchestrationLoop(
 		},
 	};
 
+	// Precompute supervisor-depth for every agent (depth 0 = reports to user).
+	// Used to run senior agents before juniors within each cycle.
+	const agentDepth = buildAgentDepths(teamConfig.agents);
+
 	let cycles = 0;
 
 	try {
@@ -120,13 +124,16 @@ export async function runOrchestrationLoop(
 				});
 			}
 
-			// Find agents with unread messages.
+			// Find agents with unread messages, seniors first.
 			const agentsWithMail: string[] = [];
 			for (const agent of teamConfig.agents) {
 				if (await mailboxRepo.hasUnread(agent.id)) {
 					agentsWithMail.push(agent.id);
 				}
 			}
+			agentsWithMail.sort(
+				(a, b) => (agentDepth.get(a) ?? 0) - (agentDepth.get(b) ?? 0),
+			);
 
 			if (agentsWithMail.length === 0) {
 				// No unread messages — offer the operator a prompt.
@@ -218,4 +225,31 @@ function promptUser(rl: readline.Interface, prompt: string): Promise<string> {
 	return new Promise((resolve) => {
 		rl.question(prompt, (answer) => resolve(answer.trim()));
 	});
+}
+
+/**
+ * Compute supervisor depth for each agent (depth 0 = supervisor is "user").
+ * Used to run senior agents before juniors within a cycle.
+ * Cycle-safe: a cycle in the supervisor graph is treated as depth 0.
+ */
+function buildAgentDepths(
+	agents: { id: string; supervisor: string }[],
+): Map<string, number> {
+	const depths = new Map<string, number>();
+
+	function depth(id: string, visiting: Set<string>): number {
+		if (depths.has(id)) return depths.get(id) as number;
+		if (visiting.has(id)) return 0; // cycle guard
+		visiting.add(id);
+		const agent = agents.find((a) => a.id === id);
+		const d =
+			!agent || agent.supervisor === "user"
+				? 0
+				: 1 + depth(agent.supervisor, visiting);
+		depths.set(id, d);
+		return d;
+	}
+
+	for (const agent of agents) depth(agent.id, new Set());
+	return depths;
 }
