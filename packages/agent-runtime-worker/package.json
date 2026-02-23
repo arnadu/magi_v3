@@ -11,7 +11,11 @@
 	"dependencies": {
 		"@magi/agent-config": "*",
 		"@mariozechner/pi-ai": "file:../../refs/pi-mono/packages/ai",
+		"@mozilla/readability": "^0.6.0",
 		"@sinclair/typebox": "^0.34.41",
-		"mongodb": "^6.0.0"
+		"@types/jsdom": "^27.0.0",
+		"jsdom": "^26.1.0",
+		"mongodb": "^6.0.0",
+		"mupdf": "^1.27.0"
 	}
 }

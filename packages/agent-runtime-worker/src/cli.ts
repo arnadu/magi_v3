@@ -34,6 +34,7 @@ import {
 import { InMemoryMentalMapRepository } from "./mental-map.js";
 import { anthropicModel, CLAUDE_SONNET } from "./models.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
+import { expandAtPaths } from "./user-input.js";
 
 // ---------------------------------------------------------------------------
 // Verbose message logging
@@ -138,12 +139,15 @@ async function main(): Promise<void> {
 	console.log(`Task:     ${args[0]}`);
 	console.log(`\n--- Starting mission ---\n`);
 
+	// Expand any @path tokens in the initial task before posting.
+	const initialBody = await expandAtPaths(args[0], workdir);
+
 	await mailboxRepo.post({
 		missionId: teamConfig.mission.id,
 		from: "user",
 		to: [leadAgent.id],
 		subject: "Initial task",
-		body: args[0],
+		body: initialBody,
 	});
 
 	const ac = makeAbortController();

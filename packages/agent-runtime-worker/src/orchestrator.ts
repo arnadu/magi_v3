@@ -4,6 +4,7 @@ import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
+import { processUserInput } from "./user-input.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -115,12 +116,14 @@ export async function runOrchestrationLoop(
 			// Drain buffered user input → post to lead's inbox.
 			while (inputBuffer.length > 0) {
 				const line = inputBuffer.shift() as string;
+				const body = await processUserInput(line, workdir);
+				if (!body) continue; // was a /command or empty
 				await mailboxRepo.post({
 					missionId: teamConfig.mission.id,
 					from: "user",
 					to: [leadAgent.id],
 					subject: "User message",
-					body: line,
+					body,
 				});
 			}
 
@@ -143,14 +146,17 @@ export async function runOrchestrationLoop(
 						"Mission paused. Type a message to continue, or press Enter to end: ",
 					);
 					if (input) {
-						await mailboxRepo.post({
-							missionId: teamConfig.mission.id,
-							from: "user",
-							to: [leadAgent.id],
-							subject: "User message",
-							body: input,
-						});
-						continue; // restart the loop with the new message
+						const body = await processUserInput(input, workdir);
+						if (body) {
+							await mailboxRepo.post({
+								missionId: teamConfig.mission.id,
+								from: "user",
+								to: [leadAgent.id],
+								subject: "User message",
+								body,
+							});
+						}
+						continue; // restart the loop (even for /commands, re-check mail)
 					}
 				}
 				break; // natural termination
@@ -199,13 +205,16 @@ export async function runOrchestrationLoop(
 						`[step] ${agent?.name ?? agentId} done. Press Enter or type a message: `,
 					);
 					if (input) {
-						await mailboxRepo.post({
-							missionId: teamConfig.mission.id,
-							from: "user",
-							to: [leadAgent.id],
-							subject: "User message",
-							body: input,
-						});
+						const body = await processUserInput(input, workdir);
+						if (body) {
+							await mailboxRepo.post({
+								missionId: teamConfig.mission.id,
+								from: "user",
+								to: [leadAgent.id],
+								subject: "User message",
+								body,
+							});
+						}
 					}
 				}
 			}

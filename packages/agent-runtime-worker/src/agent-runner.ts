@@ -6,6 +6,9 @@ import { createMailboxTools } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
 import { createMentalMapTool, initMentalMap } from "./mental-map.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
+import { createFetchUrlTool } from "./tools/fetch-url.js";
+import { createInspectImageTool } from "./tools/inspect-image.js";
+import { tryCreateSearchWebTool } from "./tools/search-web.js";
 import { createFileTools } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -54,12 +57,16 @@ export async function runAgent(
 	const systemPrompt = buildSystemPrompt(agent, mentalMapHtml);
 	const task = formatMessages(messages);
 
+	const searchWebTool = tryCreateSearchWebTool();
 	const tools = [
 		...createFileTools(ctx.workdir),
 		...createMailboxTools(ctx.mailboxRepo, ctx.teamConfig, agentId, {
 			onUserMessage: ctx.onUserMessage,
 		}),
 		createMentalMapTool(ctx.mentalMapRepo, agentId),
+		createFetchUrlTool(ctx.workdir),
+		createInspectImageTool(ctx.workdir, ctx.model),
+		...(searchWebTool ? [searchWebTool] : []),
 	];
 
 	await runInnerLoop({
