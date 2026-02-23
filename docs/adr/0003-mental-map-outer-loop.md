@@ -55,11 +55,17 @@ task status tracking.
 
 ## Consequences
 
-- One MongoDB document per agent; `MentalMapRepository` manages persistence.
-- `UpdateMentalMap` is an outer-loop-only tool; the inner loop reads the Mental Map from its
-  system prompt but does not call `UpdateMentalMap` directly.
-- The inner loop marks its assigned task `done` by calling `UpdateMentalMap` at completion.
-- `data-priority` enables the outer loop to sort tasks without LLM involvement.
-- Mental Map HTML is injected verbatim into the inner-loop system prompt.
-- The `MENTAL_MAP_TEMPLATE` constant (in `@magi/types`) defines the initial document
-  structure; section IDs are stable across all agents and missions.
+- One MongoDB document per agent; `MentalMapRepository` manages persistence (in-memory
+  implementation used in tests; MongoDB for production).
+- `UpdateMentalMap` is available in the unified agent loop; agents call it freely to record
+  progress, update working notes, or track what they are waiting for.
+- The agent marks completed tasks `done` by calling `UpdateMentalMap` at completion.
+- `data-priority` enables task sorting without LLM involvement.
+- Mental Map HTML is injected verbatim into the system prompt via the `{{mentalMap}}`
+  placeholder, substituted by `buildSystemPrompt(agent, mentalMapHtml)` before each run.
+- The initial Mental Map HTML is defined per-agent in the team YAML (`initialMentalMap`
+  field); section IDs (`mission-context`, `working-notes`, `waiting-for`) are stable
+  across agents.
+- `patchMentalMap(html, operation, elementId, content?)` is a pure function (jsdom-based);
+  it returns `null` if the element ID is not found, allowing the tool to surface a clear
+  error to the agent.

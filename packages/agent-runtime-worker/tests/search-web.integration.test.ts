@@ -23,7 +23,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AssistantMessage, Message, ToolResultMessage } from "@mariozechner/pi-ai";
+import type {
+	AssistantMessage,
+	Message,
+	ToolResultMessage,
+} from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import { runInnerLoop } from "../src/loop.js";
 import { CLAUDE_SONNET } from "../src/models.js";
@@ -67,57 +71,51 @@ function printMessages(messages: Message[]): void {
 // ---------------------------------------------------------------------------
 
 describe("integration: SearchWeb + FetchUrl + auto-describe", () => {
-	it(
-		"searches for Pale Blue Dot, fetches Wikipedia page, and describes the photograph",
-		async () => {
-			const apiKey = process.env.BRAVE_SEARCH_API_KEY;
-			if (!apiKey) {
-				console.log(
-					"Skipping: BRAVE_SEARCH_API_KEY not set",
-				);
-				return;
-			}
+	it("searches for Pale Blue Dot, fetches Wikipedia page, and describes the photograph", async () => {
+		const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+		if (!apiKey) {
+			console.log("Skipping: BRAVE_SEARCH_API_KEY not set");
+			return;
+		}
 
-			const workdir = mkdtempSync(join(tmpdir(), "magi-search-"));
+		const workdir = mkdtempSync(join(tmpdir(), "magi-search-"));
 
-			try {
-				const { messages } = await runInnerLoop({
-					model: CLAUDE_SONNET,
-					systemPrompt:
-						"You are a research assistant. Use SearchWeb to find pages, " +
-						"FetchUrl to retrieve them, and report your findings concisely.",
-					task:
-						'Search for "Pale Blue Dot Voyager NASA" and fetch the top Wikipedia result. ' +
-						"Summarise: (1) what the article says and (2) what you see in the main image.",
-					tools: [
-						...createFileTools(workdir),
-						createSearchWebTool(apiKey),
-						createFetchUrlTool(workdir, CLAUDE_SONNET),
-						createInspectImageTool(workdir, CLAUDE_SONNET),
-					],
-				});
+		try {
+			const { messages } = await runInnerLoop({
+				model: CLAUDE_SONNET,
+				systemPrompt:
+					"You are a research assistant. Use SearchWeb to find pages, " +
+					"FetchUrl to retrieve them, and report your findings concisely.",
+				task:
+					'Search for "Pale Blue Dot Voyager NASA" and fetch the top Wikipedia result. ' +
+					"Summarise: (1) what the article says and (2) what you see in the main image.",
+				tools: [
+					...createFileTools(workdir),
+					createSearchWebTool(apiKey),
+					createFetchUrlTool(workdir, CLAUDE_SONNET),
+					createInspectImageTool(workdir, CLAUDE_SONNET),
+				],
+			});
 
-				printMessages(messages);
+			printMessages(messages);
 
-				// Final message must be an assistant summary
-				const last = messages[messages.length - 1];
-				expect(last.role).toBe("assistant");
+			// Final message must be an assistant summary
+			const last = messages[messages.length - 1];
+			expect(last.role).toBe("assistant");
 
-				const finalText = (last as AssistantMessage).content
-					.filter((b) => b.type === "text")
-					.map((b) => b.text)
-					.join(" ")
-					.toLowerCase();
+			const finalText = (last as AssistantMessage).content
+				.filter((b) => b.type === "text")
+				.map((b) => b.text)
+				.join(" ")
+				.toLowerCase();
 
-				// Article text: the page is unambiguously about Voyager / Carl Sagan
-				expect(finalText).toMatch(/voyager|pale blue dot|sagan|carl/i);
+			// Article text: the page is unambiguously about Voyager / Carl Sagan
+			expect(finalText).toMatch(/voyager|pale blue dot|sagan|carl/i);
 
-				// Image vision: the photograph is Earth as a tiny dot in dark space
-				expect(finalText).toMatch(/blue|dot|earth|planet|space|dark/i);
-			} finally {
-				rmSync(workdir, { recursive: true });
-			}
-		},
-		240_000, // 4-minute timeout — network + LLM + vision call
-	);
+			// Image vision: the photograph is Earth as a tiny dot in dark space
+			expect(finalText).toMatch(/blue|dot|earth|planet|space|dark/i);
+		} finally {
+			rmSync(workdir, { recursive: true });
+		}
+	}, 240_000); // 4-minute timeout — network + LLM + vision call
 });

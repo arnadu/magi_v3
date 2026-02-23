@@ -55,8 +55,9 @@ than Redis Streams. This allows multi-agent communication to be proven end-to-en
 adding Redis as a dependency before Temporal is also ready.
 
 The four mailbox tools (`ListTeam`, `ListMessages`, `ReadMessage`, `PostMessage`) are defined
-against a `MailboxRepository` interface. Sprint 3 swaps the MongoDB implementation for Redis
-Streams without changing the tool API or agent behaviour.
+against a `MailboxRepository` interface. Sprint 4 swaps the MongoDB implementation for Redis
+Streams without changing the tool API or agent behaviour. Sprint 3 (web/fetch/artifacts)
+continued using the MongoDB stopgap.
 
 MongoDB was chosen as the stopgap (rather than skipping messaging entirely) because agents
 need a real mailbox to make the outer loop meaningful — a stub that cannot actually deliver

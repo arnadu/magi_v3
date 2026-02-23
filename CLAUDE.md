@@ -27,8 +27,13 @@ cd packages/agent-runtime-worker && npm run build   # build first
 TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words"
 TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words" --step  # pause after each agent
 
+# Inline @path upload and /command dispatch (Sprint 3):
+# At any input prompt, type:  @/path/to/file.pdf ask me about this
+# /help lists available commands
+
 # Env vars: ANTHROPIC_API_KEY (required), TEAM_CONFIG (required),
-#           MODEL, MONGODB_URI, AGENT_WORKDIR
+#           MODEL, MONGODB_URI, AGENT_WORKDIR,
+#           BRAVE_SEARCH_API_KEY (optional — enables SearchWeb tool; free tier: 2000 req/month)
 ```
 
 Type-check without building:
@@ -80,44 +85,55 @@ Agents communicate with structured, durable mailbox messages (not free-form chat
 
 Agents share artifact references (datasets, code patches, notebooks, charts, reports, alert payloads), not raw data.
 
-## Current Implementation (Sprints 1–2)
+## Current Implementation (Sprints 1–3)
 
 Two packages are built. Key files:
 
 **`packages/agent-config`** (Sprint 2):
 - `src/loader.ts` — `loadTeamConfig(path)` / `parseTeamConfig(yaml)`: Zod schema validation; exports `AgentConfig = Record<string,string>` and `TeamConfig`. Required agent fields: `id`, `supervisor`, `systemPrompt`, `initialMentalMap`.
 
-**`packages/agent-runtime-worker`** (Sprints 1–2):
-- `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop via `completeSimple`. Terminates when the LLM stops calling tools. Fires `onMessage` after every message.
-- `src/tools.ts` — `Bash`, `WriteFile`, `EditFile`. Bash covers all read/list/find/grep needs.
-- `src/mailbox.ts` — `MailboxRepository` (in-memory + MongoDB); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools.
-- `src/mental-map.ts` — `MentalMapRepository` (in-memory + MongoDB); `UpdateMentalMap` tool; `patchMentalMap` pure function.
+**`packages/agent-runtime-worker`** (Sprints 1–3):
+- `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop via `completeSimple`. Terminates when the LLM stops calling tools. Fires `onMessage` after every message. `toolTimeoutMs` (default 120 s) enforced via `withTimeout` on every tool call.
+- `src/tools.ts` — `createFileTools(workdir)`: `Bash`, `WriteFile`, `EditFile`. Bash covers all read/list/find/grep needs.
+- `src/mailbox.ts` — `MailboxRepository` (in-memory + MongoDB, sort-consistent: newest-first); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools. Uses `teamConfig.mission.id` (not hardcoded).
+- `src/mental-map.ts` — `MentalMapRepository` (in-memory + MongoDB); `UpdateMentalMap` tool; `patchMentalMap` pure function (jsdom-based, returns `null` on missing element).
+- `src/artifacts.ts` — `generateArtifactId(sourceHint)`, `saveArtifact(workdir, id, files, meta)`, `saveUpload(workdir, id, files, meta)`. Internal `writeDirectory` helper keeps both paths DRY.
 - `src/prompt.ts` — `buildSystemPrompt(agent, mentalMapHtml)`: substitutes `{{mentalMap}}` in `agent.systemPrompt`. `formatMessages(messages)` formats the inbox as the opening user turn.
 - `src/agent-runner.ts` — `runAgent(agentId, messages, ctx, signal)`: initialises mental map, builds system prompt, runs inner loop with all tools.
 - `src/orchestrator.ts` — `runOrchestrationLoop(config, signal)`: inbox-poll scheduling; runs agents in supervisor-depth order (seniors first); supports `--step` mode and live readline input; terminates when no agent has unread messages.
-- `src/cli.ts` — multi-agent CLI; requires `TEAM_CONFIG`; logs all tool calls and results per agent.
+- `src/user-input.ts` — readline handler: `/command` dispatch (`/help`; future commands reserved under `/`); `@path` scanning (extracts `@/abs` or `@./rel` tokens, calls `saveUpload`, appends notice to message body).
+- `src/cli.ts` — multi-agent CLI; requires `TEAM_CONFIG`; registers `SearchWeb` when `BRAVE_SEARCH_API_KEY` is set; logs all tool calls and results per agent.
 - `src/models.ts` — `CLAUDE_SONNET` constant; `anthropicModel()` factory.
 - `src/db.ts` — `ConversationRepository` (retained for the Sprint 1 loop integration test).
+- `src/tools/fetch-url.ts` — `createFetchUrlTool(workdir, model)`: HTTP GET → Readability (HTML) or mupdf (PDF) → `content.md`; downloads up to `max_images` images (default 3, max 10) from article body only (not nav/UI); vision LLM auto-describes each image; writes artifact folder + `meta.json`. `max_pages` (default 5, max 20) limits PDF processing. VISION_MIMES: jpeg, png, gif, webp only (SVG excluded).
+- `src/tools/inspect-image.ts` — `createInspectImageTool(workdir, model)`: reads image file (path resolved within workdir — path traversal rejected), base64-encodes it, calls vision LLM via `completeSimple`.
+- `src/tools/search-web.ts` — `createSearchWebTool(apiKey)`: Brave Search REST API → ranked markdown result list; saves results as an artifact; not registered when key absent.
 - `tests/loop.integration.test.ts` — Sprint 1: real LLM finds and edits `greeting.txt`.
 - `tests/multi-agent.integration.test.ts` — Sprint 2: Lead delegates word-count to Worker; asserts Lead reports "12" to user. Loads config from `config/teams/word-count.yaml`.
+- `tests/fetch-inspect.integration.test.ts` — Sprint 3: single agent fetches a local HTML page with an image, inspects it; asserts "cat" or "feline" in summary.
+- `tests/fetch-share.integration.test.ts` — Sprint 3: two-agent test; Lead fetches a PDF, Worker analyses images via Bash; asserts one artifact folder and both animal species in user message.
+- `tests/search-web.integration.test.ts` — Sprint 3: searches "Pale Blue Dot Voyager NASA", fetches Wikipedia top result, inspects photograph; skipped when `BRAVE_SEARCH_API_KEY` absent.
 
 ## Tool Capabilities (Implementation Priority Order)
 
-**Sprints 1–2 — built:**
+**Sprints 1–3 — built:**
 - `Bash`, `WriteFile`, `EditFile` — file and shell work
 - `PostMessage` — send to one or more agent ids (or `"user"` to reach the operator)
-- `UpdateMentalMap` — surgical HTML patching of the agent's Mental Map document
+- `UpdateMentalMap` — surgical HTML patching of the agent's Mental Map document (jsdom-based)
 - `ListTeam` — read agent roster from team config: id, name, role, supervisor
 - `ListMessages` — inbox headers for older messages: from, subject, timestamp
 - `ReadMessage` — read full older message by id
+- `FetchUrl` — HTTP GET → Readability (HTML) or mupdf (PDF) extraction; image download; artifact folder; vision auto-describe
+- `InspectImage` — pass any image file to the vision LLM; returns text description; path traversal safe
+- `SearchWeb` — Brave Search API; ranked result list; artifact saved; conditionally registered
 
-**Sprint 3–5 (planned):**
+**Sprint 4–6 (planned):**
 1. `ExecProgram` / `ProgramStatus` / `ReadLogs` / `StopProgram` — sandboxed process execution
 2. `BrowseWeb` — Playwright-based browser worker
 3. `FetchData` — HTTP pull with provenance metadata
 4. `AnalyzeData` — scripts/notebooks in execution sandbox
 5. `PublishArtifact` — register outputs with lineage metadata
-6. `PromoteArtifact` (Sprint 5+) — dev-to-prod artifact promotion
+6. `PromoteArtifact` (Sprint 6+) — dev-to-prod artifact promotion
 
 ## Sprint Roadmap
 
@@ -126,8 +142,8 @@ Two packages are built. Key files:
 | 0 | ✅ Done | Architecture freeze: six ADRs in `docs/adr/` |
 | 1 | ✅ Done | Inner loop: `runInnerLoop`, 3 tools, MongoDB persistence, CLI, integration test |
 | 2 | ✅ Done | Multi-agent: YAML team config (Zod), mailbox, orchestration loop, supervisor-depth ordering, 5 tools |
-| 3 | Next | Durability: Temporal workflows, Redis Streams mailbox, crash recovery |
-| 4 | | Identity, workspace, ACL enforcement |
+| 3 | ✅ Done | Web search, fetch, artifacts: `FetchUrl`, `InspectImage`, `SearchWeb`; `@path` upload; artifact model |
+| 4 | Next | Durability: Temporal workflows, Redis Streams mailbox, identity, workspace, ACL enforcement |
 | 5 | | Execution, web, and data tools |
 | 6 | | Equity research team MVP |
 | 7 | | Reliability + evaluation harness (5-day unattended run) |
@@ -143,6 +159,9 @@ Three tiers — apply the right one to the right layer:
 - **Integration tests** — real LLM calls with carefully chosen prompts whose outcomes are deterministic. Tests the full stack end-to-end including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` in `.env`. Current scenarios:
   - Sprint 1: single agent finds `greeting.txt` (contains "HELLO WORLD") and appends "GOODBYE".
   - Sprint 2: two-agent word count — Lead delegates to Worker via mailbox; Worker runs `wc -w`, replies; Lead reports the total (12) to user. Config loaded from `config/teams/word-count.yaml`. Assertion: Lead's final message contains "12".
+  - Sprint 3a: single agent fetches a local HTML page (served from `testdata/documents/`) containing a cat image; calls `InspectImage`; asserts "cat" or "feline" in user message.
+  - Sprint 3b: two agents share a PDF artifact — Lead fetches PDF, Worker reads images via Bash and `InspectImage`; asserts one artifact folder and both "dog" and "cat" in user message.
+  - Sprint 3c: real web search — searches "Pale Blue Dot Voyager NASA", fetches Wikipedia top result, inspects photograph; asserts Voyager/Sagan content and image description. Skipped when `BRAVE_SEARCH_API_KEY` absent. 4-minute timeout.
 - **Evaluation tests** (`eval/`) — golden scenarios asserting structural/policy outcomes (citation coverage, `nextAction` validity, policy enforcement), not content. Run on demand, not in CI.
 
 Test runner: **vitest** — native ESM, no build step needed. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.

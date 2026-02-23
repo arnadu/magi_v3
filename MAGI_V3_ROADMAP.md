@@ -174,7 +174,7 @@ Two agents communicate through the mailbox and complete the word-count task. Lea
 
 ---
 
-## Sprint 3 — Web Search, Fetch, and Artifact Model ← NEXT
+## Sprint 3 — Web Search, Fetch, and Artifact Model ✅ COMPLETED
 
 **Goal: agents can search the web, fetch and parse documents (HTML, PDF), handle images via vision LLM, and accept user-uploaded documents. Fetched content is stored as structured artifacts with full provenance metadata. All agents on a mission can discover and read each other's artifacts without filesystem coupling.**
 
@@ -188,264 +188,102 @@ The original Sprint 3 plan was Temporal + Redis durability. We chose capabilitie
 
 Temporal + Redis durability moves to Sprint 4.
 
-### New tools
+### What was built
 
-Three tools added to the agent loop alongside the existing five (Sprint 2) and three file tools (Sprint 1):
+**Three new tools:**
 
 | Tool | Arguments | Description |
 |------|-----------|-------------|
-| `SearchWeb` | `query: string` | Brave Search API → markdown result list (title, url, snippet). Also saves results as an artifact in the shared artifacts folder. Not registered if `BRAVE_SEARCH_API_KEY` is absent. |
-| `FetchUrl` | `url: string`, `query?: string` | HTTP GET → text extraction (Readability for HTML; mupdf for PDF). Downloads inline images. Saves artifact to shared folder. Returns artifact ID + content preview. |
-| `InspectImage` | `path: string` | Passes image file to vision LLM via `completeSimple`. Returns text description. Accepts any image path — standalone image or one extracted from a document. |
+| `SearchWeb` | `query: string` | Brave Search API → ranked markdown result list (title, url, snippet). Saves results as an artifact. Not registered when `BRAVE_SEARCH_API_KEY` is absent. |
+| `FetchUrl` | `url: string`, `max_images?: number`, `max_pages?: number` | HTTP GET → Readability (HTML) or mupdf (PDF). Images queried from article body only (not nav/UI). Downloads up to `max_images` (default 3, max 10); SVG excluded (Anthropic API limitation). PDF: up to `max_pages` (default 5, max 20). Writes artifact folder + `meta.json`. Vision LLM auto-describes each image. |
+| `InspectImage` | `path: string`, `prompt?: string` | Reads image within `workdir` (path traversal rejected), base64-encodes, calls vision LLM via `completeSimple`. Returns text description. |
 
 DOCX and XLSX parsing deferred to Sprint 5.
 
-### Library choices
-
-Confirmed before implementation started:
+**Library choices confirmed in implementation:**
 
 | Concern | Library | Notes |
 |---------|---------|-------|
-| HTML extraction | `@mozilla/readability` + `jsdom` | Same as MAGI_V2; accurate article extraction |
-| PDF text + image extraction | `mupdf` (npm) | Official Node.js binding; handles both text and image extraction |
-| HTTP fetch | Node 18+ built-in `fetch` | No extra dependency; follows redirects by default |
-| Vision LLM calls | `@mariozechner/pi-ai` `completeSimple` | No separate vision function; pass `ImageContent { type: "image", data: base64, mimeType }` inside a `UserMessage`. Works identically for Anthropic and OpenAI models. Check `model.input.includes("image")` before calling. |
+| HTML extraction | `@mozilla/readability` + `jsdom` | Same as MAGI_V2; article content scoped to Readability output |
+| PDF text + image extraction | `mupdf` (npm) | Official Node.js binding |
+| HTTP fetch | Node 18+ built-in `fetch` | No extra dependency |
+| Vision LLM calls | `@mariozechner/pi-ai` `completeSimple` | `ImageContent { type: "image", data: base64, mimeType }` inside `UserMessage`. SVG excluded from `VISION_MIMES`. |
 | Artifact ID | `{slugified-hostname}-{YYYYMMDD}T{HHmmss}` | Human-readable, sortable; `{slugified-filename}-...` for uploads |
 
-Image download limits per `FetchUrl` call: max 10 images, max 5 MB each. Inline `data:` URIs decoded directly.
-
-### Artifact model
-
-An artifact is a folder under the **shared mission artifacts directory** (`{workdir}/artifacts/<id>/`). It contains:
+**Artifact model:**
 
 ```
 artifacts/apple-q4-20260222T143021/
-  content.md          ← text rendition (Readability / mupdf extraction)
-  image_001.png       ← images extracted from source (PDF pages, inline images)
-  image_002.png
-  meta.json           ← provenance sidecar
+  content.md          ← text rendition (Readability / mupdf extraction + vision descriptions)
+  image-0.jpg         ← images extracted from article body (not nav/UI elements)
+  image-1.png
+  meta.json           ← provenance sidecar (Schema.org-inspired)
 ```
 
-`meta.json` schema (Schema.org-inspired field names):
+`ArtifactMeta` fields: `@type`, `id`, `name`, `url`, `dateCreated`, `encodingFormat`, `images[]`. `saveArtifact` and `saveUpload` both use an internal `writeDirectory` helper (DRY).
 
-```json
-{
-  "id":             "apple-q4-20260222T143021",
-  "name":           "Apple Inc. Reports Fourth Quarter Results",
-  "url":            "https://investor.apple.com/...",
-  "query":          "Apple Q4 2025 earnings release",
-  "fetchedBy":      "lead-analyst",
-  "fetchedAt":      "2026-02-22T14:30:21Z",
-  "encodingFormat": "text/html",
-  "files": {
-    "content":  "content.md",
-    "images":   ["image_001.png", "image_002.png"]
-  }
-}
-```
+**User uploads:**
 
-### User uploads
+`{workdir}/uploads/` mirrors the artifact folder convention. Agents discover uploads via Bash (`ls uploads/`, `cat uploads/*/meta.json`). Read-only by system prompt convention (Sprint 3); filesystem ACL enforcement in Sprint 4.
 
-User-provided documents live in a separate `uploads/` folder alongside `artifacts/`. The folder is read-only for agents (by system prompt convention in Sprint 3; enforced by filesystem ACL in Sprint 4).
+**`@path` upload syntax and `/command` dispatch (`src/user-input.ts`):**
 
-```
-{workdir}/
-  artifacts/          ← agent-generated (read/write)
-  uploads/            ← user-provided (read-only for agents)
-    q4-report-20260222T091500/
-      content.md      ← text extracted at upload time
-      image_001.png   ← images extracted at upload time
-      meta.json       ← { uploadedBy: "user", filename: "q4-report.pdf", uploadedAt: ... }
-```
+Readline handler scans for `@/abs` or `@./rel` tokens, calls `saveUpload`, appends upload notice to message body. `/help` lists commands; `/command` namespace reserved for future operator tooling. Works at startup and in buffered readline during a run.
 
-Uploads follow the same artifact folder convention so agents discover them via the same Bash commands (`ls uploads/`, `cat uploads/*/meta.json`).
+**Cross-agent sharing:**
 
-**Upload + prompt are delivered as one message.** The operator always uploads alongside a prompt; the CLI processes the file into `uploads/` first, then appends an upload notice to the message body before posting to the lead agent's mailbox:
+All fetched content written to `{workdir}/artifacts/` (single shared workdir). Agents discover via Bash; no `ListArtifacts` tool needed. Maps to `/missions/{missionId}/shared/artifacts/` in Sprint 4.
 
-```
-Please analyse the attached Q4 earnings report and summarise the key risks.
+**Post-review fixes applied to existing Sprint 2 code:**
 
----
-Uploaded document: uploads/q4-report-20260222T091500/
-Original filename: q4-report.pdf
-Text and images have been extracted and are ready for analysis.
-```
-
-No separate notification message, no new tool, no change to `MailboxMessage` schema.
-
-**`@path` upload syntax.** Works identically at startup, during an agent run (buffered readline), and at the "Mission paused" prompt. The readline handler scans for `@/absolute/path` or `@./relative/path` tokens, processes each file into `uploads/`, strips the tokens from the text, and appends upload notices before posting to the mailbox. The `--upload` startup flag is dropped in favour of inline `@path` everywhere.
-
-**`/command` namespace reserved.** The readline handler checks for a `/` prefix before processing input as a message. This prevents future breaking changes and enables operator tooling without modifying the mailbox model. Sprint 3 ships `/help` only; further commands are added as needed.
-
-| Command | Sprint 3 | Later |
-|---------|----------|-------|
-| `/help` | lists available commands | — |
-| `/agents` | — | agent states from mental maps |
-| `/artifacts` | — | `ls` of `artifacts/` |
-| `/uploads` | — | `ls` of `uploads/` |
-| `/step` | — | toggle step mode mid-session |
-| `/cycles` | — | current cycle count / maxCycles |
-| `/abort` | — | graceful abort |
-
-| Sprint | uploads path | enforcement |
-|--------|-------------|-------------|
-| 3 | `{workdir}/uploads/` | system prompt instruction |
-| 4 | `/missions/{missionId}/uploads/` | filesystem ACL (read-only for agent uid/gid) |
-
-### Cross-agent sharing
-
-All fetched content is written to the **shared** artifacts folder, never to a private per-agent path. This maps forward cleanly:
-
-| Sprint | Shared artifacts path |
-|--------|-----------------------|
-| 3 | `{workdir}/artifacts/` — single shared workdir, all agents can read |
-| 4 | `/missions/{missionId}/shared/artifacts/` — proper identity + ACL; agents publish explicitly |
-| 5 | MongoDB registry + MinIO binary store; `PublishArtifact` tool registers content with full lineage |
-
-Agents reference artifacts by ID or slug in PostMessage body text. No structural change to `MailboxMessage` in this sprint.
-
-### Discoverability
-
-Agents discover available artifacts using Bash — the same execution environment already available to them:
-
-```bash
-ls artifacts/
-cat artifacts/*/meta.json
-find artifacts/ -name "meta.json" | xargs grep "Apple earnings"
-```
-
-This mirrors the pi-mono `web-ui` pattern, where discoverability is a capability of the execution environment (pi-mono injects `listArtifacts()` / `listAttachments()` into a JS sandbox; our equivalent is Bash on the shared filesystem). No separate `ListArtifacts` tool is needed in this sprint.
-
-### Implementation sequence
-
-Steps are ordered by dependency. Do not advance past a gate step until its integration test passes.
-
-```
-Step 1  artifacts.ts
-          generateArtifactId(url|filename) → slug+timestamp
-          saveArtifact(workdir, fields) → writes artifacts/<id>/ + meta.json
-          saveUpload(workdir, fields)   → writes uploads/<id>/  + meta.json
-
-Step 2  FetchUrl — HTML only
-          native fetch + Content-Type detection
-          @mozilla/readability + jsdom → content.md
-          parse <img src> tags → download up to 10 images (max 5 MB each)
-          write artifact, return id + 500-char preview
-
-Step 3  InspectImage
-          read image file → base64
-          build UserMessage with ImageContent { type:"image", data, mimeType }
-          completeSimple(model, context) → return text description
-
-──── GATE: integration test 1 must pass before step 4 ────
-
-Step 4  Integration Test 1
-          static http server (Node http.createServer) on dynamic port
-          single-agent team config (word-count lead reused or new minimal config)
-          seed: "Fetch http://localhost:{PORT}/with-image.html. Describe the image."
-          assert: artifact folder exists, image_001.* exists, user message contains "cat"
-
-Step 5  FetchUrl — PDF support
-          mupdf: extract text → content.md
-          mupdf: extract embedded images → image_001.png, image_002.png, …
-          update meta.json files list
-
-──── GATE: integration test 2 must pass before step 6 ────
-
-Step 6  Integration Test 2 + fetch-share.yaml
-          config/teams/fetch-share.yaml (lead + worker)
-          two-agent test: lead fetches PDF, delegates image analysis to worker via Bash
-          assert: one artifact folder, user message contains "dog" and "cat"
-
-Step 7  SearchWeb
-          BRAVE_SEARCH_API_KEY env var check → skip registration if absent
-          Brave Search REST API → format top-N results as markdown
-          save results as artifact (encodingFormat: "application/x-search-results")
-
-Step 8  CLI: @path + /command
-          readline handler: /prefix → handleCommand(); else → processMessage()
-          /help lists available commands; unknown /cmd prints error
-          @path scanning: extract @/abs or @./rel tokens, saveUpload(), append notice
-
-Step 9  equity-research.yaml + build/lint/test clean
-          add SearchWeb, FetchUrl, InspectImage to agent system prompts
-          note uploads/ as read-only in system prompt
-          npm run build && npm test && npm run lint all green
-```
+| Fix | File | Detail |
+|-----|------|--------|
+| Path traversal prevention | `tools/inspect-image.ts` | `resolve(workdir, path)` + `startsWith(workdir + sep)` check |
+| Hardcoded `missionId: "sprint2"` | `mailbox.ts` | Changed to `teamConfig.mission.id` |
+| Sort order inconsistency | `mailbox.ts` | `InMemoryMailboxRepository.list()` now sorts newest-first (matches MongoDB) |
+| Tool timeout | `loop.ts` | `withTimeout(tool.execute(...), toolTimeoutMs, name)`; default 120 s |
+| jsdom mental-map patching | `mental-map.ts` | Replaced regex with `JSDOM` + `getElementById`; returns `null` on missing element |
+| DRY artifacts helper | `artifacts.ts` | Extracted `writeDirectory(dir, files, meta)` private helper |
+| Parallel image arrays → single array | `tools/fetch-url.ts` | `imageEntries: Array<{filename, description\|null}>` replaces two parallel arrays |
+| Default `max_images` reduced | `tools/fetch-url.ts` | Default 3 (was 10) to limit vision API cost |
 
 ### Deliverables
 
-- `packages/agent-runtime-worker/src/artifacts.ts` — `generateArtifactId()`, `saveArtifact()`, `saveUpload()`; artifact folder convention; `meta.json` writer
-- `packages/agent-runtime-worker/src/tools/fetch-url.ts` — `FetchUrl` tool; Readability + jsdom (HTML), mupdf (PDF); image download/extraction; writes artifact folder + `meta.json`
-- `packages/agent-runtime-worker/src/tools/inspect-image.ts` — `InspectImage` tool; `UserMessage` with `ImageContent`; `completeSimple` vision call
-- `packages/agent-runtime-worker/src/tools/search-web.ts` — `SearchWeb` tool; Brave Search API client; conditional registration on `BRAVE_SEARCH_API_KEY`
-- `packages/agent-runtime-worker/src/cli.ts` — `@path` upload syntax; `/command` dispatch; `/help` command
-- `config/teams/fetch-share.yaml` — two-agent team config for Test 2
+- `packages/agent-runtime-worker/src/artifacts.ts` — `generateArtifactId()`, `saveArtifact()`, `saveUpload()`, `writeDirectory()` helper
+- `packages/agent-runtime-worker/src/tools/fetch-url.ts` — `createFetchUrlTool(workdir, model)`: HTML (Readability) + PDF (mupdf); article-scoped image download; vision auto-describe; `max_images` + `max_pages` parameters
+- `packages/agent-runtime-worker/src/tools/inspect-image.ts` — `createInspectImageTool(workdir, model)`: path traversal safe; MIME validation; vision LLM call
+- `packages/agent-runtime-worker/src/tools/search-web.ts` — `createSearchWebTool(apiKey)`: Brave Search API; saves result artifact; conditionally registered
+- `packages/agent-runtime-worker/src/user-input.ts` — readline handler; `@path` upload; `/command` dispatch; `/help`
+- `packages/agent-runtime-worker/src/cli.ts` — updated: registers `SearchWeb` when key present
+- `config/teams/fetch-share.yaml` — two-agent team config (Lead + Worker)
 - `config/teams/equity-research.yaml` — updated with new tools in agent system prompts
-- `testdata/documents/` — test assets (shared across all sprints, already present):
-  - `with-image.html`, `cat.jpg`, `dog.png`, `test-pdf.pdf`
-- **Integration test 1** — `fetch-inspect.integration.test.ts` (single agent, HTML + cat)
-- **Integration test 2** — `fetch-share.integration.test.ts` (two agents, PDF + sharing)
+- `testdata/documents/` — `with-image.html`, `cat.jpg`, `dog.png`, `test-pdf.pdf`
+- **Integration test 1** — `fetch-inspect.integration.test.ts`: single agent, HTML + cat image; asserts "cat" or "feline"
+- **Integration test 2** — `fetch-share.integration.test.ts`: two agents, PDF sharing; asserts one artifact folder, both "dog" and "cat" in user message
+- **Integration test 3** — `search-web.integration.test.ts`: "Pale Blue Dot Voyager NASA" → Wikipedia → vision; skipped without `BRAVE_SEARCH_API_KEY`
+
+### Deviations from plan
+
+| Plan | What was built | Reason |
+|------|----------------|--------|
+| Max 10 images per FetchUrl | Default 3, max 10 via `max_images` param | Reducing default from 10 saves significant vision API cost |
+| Images from full page DOM | Images scoped to Readability `article.content` | Full DOM includes nav icons and decorative SVGs; article scope matches intent |
+| Regex-based mental map patching | jsdom-based | Regex fails on HTML entities and nested tags; jsdom is robust and already a dependency |
+| No timeout on tool calls | `withTimeout` wrapper, default 120 s | Prevents runaway network/LLM calls from blocking the loop indefinitely |
 
 ### Deferred
 
 - DOCX and XLSX parsing → Sprint 5
 - `/agents`, `/artifacts`, `/uploads`, `/step`, `/cycles`, `/abort` slash commands → added as needed
+- Temporal workflows, Redis Streams mailbox, identity, workspace, ACL → Sprint 4
 
-### Integration tests
+### Exit criteria — met
 
-Both tests spin up a Node `http.createServer` static file server pointing at `testdata/documents/` in `beforeAll`, and tear it down in `afterAll`. The port is chosen dynamically to avoid clashes.
-
-**Test 1 — Single agent: HTML fetch + image inspection**
-
-Setup: static server serves `testdata/documents/`.
-
-Task seeded to agent:
-> "Fetch the page at http://localhost:{PORT}/with-image.html. It contains an image. Describe what the image shows and report back to me."
-
-Expected flow:
-1. Agent calls `FetchUrl` → downloads HTML + the linked `cat.jpg` → writes `artifacts/<id>/content.md` + `artifacts/<id>/image_001.jpg` + `meta.json`
-2. Agent calls `InspectImage` on `image_001.jpg` → vision LLM returns description
-3. Agent calls `PostMessage to: user` with the description
-
-Assertions:
-- One artifact folder exists under `{workdir}/artifacts/`
-- `meta.json` contains `url`, `fetchedBy`, `fetchedAt`, `encodingFormat: "text/html"`
-- `image_001.jpg` (or `.jpg`/`.png`) exists inside the artifact folder
-- User message contains "cat" or "feline"
-
-**Test 2 — Two agents: PDF fetch + cross-agent artifact sharing**
-
-Setup: same static server. Two-agent team config (Lead + Worker), loaded from `config/teams/fetch-share.yaml` (to be created with Sprint 3 implementation).
-
-Task seeded to Lead:
-> "Fetch the PDF at http://localhost:{PORT}/test-pdf.pdf. It contains images of animals. Have Worker identify the animals in the images and report the findings back to me. I will then report to the user."
-
-Expected flow:
-1. **Lead** calls `FetchUrl` → PDF parsed → `artifacts/<id>/content.md` + `image_001.png` (dog) + `image_002.jpg` (cat) + `meta.json`
-2. **Lead** calls `PostMessage to: worker` — includes the artifact folder path or ID
-3. **Worker** uses `Bash` to read `artifacts/<id>/meta.json` and list the images — no second `FetchUrl` call
-4. **Worker** calls `InspectImage` on each extracted image
-5. **Worker** calls `PostMessage to: lead` with descriptions of both animals
-6. **Lead** calls `PostMessage to: user` with the combined summary
-
-Assertions:
-- Exactly one artifact folder exists (Worker reused Lead's; no duplicate fetch)
-- User message contains both "dog" (or "puppy") and "cat" (or "feline")
-
-### Deferred from original Sprint 3 plan
-
-- Temporal workflows (`AgentWorkflow`, activities, signals) → Sprint 4
-- Redis Streams mailbox (replaces MongoDB mailbox) → Sprint 4
-- Critical interrupt path (`critical_alert` signal → inner loop abort) → Sprint 4
-
-### Exit criteria
-
-Both integration tests pass. User message in Test 1 contains "cat" or "feline". User message in Test 2 contains both animal species. Exactly one artifact folder is created in Test 2 (Worker reads Lead's artifact via Bash; no duplicate fetch). `npm run test:integration` exits 0.
+All three integration tests pass. Sprint 3a: user message contains "cat"/"feline". Sprint 3b: exactly one artifact folder; user message contains "dog" and "cat". Sprint 3c: search result fetched, photograph described (voyager/sagan + blue/dot/earth). `npm run test:integration` exits 0. `npm run build` and `npm run lint` clean.
 
 ---
 
-## Sprint 4 — Durability: Temporal, Redis Mailbox, Identity, and Workspace
+## Sprint 4 — Durability: Temporal, Redis Mailbox, Identity, and Workspace ← NEXT
 
 **Goal: production-grade durability and agent isolation. Workflows survive crashes. Agents have private homes and a shared mission folder with enforced ACLs. Temporal + Redis replace the Sprint 2 in-process orchestration and MongoDB mailbox.**
 

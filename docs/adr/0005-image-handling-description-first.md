@@ -31,13 +31,25 @@ measurable loss in task accuracy for the primary use cases.
 
 ## Consequences
 
-- `AgentAssetRegistry` stores image metadata + description in MongoDB; binary data in MinIO.
-- Image descriptions include: content hash (SHA-256), original URL or upload source,
-  timestamp, MIME type, dimensions, and the LLM-generated description text.
-- `FetchData` and `PublishArtifact` auto-register images via `AgentAssetRegistry` when the
-  MIME type is an image.
-- `InspectImage` is an inner-loop tool; it performs a vision call and returns the result
-  as a text tool result. The image binary is never embedded in conversation history.
-- The description is regenerated if the content hash changes (image updated at source).
-- Token cost for image-heavy workflows is bounded by the number of `InspectImage` calls,
-  not by the number of turns that reference an image.
+- **Sprint 3 (current implementation):**
+  - `FetchUrl` downloads images from the Readability-extracted article body (not nav/UI)
+    and auto-describes each via a vision LLM call at fetch time. Descriptions are embedded
+    inline in `content.md` alongside the article text.
+  - Images are stored in the artifact folder on disk (`artifacts/<id>/image-N.ext`).
+    SVG is excluded (`VISION_MIMES` = jpeg, png, gif, webp) because the Anthropic API does
+    not accept SVG.
+  - `FetchUrl` limits vision calls to `max_images` (default 3) images per fetch to control
+    cost. Agents may increase this up to 10 via the `max_images` parameter.
+  - `InspectImage` is an inner-loop tool; it reads an image file within the workdir,
+    makes a fresh vision LLM call, and returns the description as a text tool result.
+    Image binaries are never embedded in conversation history.
+
+- **Sprint 5+ (planned):**
+  - `AgentAssetRegistry` will store image metadata + description in MongoDB; binary data
+    in MinIO.
+  - `FetchData` and `PublishArtifact` will auto-register images via `AgentAssetRegistry`.
+  - Content hash (SHA-256) will be recorded; description regenerated if image changes.
+
+- Token cost for image-heavy workflows is bounded by the number of `InspectImage` calls
+  and the `max_images` setting on `FetchUrl`, not by the number of turns that reference
+  an image.
