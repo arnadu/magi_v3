@@ -206,7 +206,7 @@ async function autoDescribeImage(
 async function processDirectImage(
 	bytes: Buffer,
 	mimeType: string,
-	workdir: string,
+	artifactBase: string,
 	rawUrl: string,
 	model: Model<string>,
 	signal?: AbortSignal,
@@ -233,7 +233,7 @@ async function processDirectImage(
 
 	try {
 		await saveArtifact(
-			workdir,
+			artifactBase,
 			artifactId,
 			[
 				{ name: "content.md", content: contentText },
@@ -270,7 +270,7 @@ async function processDirectImage(
  */
 async function processPdf(
 	bytes: Buffer,
-	workdir: string,
+	artifactBase: string,
 	rawUrl: string,
 	model: Model<string>,
 	maxPages: number,
@@ -351,7 +351,7 @@ async function processPdf(
 	];
 
 	try {
-		await saveArtifact(workdir, artifactId, files, meta);
+		await saveArtifact(artifactBase, artifactId, files, meta);
 	} catch (e) {
 		return toolErr(
 			`FetchUrl: failed to save PDF artifact — ${(e as Error).message}`,
@@ -394,7 +394,12 @@ async function processPdf(
 export function createFetchUrlTool(
 	workdir: string,
 	model: Model<string>,
+	sharedArtifactsDir?: string,
 ): MagiTool {
+	// When workspace is active, artifacts go to the shared dir; otherwise
+	// they go to {workdir}/artifacts/ as in Sprints 1-3.
+	const artifactBase = sharedArtifactsDir ?? workdir;
+
 	return {
 		name: "FetchUrl",
 		description:
@@ -470,14 +475,14 @@ export function createFetchUrlTool(
 
 			// --- Route by content type -----------------------------------------
 			if (mimeType === "application/pdf") {
-				return processPdf(bytes, workdir, rawUrl, model, maxPages, signal);
+				return processPdf(bytes, artifactBase, rawUrl, model, maxPages, signal);
 			}
 
 			if (mimeType.startsWith("image/")) {
 				return processDirectImage(
 					bytes,
 					mimeType,
-					workdir,
+					artifactBase,
 					rawUrl,
 					model,
 					signal,
@@ -586,7 +591,7 @@ export function createFetchUrlTool(
 			];
 
 			try {
-				await saveArtifact(workdir, artifactId, files, meta);
+				await saveArtifact(artifactBase, artifactId, files, meta);
 			} catch (e) {
 				return toolErr(
 					`FetchUrl: failed to save artifact — ${(e as Error).message}`,

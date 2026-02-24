@@ -1,5 +1,6 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
+import type { AgentIdentity } from "./identity.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
@@ -9,6 +10,7 @@ import { buildSystemPrompt, formatMessages } from "./prompt.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
 import { createInspectImageTool } from "./tools/inspect-image.js";
 import { tryCreateSearchWebTool } from "./tools/search-web.js";
+import type { AclPolicy } from "./tools.js";
 import { createFileTools } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -20,8 +22,16 @@ export interface AgentRunContext {
 	teamConfig: TeamConfig;
 	mailboxRepo: MailboxRepository;
 	mentalMapRepo: MentalMapRepository;
-	/** Working directory for file tools. All agents share this in Sprint 2. */
+	/**
+	 * Fallback working directory when no identity is provided.
+	 * All agents share this when workspace isolation is not configured.
+	 */
 	workdir: string;
+	/**
+	 * When provided, this agent gets its own private workdir and ACL enforcement.
+	 * Set by the orchestrator after workspace provisioning (Sprint 4+).
+	 */
+	identity?: AgentIdentity;
 	/** Called immediately when the agent posts a message to "user". */
 	onUserMessage?: (msg: MailboxMessage) => void;
 	/** Called for every message produced by the inner loop (for logging/streaming). */
@@ -35,8 +45,8 @@ export interface AgentRunContext {
 /**
  * Run a single agent cycle: build prompt → inject messages → execute loop.
  *
- * The orchestrator calls this function and knows nothing about what happens
- * inside. Sprint 3 will wrap this as a Temporal Activity unchanged.
+ * When an AgentIdentity is provided in ctx, the agent uses its own private
+ * workdir and all file tool operations are checked against its permittedPaths.
  */
 export async function runAgent(
 	agentId: string,
@@ -46,6 +56,15 @@ export async function runAgent(
 ): Promise<void> {
 	const agent = ctx.teamConfig.agents.find((a) => a.id === agentId);
 	if (!agent) throw new Error(`Agent "${agentId}" not found in team config`);
+
+	// Use identity workdir if available, fall back to shared workdir.
+	const workdir = ctx.identity?.workdir ?? ctx.workdir;
+	const sharedArtifactsDir = ctx.identity?.sharedArtifactsDir;
+
+	// Build ACL policy if the agent has an identity.
+	const acl: AclPolicy | undefined = ctx.identity
+		? { agentId, permittedPaths: ctx.identity.permittedPaths }
+		: undefined;
 
 	// Initialise mental map if this agent has never run before.
 	let mentalMapHtml = await ctx.mentalMapRepo.load(agentId);
@@ -59,13 +78,13 @@ export async function runAgent(
 
 	const searchWebTool = tryCreateSearchWebTool();
 	const tools = [
-		...createFileTools(ctx.workdir),
+		...createFileTools(workdir, acl),
 		...createMailboxTools(ctx.mailboxRepo, ctx.teamConfig, agentId, {
 			onUserMessage: ctx.onUserMessage,
 		}),
 		createMentalMapTool(ctx.mentalMapRepo, agentId),
-		createFetchUrlTool(ctx.workdir, ctx.model),
-		createInspectImageTool(ctx.workdir, ctx.model),
+		createFetchUrlTool(workdir, ctx.model, sharedArtifactsDir),
+		createInspectImageTool(workdir, ctx.model),
 		...(searchWebTool ? [searchWebTool] : []),
 	];
 

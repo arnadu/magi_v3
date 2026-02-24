@@ -5,6 +5,12 @@ export {
 	createMongoRepository,
 	InMemoryConversationRepository,
 } from "./db.js";
+export type { AgentIdentity, WorkspaceLayout } from "./identity.js";
+export {
+	buildAgentIdentity,
+	defaultLayout,
+	PoolRegistry,
+} from "./identity.js";
 export type { CompleteFn, InnerLoopConfig, LoopResult } from "./loop.js";
 export { runInnerLoop } from "./loop.js";
 export type { MailboxMessage, MailboxRepository } from "./mailbox.js";
@@ -25,5 +31,6 @@ export { anthropicModel, CLAUDE_SONNET } from "./models.js";
 export type { OrchestratorConfig } from "./orchestrator.js";
 export { runOrchestrationLoop } from "./orchestrator.js";
 export { buildSystemPrompt, formatMessages } from "./prompt.js";
-export type { MagiTool, ToolResult } from "./tools.js";
-export { createFileTools } from "./tools.js";
+export type { AclPolicy, MagiTool, ToolResult } from "./tools.js";
+export { createFileTools, PolicyViolationError } from "./tools.js";
+export { WorkspaceManager } from "./workspace-manager.js";

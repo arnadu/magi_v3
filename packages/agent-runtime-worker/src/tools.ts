@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { type TSchema, Type } from "@sinclair/typebox";
 
 // ---------------------------------------------------------------------------
@@ -22,6 +22,70 @@ export interface MagiTool {
 		args: Record<string, unknown>,
 		signal?: AbortSignal,
 	): Promise<ToolResult>;
+}
+
+// ---------------------------------------------------------------------------
+// ACL enforcement
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown (then caught and returned as an error ToolResult) when an agent
+ * attempts to access a path outside its permitted set.
+ * Distinct from OS errors so callers can detect it by name.
+ */
+export class PolicyViolationError extends Error {
+	constructor(
+		public readonly path: string,
+		public readonly action: string,
+		public readonly agentId?: string,
+	) {
+		const who = agentId ? ` for agent "${agentId}"` : "";
+		super(`PolicyViolationError: "${action}" denied on "${path}"${who}`);
+		this.name = "PolicyViolationError";
+	}
+}
+
+/**
+ * When provided to createFileTools, path operations are checked against
+ * permittedPaths before execution.
+ */
+export interface AclPolicy {
+	agentId: string;
+	/**
+	 * Absolute paths the agent may access. Any path not under one of these
+	 * is denied with PolicyViolationError.
+	 */
+	permittedPaths: string[];
+}
+
+function isPermitted(target: string, permittedPaths: string[]): boolean {
+	return permittedPaths.some(
+		(p) =>
+			target === p || target.startsWith(p + sep) || target.startsWith(`${p}/`),
+	);
+}
+
+function checkPath(target: string, action: string, policy: AclPolicy): void {
+	if (!isPermitted(target, policy.permittedPaths)) {
+		throw new PolicyViolationError(target, action, policy.agentId);
+	}
+}
+
+/**
+ * Extract absolute path tokens from a bash command string and check each
+ * against the ACL policy. Soft enforcement: catches explicit absolute path
+ * references to workspace paths but not dynamically constructed paths.
+ */
+function checkBashPaths(command: string, policy: AclPolicy): void {
+	const tokens = command.match(/\/[^\s"'<>|&;(){}$\\]+/g) ?? [];
+	for (const raw of tokens) {
+		// Only check paths that look like agent workspace paths.
+		if (!/\/missions\/|\/home\/magi-/.test(raw)) continue;
+		const token = raw.replace(/[,;)'"]+$/, ""); // strip trailing punctuation
+		if (!isPermitted(token, policy.permittedPaths)) {
+			throw new PolicyViolationError(token, "bash", policy.agentId);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -61,12 +125,16 @@ function err(text: string): ToolResult {
  * Create the standard set of agent tools rooted at `cwd`.
  * All relative paths supplied by the agent are resolved against `cwd`.
  *
+ * When `acl` is provided, every path operation is checked against the
+ * agent's permitted paths before execution. Violations are returned as
+ * error ToolResults containing "PolicyViolationError".
+ *
  * Three tools cover all practical needs:
- *   - Bash    — read files (cat), list dirs (ls), search (grep/rg), run scripts, etc.
- *   - WriteFile — create or overwrite a file (Bash heredocs are awkward with arbitrary content)
- *   - EditFile  — safe find-and-replace within a file (avoids sed quoting pitfalls)
+ *   - Bash      — read files (cat), list dirs (ls), search (grep/rg), run scripts, etc.
+ *   - WriteFile — create or overwrite a file
+ *   - EditFile  — safe find-and-replace within a file
  */
-export function createFileTools(cwd: string): MagiTool[] {
+export function createFileTools(cwd: string, acl?: AclPolicy): MagiTool[] {
 	function res(p: string): string {
 		return resolve(cwd, p);
 	}
@@ -88,6 +156,7 @@ export function createFileTools(cwd: string): MagiTool[] {
 			const command = args.command as string;
 			const timeoutMs = ((args.timeout as number) ?? 30) * 1_000;
 			try {
+				if (acl) checkBashPaths(command, acl);
 				const result = spawnSync("bash", ["-c", command], {
 					cwd,
 					encoding: "utf-8",
@@ -103,6 +172,7 @@ export function createFileTools(cwd: string): MagiTool[] {
 				}
 				return ok(truncate(output || "(no output)"));
 			} catch (e) {
+				if (e instanceof PolicyViolationError) return err(e.message);
 				return err(`Bash: ${(e as Error).message}`);
 			}
 		},
@@ -121,12 +191,14 @@ export function createFileTools(cwd: string): MagiTool[] {
 		async execute(_id, args) {
 			try {
 				const target = res(args.path as string);
+				if (acl) checkPath(target, "write", acl);
 				mkdirSync(dirname(target), { recursive: true });
 				writeFileSync(target, args.content as string, "utf-8");
 				return ok(
 					`Wrote ${(args.content as string).length} bytes to ${target}`,
 				);
 			} catch (e) {
+				if (e instanceof PolicyViolationError) return err(e.message);
 				return err(`WriteFile: ${(e as Error).message}`);
 			}
 		},
@@ -152,6 +224,7 @@ export function createFileTools(cwd: string): MagiTool[] {
 		async execute(_id, args) {
 			try {
 				const target = res(args.path as string);
+				if (acl) checkPath(target, "edit", acl);
 				const content = readFileSync(target, "utf-8");
 				const oldStr = args.old_string as string;
 				const newStr = args.new_string as string;
@@ -167,6 +240,7 @@ export function createFileTools(cwd: string): MagiTool[] {
 				writeFileSync(target, updated, "utf-8");
 				return ok(`Replaced ${count} occurrence(s) in ${target}`);
 			} catch (e) {
+				if (e instanceof PolicyViolationError) return err(e.message);
 				return err(`EditFile: ${(e as Error).message}`);
 			}
 		},
