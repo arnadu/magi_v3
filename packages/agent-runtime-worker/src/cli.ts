@@ -22,11 +22,13 @@ import { config as dotenvConfig } from "dotenv";
 // Load .env from the project root before reading any env vars.
 dotenvConfig({ quiet: true });
 
+import { join } from "node:path";
 import type {
 	AssistantMessage,
 	Message,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
+import { PoolRegistry } from "./identity.js";
 import {
 	createMongoMailboxRepository,
 	InMemoryMailboxRepository,
@@ -35,6 +37,7 @@ import { InMemoryMentalMapRepository } from "./mental-map.js";
 import { anthropicModel, CLAUDE_SONNET } from "./models.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { expandAtPaths } from "./user-input.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 
 // ---------------------------------------------------------------------------
 // Verbose message logging
@@ -118,6 +121,18 @@ async function main(): Promise<void> {
 	const { modelId, model } = getModel();
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
+	// Build a workspace manager using the agent IDs as synthetic pool users.
+	// This avoids needing real OS users in dev — skipAcl is auto-detected.
+	const poolUsers = teamConfig.agents.map((a) => a.id);
+	const workspaceManager = new WorkspaceManager({
+		layout: {
+			homeBase: join(workdir, "home"),
+			missionsBase: join(workdir, "missions"),
+			poolUsers,
+		},
+		registry: new PoolRegistry(),
+	});
+
 	const mongoUri = process.env.MONGODB_URI;
 	const mailboxRepo = mongoUri
 		? await createMongoMailboxRepository(mongoUri, teamConfig.mission.id)
@@ -159,6 +174,7 @@ async function main(): Promise<void> {
 			mentalMapRepo,
 			model,
 			workdir,
+			workspaceManager,
 			step: flags.has("--step"),
 			onAgentMessage: (agentId, msg) => logMessage(msg, agentId),
 		},

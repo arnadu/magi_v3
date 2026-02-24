@@ -16,17 +16,19 @@
  *     packages/agent-runtime-worker/tests/multi-agent.integration.test.ts
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
 import { describe, expect, it } from "vitest";
+import { PoolRegistry } from "../src/identity.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { InMemoryMailboxRepository } from "../src/mailbox.js";
 import { InMemoryMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
+import { WorkspaceManager } from "../src/workspace-manager.js";
 
 // Resolve path to the shared team config YAML (project root / config / teams).
 const TEAM_CONFIG_PATH = fileURLToPath(
@@ -35,12 +37,8 @@ const TEAM_CONFIG_PATH = fileURLToPath(
 
 describe("integration: two-agent word-count", () => {
 	it("Lead delegates to Worker and reports word count to user", async () => {
-		// Set up a temp dir with a known file.
+		// Set up a temp dir as the workspace root.
 		const tmpDir = mkdtempSync(join(tmpdir(), "magi-multi-"));
-		// "HELLO WORLD this is a test file with eleven words total end" = 12 words
-		const fileContent =
-			"HELLO WORLD this is a test file with eleven words total end\n";
-		writeFileSync(join(tmpDir, "greeting.txt"), fileContent, "utf-8");
 
 		const userMessages: MailboxMessage[] = [];
 
@@ -48,6 +46,34 @@ describe("integration: two-agent word-count", () => {
 			const teamConfig = loadTeamConfig(TEAM_CONFIG_PATH);
 			const mailboxRepo = new InMemoryMailboxRepository();
 			const mentalMapRepo = new InMemoryMentalMapRepository();
+
+			// The workspace manager uses agent IDs as pool users.
+			// Lead's workdir will be: tmpDir/home/lead/missions/word-count/
+			// Pre-create and seed greeting.txt there so the agent can find it.
+			const homeBase = join(tmpDir, "home");
+			const leadWorkdir = join(
+				homeBase,
+				"lead",
+				"missions",
+				teamConfig.mission.id,
+			);
+			mkdirSync(leadWorkdir, { recursive: true });
+			// "HELLO WORLD this is a test file with eleven words total end" = 12 words
+			writeFileSync(
+				join(leadWorkdir, "greeting.txt"),
+				"HELLO WORLD this is a test file with eleven words total end\n",
+				"utf-8",
+			);
+
+			const workspaceManager = new WorkspaceManager({
+				layout: {
+					homeBase,
+					missionsBase: join(tmpDir, "missions"),
+					poolUsers: teamConfig.agents.map((a) => a.id),
+				},
+				registry: new PoolRegistry(),
+				skipAcl: true,
+			});
 
 			// Seed the lead agent's inbox with the initial task.
 			await mailboxRepo.post({
@@ -67,6 +93,7 @@ describe("integration: two-agent word-count", () => {
 					mentalMapRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
+					workspaceManager,
 					maxCycles: 20,
 					onUserMessage: (msg) => {
 						userMessages.push(msg);

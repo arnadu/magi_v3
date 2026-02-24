@@ -22,16 +22,8 @@ export interface AgentRunContext {
 	teamConfig: TeamConfig;
 	mailboxRepo: MailboxRepository;
 	mentalMapRepo: MentalMapRepository;
-	/**
-	 * Fallback working directory when no identity is provided.
-	 * All agents share this when workspace isolation is not configured.
-	 */
-	workdir: string;
-	/**
-	 * When provided, this agent gets its own private workdir and ACL enforcement.
-	 * Set by the orchestrator after workspace provisioning (Sprint 4+).
-	 */
-	identity?: AgentIdentity;
+	/** Per-agent workspace identity providing private workdir and ACL. */
+	identity: AgentIdentity;
 	/** Called immediately when the agent posts a message to "user". */
 	onUserMessage?: (msg: MailboxMessage) => void;
 	/** Called for every message produced by the inner loop (for logging/streaming). */
@@ -45,8 +37,8 @@ export interface AgentRunContext {
 /**
  * Run a single agent cycle: build prompt → inject messages → execute loop.
  *
- * When an AgentIdentity is provided in ctx, the agent uses its own private
- * workdir and all file tool operations are checked against its permittedPaths.
+ * The agent uses its private workdir and all file tool operations are checked
+ * against its permittedPaths (ACL enforcement).
  */
 export async function runAgent(
 	agentId: string,
@@ -57,14 +49,9 @@ export async function runAgent(
 	const agent = ctx.teamConfig.agents.find((a) => a.id === agentId);
 	if (!agent) throw new Error(`Agent "${agentId}" not found in team config`);
 
-	// Use identity workdir if available, fall back to shared workdir.
-	const workdir = ctx.identity?.workdir ?? ctx.workdir;
-	const sharedArtifactsDir = ctx.identity?.sharedArtifactsDir;
+	const { workdir, sharedDir, permittedPaths } = ctx.identity;
 
-	// Build ACL policy if the agent has an identity.
-	const acl: AclPolicy | undefined = ctx.identity
-		? { agentId, permittedPaths: ctx.identity.permittedPaths }
-		: undefined;
+	const acl: AclPolicy = { agentId, permittedPaths };
 
 	// Initialise mental map if this agent has never run before.
 	let mentalMapHtml = await ctx.mentalMapRepo.load(agentId);
@@ -83,8 +70,8 @@ export async function runAgent(
 			onUserMessage: ctx.onUserMessage,
 		}),
 		createMentalMapTool(ctx.mentalMapRepo, agentId),
-		createFetchUrlTool(workdir, ctx.model, sharedArtifactsDir),
-		createInspectImageTool(workdir, ctx.model),
+		createFetchUrlTool(ctx.model, sharedDir),
+		createInspectImageTool(workdir, ctx.model, [sharedDir]),
 		...(searchWebTool ? [searchWebTool] : []),
 	];
 

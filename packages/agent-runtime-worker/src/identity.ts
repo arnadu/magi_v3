@@ -55,8 +55,13 @@ export interface AgentIdentity {
 	role: string;
 	/** Private working directory: homeBase/linuxUser/missions/missionId */
 	workdir: string;
-	/** Shared artifacts directory: missionsBase/missionId/shared/artifacts */
-	sharedArtifactsDir: string;
+	/**
+	 * Shared mission directory: missionsBase/missionId/shared
+	 *
+	 * Pass this to saveArtifact() so artifacts land under sharedDir/artifacts/{id}/,
+	 * making them accessible to all agents on the mission.
+	 */
+	sharedDir: string;
 	/** All absolute paths this agent is permitted to access. */
 	permittedPaths: string[];
 }
@@ -69,20 +74,15 @@ export function buildAgentIdentity(
 	layout: WorkspaceLayout,
 ): AgentIdentity {
 	const workdir = join(layout.homeBase, linuxUser, "missions", missionId);
-	const sharedArtifactsDir = join(
-		layout.missionsBase,
-		missionId,
-		"shared",
-		"artifacts",
-	);
+	const sharedDir = join(layout.missionsBase, missionId, "shared");
 	return {
 		missionId,
 		agentId,
 		linuxUser,
 		role,
 		workdir,
-		sharedArtifactsDir,
-		permittedPaths: [workdir, sharedArtifactsDir],
+		sharedDir,
+		permittedPaths: [workdir, sharedDir],
 	};
 }
 

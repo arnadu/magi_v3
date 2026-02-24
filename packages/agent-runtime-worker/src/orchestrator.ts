@@ -2,7 +2,6 @@ import * as readline from "node:readline";
 import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
-import type { AgentIdentity } from "./identity.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
 import { processUserInput } from "./user-input.js";
@@ -17,14 +16,17 @@ export interface OrchestratorConfig {
 	mailboxRepo: MailboxRepository;
 	mentalMapRepo: MentalMapRepository;
 	model: Model<string>;
-	/** Base working directory. Used when workspaceManager is not configured. */
+	/**
+	 * Working directory used for operator-level operations such as @path file
+	 * uploads typed at the interactive prompt. Not used as an agent workdir —
+	 * each agent gets its own private directory from workspaceManager.
+	 */
 	workdir: string;
 	/**
-	 * When provided, the orchestrator provisions a workspace at startup,
-	 * gives each agent its own private workdir with ACL enforcement, and
-	 * tears the workspace down on exit.
+	 * Provisions per-agent workspaces with private directories and ACL
+	 * enforcement. Required — every orchestration run must have a workspace.
 	 */
-	workspaceManager?: WorkspaceManager;
+	workspaceManager: WorkspaceManager;
 	/**
 	 * Max orchestration cycles before aborting.
 	 * One cycle = one pass through all agents with unread mail.
@@ -53,8 +55,8 @@ export interface OrchestratorConfig {
  * The loop terminates when no agent has unread messages, or when maxCycles
  * is reached, or when the AbortSignal fires.
  *
- * When a workspaceManager is provided, per-agent identity is resolved from
- * the provisioned workspace and ACL enforcement is active.
+ * The workspaceManager provisions per-agent private directories and ACL
+ * enforcement before the first cycle and tears them down on exit.
  */
 export async function runOrchestrationLoop(
 	config: OrchestratorConfig,
@@ -75,18 +77,18 @@ export async function runOrchestrationLoop(
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config must have at least one agent");
 
-	// Provision workspace if a manager is configured.
-	let identities: Map<string, AgentIdentity> | undefined;
-	if (workspaceManager) {
-		const agentDefs = teamConfig.agents.map((a) => ({
-			id: a.id,
-			role: ((a as Record<string, unknown>).role as string) ?? "agent",
-		}));
-		identities = workspaceManager.provision(teamConfig.mission.id, agentDefs);
-		console.log(
-			`[orchestrator] Workspace provisioned for ${identities.size} agent(s)`,
-		);
-	}
+	// Provision workspace for all agents.
+	const agentDefs = teamConfig.agents.map((a) => ({
+		id: a.id,
+		role: ((a as Record<string, unknown>).role as string) ?? "agent",
+	}));
+	const identities = workspaceManager.provision(
+		teamConfig.mission.id,
+		agentDefs,
+	);
+	console.log(
+		`[orchestrator] Workspace provisioned for ${identities.size} agent(s)`,
+	);
 
 	// Buffer for user input typed during agent runs.
 	const inputBuffer: string[] = [];
@@ -111,7 +113,6 @@ export async function runOrchestrationLoop(
 		teamConfig,
 		mailboxRepo,
 		mentalMapRepo,
-		workdir,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();
 			console.log(`\n[→ USER from ${msg.from}] ${msg.subject} (${timestamp})`);
@@ -200,11 +201,12 @@ export async function runOrchestrationLoop(
 				);
 
 				const agent = teamConfig.agents.find((a) => a.id === agentId);
-				const identity = identities?.get(agentId);
+				const identity = identities.get(agentId);
+				if (!identity)
+					throw new Error(`No workspace identity for agent "${agentId}"`);
 				console.log(
 					`\n[orchestrator] Running ${agent?.name ?? agentId}` +
-						(identity ? ` (${identity.linuxUser})` : "") +
-						` (${messages.length} message(s))`,
+						` (${identity.linuxUser}) (${messages.length} message(s))`,
 				);
 
 				await runAgent(
@@ -244,10 +246,7 @@ export async function runOrchestrationLoop(
 		}
 	} finally {
 		rl?.close();
-		// Teardown workspace if one was provisioned.
-		if (workspaceManager && identities) {
-			workspaceManager.teardown(teamConfig.mission.id, identities);
-		}
+		workspaceManager.teardown(teamConfig.mission.id, identities);
 	}
 
 	console.log(`\n[orchestrator] Mission complete (${cycles} cycle(s))`);

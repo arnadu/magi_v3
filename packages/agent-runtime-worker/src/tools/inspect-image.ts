@@ -44,8 +44,9 @@ function toolErr(text: string): ToolResult {
  * Create the InspectImage tool.
  *
  * Reads an image from disk, sends it to the vision-capable LLM used by the
- * agent, and returns the model's description. The path is resolved relative
- * to `workdir`, so agents can pass paths like `"artifacts/<id>/image-0.jpg"`.
+ * agent, and returns the model's description. The path may be absolute or
+ * relative (resolved against `workdir`). Absolute paths must fall under
+ * `workdir` or one of the `allowedDirs` (e.g. the mission's shared dir).
  *
  * The model must advertise `input: ["image"]` capability (CLAUDE_SONNET does).
  * If the model lacks vision capability the tool returns an error rather than
@@ -54,18 +55,19 @@ function toolErr(text: string): ToolResult {
 export function createInspectImageTool(
 	workdir: string,
 	model: Model<string>,
+	allowedDirs: string[] = [],
 ): MagiTool {
 	return {
 		name: "InspectImage",
 		description:
 			"Analyse an image file with the vision LLM and return a detailed description. " +
-			"The path is relative to the working directory, e.g. " +
-			'"artifacts/<id>/image-0.jpg" or "uploads/<id>/photo.png". ' +
+			"Supply the absolute path returned by FetchUrl, e.g. " +
+			'"/missions/<id>/shared/artifacts/<id>/image-0.jpg". ' +
 			"Optionally supply a focused prompt to direct the analysis.",
 		parameters: Type.Object({
 			path: Type.String({
 				description:
-					"Relative path to the image file (jpg, jpeg, png, gif, webp, avif)",
+					"Absolute path to the image file (jpg, jpeg, png, gif, webp, avif)",
 			}),
 			prompt: Type.Optional(
 				Type.String({
@@ -80,15 +82,18 @@ export function createInspectImageTool(
 			const userPrompt =
 				(args.prompt as string | undefined) ?? "Describe this image in detail.";
 
-			// --- Guard: path must stay within workdir (prevent traversal) ---------
-			const safeWorkdir = resolve(workdir);
+			// --- Guard: path must stay within workdir or an allowedDir -----------
 			const resolvedPath = resolve(workdir, imagePath);
-			if (
-				resolvedPath !== safeWorkdir &&
-				!resolvedPath.startsWith(safeWorkdir + sep)
-			) {
+			const allBases = [
+				resolve(workdir),
+				...allowedDirs.map((d) => resolve(d)),
+			];
+			const allowed = allBases.some(
+				(base) => resolvedPath === base || resolvedPath.startsWith(base + sep),
+			);
+			if (!allowed) {
 				return toolErr(
-					`InspectImage: path "${imagePath}" is outside the working directory`,
+					`InspectImage: path "${imagePath}" is outside the permitted directories`,
 				);
 			}
 

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
@@ -247,14 +248,15 @@ async function processDirectImage(
 		);
 	}
 
+	const artifactPath = join(artifactBase, "artifacts", artifactId);
 	const lines = [
 		`Fetched image: ${rawUrl}`,
 		`Artifact id: ${artifactId}`,
-		`  artifacts/${artifactId}/${filename}`,
-		`  artifacts/${artifactId}/content.md`,
+		`  ${artifactPath}/${filename}`,
+		`  ${artifactPath}/content.md`,
 		"",
-		`Use \`cat artifacts/${artifactId}/content.md\` to read the auto-description.`,
-		`Use InspectImage with path "artifacts/${artifactId}/${filename}" for a focused analysis.`,
+		`Use Bash: cat "${artifactPath}/content.md"  to read the auto-description.`,
+		`Use InspectImage with path "${artifactPath}/${filename}" for a focused analysis.`,
 	];
 	return ok(lines.join("\n"));
 }
@@ -358,14 +360,15 @@ async function processPdf(
 		);
 	}
 
+	const artifactPath = join(artifactBase, "artifacts", artifactId);
 	const lines = [
 		`Fetched PDF: ${rawUrl}`,
 		`Artifact id: ${artifactId}`,
-		`  artifacts/${artifactId}/content.md  (${contentText.length} chars, ${pageCount} pages, visual descriptions included)`,
-		...imageRelPaths.map((p) => `  artifacts/${artifactId}/${p}`),
+		`  ${artifactPath}/content.md  (${contentText.length} chars, ${pageCount} pages, visual descriptions included)`,
+		...imageRelPaths.map((p) => `  ${artifactPath}/${p}`),
 		"",
-		`Use \`cat artifacts/${artifactId}/content.md\` to read extracted text and page descriptions.`,
-		`Use InspectImage on a page path for a focused follow-up question.`,
+		`Use Bash: cat "${artifactPath}/content.md"  to read extracted text and page descriptions.`,
+		`Use InspectImage with path "${artifactPath}/<page>.png" for a focused follow-up question.`,
 	];
 
 	return ok(lines.join("\n"));
@@ -379,9 +382,13 @@ async function processPdf(
  * Create the FetchUrl tool.
  *
  * Fetches a URL and saves content as an artifact under
- * `{workdir}/artifacts/{id}/`. Image descriptions are automatically generated
- * and embedded in content.md — the agent does not need to call InspectImage
- * for a basic overview. InspectImage remains available for focused questions.
+ * `{artifactsDir}/artifacts/{id}/`. Image descriptions are automatically
+ * generated and embedded in content.md — the agent does not need to call
+ * InspectImage for a basic overview. InspectImage remains available for
+ * focused questions.
+ *
+ * The tool always returns absolute paths in its output so agents can
+ * reference artifacts regardless of their working directory.
  *
  * Supported content types:
  *   HTML   — Readability text + embedded images downloaded. Each image is
@@ -390,25 +397,25 @@ async function processPdf(
  *             description is embedded right after its extracted text.
  *   image  — image saved + auto-described; description written to content.md.
  *   plain text — saved as-is.
+ *
+ * @param model     LLM used for auto-describing images.
+ * @param artifactsDir  Directory under which artifacts/{id}/ folders are created.
+ *                      Use identity.sharedDir in multi-agent contexts so all
+ *                      agents on the mission can read the same artifacts.
  */
 export function createFetchUrlTool(
-	workdir: string,
 	model: Model<string>,
-	sharedArtifactsDir?: string,
+	artifactsDir: string,
 ): MagiTool {
-	// When workspace is active, artifacts go to the shared dir; otherwise
-	// they go to {workdir}/artifacts/ as in Sprints 1-3.
-	const artifactBase = sharedArtifactsDir ?? workdir;
-
 	return {
 		name: "FetchUrl",
 		description:
-			"Fetch a URL and save its content as an artifact in artifacts/. " +
+			"Fetch a URL and save its content as an artifact. " +
 			"Supports HTML (article text + images), PDF (text + per-page visuals), " +
 			"and direct image URLs. " +
-			"Image descriptions are auto-generated and embedded in content.md so you " +
-			"can read everything with a single `cat artifacts/<id>/content.md`. " +
-			"Use InspectImage for focused follow-up questions about a specific image.",
+			"Image descriptions are auto-generated and embedded in content.md. " +
+			"The tool returns the absolute path to each saved file — use those paths " +
+			"with Bash (cat) or InspectImage directly.",
 		parameters: Type.Object({
 			url: Type.String({
 				description: "URL to fetch (http://, https://, or file://)",
@@ -475,14 +482,14 @@ export function createFetchUrlTool(
 
 			// --- Route by content type -----------------------------------------
 			if (mimeType === "application/pdf") {
-				return processPdf(bytes, artifactBase, rawUrl, model, maxPages, signal);
+				return processPdf(bytes, artifactsDir, rawUrl, model, maxPages, signal);
 			}
 
 			if (mimeType.startsWith("image/")) {
 				return processDirectImage(
 					bytes,
 					mimeType,
-					artifactBase,
+					artifactsDir,
 					rawUrl,
 					model,
 					signal,
@@ -591,7 +598,7 @@ export function createFetchUrlTool(
 			];
 
 			try {
-				await saveArtifact(artifactBase, artifactId, files, meta);
+				await saveArtifact(artifactsDir, artifactId, files, meta);
 			} catch (e) {
 				return toolErr(
 					`FetchUrl: failed to save artifact — ${(e as Error).message}`,
@@ -599,18 +606,19 @@ export function createFetchUrlTool(
 			}
 
 			// --- Return summary ------------------------------------------------
+			const artifactPath = join(artifactsDir, "artifacts", artifactId);
 			const hasDescriptions = imageEntries.some((e) => e.description);
 			const lines = [
 				`Fetched: ${rawUrl}`,
 				`Artifact id: ${artifactId}`,
-				`  artifacts/${artifactId}/content.md  (${contentText.length} chars${imageEntries.length > 0 ? `, including ${imageEntries.length} image description${imageEntries.length !== 1 ? "s" : ""}` : ""})`,
-				...imageEntries.map((e) => `  artifacts/${artifactId}/${e.filename}`),
+				`  ${artifactPath}/content.md  (${contentText.length} chars${imageEntries.length > 0 ? `, including ${imageEntries.length} image description${imageEntries.length !== 1 ? "s" : ""}` : ""})`,
+				...imageEntries.map((e) => `  ${artifactPath}/${e.filename}`),
 				"",
-				`Use \`cat artifacts/${artifactId}/content.md\` to read the article${hasDescriptions ? " and image descriptions" : ""}.`,
+				`Use Bash: cat "${artifactPath}/content.md"  to read the article${hasDescriptions ? " and image descriptions" : ""}.`,
 			];
 			if (imageEntries.length > 0) {
 				lines.push(
-					`Use InspectImage for focused follow-up questions about a specific image.`,
+					`Use InspectImage with the absolute path above for focused follow-up questions about a specific image.`,
 				);
 			}
 

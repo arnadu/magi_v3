@@ -92,7 +92,7 @@ describe("integration: SearchWeb + FetchUrl + auto-describe", () => {
 				tools: [
 					...createFileTools(workdir),
 					createSearchWebTool(apiKey),
-					createFetchUrlTool(workdir, CLAUDE_SONNET),
+					createFetchUrlTool(CLAUDE_SONNET, workdir),
 					createInspectImageTool(workdir, CLAUDE_SONNET),
 				],
 			});

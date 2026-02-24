@@ -3,15 +3,15 @@
  *
  * Scenario:
  *   - Lead receives a task: fetch a local PDF file.
- *   - Lead calls FetchUrl on the PDF → artifact saved under artifacts/.
- *   - Lead PostMessages to Analyst with the artifact page path.
+ *   - Lead calls FetchUrl on the PDF → artifact saved under shared artifacts dir.
+ *   - Lead PostMessages to Analyst with the artifact page path (absolute).
  *   - Analyst calls InspectImage on the page PNG and reports findings.
  *   - Lead PostMessages a combined summary to the user.
  *
  * This validates:
  *   - FetchUrl PDF extraction (text + page renders via mupdf)
- *   - Cross-agent artifact sharing (shared workdir, Sprint 3 convention)
- *   - InspectImage with a PDF page rendered as PNG
+ *   - Cross-agent artifact sharing (shared workspace dir, Sprint 4 convention)
+ *   - InspectImage with a PDF page rendered as PNG via absolute path
  *   - Full orchestration loop with FetchUrl + InspectImage tools active
  *
  * Requires ANTHROPIC_API_KEY in environment or .env file.
@@ -23,11 +23,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
 import { describe, expect, it } from "vitest";
+import { PoolRegistry } from "../src/identity.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { InMemoryMailboxRepository } from "../src/mailbox.js";
 import { InMemoryMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
+import { WorkspaceManager } from "../src/workspace-manager.js";
 
 // ---------------------------------------------------------------------------
 // Test assets
@@ -48,7 +50,7 @@ const TEAM_CONFIG_PATH = fileURLToPath(
 
 describe("integration: cross-agent PDF fetch and inspect", () => {
 	it("Lead fetches PDF, Analyst inspects page, Lead reports to user", async () => {
-		const workdir = mkdtempSync(join(tmpdir(), "magi-fetch-share-"));
+		const tmpDir = mkdtempSync(join(tmpdir(), "magi-fetch-share-"));
 
 		const userMessages: MailboxMessage[] = [];
 
@@ -56,6 +58,16 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 			const teamConfig = loadTeamConfig(TEAM_CONFIG_PATH);
 			const mailboxRepo = new InMemoryMailboxRepository();
 			const mentalMapRepo = new InMemoryMentalMapRepository();
+
+			const workspaceManager = new WorkspaceManager({
+				layout: {
+					homeBase: join(tmpDir, "home"),
+					missionsBase: join(tmpDir, "missions"),
+					poolUsers: teamConfig.agents.map((a) => a.id),
+				},
+				registry: new PoolRegistry(),
+				skipAcl: true,
+			});
 
 			// Seed Lead's inbox with the initial task
 			await mailboxRepo.post({
@@ -78,7 +90,8 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 					mailboxRepo,
 					mentalMapRepo,
 					model: CLAUDE_SONNET,
-					workdir,
+					workdir: tmpDir,
+					workspaceManager,
 					maxCycles: 30,
 					onUserMessage: (msg) => {
 						userMessages.push(msg);
@@ -131,7 +144,7 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 				/test|page|image|dog|cat|animal|pdf|document/i,
 			);
 		} finally {
-			rmSync(workdir, { recursive: true });
+			rmSync(tmpDir, { recursive: true });
 		}
 	}, 360_000); // 6-minute timeout — multiple agents, LLM + vision calls
 });
