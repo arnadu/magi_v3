@@ -64,10 +64,13 @@ npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 
 ### Agent Identity Model
 
-Each agent has a stable enterprise-style identity:
-- `agent_id`, Linux `uid/gid`, role, policy tags
-- Private home: `/home/agents/{agent_id}`
-- Shared mission folders: `/missions/{mission_id}/shared/{team_or_role}`
+Each agent has a two-layer identity:
+- `agent_id` — semantic MAGI identity (e.g. `lead-analyst`), stable across missions
+- `linux_user` — OS pool member (e.g. `magi-w1`) assigned at mission startup; never created per-mission
+- Role, policy tags, `permittedPaths`, `permittedTools` stored in MongoDB `agent_identities`
+- Per-mission private home: `/home/{linux_user}/missions/{mission_id}/`
+- Shared mission folder: `/missions/{mission_id}/shared/artifacts/`
+- Pool provisioned once by `scripts/setup-dev.sh` (magi-w1…magi-w6); same code in containers with pool size 1
 - `dev` and `prod` workspaces are isolated; cross-environment exchange only via promoted artifacts
 
 Low-risk orchestration tasks run in shared runtime workers. Code execution, data processing, and browser automation run in the agent's assigned execution environment with their persistent home and allowed shared folders mounted.
@@ -127,13 +130,17 @@ Two packages are built. Key files:
 - `InspectImage` — pass any image file to the vision LLM; returns text description; path traversal safe
 - `SearchWeb` — Brave Search API; ranked result list; artifact saved; conditionally registered
 
-**Sprint 4–6 (planned):**
-1. `ExecProgram` / `ProgramStatus` / `ReadLogs` / `StopProgram` — sandboxed process execution
-2. `BrowseWeb` — Playwright-based browser worker
-3. `FetchData` — HTTP pull with provenance metadata
-4. `AnalyzeData` — scripts/notebooks in execution sandbox
-5. `PublishArtifact` — register outputs with lineage metadata
-6. `PromoteArtifact` (Sprint 6+) — dev-to-prod artifact promotion
+**Sprint 5 — Skills (planned):**
+- No new tools. Skill discovery added to `buildSystemPrompt()`: scans four tiers (platform → team → mission → agent-local), injects compact metadata block (~100 tokens/skill). Agents use existing `Bash` to read `SKILL.md` and run scripts.
+- Platform default skills in `packages/skills/`: `skill-creator`, `git-provenance`, `inter-agent-comms`
+- `PublishArtifact` and `ListArtifacts` dropped — replaced by `git-provenance` skill + `git log` via Bash. See ADR-0007.
+
+**Sprint 6 — Orchestrator as a Service (planned):**
+- No new tools. `ScheduleMessage`/`CancelSchedule`/`RunBackground` are skills, not tools (token-cost criterion: used O(1) times per mission vs O(50) LLM calls — see ADR-0007).
+- Two new platform skills ship this sprint (depend on HTTP API): `schedule-task`, `run-background`
+
+**Sprint 7 (planned):**
+- `BrowseWeb` — Playwright headless browser; renders JS before extraction; same artifact convention as `FetchUrl`; conditionally registered
 
 ## Sprint Roadmap
 
@@ -143,13 +150,15 @@ Two packages are built. Key files:
 | 1 | ✅ Done | Inner loop: `runInnerLoop`, 3 tools, MongoDB persistence, CLI, integration test |
 | 2 | ✅ Done | Multi-agent: YAML team config (Zod), mailbox, orchestration loop, supervisor-depth ordering, 5 tools |
 | 3 | ✅ Done | Web search, fetch, artifacts: `FetchUrl`, `InspectImage`, `SearchWeb`; `@path` upload; artifact model |
-| 4 | Next | Durability: Temporal workflows, Redis Streams mailbox, identity, workspace, ACL enforcement |
-| 5 | | Execution, web, and data tools |
-| 6 | | Equity research team MVP |
-| 7 | | Reliability + evaluation harness (5-day unattended run) |
-| 8 | | Work Product Layer UI |
-| 9 | | Cloud burst and scale-out |
-| 10 | | Hardening and launch prep |
+| 4 | Next | Identity, workspace, ACL enforcement (Temporal + Redis dropped — see ADRs 0001, 0006) |
+| 5 | | Agent Skills: discovery, 3 platform defaults (`skill-creator`, `git-provenance`, `inter-agent-comms`), git workspace |
+| 6 | | Orchestrator as a service: persistent daemon, Mission HTTP API, `schedule-task` + `run-background` skills |
+| 7 | | `BrowseWeb` (Playwright) |
+| 8 | | Equity research team MVP |
+| 9 | | Reliability + evaluation harness (5-day unattended run) |
+| 10 | | Work Product Layer UI |
+| 11 | | Cloud burst and scale-out |
+| 12 | | Hardening and launch prep |
 
 ## Testing Approach
 

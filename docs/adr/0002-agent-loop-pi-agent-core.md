@@ -59,7 +59,7 @@ the loop's actual requirements at this stage.
 
 **This ADR remains the target for production.** `pi-agent-core` adoption is planned when:
 - Streaming to the frontend is required (Sprint 8)
-- Mid-run steering via Temporal signals is required (Sprint 4)
+- Mid-run steering injection is required (signals or abort; defer until Sprint 7's unattended-run requirement makes the pattern concrete)
 - Context window compaction is required (whenever long sessions hit limits)
 
 Until then, `runInnerLoop` in `packages/agent-runtime-worker/src/loop.ts` is the operative

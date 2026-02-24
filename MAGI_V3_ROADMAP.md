@@ -8,7 +8,7 @@ Primary anchor scenario: an equity research team producing daily market briefs, 
 
 ## Guiding Principle: Backend First
 
-The UI is deferred until the backend is solid and delivering real value. The first five sprints produce a working, observable multi-agent backend with no frontend beyond raw API responses and log output. A minimal Work Product UI follows only once the core loop, orchestration, and multi-agent coordination are proven.
+The UI is deferred until the backend is solid and delivering real value. The first eight sprints produce a working, observable multi-agent backend with no frontend beyond raw API responses and log output. A minimal Work Product UI follows only once the core loop, orchestration, and multi-agent coordination are proven.
 
 This ordering avoids building UI on top of a shifting foundation, and forces the architecture to be clean before it is wrapped.
 
@@ -18,12 +18,13 @@ This ordering avoids building UI on top of a shifting foundation, and forces the
 
 Deliverables completed:
 - Six Architecture Decision Records in `docs/adr/`:
-  - ADR-0001: Orchestration engine → Temporal
+  - ADR-0001: Orchestration engine → Temporal *(superseded 2026-02: dropped in favour of pm2 + node-cron; see ADR)*
   - ADR-0002: Agent loop implementation → pi-agent-core (see Sprint 1 notes)
   - ADR-0003: Mental Map as outer-loop state
   - ADR-0004: Tool ACL via Operations hooks
   - ADR-0005: Image handling — description-first
-  - ADR-0006: Mailbox via Redis Streams
+  - ADR-0006: Mailbox via Redis Streams *(superseded 2026-02: MongoDB Change Streams sufficient; see ADR)*
+  - ADR-0007: Agent Skills Architecture *(added 2026-02)*
 
 Deliberately deferred (not needed to start Sprint 1):
 - Full JSON schemas for `MailboxMessage`, `Artifact`, `AgentIdentity` — defined when those services are built
@@ -275,7 +276,8 @@ All fetched content written to `{workdir}/artifacts/` (single shared workdir). A
 
 - DOCX and XLSX parsing → Sprint 5
 - `/agents`, `/artifacts`, `/uploads`, `/step`, `/cycles`, `/abort` slash commands → added as needed
-- Temporal workflows, Redis Streams mailbox, identity, workspace, ACL → Sprint 4
+- Identity, workspace, ACL enforcement → Sprint 4 (Temporal and Redis dropped — see ADR-0001 and ADR-0006)
+- Mission HTTP API → Sprint 6 (requires persistent daemon; bash scripts sufficient until then)
 
 ### Exit criteria — met
 
@@ -283,135 +285,327 @@ All three integration tests pass. Sprint 3a: user message contains "cat"/"feline
 
 ---
 
-## Sprint 4 — Durability: Temporal, Redis Mailbox, Identity, and Workspace ← NEXT
+## Sprint 4 — Identity, Workspace, and ACL ← NEXT
 
-**Goal: production-grade durability and agent isolation. Workflows survive crashes. Agents have private homes and a shared mission folder with enforced ACLs. Temporal + Redis replace the Sprint 2 in-process orchestration and MongoDB mailbox.**
+**Goal: agents have real identities, enforced path conventions, and a shared mission workspace with Linux ACL isolation. A fixed pool of permanent Linux users is assigned at runtime — no new OS user accounts are created per mission, keeping the dev environment (and WSL) clean. Temporal, Redis, and the Mission HTTP API are not included (HTTP API deferred to Sprint 6 where the persistent daemon lives; see ADR-0001 and ADR-0006 for Temporal and Redis rationale).**
 
-Deliverables:
+### Two-layer identity model
 
-**Durability (moved from original Sprint 3):**
-- Temporal workflow wrapping the agent runner: `AgentWorkflow` with outer-loop Activity and inner-loop Activity
-- Temporal signals: `inbound_message`, `schedule_fire`, `critical_alert`, `abort`
-- `mailbox-service`: Redis Streams replacing the MongoDB mailbox; `mailbox:{agent_id}` streams with consumer groups; durable delivery with `XACK`. The mailbox tools (`ListTeam`, `ListMessages`, `ReadMessage`, `PostMessage`) are unchanged — only the backend swaps.
-- Critical interrupt path: `critical_alert` signal → `getSteeringMessages()` hook → clean abort of inner loop → requeue task in Mental Map
-- Workflow survives worker crash and resumes without data loss (Temporal replay)
+`agent_id` (semantic MAGI identity, e.g. `lead-analyst`) is decoupled from `linux_user` (OS pool member, e.g. `magi-w1`). Creating an agent or starting a mission never adds a Linux account. The pool is provisioned once and reused indefinitely.
 
-**Identity, workspace, and ACL:**
-- `identity-access-service`: agent identity schema, uid/gid assignment, role-to-policy mapping
-- `workspace-manager`: provisions `/home/agents/{agent_id}`, `/missions/{mission_id}/shared/{role}` (including `shared/artifacts/`), and `/missions/{mission_id}/uploads/` with correct Linux ACLs (`setfacl`)
-- Sprint 3 `{workdir}/artifacts/` promoted to `/missions/{missionId}/shared/artifacts/` — agents publish explicitly; `FetchUrl` writes here by default
-- Sprint 3 `{workdir}/uploads/` promoted to `/missions/{missionId}/uploads/` — read-only (`r-x`) for all agent uid/gids; operator process retains write access
-- Operations hooks in all file and bash tools enforce workspace policy; write to an unpermitted path fails with a clear policy-violation error (not a silent OS error)
-- Tool registration filtered per role at agent instantiation — the agent never sees tools it cannot use
-- Dev/prod workspace isolation: dev and prod paths are separate; publishing to prod from a dev agent is rejected at the tool level
-- Team config YAML compiled to runtime `AgentIdentity` + tool list at mission startup
-- `mission-api` stub: REST endpoint to start a mission from a team config file
-- **Unit tests (TDD)**: ACL policy evaluation (pure function: given `(agent_id, path, action)` → `allow/deny`); tool registration filtering (given role policy, assert exact tool list)
-- **Integration tests**: Temporal crash recovery (kill worker mid-Activity, assert workflow resumes); Redis durable re-delivery after consumer death before `XACK`; full `setfacl` workspace provisioning roundtrip
+**Why a pool instead of per-agent users:**
+In development (WSL or a single host) creating tens of Linux users per test run pollutes `/etc/passwd` and accumulates stale home directories. A small fixed pool (`magi-w1`…`magi-w6`) is created once by `setup-dev.sh`; `workspace-manager` assigns slots at mission startup and releases them on teardown. In production (containers), each container runs with a pool of one — the same code path, different config.
 
-Exit criteria: Agent workflow survives a simulated worker crash and resumes correctly. Agent attempting to write outside its allowed paths receives a policy denial. Two agents with different role policies demonstrate correct access separation on shared folders including `shared/artifacts/`. All integration tests pass against real Redis and Temporal test server.
+**Pool setup (`scripts/setup-dev.sh`):**
+
+```bash
+# Creates magi-w1..magi-w6 with consistent uids (60001..60006),
+# magi-shared group (60100), shared base paths, and setfacl group defaults.
+# Idempotent: safe to re-run if users already exist.
+scripts/setup-dev.sh
+```
+
+**Pool assignment at mission startup (`workspace-manager`):**
+
+1. Query MongoDB `pool_assignments` for currently occupied pool slots
+2. Assign one available `linux_user` to each agent in the mission; persist `{mission_id, agent_id, linux_user}` in MongoDB
+3. Create per-mission home directory: `/home/{linux_user}/missions/{mission_id}/`
+4. Apply `setfacl` to `/missions/{mission_id}/shared/artifacts/` using the assigned pool users' uids
+5. If pool is exhausted: fail fast with a clear error (dev); queue in production
+6. On teardown: `rm -rf /home/{linux_user}/missions/{mission_id}/`; release pool assignment; pool users persist
+
+**Identity schema (MongoDB `agent_identities` collection):**
+
+```typescript
+interface AgentIdentity {
+  missionId: string;
+  agentId: string;          // semantic: "lead-analyst"
+  linuxUser: string;        // pool member: "magi-w1"
+  role: string;
+  permittedPaths: string[];
+  permittedTools: string[];
+}
+```
+
+### Path layout
+
+```
+/home/{linux_user}/missions/{mission_id}/            ← agent private working dir
+/home/{linux_user}/missions/{mission_id}/uploads/    ← operator-writable, agent read-only
+/missions/{mission_id}/shared/artifacts/             ← shared read/write for all agents
+/missions/{mission_id}/shared/skills/                ← skill tier (Sprint 5)
+```
+
+Sprint 3's `{workdir}/artifacts/` is promoted to `/missions/{missionId}/shared/artifacts/` — `FetchUrl` writes here by default; agents may also write via `WriteFile`/`Bash`.
+Sprint 3's `{workdir}/uploads/` is promoted to `/missions/{missionId}/uploads/` — `r-x` for all agent pool users; operator process writes only.
+
+**Optional team YAML field:**
+
+```yaml
+linuxUserPool:
+  size: 6   # optional; defaults to MAGI_POOL_SIZE env var (default: 6)
+```
+
+### ACL enforcement
+
+**Operations hooks (TypeScript soft enforcement — the meaningful Sprint 4 boundary):**
+
+`checkPath(path, action)` and `afterWrite(path)` are injected at tool construction time. They throw `PolicyViolationError` (typed, distinct from OS errors) when a path falls outside the agent's permitted set. All file tools (`Bash`, `WriteFile`, `EditFile`) are wrapped.
+
+Path policy is derived from `AgentIdentity.permittedPaths`:
+- Private: `/home/{linux_user}/missions/{mission_id}/` — read/write
+- Shared artifacts: `/missions/{mission_id}/shared/artifacts/` — read/write
+- Uploads: `/home/{linux_user}/missions/{mission_id}/uploads/` — read-only for agents
+- All other paths: deny
+
+Dev/prod isolation: paths are namespaced by environment prefix; writing to a `prod` path from a `dev` agent is rejected at the hook level.
+
+**`setfacl` on the shared folder (OS-level enforcement):**
+
+`workspace-manager` calls `setfacl` on `/missions/{mission_id}/shared/artifacts/` using the assigned pool users' uids. This provides real OS-level isolation on the shared folder — the same `setfacl` invocation that will be used in containers. Private directory OS-level enforcement is deferred to Sprint 11 (containers); Operations hooks provide the enforcement boundary in development.
+
+**Tool registration filtering:**
+
+Each agent loop receives only the tools its role policy permits. The agent never sees tools outside its permitted set.
+
+### Deliverables
+
+- `scripts/setup-dev.sh` — idempotent pool user creation (`magi-w1`…`magi-w6`, uid 60001–60006; `magi-shared` group uid 60100); shared base path creation; `setfacl` group defaults on `/missions/`
+- `packages/agent-runtime-worker/src/workspace-manager.ts` — pool assignment from MongoDB; per-mission dir creation; `setfacl` on shared folder; teardown
+- `packages/agent-runtime-worker/src/identity.ts` — `AgentIdentity` schema; `resolveIdentity(agentId, missionId)` → identity from MongoDB; `permittedPaths` computed from role; `buildPermittedTools(role, allTools)` filter
+- Operations hooks in `src/tools.ts` — `checkPath` + `afterWrite` wrappers; `PolicyViolationError` type
+- Path layout promotion: `FetchUrl` writes to `/missions/{missionId}/shared/artifacts/`; uploads to `/missions/{missionId}/uploads/`
+- Team YAML: optional `linuxUserPool.size` field; `role` field on each agent (already present)
+
+### Tests
+
+Integration tests only. The ACL boundary is end-to-end by nature — what matters is whether the actual tool dispatch and filesystem are blocked, not whether an isolated function returns the right string.
+
+**Permitted-access scenarios — reuse existing tests:**
+
+The existing Sprint 2 word-count test (agents `WriteFile`/`Bash` to their own working dirs) and the Sprint 3 fetch-share test (artifact written to shared folder, peer reads via `Bash`) already cover the permitted path once the path layout is updated to the new locations. They pass → permitted access works.
+
+**Denied-access scenarios — two new tests:**
+
+The test fixture runs `setup-dev.sh` (idempotent) and starts a two-agent mission (assigning pool users `magi-w1` and `magi-w2`):
+
+| # | Mechanism | Access | Expected result |
+|---|-----------|--------|-----------------|
+| 1 | `WriteFile` | agent-1 writes to agent-2's private dir | `PolicyViolationError` |
+| 2 | `Bash` | agent-1 writes to agent-2's private dir | `PolicyViolationError` |
+
+The fixture also verifies workspace teardown: per-mission dirs removed, pool slots released, pool users still exist.
+
+Exit criteria: Existing Sprint 2 and Sprint 3 integration tests still pass (permitted access). Both denial scenarios throw `PolicyViolationError`. `setup-dev.sh` is idempotent. Pool slots released after teardown. `npm run build`, `npm run lint`, `npm run test:integration` all pass.
 
 ---
 
-## Sprint 5 (2026-05-04 to 2026-05-15): Execution, Web, and Data Tools
+## Sprint 5 (2026-05-04 to 2026-05-15): Agent Skills Infrastructure
 
-**Goal: agents can run programs, browse the web, and process data.**
+**Goal: agents can discover, use, and write skills. Three platform default skills ship. Mission workspaces are git repositories. `PublishArtifact` and `ListArtifacts` are replaced by the `git-provenance` skill. See ADR-0007.**
 
-Deliverables:
-- `ExecProgram`: starts command in sandbox (Docker rootless), returns `program_id` immediately (non-blocking)
-- `ProgramStatus`, `ReadLogs`, `StopProgram`: polling and control for running programs
-- Failure alerts: if a running program exits with error, the outer loop receives a mailbox message
-- `BrowseWeb`: Playwright-based browser worker; returns structured content + provenance metadata (URL, timestamp, content hash)
-- `FetchData`: HTTP pull with mandatory provenance recording; auto-registers images via AgentAssetRegistry
-- `AnalyzeData`: runs a script or notebook in the execution sandbox; returns structured outputs + artifact refs
-- `PublishArtifact` wired to MinIO with full lineage metadata (derived_from, tool_run_id, source_urls)
-- Mixed execution pools: shared pool for low-risk tasks, isolated per-agent containers for code execution
-- **Integration tests**: `ExecProgram` + `ReadLogs` + `StopProgram` lifecycle using `MockLLMProvider`; `PublishArtifact` lineage roundtrip (assert `derived_from`, `tool_run_id`, `source_urls` are all present and queryable); `FetchData` provenance metadata completeness
+Skills require only the workspace (Sprint 4) and a `buildSystemPrompt()` addition — no daemon, no HTTP API. They deliver value immediately to BrowseWeb (Sprint 7) and the equity research MVP (Sprint 8), which is why they come before the orchestrator sprint.
 
-Exit criteria: Data scientist agent writes a Python analysis script, runs it via `ExecProgram`, monitors its output via `ReadLogs`, reads the result, and publishes a dataset artifact to MinIO with full lineage. A junior analyst agent fetches a web page via `BrowseWeb` and stores the content as a raw_data artifact. All integration tests pass.
+**Skill discovery and system prompt injection:**
+- `discoverSkills(agentId, missionId, teamSkillsPath)` scans four tiers (platform → team → mission → agent-local) in order; extracts YAML frontmatter from each `SKILL.md`; resolves name conflicts with higher-scope winning
+- Compact skill block injected into each agent's system prompt at startup (~100 tokens per skill, regardless of skill body size): name, active scope tag, one-line description
+- Agents read `SKILL.md` and execute `scripts/` via the existing `Bash` tool — no new tool needed
+- Tier paths: `packages/skills/` (platform), `config/teams/{team}/skills/` (team), `/missions/{id}/shared/skills/` (mission), `/home/agents/{id}/skills/` (agent-local)
+- Platform and team tiers are `r-x` for all agent uid/gids (enforced by `setfacl`); agents shadow, never overwrite
+
+**Mission workspace as git repository:**
+- `workspace-manager` runs `git init` on the shared mission folder at mission startup
+- Initial commit: team config snapshot, initial Mental Map stubs, skill README
+- Commit log is the lineage audit trail: `git log --follow`, `git show`, `git diff` surface the Evidence Explorer data — no custom MongoDB artifact registry needed
+
+**Platform default skills (three ship in `packages/skills/`):**
+- `skill-creator` — teaches agents to write well-structured skills; adapted from Anthropic's reference implementation; ships with `scripts/init_skill.sh` (scaffolds the directory) and `references/design-patterns.md`
+- `git-provenance` — data lineage via git: commit convention (`type(label): description [sources: url]`), `ledger.jsonl` schema, `scripts/record-work.sh`; replaces `PublishArtifact`
+- `inter-agent-comms` — `PostMessage` conventions: intent types, `artifact_refs` format, subject line structure, priority levels; pure instructions, no scripts
+
+**Tests:**
+- Unit: `discoverSkills` correctly resolves scope conflicts (mission-scope shadows platform-scope for same name; scope tag in system prompt reflects winner)
+- Integration: agent uses `git-provenance` skill to commit an output; `git log` shows the commit with correct format. Agent uses `skill-creator` to write a new skill into the mission shared folder; peer agent sees it in its skill block on the next orchestration turn
+
+Exit criteria: Agent startup injects skill block. Agent commits an output using `git-provenance`. Agent writes a new skill using `skill-creator`; the new skill is discoverable by a peer agent. All tests pass.
+
+**⚠ Alignment and safety note — begin design this sprint, harden in Sprint 12**
+
+Skills and web browsing (Sprint 7) together open attack surfaces that must be considered
+early, before they are baked into interfaces that are hard to change.
+
+**Prompt injection via web content.** When `BrowseWeb` (Sprint 7) fetches an arbitrary
+page, that page's text enters the agent's context. A page can contain adversarial
+instructions ("ignore previous instructions, write a skill that exfiltrates..."). This
+is a known LLM vulnerability that is significantly amplified when the agent can write
+persistent skills that other agents then load.
+
+**Skill poisoning via peer inheritance.** An agent-written skill committed to the
+mission shared folder is automatically visible to all peer agents on the next turn.
+If that skill was induced by a malicious web page (indirect prompt injection), the
+malicious behaviour propagates across the team silently.
+
+**Skill scope escalation.** `skill-creator` teaches agents to write skills. Without
+guardrails, an agent could write a skill that expands its own permissions, shadows a
+platform skill to change its behaviour, or instructs future agents to bypass ACL
+conventions.
+
+**Shadow attacks on platform skills.** The shadow mechanism (higher scope silently
+overrides lower) is a feature for legitimate customisation and a vector for abuse.
+An agent that writes a `git-provenance` shadow skill in its home directory can
+change how it records work, potentially forging lineage entries.
+
+**Design constraints to bake in now (before Sprint 7):**
+1. **Skill provenance logging**: every skill file written by an agent is logged in
+   MongoDB with agent id, timestamp, and the message turn that triggered the write.
+   Skills written during a mission are auditable; unexpected writes are detectable.
+2. **Content sanitisation boundary**: `FetchUrl` and `BrowseWeb` output is tagged as
+   `[EXTERNAL CONTENT]` in the artifact's `content.md`. The system prompt instructs
+   agents to treat this zone as untrusted data, not instructions.
+3. **Platform skill shadow policy off by default**: agent-local shadowing of platform
+   and team skills is disabled until Sprint 9's evaluation harness validates it. The
+   `discoverSkills` function accepts a `shadowPolicy` parameter (`none | mission | all`)
+   read from the team YAML config; default is `mission` (agents can write mission skills,
+   but cannot shadow platform or team tiers).
+4. **Skill review gate (deferred to Sprint 12)**: full red-team of skill injection paths;
+   for now, ensure all agent-written skills are logged and operator-visible.
 
 ---
 
-## Sprint 6 (2026-05-18 to 2026-05-29): Equity Research Team MVP
+## Sprint 6 (2026-05-18 to 2026-05-29): Orchestrator as a Service
 
-**Goal: the full anchor scenario runs end-to-end.**
+**Goal: the orchestrator becomes a persistent daemon. Agents can schedule their own wakeups and run background processes via skills backed by the HTTP API. See ADR-0007 for why scheduling and background execution are skills, not tools.**
 
-Deliverables:
-- Full team config: Lead Analyst + 1 Junior Analyst + 1 Data Scientist + Watcher/Alert agent
-- Scheduled daily cycle via Temporal schedules: 06:00 ingestion trigger → Junior collects data → Data Scientist runs analysis → Lead synthesises → 08:30 morning brief published
-- Intraday event-driven flow: Watcher monitors thresholds; `critical_alert` when threshold breached; Lead's inner loop is interrupted, outer loop reprioritises
-- Role prompts and Mental Map section templates for each agent type
-- Report assembly: Lead Analyst composes the morning brief from artifact refs collected during the cycle; every claim in the report has at least one source artifact in its lineage
-- Confidence scores required on all forecasts; conflicting signals trigger a review task instead of silent averaging
-- All inter-agent messages and artifact lineage persisted and queryable via MongoDB
-- Preliminary dev→prod artifact promotion check (manual approval via API call; full UI deferred to Sprint 7)
+The current orchestrator exits when no agent has unread messages. This sprint makes it run indefinitely, sleeping until woken by a new user message, a scheduled alarm, or a background process completing.
 
-Exit criteria: Team completes one full daily cycle without manual intervention. Morning brief artifact is published with at least 5 cited sources. Watcher fires at least one alert during an injected threshold breach test. Full audit trail queryable: claim → artifact → tool run → source URL.
+**Persistent daemon:**
+- Refactor `runOrchestrationLoop` to run until an explicit abort signal; sleeps (MongoDB Change Stream watch) instead of exiting when the inbox is empty
+- `pm2` process definition for local dev; `systemd` unit for server deployment; crash → auto-restart → agents resume from MongoDB state
+
+**Mission HTTP API:**
+- `POST /missions` — start a mission from a team config path; returns `mission_id`
+- `GET /missions/:id` — status, agent list, turn count, last message timestamp
+- `GET /missions/:id/messages` — paginated message log
+- `POST /missions/:id/message` — inject a user message (replaces CLI readline injection)
+- `POST /missions/:id/abort` — clean shutdown
+- Internal scheduling endpoints (called by skill scripts, not by the LLM directly):
+  - `POST /schedules` — register a future mailbox delivery; body, cron/delay, label; returns `schedule_id`
+  - `DELETE /schedules/:id` — cancel a pending delivery
+  - `POST /processes` — start a background command, register for exit monitoring; returns `process_id`
+- `node-cron` + `scheduled_messages` MongoDB collection for durable schedule delivery; re-armed from DB on startup
+- Bash scripts in `scripts/` wrap common operator operations for local dev convenience
+
+**Two new platform skills (ship in `packages/skills/` this sprint):**
+- `schedule-task` — agent schedules a future mailbox delivery to itself: one-shot delay or repeating cron; script POSTs to `/schedules`; replaces `ScheduleMessage` / `CancelSchedule` tools. Use cases: Watcher schedules a threshold check every 5 minutes; Lead schedules the 06:00 daily cycle; agent sets a "check back in 1 hour" reminder.
+- `run-background` — agent starts a long-running shell command and registers for exit notification; script POSTs to `/processes`; orchestrator injects a mailbox message (exit code, stdout/stderr path) when the process exits; replaces `RunBackground` tool. Use cases: Data Scientist starts a 10-minute Python analysis and gets notified on completion; Watcher starts a monitoring script and gets notified if it crashes.
+
+These are skills rather than tools because scheduling and background execution are used occasionally (once or twice per mission cycle), not on every LLM call. A registered tool schema appears in every API call regardless of usage; a skill's description costs ~100 tokens at startup and the script runs zero tokens. See ADR-0007.
+
+**Tests:**
+- Integration: agent uses `schedule-task` skill to register a 3-second wakeup; agent receives the mailbox message and wakes up. Agent uses `run-background` skill to start a short script; exit notification is delivered. `POST /missions` starts word-count team and `GET /missions/:id` shows completion.
+
+Exit criteria: Orchestrator runs as a daemon and does not exit when inbox is empty. Agent schedules a 3-second wakeup via the `schedule-task` skill and receives it. `run-background` exit notification is delivered. HTTP API starts and aborts a mission. All tests pass.
 
 ---
 
-## Sprint 7 (2026-06-01 to 2026-06-12): Reliability and Quality Gates
+## Sprint 7 (2026-06-01 to 2026-06-12): Web Browsing
+
+**Goal: agents can browse JavaScript-rendered pages — essential for financial data sites, broker portals, and news sites that `FetchUrl` cannot handle.**
+
+**`BrowseWeb` tool:**
+- Playwright headless browser worker; renders JS before running Readability extraction
+- Handles financial sites (`FetchUrl` fails on JS-rendered content, login-walled pages, dynamic tables)
+- Same artifact folder convention as `FetchUrl`: writes `content.md` + `meta.json` (URL, timestamp, SHA-256 content hash) + downloaded images with vision descriptions
+- Conditionally registered (Playwright must be installed in the environment); absent gracefully like `SearchWeb`
+- The `git-provenance` skill's `record-work.sh` works identically for `BrowseWeb` artifacts — no new lineage tooling needed
+
+**Tests:**
+- Integration: agent browses a locally-served page with JS-rendered content (React or Vue test fixture); asserts article text is correctly extracted and artifact folder is written. `FetchUrl` integration tests still pass (no regression)
+
+Exit criteria: Agent browses a JS-rendered test page and extracts article content. Artifact folder written with correct `meta.json`. `FetchUrl` suite clean. All tests pass.
+
+---
+
+## Sprint 8 (2026-06-15 to 2026-06-26): Equity Research Team MVP
+
+**Goal: the full anchor scenario runs end-to-end without manual intervention.**
+
+Deliverables:
+- Full team config: Lead Analyst + 1 Junior Analyst + 1 Data Scientist + Watcher/Alert agent; team skills: `sec-filing-parser`, `morning-brief-template`
+- Role system prompts and Mental Map section templates for each agent type
+- Scheduled daily cycle: Lead uses `ScheduleMessage` (`0 6 * * *`) to trigger the 06:00 ingestion; Junior collects data via `BrowseWeb`/`FetchUrl`; Data Scientist runs analysis via `RunBackground`; Lead synthesises and commits the morning brief using `git-provenance`
+- Intraday event-driven flow: Watcher uses `ScheduleMessage` for periodic threshold checks; on breach sends `PostMessage` to Lead with `intent: risk_alert`; Lead reprioritises via Mental Map update
+- Alert deduplication in the Watcher: tracks breach state to suppress repeated alerts on a sustained breach
+- Report assembly: Lead composes morning brief from git-committed artifacts; every claim cites a commit SHA or source URL; lineage is `git log --follow` from brief commit back to raw data commits
+- Confidence scores on all forecasts; conflicting signals trigger a review task (not silent averaging)
+- Human approval gate: operator calls `POST /missions/:id/approve/:commit_sha` before brief is marked published; approval recorded in MongoDB
+- All inter-agent messages persisted in MongoDB; artifact lineage in git log
+
+Exit criteria: Team completes one full daily cycle without manual intervention. Morning brief committed with ≥ 5 cited sources (commit message or ledger). Watcher fires at least one alert during an injected threshold breach. Operator approves publication via HTTP API. Lineage traceable: brief commit → analysis commits → raw data commits → source URLs.
+
+---
+
+## Sprint 9 (2026-06-29 to 2026-07-10): Reliability and Quality Gates
 
 **Goal: the system runs unattended for 5 days and meets SLOs.**
 
 Deliverables:
-- Human approval gate for morning brief publication (API-driven; operator calls `/approve/{artifact_id}` before prod publish)
-- Runbooks for common failure modes: source feed outage, missed publish SLA, worker crash, mailbox delivery failure
-- Retry and backoff policy for all Temporal activities
-- Alert deduplication in the Watcher agent (prevent alert storm on sustained threshold breach)
+- Retry and backoff for failed tool calls (`FetchUrl`, `BrowseWeb`, `RunBackground`) — configurable per tool in team YAML; exponential backoff with jitter; max retries before escalation via mailbox
+- Runbooks for common failure modes: source feed outage, missed publish SLA, worker crash, mailbox delivery failure, `RunBackground` script crash
+- Skill shadow policy validated: evaluation run with agent-local shadowing enabled vs disabled; document observed behaviour and set default policy
 - **Evaluation harness** (`eval/` directory, run on demand with real LLMs — not part of CI):
-  - Citation coverage per report (assert ≥ 90%, zero uncited claims)
-  - `nextAction` is always a valid enum value across 50 runs (structural correctness)
-  - Mental Map always has exactly one `in-progress` task when inner loop is running
+  - Citation coverage per report (assert ≥ 90%, zero uncited claims — verified via `git log` lineage)
+  - `nextAction` always a valid enum value across 50 runs (structural correctness)
+  - Mental Map always has exactly one `in-progress` task when the inner loop is running
   - Watcher fires an alert within 2 turns of an injected threshold breach
-  - No `prod` artifact published from a `dev` agent (policy enforcement under real LLM load)
+  - No `prod` artifact committed from a `dev` agent (policy enforcement under real LLM load)
   - Report freshness SLA compliance across a 5-day golden scenario
 - 5-day unattended run with SLO compliance for the equity research mission
 
-Exit criteria: 5 consecutive daily cycles complete within SLA. Evaluation harness reports citation coverage ≥ 90% and zero uncited claims in morning briefs. All evaluation scenarios pass on 3 consecutive runs. Common failure modes tested against runbooks.
+Exit criteria: 5 consecutive daily cycles complete within SLA. Evaluation harness reports citation coverage ≥ 90% and zero uncited claims. All evaluation scenarios pass on 3 consecutive runs. Skill shadow policy documented.
 
 ---
 
-## Sprint 8 (2026-06-15 to 2026-06-26): Work Product Layer UI
+## Sprint 10 (2026-07-13 to 2026-07-24): Work Product Layer UI
 
 **Goal: operators can consume outputs and triage alerts without touching the API.**
 
 Deliverables:
-- Evaluate `pi-mono/packages/web-ui` (`<pi-chat-panel>`, message components, artifact renderers) vs MAG_v2 Vue.js frontend for the Work Product Layer. Adopt whichever integrates faster with MAGI V3's backend.
-- **Mission Inbox**: active missions, current agent task (from Mental Map `#tasks` section), pending queue with priority scores and rationale, SLA/overdue indicators
-- **Report Center**: generated reports, approval state, publication history, diff across versions
+- Evaluate `pi-mono/packages/web-ui` (`<pi-chat-panel>`, message components, artifact renderers) vs MAG_v2 Vue.js frontend; adopt whichever integrates faster with MAGI V3's HTTP API
+- **Mission Inbox**: active missions, current agent task (from Mental Map `#tasks` section), pending queue with priority and rationale, SLA/overdue indicators
+- **Report Center**: generated reports, approval state, publication history; diff view uses `git diff` between brief commits
 - **Alert Center**: severity-based alert feed, ack/escalate/snooze controls, audit trail
-- **Ask Console**: Q&A against current mission artifacts with citations and confidence
-- **Evidence Explorer**: claim → artifact → tool run → source URL lineage trace
-- Mental Map read-only view for each agent (operator can see what the agent is thinking and why)
-- `artifact://` reference resolution in the UI (mirrors `magi://` from MAG_v2)
+- **Ask Console**: Q&A against current mission artifacts with citations and confidence scores
+- **Evidence Explorer**: traces lineage via git log — claim → commit → parent commits → source URLs
+- Mental Map read-only view per agent (operator sees what each agent is thinking and why)
 
-Exit criteria: Operator can complete all six Phase 1 flows (Mission Inbox, Report Center, Alert Center, Ask Console, Evidence Explorer, Control Room) without CLI intervention. Every displayed claim links to at least one source artifact. Alert ack/escalate/snooze are durable and visible in audit trail.
+Exit criteria: Operator completes all five flows (Inbox, Reports, Alerts, Ask, Evidence) without CLI. Every displayed claim links to at least one source commit. Alert ack/escalate/snooze are durable and visible in audit trail.
 
 ---
 
-## Sprint 9 (2026-06-29 to 2026-07-10): Cloud Burst and Scale-Out
+## Sprint 11 (2026-07-27 to 2026-08-07): Cloud Burst and Scale-Out
 
 **Goal: the system runs on Kubernetes with autoscaling and tenant isolation.**
 
 Deliverables:
-- Kubernetes deployment: Temporal workers as Deployments, execution sandboxes as Jobs, MinIO → S3, Redis cluster
-- Autoscaling: HPA on agent-runtime-worker based on Temporal task queue depth
-- Quotas and budgets: per-mission token spend and LLM call limits enforced in agent-runtime-worker
-- Tenant isolation: missions run in separate Kubernetes namespaces with Pod Security Standards enforced; no cross-mission data leakage
+- Kubernetes deployment: orchestrator and agent-runtime-worker as Deployments; execution sandboxes as Jobs
+- Autoscaling: HPA on agent-runtime-worker based on active mission count and message queue depth
+- Per-mission quotas: token spend and LLM call limits enforced in agent-runtime-worker
+- Tenant isolation: missions in separate Kubernetes namespaces with Pod Security Standards; no cross-mission data leakage
 - Cloud workspace model: Linux ACL policy objects translated to Kubernetes RBAC + pod security context equivalents
-- Environment parity: local dev setup mirrors cloud topology (docker-compose equivalent)
+- MinIO as binary artifact backend (large files, images); MongoDB continues to hold message history and scheduled_messages; git remains the lineage store
+- Environment parity: `docker-compose up` boots the full stack locally and runs the equity research cycle
 
-Exit criteria: 50 concurrent agent tasks across 3 missions with bounded cost. Cross-mission isolation test: agent in mission A cannot access artifacts or mailbox of mission B. Local dev environment boots with `docker-compose up` and runs the full equity research cycle.
+Exit criteria: 50 concurrent agent tasks across 3 missions with bounded cost. Cross-mission isolation test: agent in mission A cannot access shared folder or mailbox of mission B. Local dev boots with `docker-compose up`.
 
 ---
 
-## Sprint 10 (2026-07-13 to 2026-07-24): Hardening and Launch Prep
+## Sprint 12 (2026-08-10 to 2026-08-21): Hardening and Launch Prep
 
 Deliverables:
-- Disaster recovery drills: worker crash, MongoDB failover, Redis failover — all with Temporal replay validation
-- Red-team prompt suite: prompt injection attempts, privilege escalation attempts, cross-agent data exfiltration attempts via crafted mailbox messages
-- Portfolio Layer and Team Design Layer management via validated config files with full change history (already built; Sprint 10 adds config diff UI and audit log export)
+- Disaster recovery drills: worker crash, MongoDB failover — assert agents resume correctly from MongoDB + git state
+- Red-team prompt suite: prompt injection attempts, privilege escalation, cross-agent data exfiltration via crafted mailbox messages, malicious skill injection attempt
+- Config diff UI and audit log export (Portfolio and Team Design configs are file-based; Sprint 12 adds diff view and export)
 - Production checklist review
 - Launch readiness review
 
@@ -424,8 +618,10 @@ Exit criteria: DR drills pass. Red-team findings resolved or accepted with docum
 These are explicitly out of scope until after launch:
 
 - **Portfolio Layer UI** — create/manage teams, mandates, budgets via UI (managed via config files until then)
-- **Team Design Layer UI** — agent roster, role-capability matrix, ACL editor (same)
-- **Artifact promotion UI** — currently an API call; full approval workflow UI deferred
+- **Team Design Layer UI** — agent roster, role-capability matrix, ACL editor (managed via config files until then)
+- **Artifact promotion UI** — full approval workflow UI; currently an HTTP API call
+- **Docker/gVisor sandboxing for `RunBackground`** — Linux ACLs (Sprint 4) provide path-level isolation for MVP; container-level sandboxing added if the threat model requires it post-launch
+- **Temporal** — re-evaluate at Sprint 8 if the pm2/node-cron approach proves insufficient under 5-day unattended load (see ADR-0001)
 - **Additional use cases** (Thesis Copilot, Website Rebuild, DPO Operations, etc.) — design validated against spec in parallel; implementation after equity research is stable
 
 ---
