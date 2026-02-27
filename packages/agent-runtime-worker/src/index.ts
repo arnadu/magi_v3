@@ -6,11 +6,7 @@ export {
 	InMemoryConversationRepository,
 } from "./db.js";
 export type { AgentIdentity, WorkspaceLayout } from "./identity.js";
-export {
-	buildAgentIdentity,
-	defaultLayout,
-	PoolRegistry,
-} from "./identity.js";
+export { buildAgentIdentity, defaultLayout } from "./identity.js";
 export type { CompleteFn, InnerLoopConfig, LoopResult } from "./loop.js";
 export { runInnerLoop } from "./loop.js";
 export type { MailboxMessage, MailboxRepository } from "./mailbox.js";

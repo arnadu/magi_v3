@@ -39,20 +39,16 @@ export class WorkspaceManager {
 	 * Create per-mission directories for each agent and apply setfacl on the
 	 * shared mission directory.
 	 *
-	 * Each agent's linuxUser defaults to its agent id when not specified in
-	 * the team config — suitable for dev/test environments where no real pool
-	 * users are needed.
-	 *
 	 * Returns a map of agentId → AgentIdentity for the mission.
 	 */
 	provision(
 		missionId: string,
-		agents: Array<{ id: string; role: string; linuxUser?: string }>,
+		agents: Array<{ id: string; role: string; linuxUser: string }>,
 	): Map<string, AgentIdentity> {
 		const identities = new Map<string, AgentIdentity>();
 
 		for (const agent of agents) {
-			const linuxUser = agent.linuxUser ?? agent.id;
+			const { linuxUser } = agent;
 			const identity = buildAgentIdentity(
 				missionId,
 				agent.id,

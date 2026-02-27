@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { userInfo } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type TSchema, Type } from "@sinclair/typebox";
@@ -85,12 +86,18 @@ export interface AclPolicy {
 	 */
 	permittedPaths: string[];
 	/**
-	 * When set, Bash/WriteFile/EditFile execute in a clean child process as
-	 * this Linux OS user via `sudo`. The child receives no secrets in its
-	 * environment. Only set this when the OS user is guaranteed to exist
-	 * (production pool users provisioned by setup-dev.sh).
+	 * The Linux OS user these tools execute as.
+	 *
+	 * When equal to the current process user → tools run in-process (no sudo).
+	 * When different → tools fork a clean child process via `sudo -u <linuxUser>`,
+	 * with no secrets in the child's environment. The sudo call fails loudly if
+	 * the user does not exist — there is no silent fallback to in-process mode.
+	 *
+	 * Set to `${USER}` (expanded by the YAML loader) for test/dev fixtures.
+	 * Set to a pool user (e.g. "magi-w1") for production deployments.
+	 * Required — absence is a type error.
 	 */
-	linuxUser?: string;
+	linuxUser: string;
 }
 
 function isPermitted(target: string, permittedPaths: string[]): boolean {
@@ -306,6 +313,11 @@ async function runIsolatedToolCall(
  */
 export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 	const { agentId, permittedPaths, linuxUser } = acl;
+	// When linuxUser is the same as the process owner, tools run in-process
+	// (we are already that user). When different, every tool call forks a clean
+	// child via sudo — fails loudly if the OS user does not exist.
+	const currentUser = userInfo().username;
+	const useIsolation = linuxUser !== currentUser;
 
 	// ── Bash ──────────────────────────────────────────────────────────────────
 
@@ -324,7 +336,7 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 			const command = args.command as string;
 			const timeoutMs = ((args.timeout as number) ?? 30) * 1_000;
 
-			if (linuxUser) {
+			if (useIsolation) {
 				return runIsolatedToolCall(
 					linuxUser,
 					{
@@ -353,7 +365,7 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 			content: Type.String({ description: "Content to write" }),
 		}),
 		async execute(_id, args, signal) {
-			if (linuxUser) {
+			if (useIsolation) {
 				return runIsolatedToolCall(
 					linuxUser,
 					{
@@ -395,7 +407,7 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 			),
 		}),
 		async execute(_id, args, signal) {
-			if (linuxUser) {
+			if (useIsolation) {
 				return runIsolatedToolCall(
 					linuxUser,
 					{

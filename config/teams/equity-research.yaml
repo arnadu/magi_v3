@@ -6,6 +6,7 @@ agents:
   - id: lead-analyst
     name: "Alexandra"
     role: lead-analyst
+    linuxUser: magi-w1
     supervisor: user
     systemPrompt: |
       You are Alexandra, the lead-analyst of the Equity Research Team.
@@ -51,6 +52,7 @@ agents:
   - id: junior-analyst
     name: "Bob"
     role: junior-analyst
+    linuxUser: magi-w2
     supervisor: lead-analyst
     systemPrompt: |
       You are Bob, the junior-analyst of the Equity Research Team.

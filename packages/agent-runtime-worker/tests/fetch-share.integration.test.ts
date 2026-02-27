@@ -23,7 +23,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
 import { describe, expect, it } from "vitest";
-import { PoolRegistry } from "../src/identity.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { InMemoryMailboxRepository } from "../src/mailbox.js";
 import { InMemoryMentalMapRepository } from "../src/mental-map.js";
@@ -63,9 +62,7 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 				layout: {
 					homeBase: join(tmpDir, "home"),
 					missionsBase: join(tmpDir, "missions"),
-					poolUsers: teamConfig.agents.map((a) => a.id),
 				},
-				registry: new PoolRegistry(),
 				skipAcl: true,
 			});
 

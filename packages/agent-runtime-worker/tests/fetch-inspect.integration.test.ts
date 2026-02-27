@@ -12,7 +12,7 @@
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
@@ -87,6 +87,7 @@ describe("integration: FetchUrl + InspectImage", () => {
 					...createFileTools(workdir, {
 						agentId: "fetch-inspect-test",
 						permittedPaths: [workdir],
+						linuxUser: userInfo().username,
 					}),
 					createFetchUrlTool(CLAUDE_SONNET, workdir),
 					createInspectImageTool(workdir, CLAUDE_SONNET),

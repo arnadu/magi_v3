@@ -78,9 +78,11 @@ export async function runOrchestrationLoop(
 	if (!leadAgent) throw new Error("Team config must have at least one agent");
 
 	// Provision workspace for all agents.
+	// linuxUser is required in the team YAML — validated by the config loader.
 	const agentDefs = teamConfig.agents.map((a) => ({
 		id: a.id,
 		role: ((a as Record<string, unknown>).role as string) ?? "agent",
+		linuxUser: a.linuxUser,
 	}));
 	const identities = workspaceManager.provision(
 		teamConfig.mission.id,

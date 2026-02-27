@@ -17,7 +17,7 @@
  */
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentIdentity, WorkspaceLayout } from "../src/identity.js";
@@ -50,10 +50,14 @@ beforeAll(() => {
 	};
 	wsManager = new WorkspaceManager({ layout, skipAcl: true });
 
-	// Provision the workspace (creates dirs, linuxUser defaults to agent id).
+	// Provision with distinct synthetic linuxUser names so each agent gets a
+	// separate workdir (the workdir path includes linuxUser). These are not
+	// real OS users — the WorkspaceManager only uses them for path construction,
+	// not for OS-level user checks. makeTools() below passes the current OS
+	// user so tool execution runs in-process without sudo.
 	allIdentities = wsManager.provision(MISSION_ID, [
-		{ id: AGENT_1, role: "lead-agent" },
-		{ id: AGENT_2, role: "worker-agent" },
+		{ id: AGENT_1, role: "lead-agent", linuxUser: "acl-test-agent-1" },
+		{ id: AGENT_2, role: "worker-agent", linuxUser: "acl-test-agent-2" },
 	]);
 
 	const id1 = allIdentities.get(AGENT_1);
@@ -77,7 +81,11 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 function makeTools(agentId: string, workdir: string, permittedPaths: string[]) {
-	return createFileTools(workdir, { agentId, permittedPaths });
+	return createFileTools(workdir, {
+		agentId,
+		permittedPaths,
+		linuxUser: userInfo().username,
+	});
 }
 
 function tool(tools: ReturnType<typeof createFileTools>, name: string) {

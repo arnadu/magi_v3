@@ -28,7 +28,6 @@ import type {
 	Message,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
-import { PoolRegistry } from "./identity.js";
 import {
 	createMongoMailboxRepository,
 	InMemoryMailboxRepository,
@@ -121,16 +120,13 @@ async function main(): Promise<void> {
 	const { modelId, model } = getModel();
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
-	// Build a workspace manager using the agent IDs as synthetic pool users.
-	// This avoids needing real OS users in dev — skipAcl is auto-detected.
-	const poolUsers = teamConfig.agents.map((a) => a.id);
+	// linuxUser defaults to agent id in dev (no pool users needed).
+	// skipAcl is auto-detected: skipped when setfacl is not installed.
 	const workspaceManager = new WorkspaceManager({
 		layout: {
 			homeBase: join(workdir, "home"),
 			missionsBase: join(workdir, "missions"),
-			poolUsers,
 		},
-		registry: new PoolRegistry(),
 	});
 
 	const mongoUri = process.env.MONGODB_URI;

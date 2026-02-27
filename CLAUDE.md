@@ -160,6 +160,12 @@ Two packages are built. Key files:
 | 11 | | Cloud burst and scale-out |
 | 12 | | Hardening and launch prep |
 
+## Development Principles
+
+**No fallbacks to accommodate tests.** When a sprint introduces a hard requirement (e.g. every agent must declare a `linuxUser`), do not make the requirement optional in production code because earlier tests predate the feature. Update the tests instead. Code that silently degrades — optional fields, `?? default` catch-alls, skipped-if-missing checks — written specifically so old tests keep passing is bad debt and will be rejected in review. The rule is simple: fix the test, not the production code.
+
+**No optional security.** Security properties (identity, ACL, OS isolation) are never opt-in or conditional. If a field is required for correct operation, it is `required` in the TypeScript type and in the Zod schema. There is no fallback mode, no in-process degradation, no silent omission. If a test cannot satisfy the requirement, the test must be updated, not the requirement weakened.
+
 ## Testing Approach
 
 Three tiers — apply the right one to the right layer:

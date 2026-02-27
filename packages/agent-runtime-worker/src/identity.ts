@@ -8,32 +8,22 @@ import { join } from "node:path";
  * Describes where MAGI paths live on this host.
  *
  * Defaults are the production layout:
- *   homeBase    /home            → /home/magi-w1/missions/{missionId}/
- *   missionsBase /missions       → /missions/{missionId}/shared/artifacts/
+ *   homeBase    /home      → /home/{linuxUser}/missions/{missionId}/
+ *   missionsBase /missions → /missions/{missionId}/shared/
  *
- * Tests override both to tmp dirs so no real users or root paths are needed.
+ * Tests override both to tmp dirs so no root paths are needed.
  */
 export interface WorkspaceLayout {
-	/** Base directory containing pool user home dirs. Default: /home */
+	/** Base directory containing agent home dirs. Default: /home */
 	homeBase: string;
 	/** Root under which mission shared folders are created. Default: /missions */
 	missionsBase: string;
-	/** Ordered list of Linux pool user names. */
-	poolUsers: string[];
 }
 
 export function defaultLayout(): WorkspaceLayout {
 	return {
 		homeBase: "/home",
 		missionsBase: "/missions",
-		poolUsers: [
-			"magi-w1",
-			"magi-w2",
-			"magi-w3",
-			"magi-w4",
-			"magi-w5",
-			"magi-w6",
-		],
 	};
 }
 
@@ -46,7 +36,8 @@ export function defaultLayout(): WorkspaceLayout {
  *
  * Two-layer model:
  *   agentId   — semantic MAGI identity (e.g. "lead-analyst")
- *   linuxUser — OS pool member assigned for this mission (e.g. "magi-w1")
+ *   linuxUser — OS user this agent runs as (e.g. "magi-w1")
+ *              Required in the team YAML — no default.
  */
 export interface AgentIdentity {
 	missionId: string;
@@ -84,74 +75,4 @@ export function buildAgentIdentity(
 		sharedDir,
 		permittedPaths: [workdir, sharedDir],
 	};
-}
-
-// ---------------------------------------------------------------------------
-// PoolRegistry — in-memory pool slot tracking
-// ---------------------------------------------------------------------------
-
-/**
- * Tracks which pool user is assigned to which agent within each mission.
- *
- * In production this is backed by MongoDB; here we provide an in-memory
- * implementation sufficient for development and integration tests.
- */
-export class PoolRegistry {
-	/** missionId → (agentId → linuxUser) */
-	private readonly assignments = new Map<string, Map<string, string>>();
-	/** missionId → Set<linuxUser currently in use> */
-	private readonly used = new Map<string, Set<string>>();
-
-	/**
-	 * Assign a pool user to agentId for missionId, or return the existing
-	 * assignment if one already exists.
-	 *
-	 * Throws if the pool is exhausted.
-	 */
-	assign(missionId: string, agentId: string, poolUsers: string[]): string {
-		if (!this.assignments.has(missionId)) {
-			this.assignments.set(missionId, new Map());
-			this.used.set(missionId, new Set());
-		}
-		const missionMap = this.assignments.get(missionId) as Map<string, string>;
-		const missionUsed = this.used.get(missionId) as Set<string>;
-
-		const existing = missionMap.get(agentId);
-		if (existing) return existing;
-
-		const available = poolUsers.find((u) => !missionUsed.has(u));
-		if (!available) {
-			throw new Error(
-				`Pool exhausted for mission "${missionId}": all ${poolUsers.length} slot(s) occupied. ` +
-					`Increase MAGI_POOL_SIZE or wait for a mission to finish.`,
-			);
-		}
-
-		missionMap.set(agentId, available);
-		missionUsed.add(available);
-		return available;
-	}
-
-	/** Return the assigned linux user for this agent, or undefined. */
-	get(missionId: string, agentId: string): string | undefined {
-		return this.assignments.get(missionId)?.get(agentId);
-	}
-
-	/** Release all pool slots for a mission (call after teardown). */
-	release(missionId: string): void {
-		this.assignments.delete(missionId);
-		this.used.delete(missionId);
-	}
-
-	/** Return all current assignments for a mission (for logging/debug). */
-	listAssignments(
-		missionId: string,
-	): Array<{ agentId: string; linuxUser: string }> {
-		const map = this.assignments.get(missionId);
-		if (!map) return [];
-		return Array.from(map.entries()).map(([agentId, linuxUser]) => ({
-			agentId,
-			linuxUser,
-		}));
-	}
 }

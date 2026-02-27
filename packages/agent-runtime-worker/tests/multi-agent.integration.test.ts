@@ -22,7 +22,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
 import { describe, expect, it } from "vitest";
-import { PoolRegistry } from "../src/identity.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { InMemoryMailboxRepository } from "../src/mailbox.js";
 import { InMemoryMentalMapRepository } from "../src/mental-map.js";
@@ -69,9 +68,7 @@ describe("integration: two-agent word-count", () => {
 				layout: {
 					homeBase,
 					missionsBase: join(tmpDir, "missions"),
-					poolUsers: teamConfig.agents.map((a) => a.id),
 				},
-				registry: new PoolRegistry(),
 				skipAcl: true,
 			});
 

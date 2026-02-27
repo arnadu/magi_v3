@@ -6,6 +6,7 @@ agents:
   - id: lead
     name: "Lead"
     role: lead-agent
+    linuxUser: ${USER}
     supervisor: user
     systemPrompt: |
       You are Lead, the lead-agent of the MAGI Fetch and Analyse Team.
@@ -47,6 +48,7 @@ agents:
   - id: analyst
     name: "Analyst"
     role: junior-analyst
+    linuxUser: ${USER}
     supervisor: lead
     systemPrompt: |
       You are Analyst, the junior-analyst of the MAGI Fetch and Analyse Team.

@@ -6,6 +6,7 @@ agents:
   - id: lead
     name: "Lead"
     role: lead-agent
+    linuxUser: ${USER}
     supervisor: user
     systemPrompt: |
       You are Lead, the lead-agent of the MAGI Word Count Team.
@@ -43,6 +44,7 @@ agents:
   - id: worker
     name: "Worker"
     role: worker-agent
+    linuxUser: ${USER}
     supervisor: lead
     systemPrompt: |
       You are Worker, the worker-agent of the MAGI Word Count Team.

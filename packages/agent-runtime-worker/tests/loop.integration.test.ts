@@ -7,7 +7,7 @@
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import type {
 	AssistantMessage,
@@ -56,6 +56,7 @@ describe("integration: real LLM", () => {
 				tools: createFileTools(tmpDir, {
 					agentId: "loop-test",
 					permittedPaths: [tmpDir],
+					linuxUser: userInfo().username,
 				}),
 			});
 
