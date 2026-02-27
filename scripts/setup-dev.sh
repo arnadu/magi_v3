@@ -86,6 +86,32 @@ else
     echo "[setup-dev] WARNING: setfacl not found — install the 'acl' package for full ACL support"
 fi
 
+# ---------------------------------------------------------------------------
+# 4. Grant orchestrator passwordless sudo to run node as any pool user
+# ---------------------------------------------------------------------------
+# The orchestrator forks tool-executor.js as magi-wN via:
+#   sudo -u magi-wN <node> <path>/tool-executor.js
+# Only the exact node binary is allowed — not ALL commands.
+#
+# Note: if nvm or a version manager is in use, re-run this script after
+# upgrading Node to refresh the sudoers entry with the new binary path.
+
+ORCHESTRATOR="${SUDO_USER:-$(logname 2>/dev/null || echo "${USER}")}"
+NODE_BIN="$(which node)"
+POOL_LIST="$(seq -s, -f 'magi-w%.0f' 1 "${POOL_SIZE}")"
+SUDOERS_FILE="/etc/sudoers.d/magi"
+
+printf '%s ALL = (%s) NOPASSWD: %s\n' \
+    "${ORCHESTRATOR}" "${POOL_LIST}" "${NODE_BIN}" > "${SUDOERS_FILE}"
+chmod 440 "${SUDOERS_FILE}"
+if visudo -cf "${SUDOERS_FILE}"; then
+    echo "[setup-dev] Wrote sudoers rule: ${ORCHESTRATOR} → (${POOL_LIST}) NOPASSWD: ${NODE_BIN}"
+else
+    echo "[setup-dev] ERROR: invalid sudoers file — removing"
+    rm -f "${SUDOERS_FILE}"
+    exit 1
+fi
+
 echo ""
 echo "[setup-dev] Done. Pool users: $(seq -s ', ' -f 'magi-w%.0f' 1 "${POOL_SIZE}")"
 echo "            Re-run at any time — it is idempotent."

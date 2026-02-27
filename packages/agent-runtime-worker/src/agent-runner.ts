@@ -51,7 +51,13 @@ export async function runAgent(
 
 	const { workdir, sharedDir, permittedPaths } = ctx.identity;
 
-	const acl: AclPolicy = { agentId, permittedPaths };
+	// linuxUser is only set when explicitly specified in the team YAML.
+	// When absent (dev/test without pool users), tools run in-process.
+	const acl: AclPolicy = {
+		agentId,
+		permittedPaths,
+		linuxUser: agent.linuxUser,
+	};
 
 	// Initialise mental map if this agent has never run before.
 	let mentalMapHtml = await ctx.mentalMapRepo.load(agentId);

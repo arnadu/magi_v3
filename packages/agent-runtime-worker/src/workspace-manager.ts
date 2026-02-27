@@ -1,10 +1,10 @@
 import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
+import { userInfo } from "node:os";
 import { join } from "node:path";
 import {
 	type AgentIdentity,
 	buildAgentIdentity,
-	type PoolRegistry,
 	type WorkspaceLayout,
 } from "./identity.js";
 
@@ -14,11 +14,10 @@ import {
 
 export interface WorkspaceManagerOptions {
 	layout: WorkspaceLayout;
-	registry: PoolRegistry;
 	/**
 	 * When true, setfacl calls are skipped.
-	 * Set automatically when pool users do not exist on the system.
-	 * Always true in integration tests (no real pool users).
+	 * Defaults to true when setfacl is not installed on the system.
+	 * Always pass true in integration tests running on systems without setfacl.
 	 */
 	skipAcl?: boolean;
 }
@@ -29,34 +28,31 @@ export interface WorkspaceManagerOptions {
 
 export class WorkspaceManager {
 	private readonly layout: WorkspaceLayout;
-	private readonly registry: PoolRegistry;
 	private readonly skipAcl: boolean;
 
 	constructor(opts: WorkspaceManagerOptions) {
 		this.layout = opts.layout;
-		this.registry = opts.registry;
-		this.skipAcl =
-			opts.skipAcl ?? !poolUsersExist(opts.layout.poolUsers.slice(0, 1));
+		this.skipAcl = opts.skipAcl ?? !isSetfaclAvailable();
 	}
 
 	/**
-	 * Assign pool users to agents, create per-mission directories, and apply
-	 * setfacl on the shared artifacts folder.
+	 * Create per-mission directories for each agent and apply setfacl on the
+	 * shared mission directory.
+	 *
+	 * Each agent's linuxUser defaults to its agent id when not specified in
+	 * the team config — suitable for dev/test environments where no real pool
+	 * users are needed.
 	 *
 	 * Returns a map of agentId → AgentIdentity for the mission.
 	 */
 	provision(
 		missionId: string,
-		agents: Array<{ id: string; role: string }>,
+		agents: Array<{ id: string; role: string; linuxUser?: string }>,
 	): Map<string, AgentIdentity> {
 		const identities = new Map<string, AgentIdentity>();
 
 		for (const agent of agents) {
-			const linuxUser = this.registry.assign(
-				missionId,
-				agent.id,
-				this.layout.poolUsers,
-			);
+			const linuxUser = agent.linuxUser ?? agent.id;
 			const identity = buildAgentIdentity(
 				missionId,
 				agent.id,
@@ -68,22 +64,24 @@ export class WorkspaceManager {
 
 			// Create the agent's private working directory.
 			mkdirSync(identity.workdir, { recursive: true });
+
+			// Apply mutual ACL so the agent's OS user can write to the workdir
+			// (created by the orchestrator) and the orchestrator can read files
+			// the agent created (e.g. for FetchUrl / InspectImage).
+			if (!this.skipAcl) {
+				applyWorkdirAcl(identity.workdir, linuxUser, userInfo().username);
+			}
 		}
 
-		// Create the shared artifacts directory (one per mission, all agents share it).
-		const sharedArtifactsDir = join(
-			this.layout.missionsBase,
-			missionId,
-			"shared",
-			"artifacts",
-		);
-		mkdirSync(sharedArtifactsDir, { recursive: true });
+		// Create the shared mission directory (one per mission, all agents share it).
+		const sharedDir = join(this.layout.missionsBase, missionId, "shared");
+		mkdirSync(sharedDir, { recursive: true });
 
-		// Apply setfacl so all pool users assigned to this mission can read/write
-		// the shared artifacts directory.
+		// Apply setfacl so all linux users assigned to this mission can read/write
+		// the shared directory, including any files/dirs created inside it.
 		if (!this.skipAcl) {
 			applySharedAcl(
-				sharedArtifactsDir,
+				sharedDir,
 				Array.from(identities.values()).map((i) => i.linuxUser),
 			);
 		}
@@ -92,8 +90,8 @@ export class WorkspaceManager {
 	}
 
 	/**
-	 * Remove all per-mission directories and release pool assignments.
-	 * Pool users themselves are NOT removed — they persist for reuse.
+	 * Remove all per-mission directories for the given identities.
+	 * Linux users themselves are NOT removed — they persist on the system.
 	 */
 	teardown(missionId: string, identities: Map<string, AgentIdentity>): void {
 		for (const identity of identities.values()) {
@@ -103,8 +101,6 @@ export class WorkspaceManager {
 		// Remove the shared mission folder entirely.
 		const sharedDir = join(this.layout.missionsBase, missionId, "shared");
 		rmSync(sharedDir, { recursive: true, force: true });
-
-		this.registry.release(missionId);
 	}
 }
 
@@ -113,13 +109,21 @@ export class WorkspaceManager {
 // ---------------------------------------------------------------------------
 
 /**
- * Check whether the given pool users exist as OS users on this system.
- * Used to decide whether setfacl calls are possible.
+ * Apply mutual ACL on an agent's private workdir so:
+ *   - `agentUser` (magi-w1) can write files created by the orchestrator.
+ *   - `orchestratorUser` can read files created by the agent (FetchUrl etc.).
+ * Default ACL entries ensure new files inherit the same permissions.
  */
-function poolUsersExist(users: string[]): boolean {
-	return users.every((u) => {
-		const result = spawnSync("id", [u], { encoding: "utf-8" });
-		return result.status === 0;
+function applyWorkdirAcl(
+	dir: string,
+	agentUser: string,
+	orchestratorUser: string,
+): void {
+	if (!isSetfaclAvailable()) return;
+	execSync(`setfacl -m u:${agentUser}:rwx "${dir}"`, { stdio: "ignore" });
+	execSync(`setfacl -d -m u:${agentUser}:rwx "${dir}"`, { stdio: "ignore" });
+	execSync(`setfacl -d -m u:${orchestratorUser}:rwx "${dir}"`, {
+		stdio: "ignore",
 	});
 }
 

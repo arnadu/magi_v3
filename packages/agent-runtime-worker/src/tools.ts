@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type TSchema, Type } from "@sinclair/typebox";
+import { execa } from "execa";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -22,6 +24,25 @@ export interface MagiTool {
 		args: Record<string, unknown>,
 		signal?: AbortSignal,
 	): Promise<ToolResult>;
+}
+
+// ---------------------------------------------------------------------------
+// IPC types (orchestrator ↔ tool-executor child process)
+// ---------------------------------------------------------------------------
+
+export interface ToolRequest {
+	tool: "Bash" | "WriteFile" | "EditFile";
+	args: Record<string, unknown>;
+	workdir: string;
+	permittedPaths: string[];
+	agentId?: string;
+	/** Timeout for the tool itself in milliseconds. */
+	timeoutMs?: number;
+}
+
+export interface ToolResponse {
+	ok: boolean;
+	text: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +77,13 @@ export interface AclPolicy {
 	 * is denied with PolicyViolationError.
 	 */
 	permittedPaths: string[];
+	/**
+	 * When set, Bash/WriteFile/EditFile execute in a clean child process as
+	 * this Linux OS user via `sudo`. The child receives no secrets in its
+	 * environment. Only set this when the OS user is guaranteed to exist
+	 * (production pool users provisioned by setup-dev.sh).
+	 */
+	linuxUser?: string;
 }
 
 function isPermitted(target: string, permittedPaths: string[]): boolean {
@@ -65,9 +93,14 @@ function isPermitted(target: string, permittedPaths: string[]): boolean {
 	);
 }
 
-function checkPath(target: string, action: string, policy: AclPolicy): void {
-	if (!isPermitted(target, policy.permittedPaths)) {
-		throw new PolicyViolationError(target, action, policy.agentId);
+function checkPath(
+	target: string,
+	action: string,
+	permittedPaths: string[],
+	agentId?: string,
+): void {
+	if (!isPermitted(target, permittedPaths)) {
+		throw new PolicyViolationError(target, action, agentId);
 	}
 }
 
@@ -76,14 +109,18 @@ function checkPath(target: string, action: string, policy: AclPolicy): void {
  * against the ACL policy. Soft enforcement: catches explicit absolute path
  * references to workspace paths but not dynamically constructed paths.
  */
-function checkBashPaths(command: string, policy: AclPolicy): void {
+function checkBashPaths(
+	command: string,
+	permittedPaths: string[],
+	agentId?: string,
+): void {
 	const tokens = command.match(/\/[^\s"'<>|&;(){}$\\]+/g) ?? [];
 	for (const raw of tokens) {
 		// Only check paths that look like agent workspace paths.
 		if (!/\/missions\/|\/home\/magi-/.test(raw)) continue;
 		const token = raw.replace(/[,;)'"]+$/, ""); // strip trailing punctuation
-		if (!isPermitted(token, policy.permittedPaths)) {
-			throw new PolicyViolationError(token, "bash", policy.agentId);
+		if (!isPermitted(token, permittedPaths)) {
+			throw new PolicyViolationError(token, "bash", agentId);
 		}
 	}
 }
@@ -118,26 +155,152 @@ function err(text: string): ToolResult {
 }
 
 // ---------------------------------------------------------------------------
+// Pure exec functions — no side effects beyond file I/O.
+// Called in-process (tests / no pool user) or from tool-executor.ts (isolated).
+// ---------------------------------------------------------------------------
+
+export function execBash(
+	command: string,
+	cwd: string,
+	timeoutMs: number,
+	permittedPaths: string[],
+	agentId?: string,
+): ToolResult {
+	try {
+		checkBashPaths(command, permittedPaths, agentId);
+		const result = spawnSync("bash", ["-c", command], {
+			cwd,
+			encoding: "utf-8",
+			timeout: timeoutMs,
+			maxBuffer: 10 * 1024 * 1024,
+		});
+		const output = [result.stdout, result.stderr].filter(Boolean).join("");
+		if (result.signal) {
+			return err(`Bash: killed by signal ${result.signal}`);
+		}
+		if (result.status !== 0 && result.status !== null) {
+			return err(truncate(output || `Exited with code ${result.status}`));
+		}
+		return ok(truncate(output || "(no output)"));
+	} catch (e) {
+		if (e instanceof PolicyViolationError) return err(e.message);
+		return err(`Bash: ${(e as Error).message}`);
+	}
+}
+
+export function execWriteFile(
+	path: string,
+	content: string,
+	cwd: string,
+	permittedPaths: string[],
+	agentId?: string,
+): ToolResult {
+	try {
+		const target = resolve(cwd, path);
+		checkPath(target, "write", permittedPaths, agentId);
+		mkdirSync(dirname(target), { recursive: true });
+		writeFileSync(target, content, "utf-8");
+		return ok(`Wrote ${content.length} bytes to ${target}`);
+	} catch (e) {
+		if (e instanceof PolicyViolationError) return err(e.message);
+		return err(`WriteFile: ${(e as Error).message}`);
+	}
+}
+
+export function execEditFile(
+	path: string,
+	oldStr: string,
+	newStr: string,
+	replaceAll: boolean,
+	cwd: string,
+	permittedPaths: string[],
+	agentId?: string,
+): ToolResult {
+	try {
+		const target = resolve(cwd, path);
+		checkPath(target, "edit", permittedPaths, agentId);
+		const content = readFileSync(target, "utf-8");
+		if (!content.includes(oldStr)) {
+			return err(`EditFile: old_string not found in ${target}`);
+		}
+		const count = replaceAll ? content.split(oldStr).length - 1 : 1;
+		const updated = replaceAll
+			? content.split(oldStr).join(newStr)
+			: content.replace(oldStr, newStr);
+		writeFileSync(target, updated, "utf-8");
+		return ok(`Replaced ${count} occurrence(s) in ${target}`);
+	} catch (e) {
+		if (e instanceof PolicyViolationError) return err(e.message);
+		return err(`EditFile: ${(e as Error).message}`);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Isolated tool dispatch — forks a clean child process as the agent's OS user
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a tool in a clean child process as `linuxUser` via sudo.
+ * The child receives no secrets: only PATH and HOME are passed in env.
+ * stdout carries the ToolResponse JSON; stderr is inherited for logging.
+ */
+async function runIsolatedToolCall(
+	linuxUser: string,
+	request: ToolRequest,
+	signal?: AbortSignal,
+): Promise<ToolResult> {
+	const toolExecutor = join(
+		dirname(fileURLToPath(import.meta.url)),
+		"tool-executor.js",
+	);
+	const nodeExe = process.execPath;
+	const timeoutMs = request.timeoutMs ?? 120_000;
+
+	try {
+		const { stdout } = await execa(
+			"sudo",
+			["-u", linuxUser, nodeExe, toolExecutor],
+			{
+				input: JSON.stringify(request),
+				env: {
+					PATH: process.env.PATH ?? "",
+					HOME: `/home/${linuxUser}`,
+				},
+				cancelSignal: signal,
+				// Give the child 5 s beyond the tool timeout to flush and exit cleanly.
+				timeout: timeoutMs + 5_000,
+				forceKillAfterDelay: 3_000,
+			},
+		);
+		const resp: ToolResponse = JSON.parse(stdout);
+		return { content: [{ type: "text", text: resp.text }], isError: !resp.ok };
+	} catch (e) {
+		return err(`Isolated tool call failed: ${(e as Error).message}`);
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Tool factory
 // ---------------------------------------------------------------------------
 
 /**
- * Create the standard set of agent tools rooted at `cwd`.
- * All relative paths supplied by the agent are resolved against `cwd`.
+ * Create the standard set of agent shell tools rooted at `cwd`.
  *
- * When `acl` is provided, every path operation is checked against the
- * agent's permitted paths before execution. Violations are returned as
- * error ToolResults containing "PolicyViolationError".
+ * When `acl.linuxUser` is set, every shell tool call (Bash / WriteFile /
+ * EditFile) is executed in a clean child process running as that OS user via
+ * `sudo`. The child has no secrets in its environment. Use this in production
+ * where pool users (magi-w1 … magi-w6) are provisioned by setup-dev.sh.
  *
- * Three tools cover all practical needs:
- *   - Bash      — read files (cat), list dirs (ls), search (grep/rg), run scripts, etc.
- *   - WriteFile — create or overwrite a file
- *   - EditFile  — safe find-and-replace within a file
+ * When `acl.linuxUser` is absent, tools run in-process as the current user.
+ * This is appropriate for integration tests and local dev without pool users.
+ *
+ * In both modes the software ACL (permittedPaths) is enforced.
  */
 export function createFileTools(cwd: string, acl?: AclPolicy): MagiTool[] {
-	function res(p: string): string {
-		return resolve(cwd, p);
-	}
+	const { agentId, permittedPaths, linuxUser } = acl ?? {
+		agentId: "",
+		permittedPaths: [],
+	};
 
 	// ── Bash ──────────────────────────────────────────────────────────────────
 
@@ -152,29 +315,25 @@ export function createFileTools(cwd: string, acl?: AclPolicy): MagiTool[] {
 				Type.Number({ description: "Timeout in seconds (default: 30)" }),
 			),
 		}),
-		async execute(_id, args) {
+		async execute(_id, args, signal) {
 			const command = args.command as string;
 			const timeoutMs = ((args.timeout as number) ?? 30) * 1_000;
-			try {
-				if (acl) checkBashPaths(command, acl);
-				const result = spawnSync("bash", ["-c", command], {
-					cwd,
-					encoding: "utf-8",
-					timeout: timeoutMs,
-					maxBuffer: 10 * 1024 * 1024,
-				});
-				const output = [result.stdout, result.stderr].filter(Boolean).join("");
-				if (result.signal) {
-					return err(`Bash: killed by signal ${result.signal}`);
-				}
-				if (result.status !== 0 && result.status !== null) {
-					return err(truncate(output || `Exited with code ${result.status}`));
-				}
-				return ok(truncate(output || "(no output)"));
-			} catch (e) {
-				if (e instanceof PolicyViolationError) return err(e.message);
-				return err(`Bash: ${(e as Error).message}`);
+
+			if (linuxUser) {
+				return runIsolatedToolCall(
+					linuxUser,
+					{
+						tool: "Bash",
+						args,
+						workdir: cwd,
+						permittedPaths,
+						agentId,
+						timeoutMs,
+					},
+					signal,
+				);
 			}
+			return execBash(command, cwd, timeoutMs, permittedPaths, agentId);
 		},
 	};
 
@@ -188,19 +347,27 @@ export function createFileTools(cwd: string, acl?: AclPolicy): MagiTool[] {
 			path: Type.String({ description: "Path to write to" }),
 			content: Type.String({ description: "Content to write" }),
 		}),
-		async execute(_id, args) {
-			try {
-				const target = res(args.path as string);
-				if (acl) checkPath(target, "write", acl);
-				mkdirSync(dirname(target), { recursive: true });
-				writeFileSync(target, args.content as string, "utf-8");
-				return ok(
-					`Wrote ${(args.content as string).length} bytes to ${target}`,
+		async execute(_id, args, signal) {
+			if (linuxUser) {
+				return runIsolatedToolCall(
+					linuxUser,
+					{
+						tool: "WriteFile",
+						args,
+						workdir: cwd,
+						permittedPaths,
+						agentId,
+					},
+					signal,
 				);
-			} catch (e) {
-				if (e instanceof PolicyViolationError) return err(e.message);
-				return err(`WriteFile: ${(e as Error).message}`);
 			}
+			return execWriteFile(
+				args.path as string,
+				args.content as string,
+				cwd,
+				permittedPaths,
+				agentId,
+			);
 		},
 	};
 
@@ -221,28 +388,29 @@ export function createFileTools(cwd: string, acl?: AclPolicy): MagiTool[] {
 				}),
 			),
 		}),
-		async execute(_id, args) {
-			try {
-				const target = res(args.path as string);
-				if (acl) checkPath(target, "edit", acl);
-				const content = readFileSync(target, "utf-8");
-				const oldStr = args.old_string as string;
-				const newStr = args.new_string as string;
-				if (!content.includes(oldStr)) {
-					return err(`EditFile: old_string not found in ${target}`);
-				}
-				const count =
-					args.replace_all === true ? content.split(oldStr).length - 1 : 1;
-				const updated =
-					args.replace_all === true
-						? content.split(oldStr).join(newStr)
-						: content.replace(oldStr, newStr);
-				writeFileSync(target, updated, "utf-8");
-				return ok(`Replaced ${count} occurrence(s) in ${target}`);
-			} catch (e) {
-				if (e instanceof PolicyViolationError) return err(e.message);
-				return err(`EditFile: ${(e as Error).message}`);
+		async execute(_id, args, signal) {
+			if (linuxUser) {
+				return runIsolatedToolCall(
+					linuxUser,
+					{
+						tool: "EditFile",
+						args,
+						workdir: cwd,
+						permittedPaths,
+						agentId,
+					},
+					signal,
+				);
 			}
+			return execEditFile(
+				args.path as string,
+				args.old_string as string,
+				args.new_string as string,
+				args.replace_all === true,
+				cwd,
+				permittedPaths,
+				agentId,
+			);
 		},
 	};
 
