@@ -35,9 +35,15 @@ export interface ToolRequest {
 	args: Record<string, unknown>;
 	workdir: string;
 	permittedPaths: string[];
-	agentId?: string;
-	/** Timeout for the tool itself in milliseconds. */
-	timeoutMs?: number;
+	/** Agent identity — always set; used for PolicyViolationError attribution. */
+	agentId: string;
+	/**
+	 * Execution timeout in milliseconds, computed by the orchestrator.
+	 * For Bash: passed to spawnSync as the process timeout.
+	 * For WriteFile/EditFile: bounds the overall child process lifetime via execa.
+	 * Always required — no silent fallback in the child.
+	 */
+	timeoutMs: number;
 }
 
 export interface ToolResponse {
@@ -164,7 +170,7 @@ export function execBash(
 	cwd: string,
 	timeoutMs: number,
 	permittedPaths: string[],
-	agentId?: string,
+	agentId: string,
 ): ToolResult {
 	try {
 		checkBashPaths(command, permittedPaths, agentId);
@@ -193,7 +199,7 @@ export function execWriteFile(
 	content: string,
 	cwd: string,
 	permittedPaths: string[],
-	agentId?: string,
+	agentId: string,
 ): ToolResult {
 	try {
 		const target = resolve(cwd, path);
@@ -214,7 +220,7 @@ export function execEditFile(
 	replaceAll: boolean,
 	cwd: string,
 	permittedPaths: string[],
-	agentId?: string,
+	agentId: string,
 ): ToolResult {
 	try {
 		const target = resolve(cwd, path);
@@ -254,7 +260,7 @@ async function runIsolatedToolCall(
 		"tool-executor.js",
 	);
 	const nodeExe = process.execPath;
-	const timeoutMs = request.timeoutMs ?? 120_000;
+	const { timeoutMs } = request;
 
 	try {
 		const { stdout } = await execa(
@@ -357,6 +363,7 @@ export function createFileTools(cwd: string, acl?: AclPolicy): MagiTool[] {
 						workdir: cwd,
 						permittedPaths,
 						agentId,
+						timeoutMs: 30_000,
 					},
 					signal,
 				);
@@ -398,6 +405,7 @@ export function createFileTools(cwd: string, acl?: AclPolicy): MagiTool[] {
 						workdir: cwd,
 						permittedPaths,
 						agentId,
+						timeoutMs: 30_000,
 					},
 					signal,
 				);

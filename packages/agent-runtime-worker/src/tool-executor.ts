@@ -56,7 +56,7 @@ async function main(): Promise<void> {
 			const r = execBash(
 				args.command as string,
 				workdir,
-				(args.timeout as number) ?? timeoutMs ?? 30_000,
+				timeoutMs,
 				permittedPaths,
 				agentId,
 			);
