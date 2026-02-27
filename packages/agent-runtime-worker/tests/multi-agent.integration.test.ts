@@ -46,13 +46,15 @@ describe("integration: two-agent word-count", () => {
 			const mailboxRepo = new InMemoryMailboxRepository();
 			const mentalMapRepo = new InMemoryMentalMapRepository();
 
-			// The workspace manager uses agent IDs as pool users.
-			// Lead's workdir will be: tmpDir/home/lead/missions/word-count/
+			// Resolve lead's actual linuxUser from the config (supports ${USER} expansion).
+			// Lead's workdir: tmpDir/home/<linuxUser>/missions/<missionId>/
 			// Pre-create and seed greeting.txt there so the agent can find it.
 			const homeBase = join(tmpDir, "home");
+			const leadAgent = teamConfig.agents.find((a) => a.id === "lead");
+			if (!leadAgent) throw new Error("lead agent not found in team config");
 			const leadWorkdir = join(
 				homeBase,
-				"lead",
+				leadAgent.linuxUser,
 				"missions",
 				teamConfig.mission.id,
 			);

@@ -21,7 +21,7 @@
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import type {
 	AssistantMessage,
@@ -90,7 +90,11 @@ describe("integration: SearchWeb + FetchUrl + auto-describe", () => {
 					'Search for "Pale Blue Dot Voyager NASA" and fetch the top Wikipedia result. ' +
 					"Summarise: (1) what the article says and (2) what you see in the main image.",
 				tools: [
-					...createFileTools(workdir),
+					...createFileTools(workdir, {
+						agentId: "search-web-test",
+						permittedPaths: [workdir],
+						linuxUser: userInfo().username,
+					}),
 					createSearchWebTool(apiKey),
 					createFetchUrlTool(CLAUDE_SONNET, workdir),
 					createInspectImageTool(workdir, CLAUDE_SONNET),
