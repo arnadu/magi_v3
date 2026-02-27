@@ -53,7 +53,10 @@ describe("integration: real LLM", () => {
 				systemPrompt:
 					"You are a helpful agent. Complete the given task using the available tools. When finished, confirm what you did.",
 				task: 'Find the file in the current working directory that contains the string "HELLO WORLD". Edit this file and add a line with the word GOODBYE.',
-				tools: createFileTools(tmpDir),
+				tools: createFileTools(tmpDir, {
+					agentId: "loop-test",
+					permittedPaths: [tmpDir],
+				}),
 			});
 
 			printMessages(messages);

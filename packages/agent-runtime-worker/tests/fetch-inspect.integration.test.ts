@@ -84,7 +84,10 @@ describe("integration: FetchUrl + InspectImage", () => {
 					"Report: (1) the article title and a one-sentence summary of the text, " +
 					"(2) a description of each image you inspected.",
 				tools: [
-					...createFileTools(workdir),
+					...createFileTools(workdir, {
+						agentId: "fetch-inspect-test",
+						permittedPaths: [workdir],
+					}),
 					createFetchUrlTool(CLAUDE_SONNET, workdir),
 					createInspectImageTool(workdir, CLAUDE_SONNET),
 				],

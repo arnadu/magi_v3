@@ -20,11 +20,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-	buildAgentIdentity,
-	PoolRegistry,
-	type WorkspaceLayout,
-} from "../src/identity.js";
+import type { AgentIdentity, WorkspaceLayout } from "../src/identity.js";
 import { createFileTools } from "../src/tools.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
 
@@ -34,8 +30,8 @@ import { WorkspaceManager } from "../src/workspace-manager.js";
 
 let testRoot: string;
 let layout: WorkspaceLayout;
-let registry: PoolRegistry;
 let wsManager: WorkspaceManager;
+let allIdentities: Map<string, AgentIdentity>;
 
 const MISSION_ID = "acl-test-mission";
 const AGENT_1 = "lead";
@@ -43,6 +39,7 @@ const AGENT_2 = "worker";
 
 let agent1WorkDir: string;
 let agent2WorkDir: string;
+let agent1PermittedPaths: string[];
 
 beforeAll(() => {
 	// Use a temp directory as the root so no root permissions are needed.
@@ -50,26 +47,28 @@ beforeAll(() => {
 	layout = {
 		homeBase: join(testRoot, "home"),
 		missionsBase: join(testRoot, "missions"),
-		poolUsers: ["magi-w1", "magi-w2"],
 	};
-	registry = new PoolRegistry();
-	wsManager = new WorkspaceManager({ layout, registry, skipAcl: true });
+	wsManager = new WorkspaceManager({ layout, skipAcl: true });
 
-	// Provision the workspace (creates dirs, assigns pool users).
-	const identities = wsManager.provision(MISSION_ID, [
+	// Provision the workspace (creates dirs, linuxUser defaults to agent id).
+	allIdentities = wsManager.provision(MISSION_ID, [
 		{ id: AGENT_1, role: "lead-agent" },
 		{ id: AGENT_2, role: "worker-agent" },
 	]);
 
-	agent1WorkDir = identities.get(AGENT_1)?.workdir;
-	agent2WorkDir = identities.get(AGENT_2)?.workdir;
+	const id1 = allIdentities.get(AGENT_1);
+	const id2 = allIdentities.get(AGENT_2);
+	if (!id1 || !id2) throw new Error("Test setup: identities not provisioned");
+	agent1WorkDir = id1.workdir;
+	agent2WorkDir = id2.workdir;
+	agent1PermittedPaths = id1.permittedPaths;
 
 	// Seed a file in agent-2's dir so EditFile has something to find.
 	writeFileSync(join(agent2WorkDir, "secret.txt"), "agent2 private data");
 });
 
 afterAll(() => {
-	// Clean up temp dirs.
+	// Clean up temp dirs (idempotent — teardown test may have already removed some).
 	rmSync(testRoot, { recursive: true, force: true });
 });
 
@@ -93,18 +92,7 @@ function tool(tools: ReturnType<typeof createFileTools>, name: string) {
 
 describe("WriteFile ACL enforcement", () => {
 	it("permits writes within the agent's own workdir", async () => {
-		const agent1Identity = buildAgentIdentity(
-			MISSION_ID,
-			AGENT_1,
-			"magi-w1",
-			"lead-agent",
-			layout,
-		);
-		const tools = makeTools(
-			AGENT_1,
-			agent1WorkDir,
-			agent1Identity.permittedPaths,
-		);
+		const tools = makeTools(AGENT_1, agent1WorkDir, agent1PermittedPaths);
 
 		const result = await tool(tools, "WriteFile").execute("t1", {
 			path: join(agent1WorkDir, "output.txt"),
@@ -116,18 +104,7 @@ describe("WriteFile ACL enforcement", () => {
 	});
 
 	it("denies WriteFile to another agent's private dir", async () => {
-		const agent1Identity = buildAgentIdentity(
-			MISSION_ID,
-			AGENT_1,
-			"magi-w1",
-			"lead-agent",
-			layout,
-		);
-		const tools = makeTools(
-			AGENT_1,
-			agent1WorkDir,
-			agent1Identity.permittedPaths,
-		);
+		const tools = makeTools(AGENT_1, agent1WorkDir, agent1PermittedPaths);
 
 		// Attempt to write to agent-2's private directory.
 		const result = await tool(tools, "WriteFile").execute("t2", {
@@ -148,18 +125,7 @@ describe("WriteFile ACL enforcement", () => {
 
 describe("Bash ACL enforcement", () => {
 	it("permits Bash commands within the agent's own workdir", async () => {
-		const agent1Identity = buildAgentIdentity(
-			MISSION_ID,
-			AGENT_1,
-			"magi-w1",
-			"lead-agent",
-			layout,
-		);
-		const tools = makeTools(
-			AGENT_1,
-			agent1WorkDir,
-			agent1Identity.permittedPaths,
-		);
+		const tools = makeTools(AGENT_1, agent1WorkDir, agent1PermittedPaths);
 
 		const result = await tool(tools, "Bash").execute("t3", {
 			command: `echo "hello" > "${join(agent1WorkDir, "bash-output.txt")}"`,
@@ -170,18 +136,7 @@ describe("Bash ACL enforcement", () => {
 	});
 
 	it("denies Bash commands referencing another agent's private dir", async () => {
-		const agent1Identity = buildAgentIdentity(
-			MISSION_ID,
-			AGENT_1,
-			"magi-w1",
-			"lead-agent",
-			layout,
-		);
-		const tools = makeTools(
-			AGENT_1,
-			agent1WorkDir,
-			agent1Identity.permittedPaths,
-		);
+		const tools = makeTools(AGENT_1, agent1WorkDir, agent1PermittedPaths);
 
 		// Command contains an explicit reference to agent-2's private path.
 		const result = await tool(tools, "Bash").execute("t4", {
@@ -200,23 +155,8 @@ describe("Bash ACL enforcement", () => {
 // ---------------------------------------------------------------------------
 
 describe("Workspace teardown", () => {
-	it("removes per-mission dirs and releases pool slots after teardown", () => {
-		// Capture assignments before teardown.
-		const assignmentsBefore = registry.listAssignments(MISSION_ID);
-		expect(assignmentsBefore).toHaveLength(2);
-
-		// Build identity map for teardown.
-		const identities = new Map(
-			assignmentsBefore.map(({ agentId, linuxUser }) => [
-				agentId,
-				buildAgentIdentity(MISSION_ID, agentId, linuxUser, "agent", layout),
-			]),
-		);
-
-		wsManager.teardown(MISSION_ID, identities);
-
-		// Pool slots released.
-		expect(registry.listAssignments(MISSION_ID)).toHaveLength(0);
+	it("removes per-mission dirs after teardown", () => {
+		wsManager.teardown(MISSION_ID, allIdentities);
 
 		// Per-mission dirs removed.
 		expect(existsSync(agent1WorkDir)).toBe(false);

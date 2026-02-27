@@ -64,10 +64,11 @@ export class PolicyViolationError extends Error {
 	constructor(
 		public readonly path: string,
 		public readonly action: string,
-		public readonly agentId?: string,
+		public readonly agentId: string,
 	) {
-		const who = agentId ? ` for agent "${agentId}"` : "";
-		super(`PolicyViolationError: "${action}" denied on "${path}"${who}`);
+		super(
+			`PolicyViolationError: "${action}" denied on "${path}" for agent "${agentId}"`,
+		);
 		this.name = "PolicyViolationError";
 	}
 }
@@ -103,7 +104,7 @@ function checkPath(
 	target: string,
 	action: string,
 	permittedPaths: string[],
-	agentId?: string,
+	agentId: string,
 ): void {
 	if (!isPermitted(target, permittedPaths)) {
 		throw new PolicyViolationError(target, action, agentId);
@@ -118,7 +119,7 @@ function checkPath(
 function checkBashPaths(
 	command: string,
 	permittedPaths: string[],
-	agentId?: string,
+	agentId: string,
 ): void {
 	const tokens = command.match(/\/[^\s"'<>|&;(){}$\\]+/g) ?? [];
 	for (const raw of tokens) {
@@ -292,21 +293,19 @@ async function runIsolatedToolCall(
 /**
  * Create the standard set of agent shell tools rooted at `cwd`.
  *
+ * `acl` is required — every tool invocation must carry an explicit security
+ * context. There is no default or fallback.
+ *
  * When `acl.linuxUser` is set, every shell tool call (Bash / WriteFile /
  * EditFile) is executed in a clean child process running as that OS user via
- * `sudo`. The child has no secrets in its environment. Use this in production
- * where pool users (magi-w1 … magi-w6) are provisioned by setup-dev.sh.
+ * `sudo -u <linuxUser>`. The child receives no secrets in its environment.
+ * Set this in production where pool users are provisioned by setup-dev.sh.
  *
  * When `acl.linuxUser` is absent, tools run in-process as the current user.
- * This is appropriate for integration tests and local dev without pool users.
- *
- * In both modes the software ACL (permittedPaths) is enforced.
+ * permittedPaths ACL is enforced in both modes.
  */
-export function createFileTools(cwd: string, acl?: AclPolicy): MagiTool[] {
-	const { agentId, permittedPaths, linuxUser } = acl ?? {
-		agentId: "",
-		permittedPaths: [],
-	};
+export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
+	const { agentId, permittedPaths, linuxUser } = acl;
 
 	// ── Bash ──────────────────────────────────────────────────────────────────
 
