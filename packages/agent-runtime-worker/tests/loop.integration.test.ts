@@ -3,11 +3,14 @@
  * Vitest loads .env automatically, so set the key there for local development.
  *
  * Run:
- *   npx vitest run packages/agent-runtime-worker/tests/integration.test.ts
+ *   npx vitest run packages/agent-runtime-worker/tests/loop.integration.test.ts
+ *
+ * Requires setup-dev.sh to have been run (pool user magi-w1 must exist).
  */
 
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
 	AssistantMessage,
@@ -18,6 +21,8 @@ import { describe, expect, it } from "vitest";
 import { runInnerLoop } from "../src/loop.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { createFileTools } from "../src/tools.js";
+
+const POOL_USER = "magi-w1";
 
 function printMessages(messages: Message[]): void {
 	for (const msg of messages) {
@@ -45,6 +50,12 @@ function printMessages(messages: Message[]): void {
 describe("integration: real LLM", () => {
 	it("finds a file containing HELLO WORLD and appends GOODBYE", async () => {
 		const tmpDir = mkdtempSync(join(tmpdir(), "magi-int-"));
+
+		// Set ACLs before writing the file so greeting.txt inherits the default
+		// ACL (magi-w1 gets rwx on new files). No -R flag: the dir is empty here.
+		spawnSync("setfacl", ["-m", `u:${POOL_USER}:rwx`, tmpDir]);
+		spawnSync("setfacl", ["-d", "-m", `u:${POOL_USER}:rwx`, tmpDir]);
+
 		writeFileSync(join(tmpDir, "greeting.txt"), "HELLO WORLD\n", "utf-8");
 
 		try {
@@ -56,7 +67,7 @@ describe("integration: real LLM", () => {
 				tools: createFileTools(tmpDir, {
 					agentId: "loop-test",
 					permittedPaths: [tmpDir],
-					linuxUser: userInfo().username,
+					linuxUser: POOL_USER,
 				}),
 			});
 

@@ -66,16 +66,18 @@ npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 
 Each agent has a two-layer identity:
 - `agent_id` — semantic MAGI identity (e.g. `lead-analyst`), stable across missions
-- `linux_user` — OS pool member (e.g. `magi-w1`) assigned at mission startup; never created per-mission
+- `linux_user` — OS user assigned at mission startup. In **production**, the control plane creates one dedicated OS user per agent per mission. In **dev**, pre-existing users (`magi-w1`, `magi-w2`, …) from `scripts/setup-dev.sh` are reused across missions; the `linuxUser` field in the team YAML is a dev stopgap and will not exist in the production model (the control plane assigns it).
 - Role, policy tags, `permittedPaths`, `permittedTools` stored in MongoDB `agent_identities`
-- Per-mission private home: `/home/{linux_user}/missions/{mission_id}/`
-- Shared mission folder: `/missions/{mission_id}/shared/artifacts/`
-- Pool provisioned once by `scripts/setup-dev.sh` (magi-w1…magi-w6); same code in containers with pool size 1
+- Per-agent private home: `/home/{linux_user}/missions/{mission_id}/`
+- Shared mission folder: `/missions/{mission_id}/shared/`
+- Each mission deploys as a **single container**; all agents share the container but are isolated from each other via Linux ACLs (`setfacl`) on their private workdirs.
 - `dev` and `prod` workspaces are isolated; cross-environment exchange only via promoted artifacts
+
+`WorkspaceManager` (`src/workspace-manager.ts`) is a dev stopgap: creates per-agent workdirs and the shared mission dir, applies `setfacl`, but does NOT create or delete OS users — that is the control plane's job (Sprint 6+).
 
 Low-risk orchestration tasks run in shared runtime workers. Code execution, data processing, and browser automation run in the agent's assigned execution environment with their persistent home and allowed shared folders mounted.
 
-**Sprint 2 implementation:** Single unified agent loop — no outer/inner split. `runAgent(agentId, messages, ctx, signal)` is the only function the orchestrator calls. The orchestrator pre-fetches unread messages from the mailbox, marks them as read, builds the system prompt by substituting `{{mentalMap}}` into `agent.systemPrompt` (read from YAML), passes messages as the opening user turn, and runs one LLM→tool→LLM sequence with all tools available. Tool ACL enforcement is deferred to Sprint 4.
+**Sprint 2 implementation:** Single unified agent loop — no outer/inner split. `runAgent(agentId, messages, ctx, signal)` is the only function the orchestrator calls. The orchestrator pre-fetches unread messages from the mailbox, marks them as read, builds the system prompt by substituting `{{mentalMap}}` into `agent.systemPrompt` (read from YAML), passes messages as the opening user turn, and runs one LLM→tool→LLM sequence with all tools available.
 
 Each agent has a `supervisor` field (another agent's id, or `"user"`); agents escalate by calling `PostMessage` to their supervisor. The orchestration loop is inbox-poll scheduled: agents run in supervisor-depth order (depth 0 = reports to user; seniors always run before juniors within a cycle). The mission turn ends when no agent has unread messages. The CLI supports buffered readline injection for live user input, a `--step` flag for pause-and-inspect mode, and Ctrl+C abort via `AbortSignal`.
 
@@ -88,34 +90,36 @@ Agents communicate with structured, durable mailbox messages (not free-form chat
 
 Agents share artifact references (datasets, code patches, notebooks, charts, reports, alert payloads), not raw data.
 
-## Current Implementation (Sprints 1–3)
+## Current Implementation (Sprints 1–4)
 
 Two packages are built. Key files:
 
 **`packages/agent-config`** (Sprint 2):
-- `src/loader.ts` — `loadTeamConfig(path)` / `parseTeamConfig(yaml)`: Zod schema validation; exports `AgentConfig = Record<string,string>` and `TeamConfig`. Required agent fields: `id`, `supervisor`, `systemPrompt`, `initialMentalMap`.
+- `src/loader.ts` — `loadTeamConfig(path)` / `parseTeamConfig(yaml)`: Zod schema validation; exports `AgentConfig = Record<string,string>` and `TeamConfig`. Required agent fields: `id`, `supervisor`, `systemPrompt`, `initialMentalMap`, `linuxUser`.
 
-**`packages/agent-runtime-worker`** (Sprints 1–3):
+**`packages/agent-runtime-worker`** (Sprints 1–4):
 - `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop via `completeSimple`. Terminates when the LLM stops calling tools. Fires `onMessage` after every message. `toolTimeoutMs` (default 120 s) enforced via `withTimeout` on every tool call.
-- `src/tools.ts` — `createFileTools(workdir)`: `Bash`, `WriteFile`, `EditFile`. Bash covers all read/list/find/grep needs.
-- `src/mailbox.ts` — `MailboxRepository` (in-memory + MongoDB, sort-consistent: newest-first); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools. Uses `teamConfig.mission.id` (not hardcoded).
+- `src/tools.ts` — `createFileTools(workdir, acl: AclPolicy)`: `Bash`, `WriteFile`, `EditFile`. `AclPolicy` carries `agentId`, `permittedPaths`, and `linuxUser`. Shell tools dispatch via `runIsolatedToolCall()`: forks `sudo -u <linuxUser> node tool-executor.js` with only `PATH` and `HOME` set (no secrets in child env). `checkPath` rejects paths outside `permittedPaths` with `PolicyViolationError` before any filesystem access. Bash uses OS-level enforcement (the sudoed user has no write access to other agents' dirs). Response bodies capped at 50 MB; Bash timeout capped at 600 s. `verifyIsolation(linuxUser, workdir)`: startup invariant check — forks a child via the normal isolation path and asserts `ANTHROPIC_API_KEY` is absent; throws if sudo is misconfigured or if secrets leak.
+- `src/tool-executor.ts` — clean child entry point for isolated tool execution. Launched by the orchestrator via `sudo -u <linuxUser> node dist/tool-executor.js`. Reads `ToolRequest` JSON from stdin, dispatches to `execBash` / `execWriteFile` / `execEditFile`, writes `ToolResponse` JSON to stdout, exits. Never imports anything that touches secrets.
+- `src/workspace-manager.ts` — **dev stopgap.** `WorkspaceManager` creates per-agent workdirs (`homeBase/linuxUser/missions/missionId`) and the shared mission dir (`missionsBase/missionId/shared`), applies `setfacl` for mutual access. Does NOT create or delete OS users — that is the control plane's job (Sprint 6+). Exports `WorkspaceLayout` and `AgentIdentity { workdir, sharedDir, linuxUser }`.
+- `src/mailbox.ts` — `MailboxRepository` (in-memory + MongoDB, sort-consistent: newest-first); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools. Uses `teamConfig.mission.id` (not hardcoded). `PostMessage` validates recipient against team roster; body capped at 100 KB.
 - `src/mental-map.ts` — `MentalMapRepository` (in-memory + MongoDB); `UpdateMentalMap` tool; `patchMentalMap` pure function (jsdom-based, returns `null` on missing element).
 - `src/artifacts.ts` — `generateArtifactId(sourceHint)`, `saveArtifact(workdir, id, files, meta)`, `saveUpload(workdir, id, files, meta)`. Internal `writeDirectory` helper keeps both paths DRY.
 - `src/prompt.ts` — `buildSystemPrompt(agent, mentalMapHtml)`: substitutes `{{mentalMap}}` in `agent.systemPrompt`. `formatMessages(messages)` formats the inbox as the opening user turn.
-- `src/agent-runner.ts` — `runAgent(agentId, messages, ctx, signal)`: initialises mental map, builds system prompt, runs inner loop with all tools.
-- `src/orchestrator.ts` — `runOrchestrationLoop(config, signal)`: inbox-poll scheduling; runs agents in supervisor-depth order (seniors first); supports `--step` mode and live readline input; terminates when no agent has unread messages.
+- `src/agent-runner.ts` — `runAgent(agentId, messages, ctx, signal)`: initialises mental map, builds system prompt, derives `permittedPaths = [workdir, sharedDir]` from `AgentIdentity`, creates `AclPolicy`, runs inner loop with all tools.
+- `src/orchestrator.ts` — `runOrchestrationLoop(config, signal)`: provisions workspace, then calls `verifyIsolation()` before the first cycle (fails fast if sudo is misconfigured or secrets leak); inbox-poll scheduling; runs agents in supervisor-depth order (seniors first); supports `--step` mode and live readline input; terminates when no agent has unread messages.
 - `src/user-input.ts` — readline handler: `/command` dispatch (`/help`; future commands reserved under `/`); `@path` scanning (extracts `@/abs` or `@./rel` tokens, calls `saveUpload`, appends notice to message body).
-- `src/cli.ts` — multi-agent CLI; requires `TEAM_CONFIG`; registers `SearchWeb` when `BRAVE_SEARCH_API_KEY` is set; logs all tool calls and results per agent.
+- `src/cli.ts` — multi-agent CLI; requires `TEAM_CONFIG`; provisions workspace via `WorkspaceManager`; registers `SearchWeb` when `BRAVE_SEARCH_API_KEY` is set; logs all tool calls and results per agent.
 - `src/models.ts` — `CLAUDE_SONNET` constant; `anthropicModel()` factory.
-- `src/db.ts` — `ConversationRepository` (retained for the Sprint 1 loop integration test).
-- `src/tools/fetch-url.ts` — `createFetchUrlTool(workdir, model)`: HTTP GET → Readability (HTML) or mupdf (PDF) → `content.md`; downloads up to `max_images` images (default 3, max 10) from article body only (not nav/UI); vision LLM auto-describes each image; writes artifact folder + `meta.json`. `max_pages` (default 5, max 20) limits PDF processing. VISION_MIMES: jpeg, png, gif, webp only (SVG excluded).
+- `src/tools/fetch-url.ts` — `createFetchUrlTool(model, sharedDir)`: HTTP GET → Readability (HTML) or mupdf (PDF) → `content.md`; downloads up to `max_images` images (default 3, max 10) from article body only (not nav/UI); vision LLM auto-describes each image; writes artifact folder + `meta.json`. `max_pages` (default 5, max 20) limits PDF processing. VISION_MIMES: jpeg, png, gif, webp only (SVG excluded). `file://` URLs rejected (LFI fix).
 - `src/tools/inspect-image.ts` — `createInspectImageTool(workdir, model)`: reads image file (path resolved within workdir — path traversal rejected), base64-encodes it, calls vision LLM via `completeSimple`.
 - `src/tools/search-web.ts` — `createSearchWebTool(apiKey)`: Brave Search REST API → ranked markdown result list; saves results as an artifact; not registered when key absent.
 - `tests/loop.integration.test.ts` — Sprint 1: real LLM finds and edits `greeting.txt`.
-- `tests/multi-agent.integration.test.ts` — Sprint 2: Lead delegates word-count to Worker; asserts Lead reports "12" to user. Loads config from `config/teams/word-count.yaml`.
+- `tests/multi-agent.integration.test.ts` — Sprint 2/4: Lead delegates word-count to Worker; asserts Lead reports "12" to user. Uses real pool users `magi-w1`/`magi-w2`; seeds `greeting.txt` in Worker's workdir; applies setfacl. Loads config from `config/teams/word-count.yaml`.
 - `tests/fetch-inspect.integration.test.ts` — Sprint 3: single agent fetches a local HTML page with an image, inspects it; asserts "cat" or "feline" in summary.
-- `tests/fetch-share.integration.test.ts` — Sprint 3: two-agent test; Lead fetches a PDF, Worker analyses images via Bash; asserts one artifact folder and both animal species in user message.
+- `tests/fetch-share.integration.test.ts` — Sprint 3/4: two-agent test; Lead fetches a PDF, Worker analyses images via Bash; asserts one artifact folder and both animal species in user message. Uses real pool users.
 - `tests/search-web.integration.test.ts` — Sprint 3: searches "Pale Blue Dot Voyager NASA", fetches Wikipedia top result, inspects photograph; skipped when `BRAVE_SEARCH_API_KEY` absent.
+- `tests/acl.integration.test.ts` — Sprint 4: verifies ACL enforcement without LLM. (1) `WriteFile` to another agent's private dir → `PolicyViolationError`. (2) `Bash` writing to another agent's private dir → OS-level `Permission denied`. Uses real pool users `magi-w1`/`magi-w2`, temp workdirs, and setfacl.
 
 ## Tool Capabilities (Implementation Priority Order)
 
@@ -150,7 +154,7 @@ Two packages are built. Key files:
 | 1 | ✅ Done | Inner loop: `runInnerLoop`, 3 tools, MongoDB persistence, CLI, integration test |
 | 2 | ✅ Done | Multi-agent: YAML team config (Zod), mailbox, orchestration loop, supervisor-depth ordering, 5 tools |
 | 3 | ✅ Done | Web search, fetch, artifacts: `FetchUrl`, `InspectImage`, `SearchWeb`; `@path` upload; artifact model |
-| 4 | Next | Identity, workspace, ACL enforcement (Temporal + Redis dropped — see ADRs 0001, 0006) |
+| 4 | ✅ Done | Identity, workspace, ACL enforcement: OS-isolated tool execution, `AclPolicy`, `WorkspaceManager`, `tool-executor.ts` (Temporal + Redis dropped — see ADRs 0001, 0006) |
 | 5 | | Agent Skills: discovery, 3 platform defaults (`skill-creator`, `git-provenance`, `inter-agent-comms`), git workspace |
 | 6 | | Orchestrator as a service: persistent daemon, Mission HTTP API, `schedule-task` + `run-background` skills |
 | 7 | | `BrowseWeb` (Playwright) |
@@ -223,7 +227,7 @@ Pending final decisions at Sprint 0:
 | Component | Technology |
 |-----------|-----------|
 | Language | TypeScript throughout (backend, frontend, tooling) |
-| Durable orchestration | Temporal (workflows, schedules, child workflows, message passing) |
+| Process supervision | pm2 (local dev) / systemd (server); node-cron for scheduling (Temporal dropped — see ADR-0001) |
 | Browser automation | Playwright |
 | Object storage | MinIO (local) / S3-compatible (cloud) |
 | State store / memory | MongoDB |

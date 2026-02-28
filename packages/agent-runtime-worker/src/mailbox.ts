@@ -211,6 +211,14 @@ export function createMailboxTools(
 		return { content: [{ type: "text", text }], isError: true };
 	}
 
+	/** Valid recipient IDs: every agent in the team plus "user" for the operator. */
+	const validRecipients = new Set([
+		...teamConfig.agents.map((a) => a.id),
+		"user",
+	]);
+	/** Maximum message body length to prevent mailbox memory exhaustion. */
+	const MAX_BODY_BYTES = 100_000;
+
 	// ── PostMessage ────────────────────────────────────────────────────────────
 
 	const postMessage: MagiTool = {
@@ -232,6 +240,17 @@ export function createMailboxTools(
 			const body = args.body as string;
 
 			if (to.length === 0) return err("PostMessage: to[] must not be empty");
+
+			const unknown = to.filter((id) => !validRecipients.has(id));
+			if (unknown.length > 0) {
+				return err(`PostMessage: unknown recipients: ${unknown.join(", ")}`);
+			}
+
+			if (body.length > MAX_BODY_BYTES) {
+				return err(
+					`PostMessage: body too large (${body.length} chars, max ${MAX_BODY_BYTES})`,
+				);
+			}
 
 			const msg = await repo.post({
 				missionId: teamConfig.mission.id,

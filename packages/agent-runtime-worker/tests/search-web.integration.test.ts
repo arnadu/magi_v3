@@ -18,10 +18,12 @@
  *
  * Requires ANTHROPIC_API_KEY and BRAVE_SEARCH_API_KEY in environment or .env.
  * Skipped automatically when BRAVE_SEARCH_API_KEY is absent.
+ * Requires setup-dev.sh to have been run (pool user magi-w1 must exist).
  */
 
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
 	AssistantMessage,
@@ -35,6 +37,8 @@ import { createFetchUrlTool } from "../src/tools/fetch-url.js";
 import { createInspectImageTool } from "../src/tools/inspect-image.js";
 import { createSearchWebTool } from "../src/tools/search-web.js";
 import { createFileTools } from "../src/tools.js";
+
+const POOL_USER = "magi-w1";
 
 // ---------------------------------------------------------------------------
 // Logging helper
@@ -80,6 +84,10 @@ describe("integration: SearchWeb + FetchUrl + auto-describe", () => {
 
 		const workdir = mkdtempSync(join(tmpdir(), "magi-search-"));
 
+		// Grant the pool user read+write access to the test workdir.
+		spawnSync("setfacl", ["-R", "-m", `u:${POOL_USER}:rwx`, workdir]);
+		spawnSync("setfacl", ["-d", "-m", `u:${POOL_USER}:rwx`, workdir]);
+
 		try {
 			const { messages } = await runInnerLoop({
 				model: CLAUDE_SONNET,
@@ -93,7 +101,7 @@ describe("integration: SearchWeb + FetchUrl + auto-describe", () => {
 					...createFileTools(workdir, {
 						agentId: "search-web-test",
 						permittedPaths: [workdir],
-						linuxUser: userInfo().username,
+						linuxUser: POOL_USER,
 					}),
 					createSearchWebTool(apiKey),
 					createFetchUrlTool(CLAUDE_SONNET, workdir),

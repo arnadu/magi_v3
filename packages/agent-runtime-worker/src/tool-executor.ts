@@ -53,13 +53,7 @@ async function main(): Promise<void> {
 	let result: ToolResponse;
 	switch (tool) {
 		case "Bash": {
-			const r = execBash(
-				args.command as string,
-				workdir,
-				timeoutMs,
-				permittedPaths,
-				agentId,
-			);
+			const r = execBash(args.command as string, workdir, timeoutMs);
 			result = { ok: !r.isError, text: r.content[0].text };
 			break;
 		}

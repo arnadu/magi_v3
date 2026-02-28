@@ -4,6 +4,7 @@ import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
+import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
 import type { WorkspaceManager } from "./workspace-manager.js";
 
@@ -81,7 +82,7 @@ export async function runOrchestrationLoop(
 	// linuxUser is required in the team YAML — validated by the config loader.
 	const agentDefs = teamConfig.agents.map((a) => ({
 		id: a.id,
-		role: ((a as Record<string, unknown>).role as string) ?? "agent",
+		role: a.role,
 		linuxUser: a.linuxUser,
 	}));
 	const identities = workspaceManager.provision(
@@ -90,6 +91,16 @@ export async function runOrchestrationLoop(
 	);
 	console.log(
 		`[orchestrator] Workspace provisioned for ${identities.size} agent(s)`,
+	);
+
+	// Verify isolation invariant: ANTHROPIC_API_KEY must not be visible in
+	// child processes. Fails fast if sudo is misconfigured or secrets leak.
+	const firstIdentity = identities.get(agentDefs[0].id);
+	if (!firstIdentity)
+		throw new Error("No identity for first agent after provision");
+	await verifyIsolation(firstIdentity.linuxUser, firstIdentity.workdir);
+	console.log(
+		"[orchestrator] Isolation verified — child env does not contain secrets",
 	);
 
 	// Buffer for user input typed during agent runs.
@@ -246,12 +257,12 @@ export async function runOrchestrationLoop(
 				}
 			}
 		}
+
+		console.log(`\n[orchestrator] Mission complete (${cycles} cycle(s))`);
 	} finally {
 		rl?.close();
 		workspaceManager.teardown(teamConfig.mission.id, identities);
 	}
-
-	console.log(`\n[orchestrator] Mission complete (${cycles} cycle(s))`);
 }
 
 // ---------------------------------------------------------------------------

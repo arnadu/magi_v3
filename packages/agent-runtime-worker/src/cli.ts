@@ -120,8 +120,6 @@ async function main(): Promise<void> {
 	const { modelId, model } = getModel();
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
-	// linuxUser defaults to agent id in dev (no pool users needed).
-	// skipAcl is auto-detected: skipped when setfacl is not installed.
 	const workspaceManager = new WorkspaceManager({
 		layout: {
 			homeBase: join(workdir, "home"),

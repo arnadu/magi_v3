@@ -1,43 +1,69 @@
-import { execSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
-import {
-	type AgentIdentity,
-	buildAgentIdentity,
-	type WorkspaceLayout,
-} from "./identity.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface WorkspaceManagerOptions {
-	layout: WorkspaceLayout;
-	/**
-	 * When true, setfacl calls are skipped.
-	 * Defaults to true when setfacl is not installed on the system.
-	 * Always pass true in integration tests running on systems without setfacl.
-	 */
-	skipAcl?: boolean;
+/**
+ * Describes where MAGI paths live on this host / container.
+ *
+ * Production layout:
+ *   homeBase     /home      → /home/{linuxUser}/missions/{missionId}/
+ *   missionsBase /missions  → /missions/{missionId}/shared/
+ *
+ * Tests override both to temp dirs so no root paths are needed.
+ */
+export interface WorkspaceLayout {
+	homeBase: string;
+	missionsBase: string;
+}
+
+/**
+ * Resolved filesystem paths for one agent within one mission.
+ *
+ * Dev-mode stopgap: in production this struct is replaced by a control-plane
+ * record (MongoDB document) that also carries uid, gid, policy tags, etc.
+ * The control plane creates a dedicated OS user per agent per mission at
+ * mission startup; here we reuse pre-existing dev users from the team YAML.
+ */
+export interface AgentIdentity {
+	/** Private working directory: homeBase/linuxUser/missions/missionId */
+	workdir: string;
+	/** Shared mission directory: missionsBase/missionId/shared */
+	sharedDir: string;
+	/** OS user this agent's tools execute as (via sudo). */
+	linuxUser: string;
 }
 
 // ---------------------------------------------------------------------------
 // WorkspaceManager
 // ---------------------------------------------------------------------------
 
+/**
+ * Dev-mode stopgap for mission filesystem provisioning.
+ *
+ * Creates per-agent private workdirs and the shared mission dir, then applies
+ * setfacl so each agent's OS user can access its own dir and all agents can
+ * access the shared dir. Tears everything down when the mission ends.
+ *
+ * Does NOT create or delete OS users — that is the control plane's job
+ * (Sprint 6+). In dev, OS users are pre-created by scripts/setup-dev.sh.
+ */
 export class WorkspaceManager {
 	private readonly layout: WorkspaceLayout;
-	private readonly skipAcl: boolean;
 
-	constructor(opts: WorkspaceManagerOptions) {
+	constructor(opts: { layout: WorkspaceLayout }) {
 		this.layout = opts.layout;
-		this.skipAcl = opts.skipAcl ?? !isSetfaclAvailable();
 	}
 
 	/**
-	 * Create per-mission directories for each agent and apply setfacl on the
-	 * shared mission directory.
+	 * Create per-mission directories for each agent and apply setfacl.
+	 *
+	 * setfacl is always applied — OS-level isolation is not optional.
+	 * Throws if setfacl is not installed.
 	 *
 	 * Returns a map of agentId → AgentIdentity for the mission.
 	 */
@@ -45,58 +71,44 @@ export class WorkspaceManager {
 		missionId: string,
 		agents: Array<{ id: string; role: string; linuxUser: string }>,
 	): Map<string, AgentIdentity> {
+		const sharedDir = join(this.layout.missionsBase, missionId, "shared");
 		const identities = new Map<string, AgentIdentity>();
 
 		for (const agent of agents) {
 			const { linuxUser } = agent;
-			const identity = buildAgentIdentity(
-				missionId,
-				agent.id,
+			const workdir = join(
+				this.layout.homeBase,
 				linuxUser,
-				agent.role,
-				this.layout,
+				"missions",
+				missionId,
 			);
-			identities.set(agent.id, identity);
-
-			// Create the agent's private working directory.
-			mkdirSync(identity.workdir, { recursive: true });
-
-			// Apply mutual ACL so the agent's OS user can write to the workdir
-			// (created by the orchestrator) and the orchestrator can read files
-			// the agent created (e.g. for FetchUrl / InspectImage).
-			if (!this.skipAcl) {
-				applyWorkdirAcl(identity.workdir, linuxUser, userInfo().username);
-			}
+			mkdirSync(workdir, { recursive: true });
+			applyWorkdirAcl(workdir, linuxUser, userInfo().username);
+			identities.set(agent.id, { workdir, sharedDir, linuxUser });
 		}
 
-		// Create the shared mission directory (one per mission, all agents share it).
-		const sharedDir = join(this.layout.missionsBase, missionId, "shared");
 		mkdirSync(sharedDir, { recursive: true });
-
-		// Apply setfacl so all linux users assigned to this mission can read/write
-		// the shared directory, including any files/dirs created inside it.
-		if (!this.skipAcl) {
-			applySharedAcl(
-				sharedDir,
-				Array.from(identities.values()).map((i) => i.linuxUser),
-			);
-		}
+		applySharedAcl(
+			sharedDir,
+			Array.from(identities.values()).map((i) => i.linuxUser),
+		);
 
 		return identities;
 	}
 
 	/**
 	 * Remove all per-mission directories for the given identities.
-	 * Linux users themselves are NOT removed — they persist on the system.
+	 * OS users themselves are NOT removed — they persist on the system.
 	 */
 	teardown(missionId: string, identities: Map<string, AgentIdentity>): void {
 		for (const identity of identities.values()) {
 			rmSync(identity.workdir, { recursive: true, force: true });
 		}
-
-		// Remove the shared mission folder entirely.
-		const sharedDir = join(this.layout.missionsBase, missionId, "shared");
-		rmSync(sharedDir, { recursive: true, force: true });
+		// Remove the entire per-mission directory (contains shared/ and nothing else).
+		rmSync(join(this.layout.missionsBase, missionId), {
+			recursive: true,
+			force: true,
+		});
 	}
 }
 
@@ -106,19 +118,25 @@ export class WorkspaceManager {
 
 /**
  * Apply mutual ACL on an agent's private workdir so:
- *   - `agentUser` (magi-w1) can write files created by the orchestrator.
- *   - `orchestratorUser` can read files created by the agent (FetchUrl etc.).
+ *   - `agentUser` can write files created by the orchestrator.
+ *   - `orchestratorUser` can read files the agent created (FetchUrl etc.).
  * Default ACL entries ensure new files inherit the same permissions.
+ *
+ * Uses execFileSync (no shell) to prevent injection via agentUser values.
+ * Throws if setfacl is not installed — OS-level isolation requires it.
  */
 function applyWorkdirAcl(
 	dir: string,
 	agentUser: string,
 	orchestratorUser: string,
 ): void {
-	if (!isSetfaclAvailable()) return;
-	execSync(`setfacl -m u:${agentUser}:rwx "${dir}"`, { stdio: "ignore" });
-	execSync(`setfacl -d -m u:${agentUser}:rwx "${dir}"`, { stdio: "ignore" });
-	execSync(`setfacl -d -m u:${orchestratorUser}:rwx "${dir}"`, {
+	execFileSync("setfacl", ["-m", `u:${agentUser}:rwx`, dir], {
+		stdio: "ignore",
+	});
+	execFileSync("setfacl", ["-d", "-m", `u:${agentUser}:rwx`, dir], {
+		stdio: "ignore",
+	});
+	execFileSync("setfacl", ["-d", "-m", `u:${orchestratorUser}:rwx`, dir], {
 		stdio: "ignore",
 	});
 }
@@ -126,19 +144,15 @@ function applyWorkdirAcl(
 /**
  * Apply ACL entries so the given linux users have rwx on the shared dir,
  * including default ACL so new files inherit the same permissions.
+ *
+ * Uses execFileSync (no shell) to prevent injection via user values.
+ * Throws if setfacl is not installed — OS-level isolation requires it.
  */
 function applySharedAcl(dir: string, linuxUsers: string[]): void {
-	if (!isSetfaclAvailable()) return;
-
 	for (const user of linuxUsers) {
-		// Named user ACL entry: rwx
-		execSync(`setfacl -m u:${user}:rwx "${dir}"`, { stdio: "ignore" });
-		// Default ACL (inherited by files/dirs created inside)
-		execSync(`setfacl -d -m u:${user}:rwx "${dir}"`, { stdio: "ignore" });
+		execFileSync("setfacl", ["-m", `u:${user}:rwx`, dir], { stdio: "ignore" });
+		execFileSync("setfacl", ["-d", "-m", `u:${user}:rwx`, dir], {
+			stdio: "ignore",
+		});
 	}
-}
-
-function isSetfaclAvailable(): boolean {
-	const r = spawnSync("which", ["setfacl"], { encoding: "utf-8" });
-	return r.status === 0;
 }

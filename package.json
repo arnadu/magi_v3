@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
     "lint": "biome check packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
     "lint:fix": "biome check --write --unsafe packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts"
   },

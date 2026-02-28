@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { userInfo } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type TSchema, Type } from "@sinclair/typebox";
@@ -88,23 +87,18 @@ export interface AclPolicy {
 	/**
 	 * The Linux OS user these tools execute as.
 	 *
-	 * When equal to the current process user → tools run in-process (no sudo).
-	 * When different → tools fork a clean child process via `sudo -u <linuxUser>`,
-	 * with no secrets in the child's environment. The sudo call fails loudly if
-	 * the user does not exist — there is no silent fallback to in-process mode.
+	 * Every shell tool call (Bash / WriteFile / EditFile) is executed in a
+	 * clean child process running as this OS user via `sudo -u <linuxUser>`.
+	 * The child receives no secrets in its environment.
 	 *
-	 * Set to `${USER}` (expanded by the YAML loader) for test/dev fixtures.
-	 * Set to a pool user (e.g. "magi-w1") for production deployments.
+	 * Must be a pool user provisioned by setup-dev.sh (e.g. "magi-w1").
 	 * Required — absence is a type error.
 	 */
 	linuxUser: string;
 }
 
 function isPermitted(target: string, permittedPaths: string[]): boolean {
-	return permittedPaths.some(
-		(p) =>
-			target === p || target.startsWith(p + sep) || target.startsWith(`${p}/`),
-	);
+	return permittedPaths.some((p) => target === p || target.startsWith(p + sep));
 }
 
 function checkPath(
@@ -115,27 +109,6 @@ function checkPath(
 ): void {
 	if (!isPermitted(target, permittedPaths)) {
 		throw new PolicyViolationError(target, action, agentId);
-	}
-}
-
-/**
- * Extract absolute path tokens from a bash command string and check each
- * against the ACL policy. Soft enforcement: catches explicit absolute path
- * references to workspace paths but not dynamically constructed paths.
- */
-function checkBashPaths(
-	command: string,
-	permittedPaths: string[],
-	agentId: string,
-): void {
-	const tokens = command.match(/\/[^\s"'<>|&;(){}$\\]+/g) ?? [];
-	for (const raw of tokens) {
-		// Only check paths that look like agent workspace paths.
-		if (!/\/missions\/|\/home\/magi-/.test(raw)) continue;
-		const token = raw.replace(/[,;)'"]+$/, ""); // strip trailing punctuation
-		if (!isPermitted(token, permittedPaths)) {
-			throw new PolicyViolationError(token, "bash", agentId);
-		}
 	}
 }
 
@@ -165,23 +138,20 @@ function ok(text: string): ToolResult {
 }
 
 function err(text: string): ToolResult {
-	return { content: [{ type: "text", text }], isError: true };
+	return { content: [{ type: "text", text: truncate(text) }], isError: true };
 }
 
 // ---------------------------------------------------------------------------
 // Pure exec functions — no side effects beyond file I/O.
-// Called in-process (tests / no pool user) or from tool-executor.ts (isolated).
+// Called from tool-executor.ts (isolated child process).
 // ---------------------------------------------------------------------------
 
 export function execBash(
 	command: string,
 	cwd: string,
 	timeoutMs: number,
-	permittedPaths: string[],
-	agentId: string,
 ): ToolResult {
 	try {
-		checkBashPaths(command, permittedPaths, agentId);
 		const result = spawnSync("bash", ["-c", command], {
 			cwd,
 			encoding: "utf-8",
@@ -193,11 +163,10 @@ export function execBash(
 			return err(`Bash: killed by signal ${result.signal}`);
 		}
 		if (result.status !== 0 && result.status !== null) {
-			return err(truncate(output || `Exited with code ${result.status}`));
+			return err(output || `Exited with code ${result.status}`);
 		}
-		return ok(truncate(output || "(no output)"));
+		return ok(output || "(no output)");
 	} catch (e) {
-		if (e instanceof PolicyViolationError) return err(e.message);
 		return err(`Bash: ${(e as Error).message}`);
 	}
 }
@@ -250,8 +219,14 @@ export function execEditFile(
 }
 
 // ---------------------------------------------------------------------------
-// Isolated tool dispatch — forks a clean child process as the agent's OS user
+// Isolated tool dispatch — always forks a clean child process as the agent's
+// OS user. There is no in-process fallback: running shell tools in the
+// orchestrator process would expose ANTHROPIC_API_KEY and other secrets to
+// the LLM via printenv / /proc/self/environ.
 // ---------------------------------------------------------------------------
+
+/** Maximum Bash timeout the LLM may request (10 minutes). */
+const MAX_BASH_TIMEOUT_MS = 600_000;
 
 /**
  * Run a tool in a clean child process as `linuxUser` via sudo.
@@ -263,10 +238,14 @@ async function runIsolatedToolCall(
 	request: ToolRequest,
 	signal?: AbortSignal,
 ): Promise<ToolResult> {
-	const toolExecutor = join(
-		dirname(fileURLToPath(import.meta.url)),
-		"tool-executor.js",
-	);
+	// Resolve path to the compiled tool-executor.js.
+	// import.meta.url points to dist/tools.js when compiled, but to src/tools.ts
+	// when running under vitest (which executes TypeScript directly). In both
+	// cases the compiled child entry point lives at dist/tool-executor.js.
+	const __file = fileURLToPath(import.meta.url);
+	const toolExecutor = __file.endsWith(".ts")
+		? join(dirname(__file), "..", "dist", "tool-executor.js")
+		: join(dirname(__file), "tool-executor.js");
 	const nodeExe = process.execPath;
 	const { timeoutMs } = request;
 
@@ -294,6 +273,56 @@ async function runIsolatedToolCall(
 }
 
 // ---------------------------------------------------------------------------
+// Isolation startup check
+// ---------------------------------------------------------------------------
+
+/**
+ * Startup invariant: verify that child processes cannot see orchestrator
+ * secrets (ANTHROPIC_API_KEY, etc.).
+ *
+ * Forks a real child via the same runIsolatedToolCall path used at runtime
+ * and checks that ANTHROPIC_API_KEY is absent from the child environment.
+ *
+ * Throws if:
+ *   - sudo is misconfigured (pool user doesn't exist, sudoers missing)
+ *   - ANTHROPIC_API_KEY is visible in the child environment
+ *
+ * Call once per mission after workspaceManager.provision().
+ */
+export async function verifyIsolation(
+	linuxUser: string,
+	workdir: string,
+): Promise<void> {
+	const result = await runIsolatedToolCall(linuxUser, {
+		tool: "Bash",
+		// Outputs "LEAKED" if ANTHROPIC_API_KEY is set in the child env, empty otherwise.
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: bash ${var:+value} syntax, not a JS template
+		args: { command: 'echo "${ANTHROPIC_API_KEY:+LEAKED}"' },
+		workdir,
+		permittedPaths: [workdir],
+		agentId: "_isolation-check",
+		timeoutMs: 10_000,
+	});
+
+	if (result.isError) {
+		throw new Error(
+			`Isolation check failed — sudo or pool user "${linuxUser}" may not be configured.\n` +
+				`${result.content[0].text}\n` +
+				`Run scripts/setup-dev.sh to create pool users and configure sudoers.`,
+		);
+	}
+
+	const output = result.content[0].text.trim();
+	if (output === "LEAKED") {
+		throw new Error(
+			`CRITICAL: secret containment broken — ANTHROPIC_API_KEY is visible in the ` +
+				`child process environment running as "${linuxUser}". ` +
+				`Shell tools are not safe to run until this is fixed.`,
+		);
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Tool factory
 // ---------------------------------------------------------------------------
 
@@ -303,21 +332,18 @@ async function runIsolatedToolCall(
  * `acl` is required — every tool invocation must carry an explicit security
  * context. There is no default or fallback.
  *
- * When `acl.linuxUser` is set, every shell tool call (Bash / WriteFile /
- * EditFile) is executed in a clean child process running as that OS user via
- * `sudo -u <linuxUser>`. The child receives no secrets in its environment.
- * Set this in production where pool users are provisioned by setup-dev.sh.
+ * Every shell tool call (Bash / WriteFile / EditFile) is executed in a clean
+ * child process running as `acl.linuxUser` via `sudo -u <linuxUser>`. The
+ * child receives no secrets in its environment. There is no in-process
+ * fallback: running shell tools in the orchestrator process would expose
+ * secrets to the LLM.
  *
- * When `acl.linuxUser` is absent, tools run in-process as the current user.
- * permittedPaths ACL is enforced in both modes.
+ * Integration tests must use a real pool user (e.g. "magi-w1") provisioned
+ * by setup-dev.sh. Tests that use `linuxUser: ${USER}` or similar are no
+ * longer valid — update them to use pool users.
  */
 export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 	const { agentId, permittedPaths, linuxUser } = acl;
-	// When linuxUser is the same as the process owner, tools run in-process
-	// (we are already that user). When different, every tool call forks a clean
-	// child via sudo — fails loudly if the OS user does not exist.
-	const currentUser = userInfo().username;
-	const useIsolation = linuxUser !== currentUser;
 
 	// ── Bash ──────────────────────────────────────────────────────────────────
 
@@ -329,28 +355,28 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 		parameters: Type.Object({
 			command: Type.String({ description: "Bash command to execute" }),
 			timeout: Type.Optional(
-				Type.Number({ description: "Timeout in seconds (default: 30)" }),
+				Type.Number({
+					description: "Timeout in seconds (default: 30, max: 600)",
+				}),
 			),
 		}),
 		async execute(_id, args, signal) {
-			const command = args.command as string;
-			const timeoutMs = ((args.timeout as number) ?? 30) * 1_000;
-
-			if (useIsolation) {
-				return runIsolatedToolCall(
-					linuxUser,
-					{
-						tool: "Bash",
-						args,
-						workdir: cwd,
-						permittedPaths,
-						agentId,
-						timeoutMs,
-					},
-					signal,
-				);
-			}
-			return execBash(command, cwd, timeoutMs, permittedPaths, agentId);
+			const timeoutMs = Math.min(
+				((args.timeout as number) ?? 30) * 1_000,
+				MAX_BASH_TIMEOUT_MS,
+			);
+			return runIsolatedToolCall(
+				linuxUser,
+				{
+					tool: "Bash",
+					args,
+					workdir: cwd,
+					permittedPaths,
+					agentId,
+					timeoutMs,
+				},
+				signal,
+			);
 		},
 	};
 
@@ -365,26 +391,17 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 			content: Type.String({ description: "Content to write" }),
 		}),
 		async execute(_id, args, signal) {
-			if (useIsolation) {
-				return runIsolatedToolCall(
-					linuxUser,
-					{
-						tool: "WriteFile",
-						args,
-						workdir: cwd,
-						permittedPaths,
-						agentId,
-						timeoutMs: 30_000,
-					},
-					signal,
-				);
-			}
-			return execWriteFile(
-				args.path as string,
-				args.content as string,
-				cwd,
-				permittedPaths,
-				agentId,
+			return runIsolatedToolCall(
+				linuxUser,
+				{
+					tool: "WriteFile",
+					args,
+					workdir: cwd,
+					permittedPaths,
+					agentId,
+					timeoutMs: 30_000,
+				},
+				signal,
 			);
 		},
 	};
@@ -407,28 +424,17 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 			),
 		}),
 		async execute(_id, args, signal) {
-			if (useIsolation) {
-				return runIsolatedToolCall(
-					linuxUser,
-					{
-						tool: "EditFile",
-						args,
-						workdir: cwd,
-						permittedPaths,
-						agentId,
-						timeoutMs: 30_000,
-					},
-					signal,
-				);
-			}
-			return execEditFile(
-				args.path as string,
-				args.old_string as string,
-				args.new_string as string,
-				args.replace_all === true,
-				cwd,
-				permittedPaths,
-				agentId,
+			return runIsolatedToolCall(
+				linuxUser,
+				{
+					tool: "EditFile",
+					args,
+					workdir: cwd,
+					permittedPaths,
+					agentId,
+					timeoutMs: 30_000,
+				},
+				signal,
 			);
 		},
 	};

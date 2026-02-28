@@ -1,6 +1,4 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
@@ -22,6 +20,8 @@ import type { MagiTool, ToolResult } from "../tools.js";
 const DEFAULT_MAX_IMAGES = 3;
 const DEFAULT_MAX_PDF_PAGES = 5;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB per image
+/** Maximum bytes for the primary fetched resource (HTML, PDF, plain text). */
+const MAX_RESPONSE_BYTES = 50 * 1024 * 1024; // 50 MB
 /** Scale factor when rendering PDF pages to PNG. 1.5 ≈ 108 DPI — good for vision. */
 const PDF_RENDER_SCALE = 1.5;
 
@@ -79,35 +79,34 @@ function extFromPath(pathname: string): string {
 	return raw || "jpg";
 }
 
-/** Infer content type from a local file path extension. */
-function contentTypeFromPath(path: string): string {
-	const lower = path.toLowerCase();
-	if (lower.endsWith(".pdf")) return "application/pdf";
-	if (lower.endsWith(".txt")) return "text/plain";
-	for (const [mime, ext] of Object.entries(MIME_TO_EXT)) {
-		if (lower.endsWith(`.${ext}`)) return mime;
-	}
-	return "text/html";
-}
-
 /**
- * Fetch raw bytes + Content-Type from an http(s) or file URL.
- * For file:// URLs the Content-Type is derived from the file extension.
+ * Fetch raw bytes + Content-Type from an http(s) URL.
+ * Rejects responses larger than MAX_RESPONSE_BYTES to prevent OOM.
  */
 async function fetchResource(
 	url: URL,
 	signal?: AbortSignal,
 ): Promise<{ bytes: Buffer; contentType: string }> {
-	if (url.protocol === "file:") {
-		const filePath = fileURLToPath(url);
-		const bytes = await readFile(filePath);
-		return { bytes, contentType: contentTypeFromPath(filePath) };
-	}
 	const res = await fetch(url.toString(), { signal });
 	if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+
+	const contentLength = Number(res.headers.get("content-length") ?? "0");
+	if (contentLength > MAX_RESPONSE_BYTES) {
+		throw new Error(
+			`Response too large: Content-Length ${contentLength} bytes exceeds ${MAX_RESPONSE_BYTES} byte limit`,
+		);
+	}
+
 	const contentType =
 		res.headers.get("content-type") ?? "application/octet-stream";
 	const bytes = Buffer.from(await res.arrayBuffer());
+
+	if (bytes.length > MAX_RESPONSE_BYTES) {
+		throw new Error(
+			`Response too large: ${bytes.length} bytes exceeds ${MAX_RESPONSE_BYTES} byte limit`,
+		);
+	}
+
 	return { bytes, contentType };
 }
 
@@ -121,25 +120,16 @@ async function fetchImage(
 ): Promise<{ bytes: Buffer; ext: string; mimeType: string } | null> {
 	try {
 		const parsed = new URL(imgUrl);
-		let bytes: Buffer;
-		let mimeType = "image/jpeg";
+		// Only http/https images are fetched — file:// is not permitted.
+		if (!["http:", "https:"].includes(parsed.protocol)) return null;
 
-		if (parsed.protocol === "file:") {
-			bytes = await readFile(fileURLToPath(parsed));
-			const e = extFromPath(parsed.pathname);
-			mimeType =
-				Object.entries(MIME_TO_EXT).find(([, v]) => v === e)?.[0] ??
-				"image/jpeg";
-		} else {
-			const res = await fetch(imgUrl, { signal });
-			if (!res.ok) return null;
-			const cl = Number(res.headers.get("content-length") ?? "0");
-			if (cl > MAX_IMAGE_BYTES) return null;
-			bytes = Buffer.from(await res.arrayBuffer());
-			mimeType = res.headers.get("content-type") ?? "image/jpeg";
-		}
-
+		const res = await fetch(imgUrl, { signal });
+		if (!res.ok) return null;
+		const cl = Number(res.headers.get("content-length") ?? "0");
+		if (cl > MAX_IMAGE_BYTES) return null;
+		const bytes = Buffer.from(await res.arrayBuffer());
 		if (bytes.length > MAX_IMAGE_BYTES) return null;
+		const mimeType = res.headers.get("content-type") ?? "image/jpeg";
 		const cleanMime = mimeType.split(";")[0].trim();
 		const ext = MIME_TO_EXT[cleanMime] ?? extFromPath(parsed.pathname);
 		return { bytes, ext, mimeType: cleanMime };
@@ -410,7 +400,7 @@ export function createFetchUrlTool(
 	return {
 		name: "FetchUrl",
 		description:
-			"Fetch a URL and save its content as an artifact. " +
+			"Fetch an http:// or https:// URL and save its content as an artifact. " +
 			"Supports HTML (article text + images), PDF (text + per-page visuals), " +
 			"and direct image URLs. " +
 			"Image descriptions are auto-generated and embedded in content.md. " +
@@ -418,7 +408,7 @@ export function createFetchUrlTool(
 			"with Bash (cat) or InspectImage directly.",
 		parameters: Type.Object({
 			url: Type.String({
-				description: "URL to fetch (http://, https://, or file://)",
+				description: "URL to fetch (http:// or https://)",
 			}),
 			download_images: Type.Optional(
 				Type.Boolean({
@@ -463,9 +453,9 @@ export function createFetchUrlTool(
 			} catch {
 				return toolErr(`FetchUrl: invalid URL "${rawUrl}"`);
 			}
-			if (!["http:", "https:", "file:"].includes(parsedUrl.protocol)) {
+			if (!["http:", "https:"].includes(parsedUrl.protocol)) {
 				return toolErr(
-					`FetchUrl: unsupported protocol "${parsedUrl.protocol}". Use http, https, or file.`,
+					`FetchUrl: unsupported protocol "${parsedUrl.protocol}". Use http or https.`,
 				);
 			}
 

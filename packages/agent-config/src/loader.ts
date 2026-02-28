@@ -14,12 +14,19 @@ const AgentSchema = z
 		initialMentalMap: z.string().trim().min(1),
 		/**
 		 * The Linux OS user this agent runs as.
-		 * In production: a pool user like "magi-w1" defined in setup-dev.sh.
-		 * In test/dev YAML fixtures: use "${USER}" — expanded at load time to the
-		 * current OS user so tools run in-process under the same user (no sudo).
+		 * Must be a pool user provisioned by setup-dev.sh (e.g. "magi-w1").
+		 * Tool execution always runs as this user via `sudo -u <linuxUser>`.
 		 * Required — omitting this field is a validation error.
+		 * Must follow Linux username conventions: starts with a letter or underscore,
+		 * followed by letters, digits, hyphens, or underscores (max 32 chars total).
 		 */
-		linuxUser: z.string().trim().min(1),
+		linuxUser: z
+			.string()
+			.trim()
+			.regex(
+				/^[a-z_][a-z0-9_-]{0,31}$/,
+				'must be a valid Linux username (e.g. "magi-w1")',
+			),
 	})
 	.catchall(z.string().trim());
 

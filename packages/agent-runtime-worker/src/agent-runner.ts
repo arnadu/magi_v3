@@ -1,6 +1,5 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
-import type { AgentIdentity } from "./identity.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
@@ -12,6 +11,7 @@ import { createInspectImageTool } from "./tools/inspect-image.js";
 import { tryCreateSearchWebTool } from "./tools/search-web.js";
 import type { AclPolicy } from "./tools.js";
 import { createFileTools } from "./tools.js";
+import type { AgentIdentity } from "./workspace-manager.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,14 +49,15 @@ export async function runAgent(
 	const agent = ctx.teamConfig.agents.find((a) => a.id === agentId);
 	if (!agent) throw new Error(`Agent "${agentId}" not found in team config`);
 
-	const { workdir, sharedDir, permittedPaths } = ctx.identity;
+	const { workdir, sharedDir, linuxUser } = ctx.identity;
+	const permittedPaths = [workdir, sharedDir];
 
-	// linuxUser is only set when explicitly specified in the team YAML.
-	// When absent (dev/test without pool users), tools run in-process.
+	// linuxUser comes from ctx.identity — the authoritative source provisioned by
+	// WorkspaceManager. Tool execution always runs as this OS user via sudo.
 	const acl: AclPolicy = {
 		agentId,
 		permittedPaths,
-		linuxUser: agent.linuxUser,
+		linuxUser,
 	};
 
 	// Initialise mental map if this agent has never run before.

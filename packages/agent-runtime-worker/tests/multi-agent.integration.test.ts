@@ -10,13 +10,15 @@
  * Team config loaded from: config/teams/word-count.yaml
  *
  * Requires ANTHROPIC_API_KEY in environment or .env file.
+ * Requires setup-dev.sh (pool users magi-w1, magi-w2 must exist).
  *
  * Run:
  *   npx vitest run --config vitest.integration.config.ts \
  *     packages/agent-runtime-worker/tests/multi-agent.integration.test.ts
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +36,9 @@ const TEAM_CONFIG_PATH = fileURLToPath(
 	new URL("../../../config/teams/word-count.yaml", import.meta.url),
 );
 
+const POOL_USER_LEAD = "magi-w1";
+const POOL_USER_WORKER = "magi-w2";
+
 describe("integration: two-agent word-count", () => {
 	it("Lead delegates to Worker and reports word count to user", async () => {
 		// Set up a temp dir as the workspace root.
@@ -46,33 +51,45 @@ describe("integration: two-agent word-count", () => {
 			const mailboxRepo = new InMemoryMailboxRepository();
 			const mentalMapRepo = new InMemoryMentalMapRepository();
 
-			// Resolve lead's actual linuxUser from the config (supports ${USER} expansion).
-			// Lead's workdir: tmpDir/home/<linuxUser>/missions/<missionId>/
-			// Pre-create and seed greeting.txt there so the agent can find it.
 			const homeBase = join(tmpDir, "home");
-			const leadAgent = teamConfig.agents.find((a) => a.id === "lead");
-			if (!leadAgent) throw new Error("lead agent not found in team config");
-			const leadWorkdir = join(
-				homeBase,
-				leadAgent.linuxUser,
-				"missions",
-				teamConfig.mission.id,
-			);
-			mkdirSync(leadWorkdir, { recursive: true });
-			// "HELLO WORLD this is a test file with eleven words total end" = 12 words
-			writeFileSync(
-				join(leadWorkdir, "greeting.txt"),
-				"HELLO WORLD this is a test file with eleven words total end\n",
-				"utf-8",
-			);
+
+			// Grant traverse-only access to tmpDir so pool users can navigate to their
+			// workdirs (tmpDir has mode 700 from mkdtempSync). Per-workdir rwx ACLs
+			// are applied by provision() via setfacl — not a broad recursive grant.
+			spawnSync("setfacl", [
+				"-m",
+				`u:${POOL_USER_LEAD}:--x,u:${POOL_USER_WORKER}:--x`,
+				tmpDir,
+			]);
 
 			const workspaceManager = new WorkspaceManager({
 				layout: {
 					homeBase,
 					missionsBase: join(tmpDir, "missions"),
 				},
-				skipAcl: true,
 			});
+
+			// Provision workspaces explicitly so we can seed files after ACLs are
+			// applied. runOrchestrationLoop() calls provision() again — it is idempotent.
+			const identities = workspaceManager.provision(
+				teamConfig.mission.id,
+				teamConfig.agents.map((a) => ({
+					id: a.id,
+					role: a.role,
+					linuxUser: a.linuxUser,
+				})),
+			);
+
+			// Seed greeting.txt AFTER provision() so it inherits the directory's
+			// default ACL (magi-w2 gets rwx on new files created in its workdir).
+			// "HELLO WORLD this is a test file with eleven words total end" = 12 words
+			const workerIdentity = identities.get("worker");
+			if (!workerIdentity) throw new Error("worker identity not provisioned");
+			writeFileSync(
+				join(workerIdentity.workdir, "greeting.txt"),
+				"HELLO WORLD this is a test file with eleven words total end\n",
+				"utf-8",
+			);
 
 			// Seed the lead agent's inbox with the initial task.
 			await mailboxRepo.post({
