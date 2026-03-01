@@ -25,6 +25,7 @@ Deliverables completed:
   - ADR-0005: Image handling — description-first
   - ADR-0006: Mailbox via Redis Streams *(superseded 2026-02: MongoDB Change Streams sufficient; see ADR)*
   - ADR-0007: Agent Skills Architecture *(added 2026-02)*
+  - ADR-0008: Conversation Persistence *(added 2026-03)*
 
 Deliberately deferred (not needed to start Sprint 1):
 - Full JSON schemas for `MailboxMessage`, `Artifact`, `AgentIdentity` — defined when those services are built
@@ -512,45 +513,95 @@ change how it records work, potentially forging lineage entries.
 
 ---
 
-## Sprint 6 (2026-05-18 to 2026-05-29): Orchestrator as a Service
+## Sprint 6 (2026-05-18 to 2026-05-29): Persistent Daemon and Conversation Persistence
 
-**Goal: the orchestrator becomes a persistent daemon. Agents can schedule their own wakeups and run background processes via skills backed by the HTTP API. See ADR-0007 for why scheduling and background execution are skills, not tools.**
+**Goal: the orchestrator becomes a persistent daemon; agents accumulate a full conversation history across wakeups; operator ↔ daemon communication is MongoDB-native (no HTTP server). The Mission HTTP API is deferred to Sprint 10 alongside the frontend that will consume it. The `schedule-task` and `run-background` skills are deferred to Sprint 7. See ADR-0008 for the conversation persistence design.**
 
-The current orchestrator exits when no agent has unread messages. This sprint makes it run indefinitely, sleeping until woken by a new user message, a scheduled alarm, or a background process completing.
+**Conversation persistence (ADR-0008):**
+
+The most important structural change in this sprint. Currently each `runAgent()` call starts with an empty LLM context; all intermediate messages (tool calls, tool results, assistant reasoning) are discarded at the end of each wakeup. The original design intent — matching MAGI v2 — is for each agent to maintain a continuous, growing conversation across all its wakeups within a mission.
+
+- `src/conversation-repository.ts` (new): `StoredMessage { turnNumber, message }`, `ConversationRepository` interface (`load`, `append`, `trim`), `createMongoConversationRepository`. MongoDB collection `conversationMessages` with compound index `{ agentId, missionId, turnNumber, seqInTurn }` — separate document per message, so `trim()` is a `deleteMany`. No in-memory implementation — MongoDB is required.
+- `src/loop.ts`: `InnerLoopConfig` gains `previousMessages?: Message[]`; function returns `Message[]` (the new messages produced this turn). The loop builds its initial array as `[...previousMessages, { role: "user", content: task }]`.
+- `src/agent-runner.ts`: `AgentRunContext` gains `conversationRepo`; `runAgent` loads history before the loop, applies `convertToLlm()`, passes result as `previousMessages`, then appends new messages after.
+- `src/mailbox.ts` and `src/mental-map.ts`: `InMemoryMailboxRepository` and `InMemoryMentalMapRepository` deleted. MongoDB is the only implementation for all three repos. `cli.ts` and `daemon.ts` always use MongoDB — no conditional wiring.
+- `convertToLlm(stored)`: filter applied at the LLM boundary — pass-through for now; this is the right hook for future token-budget enforcement and turn-scoping of large tool results.
+- Compaction (`trim()` + mental map + summarisation) is deferred to Sprint 9. The `turnNumber` annotation and `trim()` API are in place from day one.
+
+Key design decisions vs. the two reference implementations studied:
+- **vs. MAGI v2**: system prompt is rebuilt every turn (mental map evolves), not static. Separate docs per message instead of one large array doc. `convertToLlm` at LLM boundary instead of pre-loop filter.
+- **vs. pi-agent-core**: persistent MongoDB storage instead of in-memory only. `turnNumber` compaction anchor instead of purely token-based. No custom message types yet (not needed).
+
+Conversations are scoped per `(agentId, missionId)` and reset per mission.
 
 **Persistent daemon:**
-- Refactor `runOrchestrationLoop` to run until an explicit abort signal; sleeps (MongoDB Change Stream watch) instead of exiting when the inbox is empty
-- `pm2` process definition for local dev; `systemd` unit for server deployment; crash → auto-restart → agents resume from MongoDB state
 
-**Mission HTTP API:**
-- `POST /missions` — start a mission from a team config path; returns `mission_id`
-- `GET /missions/:id` — status, agent list, turn count, last message timestamp
-- `GET /missions/:id/messages` — paginated message log
-- `POST /missions/:id/message` — inject a user message (replaces CLI readline injection)
-- `POST /missions/:id/abort` — clean shutdown
-- Internal scheduling endpoints (called by skill scripts, not by the LLM directly):
-  - `POST /schedules` — register a future mailbox delivery; body, cron/delay, label; returns `schedule_id`
-  - `DELETE /schedules/:id` — cancel a pending delivery
-  - `POST /processes` — start a background command, register for exit monitoring; returns `process_id`
-- `node-cron` + `scheduled_messages` MongoDB collection for durable schedule delivery; re-armed from DB on startup
-- Bash scripts in `scripts/` wrap common operator operations for local dev convenience
+The daemon is a pure MongoDB consumer — no stdin, no HTTP server. All external communication goes through the database.
 
-**Two new platform skills (ship in `packages/skills/` this sprint):**
-- `schedule-task` — agent schedules a future mailbox delivery to itself: one-shot delay or repeating cron; script POSTs to `/schedules`; replaces `ScheduleMessage` / `CancelSchedule` tools. Use cases: Watcher schedules a threshold check every 5 minutes; Lead schedules the 06:00 daily cycle; agent sets a "check back in 1 hour" reminder.
-- `run-background` — agent starts a long-running shell command and registers for exit notification; script POSTs to `/processes`; orchestrator injects a mailbox message (exit code, stdout/stderr path) when the process exits; replaces `RunBackground` tool. Use cases: Data Scientist starts a 10-minute Python analysis and gets notified on completion; Watcher starts a monitoring script and gets notified if it crashes.
+- Refactor `runOrchestrationLoop` to run until an explicit abort signal; replace the `break` on empty inbox with a **MongoDB Change Stream watch** on the mailbox collection — wakes when a new message is inserted.
+- Separate `daemon.ts` entry point (or `--daemon` flag on `cli.ts`) for the long-running mode. The existing `cli.ts` keeps its current single-run behaviour for backward compat with tests.
+- `pm2` process definition (`ecosystem.config.js`) for local dev; `systemd` unit for server deployment; crash → auto-restart → agents resume cleanly from MongoDB state (mailbox + mental map + conversation history are all durable).
 
-These are skills rather than tools because scheduling and background execution are used occasionally (once or twice per mission cycle), not on every LLM call. A registered tool schema appears in every API call regardless of usage; a skill's description costs ~100 tokens at startup and the script runs zero tokens. See ADR-0007.
+**MongoDB-native operator CLI:**
+
+No HTTP server is needed for operator ↔ daemon communication. Both sides use MongoDB as the shared bus:
+
+- `src/cli-post.ts` (new, ~30 lines): reads `MISSION_ID` and `MONGODB_URI` from env; accepts `--to <agentId>` (default: team lead) and a message body; inserts one `MailboxMessage` to the `mailbox` collection; exits. The daemon's Change Stream watch fires and the target agent wakes up. The operator can address any agent directly, not just the lead.
+- `src/cli-tail.ts` (new, ~30 lines): opens a Change Stream watch on the `mailbox` collection and prints messages as they arrive. Default filter: `to: "user"` — the operator sees only what agents report to them. `--all` flag removes the filter and shows the full inter-agent message stream (useful for debugging and monitoring). Replaced by the Mission Inbox UI in Sprint 10.
+
+```bash
+# Terminal 1 — start daemon
+TEAM_CONFIG=config/teams/equity-research.yaml MONGODB_URI=... npm run daemon
+
+# Terminal 2 — watch for agent replies (to user only by default)
+MISSION_ID=equity-research MONGODB_URI=... npm run cli:tail
+# or watch all inter-agent traffic:
+npm run cli:tail -- --all
+
+# Terminal 3 — send messages to any agent
+npm run cli:post -- --to lead "Analyse AAPL earnings"
+npm run cli:post -- --to data-scientist "Re-run the DCF model with Q1 actuals"
+
+# Abort:
+pm2 stop magi-equity-research  # or SIGTERM
+```
+
+Rationale: the current readline embedded in the orchestrator mixes two concerns (daemon lifecycle and interactive input) in one process. Splitting them keeps the daemon clean and makes each tool composable — `cli:post` can be called from scripts, CI jobs, or wrapped by the future HTTP API in Sprint 10; `cli:tail` is a thin standin for the Mission Inbox UI.
+
+**MongoDB-native scheduling (daemon-side infrastructure):**
+
+The daemon's scheduling infrastructure is built here so the `schedule-task` skill in Sprint 7 has something to write to.
+
+- `scheduled_messages` MongoDB collection:
+  ```
+  { missionId, to: string[], subject, body, deliverAt: Date, cron?: string,
+    label?: string, status: "pending" | "delivered" | "cancelled" }
+  ```
+- Daemon polls `scheduled_messages` on startup and via `node-cron` (every minute heartbeat) — delivers any `pending` document whose `deliverAt ≤ now` by inserting to the mailbox and setting `status: "delivered"`.
+- On startup after a crash, all `pending` documents are re-evaluated — no scheduled delivery is lost.
+- No HTTP endpoint. The `schedule-task` skill (Sprint 7) writes directly to this collection via `mongosh` or a small Node.js helper script.
+
+**Deferred to Sprint 7:**
+- `schedule-task` platform skill — script writes to `scheduled_messages`, no HTTP needed
+- `run-background` platform skill — requires process monitoring; deferred with scheduling skill for consistency
+
+**Deferred to Sprint 10:**
+- Mission HTTP API (operator-facing REST: `POST /missions`, `GET /missions/:id`, `POST /missions/:id/message`, etc.) — built alongside the frontend that consumes it
 
 **Tests:**
-- Integration: agent uses `schedule-task` skill to register a 3-second wakeup; agent receives the mailbox message and wakes up. Agent uses `run-background` skill to start a short script; exit notification is delivered. `POST /missions` starts word-count team and `GET /missions/:id` shows completion.
 
-Exit criteria: Orchestrator runs as a daemon and does not exit when inbox is empty. Agent schedules a 3-second wakeup via the `schedule-task` skill and receives it. `run-background` exit notification is delivered. HTTP API starts and aborts a mission. All tests pass.
+All Sprint 6 tests require `MONGODB_URI`. Tests use a unique `missionId` per run; `afterEach` cleans up via `deleteMany({ missionId })` on all collections. No in-memory repo tests.
+
+- Integration (T6-1 — conversation persistence): extends the word-count test. After Lead reports "12" to user, queries `conversationMessages` directly and asserts `turnNumber: 0` and `turnNumber: 1` documents exist for Lead with correct message types (assistant messages, tool calls, tool results all stored).
+- Integration (T6-2 — daemon wake-up): spawns `daemon.ts` subprocess; injects first user message via `cli:post`; polls mailbox until Lead replies to user; asserts reply received within 2-minute timeout.
+
+Exit criteria: Orchestrator runs as a daemon and does not exit when inbox is empty. Agent conversation history persists across wakeups — second wakeup sees prior tool calls and reasoning. All three repos (`MailboxRepository`, `MentalMapRepository`, `ConversationRepository`) backed by MongoDB exclusively. `cli:post` wakes the daemon. Scheduled message is delivered within the heartbeat window. All existing tests pass.
 
 ---
 
-## Sprint 7 (2026-06-01 to 2026-06-12): Web Browsing
+## Sprint 7 (2026-06-01 to 2026-06-12): Web Browsing and Scheduling Skills
 
-**Goal: agents can browse JavaScript-rendered pages — essential for financial data sites, broker portals, and news sites that `FetchUrl` cannot handle.**
+**Goal: agents can browse JavaScript-rendered pages and schedule their own wakeups. Two platform skills ship using the MongoDB-native scheduling infrastructure built in Sprint 6.**
 
 **`BrowseWeb` tool:**
 - Playwright headless browser worker; renders JS before running Readability extraction
@@ -559,10 +610,18 @@ Exit criteria: Orchestrator runs as a daemon and does not exit when inbox is emp
 - Conditionally registered (Playwright must be installed in the environment); absent gracefully like `SearchWeb`
 - The `git-provenance` skill's `record-work.sh` works identically for `BrowseWeb` artifacts — no new lineage tooling needed
 
-**Tests:**
-- Integration: agent browses a locally-served page with JS-rendered content (React or Vue test fixture); asserts article text is correctly extracted and artifact folder is written. `FetchUrl` integration tests still pass (no regression)
+**Two new platform skills:**
+- `schedule-task` — agent inserts a document into the `scheduled_messages` MongoDB collection via a small Node.js helper script (no HTTP server required — the daemon's `node-cron` heartbeat delivers it). One-shot delay or repeating cron. Use cases: Watcher schedules a threshold check every 5 minutes; Lead schedules the 06:00 daily cycle.
+- `run-background` — agent starts a long-running shell command; orchestrator monitors the process and injects a mailbox message (exit code, stdout/stderr path) when it exits. Use cases: Data Scientist starts a 10-minute Python analysis and gets notified on completion.
 
-Exit criteria: Agent browses a JS-rendered test page and extracts article content. Artifact folder written with correct `meta.json`. `FetchUrl` suite clean. All tests pass.
+Both are skills rather than tools because they are used occasionally (O(1–2) per mission cycle), not on every LLM call. See ADR-0007 for the token-cost criterion.
+
+**Tests:**
+- Integration (BrowseWeb): agent browses a locally-served JS-rendered page; asserts article text correctly extracted and artifact folder written. `FetchUrl` tests still pass.
+- Integration (schedule-task): agent uses the skill to register a 5-second wakeup; asserts daemon delivers it.
+- Integration (run-background): agent starts a short script; asserts completion notification arrives in mailbox.
+
+Exit criteria: Agent browses a JS-rendered test page and extracts article content. `schedule-task` wakeup delivered within 10 seconds. `run-background` completion notification delivered. `FetchUrl` suite clean. All tests pass.
 
 ---
 
@@ -606,11 +665,18 @@ Exit criteria: 5 consecutive daily cycles complete within SLA. Evaluation harnes
 
 ---
 
-## Sprint 10 (2026-07-13 to 2026-07-24): Work Product Layer UI
+## Sprint 10 (2026-07-13 to 2026-07-24): Work Product Layer UI and HTTP API
 
-**Goal: operators can consume outputs and triage alerts without touching the API.**
+**Goal: operators can consume outputs and triage alerts without touching the CLI. The Mission HTTP API ships here, designed to serve the frontend built in the same sprint.**
 
 Deliverables:
+- **Mission HTTP API** (deferred from Sprint 6 — built here alongside the frontend that consumes it):
+  - `POST /missions` — start a mission from a team config path; returns `mission_id`
+  - `GET /missions/:id` — status, agent list, turn count, last message timestamp
+  - `GET /missions/:id/messages` — paginated mailbox log
+  - `POST /missions/:id/message` — inject a user message (wraps `cli-post` logic)
+  - `POST /missions/:id/abort` — clean shutdown via SIGTERM
+  - `GET /missions/:id/conversations/:agentId` — paginated conversation history for Evidence Explorer
 - Evaluate `pi-mono/packages/web-ui` (`<pi-chat-panel>`, message components, artifact renderers) vs MAG_v2 Vue.js frontend; adopt whichever integrates faster with MAGI V3's HTTP API
 - **Mission Inbox**: active missions, current agent task (from Mental Map `#tasks` section), pending queue with priority and rationale, SLA/overdue indicators
 - **Report Center**: generated reports, approval state, publication history; diff view uses `git diff` between brief commits

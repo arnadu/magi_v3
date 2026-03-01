@@ -18,7 +18,7 @@ The system builds on MAGI v2's autonomous loop, tool system, and stateless archi
 ```bash
 npm run build             # compile all packages (tsc)
 npm test                  # unit tests (no LLM calls, no network)
-npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY in .env
+npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY and MONGODB_URI in .env
 npm run lint              # Biome check (lint + format)
 npm run lint:fix          # Biome auto-fix
 
@@ -31,8 +31,8 @@ TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words" --step
 # At any input prompt, type:  @/path/to/file.pdf ask me about this
 # /help lists available commands
 
-# Env vars: ANTHROPIC_API_KEY (required), TEAM_CONFIG (required),
-#           MODEL, MONGODB_URI, AGENT_WORKDIR,
+# Env vars: ANTHROPIC_API_KEY (required), MONGODB_URI (required), TEAM_CONFIG (required),
+#           MODEL, AGENT_WORKDIR,
 #           BRAVE_SEARCH_API_KEY (optional — enables SearchWeb tool; free tier: 2000 req/month)
 ```
 
@@ -102,8 +102,8 @@ Two packages are built. Key files:
 - `src/tools.ts` — `createFileTools(workdir, acl: AclPolicy)`: `Bash`, `WriteFile`, `EditFile`. `AclPolicy` carries `agentId`, `permittedPaths`, and `linuxUser`. Shell tools dispatch via `runIsolatedToolCall()`: forks `sudo -u <linuxUser> node tool-executor.js` with only `PATH` and `HOME` set (no secrets in child env). `checkPath` rejects paths outside `permittedPaths` with `PolicyViolationError` before any filesystem access. Bash uses OS-level enforcement (the sudoed user has no write access to other agents' dirs). Response bodies capped at 50 MB; Bash timeout capped at 600 s. `verifyIsolation(linuxUser, workdir)`: startup invariant check — forks a child via the normal isolation path and asserts `ANTHROPIC_API_KEY` is absent; throws if sudo is misconfigured or if secrets leak.
 - `src/tool-executor.ts` — clean child entry point for isolated tool execution. Launched by the orchestrator via `sudo -u <linuxUser> node dist/tool-executor.js`. Reads `ToolRequest` JSON from stdin, dispatches to `execBash` / `execWriteFile` / `execEditFile`, writes `ToolResponse` JSON to stdout, exits. Never imports anything that touches secrets.
 - `src/workspace-manager.ts` — **dev stopgap.** `WorkspaceManager` creates per-agent workdirs (`homeBase/linuxUser/missions/missionId`) and the shared mission dir (`missionsBase/missionId/shared`), applies `setfacl` for mutual access. Does NOT create or delete OS users — that is the control plane's job (Sprint 6+). Exports `WorkspaceLayout` and `AgentIdentity { workdir, sharedDir, linuxUser }`. `provision(missionId, agents: Array<{ id, linuxUser }>)` creates `sharedDir/skills/_platform/`, `sharedDir/skills/_team/`, and `sharedDir/skills/mission/`; copies platform and team skill packages in; applies `r-x` setfacl on `_platform/` and `_team/` for agent users, `rwx` on `mission/`; creates `workdir/skills/` per agent; runs `git init -b main` on `sharedDir` and makes an initial commit (`chore: initialise mission workspace`) capturing the baseline workspace state.
-- `src/mailbox.ts` — `MailboxRepository` (in-memory + MongoDB, sort-consistent: newest-first); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools. Uses `teamConfig.mission.id` (not hardcoded). `PostMessage` validates recipient against team roster; body capped at 100 KB.
-- `src/mental-map.ts` — `MentalMapRepository` (in-memory + MongoDB); `UpdateMentalMap` tool; `patchMentalMap` pure function (jsdom-based, returns `null` on missing element).
+- `src/mailbox.ts` — `MailboxRepository` (MongoDB, sort-consistent: newest-first); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools. Uses `teamConfig.mission.id` (not hardcoded). `PostMessage` validates recipient against team roster; body capped at 100 KB.
+- `src/mental-map.ts` — `MentalMapRepository` (MongoDB); `UpdateMentalMap` tool; `patchMentalMap` pure function (jsdom-based, returns `null` on missing element).
 - `src/artifacts.ts` — `generateArtifactId(sourceHint)`, `saveArtifact(workdir, id, files, meta)`, `saveUpload(workdir, id, files, meta)`. Internal `writeDirectory` helper keeps both paths DRY.
 - `src/skills.ts` — `discoverSkills(sharedDir, workdir): SkillsBlock`: scans four tier directories in order (platform → team → mission → agent-local); extracts YAML frontmatter from each top-level `SKILL.md`; resolves name collisions (higher tier wins); returns merged skill list plus three actionable paths. Only real directories are scanned (symlinks excluded, prevents injection via `mission/`). `formatSkillsBlock(block)`: formats the block for system prompt injection.
 - `src/prompt.ts` — `buildSystemPrompt(agent, mentalMapHtml, sharedDir, workdir)`: substitutes `{{mentalMap}}` in `agent.systemPrompt`, then appends the skills block produced by `discoverSkills`/`formatSkillsBlock`. `formatMessages(messages)` formats the inbox as the opening user turn.
@@ -144,12 +144,19 @@ Two packages are built. Key files:
 - Platform default skills in `packages/skills/`: `skill-creator`, `git-provenance`, `inter-agent-comms`
 - `PublishArtifact` and `ListArtifacts` dropped — replaced by `git-provenance` skill + `git log` via Bash. See ADR-0007.
 
-**Sprint 6 — Orchestrator as a Service (planned):**
-- No new tools. `ScheduleMessage`/`CancelSchedule`/`RunBackground` are skills, not tools (token-cost criterion: used O(1) times per mission vs O(50) LLM calls — see ADR-0007).
-- Two new platform skills ship this sprint (depend on HTTP API): `schedule-task`, `run-background`
+**Sprint 6 — Persistent Daemon and Conversation Persistence (planned):**
+- **Conversation persistence** (ADR-0008): each agent maintains a full, growing conversation across all its wakeups within a mission. `src/conversation-repository.ts` (new) provides `StoredMessage` (message + `turnNumber`), `ConversationRepository` interface, and `createMongoConversationRepository`. `InMemoryMailboxRepository` and `InMemoryMentalMapRepository` are deleted — MongoDB is the only implementation for all three repos. `runInnerLoop` gains `previousMessages?: Message[]` and returns `Message[]`. `runAgent` loads history before the loop and appends new messages after. `cli.ts` and `daemon.ts` always use MongoDB. See ADR-0008 for the `convertToLlm` filter hook (compaction placeholder) and the `turnNumber`-based `trim()` API.
+- **Persistent daemon**: `runOrchestrationLoop` sleeps on MongoDB Change Stream instead of exiting when inbox is empty. Separate `daemon.ts` entry point; `cli.ts` keeps its single-run behaviour for tests. `pm2` process definition for local dev.
+- **MongoDB-native operator CLI**:
+  - `src/cli-post.ts` (~30 lines) — inserts one `MailboxMessage` to the `mailbox` collection and exits, waking the daemon via Change Stream. `--to <agentId>` targets any agent (default: team lead). Usage: `MISSION_ID=... npm run cli:post -- --to lead "message"` or `npm run cli:post -- --to data-scientist "re-run model"`.
+  - `src/cli-tail.ts` (~30 lines) — Change Stream watch on the mailbox; prints messages as they arrive. Default: messages `to: "user"` only. `--all` flag shows full inter-agent traffic (debugging). Usage: `MISSION_ID=... npm run cli:tail` or `npm run cli:tail -- --all`.
+- **MongoDB-native scheduling infrastructure** (daemon-side): `scheduled_messages` collection + `node-cron` heartbeat delivers pending documents to the mailbox; re-arms from DB on restart. The `schedule-task` skill (Sprint 7) writes to this collection directly — no HTTP needed.
+- No new tools. HTTP API deferred to Sprint 10 (built alongside the frontend). `schedule-task` and `run-background` skills deferred to Sprint 7. See ADR-0007 for the token-cost criterion for skills vs. tools.
 
 **Sprint 7 (planned):**
 - `BrowseWeb` — Playwright headless browser; renders JS before extraction; same artifact convention as `FetchUrl`; conditionally registered
+- `schedule-task` platform skill — inserts into `scheduled_messages` collection via Node.js helper; no HTTP required
+- `run-background` platform skill — starts a monitored shell command; daemon injects completion mailbox message on exit
 
 ## Sprint Roadmap
 
@@ -161,8 +168,8 @@ Two packages are built. Key files:
 | 3 | ✅ Done | Web search, fetch, artifacts: `FetchUrl`, `InspectImage`, `SearchWeb`; `@path` upload; artifact model |
 | 4 | ✅ Done | Identity, workspace, ACL enforcement: OS-isolated tool execution, `AclPolicy`, `WorkspaceManager`, `tool-executor.ts` (Temporal + Redis dropped — see ADRs 0001, 0006) |
 | 5 | ✅ Done | Agent Skills: discovery, 3 platform defaults (`skill-creator`, `git-provenance`, `inter-agent-comms`); Bash-based access via sharedDir copy; `provision()` runs `git init` |
-| 6 | | Orchestrator as a service: persistent daemon, Mission HTTP API, `schedule-task` + `run-background` skills |
-| 7 | | `BrowseWeb` (Playwright) |
+| 6 | | Persistent daemon (MongoDB Change Stream sleep), conversation persistence (ADR-0008), MongoDB-native scheduling infra + `cli:post` |
+| 7 | | `BrowseWeb` (Playwright); `schedule-task` + `run-background` skills (MongoDB-native, no HTTP) |
 | 8 | | Equity research team MVP |
 | 9 | | Reliability + evaluation harness (5-day unattended run) |
 | 10 | | Work Product Layer UI |
@@ -180,12 +187,14 @@ Two packages are built. Key files:
 Three tiers — apply the right one to the right layer:
 
 - **Unit tests** — pure, deterministic logic only: config validation, ACL policy evaluation, `UpdateMentalMap` HTML patching. `npm test`, no LLM calls, no network.
-- **Integration tests** — real LLM calls with carefully chosen prompts whose outcomes are deterministic. Tests the full stack end-to-end including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` in `.env`. Current scenarios:
+- **Integration tests** — real LLM calls with carefully chosen prompts whose outcomes are deterministic. Tests the full stack end-to-end including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` and `MONGODB_URI` in `.env`. Each test uses a unique `missionId`; `afterEach` cleans up via `deleteMany({ missionId })` on all MongoDB collections. Current scenarios:
   - Sprint 1: single agent finds `greeting.txt` (contains "HELLO WORLD") and appends "GOODBYE".
   - Sprint 2: two-agent word count — Lead delegates to Worker via mailbox; Worker runs `wc -w`, replies; Lead reports the total (12) to user. Config loaded from `config/teams/word-count.yaml`. Assertion: Lead's final message contains "12".
   - Sprint 3a: single agent fetches a local HTML page (served from `testdata/documents/`) containing a cat image; calls `InspectImage`; asserts "cat" or "feline" in user message.
   - Sprint 3b: two agents share a PDF artifact — Lead fetches PDF, Worker reads images via Bash and `InspectImage`; asserts one artifact folder and both "dog" and "cat" in user message.
   - Sprint 3c: real web search — searches "Pale Blue Dot Voyager NASA", fetches Wikipedia top result, inspects photograph; asserts Voyager/Sagan content and image description. Skipped when `BRAVE_SEARCH_API_KEY` absent. 4-minute timeout.
+  - Sprint 6a: conversation persistence — extends the word-count test; after Lead reports "12" to user, queries `conversationMessages` collection directly and asserts `turnNumber: 0` and `turnNumber: 1` documents exist for Lead with correct message types (tool calls and results included).
+  - Sprint 6b: daemon wake-up — spawns `daemon.ts` subprocess; injects first user message via `cli:post`; polls mailbox until Lead replies to user; asserts reply received within timeout. Requires `MONGODB_URI`. 2-minute timeout.
   - Sprint 5: two-agent skills test — Lead creates `report-format` mission skill; Worker discovers it, fetches test PDF, writes `report.md` with TLDR, commits via `git-provenance`, reports to Lead; Lead reports to user. Assertions: skill file, TLDR in report, "worker" in `git log`, user message. Config: `config/teams/skills-test.yaml`. 8-minute timeout.
 - **Evaluation tests** (`eval/`) — golden scenarios asserting structural/policy outcomes (citation coverage, `nextAction` validity, policy enforcement), not content. Run on demand, not in CI.
 
