@@ -22,7 +22,7 @@ import { config as dotenvConfig } from "dotenv";
 // Load .env from the project root before reading any env vars.
 dotenvConfig({ quiet: true });
 
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type {
 	AssistantMessage,
 	Message,
@@ -120,11 +120,18 @@ async function main(): Promise<void> {
 	const { modelId, model } = getModel();
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
+	// Team skills live beside the YAML: config/teams/<name>/skills/
+	const teamSkillsPath = join(
+		dirname(teamConfigPath),
+		basename(teamConfigPath, ".yaml"),
+		"skills",
+	);
 	const workspaceManager = new WorkspaceManager({
 		layout: {
 			homeBase: join(workdir, "home"),
 			missionsBase: join(workdir, "missions"),
 		},
+		teamSkillsPath,
 	});
 
 	const mongoUri = process.env.MONGODB_URI;

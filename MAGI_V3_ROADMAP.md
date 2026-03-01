@@ -285,9 +285,11 @@ All three integration tests pass. Sprint 3a: user message contains "cat"/"feline
 
 ---
 
-## Sprint 4 — Identity, Workspace, and ACL ← NEXT
+## Sprint 4 — Identity, Workspace, and ACL ✅ COMPLETED
 
 **Goal: agents have real identities, enforced path conventions, and a shared mission workspace with Linux ACL isolation. A fixed pool of permanent Linux users is assigned at runtime — no new OS user accounts are created per mission, keeping the dev environment (and WSL) clean. Temporal, Redis, and the Mission HTTP API are not included (HTTP API deferred to Sprint 6 where the persistent daemon lives; see ADR-0001 and ADR-0006 for Temporal and Redis rationale).**
+
+*As-built note:* The MongoDB pool-assignment subsystem (`identity.ts`, `pool_assignments` collection) was not built — it added complexity without near-term value. Instead, `linuxUser` is declared directly in the team YAML and `WorkspaceManager.provision()` uses it without any database lookup. This is explicitly a dev stopgap; the control plane (Sprint 6+) will own pool assignment in production. Everything else shipped as planned: `WorkspaceManager` (workdir + sharedDir creation, `setfacl`), OS-isolated tool execution via `tool-executor.ts`, `AclPolicy` with `PolicyViolationError`, and `verifyIsolation()` startup check.
 
 ### Two-layer identity model
 
@@ -400,34 +402,72 @@ Exit criteria: Existing Sprint 2 and Sprint 3 integration tests still pass (perm
 
 ---
 
-## Sprint 5 (2026-05-04 to 2026-05-15): Agent Skills Infrastructure
+## Sprint 5 — Agent Skills Infrastructure ✅ COMPLETED
 
-**Goal: agents can discover, use, and write skills. Three platform default skills ship. Mission workspaces are git repositories. `PublishArtifact` and `ListArtifacts` are replaced by the `git-provenance` skill. See ADR-0007.**
+**Goal: agents can discover, use, and write skills. Three platform default skills ship. `PublishArtifact` and `ListArtifacts` are replaced by the `git-provenance` skill. See ADR-0007.**
+
+*As-built note:* All deliverables shipped as planned. Key implementation details: `discoverSkills(sharedDir, workdir)` (not the `agentId/missionId/teamSkillsPath` signature in the ADR draft) scans real directories only (symlinks excluded, prevents prompt injection via `mission/`). `git init -b main` used to avoid default-branch ambiguity across git versions. `ledger.jsonl` entries written via `node JSON.stringify` (the original `sed` escaping was incomplete). `provision()` parameter no longer carries `role` (was declared but never read). Integration test (`skills.integration.test.ts`) passed in ~106 seconds; Lead created the `report-format` skill, Worker fetched the PDF and committed `report.md` via `git-provenance`, Lead reported to user — all in 3 orchestration cycles.
 
 Skills require only the workspace (Sprint 4) and a `buildSystemPrompt()` addition — no daemon, no HTTP API. They deliver value immediately to BrowseWeb (Sprint 7) and the equity research MVP (Sprint 8), which is why they come before the orchestrator sprint.
 
 **Skill discovery and system prompt injection:**
 - `discoverSkills(agentId, missionId, teamSkillsPath)` scans four tiers (platform → team → mission → agent-local) in order; extracts YAML frontmatter from each `SKILL.md`; resolves name conflicts with higher-scope winning
-- Compact skill block injected into each agent's system prompt at startup (~100 tokens per skill, regardless of skill body size): name, active scope tag, one-line description
-- Agents read `SKILL.md` and execute `scripts/` via the existing `Bash` tool — no new tool needed
-- Tier paths: `packages/skills/` (platform), `config/teams/{team}/skills/` (team), `/missions/{id}/shared/skills/` (mission), `/home/agents/{id}/skills/` (agent-local)
-- Platform and team tiers are `r-x` for all agent uid/gids (enforced by `setfacl`); agents shadow, never overwrite
+- Compact skill block injected into each agent's system prompt at startup: three concrete resolved paths (platform read-only, mission shared-writable, agent private-writable) followed by the skill list (name, scope tag, one-line description)
+- **Only top-level skills** from all tiers are injected; sub-skills within a skill package are discovered dynamically by the agent as it reads the package via Bash
+- Paths are absolute and runtime-substituted — agents construct `cat <path>/skill-name/SKILL.md` and `bash <path>/skill-name/scripts/...` directly without guessing the directory layout
+- Agents access all tiers through `sharedDir/skills/` (within their existing `permittedPaths`) and `workdir/skills/` (agent-local) — no elevated file access or new tool needed
 
-**Mission workspace as git repository:**
-- `workspace-manager` runs `git init` on the shared mission folder at mission startup
-- Initial commit: team config snapshot, initial Mental Map stubs, skill README
-- Commit log is the lineage audit trail: `git log --follow`, `git show`, `git diff` surface the Evidence Explorer data — no custom MongoDB artifact registry needed
+**Why Bash, not a dedicated skill-reader tool:**
+A "read-as-orchestrator" skill tool would allow agents to reach files outside their `permittedPaths`, directly violating the Sprint 4 ACL model. Bash is already available, already runs as the agent's Linux user, and is the correct execution context for skill scripts (git commit identity, file ownership). No new tool is needed.
+
+**Skill path layout under `sharedDir/skills/`:**
+```
+sharedDir/skills/
+  _platform/    ← copied from packages/skills/ by provision(); r-x for agent users
+  _team/        ← copied from config/teams/{team}/skills/ by provision(); r-x for agent users
+  mission/      ← writable by all agents on this mission (rwx)
+```
+Agent-local skills live at `workdir/skills/` (rwx, that agent only). Shadowing: same-name skill at a higher tier wins; agents write to `mission/` or `workdir/skills/` to override, never modify `_platform/` or `_team/`.
+
+**`provision()` changes for Sprint 5:**
+- Creates `sharedDir/skills/_platform/`, `sharedDir/skills/_team/`, `sharedDir/skills/mission/`
+- Copies `packages/skills/` → `sharedDir/skills/_platform/` (recursively, read-only source)
+- Copies `config/teams/{team}/skills/` → `sharedDir/skills/_team/` (if the directory exists)
+- Applies `setfacl r-x` for all agent users on `_platform/` and `_team/`; `rwx` on `mission/`
+- Runs `git init` on `sharedDir` and makes an initial commit (`chore: initialise mission workspace`) capturing the baseline state: copied skills, team config snapshot, operator-seeded files
+
+**Git is workspace infrastructure, not agent behaviour:**
+- `provision()` always initialises the git repo — every mission has a clean, auditable history from day zero, regardless of which skills agents choose to invoke
+- The `git-provenance` skill's responsibility is the **commit convention**: message format (`type(label): description [sources: url]`), `ledger.jsonl` schema, and running `git add / git commit` correctly. Its `scripts/record-work.sh` does **not** run `git init`; the repo already exists
+- The commit log is the lineage audit trail: `git log --follow`, `git show`, `git diff` surface the Evidence Explorer data — no custom MongoDB artifact registry needed
 
 **Platform default skills (three ship in `packages/skills/`):**
 - `skill-creator` — teaches agents to write well-structured skills; adapted from Anthropic's reference implementation; ships with `scripts/init_skill.sh` (scaffolds the directory) and `references/design-patterns.md`
 - `git-provenance` — data lineage via git: commit convention (`type(label): description [sources: url]`), `ledger.jsonl` schema, `scripts/record-work.sh`; replaces `PublishArtifact`
 - `inter-agent-comms` — `PostMessage` conventions: intent types, `artifact_refs` format, subject line structure, priority levels; pure instructions, no scripts
 
-**Tests:**
-- Unit: `discoverSkills` correctly resolves scope conflicts (mission-scope shadows platform-scope for same name; scope tag in system prompt reflects winner)
-- Integration: agent uses `git-provenance` skill to commit an output; `git log` shows the commit with correct format. Agent uses `skill-creator` to write a new skill into the mission shared folder; peer agent sees it in its skill block on the next orchestration turn
+**Deliverables:**
 
-Exit criteria: Agent startup injects skill block. Agent commits an output using `git-provenance`. Agent writes a new skill using `skill-creator`; the new skill is discoverable by a peer agent. All tests pass.
+| # | Deliverable | Description |
+|---|-------------|-------------|
+| 1 | `workspace-manager.ts` — `provision()` additions | Create `sharedDir/skills/_platform/`, `_team/`, `mission/`; copy platform and team skill packages in; `setfacl r-x` on `_platform/` and `_team/`, `rwx` on `mission/`; `git init` on `sharedDir`; initial commit (`chore: initialise mission workspace`) |
+| 2 | `discoverSkills()` — new function | Scans four tier paths in order (platform → team → mission → agent-local); extracts YAML frontmatter from each top-level `SKILL.md`; resolves name conflicts (higher tier wins); returns skill map and resolved paths |
+| 3 | `buildSystemPrompt()` — skill block injection | Calls `discoverSkills()`; appends block with three concrete absolute paths (platform read-only, mission shared-writable, agent private-writable) and skill list (name, scope tag, one-line description) |
+| 4 | `packages/skills/git-provenance/` | `SKILL.md` + `scripts/record-work.sh` (git add, git commit with agent id as `--author`, `ledger.jsonl` entry) |
+| 5 | `packages/skills/skill-creator/` | `SKILL.md` + `scripts/init_skill.sh` (scaffolds skill directory with template `SKILL.md`) + `references/design-patterns.md` |
+| 6 | `packages/skills/inter-agent-comms/` | `SKILL.md` only — PostMessage conventions, no scripts |
+| 7 | `config/teams/skills-test.yaml` | Lead + Worker team (pool users `magi-w1`/`magi-w2`); no pre-existing team skills; system prompts describe roles without prescribing report format |
+| 8 | `tests/skills.integration.test.ts` | Two-agent test; Lead creates a mission `report-format` skill then delegates to Worker; Worker discovers the new skill, fetches `test-pdf.pdf`, writes `report.md` with TLDR, commits via `git-provenance`; Lead reports to user |
+| 9 | `tests/skills.unit.test.ts` | `discoverSkills` scope resolution: mission skill shadows platform skill of same name; scope tag in output reflects winner; no LLM, no filesystem |
+
+**Integration test assertions:**
+1. `sharedDir/skills/mission/*/SKILL.md` exists and contains "tldr" — Lead created the convention
+2. `sharedDir/report.md` contains "tldr"/"tl;dr" — Worker followed the skill
+3. `sharedDir/report.md` contains "dog"/"puppy" — FetchUrl + InspectImage were exercised
+4. `git log --oneline` in `sharedDir` shows ≥ 2 commits — provision init + at least one agent commit
+5. Lead sent at least one message to user
+
+Exit criteria: `npm run build` clean. `npm test` (unit) passes. `npm run test:integration` passes — all existing tests plus the new `skills.integration.test.ts`. Skill block visible in agent system prompt. Lead creates a mission skill; Worker discovers and follows it on the next turn; report committed to git; user receives summary.
 
 **⚠ Alignment and safety note — begin design this sprint, harden in Sprint 12**
 

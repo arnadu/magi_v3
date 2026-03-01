@@ -1,17 +1,24 @@
 import type { AgentConfig } from "@magi/agent-config";
 import type { MailboxMessage } from "./mailbox.js";
+import { discoverSkills, formatSkillsBlock } from "./skills.js";
 
 /**
  * Build the system prompt for an agent's unified loop.
  *
- * Reads agent.systemPrompt from the team YAML and substitutes the
- * {{mentalMap}} placeholder with the agent's current mental map HTML.
+ * Reads agent.systemPrompt from the team YAML, substitutes the
+ * {{mentalMap}} placeholder with the agent's current mental map HTML,
+ * and appends a skills block listing all discoverable skills across the
+ * platform, mission, and agent-private tiers.
  */
 export function buildSystemPrompt(
 	agent: AgentConfig,
 	mentalMapHtml: string,
+	sharedDir: string,
+	workdir: string,
 ): string {
-	return agent.systemPrompt.replace("{{mentalMap}}", mentalMapHtml);
+	const base = agent.systemPrompt.replace("{{mentalMap}}", mentalMapHtml);
+	const skillsBlock = formatSkillsBlock(discoverSkills(sharedDir, workdir));
+	return `${base}\n\n${skillsBlock}`;
 }
 
 /**

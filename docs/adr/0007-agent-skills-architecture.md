@@ -72,36 +72,82 @@ itself only. A mission-level skill overrides team and platform versions for all 
 mission.
 
 **Shadowing, not overwriting:** platform and team skill directories are `r-x` for all agent
-uid/gids (enforced by `setfacl` in Sprint 4). Agents cannot modify them. To change behaviour
-they write a same-name skill at a higher scope. The system prompt block shows the active scope
-tag so shadowing is visible.
+uid/gids (enforced by `setfacl`). Agents cannot modify them. To change behaviour they write a
+same-name skill at a higher scope. The system prompt block shows the active scope tag so
+shadowing is visible.
+
+### Runtime access model
+
+*(Added 2026-02)*
+
+Agents execute shell tools as their Linux user (`magi-w1`, etc.) and are restricted to
+`permittedPaths = [workdir, sharedDir]`. They cannot access `packages/skills/` or
+`config/teams/{team}/skills/` at runtime.
+
+`workspace-manager.provision()` therefore copies platform and team skill packages into the
+shared mission folder before any agent runs:
+
+```
+sharedDir/skills/
+  _platform/    ← copied from packages/skills/ at provision; r-x for agent users
+  _team/        ← copied from config/teams/{team}/skills/ at provision; r-x for agent users
+  mission/      ← writable by all agents on this mission (rwx)
+```
+
+Agent-local skills live at `workdir/skills/` (rwx, that agent only).
+
+**Why Bash, not a dedicated skill-reader tool:** a tool that reads files as the orchestrator
+user would create a path outside the agent's `permittedPaths` — exactly the boundary Sprint 4
+establishes. Bash is already available, already runs as the agent's Linux user, and is the
+correct execution context for skill scripts (git commit identity, file ownership). The Bash
+tool is sufficient for both `cat SKILL.md` and `bash scripts/record-work.sh`.
 
 ### Skill discovery at agent startup
 
-`discoverSkills(agentId, missionId, teamSkillsPath)`:
-1. Scan all four tier directories in order (platform first, agent-local last)
-2. Extract YAML frontmatter from each `SKILL.md`
+`discoverSkills(sharedDir, workdir)`:
+1. Scan all four tier directories in order (platform first, agent-local last), using the runtime paths under `sharedDir/skills/` and `workdir/skills/`. Only real directories are scanned (symlinks excluded — prevents prompt injection via the agent-writable `mission/` tier)
+2. Extract YAML frontmatter from each top-level `SKILL.md`
 3. Build a `Map<name, SkillMetadata>` — later tiers overwrite earlier for same name
-4. Inject a compact block into the system prompt (~100 tokens regardless of skill count):
+4. Inject a compact block into the system prompt with the three actionable paths and the skill list:
 
 ```
 ## Available Skills
+Platform skills (read-only): /missions/{id}/shared/skills/_platform
+Mission skills (shared):      /missions/{id}/shared/skills/mission
+Your private skills:          /home/magi-w1/missions/{id}/skills
+
 Read SKILL.md and run scripts/ via Bash when relevant.
+To add a skill for the whole team this mission, write it under the mission path.
+To add a skill for yourself only, write it under your private path.
 
 - git-provenance [platform]: Record completed work with git commit and ledger entry. Use when finishing an output for the team.
+- skill-creator [platform]: Create a new skill package. Use when you need to document a reusable convention.
 - inter-agent-comms [platform]: PostMessage conventions. Use when drafting a message to a peer agent.
 - sec-filing-parser [team]: Parse 10-K/10-Q/8-K documents. Use when working with SEC filings.
-- aapl-pivot-analysis [mission, shadows team]: AAPL-specific pivot written by data-scientist-1.
+- aapl-pivot-analysis [mission]: AAPL-specific pivot written by data-scientist-1.
 ```
+
+**Only top-level skills are injected.** Sub-skills registered within a skill package (e.g. a
+`skill-creator` sub-skill for a specific domain) are not listed here. The agent discovers them
+dynamically by reading the parent skill's `SKILL.md` and following its instructions.
 
 No new tool is needed: agents read skill files and run scripts using the existing `Bash` tool.
 
 ### Mission workspace as git repository
 
-`workspace-manager` runs `git init` on the shared mission folder at mission startup. The
-`git-provenance` skill teaches agents to commit their outputs. The commit log is the lineage
-audit trail: `git log --follow`, `git show`, and `git diff` give the Evidence Explorer
-everything it needs. No custom MongoDB artifact registry required.
+`workspace-manager.provision()` runs `git init` on the shared mission folder and makes an
+initial commit (`chore: initialise mission workspace`) that captures the baseline state:
+copied platform/team skills, team config snapshot, and any operator-seeded files. This gives
+every mission a clean, auditable history from day zero regardless of whether any agent ever
+invokes the `git-provenance` skill.
+
+The `git-provenance` skill's responsibility is narrower: it teaches agents the **commit
+convention** — message format (`type(label): description [sources: url]`), `ledger.jsonl`
+schema, and how to run `git add / git commit` correctly. Its `scripts/record-work.sh` does
+not run `git init`; the repo is already there.
+
+The commit log is the lineage audit trail: `git log --follow`, `git show`, and `git diff`
+give the Evidence Explorer everything it needs. No custom MongoDB artifact registry required.
 
 ### Platform default skills (three ship with MAGI V3)
 
@@ -156,9 +202,10 @@ They are re-classified as skills (`schedule-task`, `run-background`) because:
 - `PublishArtifact` tool is dropped — replaced by the `git-provenance` platform skill.
 - `ListArtifacts` tool is dropped — agents query via `git log --oneline` or
   `cat ledger.jsonl | jq ...` via Bash.
-- `discoverSkills()` is added to `buildSystemPrompt()` in `agent-runtime-worker`.
-- `workspace-manager` (Sprint 4) initialises the shared mission folder as a git repo.
-- Three platform default skills land in `packages/skills/` in Sprint 6.
+- `discoverSkills(sharedDir, workdir)` is added to `buildSystemPrompt()` in `agent-runtime-worker`. Symlink injection prevented by filtering to real directories only.
+- `workspace-manager.provision()` copies platform and team skills into `sharedDir/skills/` with appropriate ACLs; runs `git init -b main` on `sharedDir` and makes an initial commit capturing the baseline workspace state. The `provision()` parameter type is `Array<{ id, linuxUser }>` — `role` is not passed (it was never used inside `provision()`).
+- `git-provenance/scripts/record-work.sh` writes `ledger.jsonl` entries using `node -e JSON.stringify` — `sed`-based escaping was insufficient (newlines and control characters in commit messages produced invalid JSONL).
+- Three platform default skills land in `packages/skills/`: `skill-creator`, `git-provenance`, `inter-agent-comms`.
 - The skill format is format-compatible with Anthropic's Agent Skills standard, enabling
   portability: skills authored for MAGI V3 can be uploaded to Claude.ai or the Anthropic API
   with no changes.

@@ -67,7 +67,12 @@ export async function runAgent(
 		await ctx.mentalMapRepo.save(agentId, mentalMapHtml);
 	}
 
-	const systemPrompt = buildSystemPrompt(agent, mentalMapHtml);
+	const systemPrompt = buildSystemPrompt(
+		agent,
+		mentalMapHtml,
+		sharedDir,
+		workdir,
+	);
 	const task = formatMessages(messages);
 
 	const searchWebTool = tryCreateSearchWebTool();

@@ -90,7 +90,7 @@ Agents communicate with structured, durable mailbox messages (not free-form chat
 
 Agents share artifact references (datasets, code patches, notebooks, charts, reports, alert payloads), not raw data.
 
-## Current Implementation (Sprints 1–4)
+## Current Implementation (Sprints 1–5)
 
 Two packages are built. Key files:
 
@@ -101,15 +101,16 @@ Two packages are built. Key files:
 - `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop via `completeSimple`. Terminates when the LLM stops calling tools. Fires `onMessage` after every message. `toolTimeoutMs` (default 120 s) enforced via `withTimeout` on every tool call.
 - `src/tools.ts` — `createFileTools(workdir, acl: AclPolicy)`: `Bash`, `WriteFile`, `EditFile`. `AclPolicy` carries `agentId`, `permittedPaths`, and `linuxUser`. Shell tools dispatch via `runIsolatedToolCall()`: forks `sudo -u <linuxUser> node tool-executor.js` with only `PATH` and `HOME` set (no secrets in child env). `checkPath` rejects paths outside `permittedPaths` with `PolicyViolationError` before any filesystem access. Bash uses OS-level enforcement (the sudoed user has no write access to other agents' dirs). Response bodies capped at 50 MB; Bash timeout capped at 600 s. `verifyIsolation(linuxUser, workdir)`: startup invariant check — forks a child via the normal isolation path and asserts `ANTHROPIC_API_KEY` is absent; throws if sudo is misconfigured or if secrets leak.
 - `src/tool-executor.ts` — clean child entry point for isolated tool execution. Launched by the orchestrator via `sudo -u <linuxUser> node dist/tool-executor.js`. Reads `ToolRequest` JSON from stdin, dispatches to `execBash` / `execWriteFile` / `execEditFile`, writes `ToolResponse` JSON to stdout, exits. Never imports anything that touches secrets.
-- `src/workspace-manager.ts` — **dev stopgap.** `WorkspaceManager` creates per-agent workdirs (`homeBase/linuxUser/missions/missionId`) and the shared mission dir (`missionsBase/missionId/shared`), applies `setfacl` for mutual access. Does NOT create or delete OS users — that is the control plane's job (Sprint 6+). Exports `WorkspaceLayout` and `AgentIdentity { workdir, sharedDir, linuxUser }`.
+- `src/workspace-manager.ts` — **dev stopgap.** `WorkspaceManager` creates per-agent workdirs (`homeBase/linuxUser/missions/missionId`) and the shared mission dir (`missionsBase/missionId/shared`), applies `setfacl` for mutual access. Does NOT create or delete OS users — that is the control plane's job (Sprint 6+). Exports `WorkspaceLayout` and `AgentIdentity { workdir, sharedDir, linuxUser }`. `provision(missionId, agents: Array<{ id, linuxUser }>)` creates `sharedDir/skills/_platform/`, `sharedDir/skills/_team/`, and `sharedDir/skills/mission/`; copies platform and team skill packages in; applies `r-x` setfacl on `_platform/` and `_team/` for agent users, `rwx` on `mission/`; creates `workdir/skills/` per agent; runs `git init -b main` on `sharedDir` and makes an initial commit (`chore: initialise mission workspace`) capturing the baseline workspace state.
 - `src/mailbox.ts` — `MailboxRepository` (in-memory + MongoDB, sort-consistent: newest-first); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools. Uses `teamConfig.mission.id` (not hardcoded). `PostMessage` validates recipient against team roster; body capped at 100 KB.
 - `src/mental-map.ts` — `MentalMapRepository` (in-memory + MongoDB); `UpdateMentalMap` tool; `patchMentalMap` pure function (jsdom-based, returns `null` on missing element).
 - `src/artifacts.ts` — `generateArtifactId(sourceHint)`, `saveArtifact(workdir, id, files, meta)`, `saveUpload(workdir, id, files, meta)`. Internal `writeDirectory` helper keeps both paths DRY.
-- `src/prompt.ts` — `buildSystemPrompt(agent, mentalMapHtml)`: substitutes `{{mentalMap}}` in `agent.systemPrompt`. `formatMessages(messages)` formats the inbox as the opening user turn.
+- `src/skills.ts` — `discoverSkills(sharedDir, workdir): SkillsBlock`: scans four tier directories in order (platform → team → mission → agent-local); extracts YAML frontmatter from each top-level `SKILL.md`; resolves name collisions (higher tier wins); returns merged skill list plus three actionable paths. Only real directories are scanned (symlinks excluded, prevents injection via `mission/`). `formatSkillsBlock(block)`: formats the block for system prompt injection.
+- `src/prompt.ts` — `buildSystemPrompt(agent, mentalMapHtml, sharedDir, workdir)`: substitutes `{{mentalMap}}` in `agent.systemPrompt`, then appends the skills block produced by `discoverSkills`/`formatSkillsBlock`. `formatMessages(messages)` formats the inbox as the opening user turn.
 - `src/agent-runner.ts` — `runAgent(agentId, messages, ctx, signal)`: initialises mental map, builds system prompt, derives `permittedPaths = [workdir, sharedDir]` from `AgentIdentity`, creates `AclPolicy`, runs inner loop with all tools.
 - `src/orchestrator.ts` — `runOrchestrationLoop(config, signal)`: provisions workspace, then calls `verifyIsolation()` before the first cycle (fails fast if sudo is misconfigured or secrets leak); inbox-poll scheduling; runs agents in supervisor-depth order (seniors first); supports `--step` mode and live readline input; terminates when no agent has unread messages.
 - `src/user-input.ts` — readline handler: `/command` dispatch (`/help`; future commands reserved under `/`); `@path` scanning (extracts `@/abs` or `@./rel` tokens, calls `saveUpload`, appends notice to message body).
-- `src/cli.ts` — multi-agent CLI; requires `TEAM_CONFIG`; provisions workspace via `WorkspaceManager`; registers `SearchWeb` when `BRAVE_SEARCH_API_KEY` is set; logs all tool calls and results per agent.
+- `src/cli.ts` — multi-agent CLI; requires `TEAM_CONFIG`; derives `teamSkillsPath` from the TEAM_CONFIG path (`<dir>/<basename-without-ext>/skills/`); provisions workspace via `WorkspaceManager`; registers `SearchWeb` when `BRAVE_SEARCH_API_KEY` is set; logs all tool calls and results per agent.
 - `src/models.ts` — `CLAUDE_SONNET` constant; `anthropicModel()` factory.
 - `src/tools/fetch-url.ts` — `createFetchUrlTool(model, sharedDir)`: HTTP GET → Readability (HTML) or mupdf (PDF) → `content.md`; downloads up to `max_images` images (default 3, max 10) from article body only (not nav/UI); vision LLM auto-describes each image; writes artifact folder + `meta.json`. `max_pages` (default 5, max 20) limits PDF processing. VISION_MIMES: jpeg, png, gif, webp only (SVG excluded). `file://` URLs rejected (LFI fix).
 - `src/tools/inspect-image.ts` — `createInspectImageTool(workdir, model)`: reads image file (path resolved within workdir — path traversal rejected), base64-encodes it, calls vision LLM via `completeSimple`.
@@ -120,6 +121,8 @@ Two packages are built. Key files:
 - `tests/fetch-share.integration.test.ts` — Sprint 3/4: two-agent test; Lead fetches a PDF, Worker analyses images via Bash; asserts one artifact folder and both animal species in user message. Uses real pool users.
 - `tests/search-web.integration.test.ts` — Sprint 3: searches "Pale Blue Dot Voyager NASA", fetches Wikipedia top result, inspects photograph; skipped when `BRAVE_SEARCH_API_KEY` absent.
 - `tests/acl.integration.test.ts` — Sprint 4: verifies ACL enforcement without LLM. (1) `WriteFile` to another agent's private dir → `PolicyViolationError`. (2) `Bash` writing to another agent's private dir → OS-level `Permission denied`. Uses real pool users `magi-w1`/`magi-w2`, temp workdirs, and setfacl.
+- `tests/skills.unit.test.ts` — Sprint 5: 11 unit tests for `discoverSkills` and `formatSkillsBlock`. Covers scope shadowing (mission over platform, agent over mission, team over platform), missing tier directories, malformed frontmatter, and `formatSkillsBlock` output format. No LLM, no network.
+- `tests/skills.integration.test.ts` — Sprint 5: two-agent test; Lead creates `report-format` mission skill, delegates PDF analysis to Worker; Worker discovers the skill, fetches PDF via `FetchUrl`, inspects images via `InspectImage`, writes `report.md` with TLDR, commits via `git-provenance`, replies to Lead; Lead reports to user. Assertions: skill file exists, `report.md` contains TLDR, `git log` shows author "worker", user received ≥1 message. Uses `NoTeardownWorkspaceManager` subclass to preserve `sharedDir` for assertions. Config: `config/teams/skills-test.yaml`. 8-minute timeout.
 
 ## Tool Capabilities (Implementation Priority Order)
 
@@ -134,8 +137,10 @@ Two packages are built. Key files:
 - `InspectImage` — pass any image file to the vision LLM; returns text description; path traversal safe
 - `SearchWeb` — Brave Search API; ranked result list; artifact saved; conditionally registered
 
-**Sprint 5 — Skills (planned):**
-- No new tools. Skill discovery added to `buildSystemPrompt()`: scans four tiers (platform → team → mission → agent-local), injects compact metadata block (~100 tokens/skill). Agents use existing `Bash` to read `SKILL.md` and run scripts.
+**Sprint 5 — Skills (built):**
+- No new tools. `discoverSkills(sharedDir, workdir)` scans four tiers (platform → team → mission → agent-local); `formatSkillsBlock()` injects a compact block into each agent's system prompt via `buildSystemPrompt()`. Block contains three concrete resolved paths (platform read-only, mission shared-writable, agent private-writable) and the skill list (name, scope tag, one-line description). Only top-level skills are injected; sub-skills discovered dynamically via Bash. Symlink injection prevented: only real directories scanned.
+- Agents access all skills through `sharedDir/skills/` — within their existing `permittedPaths`. No dedicated skill-reader tool; `Bash` is sufficient and the only correct mechanism (scripts must run as the agent's Linux user for git identity and file ownership).
+- `provision()` copies `packages/skills/` → `sharedDir/skills/_platform/` and `config/teams/{team}/skills/` → `sharedDir/skills/_team/` (if present); applies `r-x` setfacl on `_platform/` and `_team/`; creates `mission/` (rwx for all agents); creates `workdir/skills/` per agent. Runs `git init -b main` on `sharedDir` at mission startup and makes an initial commit — git is workspace infrastructure, present in every mission from day zero. The `git-provenance` skill teaches agents the **commit convention** (message format, `ledger.jsonl` via `node JSON.stringify`); its scripts do not run `git init`.
 - Platform default skills in `packages/skills/`: `skill-creator`, `git-provenance`, `inter-agent-comms`
 - `PublishArtifact` and `ListArtifacts` dropped — replaced by `git-provenance` skill + `git log` via Bash. See ADR-0007.
 
@@ -155,7 +160,7 @@ Two packages are built. Key files:
 | 2 | ✅ Done | Multi-agent: YAML team config (Zod), mailbox, orchestration loop, supervisor-depth ordering, 5 tools |
 | 3 | ✅ Done | Web search, fetch, artifacts: `FetchUrl`, `InspectImage`, `SearchWeb`; `@path` upload; artifact model |
 | 4 | ✅ Done | Identity, workspace, ACL enforcement: OS-isolated tool execution, `AclPolicy`, `WorkspaceManager`, `tool-executor.ts` (Temporal + Redis dropped — see ADRs 0001, 0006) |
-| 5 | | Agent Skills: discovery, 3 platform defaults (`skill-creator`, `git-provenance`, `inter-agent-comms`), git workspace |
+| 5 | ✅ Done | Agent Skills: discovery, 3 platform defaults (`skill-creator`, `git-provenance`, `inter-agent-comms`); Bash-based access via sharedDir copy; `provision()` runs `git init` |
 | 6 | | Orchestrator as a service: persistent daemon, Mission HTTP API, `schedule-task` + `run-background` skills |
 | 7 | | `BrowseWeb` (Playwright) |
 | 8 | | Equity research team MVP |
@@ -181,6 +186,7 @@ Three tiers — apply the right one to the right layer:
   - Sprint 3a: single agent fetches a local HTML page (served from `testdata/documents/`) containing a cat image; calls `InspectImage`; asserts "cat" or "feline" in user message.
   - Sprint 3b: two agents share a PDF artifact — Lead fetches PDF, Worker reads images via Bash and `InspectImage`; asserts one artifact folder and both "dog" and "cat" in user message.
   - Sprint 3c: real web search — searches "Pale Blue Dot Voyager NASA", fetches Wikipedia top result, inspects photograph; asserts Voyager/Sagan content and image description. Skipped when `BRAVE_SEARCH_API_KEY` absent. 4-minute timeout.
+  - Sprint 5: two-agent skills test — Lead creates `report-format` mission skill; Worker discovers it, fetches test PDF, writes `report.md` with TLDR, commits via `git-provenance`, reports to Lead; Lead reports to user. Assertions: skill file, TLDR in report, "worker" in `git log`, user message. Config: `config/teams/skills-test.yaml`. 8-minute timeout.
 - **Evaluation tests** (`eval/`) — golden scenarios asserting structural/policy outcomes (citation coverage, `nextAction` validity, policy enforcement), not content. Run on demand, not in CI.
 
 Test runner: **vitest** — native ESM, no build step needed. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.

@@ -1,7 +1,19 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { userInfo } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Default platform skills path: packages/skills/ resolved from the compiled
+ * dist/ output at runtime, so it works wherever the package is installed.
+ */
+const DEFAULT_PLATFORM_SKILLS = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"skills",
+);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,9 +66,20 @@ export interface AgentIdentity {
  */
 export class WorkspaceManager {
 	private readonly layout: WorkspaceLayout;
+	private readonly platformSkillsPath: string;
+	private readonly teamSkillsPath: string | undefined;
 
-	constructor(opts: { layout: WorkspaceLayout }) {
+	constructor(opts: {
+		layout: WorkspaceLayout;
+		/** Path to platform skill packages. Defaults to packages/skills/. */
+		platformSkillsPath?: string;
+		/** Path to team-specific skill packages (optional). */
+		teamSkillsPath?: string;
+	}) {
 		this.layout = opts.layout;
+		this.platformSkillsPath =
+			opts.platformSkillsPath ?? DEFAULT_PLATFORM_SKILLS;
+		this.teamSkillsPath = opts.teamSkillsPath;
 	}
 
 	/**
@@ -69,7 +92,7 @@ export class WorkspaceManager {
 	 */
 	provision(
 		missionId: string,
-		agents: Array<{ id: string; role: string; linuxUser: string }>,
+		agents: Array<{ id: string; linuxUser: string }>,
 	): Map<string, AgentIdentity> {
 		const sharedDir = join(this.layout.missionsBase, missionId, "shared");
 		const identities = new Map<string, AgentIdentity>();
@@ -88,10 +111,20 @@ export class WorkspaceManager {
 		}
 
 		mkdirSync(sharedDir, { recursive: true });
-		applySharedAcl(
+		const linuxUsers = Array.from(identities.values()).map((i) => i.linuxUser);
+		applySharedAcl(sharedDir, linuxUsers);
+
+		// Copy platform/team skills, create per-agent skill dirs, init git repo.
+		provisionSkills(
 			sharedDir,
-			Array.from(identities.values()).map((i) => i.linuxUser),
+			linuxUsers,
+			this.platformSkillsPath,
+			this.teamSkillsPath,
 		);
+		for (const identity of identities.values()) {
+			mkdirSync(join(identity.workdir, "skills"), { recursive: true });
+		}
+		initSharedGitRepo(sharedDir);
 
 		return identities;
 	}
@@ -155,4 +188,86 @@ function applySharedAcl(dir: string, linuxUsers: string[]): void {
 			stdio: "ignore",
 		});
 	}
+}
+
+/**
+ * Create the skills directory tree under sharedDir, copy platform and team
+ * skills into it, and apply the correct ACLs for each tier:
+ *   _platform/ and _team/ — read-only for agents (r-x)
+ *   mission/              — read-write for agents (rwx); agents create skills here
+ *
+ * Missing source dirs are silently skipped.
+ */
+function provisionSkills(
+	sharedDir: string,
+	linuxUsers: string[],
+	platformSkillsPath: string,
+	teamSkillsPath: string | undefined,
+): void {
+	const platformDest = join(sharedDir, "skills", "_platform");
+	const teamDest = join(sharedDir, "skills", "_team");
+	const missionDest = join(sharedDir, "skills", "mission");
+
+	mkdirSync(platformDest, { recursive: true });
+	mkdirSync(teamDest, { recursive: true });
+	mkdirSync(missionDest, { recursive: true });
+
+	if (existsSync(platformSkillsPath)) {
+		cpSync(platformSkillsPath, platformDest, { recursive: true });
+	}
+	if (teamSkillsPath && existsSync(teamSkillsPath)) {
+		cpSync(teamSkillsPath, teamDest, { recursive: true });
+	}
+
+	for (const user of linuxUsers) {
+		// _platform and _team: read-only; apply recursively to cover copied files.
+		execFileSync("setfacl", ["-R", "-m", `u:${user}:r-x`, platformDest], {
+			stdio: "ignore",
+		});
+		execFileSync("setfacl", ["-d", "-m", `u:${user}:r-x`, platformDest], {
+			stdio: "ignore",
+		});
+		execFileSync("setfacl", ["-R", "-m", `u:${user}:r-x`, teamDest], {
+			stdio: "ignore",
+		});
+		execFileSync("setfacl", ["-d", "-m", `u:${user}:r-x`, teamDest], {
+			stdio: "ignore",
+		});
+		// mission: read-write so agents can create team skills here.
+		execFileSync("setfacl", ["-m", `u:${user}:rwx`, missionDest], {
+			stdio: "ignore",
+		});
+		execFileSync("setfacl", ["-d", "-m", `u:${user}:rwx`, missionDest], {
+			stdio: "ignore",
+		});
+	}
+}
+
+/**
+ * Initialise the shared directory as a git repository and create an empty
+ * initial commit so git-provenance scripts can commit agent work immediately.
+ *
+ * Git is workspace infrastructure — it is always present from mission start.
+ * The git-provenance skill teaches the commit convention, not git init.
+ */
+function initSharedGitRepo(sharedDir: string): void {
+	execFileSync("git", ["-C", sharedDir, "init", "-b", "main"], {
+		stdio: "ignore",
+	});
+	execFileSync(
+		"git",
+		[
+			"-C",
+			sharedDir,
+			"-c",
+			"user.name=magi",
+			"-c",
+			"user.email=magi@magi",
+			"commit",
+			"--allow-empty",
+			"-m",
+			"chore: initialise mission workspace",
+		],
+		{ stdio: "ignore" },
+	);
 }

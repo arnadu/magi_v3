@@ -10,6 +10,7 @@
 	},
 	"dependencies": {
 		"@magi/agent-config": "*",
+		"yaml": "^2.0.0",
 		"@mariozechner/pi-ai": "file:../../refs/pi-mono/packages/ai",
 		"@mozilla/readability": "^0.6.0",
 		"@sinclair/typebox": "^0.34.41",

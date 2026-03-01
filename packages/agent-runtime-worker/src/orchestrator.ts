@@ -82,7 +82,6 @@ export async function runOrchestrationLoop(
 	// linuxUser is required in the team YAML — validated by the config loader.
 	const agentDefs = teamConfig.agents.map((a) => ({
 		id: a.id,
-		role: a.role,
 		linuxUser: a.linuxUser,
 	}));
 	const identities = workspaceManager.provision(

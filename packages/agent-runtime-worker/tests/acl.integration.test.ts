@@ -66,8 +66,8 @@ beforeAll(() => {
 	//   agent2WorkDir: magi-w2 gets rwx, orchestrator gets default rwx for new files.
 	// magi-w1 has NO write access to agent2WorkDir (only r-x from base mode 755).
 	allIdentities = wsManager.provision(MISSION_ID, [
-		{ id: AGENT_1, role: "lead-agent", linuxUser: POOL_USER_1 },
-		{ id: AGENT_2, role: "worker-agent", linuxUser: POOL_USER_2 },
+		{ id: AGENT_1, linuxUser: POOL_USER_1 },
+		{ id: AGENT_2, linuxUser: POOL_USER_2 },
 	]);
 
 	const id1 = allIdentities.get(AGENT_1);

@@ -75,7 +75,6 @@ describe("integration: two-agent word-count", () => {
 				teamConfig.mission.id,
 				teamConfig.agents.map((a) => ({
 					id: a.id,
-					role: a.role,
 					linuxUser: a.linuxUser,
 				})),
 			);
