@@ -98,7 +98,16 @@ export interface AclPolicy {
 }
 
 function isPermitted(target: string, permittedPaths: string[]): boolean {
-	return permittedPaths.some((p) => target === p || target.startsWith(p + sep));
+	// Normalize both sides with resolve() so that paths containing ".." or
+	// redundant separators cannot bypass the check (e.g. workdir/../other-agent).
+	const normalizedTarget = resolve(target);
+	return permittedPaths.some((p) => {
+		const normalizedP = resolve(p);
+		return (
+			normalizedTarget === normalizedP ||
+			normalizedTarget.startsWith(normalizedP + sep)
+		);
+	});
 }
 
 function checkPath(

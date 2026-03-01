@@ -104,6 +104,11 @@ export async function expandAtPaths(
 
 		try {
 			const info = await stat(absPath);
+			if (info.size > 500 * 1024 * 1024) {
+				notice = `[Upload failed for "${rawPath}": file too large (${info.size} bytes, limit 500 MB)]`;
+				result = result.replace(token, notice);
+				continue;
+			}
 			const bytes = await readFile(absPath);
 			const name = basename(absPath);
 			const ext = name.split(".").pop()?.toLowerCase() ?? "";

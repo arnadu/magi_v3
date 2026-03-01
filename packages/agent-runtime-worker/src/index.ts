@@ -6,13 +6,11 @@ export type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 export {
 	createMailboxTools,
 	createMongoMailboxRepository,
-	InMemoryMailboxRepository,
 } from "./mailbox.js";
 export type { MentalMapRepository } from "./mental-map.js";
 export {
 	createMentalMapTool,
 	createMongoMentalMapRepository,
-	InMemoryMentalMapRepository,
 	initMentalMap,
 	patchMentalMap,
 } from "./mental-map.js";

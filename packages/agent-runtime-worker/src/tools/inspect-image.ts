@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
@@ -84,12 +85,22 @@ export function createInspectImageTool(
 
 			// --- Guard: path must stay within workdir or an allowedDir -----------
 			const resolvedPath = resolve(workdir, imagePath);
+			// Follow symlinks before checking permissions — prevents an agent from
+			// creating ln -s /etc/passwd workdir/img.png to escape the permitted tree.
+			let realPath: string;
+			try {
+				realPath = realpathSync(resolvedPath);
+			} catch {
+				return toolErr(
+					`InspectImage: path "${imagePath}" does not exist or is not accessible`,
+				);
+			}
 			const allBases = [
 				resolve(workdir),
 				...allowedDirs.map((d) => resolve(d)),
 			];
 			const allowed = allBases.some(
-				(base) => resolvedPath === base || resolvedPath.startsWith(base + sep),
+				(base) => realPath === base || realPath.startsWith(base + sep),
 			);
 			if (!allowed) {
 				return toolErr(
@@ -116,7 +127,7 @@ export function createInspectImageTool(
 			// --- Read image -------------------------------------------------------
 			let imageBytes: Buffer;
 			try {
-				imageBytes = await readFile(resolvedPath);
+				imageBytes = await readFile(realPath);
 			} catch (e) {
 				return toolErr(
 					`InspectImage: could not read "${imagePath}" — ${(e as Error).message}`,

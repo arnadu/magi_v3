@@ -2,6 +2,7 @@ import * as readline from "node:readline";
 import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
+import type { ConversationRepository } from "./conversation-repository.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
 import { verifyIsolation } from "./tools.js";
@@ -16,6 +17,7 @@ export interface OrchestratorConfig {
 	teamConfig: TeamConfig;
 	mailboxRepo: MailboxRepository;
 	mentalMapRepo: MentalMapRepository;
+	conversationRepo: ConversationRepository;
 	model: Model<string>;
 	/**
 	 * Working directory used for operator-level operations such as @path file
@@ -43,6 +45,13 @@ export interface OrchestratorConfig {
 	onUserMessage?: (msg: MailboxMessage) => void;
 	/** Called for every inner-loop message produced by any agent (for logging/streaming). */
 	onAgentMessage?: (agentId: string, msg: Message) => void;
+	/**
+	 * When provided, called instead of breaking when inbox is empty.
+	 * The daemon supplies a Change Stream watch that resolves when a new
+	 * MailboxMessage is inserted. After it resolves, the loop continues.
+	 * When absent (cli.ts / tests), the loop exits on empty inbox.
+	 */
+	waitForMail?: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +76,7 @@ export async function runOrchestrationLoop(
 		teamConfig,
 		mailboxRepo,
 		mentalMapRepo,
+		conversationRepo,
 		model,
 		workdir,
 		step = false,
@@ -125,6 +135,7 @@ export async function runOrchestrationLoop(
 		teamConfig,
 		mailboxRepo,
 		mentalMapRepo,
+		conversationRepo,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();
 			console.log(`\n[→ USER from ${msg.from}] ${msg.subject} (${timestamp})`);
@@ -171,7 +182,12 @@ export async function runOrchestrationLoop(
 			);
 
 			if (agentsWithMail.length === 0) {
-				// No unread messages — offer the operator a prompt.
+				if (config.waitForMail) {
+					// Daemon mode: sleep on Change Stream until a new message arrives.
+					await config.waitForMail();
+					continue;
+				}
+				// CLI mode: offer the operator a prompt.
 				if (rl) {
 					const input = await promptUser(
 						rl,

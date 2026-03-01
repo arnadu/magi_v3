@@ -1,39 +1,46 @@
 #!/usr/bin/env node
 
 /**
- * CLI runner for MAGI V3 agent teams.
+ * Single-run CLI for MAGI V3 agent teams.
+ *
+ * Runs one orchestration cycle and exits when the inbox is empty.
+ * Use daemon.ts for persistent missions. Use cli:post / cli:tail for
+ * operator interaction with a running daemon.
  *
  *   TEAM_CONFIG=<path-to-yaml> node dist/cli.js "<initial-task>" [--step]
  *
  * Environment variables:
  *   ANTHROPIC_API_KEY  required
+ *   MONGODB_URI        required
  *   TEAM_CONFIG        required — path to team config YAML
  *   MODEL              optional — model id (default: claude-sonnet-4-6)
- *   MONGODB_URI        optional — use MongoDB mailbox instead of in-memory
  *   AGENT_WORKDIR      optional — working directory for file tools (default: cwd)
  *
  * Flags:
  *   --step             pause after each agent run
  */
 
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
 
-// Load .env from the project root before reading any env vars.
-dotenvConfig({ quiet: true });
+// Load .env from the repo root (two levels up from packages/agent-runtime-worker/).
+dotenvConfig({
+	path: join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".env"),
+	quiet: true,
+});
 
-import { basename, dirname, join } from "node:path";
 import type {
 	AssistantMessage,
 	Message,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
-import {
-	createMongoMailboxRepository,
-	InMemoryMailboxRepository,
-} from "./mailbox.js";
-import { InMemoryMentalMapRepository } from "./mental-map.js";
+import { createMongoConversationRepository } from "./conversation-repository.js";
+import { createMongoMailboxRepository } from "./mailbox.js";
+import { createMongoMentalMapRepository } from "./mental-map.js";
 import { anthropicModel, CLAUDE_SONNET } from "./models.js";
+import { connectMongo } from "./mongo.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { expandAtPaths } from "./user-input.js";
 import { WorkspaceManager } from "./workspace-manager.js";
@@ -101,18 +108,24 @@ async function main(): Promise<void> {
 	const flags = new Set(rawArgs.filter((a) => a.startsWith("--")));
 
 	const teamConfigPath = process.env.TEAM_CONFIG;
+	const mongoUri = process.env.MONGODB_URI;
 
 	if (args.length === 0 || flags.has("--help") || !teamConfigPath) {
 		console.error(
-			"Usage: TEAM_CONFIG=<yaml> cli <task> [--step]\n\n" +
-				"Env vars: ANTHROPIC_API_KEY (required), TEAM_CONFIG (required), " +
-				"MODEL, MONGODB_URI, AGENT_WORKDIR",
+			"Usage: TEAM_CONFIG=<yaml> MONGODB_URI=<uri> cli <task> [--step]\n\n" +
+				"Env vars: ANTHROPIC_API_KEY (required), MONGODB_URI (required), " +
+				"TEAM_CONFIG (required), MODEL, AGENT_WORKDIR",
 		);
 		process.exit(1);
 	}
 
 	if (!process.env.ANTHROPIC_API_KEY) {
 		console.error("Error: ANTHROPIC_API_KEY environment variable is required");
+		process.exit(1);
+	}
+
+	if (!mongoUri) {
+		console.error("Error: MONGODB_URI environment variable is required");
 		process.exit(1);
 	}
 
@@ -134,11 +147,10 @@ async function main(): Promise<void> {
 		teamSkillsPath,
 	});
 
-	const mongoUri = process.env.MONGODB_URI;
-	const mailboxRepo = mongoUri
-		? await createMongoMailboxRepository(mongoUri, teamConfig.mission.id)
-		: new InMemoryMailboxRepository();
-	const mentalMapRepo = new InMemoryMentalMapRepository();
+	const { client, db } = await connectMongo(mongoUri);
+	const mailboxRepo = createMongoMailboxRepository(db, teamConfig.mission.id);
+	const mentalMapRepo = createMongoMentalMapRepository(db);
+	const conversationRepo = createMongoConversationRepository(db);
 
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config has no agents");
@@ -168,19 +180,24 @@ async function main(): Promise<void> {
 
 	const ac = makeAbortController();
 
-	await runOrchestrationLoop(
-		{
-			teamConfig,
-			mailboxRepo,
-			mentalMapRepo,
-			model,
-			workdir,
-			workspaceManager,
-			step: flags.has("--step"),
-			onAgentMessage: (agentId, msg) => logMessage(msg, agentId),
-		},
-		ac.signal,
-	);
+	try {
+		await runOrchestrationLoop(
+			{
+				teamConfig,
+				mailboxRepo,
+				mentalMapRepo,
+				conversationRepo,
+				model,
+				workdir,
+				workspaceManager,
+				step: flags.has("--step"),
+				onAgentMessage: (agentId, msg) => logMessage(msg, agentId),
+			},
+			ac.signal,
+		);
+	} finally {
+		await client.close();
+	}
 }
 
 main().catch((e) => {

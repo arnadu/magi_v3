@@ -14,23 +14,36 @@
  *   - InspectImage with a PDF page rendered as PNG via absolute path
  *   - Full orchestration loop with FetchUrl + InspectImage tools active
  *
- * Requires ANTHROPIC_API_KEY in environment or .env file.
+ * Requires ANTHROPIC_API_KEY and MONGODB_URI in environment or .env file.
  * Requires setup-dev.sh (pool users magi-w1, magi-w2 must exist).
  */
 
-import { createReadStream, mkdtempSync, rmSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+	chmodSync,
+	createReadStream,
+	mkdtempSync,
+	rmSync,
+	statSync,
+} from "node:fs";
 import * as http from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import type { MailboxMessage } from "../src/mailbox.js";
-import { InMemoryMailboxRepository } from "../src/mailbox.js";
-import { InMemoryMentalMapRepository } from "../src/mental-map.js";
+import { createMongoMailboxRepository } from "../src/mailbox.js";
+import { createMongoMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
+import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
+
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI)
+	throw new Error("MONGODB_URI env var is required for integration tests");
 
 // ---------------------------------------------------------------------------
 // Local HTTP server for test documents
@@ -100,13 +113,22 @@ const TEAM_CONFIG_PATH = fileURLToPath(
 describe("integration: cross-agent PDF fetch and inspect", () => {
 	it("Lead fetches PDF, Analyst inspects page, Lead reports to user", async () => {
 		const tmpDir = mkdtempSync(join(tmpdir(), "magi-fetch-share-"));
-
+		// mkdtempSync creates with mode 0700 — pool users need execute to traverse.
+		chmodSync(tmpDir, 0o755);
+		const missionId = `fetch-share-${randomUUID()}`;
 		const userMessages: MailboxMessage[] = [];
 
+		const { client, db } = await connectMongo(MONGODB_URI);
 		try {
-			const teamConfig = loadTeamConfig(TEAM_CONFIG_PATH);
-			const mailboxRepo = new InMemoryMailboxRepository();
-			const mentalMapRepo = new InMemoryMentalMapRepository();
+			const baseTeamConfig = loadTeamConfig(TEAM_CONFIG_PATH);
+			const teamConfig = {
+				...baseTeamConfig,
+				mission: { ...baseTeamConfig.mission, id: missionId },
+			};
+
+			const mailboxRepo = createMongoMailboxRepository(db, missionId);
+			const mentalMapRepo = createMongoMentalMapRepository(db);
+			const conversationRepo = createMongoConversationRepository(db);
 
 			const workspaceManager = new WorkspaceManager({
 				layout: {
@@ -119,7 +141,7 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 
 			// Seed Lead's inbox with the initial task
 			await mailboxRepo.post({
-				missionId: teamConfig.mission.id,
+				missionId,
 				from: "user",
 				to: ["lead"],
 				subject: "Document analysis task",
@@ -137,6 +159,7 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 					teamConfig,
 					mailboxRepo,
 					mentalMapRepo,
+					conversationRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
 					workspaceManager,
@@ -189,6 +212,12 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 			// Analyst must have described the image (dog/puppy visible on page 1).
 			expect(combinedText).toMatch(/dog|puppy/i);
 		} finally {
+			await db.collection("mailbox").deleteMany({ missionId });
+			await db.collection("conversationMessages").deleteMany({ missionId });
+			await db
+				.collection("mental_maps")
+				.deleteMany({ agentId: { $in: ["lead", "analyst"] } });
+			await client.close();
 			rmSync(tmpDir, { recursive: true });
 		}
 	}, 360_000); // 6-minute timeout — multiple agents, LLM + vision calls

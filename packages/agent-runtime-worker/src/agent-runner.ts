@@ -1,5 +1,6 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
+import type { ConversationRepository } from "./conversation-repository.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
@@ -22,6 +23,7 @@ export interface AgentRunContext {
 	teamConfig: TeamConfig;
 	mailboxRepo: MailboxRepository;
 	mentalMapRepo: MentalMapRepository;
+	conversationRepo: ConversationRepository;
 	/** Per-agent workspace identity providing private workdir and ACL. */
 	identity: AgentIdentity;
 	/** Called immediately when the agent posts a message to "user". */
@@ -60,6 +62,14 @@ export async function runAgent(
 		linuxUser,
 	};
 
+	const missionId = ctx.teamConfig.mission.id;
+
+	// Load conversation history from previous wakeups.
+	const history = await ctx.conversationRepo.load(agentId, missionId);
+	const previousMessages = history.map((s) => s.message);
+	const nextTurnNumber =
+		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
+
 	// Initialise mental map if this agent has never run before.
 	let mentalMapHtml = await ctx.mentalMapRepo.load(agentId);
 	if (!mentalMapHtml) {
@@ -87,12 +97,21 @@ export async function runAgent(
 		...(searchWebTool ? [searchWebTool] : []),
 	];
 
-	await runInnerLoop({
+	const result = await runInnerLoop({
 		model: ctx.model,
 		systemPrompt,
 		task,
 		tools,
 		signal,
+		previousMessages,
 		onMessage: ctx.onMessage,
 	});
+
+	// Append only the new messages produced this turn (slice off previousMessages).
+	const newMessages = result.messages.slice(previousMessages.length);
+	await ctx.conversationRepo.append(
+		agentId,
+		missionId,
+		newMessages.map((message) => ({ turnNumber: nextTurnNumber, message })),
+	);
 }

@@ -6,11 +6,13 @@
 	"main": "./dist/index.js",
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
-		"cli": "node dist/cli.js"
+		"cli": "node dist/cli.js",
+		"daemon": "node dist/daemon.js",
+		"cli:post": "node dist/cli-post.js",
+		"cli:tail": "node dist/cli-tail.js"
 	},
 	"dependencies": {
 		"@magi/agent-config": "*",
-		"yaml": "^2.0.0",
 		"@mariozechner/pi-ai": "file:../../refs/pi-mono/packages/ai",
 		"@mozilla/readability": "^0.6.0",
 		"@sinclair/typebox": "^0.34.41",
@@ -18,6 +20,11 @@
 		"execa": "^9.6.1",
 		"jsdom": "^26.1.0",
 		"mongodb": "^6.0.0",
-		"mupdf": "^1.27.0"
+		"mupdf": "^1.27.0",
+		"node-cron": "^3.0.0",
+		"yaml": "^2.0.0"
+	},
+	"devDependencies": {
+		"@types/node-cron": "^3.0.11"
 	}
 }

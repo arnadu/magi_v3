@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { TeamConfig } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
+import type { Db } from "mongodb";
 import type { MagiTool, ToolResult } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -48,87 +49,19 @@ export interface MailboxRepository {
 }
 
 // ---------------------------------------------------------------------------
-// In-memory implementation
-// ---------------------------------------------------------------------------
-
-export class InMemoryMailboxRepository implements MailboxRepository {
-	private readonly messages: MailboxMessage[] = [];
-
-	async post(
-		msg: Omit<MailboxMessage, "id" | "timestamp" | "readBy">,
-	): Promise<MailboxMessage> {
-		const full: MailboxMessage = {
-			...msg,
-			id: randomUUID(),
-			timestamp: new Date(),
-			readBy: [],
-		};
-		this.messages.push(full);
-		return full;
-	}
-
-	async listUnread(agentId: string): Promise<MailboxMessage[]> {
-		return this.messages.filter(
-			(m) => m.to.includes(agentId) && !m.readBy.includes(agentId),
-		);
-	}
-
-	async markRead(messageIds: string[], agentId: string): Promise<void> {
-		for (const msg of this.messages) {
-			if (messageIds.includes(msg.id) && !msg.readBy.includes(agentId)) {
-				msg.readBy.push(agentId);
-			}
-		}
-	}
-
-	async hasUnread(agentId: string): Promise<boolean> {
-		return this.messages.some(
-			(m) => m.to.includes(agentId) && !m.readBy.includes(agentId),
-		);
-	}
-
-	async list(
-		agentId: string,
-		opts: { limit?: number; since?: Date; search?: string } = {},
-	): Promise<MailboxMessage[]> {
-		let results = this.messages.filter((m) => m.to.includes(agentId));
-		if (opts.since) {
-			results = results.filter((m) => m.timestamp >= (opts.since as Date));
-		}
-		if (opts.search) {
-			const q = opts.search.toLowerCase();
-			results = results.filter(
-				(m) =>
-					m.subject.toLowerCase().includes(q) ||
-					m.body.toLowerCase().includes(q),
-			);
-		}
-		// Sort newest-first to match the MongoDB implementation.
-		results = [...results].sort(
-			(a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
-		);
-		return results.slice(0, opts.limit ?? 50);
-	}
-
-	async get(messageId: string): Promise<MailboxMessage | null> {
-		return this.messages.find((m) => m.id === messageId) ?? null;
-	}
-}
-
-// ---------------------------------------------------------------------------
 // MongoDB implementation
 // ---------------------------------------------------------------------------
 
-export async function createMongoMailboxRepository(
-	mongoUri: string,
-	dbName = "magi",
-): Promise<MailboxRepository> {
-	const { MongoClient } = await import("mongodb");
-	const client = new MongoClient(mongoUri);
-	await client.connect();
-	const col = client
-		.db(dbName)
-		.collection<MailboxMessage & { _id?: unknown }>("mailbox");
+/**
+ * Create a mailbox repository scoped to a single mission.
+ * All reads and writes are automatically filtered by missionId, preventing
+ * cross-mission message leakage (critical when multiple missions share a db).
+ */
+export function createMongoMailboxRepository(
+	db: Db,
+	missionId: string,
+): MailboxRepository {
+	const col = db.collection<MailboxMessage & { _id?: unknown }>("mailbox");
 
 	return {
 		async post(msg) {
@@ -144,27 +77,30 @@ export async function createMongoMailboxRepository(
 
 		async listUnread(agentId) {
 			return col
-				.find({ to: agentId, readBy: { $ne: agentId } })
+				.find({ missionId, to: agentId, readBy: { $ne: agentId } })
 				.sort({ timestamp: 1 })
 				.toArray();
 		},
 
 		async markRead(messageIds, agentId) {
 			await col.updateMany(
-				{ id: { $in: messageIds } },
+				{ missionId, id: { $in: messageIds } },
 				{ $addToSet: { readBy: agentId } },
 			);
 		},
 
 		async hasUnread(agentId) {
 			return (
-				(await col.countDocuments({ to: agentId, readBy: { $ne: agentId } })) >
-				0
+				(await col.countDocuments({
+					missionId,
+					to: agentId,
+					readBy: { $ne: agentId },
+				})) > 0
 			);
 		},
 
 		async list(agentId, opts = {}) {
-			const filter: Record<string, unknown> = { to: agentId };
+			const filter: Record<string, unknown> = { missionId, to: agentId };
 			if (opts.since) filter.timestamp = { $gte: opts.since };
 			if (opts.search) {
 				filter.$or = [
@@ -180,7 +116,7 @@ export async function createMongoMailboxRepository(
 		},
 
 		async get(messageId) {
-			return col.findOne({ id: messageId });
+			return col.findOne({ missionId, id: messageId });
 		},
 	};
 }

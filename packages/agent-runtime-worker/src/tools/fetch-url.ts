@@ -315,9 +315,11 @@ async function processPdf(
 			);
 			if (description) {
 				pageSection += `\n\n**Page visual:** ${description}`;
+			} else {
+				pageSection += `\n\n*(Page ${i + 1} visual: use InspectImage for analysis.)*`;
 			}
 		} catch {
-			// Non-fatal: skip page render on error
+			pageSection += `\n\n*(Page ${i + 1} visual render failed — text only.)*`;
 		}
 
 		textParts.push(pageSection);
@@ -515,6 +517,7 @@ export function createFetchUrlTool(
 				filename: string;
 				description: string | null;
 			}> = [];
+			let imagesFailed = 0;
 
 			if (downloadImages) {
 				// Query images from Readability's cleaned article HTML, not the full
@@ -536,11 +539,15 @@ export function createFetchUrlTool(
 					try {
 						imgUrl = new URL(src, parsedUrl.toString()).toString();
 					} catch {
+						imagesFailed++;
 						continue;
 					}
 
 					const result = await fetchImage(imgUrl, signal);
-					if (!result) continue;
+					if (!result) {
+						imagesFailed++;
+						continue;
+					}
 
 					const filename = `image-${idx}.${result.ext}`;
 					imageFiles.push({ name: filename, content: result.bytes });
@@ -566,6 +573,9 @@ export function createFetchUrlTool(
 						: `### ${filename}\n(Visual description unavailable — use InspectImage for analysis.)`,
 				);
 				contentText += `\n\n## Images\n\n${imageSections.join("\n\n")}`;
+			}
+			if (imagesFailed > 0) {
+				contentText += `\n\n*(${imagesFailed} image${imagesFailed !== 1 ? "s" : ""} could not be fetched — too large, unsupported format, or network error.)*`;
 			}
 
 			// --- Save artifact -------------------------------------------------

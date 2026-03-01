@@ -112,7 +112,7 @@ export class WorkspaceManager {
 
 		mkdirSync(sharedDir, { recursive: true });
 		const linuxUsers = Array.from(identities.values()).map((i) => i.linuxUser);
-		applySharedAcl(sharedDir, linuxUsers);
+		applySharedAcl(sharedDir, linuxUsers, userInfo().username);
 
 		// Copy platform/team skills, create per-agent skill dirs, init git repo.
 		provisionSkills(
@@ -178,16 +178,33 @@ function applyWorkdirAcl(
  * Apply ACL entries so the given linux users have rwx on the shared dir,
  * including default ACL so new files inherit the same permissions.
  *
+ * The orchestrator user is also added to the default ACL so it can always
+ * read and delete files created by pool users (git objects, reports, etc.)
+ * without requiring sudo. Mirrors what applyWorkdirAcl does for workdirs.
+ *
  * Uses execFileSync (no shell) to prevent injection via user values.
  * Throws if setfacl is not installed — OS-level isolation requires it.
  */
-function applySharedAcl(dir: string, linuxUsers: string[]): void {
+function applySharedAcl(
+	dir: string,
+	linuxUsers: string[],
+	orchestratorUser: string,
+): void {
 	for (const user of linuxUsers) {
 		execFileSync("setfacl", ["-m", `u:${user}:rwx`, dir], { stdio: "ignore" });
 		execFileSync("setfacl", ["-d", "-m", `u:${user}:rwx`, dir], {
 			stdio: "ignore",
 		});
 	}
+	// Orchestrator needs default ACL so subdirs created by pool users (e.g.
+	// git object directories committed by magi-wN) remain deletable by the
+	// orchestrator during teardown without sudo.
+	execFileSync("setfacl", ["-m", `u:${orchestratorUser}:rwx`, dir], {
+		stdio: "ignore",
+	});
+	execFileSync("setfacl", ["-d", "-m", `u:${orchestratorUser}:rwx`, dir], {
+		stdio: "ignore",
+	});
 }
 
 /**

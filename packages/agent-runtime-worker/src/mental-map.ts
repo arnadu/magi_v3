@@ -1,6 +1,7 @@
 import type { AgentConfig } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import { JSDOM } from "jsdom";
+import type { Db } from "mongodb";
 import type { MagiTool, ToolResult } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -20,6 +21,28 @@ export function initMentalMap(agent: AgentConfig): string {
 // ---------------------------------------------------------------------------
 
 /**
+ * Strip script elements and on* event handler attributes from an HTML fragment.
+ * Agents write structural HTML (<p>, <li>, etc.) to the mental map, so we
+ * preserve innerHTML but remove XSS vectors before they reach MongoDB — this
+ * is defence-in-depth for when the UI frontend is added in Sprint 10.
+ */
+function sanitizeHtml(fragment: string, doc: Document): string {
+	const div = doc.createElement("div");
+	div.innerHTML = fragment;
+	for (const el of Array.from(div.querySelectorAll("script"))) {
+		el.remove();
+	}
+	for (const el of Array.from(div.querySelectorAll("*"))) {
+		for (const attr of Array.from(el.attributes)) {
+			if (attr.name.toLowerCase().startsWith("on")) {
+				el.removeAttribute(attr.name);
+			}
+		}
+	}
+	return div.innerHTML;
+}
+
+/**
  * Apply a surgical patch to a mental map HTML fragment.
  *
  * - replace: set the inner content of element id="elementId" to `content`
@@ -37,22 +60,23 @@ export function patchMentalMap(
 	content?: string,
 ): string | null {
 	const dom = new JSDOM(html);
-	const el = dom.window.document.getElementById(elementId);
+	const doc = dom.window.document;
+	const el = doc.getElementById(elementId);
 	if (!el) return null;
 
 	switch (operation) {
 		case "replace":
-			el.innerHTML = content ?? "";
+			el.innerHTML = sanitizeHtml(content ?? "", doc);
 			break;
 		case "append":
-			el.innerHTML += content ?? "";
+			el.innerHTML += sanitizeHtml(content ?? "", doc);
 			break;
 		case "remove":
 			el.innerHTML = "";
 			break;
 	}
 
-	return dom.window.document.body.innerHTML;
+	return doc.body.innerHTML;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,37 +91,13 @@ export interface MentalMapRepository {
 }
 
 // ---------------------------------------------------------------------------
-// In-memory implementation
-// ---------------------------------------------------------------------------
-
-export class InMemoryMentalMapRepository implements MentalMapRepository {
-	private readonly store = new Map<string, string>();
-
-	async load(agentId: string): Promise<string | null> {
-		return this.store.get(agentId) ?? null;
-	}
-
-	async save(agentId: string, html: string): Promise<void> {
-		this.store.set(agentId, html);
-	}
-}
-
-// ---------------------------------------------------------------------------
 // MongoDB implementation
 // ---------------------------------------------------------------------------
 
-export async function createMongoMentalMapRepository(
-	mongoUri: string,
-	dbName = "magi",
-): Promise<MentalMapRepository> {
-	const { MongoClient } = await import("mongodb");
-	const client = new MongoClient(mongoUri);
-	await client.connect();
-	const col = client
-		.db(dbName)
-		.collection<{ agentId: string; html: string; updatedAt: Date }>(
-			"mental_maps",
-		);
+export function createMongoMentalMapRepository(db: Db): MentalMapRepository {
+	const col = db.collection<{ agentId: string; html: string; updatedAt: Date }>(
+		"mental_maps",
+	);
 
 	return {
 		async load(agentId) {

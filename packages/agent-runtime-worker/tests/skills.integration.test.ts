@@ -20,12 +20,14 @@
  *   4. Lead sent at least one message to user.
  *
  * Requires:
- *   - ANTHROPIC_API_KEY in environment or .env file.
+ *   - ANTHROPIC_API_KEY and MONGODB_URI in environment or .env file.
  *   - setup-dev.sh (pool users magi-w1, magi-w2 must exist).
  */
 
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
+	chmodSync,
 	createReadStream,
 	existsSync,
 	mkdirSync,
@@ -40,13 +42,19 @@ import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import type { MailboxMessage } from "../src/mailbox.js";
-import { InMemoryMailboxRepository } from "../src/mailbox.js";
-import { InMemoryMentalMapRepository } from "../src/mental-map.js";
+import { createMongoMailboxRepository } from "../src/mailbox.js";
+import { createMongoMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
+import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
 import type { AgentIdentity } from "../src/workspace-manager.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
+
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI)
+	throw new Error("MONGODB_URI env var is required for integration tests");
 
 // ---------------------------------------------------------------------------
 // Test-only WorkspaceManager: skip teardown so the sharedDir is still intact
@@ -147,6 +155,8 @@ describe("integration: agent skills — skill creation and discovery", () => {
 		const tmpDir = KEEP_WORKSPACE
 			? FIXED_WORKSPACE
 			: mkdtempSync(join(tmpdir(), "magi-skills-int-"));
+		// mkdtempSync creates with mode 0700 — pool users need execute to traverse.
+		if (!KEEP_WORKSPACE) chmodSync(tmpDir, 0o755);
 
 		if (KEEP_WORKSPACE) {
 			// Clean up from a previous keep-workspace run so state is fresh.
@@ -157,12 +167,20 @@ describe("integration: agent skills — skill creation and discovery", () => {
 			);
 		}
 
+		const missionId = `skills-test-${randomUUID()}`;
 		const userMessages: MailboxMessage[] = [];
 
+		const { client, db } = await connectMongo(MONGODB_URI);
 		try {
-			const teamConfig = loadTeamConfig(TEAM_CONFIG_PATH);
-			const mailboxRepo = new InMemoryMailboxRepository();
-			const mentalMapRepo = new InMemoryMentalMapRepository();
+			const baseTeamConfig = loadTeamConfig(TEAM_CONFIG_PATH);
+			const teamConfig = {
+				...baseTeamConfig,
+				mission: { ...baseTeamConfig.mission, id: missionId },
+			};
+
+			const mailboxRepo = createMongoMailboxRepository(db, missionId);
+			const mentalMapRepo = createMongoMentalMapRepository(db);
+			const conversationRepo = createMongoConversationRepository(db);
 
 			const workspaceManager = new NoTeardownWorkspaceManager({
 				layout: {
@@ -175,7 +193,7 @@ describe("integration: agent skills — skill creation and discovery", () => {
 			const pdfUrl = `${baseUrl}/test-pdf.pdf`;
 
 			await mailboxRepo.post({
-				missionId: teamConfig.mission.id,
+				missionId,
 				from: "user",
 				to: ["lead"],
 				subject: "Skills test task",
@@ -194,6 +212,7 @@ describe("integration: agent skills — skill creation and discovery", () => {
 					teamConfig,
 					mailboxRepo,
 					mentalMapRepo,
+					conversationRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
 					workspaceManager,
@@ -236,12 +255,7 @@ describe("integration: agent skills — skill creation and discovery", () => {
 			);
 
 			// teardown is a no-op — sharedDir is still intact for assertions.
-			const sharedDir = join(
-				tmpDir,
-				"missions",
-				teamConfig.mission.id,
-				"shared",
-			);
+			const sharedDir = join(tmpDir, "missions", missionId, "shared");
 
 			// 1. Lead created the report-format mission skill.
 			const skillMdPath = join(
@@ -270,6 +284,12 @@ describe("integration: agent skills — skill creation and discovery", () => {
 			// 4. Lead sent at least one message to the user.
 			expect(userMessages.length).toBeGreaterThanOrEqual(1);
 		} finally {
+			await db.collection("mailbox").deleteMany({ missionId });
+			await db.collection("conversationMessages").deleteMany({ missionId });
+			await db
+				.collection("mental_maps")
+				.deleteMany({ agentId: { $in: ["lead", "worker"] } });
+			await client.close();
 			if (!KEEP_WORKSPACE) {
 				rmSync(tmpDir, { recursive: true });
 			}
