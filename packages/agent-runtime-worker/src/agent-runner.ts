@@ -7,6 +7,7 @@ import { createMailboxTools } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
 import { createMentalMapTool, initMentalMap } from "./mental-map.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
+import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
 import { createInspectImageTool } from "./tools/inspect-image.js";
 import { tryCreateSearchWebTool } from "./tools/search-web.js";
@@ -86,6 +87,10 @@ export async function runAgent(
 	const task = formatMessages(messages);
 
 	const searchWebTool = tryCreateSearchWebTool();
+	// BrowseWebHandle is created here (once per agent turn) so all execute() calls
+	// within the same runInnerLoop share one browser session (cookies, auth, history).
+	const browseWebHandle = tryCreateBrowseWebTool(ctx.model, sharedDir);
+
 	const tools = [
 		...createFileTools(workdir, acl),
 		...createMailboxTools(ctx.mailboxRepo, ctx.teamConfig, agentId, {
@@ -95,23 +100,29 @@ export async function runAgent(
 		createFetchUrlTool(ctx.model, sharedDir),
 		createInspectImageTool(workdir, ctx.model, [sharedDir]),
 		...(searchWebTool ? [searchWebTool] : []),
+		...(browseWebHandle ? [browseWebHandle.tool] : []),
 	];
 
-	const result = await runInnerLoop({
-		model: ctx.model,
-		systemPrompt,
-		task,
-		tools,
-		signal,
-		previousMessages,
-		onMessage: ctx.onMessage,
-	});
+	try {
+		const result = await runInnerLoop({
+			model: ctx.model,
+			systemPrompt,
+			task,
+			tools,
+			signal,
+			previousMessages,
+			onMessage: ctx.onMessage,
+		});
 
-	// Append only the new messages produced this turn (slice off previousMessages).
-	const newMessages = result.messages.slice(previousMessages.length);
-	await ctx.conversationRepo.append(
-		agentId,
-		missionId,
-		newMessages.map((message) => ({ turnNumber: nextTurnNumber, message })),
-	);
+		// Append only the new messages produced this turn (slice off previousMessages).
+		const newMessages = result.messages.slice(previousMessages.length);
+		await ctx.conversationRepo.append(
+			agentId,
+			missionId,
+			newMessages.map((message) => ({ turnNumber: nextTurnNumber, message })),
+		);
+	} finally {
+		// Close the browser session regardless of success or failure.
+		await browseWebHandle?.close();
+	}
 }

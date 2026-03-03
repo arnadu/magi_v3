@@ -9,9 +9,11 @@
 		"cli": "node dist/cli.js",
 		"daemon": "node dist/daemon.js",
 		"cli:post": "node dist/cli-post.js",
-		"cli:tail": "node dist/cli-tail.js"
+		"cli:tail": "node dist/cli-tail.js",
+		"install:browsers": "playwright install chromium"
 	},
 	"dependencies": {
+		"@browserbasehq/stagehand": "^3.0.0",
 		"@magi/agent-config": "*",
 		"@mariozechner/pi-ai": "file:../../refs/pi-mono/packages/ai",
 		"@mozilla/readability": "^0.6.0",
@@ -22,7 +24,9 @@
 		"mongodb": "^6.0.0",
 		"mupdf": "^1.27.0",
 		"node-cron": "^3.0.0",
-		"yaml": "^2.0.0"
+		"playwright-core": "^1.50.0",
+		"yaml": "^2.0.0",
+		"zod": "^3.22.0"
 	},
 	"devDependencies": {
 		"@types/node-cron": "^3.0.11"

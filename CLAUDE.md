@@ -144,7 +144,7 @@ Two packages are built. Key files:
 - Platform default skills in `packages/skills/`: `skill-creator`, `git-provenance`, `inter-agent-comms`
 - `PublishArtifact` and `ListArtifacts` dropped — replaced by `git-provenance` skill + `git log` via Bash. See ADR-0007.
 
-**Sprint 6 — Persistent Daemon and Conversation Persistence (planned):**
+**Sprint 6 — Persistent Daemon and Conversation Persistence (built):**
 - **Conversation persistence** (ADR-0008): each agent maintains a full, growing conversation across all its wakeups within a mission. `src/conversation-repository.ts` (new) provides `StoredMessage` (message + `turnNumber`), `ConversationRepository` interface, and `createMongoConversationRepository`. `InMemoryMailboxRepository` and `InMemoryMentalMapRepository` are deleted — MongoDB is the only implementation for all three repos. `runInnerLoop` gains `previousMessages?: Message[]` and returns `Message[]`. `runAgent` loads history before the loop and appends new messages after. `cli.ts` and `daemon.ts` always use MongoDB. See ADR-0008 for the `convertToLlm` filter hook (compaction placeholder) and the `turnNumber`-based `trim()` API.
 - **Persistent daemon**: `runOrchestrationLoop` sleeps on MongoDB Change Stream instead of exiting when inbox is empty. Separate `daemon.ts` entry point; `cli.ts` keeps its single-run behaviour for tests. `pm2` process definition for local dev.
 - **MongoDB-native operator CLI**:
@@ -153,10 +153,14 @@ Two packages are built. Key files:
 - **MongoDB-native scheduling infrastructure** (daemon-side): `scheduled_messages` collection + `node-cron` heartbeat delivers pending documents to the mailbox; re-arms from DB on restart. The `schedule-task` skill (Sprint 7) writes to this collection directly — no HTTP needed.
 - No new tools. HTTP API deferred to Sprint 10 (built alongside the frontend). `schedule-task` and `run-background` skills deferred to Sprint 7. See ADR-0007 for the token-cost criterion for skills vs. tools.
 
-**Sprint 7 (planned):**
-- `BrowseWeb` — Playwright headless browser; renders JS before extraction; same artifact convention as `FetchUrl`; conditionally registered
-- `schedule-task` platform skill — inserts into `scheduled_messages` collection via Node.js helper; no HTTP required
-- `run-background` platform skill — starts a monitored shell command; daemon injects completion mailbox message on exit
+**Sprint 7 — BrowseWeb (partially built; `schedule-task` + `run-background` deferred to Sprint 8):**
+- `BrowseWeb` — Playwright/Stagehand headless browser; renders JS pages; supports interactive multi-step tasks (form fill, login flows, navigation); session state (cookies, auth tokens) persists across multiple calls within the same agent turn. Conditionally registered (returns `undefined` if Playwright Chromium not installed). SSRF protection: pre-navigation regex + `dns.promises.lookup()` (DNS rebinding), post-redirect hostname check. Trust boundary markers on all results + `content.md` artifact header. Content capped at 5 MB. Stagehand LLM calls surfaced via `logger` callback.
+  - `src/tools/browse-web.ts` — `BrowseWebHandle { tool, close() }` factory; `tryCreateBrowseWebTool(model, sharedDir)` returns `undefined` if Chromium absent; one Stagehand instance (lazy-init) shared across all `execute()` calls within a handle; `close()` called in `runAgent()` finally block
+  - `src/agent-runner.ts` — creates `BrowseWebHandle`, registers `browseWebHandle.tool`, calls `browseWebHandle?.close()` in `finally`
+  - `tests/browse-web.unit.test.ts` — SSRF regex coverage (loopback, RFC-1918, link-local, public pass-through), URL protocol validation (http/https accepted; file/ftp/javascript rejected), trust boundary marker format
+  - `tests/browse-web.integration.test.ts` — Test 1: JS rendering (page with 300ms `setTimeout` content injection; asserts BrowseWeb sees rendered value, not "Loading..."); Test 2: session persistence (login call sets cookie, news call uses same cookie; asserts no "Access denied"); local HTTP server, shared `BrowseWebHandle`; 5-minute timeout; skips gracefully if Chromium absent
+- `schedule-task` platform skill — deferred to Sprint 8
+- `run-background` platform skill — deferred to Sprint 8
 
 ## Sprint Roadmap
 
@@ -168,8 +172,8 @@ Two packages are built. Key files:
 | 3 | ✅ Done | Web search, fetch, artifacts: `FetchUrl`, `InspectImage`, `SearchWeb`; `@path` upload; artifact model |
 | 4 | ✅ Done | Identity, workspace, ACL enforcement: OS-isolated tool execution, `AclPolicy`, `WorkspaceManager`, `tool-executor.ts` (Temporal + Redis dropped — see ADRs 0001, 0006) |
 | 5 | ✅ Done | Agent Skills: discovery, 3 platform defaults (`skill-creator`, `git-provenance`, `inter-agent-comms`); Bash-based access via sharedDir copy; `provision()` runs `git init` |
-| 6 | | Persistent daemon (MongoDB Change Stream sleep), conversation persistence (ADR-0008), MongoDB-native scheduling infra + `cli:post` |
-| 7 | | `BrowseWeb` (Playwright); `schedule-task` + `run-background` skills (MongoDB-native, no HTTP) |
+| 6 | ✅ Done | Persistent daemon (MongoDB Change Stream sleep), conversation persistence (ADR-0008), MongoDB-native scheduling infra + `cli:post` |
+| 7 | ✅ Done | `BrowseWeb` (Stagehand/Playwright): JS rendering, interactive tasks, session persistence, SSRF blocking, trust boundary markers |
 | 8 | | Equity research team MVP |
 | 9 | | Reliability + evaluation harness (5-day unattended run) |
 | 10 | | Work Product Layer UI |

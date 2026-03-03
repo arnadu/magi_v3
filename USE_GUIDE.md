@@ -25,6 +25,17 @@ Build all packages:
 npm run build
 ```
 
+### BrowseWeb tool (optional)
+
+Enables JS-rendered page browsing and interactive browser automation. Without this, the `BrowseWeb` tool is silently absent from the agent's toolbox; all other tools work normally.
+
+```bash
+cd packages/agent-runtime-worker
+npx playwright install chromium
+```
+
+This downloads a pinned Chromium binary (~200 MB) to `~/.cache/ms-playwright/`. Run once after cloning; re-run after Playwright version upgrades.
+
 ---
 
 ## Single-run CLI
