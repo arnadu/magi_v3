@@ -1,4 +1,7 @@
 import dns from "node:dns/promises";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import type { LogLine } from "@browserbasehq/stagehand";
 import { V3 as Stagehand } from "@browserbasehq/stagehand";
 import type { Model } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
@@ -124,6 +127,36 @@ function createBrowseWebHandle(
 		? `anthropic/${model.id}`
 		: model.id;
 
+	// Per-handle session log file. All Stagehand log lines are appended as NDJSON
+	// so the full browser automation trace is available for debugging.
+	const sessionId = new Date().toISOString().replace(/[:.]/g, "-");
+	const logsDir = join(sharedDir, "logs");
+	mkdirSync(logsDir, { recursive: true });
+	const logFile = join(logsDir, `browse-web-${sessionId}.ndjson`);
+
+	function writeLog(entry: Record<string, unknown>): void {
+		try {
+			appendFileSync(logFile, `${JSON.stringify(entry)}\n`);
+		} catch {
+			// Non-fatal: if the log write fails, browser automation still proceeds.
+		}
+	}
+
+	function onStagehandLog(line: LogLine): void {
+		// Write every line to the session log file (full trace for debugging).
+		writeLog({
+			ts: line.timestamp ?? new Date().toISOString(),
+			level: line.level,
+			category: line.category,
+			message: line.message,
+			...(line.id ? { id: line.id } : {}),
+		});
+		// Print errors and notable action events to stdout for live visibility.
+		if (line.level === 0 || line.category === "agent") {
+			console.log(`[stagehand] ${line.category ?? ""} ${line.message}`);
+		}
+	}
+
 	let stagehand: Stagehand | null = null;
 	let initPromise: Promise<Stagehand> | null = null;
 
@@ -142,14 +175,9 @@ function createBrowseWebHandle(
 					executablePath: chromiumPath,
 					headless: true,
 				},
-				verbose: 0,
+				verbose: 2, // capture all log lines (written to session log file)
 				disablePino: true,
-				// Surface Stagehand's internal LLM calls in the orchestrator log.
-				logger: (line) => {
-					if (line.level === 0 || line.category === "action") {
-						console.log(`[stagehand] ${line.category ?? ""} ${line.message}`);
-					}
-				},
+				logger: onStagehandLog,
 			});
 			await sh.init();
 			stagehand = sh;
@@ -266,16 +294,35 @@ function createBrowseWebHandle(
 			// --- Run Stagehand agent for interactive task completion ---
 			// The agent() mode lets the MAGI agent provide high-level intent while
 			// Stagehand handles low-level browser actions (act/observe/extract).
+			writeLog({
+				ts: new Date().toISOString(),
+				event: "task_start",
+				url: sourceUrl,
+				task: args.task,
+			});
 			let agentSummary = "";
 			try {
 				// agent() has its own LLM config; pass the same AI SDK model string.
 				const agentInstance = sh.agent({ model: stagehandModel });
 				const result = await agentInstance.execute(args.task);
 				agentSummary = result.message?.trim() ?? "";
+				writeLog({
+					ts: new Date().toISOString(),
+					event: "task_done",
+					success: result.success,
+					completed: result.completed,
+					actions: result.actions?.length ?? 0,
+					message: agentSummary,
+				});
 			} catch (e) {
 				agentSummary =
 					`(Stagehand agent failed: ${(e as Error).message}. ` +
 					`See content.md in the artifact for the full page text.)`;
+				writeLog({
+					ts: new Date().toISOString(),
+					event: "task_error",
+					error: (e as Error).message,
+				});
 			}
 
 			// --- Full page content via Readability (reference artifact) ---
@@ -361,6 +408,7 @@ function createBrowseWebHandle(
 				`  meta.json     — URL, title, timestamp`,
 				``,
 				`To read more: \`cat ${artifactPath}/content.md\``,
+				`Session log: ${logFile}`,
 			];
 			return ok(lines.join("\n"));
 		},
