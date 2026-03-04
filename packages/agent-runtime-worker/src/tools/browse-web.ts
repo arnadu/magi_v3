@@ -44,10 +44,15 @@ function toolErr(text: string): ToolResult {
 const PRIVATE_HOST_RE =
 	/^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1$|\[::1\]$|localhost$|0\.0\.0\.0$)/i;
 
-async function isPrivateHost(hostname: string): Promise<boolean> {
+async function isPrivateHost(
+	hostname: string,
+	allowedHosts: string[],
+): Promise<boolean> {
+	if (allowedHosts.includes(hostname)) return false;
 	if (PRIVATE_HOST_RE.test(hostname)) return true;
 	try {
 		const { address } = await dns.lookup(hostname);
+		if (allowedHosts.includes(address)) return false;
 		return PRIVATE_HOST_RE.test(address);
 	} catch {
 		// DNS failure — let the browser timeout rather than blocking valid hosts.
@@ -74,6 +79,8 @@ export interface BrowseWebHandle {
 export function tryCreateBrowseWebTool(
 	model: Model<string>,
 	sharedDir: string,
+	/** Hostnames (or IPs) exempt from SSRF blocking. Only pass values for test infrastructure. */
+	allowedHosts: string[] = [],
 ): BrowseWebHandle | undefined {
 	let chromiumPath: string;
 	try {
@@ -81,7 +88,7 @@ export function tryCreateBrowseWebTool(
 	} catch {
 		return undefined;
 	}
-	return createBrowseWebHandle(model, sharedDir, chromiumPath);
+	return createBrowseWebHandle(model, sharedDir, chromiumPath, allowedHosts);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +99,7 @@ function createBrowseWebHandle(
 	model: Model<string>,
 	sharedDir: string,
 	chromiumPath: string,
+	allowedHosts: string[] = [],
 ): BrowseWebHandle {
 	/**
 	 * One Stagehand instance is shared across all execute() calls within this
@@ -102,6 +110,20 @@ function createBrowseWebHandle(
 	 * The browser is created lazily on the first execute() call and closed by
 	 * the explicit close() call in agent-runner.ts's finally block.
 	 */
+	// Stagehand uses the "provider/modelName" AI SDK format for the agent() loop,
+	// which requires AISdkClient (has getLanguageModel()). The plain "claude-*"
+	// form routes to AnthropicClient which lacks getLanguageModel — agent() breaks.
+	// We use "anthropic/claude-3-7-sonnet-latest" for all Stagehand calls; it is
+	// the best Claude model in the AI SDK provider list and reads ANTHROPIC_API_KEY
+	// from env automatically. Separate from MAGI's own LLM loop model.
+	// Use the AISDK "provider/model" format. The Stagehand-bundled @ai-sdk/anthropic
+	// already knows about claude-sonnet-4-6, so pass it through directly rather
+	// than pinning to an older model version. MAGI_V3's own model also uses
+	// claude-sonnet-4-6, so this is consistent.
+	const stagehandModel = model.id.startsWith("claude-")
+		? `anthropic/${model.id}`
+		: model.id;
+
 	let stagehand: Stagehand | null = null;
 	let initPromise: Promise<Stagehand> | null = null;
 
@@ -112,11 +134,10 @@ function createBrowseWebHandle(
 		initPromise = (async () => {
 			const sh = new Stagehand({
 				env: "LOCAL",
-				model: {
-					modelName: model.id,
-					apiKey: process.env.ANTHROPIC_API_KEY,
-					provider: "anthropic",
-				},
+				// "anthropic/model-name" routes through the Vercel AI SDK, which reads
+				// ANTHROPIC_API_KEY from env and returns an AISdkClient. This is required
+				// for agent() (which needs getLanguageModel()) to work.
+				model: stagehandModel,
 				localBrowserLaunchOptions: {
 					executablePath: chromiumPath,
 					headless: true,
@@ -198,7 +219,7 @@ function createBrowseWebHandle(
 						`BrowseWeb: only http:// and https:// URLs are allowed (got "${parsedUrl.protocol}")`,
 					);
 				}
-				if (await isPrivateHost(parsedUrl.hostname)) {
+				if (await isPrivateHost(parsedUrl.hostname, allowedHosts)) {
 					return toolErr(
 						`BrowseWeb: navigation to private/internal addresses is not permitted ("${args.url}")`,
 					);
@@ -222,7 +243,7 @@ function createBrowseWebHandle(
 				const finalUrl = page.url();
 				try {
 					const finalParsed = new URL(finalUrl);
-					if (await isPrivateHost(finalParsed.hostname)) {
+					if (await isPrivateHost(finalParsed.hostname, allowedHosts)) {
 						await page.goto("about:blank");
 						return toolErr(
 							`BrowseWeb: redirect to private/internal address blocked ("${finalUrl}")`,
@@ -247,7 +268,8 @@ function createBrowseWebHandle(
 			// Stagehand handles low-level browser actions (act/observe/extract).
 			let agentSummary = "";
 			try {
-				const agentInstance = sh.agent();
+				// agent() has its own LLM config; pass the same AI SDK model string.
+				const agentInstance = sh.agent({ model: stagehandModel });
 				const result = await agentInstance.execute(args.task);
 				agentSummary = result.message?.trim() ?? "";
 			} catch (e) {

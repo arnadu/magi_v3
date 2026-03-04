@@ -29,12 +29,25 @@ npm run build
 
 Enables JS-rendered page browsing and interactive browser automation. Without this, the `BrowseWeb` tool is silently absent from the agent's toolbox; all other tools work normally.
 
+**Step 1 — install the Chromium binary** (~200 MB, pinned version):
+
 ```bash
 cd packages/agent-runtime-worker
 npx playwright install chromium
 ```
 
-This downloads a pinned Chromium binary (~200 MB) to `~/.cache/ms-playwright/`. Run once after cloning; re-run after Playwright version upgrades.
+**Step 2 — install OS-level system dependencies** (required on Linux/WSL/servers; may already be present on desktop systems):
+
+```bash
+cd packages/agent-runtime-worker
+npx playwright install-deps chromium
+```
+
+This installs packages like `libnspr4`, `libnss3`, `libatk1.0-0`, and other shared libraries that Chromium headless shell requires. Requires `sudo` (the command prompts automatically). Without this step, Chromium crashes on launch with a missing `.so` error.
+
+Run both commands once after cloning; re-run after Playwright version upgrades.
+
+> **Production / Docker note:** In a Dockerfile, run both commands during the image build. The `install-deps` step is equivalent to the official `playwright install-deps` or adding the packages listed in the Playwright docs for your distro. Use `--with-deps` shorthand: `npx playwright install --with-deps chromium`.
 
 ---
 

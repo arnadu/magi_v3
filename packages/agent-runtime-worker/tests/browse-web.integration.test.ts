@@ -146,7 +146,8 @@ describe("BrowseWeb integration", () => {
 		// Grant pool user access (required by setfacl-protected workdirs in integration tests)
 		spawnSync("setfacl", ["-m", "u:magi-w1:rwx", tmpDir]);
 
-		handle = tryCreateBrowseWebTool(CLAUDE_SONNET, tmpDir);
+		// Allow 127.0.0.1 so the test can reach its own local HTTP server.
+		handle = tryCreateBrowseWebTool(CLAUDE_SONNET, tmpDir, ["127.0.0.1"]);
 		if (!handle) {
 			console.log(
 				"[browse-web] BrowseWeb skipped: Playwright Chromium not installed. " +
