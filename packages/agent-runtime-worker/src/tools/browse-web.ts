@@ -165,6 +165,13 @@ function createBrowseWebHandle(
 		if (initPromise) return initPromise;
 
 		initPromise = (async () => {
+			// Chromium profile dir — must be an absolute Linux path.
+			// On WSL2 Stagehand's chrome-launcher would otherwise call `wslpath -w`
+			// and produce a UNC path (\\wsl.localhost\...) which Playwright receives
+			// as a literal string and creates as a directory name in the CWD.
+			const profileDir = join(logsDir, `profile-${sessionId}`);
+			mkdirSync(profileDir, { recursive: true });
+
 			const sh = new Stagehand({
 				env: "LOCAL",
 				// "anthropic/model-name" routes through the Vercel AI SDK, which reads
@@ -174,6 +181,7 @@ function createBrowseWebHandle(
 				localBrowserLaunchOptions: {
 					executablePath: chromiumPath,
 					headless: true,
+					userDataDir: profileDir,
 				},
 				verbose: 2, // capture all log lines (written to session log file)
 				disablePino: true,
