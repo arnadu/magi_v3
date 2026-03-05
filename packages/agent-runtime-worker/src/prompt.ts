@@ -16,7 +16,10 @@ export function buildSystemPrompt(
 	sharedDir: string,
 	workdir: string,
 ): string {
-	const base = agent.systemPrompt.replace("{{mentalMap}}", mentalMapHtml);
+	const base = agent.systemPrompt
+		.replace(/\{\{mentalMap\}\}/g, mentalMapHtml)
+		.replace(/\{\{sharedDir\}\}/g, sharedDir)
+		.replace(/\{\{workdir\}\}/g, workdir);
 	const skillsBlock = formatSkillsBlock(discoverSkills(sharedDir, workdir));
 	return `${base}\n\n${skillsBlock}`;
 }

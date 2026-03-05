@@ -15,9 +15,11 @@
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
  */
 
+import { readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
+import { parseExpression } from "cron-parser";
 import { config as dotenvConfig } from "dotenv";
 
 // Load .env from the repo root (two levels up from packages/agent-runtime-worker/).
@@ -58,12 +60,80 @@ interface ScheduledMessageDoc {
 	status: "pending" | "delivered" | "cancelled";
 }
 
+// ---------------------------------------------------------------------------
+// Schedule file import
+// ---------------------------------------------------------------------------
+
+interface ScheduleSpec {
+	label: string;
+	to: string[];
+	cron: string;
+	subject: string;
+	body: string;
+}
+
+/**
+ * Scan sharedDir/schedules/*.json and upsert each entry into the
+ * scheduled_messages collection. Called on startup and on each heartbeat.
+ * Re-running with the same label updates the schedule (idempotent).
+ */
+async function importScheduleFiles(
+	schedulesDir: string,
+	col: Collection<ScheduledMessageDoc>,
+	missionId: string,
+): Promise<void> {
+	let files: string[];
+	try {
+		files = readdirSync(schedulesDir).filter((f) => f.endsWith(".json"));
+	} catch {
+		return; // schedules dir does not exist yet — nothing to import
+	}
+	for (const file of files) {
+		try {
+			const raw = readFileSync(join(schedulesDir, file), "utf8");
+			const spec = JSON.parse(raw) as ScheduleSpec;
+			const next = parseExpression(spec.cron).next().toDate();
+			await col.updateOne(
+				{ missionId, label: spec.label },
+				{
+					$set: {
+						missionId,
+						to: spec.to,
+						subject: spec.subject,
+						body: spec.body,
+						cron: spec.cron,
+						label: spec.label,
+						deliverAt: next,
+						status: "pending",
+					},
+				},
+				{ upsert: true },
+			);
+			console.log(
+				`[daemon:scheduler] Schedule imported: ${spec.label} → next at ${next.toISOString()}`,
+			);
+		} catch (e) {
+			console.error(
+				`[daemon:scheduler] Failed to import ${file}: ${(e as Error).message}`,
+			);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled delivery
+// ---------------------------------------------------------------------------
+
 function startScheduledDelivery(
 	col: Collection<ScheduledMessageDoc>,
 	mailboxRepo: MailboxRepository,
 	missionId: string,
+	schedulesDir: string,
 ): () => void {
 	async function deliver(): Promise<void> {
+		// Import any new or updated schedule files first.
+		await importScheduleFiles(schedulesDir, col, missionId);
+
 		const now = new Date();
 		// Atomically claim each pending message before delivering — prevents
 		// double-delivery if two daemon instances run concurrently or the process
@@ -84,6 +154,23 @@ function startScheduledDelivery(
 			console.log(
 				`[daemon:scheduler] Delivered scheduled message to: ${doc.to.join(", ")}`,
 			);
+			// Re-arm cron-based entries so the schedule recurs.
+			if (doc.cron) {
+				try {
+					const next = parseExpression(doc.cron).next().toDate();
+					await col.updateOne(
+						{ _id: doc._id },
+						{ $set: { status: "pending", deliverAt: next } },
+					);
+					console.log(
+						`[daemon:scheduler] Re-armed ${doc.label ?? "entry"} → next at ${next.toISOString()}`,
+					);
+				} catch (e) {
+					console.error(
+						`[daemon:scheduler] Failed to re-arm cron entry: ${(e as Error).message}`,
+					);
+				}
+			}
 		}
 	}
 
@@ -181,10 +268,13 @@ async function main(): Promise<void> {
 
 	// Scheduled message delivery infrastructure.
 	const scheduledCol = db.collection<ScheduledMessageDoc>("scheduled_messages");
+	const sharedDir = join(workdir, "missions", missionId, "shared");
+	const schedulesDir = join(sharedDir, "schedules");
 	const stopScheduler = startScheduledDelivery(
 		scheduledCol,
 		mailboxRepo,
 		missionId,
+		schedulesDir,
 	);
 
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.

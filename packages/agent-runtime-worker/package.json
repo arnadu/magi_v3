@@ -14,6 +14,7 @@
 	},
 	"dependencies": {
 		"@browserbasehq/stagehand": "^3.0.0",
+		"cron-parser": "^4.9.0",
 		"@magi/agent-config": "*",
 		"@mariozechner/pi-ai": "file:../../refs/pi-mono/packages/ai",
 		"@mozilla/readability": "^0.6.0",
