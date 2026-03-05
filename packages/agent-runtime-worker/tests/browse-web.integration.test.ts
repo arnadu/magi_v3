@@ -16,11 +16,17 @@
  * Timeout: 5 minutes (Stagehand init + Playwright + LLM calls).
  */
 
-import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync } from "node:fs";
+import {
+	chmodSync,
+	copyFileSync,
+	mkdtempSync,
+	readdirSync,
+	rmSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CLAUDE_SONNET } from "../src/models.js";
 import type { BrowseWebHandle } from "../src/tools/browse-web.js";
@@ -143,8 +149,6 @@ describe("BrowseWeb integration", () => {
 
 		tmpDir = mkdtempSync(join(tmpdir(), "magi-browse-"));
 		chmodSync(tmpDir, 0o755);
-		// Grant pool user access (required by setfacl-protected workdirs in integration tests)
-		spawnSync("setfacl", ["-m", "u:magi-w1:rwx", tmpDir]);
 
 		// Allow 127.0.0.1 so the test can reach its own local HTTP server.
 		handle = tryCreateBrowseWebTool(CLAUDE_SONNET, tmpDir, ["127.0.0.1"]);
@@ -159,7 +163,27 @@ describe("BrowseWeb integration", () => {
 	afterAll(async () => {
 		await handle?.close();
 		server?.close();
-		if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+		// Copy the session log to a fixed path before tmpDir is deleted so it
+		// survives the test run and can be inspected afterwards.
+		if (tmpDir) {
+			const logsDir = join(tmpDir, "logs");
+			const dest = join(
+				dirname(fileURLToPath(import.meta.url)),
+				"browse-web-last-run.ndjson",
+			);
+			try {
+				const files = readdirSync(logsDir)
+					.filter((f) => f.startsWith("browse-web-"))
+					.sort(); // ISO timestamps sort lexicographically = chronologically
+				if (files.length > 0) {
+					copyFileSync(join(logsDir, files[files.length - 1]), dest);
+					console.log(`[browse-web] session log saved to: ${dest}`);
+				}
+			} catch {
+				// Non-fatal: cleanup proceeds even if copy fails.
+			}
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
 	});
 
 	it("renders JS-injected content that FetchUrl cannot see", async () => {

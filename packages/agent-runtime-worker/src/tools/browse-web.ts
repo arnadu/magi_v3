@@ -1,5 +1,5 @@
 import dns from "node:dns/promises";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { LogLine } from "@browserbasehq/stagehand";
 import { V3 as Stagehand } from "@browserbasehq/stagehand";
@@ -44,7 +44,7 @@ function toolErr(text: string): ToolResult {
  * Applied to both the hostname string and the resolved IP address to catch
  * DNS rebinding attacks.
  */
-const PRIVATE_HOST_RE =
+export const PRIVATE_HOST_RE =
 	/^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1$|\[::1\]$|localhost$|0\.0\.0\.0$)/i;
 
 async function isPrivateHost(
@@ -159,6 +159,9 @@ function createBrowseWebHandle(
 
 	let stagehand: Stagehand | null = null;
 	let initPromise: Promise<Stagehand> | null = null;
+	// Hoisted so close() can delete the profile dir after the browser exits.
+	// Null until getStagehand() runs for the first time.
+	let profileDir: string | null = null;
 
 	async function getStagehand(): Promise<Stagehand> {
 		if (stagehand) return stagehand;
@@ -169,8 +172,9 @@ function createBrowseWebHandle(
 			// On WSL2 Stagehand's chrome-launcher would otherwise call `wslpath -w`
 			// and produce a UNC path (\\wsl.localhost\...) which Playwright receives
 			// as a literal string and creates as a directory name in the CWD.
-			const profileDir = join(logsDir, `profile-${sessionId}`);
-			mkdirSync(profileDir, { recursive: true });
+			const dir = join(logsDir, `profile-${sessionId}`);
+			mkdirSync(dir, { recursive: true });
+			profileDir = dir;
 
 			const sh = new Stagehand({
 				env: "LOCAL",
@@ -181,13 +185,20 @@ function createBrowseWebHandle(
 				localBrowserLaunchOptions: {
 					executablePath: chromiumPath,
 					headless: true,
-					userDataDir: profileDir,
+					userDataDir: dir,
 				},
 				verbose: 2, // capture all log lines (written to session log file)
 				disablePino: true,
 				logger: onStagehandLog,
 			});
-			await sh.init();
+			try {
+				await sh.init();
+			} catch (e) {
+				// Clear initPromise so the next execute() call can retry init
+				// rather than re-throwing the stale rejection forever.
+				initPromise = null;
+				throw e;
+			}
 			stagehand = sh;
 			return sh;
 		})();
@@ -217,12 +228,6 @@ function createBrowseWebHandle(
 					"'log in with username john and password secret, then navigate to the portfolio page'. " +
 					"Or extraction only: 'find the current stock price for AAPL'.",
 			}),
-			max_steps: Type.Optional(
-				Type.Number({
-					description:
-						"Maximum browser actions Stagehand may take to complete the task (default: 10, max: 30).",
-				}),
-			),
 			screenshot: Type.Optional(
 				Type.Boolean({
 					description:
@@ -235,11 +240,8 @@ function createBrowseWebHandle(
 			const args = rawArgs as {
 				url?: string;
 				task: string;
-				max_steps?: number;
 				screenshot?: boolean;
 			};
-			// maxSteps will be passed to agent() when Stagehand exposes a maxSteps option.
-			const _maxSteps = Math.min(args.max_steps ?? 10, 30);
 			const takeScreenshot = args.screenshot !== false;
 
 			// --- URL validation and pre-navigation SSRF check ---
@@ -302,6 +304,10 @@ function createBrowseWebHandle(
 			// --- Run Stagehand agent for interactive task completion ---
 			// The agent() mode lets the MAGI agent provide high-level intent while
 			// Stagehand handles low-level browser actions (act/observe/extract).
+			// Security note: SSRF protection above covers the initial page.goto()
+			// redirect chain only. Once agent() takes control it may click links or
+			// follow JS redirects to arbitrary URLs — those are NOT checked against
+			// the private-host block list. Tracked for Sprint 9 hardening.
 			writeLog({
 				ts: new Date().toISOString(),
 				event: "task_start",
@@ -429,6 +435,14 @@ function createBrowseWebHandle(
 				await stagehand.close().catch(() => {});
 				stagehand = null;
 				initPromise = null;
+			}
+			if (profileDir) {
+				try {
+					rmSync(profileDir, { recursive: true, force: true });
+				} catch {
+					// Non-fatal: stale profile dirs are just disk waste, not a correctness issue.
+				}
+				profileDir = null;
 			}
 		},
 	};

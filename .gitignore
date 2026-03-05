@@ -6,3 +6,4 @@ dist/
 *.log
 coverage/
 refs/
+packages/agent-runtime-worker/tests/browse-web-last-run.ndjson

@@ -11,30 +11,9 @@
 // Alternatively we test the tool's execute() by constructing a minimal handle.
 
 import { describe, expect, it } from "vitest";
-
-// ---------------------------------------------------------------------------
-// isPrivateHost tests (extracted via dynamic import + module internals)
-// ---------------------------------------------------------------------------
-// Since isPrivateHost is not exported from browse-web.ts, we test it
-// indirectly via the tool's execute() returning isError for blocked hosts.
-// We do this without launching a real browser by only testing URL validation
-// (which happens before Stagehand init).
-
-// We also verify the trust boundary markers appear in successful results
-// by stubbing at the module level — but for unit tests we just validate
-// the synchronous/pre-browser code paths.
+import { PRIVATE_HOST_RE } from "../src/tools/browse-web.js";
 
 describe("BrowseWeb URL validation", () => {
-	// We test the URL validation logic without Playwright/Stagehand by
-	// importing and calling the helper directly. Since isPrivateHost is
-	// module-private, we exercise it through the exported tryCreateBrowseWebTool.
-	// When Playwright is not installed, tryCreateBrowseWebTool returns undefined;
-	// to run these tests on any machine we inline a minimal validation replica.
-
-	// Inline replica of the SSRF regex (must stay in sync with browse-web.ts):
-	const PRIVATE_HOST_RE =
-		/^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1$|\[::1\]$|localhost$|0\.0\.0\.0$)/i;
-
 	function matchesPrivate(host: string): boolean {
 		return PRIVATE_HOST_RE.test(host);
 	}
