@@ -638,9 +638,33 @@ Exit criteria: Agent browses a JS-rendered test page and extracts article conten
 | Junior Analyst | lead | Company-specific research: earnings, filings, news, product pipeline, key clients and suppliers; tasks Data Scientist with company data feeds it needs |
 | Data Scientist | lead | Collects data indicators on behalf of Economist and Junior; builds and maintains the performance tracker (CSV in `sharedDir`); runs scripts and commits outputs via `git-provenance` |
 
-### Bootstrapping mission statement (sent once by the operator to kick off the mission)
+### Bootstrap phase (operator-guided, three steps)
 
-> "You are an equity research team. Your mission is to track NVDA and produce a daily brief each morning with a long/short recommendation and supporting rationale. Before starting your first daily cycle, analyse what you will need: identify which websites to monitor for news, which SEC filings to download, which macro indicators to track, and what infrastructure (scripts, dashboards, data files) the Data Scientist should build. Economist and Junior Analyst should send their data requirements to the Data Scientist. The Data Scientist should build the collection infrastructure and initialise the performance tracker. Once infrastructure is in place, agree on a daily workflow and begin."
+The bootstrap is a structured conversation between the operator and the team, not a single fire-and-forget message. The operator sends three messages; the team's responses gate each transition.
+
+**Step 1 — All-hands kick-off (operator → all agents)**
+
+The operator posts the same message to every agent simultaneously:
+
+> "Welcome to the team. Our mission is to track NVDA and produce a daily equity brief each morning with a long/short recommendation and a running performance record of our calls. Take some time to think about what this means for your role: what sources you will need, what data you will need to collect, what infrastructure needs to be built, and how the team should coordinate. I will ask each of you for your initial proposal in our next exchange. Please be ready to present: (1) your understanding of your role's scope, (2) the sources and data feeds you intend to use, (3) any infrastructure or tools you will need, and (4) what you will need from other team members."
+
+Each agent processes the message in their own turn and updates their Mental Map. No output is expected yet — this is reflection time.
+
+**Step 2 — Individual proposals (operator → each agent in turn)**
+
+The operator sends a short prompt to each agent individually:
+
+> "Please present your initial proposal."
+
+Each agent replies to the user with their proposal. The operator reads all four proposals and may ask follow-up questions or give corrections before proceeding.
+
+**Step 3 — Build and go (operator → Lead)**
+
+Once the operator is satisfied with the proposals, they send a single message to the Lead:
+
+> "Proposals approved. Please coordinate the team to build the infrastructure described, then schedule the daily cycle to begin tomorrow at 06:00."
+
+The Lead tasks the other agents (Economist sets up source list and indicator requirements, Junior sets up filings/news watchlist, Data Scientist builds collection scripts and initialises the performance tracker). When each agent signals completion, the Lead uses the `schedule-task` skill to register the 06:00 daily trigger and confirms to the user.
 
 ### Daily cycle (once bootstrapped)
 
@@ -680,11 +704,12 @@ Lead        → PostMessage user: brief summary + commit SHA + tracker status
 
 ### Exit criteria
 
-1. Operator sends the bootstrapping message; team self-organises and builds its research infrastructure without further prompting
-2. Data Scientist commits the performance tracker and at least one data collection script
-3. Team completes a full daily cycle: research committed → brief committed → user receives PostMessage
-4. Daily brief contains L/S recommendation with macro, sector, and company rationale
-5. Performance tracker updated and committed by Data Scientist each cycle
+1. Bootstrap Step 1: all four agents update their Mental Map after receiving the kick-off message
+2. Bootstrap Step 2: each agent produces a coherent individual proposal covering scope, sources, infrastructure needs, and inter-agent dependencies
+3. Bootstrap Step 3: Lead coordinates infrastructure build; Data Scientist commits tracker + at least one data collection script; Lead registers the 06:00 schedule and confirms to user
+4. Team completes a full daily cycle: research committed → brief committed → user receives PostMessage
+5. Daily brief contains L/S recommendation with macro, sector, and company rationale
+6. Performance tracker updated and committed by Data Scientist each cycle
 
 ---
 
