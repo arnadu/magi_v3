@@ -625,22 +625,66 @@ Exit criteria: Agent browses a JS-rendered test page and extracts article conten
 
 ---
 
-## Sprint 8 (2026-06-15 to 2026-06-26): Equity Research Team MVP
+## Sprint 8 (2026-03-05 to 2026-03-18): Equity Research Team MVP
 
-**Goal: the full anchor scenario runs end-to-end without manual intervention.**
+**Goal: a four-agent team covers a single stock (NVDA), produces a daily brief with a long/short recommendation, and maintains a running performance tracker — all without manual intervention.**
 
-Deliverables:
-- Full team config: Lead Analyst + 1 Junior Analyst + 1 Data Scientist + Watcher/Alert agent; team skills: `sec-filing-parser`, `morning-brief-template`
-- Role system prompts and Mental Map section templates for each agent type
-- Scheduled daily cycle: Lead uses `ScheduleMessage` (`0 6 * * *`) to trigger the 06:00 ingestion; Junior collects data via `BrowseWeb`/`FetchUrl`; Data Scientist runs analysis via `RunBackground`; Lead synthesises and commits the morning brief using `git-provenance`
-- Intraday event-driven flow: Watcher uses `ScheduleMessage` for periodic threshold checks; on breach sends `PostMessage` to Lead with `intent: risk_alert`; Lead reprioritises via Mental Map update
-- Alert deduplication in the Watcher: tracks breach state to suppress repeated alerts on a sustained breach
-- Report assembly: Lead composes morning brief from git-committed artifacts; every claim cites a commit SHA or source URL; lineage is `git log --follow` from brief commit back to raw data commits
-- Confidence scores on all forecasts; conflicting signals trigger a review task (not silent averaging)
-- Human approval gate: operator calls `POST /missions/:id/approve/:commit_sha` before brief is marked published; approval recorded in MongoDB
-- All inter-agent messages persisted in MongoDB; artifact lineage in git log
+### Team composition
 
-Exit criteria: Team completes one full daily cycle without manual intervention. Morning brief committed with ≥ 5 cited sources (commit message or ledger). Watcher fires at least one alert during an injected threshold breach. Operator approves publication via HTTP API. Lineage traceable: brief commit → analysis commits → raw data commits → source URLs.
+| Agent | Supervisor | Role |
+|---|---|---|
+| Lead Analyst | user | Orchestrates the daily cycle; synthesises macro, sector, and company views into a L/S recommendation with confidence and rationale; commits the daily brief via `git-provenance`; posts summary to user |
+| Economist | lead | Macro and sector research: GDP, rates, inflation, sector dynamics, competitive positioning; responds to ad-hoc data requests from Lead; tasks Data Scientist with indicators it needs |
+| Junior Analyst | lead | Company-specific research: earnings, filings, news, product pipeline, key clients and suppliers; tasks Data Scientist with company data feeds it needs |
+| Data Scientist | lead | Collects data indicators on behalf of Economist and Junior; builds and maintains the performance tracker (CSV in `sharedDir`); runs scripts and commits outputs via `git-provenance` |
+
+### Bootstrapping mission statement (sent once by the operator to kick off the mission)
+
+> "You are an equity research team. Your mission is to track NVDA and produce a daily brief each morning with a long/short recommendation and supporting rationale. Before starting your first daily cycle, analyse what you will need: identify which websites to monitor for news, which SEC filings to download, which macro indicators to track, and what infrastructure (scripts, dashboards, data files) the Data Scientist should build. Economist and Junior Analyst should send their data requirements to the Data Scientist. The Data Scientist should build the collection infrastructure and initialise the performance tracker. Once infrastructure is in place, agree on a daily workflow and begin."
+
+### Daily cycle (once bootstrapped)
+
+```
+06:00  schedule-task fires → Lead wakes
+Lead   → PostMessage Economist: "run your macro and sector research"
+Lead   → PostMessage Junior Analyst: "run your NVDA company research"
+Lead   → PostMessage Data Scientist: "update the performance tracker with yesterday's outcome"
+
+Economist   → researches macro / sector → may PostMessage Data Scientist for fresh data
+Junior      → researches NVDA news / filings / competitors → may PostMessage Data Scientist
+Data Sci    → responds to data requests → updates performance tracker → commits via git-provenance
+
+Lead        → reads committed research artifacts
+Lead        → synthesises → issues L/S recommendation with confidence and rationale
+Lead        → commits daily brief via git-provenance
+Lead        → PostMessage user: brief summary + commit SHA + tracker status
+```
+
+### Deliverables
+
+- `config/teams/equity-research.yaml` — 4-agent team config, NVDA ticker hardcoded in mission params
+- Role system prompts and Mental Map section templates for each agent
+- `packages/skills/schedule-task/` — platform skill: writes a cron entry to `scheduled_messages` collection to trigger timed agent wakeups (deferred from Sprint 7)
+- `config/teams/equity-research/skills/daily-brief-template/` — team skill: brief structure (macro snapshot / sector view / company view / recommendation / confidence / tracker link)
+- Performance tracker: CSV at `sharedDir/tracker.csv`; columns: `date, ticker, recommendation, rationale_commit, entry_price, exit_price, pnl`; Data Scientist initialises it on Day 1 and is responsible for bootstrapping decisions (how to handle missing prior-day close, etc.)
+- Daily brief committed to `sharedDir/briefs/YYYY-MM-DD.md` with source citations (commit SHAs or URLs)
+
+### Dropped from original Sprint 8 scope
+
+- ~~Human approval gate (HTTP API)~~ — deferred to Sprint 10 (Work Product UI)
+- ~~`run-background` skill~~ — Bash 600s cap is sufficient for MVP data scripts; deferred to Sprint 9
+- ~~Watcher / alert deduplication~~ — deferred to Sprint 9
+- ~~`sec-filing-parser` team skill~~ — Junior Analyst uses BrowseWeb on SEC EDGAR directly
+- ~~Conflicting-signal formal detection~~ — handled in Lead's system prompt, not runtime code
+- ~~Formal confidence score framework~~ — in brief template and system prompt
+
+### Exit criteria
+
+1. Operator sends the bootstrapping message; team self-organises and builds its research infrastructure without further prompting
+2. Data Scientist commits the performance tracker and at least one data collection script
+3. Team completes a full daily cycle: research committed → brief committed → user receives PostMessage
+4. Daily brief contains L/S recommendation with macro, sector, and company rationale
+5. Performance tracker updated and committed by Data Scientist each cycle
 
 ---
 

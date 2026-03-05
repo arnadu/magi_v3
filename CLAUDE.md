@@ -162,6 +162,19 @@ Two packages are built. Key files:
 - `schedule-task` platform skill — deferred to Sprint 8
 - `run-background` platform skill — deferred to Sprint 8
 
+**Sprint 8 — Equity Research Team MVP:**
+- Four-agent team tracking NVDA: Lead Analyst (supervisor: user), Economist (supervisor: lead), Junior Analyst (supervisor: lead), Data Scientist (supervisor: lead). Ticker hardcoded in team YAML.
+- Bootstrapping mission: operator sends one message; team self-organises, identifies what data to collect, and builds research infrastructure before the first daily cycle begins.
+- Daily cycle (once bootstrapped): `schedule-task` fires at 06:00 → Lead wakes → tasks Economist, Junior, Data Scientist → each does research / data collection → Lead synthesises → commits daily brief → posts summary to user.
+- Deliverables:
+  - `config/teams/equity-research.yaml` — team config with NVDA ticker in mission params
+  - Role system prompts and Mental Map section templates for each of the four agents
+  - `packages/skills/schedule-task/` — platform skill (deferred from Sprint 7): writes a cron entry to `scheduled_messages` collection; triggers timed agent wakeups via the Sprint 6 node-cron heartbeat
+  - `config/teams/equity-research/skills/daily-brief-template/` — team skill: brief structure (macro snapshot / sector view / company view / recommendation / confidence / tracker link)
+  - `sharedDir/tracker.csv` — performance tracker; columns: `date, ticker, recommendation, rationale_commit, entry_price, exit_price, pnl`; Data Scientist initialises and maintains
+  - Daily brief committed to `sharedDir/briefs/YYYY-MM-DD.md` with source citations
+- Exit criteria: (1) team self-organises and builds infrastructure without further prompting; (2) Data Scientist commits tracker + at least one data collection script; (3) full daily cycle: research committed → brief committed → user receives PostMessage; (4) brief contains L/S recommendation with macro, sector, and company rationale
+
 ## Sprint Roadmap
 
 | Sprint | Status | Focus |
@@ -174,7 +187,7 @@ Two packages are built. Key files:
 | 5 | ✅ Done | Agent Skills: discovery, 3 platform defaults (`skill-creator`, `git-provenance`, `inter-agent-comms`); Bash-based access via sharedDir copy; `provision()` runs `git init` |
 | 6 | ✅ Done | Persistent daemon (MongoDB Change Stream sleep), conversation persistence (ADR-0008), MongoDB-native scheduling infra + `cli:post` |
 | 7 | ✅ Done | `BrowseWeb` (Stagehand/Playwright): JS rendering, interactive tasks, session persistence, SSRF blocking, trust boundary markers |
-| 8 | | Equity research team MVP |
+| 8 | | Equity research MVP: 4-agent NVDA team, `schedule-task` skill, bootstrapping mission, daily brief + L/S rec + performance tracker |
 | 9 | | Reliability + evaluation harness (5-day unattended run) |
 | 10 | | Work Product Layer UI |
 | 11 | | Cloud burst and scale-out |
