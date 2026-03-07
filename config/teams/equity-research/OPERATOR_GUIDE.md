@@ -110,6 +110,38 @@ TEAM_CONFIG=config/teams/equity-research.yaml npm run cli:tail
 
 ---
 
+## Monitoring
+
+The daemon starts a live dashboard automatically on port 4000:
+
+```
+http://localhost:4000
+```
+
+The dashboard shows:
+- Real-time mailbox messages (coloured by agent, auto-scrolling)
+- Per-agent token usage and cost (input, output, cache, LLM calls, $)
+- Running mission total cost vs spending cap (if set)
+- LLM call log (most recent first)
+- **Stop daemon** button — graceful shutdown with confirmation prompt
+
+To set a spending cap (daemon aborts if exceeded):
+```bash
+MAX_COST_USD=5.00 TEAM_CONFIG=... npm run daemon
+```
+
+To change the monitor port:
+```bash
+MONITOR_PORT=8080 TEAM_CONFIG=... npm run daemon
+```
+
+To stop the daemon from another terminal (without the browser):
+```bash
+MISSION_ID=equity-research npm run cli:stop
+```
+
+---
+
 ## Daily operations
 
 Once the daily cycle is running, the daemon delivers a `[task] Daily cycle — begin` message

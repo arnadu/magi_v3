@@ -10,6 +10,7 @@
 		"daemon": "node dist/daemon.js",
 		"cli:post": "node dist/cli-post.js",
 		"cli:tail": "node dist/cli-tail.js",
+		"cli:stop": "node dist/cli-stop.js",
 		"install:browsers": "playwright install chromium"
 	},
 	"dependencies": {

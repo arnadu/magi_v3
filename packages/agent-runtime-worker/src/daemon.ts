@@ -15,7 +15,13 @@
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
  */
 
-import { readdirSync, readFileSync } from "node:fs";
+import {
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
@@ -32,6 +38,7 @@ import type {
 	AssistantMessage,
 	Message,
 	ToolResultMessage,
+	Usage,
 } from "@mariozechner/pi-ai";
 import type { Collection } from "mongodb";
 import { schedule } from "node-cron";
@@ -41,7 +48,9 @@ import { createMongoMailboxRepository } from "./mailbox.js";
 import { createMongoMentalMapRepository } from "./mental-map.js";
 import { anthropicModel, CLAUDE_SONNET } from "./models.js";
 import { connectMongo } from "./mongo.js";
+import { MonitorServer } from "./monitor-server.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
+import { UsageAccumulator } from "./usage.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
 // ---------------------------------------------------------------------------
@@ -257,7 +266,7 @@ async function main(): Promise<void> {
 		teamSkillsPath,
 	});
 
-	// Abort controller — fired by SIGTERM / SIGINT.
+	// Abort controller — fired by SIGTERM / SIGINT / cost cap / monitor stop.
 	const ac = new AbortController();
 	const { signal } = ac;
 	process.on("SIGTERM", () => ac.abort());
@@ -265,6 +274,34 @@ async function main(): Promise<void> {
 		console.log("\n[daemon] Interrupted — shutting down...");
 		ac.abort();
 	});
+
+	// PID file — enables cli:stop and external process management.
+	const missionDir = join(workdir, "missions", missionId);
+	mkdirSync(missionDir, { recursive: true });
+	const pidFile = join(missionDir, "daemon.pid");
+	writeFileSync(pidFile, String(process.pid));
+
+	// Usage accumulator + optional spending cap.
+	const usageAccumulator = new UsageAccumulator();
+	const maxCostUsd = process.env.MAX_COST_USD
+		? Number.parseFloat(process.env.MAX_COST_USD)
+		: null;
+	if (maxCostUsd !== null) {
+		console.log(`[daemon] Spending cap: $${maxCostUsd.toFixed(2)}`);
+	}
+
+	// Monitor server — SSE dashboard on MONITOR_PORT (default 4000).
+	const monitorPort = Number.parseInt(process.env.MONITOR_PORT ?? "4000", 10);
+	const monitor = new MonitorServer(
+		db,
+		missionId,
+		teamConfig.mission.name,
+		modelId,
+		usageAccumulator,
+		() => ac.abort(),
+		maxCostUsd,
+	);
+	await monitor.start(monitorPort);
 
 	// Scheduled message delivery infrastructure.
 	const scheduledCol = db.collection<ScheduledMessageDoc>("scheduled_messages");
@@ -358,13 +395,52 @@ async function main(): Promise<void> {
 				workdir,
 				workspaceManager,
 				waitForMail,
-				onAgentMessage: (agentId, msg) => logMessage(msg, agentId),
+				onAgentMessage: (agentId, msg) => {
+					logMessage(msg, agentId);
+					if (msg.role === "assistant") {
+						const usage = (msg as AssistantMessage).usage as Usage;
+						usageAccumulator.add(agentId, usage);
+						console.log(usageAccumulator.callLine(agentId, usage));
+						monitor.push("llm-call", {
+							agentId,
+							input: usage.input,
+							output: usage.output,
+							cacheRead: usage.cacheRead,
+							callCostUsd: usage.cost.total,
+							agentTotalUsd:
+								usageAccumulator.agents().find((a) => a.agentId === agentId)
+									?.costUsd ?? 0,
+							missionTotalUsd: usageAccumulator.totalCostUsd(),
+						});
+						if (
+							maxCostUsd !== null &&
+							usageAccumulator.totalCostUsd() >= maxCostUsd
+						) {
+							console.error(
+								`[daemon] Spending cap $${maxCostUsd.toFixed(2)} reached — aborting`,
+							);
+							monitor.push("cost-limit", {
+								limitUsd: maxCostUsd,
+								totalUsd: usageAccumulator.totalCostUsd(),
+							});
+							ac.abort();
+						}
+					}
+				},
 			},
 			signal,
 		);
 	} finally {
+		monitor.push("shutdown", { reason: signal.aborted ? "abort" : "normal" });
+		monitor.stop();
 		stopScheduler();
 		await client.close();
+		// Clean up PID file.
+		try {
+			unlinkSync(pidFile);
+		} catch {}
+		// Print final usage roll-up.
+		console.log(usageAccumulator.fullSummary());
 		console.log("[daemon] Shutdown complete");
 	}
 }
