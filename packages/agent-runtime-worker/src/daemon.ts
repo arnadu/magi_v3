@@ -25,7 +25,10 @@ import {
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
-import { parseExpression } from "cron-parser";
+import cronParser from "cron-parser";
+
+const { parseExpression } = cronParser;
+
 import { config as dotenvConfig } from "dotenv";
 
 // Load .env from the repo root (two levels up from packages/agent-runtime-worker/).
@@ -388,8 +391,12 @@ async function main(): Promise<void> {
 
 	console.log(`[daemon] Mission: ${teamConfig.mission.name} (${missionId})`);
 	console.log(
-		"[daemon] Ready — waiting for messages (Ctrl+C or SIGTERM to stop)",
+		`[daemon] Dashboard: http://localhost:${monitorPort} — click ▶ Start to begin`,
 	);
+
+	// Block until the operator clicks Start in the dashboard.
+	await monitor.waitForStart();
+	console.log("[daemon] Mission started — entering orchestration loop");
 
 	try {
 		await runOrchestrationLoop(

@@ -20,7 +20,8 @@ export type MonitorEventType =
 	| "conversation-update"
 	| "shutdown"
 	| "cost-limit"
-	| "status";
+	| "status"
+	| "started";
 
 export interface AgentInfo {
 	id: string;
@@ -50,6 +51,10 @@ export interface AgentInfo {
 export class MonitorServer {
 	private readonly clients = new Set<ServerResponse>();
 	private readonly server;
+
+	// Start gate
+	private started = false;
+	private startResolve: (() => void) | null = null;
 
 	// Step mode
 	private stepEnabled = false;
@@ -86,6 +91,17 @@ export class MonitorServer {
 				this.clients.delete(client);
 			}
 		}
+	}
+
+	/**
+	 * Blocks until the operator clicks "Start" in the dashboard.
+	 * Resolves immediately if already started (e.g. daemon restarted).
+	 */
+	waitForStart(): Promise<void> {
+		if (this.started) return Promise.resolve();
+		return new Promise((resolve) => {
+			this.startResolve = resolve;
+		});
 	}
 
 	/** Called by the orchestrator after every agent turn when step mode is on. */
@@ -242,6 +258,22 @@ export class MonitorServer {
 			return;
 		}
 
+		// ── POST /start
+		if (url === "/start" && req.method === "POST") {
+			if (!this.started) {
+				this.started = true;
+				if (this.startResolve) {
+					this.startResolve();
+					this.startResolve = null;
+				}
+				this.push("started", {});
+				console.log("[monitor] Mission started via dashboard");
+			}
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true }));
+			return;
+		}
+
 		// ── POST /stop
 		if (url === "/stop" && req.method === "POST") {
 			res.writeHead(200, { "Content-Type": "application/json" });
@@ -369,6 +401,7 @@ export class MonitorServer {
 			missionName: this.missionName,
 			model: this.model,
 			uptimeSec,
+			started: this.started,
 			stepEnabled: this.stepEnabled,
 			missionTotalUsd: this.accumulator.totalCostUsd(),
 			maxCostUsd: this.maxCostUsd,
@@ -425,7 +458,8 @@ header { background:var(--surface); border-bottom:1px solid var(--border);
        border-radius:5px;padding:5px 12px;font:12px/1 monospace;cursor:pointer; }
 .btn:hover:not(:disabled) { background:#21262d; }
 .btn:disabled { opacity:.4;cursor:default; }
-.btn-start  { border-color:#3fb950;color:#3fb950; }
+.btn-start  { border-color:#3fb950;color:#3fb950;font-weight:600; }
+.btn-start.running { background:#3fb950;color:#000;border-color:#3fb950; }
 .btn-step   { border-color:var(--accent);color:var(--accent); }
 .btn-step.on{ background:var(--accent);color:#000;border-color:var(--accent); }
 .btn-step.waiting { background:var(--yellow);color:#000;border-color:var(--yellow);animation:pulse .8s infinite; }
@@ -529,6 +563,7 @@ ${agentIds.map((id, i) => `.ac-${id.replace(/-/g, "\\-")}{color:var(--c${i})} .a
   <span class="hcost" id="hcost">$0.0000</span>
   <span class="hup" id="hup"></span>
   <span class="spacer"></span>
+  <button class="btn btn-start" id="start-btn" onclick="startMission()">▶ Start</button>
   <button class="btn btn-start" onclick="openCompose()">✉ Send</button>
   <button class="btn btn-step" id="step-btn" onclick="toggleStep()">Step: OFF</button>
   <button class="btn btn-step" id="advance-btn" onclick="advance()" disabled style="display:none">▶ Advance</button>
@@ -608,6 +643,7 @@ const AGENTS = ${agentJson};
 const es = new EventSource('/events');
 let activeAgent = null;
 let activeSubTab = 'mm';
+let missionStarted = false;
 let stepEnabled = false;
 let stepWaiting = false;
 let startedAt = Date.now();
@@ -647,6 +683,7 @@ es.addEventListener('shutdown', e => {
   addSysMsg('Daemon stopped: ' + (d.reason || 'unknown'));
   stopped = true;
 });
+es.addEventListener('started', () => setStarted(true));
 es.addEventListener('cost-limit', () => {
   document.getElementById('hcost').classList.add('danger');
   addSysMsg('⚠ Cost limit reached — daemon aborting');
@@ -659,9 +696,20 @@ function applyStatus(s) {
   startedAt = Date.now() - s.uptimeSec * 1000;
   maxCostUsd = s.maxCostUsd;
   stepEnabled = s.stepEnabled;
+  if (s.started) setStarted(true);
   renderStepBtn();
   updateCostDisplay(s.missionTotalUsd, s.maxCostUsd);
   updateUsageTable(s.agents, s.missionTotalUsd, s.maxCostUsd);
+}
+
+function setStarted(val) {
+  missionStarted = val;
+  const btn = document.getElementById('start-btn');
+  if (val) {
+    btn.textContent = '● Running';
+    btn.className = 'btn btn-start running';
+    btn.disabled = true;
+  }
 }
 
 function updateCostDisplay(total, max) {
@@ -826,6 +874,12 @@ function renderStepBtn() {
     btn.className = 'btn btn-step';
     adv.style.display = 'none';
   }
+}
+
+async function startMission() {
+  if (missionStarted) return;
+  await fetch('/start', {method:'POST'});
+  setStarted(true);
 }
 
 async function toggleStep() {
