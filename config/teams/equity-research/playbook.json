@@ -1,0 +1,38 @@
+[
+  {
+    "title": "Step 1 — All-hands kick-off",
+    "to": ["lead-analyst", "economist", "junior-analyst", "data-scientist"],
+    "subject": "Welcome to the team",
+    "body": "Welcome to the team.\n\nYou have been assembled as an equity research team with a specific mandate: track NVDA and produce a daily brief each morning with a long/short recommendation and a running performance record of the team's calls.\n\nTake today to think carefully about what this mandate means for your role. Consider: what sources you will need to monitor, what data you will need to collect, what infrastructure needs to be built, and how you will coordinate with the rest of the team.\n\nTomorrow I will ask each of you individually to present your proposed setup. Please be ready to describe: (1) your understanding of your role's scope, (2) the sources and data feeds you intend to use, (3) any tools or infrastructure you need to build, and (4) what you will need from other team members to do your job well."
+  },
+  {
+    "title": "Step 2a — Lead Analyst proposal request",
+    "to": ["lead-analyst"],
+    "subject": "Proposal request",
+    "body": "Please present your proposed setup for the team. Cover: (1) your understanding of the lead role's scope, (2) how you plan to coordinate the team's daily cycle, (3) the infrastructure and skills you intend to build, and (4) what you need from each team member."
+  },
+  {
+    "title": "Step 2b — Economist proposal request",
+    "to": ["economist"],
+    "subject": "Proposal request",
+    "body": "Please present your proposed setup. Cover: (1) the macro and sector indicators you plan to track, (2) the data sources and feeds you intend to use, (3) any tools or scripts you need to build, and (4) what you need from the data scientist to support your work."
+  },
+  {
+    "title": "Step 2c — Junior Analyst proposal request",
+    "to": ["junior-analyst"],
+    "subject": "Proposal request",
+    "body": "Please present your proposed setup. Cover: (1) the company-level data and filings you plan to monitor, (2) your approach to tracking NVDA earnings, guidance, and competitive dynamics, (3) any tools or scripts you need, and (4) what you need from the data scientist."
+  },
+  {
+    "title": "Step 2d — Data Scientist proposal request",
+    "to": ["data-scientist"],
+    "subject": "Proposal request",
+    "body": "Please present your proposed setup. Cover: (1) the data collection scripts and pipelines you plan to build, (2) the tracker schema and how you will maintain it, (3) how you will make data available to the analysts, and (4) what infrastructure decisions require input from the team."
+  },
+  {
+    "title": "Step 3 — Approve and build",
+    "to": ["lead-analyst"],
+    "subject": "Proposals approved — build and go",
+    "body": "Proposals approved. Please coordinate the team to build the infrastructure you described. Once everything is in place, use the schedule-task skill to register the 06:00 daily cycle and confirm to me when the team is ready to begin operations."
+  }
+]

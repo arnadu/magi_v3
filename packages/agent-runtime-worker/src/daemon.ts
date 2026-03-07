@@ -48,10 +48,10 @@ import { schedule } from "node-cron";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { createMongoMentalMapRepository } from "./mental-map.js";
+import { createMongoMentalMapRepository, initMentalMap } from "./mental-map.js";
 import { anthropicModel, CLAUDE_SONNET } from "./models.js";
 import { connectMongo } from "./mongo.js";
-import { MonitorServer } from "./monitor-server.js";
+import { MonitorServer, type PlaybookEntry } from "./monitor-server.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { UsageAccumulator } from "./usage.js";
 import { WorkspaceManager } from "./workspace-manager.js";
@@ -294,6 +294,20 @@ async function main(): Promise<void> {
 	}
 
 	// Monitor server — SSE dashboard on MONITOR_PORT (default 4000).
+	// Load playbook.json from the team config directory if present.
+	const teamDir = join(
+		dirname(teamConfigPath),
+		basename(teamConfigPath, ".yaml"),
+	);
+	let playbook: PlaybookEntry[] = [];
+	try {
+		playbook = JSON.parse(
+			readFileSync(join(teamDir, "playbook.json"), "utf8"),
+		) as PlaybookEntry[];
+	} catch {
+		/* no playbook file — that's fine */
+	}
+
 	const monitorPort = Number.parseInt(process.env.MONITOR_PORT ?? "4000", 10);
 	const agents = teamConfig.agents.map((a) => ({
 		id: a.id,
@@ -310,6 +324,8 @@ async function main(): Promise<void> {
 		agents,
 		() => ac.abort(),
 		maxCostUsd,
+		new Date(),
+		playbook,
 	);
 	await monitor.start(monitorPort);
 
@@ -386,6 +402,14 @@ async function main(): Promise<void> {
 				});
 				backoffMs = Math.min(backoffMs * 2, 30_000);
 			}
+		}
+	}
+
+	// Seed initial mental maps so the dashboard shows them before Start is clicked.
+	for (const agent of teamConfig.agents) {
+		const existing = await mentalMapRepo.load(agent.id);
+		if (!existing) {
+			await mentalMapRepo.save(agent.id, initMentalMap(agent));
 		}
 	}
 

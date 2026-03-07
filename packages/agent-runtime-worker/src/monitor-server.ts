@@ -29,6 +29,13 @@ export interface AgentInfo {
 	role: string;
 }
 
+export interface PlaybookEntry {
+	title: string;
+	to: string[];
+	subject: string;
+	body: string;
+}
+
 // ---------------------------------------------------------------------------
 // Monitor server
 // ---------------------------------------------------------------------------
@@ -71,6 +78,7 @@ export class MonitorServer {
 		private readonly onStop: () => void,
 		private readonly maxCostUsd: number | null,
 		private readonly startedAt = new Date(),
+		private readonly playbook: PlaybookEntry[] = [],
 	) {
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -421,6 +429,7 @@ export class MonitorServer {
 	private buildHtml(): string {
 		const agentIds = this.agents.map((a) => a.id);
 		const agentJson = JSON.stringify(this.agents);
+		const playbookJson = JSON.stringify(this.playbook);
 		return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -552,6 +561,19 @@ ${agentIds.map((id, i) => `.ac-${id.replace(/-/g, "\\-")}{color:var(--c${i})} .a
 .ac-user{color:var(--c-user)} .ab-user{border-left-color:var(--c-user)}
 
 .empty-state { color:var(--muted);text-align:center;padding:24px;font-size:11px; }
+
+/* ── Playbook ── */
+.pb-item { background:var(--surface);border:1px solid var(--border);border-radius:6px;
+           padding:11px 13px;margin-bottom:8px;cursor:pointer; }
+.pb-item:hover { border-color:var(--accent); }
+.pb-item.sent { opacity:.5; }
+.pb-title { font-weight:600;font-size:12px;margin-bottom:4px;color:var(--text); }
+.pb-meta  { font-size:11px;color:var(--muted);margin-bottom:6px; }
+.pb-preview { font-size:11px;color:var(--muted);white-space:pre-wrap;
+              max-height:48px;overflow:hidden;word-break:break-word; }
+.pb-actions { display:flex;gap:6px;margin-top:8px; }
+.pb-edit { font-size:11px;padding:3px 9px; }
+.pb-sent-badge { font-size:10px;color:var(--green);margin-left:auto;align-self:center; }
 </style>
 </head>
 <body>
@@ -596,8 +618,9 @@ ${agentIds.map((id, i) => `.ac-${id.replace(/-/g, "\\-")}{color:var(--c${i})} .a
 					return `<div class="agent-tab ac-${id}" data-id="${id}" onclick="selectAgent('${id}')">${name}</div>`;
 				})
 				.join("")}
+      <div class="agent-tab" id="tab-playbook" onclick="selectPlaybook()" style="color:var(--accent)">📋 Playbook</div>
     </div>
-    <div class="sub-tabs">
+    <div class="sub-tabs" id="sub-tabs-bar">
       <div class="sub-tab active" id="st-mm" onclick="selectSubTab('mm')">Mental Map</div>
       <div class="sub-tab" id="st-cv" onclick="selectSubTab('cv')">Conversation</div>
     </div>
@@ -640,6 +663,7 @@ ${agentIds.map((id, i) => `.ac-${id.replace(/-/g, "\\-")}{color:var(--c${i})} .a
 
 <script>
 const AGENTS = ${agentJson};
+const PLAYBOOK = ${playbookJson};
 const es = new EventSource('/events');
 let activeAgent = null;
 let activeSubTab = 'mm';
@@ -784,6 +808,8 @@ function selectAgent(id) {
   document.querySelectorAll('.agent-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.id === id);
   });
+  document.getElementById('tab-playbook').classList.remove('active');
+  document.getElementById('sub-tabs-bar').style.display = '';
   loadDetail();
 }
 
@@ -940,6 +966,74 @@ setInterval(() => {
   document.getElementById('hup').textContent =
     h > 0 ? \`\${h}h \${m}m\` : m > 0 ? \`\${m}m \${s}s\` : \`\${s}s\`;
 }, 1000);
+
+// ── Playbook ──────────────────────────────────────────────────────────
+const playbookSent = new Set();
+
+function selectPlaybook() {
+  // Deselect agent tabs
+  activeAgent = null;
+  document.querySelectorAll('.agent-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-playbook').classList.add('active');
+  document.getElementById('sub-tabs-bar').style.display = 'none';
+  renderPlaybook();
+}
+
+function renderPlaybook() {
+  const pane = document.getElementById('detail-pane');
+  if (!PLAYBOOK.length) {
+    pane.innerHTML = '<div class="empty-state">No playbook messages defined</div>';
+    return;
+  }
+  pane.innerHTML = '';
+  PLAYBOOK.forEach((entry, i) => {
+    const sent = playbookSent.has(i);
+    const div = document.createElement('div');
+    div.className = 'pb-item' + (sent ? ' sent' : '');
+    div.innerHTML =
+      \`<div class="pb-title">\${esc(entry.title)}</div>
+       <div class="pb-meta">To: \${entry.to.map(t => \`<span class="ac-\${t}">\${t}</span>\`).join(', ')}</div>
+       <div class="pb-preview">\${esc(entry.body.slice(0, 200))}\${entry.body.length > 200 ? '…' : ''}</div>
+       <div class="pb-actions">
+         <button class="btn pb-edit" onclick="editPlaybookEntry(\${i})">✏ Edit & Send</button>
+         \${sent ? '<span class="pb-sent-badge">✓ sent</span>' : ''}
+       </div>\`;
+    pane.appendChild(div);
+  });
+}
+
+function editPlaybookEntry(i) {
+  const entry = PLAYBOOK[i];
+  if (!entry) return;
+  // Pre-fill compose modal
+  document.querySelectorAll('#to-checks input[type=checkbox]').forEach(c => {
+    c.checked = entry.to.includes(c.value);
+  });
+  document.getElementById('compose-subject').value = entry.subject;
+  document.getElementById('compose-body').value = entry.body;
+  // Store index so sendMessage() can mark it sent
+  document.getElementById('compose-overlay').dataset.playbookIdx = String(i);
+  document.getElementById('compose-overlay').classList.remove('hidden');
+  document.getElementById('compose-body').focus();
+}
+
+// Override closeCompose to clear playbook index
+const _origCloseCompose = closeCompose;
+closeCompose = function() {
+  delete document.getElementById('compose-overlay').dataset.playbookIdx;
+  _origCloseCompose();
+};
+
+// Patch sendMessage to mark playbook entry sent
+const _origSendMessage = sendMessage;
+sendMessage = async function() {
+  const idx = document.getElementById('compose-overlay').dataset.playbookIdx;
+  await _origSendMessage();
+  if (idx !== undefined) {
+    playbookSent.add(Number(idx));
+    if (activeAgent === null) renderPlaybook(); // refresh if playbook tab active
+  }
+};
 
 // ── Utilities ─────────────────────────────────────────────────────────
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
