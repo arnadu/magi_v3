@@ -292,12 +292,19 @@ async function main(): Promise<void> {
 
 	// Monitor server — SSE dashboard on MONITOR_PORT (default 4000).
 	const monitorPort = Number.parseInt(process.env.MONITOR_PORT ?? "4000", 10);
+	const agents = teamConfig.agents.map((a) => ({
+		id: a.id,
+		name: a.name ?? a.id,
+		role: a.role ?? a.id,
+	}));
 	const monitor = new MonitorServer(
 		db,
 		missionId,
 		teamConfig.mission.name,
 		modelId,
 		usageAccumulator,
+		mailboxRepo,
+		agents,
 		() => ac.abort(),
 		maxCostUsd,
 	);
@@ -395,6 +402,7 @@ async function main(): Promise<void> {
 				workdir,
 				workspaceManager,
 				waitForMail,
+				waitForStep: () => monitor.waitForStep(),
 				onAgentMessage: (agentId, msg) => {
 					logMessage(msg, agentId);
 					if (msg.role === "assistant") {

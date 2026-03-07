@@ -52,6 +52,13 @@ export interface OrchestratorConfig {
 	 * When absent (cli.ts / tests), the loop exits on empty inbox.
 	 */
 	waitForMail?: () => Promise<void>;
+	/**
+	 * When provided, called after every agent turn. Resolves immediately when
+	 * step mode is off; blocks until the operator clicks "Step" in the monitor
+	 * dashboard (or calls POST /step) when step mode is on.
+	 * This hook takes priority over the TTY readline step mode.
+	 */
+	waitForStep?: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +259,11 @@ export async function runOrchestrationLoop(
 					signal,
 				);
 
-				if (step && rl) {
+				if (config.waitForStep) {
+					// Web step mode — monitor dashboard controls progression.
+					await config.waitForStep();
+				} else if (step && rl) {
+					// TTY step mode — readline prompt.
 					const input = await promptUser(
 						rl,
 						`[step] ${agent?.name ?? agentId} done. Press Enter or type a message: `,
