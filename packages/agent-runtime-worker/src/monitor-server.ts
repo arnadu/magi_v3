@@ -16,6 +16,7 @@ export type MonitorEventType =
 	| "llm-call"
 	| "step-paused"
 	| "step-resumed"
+	| "agent-status"
 	| "mental-map-update"
 	| "conversation-update"
 	| "shutdown"
@@ -67,6 +68,10 @@ export class MonitorServer {
 	private stepEnabled = false;
 	private stepResolve: (() => void) | null = null;
 
+	// Agent queue state
+	private runningAgent: string | null = null;
+	private pendingAgents: string[] = [];
+
 	constructor(
 		private readonly db: Db,
 		private readonly missionId: string,
@@ -99,6 +104,26 @@ export class MonitorServer {
 				this.clients.delete(client);
 			}
 		}
+	}
+
+	/** Called by the orchestrator before each agent turn. */
+	notifyAgentStart(agentId: string, pending: string[]): void {
+		this.runningAgent = agentId;
+		this.pendingAgents = pending;
+		this.push("agent-status", { running: agentId, pending });
+	}
+
+	/** Called by the orchestrator after each agent turn. */
+	notifyAgentDone(_agentId: string): void {
+		this.runningAgent = null;
+		this.push("agent-status", { running: null, pending: this.pendingAgents });
+	}
+
+	/** Called when the cycle ends and the loop goes idle. */
+	notifyIdle(): void {
+		this.runningAgent = null;
+		this.pendingAgents = [];
+		this.push("agent-status", { running: null, pending: [] });
 	}
 
 	/**
@@ -411,6 +436,8 @@ export class MonitorServer {
 			uptimeSec,
 			started: this.started,
 			stepEnabled: this.stepEnabled,
+			running: this.runningAgent,
+			pending: this.pendingAgents,
 			missionTotalUsd: this.accumulator.totalCostUsd(),
 			maxCostUsd: this.maxCostUsd,
 			agents: this.accumulator.agents().map((a) => ({
@@ -469,10 +496,23 @@ header { background:var(--surface); border-bottom:1px solid var(--border);
 .btn:disabled { opacity:.4;cursor:default; }
 .btn-start  { border-color:#3fb950;color:#3fb950;font-weight:600; }
 .btn-start.running { background:#3fb950;color:#000;border-color:#3fb950; }
-.btn-step   { border-color:var(--accent);color:var(--accent); }
-.btn-step.on{ background:var(--accent);color:#000;border-color:var(--accent); }
-.btn-step.waiting { background:var(--yellow);color:#000;border-color:var(--yellow);animation:pulse .8s infinite; }
+.btn-step-toggle { border-color:var(--border);color:var(--muted); }
+.btn-step-toggle.on { border-color:var(--accent);color:var(--accent); }
 .btn-stop   { border-color:var(--red);color:var(--red); }
+/* Queue strip */
+.queue-strip { background:var(--surface);border-bottom:1px solid var(--border);
+               padding:4px 14px;display:flex;align-items:center;gap:8px;
+               font-size:11px;flex-shrink:0;min-height:30px; }
+.q-idle      { color:var(--muted);font-style:italic; }
+.q-agent     { display:flex;align-items:center;gap:4px;border-radius:3px;
+               padding:2px 6px;background:#21262d; }
+.q-agent.running { background:var(--accent);color:#000;font-weight:600; }
+.q-agent.running::before { content:'▶ '; }
+.q-arrow     { color:var(--border); }
+.btn-run     { background:var(--green);border:none;color:#000;font-weight:600;
+               border-radius:4px;padding:3px 12px;font:11px/1.4 monospace;
+               cursor:pointer;animation:pulse .9s infinite; }
+.btn-run:hover { opacity:.85; }
 
 /* ── Main split ── */
 main { display:grid; grid-template-columns:1fr 1fr; overflow:hidden; }
@@ -614,10 +654,13 @@ ${agentIds.map((id, i) => `.ac-${id.replace(/-/g, "\\-")}{color:var(--c${i})} .a
   <span class="spacer"></span>
   <button class="btn btn-start" id="start-btn" onclick="startMission()">▶ Start</button>
   <button class="btn btn-start" onclick="openCompose()">✉ Send</button>
-  <button class="btn btn-step" id="step-btn" onclick="toggleStep()">Step: OFF</button>
-  <button class="btn btn-step" id="advance-btn" onclick="advance()" disabled style="display:none">▶ Advance</button>
+  <button class="btn btn-step-toggle" id="step-btn" onclick="toggleStep()">Step ○</button>
   <button class="btn btn-stop" id="stop-btn" onclick="stopDaemon()">■ Stop</button>
 </header>
+
+<div class="queue-strip" id="queue-strip">
+  <span class="q-idle">Idle — waiting for messages</span>
+</div>
 
 <main>
   <!-- Left: message feed + usage -->
@@ -697,6 +740,8 @@ let activeSubTab = 'mm';
 let missionStarted = false;
 let stepEnabled = false;
 let stepWaiting = false;
+let runningAgent = null;
+let pendingAgents = [];
 let startedAt = Date.now();
 let maxCostUsd = null;
 let stopped = false;
@@ -735,6 +780,13 @@ es.addEventListener('shutdown', e => {
   stopped = true;
 });
 es.addEventListener('started', () => setStarted(true));
+es.addEventListener('agent-status', e => {
+  const d = JSON.parse(e.data);
+  runningAgent = d.running;
+  pendingAgents = d.pending ?? [];
+  renderQueue();
+  renderAgentTabIndicators();
+});
 es.addEventListener('cost-limit', () => {
   document.getElementById('hcost').classList.add('danger');
   addSysMsg('⚠ Cost limit reached — daemon aborting');
@@ -747,8 +799,12 @@ function applyStatus(s) {
   startedAt = Date.now() - s.uptimeSec * 1000;
   maxCostUsd = s.maxCostUsd;
   stepEnabled = s.stepEnabled;
+  runningAgent = s.running ?? null;
+  pendingAgents = s.pending ?? [];
   if (s.started) setStarted(true);
   renderStepBtn();
+  renderQueue();
+  renderAgentTabIndicators();
   updateCostDisplay(s.missionTotalUsd, s.maxCostUsd);
   updateUsageTable(s.agents, s.missionTotalUsd, s.maxCostUsd);
 }
@@ -1020,27 +1076,15 @@ function _toolIcon(name) {
     InspectImage:'🖼',ListTeam:'👥',ListMessages:'📬',ReadMessage:'📨'})[name] || '🔧';
 }
 
-// ── Buttons ───────────────────────────────────────────────────────────
+// ── Step button ───────────────────────────────────────────────────────
 function renderStepBtn() {
   const btn = document.getElementById('step-btn');
-  const adv = document.getElementById('advance-btn');
-  if (stepWaiting) {
-    btn.textContent = 'Step: ON';
-    btn.className = 'btn btn-step on';
-    adv.style.display = '';
-    adv.disabled = false;
-    adv.className = 'btn btn-step waiting';
-    adv.textContent = '▶ Advance';
-  } else if (stepEnabled) {
-    btn.textContent = 'Step: ON';
-    btn.className = 'btn btn-step on';
-    adv.style.display = '';
-    adv.disabled = true;
-    adv.className = 'btn btn-step';
+  if (stepEnabled) {
+    btn.textContent = 'Step ●';
+    btn.className = 'btn btn-step-toggle on';
   } else {
-    btn.textContent = 'Step: OFF';
-    btn.className = 'btn btn-step';
-    adv.style.display = 'none';
+    btn.textContent = 'Step ○';
+    btn.className = 'btn btn-step-toggle';
   }
 }
 
@@ -1054,11 +1098,54 @@ async function toggleStep() {
   const r = await fetch('/toggle-step', {method:'POST'});
   const d = await r.json();
   stepEnabled = d.stepEnabled;
+  if (!stepEnabled) stepWaiting = false;
   renderStepBtn();
+  renderQueue();
 }
 
-async function advance() {
+async function advanceStep() {
   await fetch('/step', {method:'POST'});
+}
+
+// ── Queue strip ───────────────────────────────────────────────────────
+function renderQueue() {
+  const strip = document.getElementById('queue-strip');
+  if (!strip) return;
+
+  if (stepEnabled && stepWaiting && runningAgent) {
+    const name = agentDisplayName(runningAgent);
+    let html = '<button class="btn-run" onclick="advanceStep()">&#9654; Run ' + esc(name) + '</button>';
+    pendingAgents.forEach(function(id) {
+      html += '<span class="q-arrow">&rarr;</span><span class="q-agent">' + esc(agentDisplayName(id)) + '</span>';
+    });
+    strip.innerHTML = html;
+    return;
+  }
+
+  if (runningAgent) {
+    let html = '<span class="q-agent running">' + esc(agentDisplayName(runningAgent)) + '</span>';
+    pendingAgents.forEach(function(id) {
+      html += '<span class="q-arrow">&rarr;</span><span class="q-agent">' + esc(agentDisplayName(id)) + '</span>';
+    });
+    strip.innerHTML = html;
+    return;
+  }
+
+  strip.innerHTML = '<span class="q-idle">Idle \u2014 waiting for messages</span>';
+}
+
+function agentDisplayName(id) {
+  const a = AGENTS.find(function(a) { return a.id === id; });
+  return a ? a.name : id;
+}
+
+function renderAgentTabIndicators() {
+  document.querySelectorAll('.agent-tab[data-id]').forEach(function(tab) {
+    const id = tab.dataset.id;
+    const base = tab.dataset.baseName || tab.textContent.replace(/^\u25b6 /, '');
+    tab.dataset.baseName = base;
+    tab.textContent = (id === runningAgent) ? '\u25b6 ' + base : base;
+  });
 }
 
 function stopDaemon() {

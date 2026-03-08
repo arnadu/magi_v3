@@ -434,6 +434,9 @@ async function main(): Promise<void> {
 				workspaceManager,
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
+				onAgentStart: (agentId, pending) => monitor.notifyAgentStart(agentId, pending),
+				onAgentDone: (agentId) => monitor.notifyAgentDone(agentId),
+				onIdle: () => monitor.notifyIdle(),
 				onAgentMessage: (agentId, msg) => {
 					logMessage(msg, agentId);
 					if (msg.role === "assistant") {
