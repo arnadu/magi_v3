@@ -525,15 +525,42 @@ main { display:grid; grid-template-columns:1fr 1fr; overflow:hidden; }
 .mental-map-html p  { color:var(--text); }
 
 /* ── Conversation ── */
-.conv-msg { margin-bottom:8px;border-radius:5px;padding:7px 9px;font-size:11px; }
-.conv-user { background:#1c2028;border-left:3px solid var(--muted); }
-.conv-assistant { background:#162030;border-left:3px solid var(--accent); }
-.conv-toolResult{ background:#1a1f1a;border-left:3px solid #3fb950; }
-.conv-role { font-weight:600;font-size:10px;color:var(--muted);margin-bottom:3px; }
-.conv-text { white-space:pre-wrap;word-break:break-word;color:var(--text); }
-.conv-tool { color:var(--yellow);font-size:10px; }
-.conv-result{ color:#3fb950;font-size:10px; }
-.conv-err   { color:var(--red);font-size:10px; }
+/* ── Conversation chat bubbles ── */
+.conv-turn-hdr { text-align:center;font-size:10px;color:var(--muted);
+                 margin:10px 0 6px;letter-spacing:.05em; }
+.conv-bubble { display:flex;gap:8px;margin-bottom:8px;align-items:flex-start; }
+.conv-avatar { width:26px;height:26px;border-radius:50%;display:flex;align-items:center;
+               justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px; }
+.av-user     { background:var(--c-user);color:#000; }
+.av-agent    { background:var(--accent);color:#000;font-size:9px; }
+.av-think    { background:var(--surface);border:1px solid var(--border);font-size:12px; }
+.conv-body   { flex:1;min-width:0; }
+.conv-label  { font-size:10px;color:var(--muted);margin-bottom:2px; }
+.conv-text   { font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-word;
+               background:var(--surface);border:1px solid var(--border);
+               border-radius:5px;padding:7px 9px; }
+.conv-bubble-user  .conv-text { border-left:3px solid var(--c-user); }
+.conv-bubble-agent .conv-text { border-left:3px solid var(--accent); }
+.conv-think-text { color:var(--muted);font-style:italic; }
+/* Tool boxes */
+.conv-tool-box  { margin:3px 0 8px 34px;border:1px solid var(--border);
+                  border-radius:5px;overflow:hidden;font-size:11px; }
+.conv-tool-hdr  { display:flex;align-items:center;gap:6px;padding:5px 9px;
+                  background:#161f16;cursor:pointer;user-select:none; }
+.conv-tool-hdr:hover { background:#1c281c; }
+.conv-tool-icon { font-size:12px;flex-shrink:0; }
+.conv-tool-name { flex:1;font-weight:600;color:var(--yellow); }
+.conv-tool-arrow{ color:var(--muted);font-size:9px; }
+.conv-tool-body { display:none; }
+.conv-tool-body.open { display:block; }
+.conv-tool-args { padding:6px 9px;background:#0d1117;color:var(--muted);
+                  white-space:pre-wrap;word-break:break-word;
+                  max-height:120px;overflow-y:auto;border-bottom:1px solid var(--border); }
+.conv-tool-result { padding:6px 9px;white-space:pre-wrap;word-break:break-word;
+                    max-height:200px;overflow-y:auto; }
+.conv-tool-result.ok      { color:#3fb950; }
+.conv-tool-result.err     { color:var(--red); }
+.conv-tool-result.pending { color:var(--muted);font-style:italic; }
 
 /* ── Compose modal ── */
 .overlay { position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;
@@ -805,6 +832,7 @@ function addSysMsg(text) {
 // ── Agent detail ─────────────────────────────────────────────────────
 function selectAgent(id) {
   activeAgent = id;
+  convToolBoxes.clear(); convLastTurn = -1;
   document.querySelectorAll('.agent-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.id === id);
   });
@@ -830,11 +858,8 @@ async function loadDetail() {
     renderMentalMap(html);
   } else {
     const r = await fetch(\`/agents/\${activeAgent}/conversation\`);
-    const msgs = await r.json();
-    pane.innerHTML = '';
-    if (!msgs.length) { pane.innerHTML = '<div class="empty-state">No conversation yet</div>'; return; }
-    msgs.forEach(m => appendConvMsg(m, false));
-    pane.scrollTop = pane.scrollHeight;
+    const docs = await r.json();
+    renderConversation(docs);
   }
 }
 
@@ -848,34 +873,151 @@ function renderMentalMap(html) {
   pane.appendChild(div);
 }
 
-function appendConvMsg(m, scroll = true) {
+// toolCallId → result-slot DOM element; keyed per agent to survive tab switches
+const convToolBoxes = new Map();
+let convLastTurn = -1;
+
+function renderConversation(docs) {
   const pane = document.getElementById('detail-pane');
-  pane.querySelector('.empty-state')?.remove();
-  const div = document.createElement('div');
-  if (m.role === 'user') {
-    div.className = 'conv-msg conv-user';
-    const body = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-    div.innerHTML = \`<div class="conv-role">USER (task)</div><div class="conv-text">\${esc(body.slice(0,800))}</div>\`;
-  } else if (m.role === 'assistant') {
-    div.className = 'conv-msg conv-assistant';
-    let html = '<div class="conv-role">ASSISTANT</div>';
-    const blocks = Array.isArray(m.content) ? m.content : [];
-    for (const b of blocks) {
-      if (b.type === 'text' && b.text?.trim())
-        html += \`<div class="conv-text">\${esc(b.text.slice(0,600))}</div>\`;
-      else if (b.type === 'toolCall')
-        html += \`<div class="conv-tool">→ \${esc(b.name)}(\${esc(JSON.stringify(b.arguments).slice(0,120))})</div>\`;
-    }
-    div.innerHTML = html;
-  } else if (m.role === 'toolResult') {
-    div.className = 'conv-msg conv-toolResult';
-    const text = (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('').slice(0, 300);
-    div.innerHTML = \`<div class="conv-role \${m.isError ? 'conv-err' : 'conv-result'}">← \${esc(m.toolName)}</div><div class="conv-text">\${esc(text)}</div>\`;
-  } else {
+  pane.innerHTML = '';
+  convToolBoxes.clear();
+  convLastTurn = -1;
+  if (!docs.length) {
+    pane.innerHTML = '<div class="empty-state">No conversation yet</div>';
     return;
   }
-  pane.appendChild(div);
+  for (const doc of docs) _renderDoc(doc, pane);
+  pane.scrollTop = pane.scrollHeight;
+}
+
+function appendConvMsg(doc, scroll = true) {
+  const pane = document.getElementById('detail-pane');
+  pane.querySelector('.empty-state')?.remove();
+  _renderDoc(doc, pane);
   if (scroll) pane.scrollTop = pane.scrollHeight;
+}
+
+function _renderDoc(doc, pane) {
+  const m = doc.message;
+  if (!m) return;
+  const turn = doc.turnNumber ?? 0;
+  const agentId = doc.agentId ?? activeAgent ?? '';
+
+  // Turn divider
+  if (turn !== convLastTurn) {
+    convLastTurn = turn;
+    const hdr = document.createElement('div');
+    hdr.className = 'conv-turn-hdr';
+    hdr.textContent = \`— Turn \${turn} —\`;
+    pane.appendChild(hdr);
+  }
+
+  if (m.role === 'user') {
+    const content = typeof m.content === 'string'
+      ? m.content
+      : (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\\n');
+    const el = document.createElement('div');
+    el.className = 'conv-bubble conv-bubble-user';
+    el.innerHTML =
+      \`<div class="conv-avatar av-user">📨</div>
+       <div class="conv-body">
+         <div class="conv-label">Operator / Mailbox</div>
+         <div class="conv-text">\${esc(content)}</div>
+       </div>\`;
+    pane.appendChild(el);
+
+  } else if (m.role === 'assistant') {
+    const blocks = Array.isArray(m.content) ? m.content : [];
+    const thinking = blocks.filter(b => b.type === 'thinking' && b.thinking?.trim());
+    const texts    = blocks.filter(b => b.type === 'text'    && b.text?.trim());
+    const calls    = blocks.filter(b => b.type === 'toolCall');
+
+    if (thinking.length) {
+      const el = document.createElement('div');
+      el.className = 'conv-bubble';
+      const full = thinking.map(b => b.thinking).join('\\n\\n');
+      el.innerHTML =
+        \`<div class="conv-avatar av-think">💭</div>
+         <div class="conv-body">
+           <div class="conv-label">Thinking</div>
+           <div class="conv-text conv-think-text">\${esc(full.slice(0,600))}\${full.length>600?'…':''}</div>
+         </div>\`;
+      pane.appendChild(el);
+    }
+    if (texts.length) {
+      const el = document.createElement('div');
+      el.className = 'conv-bubble conv-bubble-agent';
+      el.innerHTML =
+        \`<div class="conv-avatar av-agent">AI</div>
+         <div class="conv-body">
+           <div class="conv-text">\${esc(texts.map(b=>b.text).join('\\n\\n'))}</div>
+         </div>\`;
+      pane.appendChild(el);
+    }
+    for (const call of calls) {
+      const { el, resultEl } = _makeToolBox(call.name, call.arguments);
+      pane.appendChild(el);
+      convToolBoxes.set(agentId + ':' + call.id, resultEl);
+    }
+
+  } else if (m.role === 'toolResult') {
+    const slot = convToolBoxes.get(agentId + ':' + m.toolCallId);
+    if (slot) {
+      _fillResult(slot, m);
+    } else {
+      // Orphaned result (e.g. page reload mid-turn) — show as standalone box
+      const el = document.createElement('div');
+      el.className = 'conv-tool-box';
+      const txt = (m.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').slice(0,500);
+      el.innerHTML =
+        \`<div class="conv-tool-hdr" onclick="toggleToolBox(this)">
+           <span class="conv-tool-icon">\${_toolIcon(m.toolName)}</span>
+           <span class="conv-tool-name">\${esc(m.toolName)}</span>
+           <span class="conv-tool-arrow">▼</span>
+         </div>
+         <div class="conv-tool-body open">
+           <div class="conv-tool-result \${m.isError?'err':'ok'}">\${esc(txt)}</div>
+         </div>\`;
+      pane.appendChild(el);
+    }
+  }
+}
+
+function _makeToolBox(name, args) {
+  const el = document.createElement('div');
+  el.className = 'conv-tool-box';
+  const argsStr = JSON.stringify(args, null, 2);
+  el.innerHTML =
+    \`<div class="conv-tool-hdr" onclick="toggleToolBox(this)">
+       <span class="conv-tool-icon">\${_toolIcon(name)}</span>
+       <span class="conv-tool-name">\${esc(name)}</span>
+       <span class="conv-tool-arrow">▼</span>
+     </div>
+     <div class="conv-tool-body open">
+       <div class="conv-tool-args">\${esc(argsStr)}</div>
+       <div class="conv-tool-result pending">⏳ running…</div>
+     </div>\`;
+  const resultEl = el.querySelector('.conv-tool-result');
+  return { el, resultEl };
+}
+
+function _fillResult(el, m) {
+  const txt = (m.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+  el.className = 'conv-tool-result ' + (m.isError ? 'err' : 'ok');
+  el.textContent = txt.slice(0, 1000) + (txt.length > 1000 ? '…' : '');
+}
+
+function toggleToolBox(hdr) {
+  const body = hdr.nextElementSibling;
+  const arrow = hdr.querySelector('.conv-tool-arrow');
+  const open = body.classList.toggle('open');
+  arrow.textContent = open ? '▼' : '▶';
+}
+
+function _toolIcon(name) {
+  return ({Bash:'⚙',WriteFile:'✍',EditFile:'✏',PostMessage:'✉',
+    UpdateMentalMap:'🧠',FetchUrl:'🌐',BrowseWeb:'🌐',SearchWeb:'🔍',
+    InspectImage:'🖼',ListTeam:'👥',ListMessages:'📬',ReadMessage:'📨'})[name] || '🔧';
 }
 
 // ── Buttons ───────────────────────────────────────────────────────────
