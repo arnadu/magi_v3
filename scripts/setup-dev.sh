@@ -101,11 +101,19 @@ NODE_BIN="$(which node)"
 POOL_LIST="$(seq -s, -f 'magi-w%.0f' 1 "${POOL_SIZE}")"
 SUDOERS_FILE="/etc/sudoers.d/magi"
 
-printf '%s ALL = (%s) NOPASSWD: %s\n' \
-    "${ORCHESTRATOR}" "${POOL_LIST}" "${NODE_BIN}" > "${SUDOERS_FILE}"
+{
+    printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${POOL_LIST}" "${NODE_BIN}"
+    # Prevent sudo from prompting pool workers for a password.
+    # Without this, sudo's default is to authenticate via PAM before checking
+    # authorization — so a magi-wN user running "sudo anything" would produce
+    # a password prompt on the daemon's terminal even though they have no
+    # permitting rule.  !authenticate skips PAM; the command is still denied
+    # by policy (no allowing rule exists), but it fails silently.
+    printf 'Defaults:%%%s !authenticate\n' "${SHARED_GROUP}"
+} > "${SUDOERS_FILE}"
 chmod 440 "${SUDOERS_FILE}"
 if visudo -cf "${SUDOERS_FILE}"; then
-    echo "[setup-dev] Wrote sudoers rule: ${ORCHESTRATOR} → (${POOL_LIST}) NOPASSWD: ${NODE_BIN}"
+    echo "[setup-dev] Wrote sudoers rules in ${SUDOERS_FILE}"
 else
     echo "[setup-dev] ERROR: invalid sudoers file — removing"
     rm -f "${SUDOERS_FILE}"
