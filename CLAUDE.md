@@ -246,6 +246,35 @@ Pending final decisions at Sprint 0:
 5. Frontend path: MAG_v2 UI reuse vs `pi-web-ui` scope
 6. Artifact storage backend: MinIO locally, S3-compatible in cloud
 
+## Known Pitfalls
+
+**sudo prompts appearing in the daemon terminal**
+Agents occasionally generate Bash commands containing `sudo` (e.g. `sudo apt install …`). The tool executes as the pool user (`magi-wN`) which has no sudoers entry. By default `sudo` authenticates via PAM *before* checking authorization, producing a password prompt on the daemon's controlling terminal even though the command will ultimately be denied.
+
+Fix: `/etc/sudoers.d/magi` must include `Defaults:%magi-shared !authenticate`. This skips PAM for the group; the command still fails (no allowing rule), but fails silently. Applied by `scripts/setup-dev.sh` — re-run it if you see prompts:
+```bash
+sudo scripts/setup-dev.sh
+```
+
+**Node binary path stale in sudoers after nvm upgrade**
+`setup-dev.sh` bakes the absolute path of `node` into the sudoers rule (`NOPASSWD: /path/to/node`). If you upgrade Node via nvm and the binary path changes, the orchestrator's `sudo -u magi-wN node …` will be denied. Re-run `sudo scripts/setup-dev.sh` to refresh the path.
+
+**Port 4000 already in use on daemon start**
+A previous daemon instance may still hold the port. Find and kill it:
+```bash
+lsof -ti tcp:4000 | xargs kill -9
+```
+
+**`File is not defined` on Node 18 (Stagehand / undici)**
+`undici` checks for the `File` global at module load. Node 18 doesn't expose it globally. The daemon entry point uses `--import ./dist/node-polyfill.js` to polyfill it before any imports. If you see this error from a different entry point, add the same `--import` flag.
+
+**`cron-parser` named export error on Node 18/22**
+`import { parseExpression } from "cron-parser"` fails because the package ships CJS. Use the default import:
+```typescript
+import cronParser from "cron-parser";
+const { parseExpression } = cronParser;
+```
+
 ## Quality Requirements
 
 - Every claim in a report requires source references and links to evidence lineage in the UI
