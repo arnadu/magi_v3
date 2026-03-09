@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MAGI Monitor</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <span class="dot" id="dot"></span>
+  <span class="hname" id="hname">MAGI</span>
+  <span class="hmeta" id="hmeta"></span>
+  <span class="hcost" id="hcost">$0.0000</span>
+  <span class="hup" id="hup"></span>
+  <span class="spacer"></span>
+  <button class="btn btn-start" id="start-btn" onclick="startMission()">&#9654; Start</button>
+  <button class="btn btn-start" onclick="openCompose()">&#9993; Send</button>
+  <button class="btn btn-step-toggle" id="step-btn" onclick="toggleStep()">Step &#9675;</button>
+  <button class="btn btn-stop" id="stop-btn" onclick="stopDaemon()">&#9632; Stop</button>
+</header>
+
+<div class="queue-strip" id="queue-strip">
+  <span class="q-idle">Idle &#8212; waiting for messages</span>
+</div>
+
+<main>
+  <!-- Left: message feed + usage -->
+  <div class="left-col">
+    <div class="feed" id="feed">
+      <div class="empty-state">Waiting for messages&#8230;</div>
+    </div>
+    <div class="usage-bar">
+      <div class="usage-row" id="usage-row">
+        <span style="color:var(--muted)">No LLM calls yet</span>
+        <span class="u-total" id="u-total">$0.0000</span>
+      </div>
+      <div id="cap-wrap" style="display:none">
+        <div class="cap-bar"><div class="cap-fill" id="cap-fill" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: agent tabs + detail -->
+  <div class="right-col">
+    <div class="agent-tabs" id="agent-tabs">
+      <!-- populated by app.js -->
+      <div class="agent-tab" id="tab-playbook" onclick="selectPlaybook()" style="color:var(--accent)">&#128203; Playbook</div>
+    </div>
+    <div class="sub-tabs" id="sub-tabs-bar">
+      <div class="sub-tab active" id="st-mm" onclick="selectSubTab('mm')">Mental Map</div>
+      <div class="sub-tab" id="st-cv" onclick="selectSubTab('cv')">Conversation</div>
+    </div>
+    <div class="detail-pane" id="detail-pane">
+      <div class="empty-state">Select an agent tab above</div>
+    </div>
+  </div>
+</main>
+
+<!-- Compose overlay -->
+<div class="overlay hidden" id="compose-overlay" onclick="closeComposeIfBg(event)">
+  <div class="compose">
+    <h2>Send message</h2>
+    <div class="field">
+      <label>To</label>
+      <div class="agent-checks" id="to-checks">
+        <!-- populated by app.js -->
+      </div>
+    </div>
+    <div class="field">
+      <label>Subject</label>
+      <input type="text" id="compose-subject" placeholder="(optional)">
+    </div>
+    <div class="field">
+      <label>Message</label>
+      <textarea id="compose-body" placeholder="Type your message&#8230;"></textarea>
+    </div>
+    <div class="compose-actions">
+      <button class="btn btn-cancel" onclick="closeCompose()">Cancel</button>
+      <button class="btn btn-send" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
