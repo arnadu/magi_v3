@@ -46,6 +46,16 @@ export interface OrchestratorConfig {
 	/** Called for every inner-loop message produced by any agent (for logging/streaming). */
 	onAgentMessage?: (agentId: string, msg: Message) => void;
 	/**
+	 * Called just before an agent is about to run.
+	 * `pending` lists the agents that will run later in this same cycle
+	 * (not including agentId itself). The monitor uses this to show the queue.
+	 */
+	onAgentStart?: (agentId: string, pending: string[]) => void;
+	/** Called immediately after an agent's loop returns. */
+	onAgentDone?: (agentId: string) => void;
+	/** Called when the cycle is empty and the loop is about to sleep on waitForMail. */
+	onIdle?: () => void;
+	/**
 	 * When provided, called instead of breaking when inbox is empty.
 	 * The daemon supplies a Change Stream watch that resolves when a new
 	 * MailboxMessage is inserted. After it resolves, the loop continues.
@@ -53,8 +63,8 @@ export interface OrchestratorConfig {
 	 */
 	waitForMail?: () => Promise<void>;
 	/**
-	 * When provided, called after every agent turn. Resolves immediately when
-	 * step mode is off; blocks until the operator clicks "Step" in the monitor
+	 * When provided, called before every agent turn. Resolves immediately when
+	 * step mode is off; blocks until the operator clicks "Run" in the monitor
 	 * dashboard (or calls POST /step) when step mode is on.
 	 * This hook takes priority over the TTY readline step mode.
 	 */
@@ -189,6 +199,7 @@ export async function runOrchestrationLoop(
 			);
 
 			if (agentsWithMail.length === 0) {
+				config.onIdle?.();
 				if (config.waitForMail) {
 					// Daemon mode: sleep on Change Stream until a new message arrives.
 					await config.waitForMail();
@@ -226,7 +237,8 @@ export async function runOrchestrationLoop(
 			cycles++;
 
 			// Run each agent with unread mail sequentially.
-			for (const agentId of agentsWithMail) {
+			for (let i = 0; i < agentsWithMail.length; i++) {
+				const agentId = agentsWithMail[i];
 				if (signal?.aborted) break;
 
 				const messages = await mailboxRepo.listUnread(agentId);
@@ -239,34 +251,19 @@ export async function runOrchestrationLoop(
 				const identity = identities.get(agentId);
 				if (!identity)
 					throw new Error(`No workspace identity for agent "${agentId}"`);
-				console.log(
-					`\n[orchestrator] Running ${agent?.name ?? agentId}` +
-						` (${identity.linuxUser}) (${messages.length} message(s))`,
-				);
 
-				await runAgent(
-					agentId,
-					messages,
-					{
-						...agentCtx,
-						identity,
-						onMessage: config.onAgentMessage
-							? async (msg: Message) => {
-									config.onAgentMessage?.(agentId, msg);
-								}
-							: undefined,
-					},
-					signal,
-				);
+				// Notify monitor of upcoming agent + remaining queue, then pause if in step mode.
+				const pending = agentsWithMail.slice(i + 1);
+				config.onAgentStart?.(agentId, pending);
 
 				if (config.waitForStep) {
-					// Web step mode — monitor dashboard controls progression.
+					// Web step mode — monitor shows agent name and "Run" button.
 					await config.waitForStep();
 				} else if (step && rl) {
-					// TTY step mode — readline prompt.
+					// TTY step mode — readline prompt before running.
 					const input = await promptUser(
 						rl,
-						`[step] ${agent?.name ?? agentId} done. Press Enter or type a message: `,
+						`[step] About to run ${agent?.name ?? agentId}. Press Enter or type a message: `,
 					);
 					if (input) {
 						const body = await processUserInput(input, workdir);
@@ -281,6 +278,26 @@ export async function runOrchestrationLoop(
 						}
 					}
 				}
+
+				console.log(
+					`\n[orchestrator] Running ${agent?.name ?? agentId}` +
+						` (${identity.linuxUser}) (${messages.length} message(s))`,
+				);
+
+				await runAgent(
+					agentId,
+					messages,
+					{
+						...agentCtx,
+						identity,
+						onMessage: config.onAgentMessage
+							? async (msg: Message) => config.onAgentMessage!(agentId, msg)
+							: undefined,
+					},
+					signal,
+				);
+
+				config.onAgentDone?.(agentId);
 			}
 		}
 

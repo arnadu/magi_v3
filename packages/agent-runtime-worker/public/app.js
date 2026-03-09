@@ -53,7 +53,12 @@ function populateToChecks(agents) {
   box.innerHTML = '';
   agents.forEach(function(a) {
     const lbl = document.createElement('label');
-    lbl.innerHTML = '<input type="checkbox" value="' + esc(a.id) + '" id="chk-' + esc(a.id) + '"> ' + esc(a.name) + ' (' + esc(a.role) + ')';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.value = a.id;
+    chk.id = 'chk-' + a.id;
+    lbl.appendChild(chk);
+    lbl.appendChild(document.createTextNode(' ' + a.name + ' (' + a.role + ')'));
     box.appendChild(lbl);
   });
   const all = document.createElement('label');

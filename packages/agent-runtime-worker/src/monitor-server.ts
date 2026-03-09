@@ -483,10 +483,19 @@ export class MonitorServer {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+const MAX_BODY_BYTES = 100_000; // same cap as mailboxRepo
+
 function readBody(req: IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
 		let data = "";
-		req.on("data", (chunk) => {
+		let bytes = 0;
+		req.on("data", (chunk: Buffer) => {
+			bytes += chunk.length;
+			if (bytes > MAX_BODY_BYTES) {
+				req.destroy();
+				reject(new Error("Request body too large"));
+				return;
+			}
 			data += chunk;
 		});
 		req.on("end", () => resolve(data));
