@@ -370,10 +370,12 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 			),
 		}),
 		async execute(_id, args, signal) {
-			const timeoutMs = Math.min(
-				((args.timeout as number) ?? 30) * 1_000,
-				MAX_BASH_TIMEOUT_MS,
-			);
+			const rawTimeout = args.timeout as number | undefined;
+			const timeoutSec =
+				Number.isFinite(rawTimeout) && (rawTimeout as number) > 0
+					? (rawTimeout as number)
+					: 30;
+			const timeoutMs = Math.min(timeoutSec * 1_000, MAX_BASH_TIMEOUT_MS);
 			return runIsolatedToolCall(
 				linuxUser,
 				{

@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import type { Db } from "mongodb";
-import type { MailboxRepository } from "./mailbox.js";
+import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { UsageAccumulator } from "./usage.js";
 
 // Resolved once at module load; public/ lives next to the compiled JS.
@@ -306,15 +306,35 @@ export class MonitorServer {
 		// ── POST /send-message
 		if (url === "/send-message" && req.method === "POST") {
 			const body = await readBody(req);
-			const { to, subject, message } = JSON.parse(body) as {
-				to: string[];
-				subject: string;
-				message: string;
-			};
+			let parsed: unknown;
+			try {
+				parsed = JSON.parse(body);
+			} catch {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Invalid JSON" }));
+				return;
+			}
+			const { to, subject, message } = parsed as Record<string, unknown>;
+			if (
+				!Array.isArray(to) ||
+				to.length === 0 ||
+				!to.every((r) => typeof r === "string") ||
+				typeof subject !== "string" ||
+				typeof message !== "string" ||
+				message.trim() === ""
+			) {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(
+					JSON.stringify({
+						error: "to (non-empty string[]), subject (string), and message (string) are required",
+					}),
+				);
+				return;
+			}
 			await this.mailboxRepo.post({
 				missionId: this.missionId,
 				from: "user",
-				to,
+				to: to as string[],
 				subject: subject || "Operator message",
 				body: message,
 			});
@@ -383,103 +403,150 @@ export class MonitorServer {
 	// ── Change stream watchers ────────────────────────────────────────────────
 
 	private async watchMailbox(): Promise<void> {
-		try {
-			const stream = this.db.collection("mailbox").watch(
-				[
-					{
-						$match: {
-							operationType: "insert",
-							"fullDocument.missionId": this.missionId,
-						},
-					},
-				],
-				{ fullDocument: "updateLookup" },
-			);
-			stream.on("change", (change) => {
-				if (change.operationType !== "insert") return;
-				const doc = change.fullDocument as {
-					_id: unknown;
-					from: string;
-					to: string[];
-					subject: string;
-					body: string;
-					timestamp?: Date;
-				};
-				this.push("mailbox-msg", {
-					id: String(doc._id),
-					from: doc.from,
-					to: doc.to,
-					subject: doc.subject,
-					bodyPreview:
-						doc.body.length > 400 ? `${doc.body.slice(0, 400)}…` : doc.body,
-					timestamp: (doc.timestamp ?? new Date()).toISOString(),
+		let backoffMs = 1_000;
+		while (true) {
+			try {
+				await new Promise<void>((resolve, reject) => {
+					const stream = this.db.collection("mailbox").watch(
+						[
+							{
+								$match: {
+									operationType: "insert",
+									"fullDocument.missionId": this.missionId,
+								},
+							},
+						],
+						{ fullDocument: "updateLookup" },
+					);
+					stream.on("change", (change) => {
+						if (change.operationType !== "insert") return;
+						const doc = change.fullDocument as {
+							_id: unknown;
+							from: string;
+							to: string[];
+							subject: string;
+							body: string;
+							timestamp?: Date;
+						};
+						this.push("mailbox-msg", {
+							id: String(doc._id),
+							from: doc.from,
+							to: doc.to,
+							subject: doc.subject,
+							bodyPreview:
+								doc.body.length > 400 ? `${doc.body.slice(0, 400)}…` : doc.body,
+							timestamp: (doc.timestamp ?? new Date()).toISOString(),
+						});
+						this.push("status", this.statusPayload());
+					});
+					stream.on("error", (e) => {
+						stream.close().catch(() => {});
+						reject(e);
+					});
+					// Resolve only when the server itself closes (stream persists indefinitely).
+					this.server.once("close", () => {
+						stream.close().catch(() => {});
+						resolve();
+					});
 				});
-				this.push("status", this.statusPayload());
-			});
-			stream.on("error", (e) =>
-				console.error("[monitor] Mailbox watch error:", e.message),
-			);
-		} catch (e) {
-			console.error("[monitor] Could not open mailbox Change Stream:", e);
+				return; // server closed — stop watching
+			} catch (e) {
+				console.error(
+					`[monitor] Mailbox watch error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
+				);
+				await new Promise<void>((res) => setTimeout(res, backoffMs));
+				backoffMs = Math.min(backoffMs * 2, 30_000);
+			}
 		}
 	}
 
 	private async watchConversations(): Promise<void> {
-		try {
-			const stream = this.db.collection("conversationMessages").watch(
-				[
-					{
-						$match: {
-							operationType: "insert",
-							"fullDocument.missionId": this.missionId,
-						},
-					},
-				],
-				{ fullDocument: "updateLookup" },
-			);
-			stream.on("change", (change) => {
-				if (change.operationType !== "insert") return;
-				const doc = change.fullDocument as { agentId: string } & Record<
-					string,
-					unknown
-				>;
-				this.push("conversation-update", {
-					agentId: doc.agentId,
-					message: doc,
+		let backoffMs = 1_000;
+		while (true) {
+			try {
+				await new Promise<void>((resolve, reject) => {
+					const stream = this.db.collection("conversationMessages").watch(
+						[
+							{
+								$match: {
+									operationType: "insert",
+									"fullDocument.missionId": this.missionId,
+								},
+							},
+						],
+						{ fullDocument: "updateLookup" },
+					);
+					stream.on("change", (change) => {
+						if (change.operationType !== "insert") return;
+						const doc = change.fullDocument as { agentId: string } & Record<
+							string,
+							unknown
+						>;
+						this.push("conversation-update", {
+							agentId: doc.agentId,
+							message: doc,
+						});
+					});
+					stream.on("error", (e) => {
+						stream.close().catch(() => {});
+						reject(e);
+					});
+					this.server.once("close", () => {
+						stream.close().catch(() => {});
+						resolve();
+					});
 				});
-			});
-			stream.on("error", (e) =>
-				console.error("[monitor] Conversation watch error:", e.message),
-			);
-		} catch (e) {
-			console.error("[monitor] Could not open conversation Change Stream:", e);
+				return;
+			} catch (e) {
+				console.error(
+					`[monitor] Conversation watch error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
+				);
+				await new Promise<void>((res) => setTimeout(res, backoffMs));
+				backoffMs = Math.min(backoffMs * 2, 30_000);
+			}
 		}
 	}
 
 	private async watchMentalMaps(): Promise<void> {
-		try {
-			const agentIds = this.agents.map((a) => a.id);
-			const stream = this.db
-				.collection("mental_maps")
-				.watch([{ $match: { "fullDocument.agentId": { $in: agentIds } } }], {
-					fullDocument: "updateLookup",
-				});
-			stream.on("change", (change) => {
-				const doc = (
-					change as { fullDocument?: { agentId?: string; html?: string } }
-				).fullDocument;
-				if (doc?.agentId) {
-					this.push("mental-map-update", {
-						agentId: doc.agentId,
-						html: doc.html ?? "",
+		const agentIds = this.agents.map((a) => a.id);
+		let backoffMs = 1_000;
+		while (true) {
+			try {
+				await new Promise<void>((resolve, reject) => {
+					const stream = this.db
+						.collection("mental_maps")
+						.watch(
+							[{ $match: { "fullDocument.agentId": { $in: agentIds } } }],
+							{ fullDocument: "updateLookup" },
+						);
+					stream.on("change", (change) => {
+						const doc = (
+							change as { fullDocument?: { agentId?: string; html?: string } }
+						).fullDocument;
+						if (doc?.agentId) {
+							this.push("mental-map-update", {
+								agentId: doc.agentId,
+								html: doc.html ?? "",
+							});
+						}
 					});
-				}
-			});
-			stream.on("error", (e) =>
-				console.error("[monitor] Mental map watch error:", e.message),
-			);
-		} catch (e) {
-			console.error("[monitor] Could not open mental map Change Stream:", e);
+					stream.on("error", (e) => {
+						stream.close().catch(() => {});
+						reject(e);
+					});
+					this.server.once("close", () => {
+						stream.close().catch(() => {});
+						resolve();
+					});
+				});
+				return;
+			} catch (e) {
+				console.error(
+					`[monitor] Mental map watch error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
+				);
+				await new Promise<void>((res) => setTimeout(res, backoffMs));
+				backoffMs = Math.min(backoffMs * 2, 30_000);
+			}
 		}
 	}
 
@@ -515,7 +582,7 @@ export class MonitorServer {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const MAX_BODY_BYTES = 100_000; // same cap as mailboxRepo
+const MAX_BODY_BYTES = MAILBOX_MAX_BODY_BYTES;
 
 function readBody(req: IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {

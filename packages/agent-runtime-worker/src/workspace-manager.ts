@@ -137,13 +137,23 @@ export class WorkspaceManager {
 	 */
 	teardown(missionId: string, identities: Map<string, AgentIdentity>): void {
 		for (const identity of identities.values()) {
-			rmSync(identity.workdir, { recursive: true, force: true });
+			try {
+				rmSync(identity.workdir, { recursive: true, force: true });
+			} catch (e) {
+				console.error(
+					`[workspace] teardown: failed to remove ${identity.workdir}: ${(e as Error).message}`,
+				);
+			}
 		}
 		// Remove the entire per-mission directory (contains shared/ and nothing else).
-		rmSync(join(this.layout.missionsBase, missionId), {
-			recursive: true,
-			force: true,
-		});
+		const missionDir = join(this.layout.missionsBase, missionId);
+		try {
+			rmSync(missionDir, { recursive: true, force: true });
+		} catch (e) {
+			console.error(
+				`[workspace] teardown: failed to remove ${missionDir}: ${(e as Error).message}`,
+			);
+		}
 	}
 }
 

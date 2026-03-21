@@ -4,20 +4,12 @@ import { resolve, sep } from "node:path";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
+import { EXT_TO_MIME } from "../mime-types.js";
 import type { MagiTool, ToolResult } from "../tools.js";
 
 // ---------------------------------------------------------------------------
 // MIME helpers
 // ---------------------------------------------------------------------------
-
-const EXT_TO_MIME: Record<string, string> = {
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-	png: "image/png",
-	gif: "image/gif",
-	webp: "image/webp",
-	avif: "image/avif",
-};
 
 /** Return a supported image MIME type from a file extension, or null. */
 function mimeFromPath(imagePath: string): string | null {

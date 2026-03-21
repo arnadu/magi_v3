@@ -292,9 +292,15 @@ async function main(): Promise<void> {
 
 	// Usage accumulator + optional spending cap.
 	const usageAccumulator = new UsageAccumulator();
-	const maxCostUsd = process.env.MAX_COST_USD
-		? Number.parseFloat(process.env.MAX_COST_USD)
-		: null;
+	const maxCostUsd = (() => {
+		if (!process.env.MAX_COST_USD) return null;
+		const v = Number.parseFloat(process.env.MAX_COST_USD);
+		if (!Number.isFinite(v) || v <= 0) {
+			console.error(`Error: MAX_COST_USD must be a positive number, got: ${process.env.MAX_COST_USD}`);
+			process.exit(1);
+		}
+		return v;
+	})();
 	if (maxCostUsd !== null) {
 		console.log(`[daemon] Spending cap: $${maxCostUsd.toFixed(2)}`);
 	}
@@ -315,6 +321,10 @@ async function main(): Promise<void> {
 	}
 
 	const monitorPort = Number.parseInt(process.env.MONITOR_PORT ?? "4000", 10);
+	if (!Number.isFinite(monitorPort) || monitorPort < 1 || monitorPort > 65535) {
+		console.error(`Error: MONITOR_PORT must be 1–65535, got: ${process.env.MONITOR_PORT}`);
+		process.exit(1);
+	}
 	const agents = teamConfig.agents.map((a) => ({
 		id: a.id,
 		name: a.name ?? a.id,

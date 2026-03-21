@@ -11,6 +11,7 @@ import {
 	generateArtifactId,
 	saveArtifact,
 } from "../artifacts.js";
+import { MIME_TO_EXT, VISION_MIMES } from "../mime-types.js";
 import type { MagiTool, ToolResult } from "../tools.js";
 
 // ---------------------------------------------------------------------------
@@ -24,17 +25,6 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB per image
 const MAX_RESPONSE_BYTES = 50 * 1024 * 1024; // 50 MB
 /** Scale factor when rendering PDF pages to PNG. 1.5 ≈ 108 DPI — good for vision. */
 const PDF_RENDER_SCALE = 1.5;
-
-/**
- * MIME types accepted by the vision LLM for auto-description.
- * SVG and AVIF are excluded — Anthropic's vision API does not accept them.
- */
-const VISION_MIMES = new Set([
-	"image/jpeg",
-	"image/png",
-	"image/gif",
-	"image/webp",
-]);
 
 /**
  * Prompt used when automatically describing images during a FetchUrl call.
@@ -57,16 +47,6 @@ function ok(text: string): ToolResult {
 function toolErr(text: string): ToolResult {
 	return { content: [{ type: "text", text }], isError: true };
 }
-
-/** Map common image MIME types to file extensions. */
-const MIME_TO_EXT: Record<string, string> = {
-	"image/jpeg": "jpg",
-	"image/png": "png",
-	"image/gif": "gif",
-	"image/webp": "webp",
-	"image/avif": "avif",
-	"image/svg+xml": "svg",
-};
 
 /** Derive file extension from a URL's pathname as a fallback. */
 function extFromPath(pathname: string): string {

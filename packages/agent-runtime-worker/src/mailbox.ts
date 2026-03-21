@@ -4,6 +4,9 @@ import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
 import type { MagiTool, ToolResult } from "./tools.js";
 
+/** Maximum message body length. Shared with monitor-server to keep the cap consistent. */
+export const MAILBOX_MAX_BODY_BYTES = 100_000;
+
 // ---------------------------------------------------------------------------
 // Domain types
 // ---------------------------------------------------------------------------
@@ -152,8 +155,7 @@ export function createMailboxTools(
 		...teamConfig.agents.map((a) => a.id),
 		"user",
 	]);
-	/** Maximum message body length to prevent mailbox memory exhaustion. */
-	const MAX_BODY_BYTES = 100_000;
+	const MAX_BODY_BYTES = MAILBOX_MAX_BODY_BYTES;
 
 	// ── PostMessage ────────────────────────────────────────────────────────────
 

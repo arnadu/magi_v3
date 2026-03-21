@@ -137,8 +137,10 @@ function createBrowseWebHandle(
 	function writeLog(entry: Record<string, unknown>): void {
 		try {
 			appendFileSync(logFile, `${JSON.stringify(entry)}\n`);
-		} catch {
-			// Non-fatal: if the log write fails, browser automation still proceeds.
+		} catch (e) {
+			// Non-fatal: browser automation continues, but surface the failure so
+			// operators know the session log is incomplete.
+			console.error(`[browse-web] Session log write failed: ${(e as Error).message}`);
 		}
 	}
 

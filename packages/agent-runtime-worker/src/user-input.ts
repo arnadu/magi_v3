@@ -110,6 +110,13 @@ export async function expandAtPaths(
 				continue;
 			}
 			const bytes = await readFile(absPath);
+			// Re-check after read: sparse files or files that grew between stat and
+			// read could pass the stat check but still blow the heap.
+			if (bytes.length > 500 * 1024 * 1024) {
+				notice = `[Upload failed for "${rawPath}": file too large (${bytes.length} bytes, limit 500 MB)]`;
+				result = result.replace(token, notice);
+				continue;
+			}
 			const name = basename(absPath);
 			const ext = name.split(".").pop()?.toLowerCase() ?? "";
 
