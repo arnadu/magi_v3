@@ -58,18 +58,38 @@ Use this in a controlled environment. Do not expose the monitor port publicly wi
 
 ## Prerequisites
 
+**Required:**
+
+- **Node.js 20+** — `node --version` to check
+- **Anthropic API key** — get one at https://console.anthropic.com
+- **MongoDB** — local (`mongod`) or a free Atlas cluster at https://www.mongodb.com/atlas. The default URI is `mongodb://localhost:27017`.
+
+**Optional:**
+
+- **Brave Search API key** — enables the `SearchWeb` tool. Free tier (2 000 req/month) at https://brave.com/search/api/
+- **Playwright Chromium** — enables the `BrowseWeb` tool for JS-rendered pages
+
+**Linux only — OS isolation setup:**
+
+The system runs each agent's shell tools as a dedicated OS user (`magi-w1`, `magi-w2`). This requires two Linux users and a sudoers rule. `setup-dev.sh` creates them and configures `/etc/sudoers.d/magi`:
+
 ```bash
-# Node 20+, MongoDB (local or Atlas), optional Brave Search API key
+sudo scripts/setup-dev.sh
+```
+
+This is required for integration tests and the full daemon. Single-turn CLI tests without OS isolation are not currently supported.
+
+**Install:**
+
+```bash
+git clone https://github.com/arnadu/magi_v3 && cd magi_v3
 npm install && npm run build
 
-# For BrowseWeb (optional):
-cd packages/agent-runtime-worker && npx playwright install chromium
+cp .env.example .env
+# Edit .env — set ANTHROPIC_API_KEY and MONGODB_URI at minimum
 
-# Copy and fill in:
-cp .env.example .env   # ANTHROPIC_API_KEY, MONGODB_URI, optional BRAVE_SEARCH_API_KEY
-
-# Dev pool users (Linux only — needed for OS isolation):
-sudo scripts/setup-dev.sh
+# Optional: headless browser support
+cd packages/agent-runtime-worker && npx playwright install chromium && cd ../..
 ```
 
 ## Running a mission
@@ -115,4 +135,4 @@ scripts/                  — dev environment setup
 
 ---
 
-*Built with [Claude Code](https://claude.ai/code). Inspired by the MAGI system from Neon Genesis Evangelion — three independent intelligences, one shared mission.*
+*Built with [Claude Code](https://claude.ai/code).*
