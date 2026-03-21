@@ -6,8 +6,12 @@ dist/
 *.log
 coverage/
 refs/
-# Test-run mission workspaces created by integration tests (contain nested git repos)
-packages/agent-runtime-worker/missions/
+# Mission workspace — ignore volatile runtime state but allow committed work products (briefs, reports, tracker)
+packages/agent-runtime-worker/missions/*/shared/.git/
+packages/agent-runtime-worker/missions/*/shared/logs/
+packages/agent-runtime-worker/missions/*/shared/artifacts/
+packages/agent-runtime-worker/home/
+packages/agent-runtime-worker/daemon.pid
 # Stagehand/Playwright Chromium profile dirs (WSL2 UNC path garbage, now fixed but old ones may linger)
 # Match \wsl.localhost* and \\wsl.localhost* at any depth (gitignore \\ = one literal \)
 \\wsl.localhost*/
