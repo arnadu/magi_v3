@@ -9,5 +9,9 @@ refs/
 # Test-run mission workspaces created by integration tests (contain nested git repos)
 packages/agent-runtime-worker/missions/
 # Stagehand/Playwright Chromium profile dirs (WSL2 UNC path garbage, now fixed but old ones may linger)
+# Match \wsl.localhost* and \\wsl.localhost* at any depth (gitignore \\ = one literal \)
 \\wsl.localhost*/
+**/\\wsl.localhost*/
+\\\\wsl.localhost*/
+**/*\\wsl.localhost*/
 packages/agent-runtime-worker/tests/browse-web-last-run.ndjson
