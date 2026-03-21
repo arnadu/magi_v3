@@ -124,7 +124,9 @@ export class WorkspaceManager {
 		for (const identity of identities.values()) {
 			mkdirSync(join(identity.workdir, "skills"), { recursive: true });
 		}
-		initSharedGitRepo(sharedDir);
+		if (!existsSync(join(sharedDir, ".git"))) {
+			initSharedGitRepo(sharedDir);
+		}
 
 		return identities;
 	}

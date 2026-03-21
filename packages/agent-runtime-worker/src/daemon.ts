@@ -205,7 +205,13 @@ function logMessage(msg: Message, agentId?: string): void {
 	if (msg.role === "user") return;
 	const speaker = agentId ?? "assistant";
 	if (msg.role === "assistant") {
-		for (const block of (msg as AssistantMessage).content) {
+		const am = msg as AssistantMessage;
+		if (am.stopReason === "error" || am.stopReason === "aborted") {
+			console.error(
+				`  [${speaker}] ✗ LLM error (${am.stopReason}): ${am.errorMessage ?? "(no message)"}`,
+			);
+		}
+		for (const block of am.content) {
 			if (block.type === "text" && block.text.trim()) {
 				console.log(`  [${speaker}] ${block.text.trim()}`);
 			} else if (block.type === "toolCall") {

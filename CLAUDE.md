@@ -192,6 +192,7 @@ Two packages are built. Key files:
 | 10 | | Work Product Layer UI |
 | 11 | | Cloud burst and scale-out |
 | 12 | | Hardening and launch prep |
+| 13 | | Mission Assistant: LLM operator copilot with read access to all mission state |
 
 ## Development Principles
 
@@ -256,8 +257,13 @@ Fix: `/etc/sudoers.d/magi` must include `Defaults:%magi-shared !authenticate`. T
 sudo scripts/setup-dev.sh
 ```
 
-**Node binary path stale in sudoers after nvm upgrade**
-`setup-dev.sh` bakes the absolute path of `node` into the sudoers rule (`NOPASSWD: /path/to/node`). If you upgrade Node via nvm and the binary path changes, the orchestrator's `sudo -u magi-wN node …` will be denied. Re-run `sudo scripts/setup-dev.sh` to refresh the path.
+**Node binary path wrong in sudoers (nvm users)**
+`setup-dev.sh` bakes the absolute path of `node` into the sudoers rule (`NOPASSWD: /path/to/node`). When run with plain `sudo`, sudo strips nvm from PATH so `which node` resolves to the system binary (e.g. `/usr/bin/node`), not the nvm-managed one the daemon actually uses. The sudoers rule ends up wrong and every daemon start will prompt for a password then time out.
+
+Always run setup-dev.sh with the nvm node path passed explicitly:
+```bash
+sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
+```
 
 **Port 4000 already in use on daemon start**
 A previous daemon instance may still hold the port. Find and kill it:

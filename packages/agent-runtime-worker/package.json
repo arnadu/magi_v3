@@ -5,7 +5,7 @@
 	"type": "module",
 	"main": "./dist/index.js",
 	"scripts": {
-		"build": "tsc -p tsconfig.json && cp -r public dist/public",
+		"build": "tsc -p tsconfig.json && cp -rT public dist/public",
 		"cli": "node dist/cli.js",
 		"daemon": "node --import ./dist/node-polyfill.js dist/daemon.js",
 		"cli:post": "node dist/cli-post.js",

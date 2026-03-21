@@ -241,6 +241,38 @@ export class MonitorServer {
 			return;
 		}
 
+		// ── GET /mailbox
+		if (url === "/mailbox" && req.method === "GET") {
+			const msgs = await this.db
+				.collection("mailbox")
+				.find({ missionId: this.missionId })
+				.sort({ timestamp: 1 })
+				.limit(500)
+				.toArray();
+			const payload = msgs.map((doc) => {
+				const d = doc as {
+					_id: unknown;
+					from: string;
+					to: string[];
+					subject: string;
+					body: string;
+					timestamp?: Date;
+				};
+				return {
+					id: String(d._id),
+					from: d.from,
+					to: d.to,
+					subject: d.subject,
+					bodyPreview:
+						d.body.length > 400 ? `${d.body.slice(0, 400)}…` : d.body,
+					timestamp: (d.timestamp ?? new Date()).toISOString(),
+				};
+			});
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(payload));
+			return;
+		}
+
 		// ── GET /agents/:id/mental-map
 		const mentalMapMatch = url.match(/^\/agents\/([^/]+)\/mental-map$/);
 		if (mentalMapMatch && req.method === "GET") {

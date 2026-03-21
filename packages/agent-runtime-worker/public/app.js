@@ -18,20 +18,26 @@ let stopped = false;
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────
 async function init() {
-  const [teamRes, statusRes, playbookRes] = await Promise.all([
+  const [teamRes, statusRes, playbookRes, mailboxRes] = await Promise.all([
     fetch('/team'),
     fetch('/status'),
     fetch('/playbook'),
+    fetch('/mailbox'),
   ]);
   AGENTS   = await teamRes.json();
   PLAYBOOK = await playbookRes.json();
   const status = await statusRes.json();
+  const history = await mailboxRes.json();
 
   populateAgentTabs(AGENTS);
   populateToChecks(AGENTS);
   injectAgentColors(AGENTS);
 
   applyStatus(status);
+
+  // Pre-populate the feed with historical mailbox messages.
+  history.forEach(function(m) { addMailMsg(m); });
+
   connectSSE();
 }
 

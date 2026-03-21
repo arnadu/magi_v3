@@ -753,8 +753,9 @@ Deliverables:
 - **Ask Console**: Q&A against current mission artifacts with citations and confidence scores
 - **Evidence Explorer**: traces lineage via git log — claim → commit → parent commits → source URLs
 - Mental Map read-only view per agent (operator sees what each agent is thinking and why)
+- **Scheduler widget**: reads `scheduled_messages` collection and displays all `pending` entries as a timeline — agent, subject, scheduled time (absolute + relative), cron expression if repeating, status badge (pending / delivered / cancelled). Operator can cancel a pending entry. Also exposes `GET /missions/:id/schedule` and `DELETE /missions/:id/schedule/:entryId` on the HTTP API.
 
-Exit criteria: Operator completes all five flows (Inbox, Reports, Alerts, Ask, Evidence) without CLI. Every displayed claim links to at least one source commit. Alert ack/escalate/snooze are durable and visible in audit trail.
+Exit criteria: Operator completes all five flows (Inbox, Reports, Alerts, Ask, Evidence) without CLI. Every displayed claim links to at least one source commit. Alert ack/escalate/snooze are durable and visible in audit trail. Scheduler widget shows all pending wakeups and operator can cancel one.
 
 ---
 
@@ -785,6 +786,30 @@ Deliverables:
 - Launch readiness review
 
 Exit criteria: DR drills pass. Red-team findings resolved or accepted with documented mitigations. Launch readiness review signed off.
+
+---
+
+## Sprint 13 (2026-08-24 to 2026-09-04): Mission Assistant (Operator Copilot)
+
+An LLM-powered assistant embedded in the Work Product UI that observes the live mission state — agent conversations, mailbox traffic, git commits, mental maps, tool call logs, error records — and helps the operator understand what is happening, why, and what to do next.
+
+**Core capability**: the assistant has read access to all mission state (MongoDB conversation collections, mailbox, mental maps, git log, filesystem) and can answer natural-language questions like:
+- "Why hasn't the Data Scientist done anything?"
+- "What did the Lead Analyst produce in the last cycle?"
+- "An agent said the workspace was reset — is that true?"
+- "The daemon is prompting for a sudo password — what's wrong?"
+
+It synthesises across sources the operator would otherwise have to query manually: conversation history, unread message counts, tool call outcomes, error stop reasons, git history.
+
+**Deliverables**:
+- `MissionContext` assembler: given a `missionId`, fetches and ranks the most relevant state — recent conversation turns per agent (with tool calls and error stop reasons surfaced), unread mailbox counts, last N git commits, mental map snapshots, last N tool errors. Returned as a compact context block.
+- `/api/assistant` streaming endpoint: accepts operator question + `missionId`; assembles `MissionContext`; calls Claude with a system prompt that defines its role as a read-only mission observer; streams the reply back via SSE.
+- Assistant panel in the Work Product UI: free-text input; streamed markdown reply; conversation is stateless per question (context always rebuilt fresh from live mission state).
+- Proactive digest mode: on each completed orchestration cycle, the assistant generates a one-paragraph "what just happened" summary and posts it to the operator UI automatically (opt-in).
+
+**Out of scope for this sprint**: the assistant cannot take actions (post messages, modify configs). It is read-only. Write capability considered for a later sprint once the read-only surface is validated.
+
+Exit criteria: operator can ask "what is going on with X agent?" and receive a coherent, grounded answer citing specific evidence from conversation history and git log. Proactive digest appears after each completed cycle.
 
 ---
 

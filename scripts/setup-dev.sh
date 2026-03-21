@@ -14,7 +14,12 @@
 # Usage:
 #   sudo scripts/setup-dev.sh
 #
+#   With nvm (sudo strips PATH, so which node finds the wrong binary):
+#   sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
+#
 # Environment variables:
+#   NODE_BIN         absolute path to the node binary to allow in sudoers
+#                    (default: $(which node) — may be wrong under nvm+sudo)
 #   MAGI_POOL_SIZE   number of pool users to create (default: 6)
 #   MAGI_HOME_BASE   base for pool user homes (default: /home)
 #   MAGI_MISSIONS    shared missions root (default: /missions)
@@ -97,7 +102,20 @@ fi
 # upgrading Node to refresh the sudoers entry with the new binary path.
 
 ORCHESTRATOR="${SUDO_USER:-$(logname 2>/dev/null || echo "${USER}")}"
-NODE_BIN="$(which node)"
+# Allow the caller to override via NODE_BIN env var.
+# With nvm, sudo strips PATH so "which node" finds the system binary, not the
+# nvm-managed one.  Pass the correct path explicitly:
+#   sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
+NODE_BIN="${NODE_BIN:-$(which node)}"
+echo "[setup-dev] Node binary : ${NODE_BIN}"
+if [[ "${NODE_BIN}" == *".nvm"* ]] && [[ -n "${SUDO_USER:-}" ]] && [[ "$(id -un)" == "root" ]]; then
+    # Sanity check: nvm paths are user-specific; confirm the binary exists.
+    if [[ ! -x "${NODE_BIN}" ]]; then
+        echo "[setup-dev] ERROR: NODE_BIN '${NODE_BIN}' does not exist or is not executable."
+        echo "            Re-run with: sudo env NODE_BIN=\$(which node) scripts/setup-dev.sh"
+        exit 1
+    fi
+fi
 POOL_LIST="$(seq -s, -f 'magi-w%.0f' 1 "${POOL_SIZE}")"
 SUDOERS_FILE="/etc/sudoers.d/magi"
 
