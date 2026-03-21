@@ -6,12 +6,11 @@ dist/
 *.log
 coverage/
 refs/
-# Mission workspace — ignore volatile runtime state but allow committed work products (briefs, reports, tracker)
-packages/agent-runtime-worker/missions/*/shared/.git/
-packages/agent-runtime-worker/missions/*/shared/logs/
-packages/agent-runtime-worker/missions/*/shared/artifacts/
+# Mission workspaces are live git repos managed by agents — keep fully out of the outer repo.
+# To share outputs publicly, copy them to demos/ and commit there.
+packages/agent-runtime-worker/missions/
 packages/agent-runtime-worker/home/
-packages/agent-runtime-worker/daemon.pid
+**/daemon.pid
 # Stagehand/Playwright Chromium profile dirs (WSL2 UNC path garbage, now fixed but old ones may linger)
 # Match \wsl.localhost* and \\wsl.localhost* at any depth (gitignore \\ = one literal \)
 \\wsl.localhost*/
