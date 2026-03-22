@@ -213,22 +213,44 @@ function logMessage(msg: Message, agentId?: string): void {
 		}
 		for (const block of am.content) {
 			if (block.type === "text" && block.text.trim()) {
-				console.log(`  [${speaker}] ${block.text.trim()}`);
+				const t = block.text.trim().replace(/\n+/g, " ");
+				console.log(`  [${speaker}] ${t.length > 120 ? `${t.slice(0, 120)}…` : t}`);
 			} else if (block.type === "toolCall") {
-				const args = JSON.stringify(block.arguments);
-				const preview = args.length > 120 ? `${args.slice(0, 120)}…` : args;
-				console.log(`  [${speaker}] → ${block.name}(${preview})`);
+				// Full detail for PostMessage (key inter-agent event); compact one-liner for the rest.
+				if (block.name === "PostMessage") {
+					const args = block.arguments as { to?: unknown; subject?: unknown };
+					const to = Array.isArray(args.to)
+						? (args.to as string[]).join(", ")
+						: String(args.to ?? "?");
+					const subject = String(args.subject ?? "(no subject)");
+					console.log(`  [${speaker}] → PostMessage to:${to} "${subject}"`);
+				} else {
+					// First key=value pair as a terse hint.
+					const entries = Object.entries(
+						block.arguments as Record<string, unknown>,
+					);
+					const hint =
+						entries.length > 0
+							? ` ${String(entries[0][1] ?? "").replace(/\n+/g, " ").slice(0, 60)}`
+							: "";
+					console.log(`  [${speaker}] → ${block.name}${hint}`);
+				}
 			}
 		}
 	} else {
 		const tr = msg as ToolResultMessage;
-		const text = tr.content
-			.filter((b) => b.type === "text")
-			.map((b) => b.text)
-			.join("")
-			.trim();
-		const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
-		console.log(`  [${speaker}] ← ${tr.toolName}: ${preview}`);
+		if (tr.isError) {
+			const text = tr.content
+				.filter((b) => b.type === "text")
+				.map((b) => b.text)
+				.join("")
+				.trim()
+				.replace(/\n+/g, " ");
+			const preview = text.length > 100 ? `${text.slice(0, 100)}…` : text;
+			console.error(`  [${speaker}] ✗ ${tr.toolName}: ${preview}`);
+		} else {
+			console.log(`  [${speaker}] ← ${tr.toolName} ok`);
+		}
 	}
 }
 

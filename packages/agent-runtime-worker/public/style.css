@@ -63,6 +63,8 @@ main { display:grid; grid-template-columns:1fr 1fr; overflow:hidden; }
 .msg-time { color:var(--muted);font-size:10px;margin-left:auto; }
 .msg-subj { font-size:12px;font-weight:500;margin-bottom:2px; }
 .msg-body { font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-word; }
+.msg-expand { font-size:10px;color:var(--accent);margin-top:4px;cursor:pointer;user-select:none; }
+.msg-expand:hover { text-decoration:underline; }
 .msg-sys  { font-size:11px;color:var(--muted);font-style:italic; }
 
 /* ── Usage bar (bottom of left col) ── */
@@ -168,5 +170,15 @@ main { display:grid; grid-template-columns:1fr 1fr; overflow:hidden; }
 .pb-actions { display:flex;gap:6px;margin-top:8px; }
 .pb-edit { font-size:11px;padding:3px 9px; }
 .pb-sent-badge { font-size:10px;color:var(--green);margin-left:auto;align-self:center; }
+
+/* ── Activity tab ── */
+.act-turn-hdr { text-align:center;font-size:10px;color:var(--muted);
+                margin:10px 0 4px;letter-spacing:.05em; }
+.act-item { font-size:11px;padding:3px 8px 3px 10px;margin-bottom:2px;
+            border-radius:3px;white-space:pre-wrap;word-break:break-word; }
+.act-text  { color:var(--muted);font-style:italic; }
+.act-tool  { background:#161f16;color:var(--text);border-left:2px solid var(--border); }
+.act-pm    { background:#1a1a2e;color:var(--accent);border-left:2px solid var(--accent); }
+.act-error { background:#2d1515;color:var(--red);border-left:2px solid var(--red); }
 
 .empty-state { color:var(--muted);text-align:center;padding:24px;font-size:11px; }

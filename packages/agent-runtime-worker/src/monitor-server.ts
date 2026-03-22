@@ -265,6 +265,7 @@ export class MonitorServer {
 					subject: d.subject,
 					bodyPreview:
 						d.body.length > 400 ? `${d.body.slice(0, 400)}…` : d.body,
+					body: d.body,
 					timestamp: (d.timestamp ?? new Date()).toISOString(),
 				};
 			});
@@ -435,6 +436,7 @@ export class MonitorServer {
 							subject: doc.subject,
 							bodyPreview:
 								doc.body.length > 400 ? `${doc.body.slice(0, 400)}…` : doc.body,
+							body: doc.body,
 							timestamp: (doc.timestamp ?? new Date()).toISOString(),
 						});
 						this.push("status", this.statusPayload());

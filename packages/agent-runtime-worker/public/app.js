@@ -110,7 +110,9 @@ function connectSSE() {
   });
   es.addEventListener('conversation-update', function(e) {
     const d = JSON.parse(e.data);
-    if (d.agentId === activeAgent && activeSubTab === 'cv') appendConvMsg(d.message);
+    if (d.agentId !== activeAgent) return;
+    if (activeSubTab === 'cv')  appendConvMsg(d.message);
+    else if (activeSubTab === 'act') appendActivityDoc(d.message);
   });
   es.addEventListener('shutdown', function(e) {
     const d = JSON.parse(e.data);
@@ -205,6 +207,9 @@ function updateUsageTable(agents) {
 function addMailMsg(m) {
   const feed = document.getElementById('feed');
   feed.querySelector('.empty-state')?.remove();
+  const preview = m.bodyPreview || m.body || '';
+  const full    = m.body || preview;
+  const truncated = full.length > preview.length;
   const div = document.createElement('div');
   div.className = 'msg ab-' + m.from;
   div.innerHTML =
@@ -214,7 +219,24 @@ function addMailMsg(m) {
       '<span class="msg-time">' + fmtTime(m.timestamp) + '</span>' +
     '</div>' +
     '<div class="msg-subj">' + esc(m.subject) + '</div>' +
-    '<div class="msg-body">' + esc(m.bodyPreview) + '</div>';
+    '<div class="msg-body">' + esc(preview) + '</div>' +
+    (truncated ? '<div class="msg-expand">\u25bc\u00a0more</div>' : '');
+  if (truncated) {
+    div.style.cursor = 'pointer';
+    div.addEventListener('click', function() {
+      const bodyEl   = div.querySelector('.msg-body');
+      const expandEl = div.querySelector('.msg-expand');
+      if (div.dataset.expanded) {
+        bodyEl.textContent = preview;
+        expandEl.textContent = '\u25bc\u00a0more';
+        delete div.dataset.expanded;
+      } else {
+        bodyEl.textContent = full;
+        expandEl.textContent = '\u25b2\u00a0less';
+        div.dataset.expanded = '1';
+      }
+    });
+  }
   feed.appendChild(div);
   feed.scrollTop = feed.scrollHeight;
 }
@@ -245,6 +267,7 @@ function selectAgent(id) {
 function selectSubTab(tab) {
   activeSubTab = tab;
   document.getElementById('st-mm').classList.toggle('active', tab === 'mm');
+  document.getElementById('st-act').classList.toggle('active', tab === 'act');
   document.getElementById('st-cv').classList.toggle('active', tab === 'cv');
   loadDetail();
 }
@@ -257,6 +280,10 @@ async function loadDetail() {
     const r = await fetch('/agents/' + activeAgent + '/mental-map');
     const data = await r.json();
     renderMentalMap(data.html);
+  } else if (activeSubTab === 'act') {
+    const r = await fetch('/agents/' + activeAgent + '/conversation');
+    const docs = await r.json();
+    renderActivity(docs);
   } else {
     const r = await fetch('/agents/' + activeAgent + '/conversation');
     const docs = await r.json();
@@ -296,6 +323,84 @@ function appendConvMsg(doc) {
   pane.querySelector('.empty-state')?.remove();
   _renderDoc(doc, pane);
   pane.scrollTop = pane.scrollHeight;
+}
+
+// ── Activity tab ───────────────────────────────────────────────────────────
+let actLastTurn = -1;
+
+function renderActivity(docs) {
+  const pane = document.getElementById('detail-pane');
+  pane.innerHTML = '';
+  actLastTurn = -1;
+  if (!docs.length) {
+    pane.innerHTML = '<div class="empty-state">No activity yet</div>';
+    return;
+  }
+  docs.forEach(function(doc) { _renderActivityDoc(doc, pane); });
+  pane.scrollTop = pane.scrollHeight;
+}
+
+function appendActivityDoc(doc) {
+  const pane = document.getElementById('detail-pane');
+  pane.querySelector('.empty-state')?.remove();
+  _renderActivityDoc(doc, pane);
+  pane.scrollTop = pane.scrollHeight;
+}
+
+function _renderActivityDoc(doc, pane) {
+  const m = doc.message;
+  if (!m) return;
+  const turn = doc.turnNumber ?? 0;
+
+  if (turn !== actLastTurn) {
+    actLastTurn = turn;
+    const hdr = document.createElement('div');
+    hdr.className = 'act-turn-hdr';
+    hdr.textContent = '\u2014 Turn ' + turn + ' \u2014';
+    pane.appendChild(hdr);
+  }
+
+  if (m.role === 'assistant') {
+    const blocks = Array.isArray(m.content) ? m.content : [];
+    const texts  = blocks.filter(function(b) { return b.type === 'text' && b.text?.trim(); });
+    const calls  = blocks.filter(function(b) { return b.type === 'toolCall'; });
+
+    texts.forEach(function(b) {
+      const t = b.text.trim();
+      const el = document.createElement('div');
+      el.className = 'act-item act-text';
+      el.textContent = t.length > 140 ? t.slice(0, 140) + '\u2026' : t;
+      pane.appendChild(el);
+    });
+
+    calls.forEach(function(call) {
+      const isPM = call.name === 'PostMessage';
+      const el = document.createElement('div');
+      el.className = 'act-item act-tool' + (isPM ? ' act-pm' : '');
+      let label = _toolIcon(call.name) + ' ' + call.name;
+      if (isPM) {
+        const args = call.arguments || {};
+        const to = Array.isArray(args.to) ? args.to.join(', ') : (args.to || '?');
+        label += ' \u2192 ' + to;
+        if (args.subject) label += ' \u201c' + String(args.subject).slice(0, 60) + '\u201d';
+      } else if (call.arguments) {
+        const keys = Object.keys(call.arguments);
+        const key  = keys[0];
+        if (key) {
+          const val = String(call.arguments[key] ?? '');
+          label += ' ' + val.slice(0, 80);
+        }
+      }
+      el.textContent = label;
+      pane.appendChild(el);
+    });
+
+  } else if (m.role === 'toolResult' && m.isError) {
+    const el = document.createElement('div');
+    el.className = 'act-item act-error';
+    el.textContent = '\u2717 ' + (m.toolName || '?') + ' failed';
+    pane.appendChild(el);
+  }
 }
 
 function _renderDoc(doc, pane) {
