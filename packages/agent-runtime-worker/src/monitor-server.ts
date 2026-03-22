@@ -1,20 +1,17 @@
+import { readFileSync } from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Db } from "mongodb";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { UsageAccumulator } from "./usage.js";
 
 // Resolved once at module load; public/ lives next to the compiled JS.
-const PUBLIC_DIR = join(
-	fileURLToPath(new URL(".", import.meta.url)),
-	"public",
-);
+const PUBLIC_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "public");
 
 const MIME: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -327,7 +324,8 @@ export class MonitorServer {
 				res.writeHead(400, { "Content-Type": "application/json" });
 				res.end(
 					JSON.stringify({
-						error: "to (non-empty string[]), subject (string), and message (string) are required",
+						error:
+							"to (non-empty string[]), subject (string), and message (string) are required",
 					}),
 				);
 				return;
@@ -579,7 +577,6 @@ export class MonitorServer {
 			})),
 		};
 	}
-
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

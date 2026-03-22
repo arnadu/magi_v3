@@ -7,6 +7,7 @@ import { createMailboxTools } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
 import { createMentalMapTool, initMentalMap } from "./mental-map.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
+import { convertToLlm, runReflection } from "./reflection.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
 import { createInspectImageTool } from "./tools/inspect-image.js";
@@ -67,9 +68,9 @@ export async function runAgent(
 
 	// Load conversation history from previous wakeups.
 	const history = await ctx.conversationRepo.load(agentId, missionId);
-	const previousMessages = history.map((s) => s.message);
 	const nextTurnNumber =
 		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
+	const previousMessages = convertToLlm(history, nextTurnNumber);
 
 	// Initialise mental map if this agent has never run before.
 	let mentalMapHtml = await ctx.mentalMapRepo.load(agentId);
@@ -121,6 +122,14 @@ export async function runAgent(
 			missionId,
 			newMessages.map((message) => ({ turnNumber: nextTurnNumber, message })),
 		);
+
+		// Run post-session reflection: compacts history and updates the Mental Map.
+		// No-op until Sprint 9 implementation.
+		await runReflection(agentId, missionId, newMessages, {
+			model: ctx.model,
+			mentalMapRepo: ctx.mentalMapRepo,
+			conversationRepo: ctx.conversationRepo,
+		});
 	} finally {
 		// Close the browser session regardless of success or failure.
 		await browseWebHandle?.close();

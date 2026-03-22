@@ -167,6 +167,15 @@ Two packages are built. Key files:
 - `schedule-task` platform skill — deferred to Sprint 8
 - `run-background` platform skill — deferred to Sprint 8
 
+**Sprint 9 — Context Management and Reflection (designed; not yet built):**
+- See ADR-0009 for the full design. Three coordinated changes:
+- **Tool-result scoping** in `convertToLlm` (currently a pass-through): `FetchUrl`, `BrowseWeb`, `Bash`, `SearchWeb`, `InspectImage` result bodies are collapsed to a one-line placeholder for turns older than `KEEP_FULL_TURNS` (default 2). `PostMessage`, `UpdateMentalMap`, `ListMessages`, `ReadMessage` always kept in full.
+- **Reflection** (`src/reflection.ts`, new): a post-processing LLM call (separate system prompt — "you are a reflective summarizer, not the agent") that runs at session end (always) and mid-session when estimated token count exceeds `MID_SESSION_THRESHOLD` (default 80 k tokens). Outputs: (a) Mental Map patches applied via `patchMentalMap`; (b) narrative summary (300–500 words) saved as `StoredMessage { role: 'summary' }`. After saving the summary, `conversationRepo.trim()` deletes turns older than `currentTurnNumber - KEEP_FULL_TURNS`. Crash-safe: reflection saves before trimming.
+- **Structured Mental Map templates**: `config/teams/equity-research.yaml` gains explicit `initialMentalMap` per agent with static/editable zones. Static sections (no `id` attribute) are operator-set constants agents can read but not modify. Editable sections (with `id` attribute) are patchable by `UpdateMentalMap` during a session and by reflection at session end. `class="instructions"` paragraphs within editable sections give in-situ guidance visible every wakeup.
+- **MongoDB text index** on `conversationMessages` (scaffolding for `AnalyzeMemories` tool in Sprint 10).
+- Key files: `src/reflection.ts` (new), `src/agent-runner.ts` (wire `convertToLlm` + reflection), `src/conversation-repository.ts` (add `saveSummary()`), `config/teams/equity-research.yaml` (structured Mental Maps).
+- Tests: `tests/reflection.unit.test.ts` (parse output, token estimation, `convertToLlm` filter rules — no LLM); `tests/reflection.integration.test.ts` (two-session scenario: session 1 fetches large URL + reflection fires → trim; session 2 agent recalls the finding from summary without re-fetching).
+
 **Sprint 8 — Equity Research Team MVP:**
 - Four-agent team tracking NVDA: Lead Analyst (supervisor: user), Economist (supervisor: lead), Junior Analyst (supervisor: lead), Data Scientist (supervisor: lead). Ticker hardcoded in team YAML.
 - Bootstrap phase (operator-guided, 3 steps): Step 1 — operator posts kick-off to all agents simultaneously (mission context, think about your role, proposals requested); Step 2 — operator prompts each agent individually for their proposal (scope, sources, infrastructure, inter-agent dependencies), reviews, may ask follow-ups; Step 3 — operator sends approval to Lead, who coordinates the infrastructure build, Data Scientist commits tracker + scripts, Lead registers the 06:00 daily trigger via `schedule-task` and confirms to user.
@@ -193,7 +202,7 @@ Two packages are built. Key files:
 | 6 | ✅ Done | Persistent daemon (MongoDB Change Stream sleep), conversation persistence (ADR-0008), MongoDB-native scheduling infra + `cli:post` |
 | 7 | ✅ Done | `BrowseWeb` (Stagehand/Playwright): JS rendering, interactive tasks, session persistence, SSRF blocking, trust boundary markers |
 | 8 | ✅ Done | Equity research MVP: 4-agent NVDA team, `schedule-task` skill, bootstrapping mission, daily brief + L/S rec + performance tracker |
-| 9 | | Reliability + evaluation harness (5-day unattended run) |
+| 9 | | Context management: tool-result scoping, reflection (session-end + mid-session compaction), structured Mental Map templates (ADR-0009) |
 | 10 | | Work Product Layer UI |
 | 11 | | Cloud burst and scale-out |
 | 12 | | Hardening and launch prep |

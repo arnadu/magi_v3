@@ -214,7 +214,9 @@ function logMessage(msg: Message, agentId?: string): void {
 		for (const block of am.content) {
 			if (block.type === "text" && block.text.trim()) {
 				const t = block.text.trim().replace(/\n+/g, " ");
-				console.log(`  [${speaker}] ${t.length > 120 ? `${t.slice(0, 120)}…` : t}`);
+				console.log(
+					`  [${speaker}] ${t.length > 120 ? `${t.slice(0, 120)}…` : t}`,
+				);
 			} else if (block.type === "toolCall") {
 				// Full detail for PostMessage (key inter-agent event); compact one-liner for the rest.
 				if (block.name === "PostMessage") {
@@ -231,7 +233,9 @@ function logMessage(msg: Message, agentId?: string): void {
 					);
 					const hint =
 						entries.length > 0
-							? ` ${String(entries[0][1] ?? "").replace(/\n+/g, " ").slice(0, 60)}`
+							? ` ${String(entries[0][1] ?? "")
+									.replace(/\n+/g, " ")
+									.slice(0, 60)}`
 							: "";
 					console.log(`  [${speaker}] → ${block.name}${hint}`);
 				}
@@ -318,7 +322,9 @@ async function main(): Promise<void> {
 		if (!process.env.MAX_COST_USD) return null;
 		const v = Number.parseFloat(process.env.MAX_COST_USD);
 		if (!Number.isFinite(v) || v <= 0) {
-			console.error(`Error: MAX_COST_USD must be a positive number, got: ${process.env.MAX_COST_USD}`);
+			console.error(
+				`Error: MAX_COST_USD must be a positive number, got: ${process.env.MAX_COST_USD}`,
+			);
 			process.exit(1);
 		}
 		return v;
@@ -344,7 +350,9 @@ async function main(): Promise<void> {
 
 	const monitorPort = Number.parseInt(process.env.MONITOR_PORT ?? "4000", 10);
 	if (!Number.isFinite(monitorPort) || monitorPort < 1 || monitorPort > 65535) {
-		console.error(`Error: MONITOR_PORT must be 1–65535, got: ${process.env.MONITOR_PORT}`);
+		console.error(
+			`Error: MONITOR_PORT must be 1–65535, got: ${process.env.MONITOR_PORT}`,
+		);
 		process.exit(1);
 	}
 	const agents = teamConfig.agents.map((a) => ({
@@ -472,7 +480,8 @@ async function main(): Promise<void> {
 				workspaceManager,
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
-				onAgentStart: (agentId, pending) => monitor.notifyAgentStart(agentId, pending),
+				onAgentStart: (agentId, pending) =>
+					monitor.notifyAgentStart(agentId, pending),
 				onAgentDone: (agentId) => monitor.notifyAgentDone(agentId),
 				onIdle: () => monitor.notifyIdle(),
 				onAgentMessage: (agentId, msg) => {

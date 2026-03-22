@@ -291,7 +291,7 @@ export async function runOrchestrationLoop(
 						...agentCtx,
 						identity,
 						onMessage: config.onAgentMessage
-							? async (msg: Message) => config.onAgentMessage!(agentId, msg)
+							? async (msg: Message) => config.onAgentMessage?.(agentId, msg)
 							: undefined,
 					},
 					signal,

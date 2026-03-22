@@ -140,7 +140,9 @@ function createBrowseWebHandle(
 		} catch (e) {
 			// Non-fatal: browser automation continues, but surface the failure so
 			// operators know the session log is incomplete.
-			console.error(`[browse-web] Session log write failed: ${(e as Error).message}`);
+			console.error(
+				`[browse-web] Session log write failed: ${(e as Error).message}`,
+			);
 		}
 	}
 
