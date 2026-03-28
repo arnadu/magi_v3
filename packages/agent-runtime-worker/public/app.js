@@ -4,8 +4,13 @@
 let AGENTS = [];
 let PLAYBOOK = [];
 
+// Claude Sonnet 4.6 context window limit (input tokens).
+const CTX_LIMIT = 200_000;
+
 // ── State ─────────────────────────────────────────────────────────────────
 let activeAgent = null;
+// Per-agent last input token count (most recent LLM call).
+const agentContextTokens = {};
 let activeSubTab = "mm";
 let missionStarted = false;
 let stepEnabled = false;
@@ -46,14 +51,17 @@ async function init() {
 function populateAgentTabs(agents) {
 	const bar = document.getElementById("agent-tabs");
 	const playbook = document.getElementById("tab-playbook");
-	agents.forEach((a, _i) => {
+	agents.forEach((a) => {
 		const tab = document.createElement("div");
 		tab.className = `agent-tab ac-${a.id}`;
 		tab.dataset.id = a.id;
-		tab.textContent = a.name;
-		tab.onclick = () => {
-			selectAgent(a.id);
-		};
+		tab.innerHTML =
+			`<div class="tab-name">${esc(a.name)}</div>` +
+			'<div class="tab-ctx">' +
+			'<span class="tab-ctx-label">—</span>' +
+			'<div class="tab-ctx-bar"><div class="tab-ctx-fill"></div></div>' +
+			"</div>";
+		tab.onclick = () => selectAgent(a.id);
 		bar.insertBefore(tab, playbook);
 	});
 }
@@ -117,6 +125,8 @@ function connectSSE() {
 		const d = JSON.parse(e.data);
 		updateCostDisplay(d.missionTotalUsd, maxCostUsd);
 		addLlmCallToUsage(d);
+		agentContextTokens[d.agentId] = d.input;
+		updateContextBar(d.agentId, d.input);
 	});
 	es.addEventListener("step-paused", () => {
 		stepWaiting = true;
@@ -196,6 +206,26 @@ function updateCostDisplay(total, max) {
 	el.className = "hcost";
 	if (max && total > max * 0.8) el.classList.add("warn");
 	if (max && total >= max) el.classList.add("danger");
+}
+
+// ── Context window bars ────────────────────────────────────────────────────
+
+/**
+ * Update the per-agent context bar in the agent tab.
+ * tokens = input token count from the most recent LLM call for this agent.
+ */
+function updateContextBar(agentId, tokens) {
+	const tab = document.querySelector(`.agent-tab[data-id="${agentId}"]`);
+	if (!tab) return;
+	const label = tab.querySelector(".tab-ctx-label");
+	const fill = tab.querySelector(".tab-ctx-fill");
+	if (!label || !fill) return;
+	const pct = Math.min(100, (tokens / CTX_LIMIT) * 100);
+	label.textContent =
+		tokens >= 1000 ? `${(tokens / 1000).toFixed(0)}k` : String(tokens);
+	fill.style.width = `${pct}%`;
+	fill.style.background =
+		pct > 80 ? "var(--red)" : pct > 60 ? "var(--yellow)" : "var(--green)";
 }
 
 // ── Usage bar ──────────────────────────────────────────────────────────────
@@ -312,7 +342,7 @@ function selectAgent(id) {
 	loadDetail();
 }
 
-function _selectSubTab(tab) {
+function selectSubTab(tab) {
 	activeSubTab = tab;
 	document.getElementById("st-mm").classList.toggle("active", tab === "mm");
 	document.getElementById("st-act").classList.toggle("active", tab === "act");
@@ -599,7 +629,7 @@ function _fillResult(el, m) {
 	el.textContent = txt.slice(0, 1000) + (txt.length > 1000 ? "\u2026" : "");
 }
 
-function _toggleToolBox(hdr) {
+function toggleToolBox(hdr) {
 	const body = hdr.nextElementSibling;
 	const arrow = hdr.querySelector(".conv-tool-arrow");
 	const open = body.classList.toggle("open");
@@ -637,13 +667,13 @@ function renderStepBtn() {
 	}
 }
 
-async function _startMission() {
+async function startMission() {
 	if (missionStarted) return;
 	await fetch("/start", { method: "POST" });
 	setStarted(true);
 }
 
-async function _toggleStep() {
+async function toggleStep() {
 	const r = await fetch("/toggle-step", { method: "POST" });
 	const d = await r.json();
 	stepEnabled = d.stepEnabled;
@@ -652,7 +682,7 @@ async function _toggleStep() {
 	renderQueue();
 }
 
-async function _advanceStep() {
+async function advanceStep() {
 	await fetch("/step", { method: "POST" });
 }
 
@@ -691,14 +721,17 @@ function agentDisplayName(id) {
 function renderAgentTabIndicators() {
 	document.querySelectorAll(".agent-tab[data-id]").forEach((tab) => {
 		const id = tab.dataset.id;
+		const nameEl = tab.querySelector(".tab-name");
+		if (!nameEl) return;
 		const base =
-			tab.dataset.baseName || tab.textContent.replace(/^\u25b6 /, "");
+			tab.dataset.baseName ||
+			nameEl.textContent.replace(/^\u25b6\u00a0/, "");
 		tab.dataset.baseName = base;
-		tab.textContent = id === runningAgent ? `\u25b6 ${base}` : base;
+		nameEl.textContent = id === runningAgent ? `\u25b6\u00a0${base}` : base;
 	});
 }
 
-function _stopDaemon() {
+function stopDaemon() {
 	if (stopped) return;
 	if (
 		!confirm("Stop the MAGI daemon? This will abort the current mission cycle.")
@@ -710,7 +743,7 @@ function _stopDaemon() {
 }
 
 // ── Compose ────────────────────────────────────────────────────────────────
-function _openCompose() {
+function openCompose() {
 	document.getElementById("compose-overlay").classList.remove("hidden");
 	document.getElementById("compose-body").focus();
 }
@@ -720,7 +753,7 @@ function closeCompose() {
 	document.getElementById("compose-overlay").classList.add("hidden");
 }
 
-function _closeComposeIfBg(e) {
+function closeComposeIfBg(e) {
 	if (e.target === document.getElementById("compose-overlay")) closeCompose();
 }
 
@@ -730,7 +763,7 @@ function checkAll() {
 	});
 }
 
-async function _sendMessage() {
+async function sendMessage() {
 	const to = [...document.querySelectorAll("#to-checks input:checked")].map(
 		(c) => c.value,
 	);
@@ -777,7 +810,7 @@ setInterval(() => {
 // ── Playbook ───────────────────────────────────────────────────────────────
 const playbookSent = new Set();
 
-function _selectPlaybook() {
+function selectPlaybook() {
 	activeAgent = null;
 	document.querySelectorAll(".agent-tab").forEach((t) => {
 		t.classList.remove("active");
@@ -823,7 +856,7 @@ function renderPlaybook() {
 	});
 }
 
-function _editPlaybookEntry(i) {
+function editPlaybookEntry(i) {
 	const entry = PLAYBOOK[i];
 	if (!entry) return;
 	document.querySelectorAll("#to-checks input[type=checkbox]").forEach((c) => {

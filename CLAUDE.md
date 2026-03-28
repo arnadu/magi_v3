@@ -167,14 +167,32 @@ Two packages are built. Key files:
 - `schedule-task` platform skill — deferred to Sprint 8
 - `run-background` platform skill — deferred to Sprint 8
 
-**Sprint 9 — Context Management and Reflection (designed; not yet built):**
-- See ADR-0009 for the full design. Three coordinated changes:
-- **Tool-result scoping** in `convertToLlm` (currently a pass-through): `FetchUrl`, `BrowseWeb`, `Bash`, `SearchWeb`, `InspectImage` result bodies are collapsed to a one-line placeholder for turns older than `KEEP_FULL_TURNS` (default 2). `PostMessage`, `UpdateMentalMap`, `ListMessages`, `ReadMessage` always kept in full.
-- **Reflection** (`src/reflection.ts`, new): a post-processing LLM call (separate system prompt — "you are a reflective summarizer, not the agent") that runs at session end (always) and mid-session when estimated token count exceeds `MID_SESSION_THRESHOLD` (default 80 k tokens). Outputs: (a) Mental Map patches applied via `patchMentalMap`; (b) narrative summary (300–500 words) saved as `StoredMessage { role: 'summary' }`. After saving the summary, `conversationRepo.trim()` deletes turns older than `currentTurnNumber - KEEP_FULL_TURNS`. Crash-safe: reflection saves before trimming.
-- **Structured Mental Map templates**: `config/teams/equity-research.yaml` gains explicit `initialMentalMap` per agent with static/editable zones. Static sections (no `id` attribute) are operator-set constants agents can read but not modify. Editable sections (with `id` attribute) are patchable by `UpdateMentalMap` during a session and by reflection at session end. `class="instructions"` paragraphs within editable sections give in-situ guidance visible every wakeup.
-- **MongoDB text index** on `conversationMessages` (scaffolding for `AnalyzeMemories` tool in Sprint 10).
-- Key files: `src/reflection.ts` (new), `src/agent-runner.ts` (wire `convertToLlm` + reflection), `src/conversation-repository.ts` (add `saveSummary()`), `config/teams/equity-research.yaml` (structured Mental Maps).
-- Tests: `tests/reflection.unit.test.ts` (parse output, token estimation, `convertToLlm` filter rules — no LLM); `tests/reflection.integration.test.ts` (two-session scenario: session 1 fetches large URL + reflection fires → trim; session 2 agent recalls the finding from summary without re-fetching).
+**Sprint 9 — Context Management and Reflection (built):**
+- See ADR-0009 for full design, rationale, and comparison with MAGI v2.
+- **Model: session-boundary compaction.** The compaction unit is the session (one agent wakeup). Every session's raw messages are compacted at the start of the *next* session. Within a session the agent has full fidelity — all messages including large tool-result bodies pass through unchanged. Across sessions, only a cumulative summary and the updated Mental Map survive.
+- **Algorithm on each wakeup (except first):**
+  1. `load()` returns prior summaries + last session's raw messages (non-compacted, non-reflection)
+  2. **Reflection** (conditional — skipped if `sessionMessages` is empty or `peakInputTokens < REFLECTION_CTX_THRESHOLD`): `peakInputTokens` is `usage.input` of the last `AssistantMessage` in the session; `REFLECTION_CTX_THRESHOLD = 0.6 × 200 000 = 120 000` tokens. Sessions that never pushed the context above 60 % of the window are not worth reflecting on. When reflection runs: a separate LLM call consolidates the previous session; receives prior summaries, the current Mental Map HTML, and a transcript (tool bodies truncated to 2 000 chars); calls `UpdateMentalMap` to patch changed sections; produces a 300–500 word cumulative narrative summary. Summary saved at `lastTurnNumber + 1` **before** `compact()` runs (crash-safe). `compact()` marks all `turnNumber < lastTurnNumber + 1` as `compacted: true` — documents retained in MongoDB for audit/RAG. Reflection inner-loop messages stored with `isReflection: true`. Reflection LLM calls are tracked by `UsageAccumulator` and visible in the monitor dashboard (`ReflectionContext.onMessage` threads them through the same `onAgentMessage` pipeline as regular agent calls).
+  3. Reload: history now contains only the new summary.
+  4. `convertToLlm(history)` converts `role:"summary"` messages to user-role messages; all other messages pass through unchanged (no per-tool filtering).
+  5. `runInnerLoop` starts: agent sees system prompt (with updated Mental Map) + summary as a user message + new inbox messages.
+- **What the LLM sees at session start:** `[system: role + updated Mental Map + skills]` → `[user: "[Session history summary]\n<cumulative narrative of sessions 1..N-1>"]` → `[user: new inbox messages]`. No raw tool results from previous sessions ever appear.
+- **Mental Map zones:** Elements with an `id` attribute are patchable by `UpdateMentalMap` (both during agent sessions and by reflection). Elements without an `id` are static — operator-set constants the agent can read but not modify. No separate patch-parsing mechanism: reflection uses the same tool as the agent.
+- **Cumulative summaries:** Each reflection receives all prior summaries and is instructed to extend them. The new summary subsumes all prior ones; old summaries are compacted along with raw messages.
+- **Not yet built (deferred to Sprint 10):** mid-session reflection (fire compaction mid-`runInnerLoop` when context exceeds threshold, without waiting for session end), `AnalyzeMemories` tool (MongoDB text search over compacted history).
+- Key files:
+  - `src/reflection.ts` — `convertToLlm`, `serializeForReflection`, `buildReflectionSystemPrompt`, `runReflection`
+  - `src/agent-runner.ts` — wires reflection before `runInnerLoop`; persists reflection messages with `isReflection: true`; `makeOnLlmCall(turnNumber, isReflection)` builds the `onLlmCall` callback for both regular and reflection loops
+  - `src/conversation-repository.ts` — `StoredMessage` with `compacted`/`isReflection` flags; `SummaryMessage` type; `compact()` via `updateMany` (no deletes); unique index on `(agentId, missionId, turnNumber, seqInTurn)`
+  - `tests/reflection.integration.test.ts` — two-session test: session 1 fetches large URL; session 2 recalls finding from summary without re-fetching. 5 assertions all passing.
+- **LLM call audit log** (`llmCallLog` collection): every LLM call (regular agent turns and reflection calls) is recorded with the full system prompt, truncated message context, full response, and correctly-computed costs (including cache). Analogous to MAGI v2's `llmCallList`.
+  - `src/llm-call-log.ts` — `LlmCallLogEntry` schema; `computeCost(usage, modelCost)` with per-component USD breakdown; `truncateToolBodies(messages)` caps tool result bodies at 2 000 chars; `createMongoLlmCallLogRepository(db)` with indexes on `savedAt` and `(missionId, agentId, savedAt)`
+  - `src/loop.ts` — `onLlmCall` callback in `InnerLoopConfig`: fires immediately after each `completeFn` call with snapshot of messages, system prompt, tool names, and response
+  - `src/daemon.ts` — creates `createMongoLlmCallLogRepository(db)` and passes it as `llmCallLog` in the orchestration config
+  - `src/orchestrator.ts` — `OrchestratorConfig.llmCallLog?` threaded through to `agentCtx` (spread into `runAgent` call)
+  - `src/cli-usage.ts` — CLI for querying the audit log; aggregate view (one row per agent + grand total + cost breakdown) or `--detail` for one row per call; supports `--agent`, `--from`, `--to`, `--reflection`, `--no-reflection` filters
+  - Usage: `TEAM_CONFIG=<yaml> MONGODB_URI=<uri> npm run cli:usage` or `npm run cli:usage -- --detail --agent lead-analyst`
+- **Cache cost fix** (`src/models.ts`): `anthropicModel()` previously set `cacheRead: 0, cacheWrite: 0`; now computes from input price ratio (`cacheRead = input × 0.1`, `cacheWrite = input × 1.25`). CLAUDE_SONNET now prices cache operations at $0.30/MTok read and $3.75/MTok write.
 
 **Sprint 8 — Equity Research Team MVP:**
 - Four-agent team tracking NVDA: Lead Analyst (supervisor: user), Economist (supervisor: lead), Junior Analyst (supervisor: lead), Data Scientist (supervisor: lead). Ticker hardcoded in team YAML.
@@ -202,7 +220,7 @@ Two packages are built. Key files:
 | 6 | ✅ Done | Persistent daemon (MongoDB Change Stream sleep), conversation persistence (ADR-0008), MongoDB-native scheduling infra + `cli:post` |
 | 7 | ✅ Done | `BrowseWeb` (Stagehand/Playwright): JS rendering, interactive tasks, session persistence, SSRF blocking, trust boundary markers |
 | 8 | ✅ Done | Equity research MVP: 4-agent NVDA team, `schedule-task` skill, bootstrapping mission, daily brief + L/S rec + performance tracker |
-| 9 | | Context management: tool-result scoping, reflection (session-end + mid-session compaction), structured Mental Map templates (ADR-0009) |
+| 9 | ✅ Done | Context management: session-boundary compaction, reflection (UpdateMentalMap tool + cumulative summary), LLM call audit log (ADR-0009) |
 | 10 | | Work Product Layer UI |
 | 11 | | Cloud burst and scale-out |
 | 12 | | Hardening and launch prep |
@@ -272,12 +290,13 @@ sudo scripts/setup-dev.sh
 ```
 
 **Node binary path wrong in sudoers (nvm users)**
-`setup-dev.sh` bakes the absolute path of `node` into the sudoers rule (`NOPASSWD: /path/to/node`). When run with plain `sudo`, sudo strips nvm from PATH so `which node` resolves to the system binary (e.g. `/usr/bin/node`), not the nvm-managed one the daemon actually uses. The sudoers rule ends up wrong and every daemon start will prompt for a password then time out.
+`setup-dev.sh` creates a stable wrapper at `/usr/local/bin/magi-node` that exec's the real node binary; the sudoers `NOPASSWD` rule always points to the wrapper (never changes on node upgrade). However, when run with plain `sudo`, sudo strips nvm from PATH so `which node` resolves to the system binary — the wrapper would exec the wrong node. Always pass the correct path explicitly:
 
-Always run setup-dev.sh with the nvm node path passed explicitly:
 ```bash
 sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
 ```
+
+Re-run whenever you upgrade Node or switch nvm versions. The wrapper is updated in-place; the sudoers rule stays the same. `tools.ts` uses `/usr/local/bin/magi-node` if it exists, falling back to `process.execPath` for environments where `setup-dev.sh` has not been run (CI, non-Linux).
 
 **Port 4000 already in use on daemon start**
 A previous daemon instance may still hold the port. Find and kill it:

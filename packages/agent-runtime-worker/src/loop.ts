@@ -51,6 +51,17 @@ export interface InnerLoopConfig {
 	 * timeout error and continuing the loop. Default: 120_000 (2 minutes).
 	 */
 	toolTimeoutMs?: number;
+	/**
+	 * Called immediately after each LLM response (before tool execution).
+	 * Receives the full context that was sent (system prompt + messages) and
+	 * the response. Used to write the LLM call audit log.
+	 */
+	onLlmCall?: (event: {
+		systemPrompt: string;
+		messages: Message[];
+		toolNames: string[];
+		response: AssistantMessage;
+	}) => Promise<void>;
 }
 
 export interface LoopResult {
@@ -79,6 +90,7 @@ export async function runInnerLoop(
 		tools,
 		signal,
 		onMessage,
+		onLlmCall,
 		toolTimeoutMs = 120_000,
 	} = config;
 	const completeFn: CompleteFn = config.completeFn ?? completeSimple;
@@ -115,6 +127,14 @@ export async function runInnerLoop(
 
 		// ── LLM call ────────────────────────────────────────────────────────────
 		const assistantMessage = await completeFn(model, context, { signal });
+		if (onLlmCall) {
+			await onLlmCall({
+				systemPrompt,
+				messages: [...messages], // snapshot before assistant msg is pushed
+				toolNames: tools.map((t) => t.name),
+				response: assistantMessage,
+			});
+		}
 		await pushAndNotify(assistantMessage);
 
 		// Abort on LLM error or explicit abort signal

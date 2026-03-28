@@ -5,19 +5,36 @@ import type { Db } from "mongodb";
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * MAGI-internal message type for reflection summaries.
+ * Stored alongside pi-ai messages in conversationMessages but never sent to
+ * the LLM verbatim — convertToLlm converts them to user messages.
+ */
+export interface SummaryMessage {
+	role: "summary";
+	content: string;
+}
+
 export interface StoredMessage {
 	/**
 	 * Incremented each time runAgent() is called for this agent × mission.
-	 * This is the compaction anchor: trim(keepFrom) deletes all documents
-	 * with turnNumber < keepFrom.
+	 * This is the compaction anchor: compact(keepFrom) marks all documents
+	 * with turnNumber < keepFrom as compacted (excluded from prompt, retained
+	 * for auditability and future RAG-based memory retrieval).
 	 */
 	turnNumber: number;
-	/** Verbatim pi-ai message: UserMessage | AssistantMessage | ToolResultMessage. */
-	message: Message;
+	/** Verbatim pi-ai message or a MAGI-internal summary. */
+	message: Message | SummaryMessage;
+	/**
+	 * Set to true for messages produced by the reflection inner loop.
+	 * Excluded from load() so they never appear in the agent's prompt context,
+	 * but retained in MongoDB for debugging and future UI display.
+	 */
+	isReflection?: boolean;
 }
 
 export interface ConversationRepository {
-	/** Load all messages for this agent on this mission, oldest first. */
+	/** Load all non-compacted messages for this agent on this mission, oldest first. */
 	load(agentId: string, missionId: string): Promise<StoredMessage[]>;
 	/** Append messages produced in the current turn. */
 	append(
@@ -25,8 +42,12 @@ export interface ConversationRepository {
 		missionId: string,
 		messages: StoredMessage[],
 	): Promise<void>;
-	/** Discard all messages with turnNumber < keepFrom (compaction cut point). */
-	trim(agentId: string, missionId: string, keepFrom: number): Promise<void>;
+	/**
+	 * Mark all messages with turnNumber < keepFrom as compacted.
+	 * Compacted documents are excluded from load() but kept in MongoDB for
+	 * auditability and future RAG-based memory retrieval.
+	 */
+	compact(agentId: string, missionId: string, keepFrom: number): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,8 +59,20 @@ interface ConversationDoc {
 	missionId: string;
 	turnNumber: number;
 	seqInTurn: number;
-	message: Message;
+	message: Message | SummaryMessage;
 	savedAt: Date;
+	/**
+	 * Set to true by compact() when reflection has summarised this turn.
+	 * Compacted documents are excluded from load() (prompt preparation) but
+	 * retained in MongoDB for auditability and future RAG-based retrieval.
+	 */
+	compacted?: boolean;
+	/**
+	 * Set to true for messages produced by the reflection inner loop.
+	 * Excluded from load() so they never appear in the agent's prompt context,
+	 * but retained in MongoDB for debugging and future UI display.
+	 */
+	isReflection?: boolean;
 }
 
 export function createMongoConversationRepository(
@@ -47,11 +80,12 @@ export function createMongoConversationRepository(
 ): ConversationRepository {
 	const col = db.collection<ConversationDoc>("conversationMessages");
 
-	// Compound index — idempotent, safe to call on every startup.
+	// Unique compound index — enforces exactly one message per position.
+	// Idempotent; safe to call on every startup.
 	col
 		.createIndex(
 			{ agentId: 1, missionId: 1, turnNumber: 1, seqInTurn: 1 },
-			{ background: true },
+			{ unique: true },
 		)
 		.catch((e: unknown) =>
 			console.warn(
@@ -63,7 +97,12 @@ export function createMongoConversationRepository(
 	return {
 		async load(agentId, missionId) {
 			const docs = await col
-				.find({ agentId, missionId })
+				.find({
+					agentId,
+					missionId,
+					compacted: { $ne: true },
+					isReflection: { $ne: true },
+				})
 				.sort({ turnNumber: 1, seqInTurn: 1 })
 				.toArray();
 			return docs.map((d) => ({
@@ -74,36 +113,36 @@ export function createMongoConversationRepository(
 
 		async append(agentId, missionId, messages) {
 			if (messages.length === 0) return;
-			const savedAt = new Date();
-			// Group by turnNumber and assign seqInTurn within each group.
-			const byTurn = new Map<number, StoredMessage[]>();
+			// seqInTurn is computed by counting existing documents for the turn, then
+			// inserting. This count-then-insert is non-atomic, but correctness relies
+			// on the invariant that append() is never called concurrently for the same
+			// (agentId, missionId, turnNumber). The inner loop serialises all onMessage
+			// callbacks, so this invariant holds. The unique index on
+			// (agentId, missionId, turnNumber, seqInTurn) provides a safety net: a
+			// concurrent duplicate would fail loudly rather than silently corrupt order.
 			for (const sm of messages) {
-				const arr = byTurn.get(sm.turnNumber) ?? [];
-				arr.push(sm);
-				byTurn.set(sm.turnNumber, arr);
+				const seqInTurn = await col.countDocuments({
+					agentId,
+					missionId,
+					turnNumber: sm.turnNumber,
+				});
+				await col.insertOne({
+					agentId,
+					missionId,
+					turnNumber: sm.turnNumber,
+					seqInTurn,
+					message: sm.message,
+					savedAt: new Date(),
+					...(sm.isReflection ? { isReflection: true } : {}),
+				});
 			}
-			const docs: ConversationDoc[] = [];
-			for (const [turnNumber, sms] of byTurn) {
-				for (let i = 0; i < sms.length; i++) {
-					docs.push({
-						agentId,
-						missionId,
-						turnNumber,
-						seqInTurn: i,
-						message: sms[i].message,
-						savedAt,
-					});
-				}
-			}
-			await col.insertMany(docs);
 		},
 
-		async trim(agentId, missionId, keepFrom) {
-			await col.deleteMany({
-				agentId,
-				missionId,
-				turnNumber: { $lt: keepFrom },
-			});
+		async compact(agentId, missionId, keepFrom) {
+			await col.updateMany(
+				{ agentId, missionId, turnNumber: { $lt: keepFrom } },
+				{ $set: { compacted: true } },
+			);
 		},
 	};
 }

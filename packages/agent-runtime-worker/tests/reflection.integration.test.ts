@@ -7,30 +7,24 @@
  *     document outline and chart data including the time of maximum speed.
  *   Session 2 — Agent is asked a specific follow-up question about the chart:
  *     "At what time does the chart show maximum speed?"
- *     The raw FetchUrl result body is gone (trimmed by reflection); the agent
- *     must rely on what reflection stored in the Mental Map + summary.
+ *     Reflection fires at the START of session 2 (on session 1's messages),
+ *     updating the Mental Map and compacting the raw FetchUrl result. The agent
+ *     must then rely on what reflection stored in the Mental Map + summary.
  *
- * Assertions after session 1:
- *   - conversationMessages contains a role:'summary' document for this agent
- *   - conversationMessages does NOT contain the raw FetchUrl tool-result body
- *     (old turns trimmed by reflection)
- *   - mental_maps finding-list is non-empty (reflection patched it)
- *
- * Assertions after session 2:
- *   - Agent's reply to user contains a time value (the chart maximum)
- *   - Session 2 conversation contains no FetchUrl tool_use block
- *     (agent answered from memory, not by re-fetching)
- *
- * This test WILL FAIL until Sprint 9 implements runReflection() in
- * src/reflection.ts. The stub is a no-op; the role:'summary' assertion is the
- * first to fail and serves as the acceptance gate.
+ * Assertions after session 2 (reflection has run by then):
+ *   1. conversationMessages contains a role:'summary' document for this agent
+ *   2. conversationMessages FetchUrl tool-result has compacted: true
+ *      (retained for audit/RAG; excluded from prompt preparation)
+ *   3. mental_maps finding-list is non-empty (reflection patched it)
+ *   4. Agent's reply to user contains a time value (the chart maximum)
+ *   5. Session 2 conversation contains no FetchUrl tool_use block
+ *      (agent answered from memory, not by re-fetching)
  *
  * Requires ANTHROPIC_API_KEY and MONGODB_URI in environment or .env file.
  * Requires setup-dev.sh (pool user magi-w1 must exist).
  *
- * Low thresholds via env vars (set before import in vitest setup):
- *   REFLECTION_KEEP_TURNS=1  — keep only the last turn verbatim
- *   REFLECTION_THRESHOLD=2000 — trigger mid-session compaction after 2k tokens
+ * Low threshold via env var (set before import in vitest setup):
+ *   REFLECTION_THRESHOLD=2000 — trigger mid-session compaction after 2k tokens (Sprint 10)
  */
 
 import { randomUUID } from "node:crypto";
@@ -56,8 +50,8 @@ import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
 
-// Low thresholds so even a small FetchUrl result triggers compaction.
-process.env.REFLECTION_KEEP_TURNS = "1";
+// REFLECTION_THRESHOLD=2000: any real FetchUrl result exceeds this, exercising
+// mid-session threshold code paths (when implemented in Sprint 10).
 process.env.REFLECTION_THRESHOLD = "2000";
 
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -159,6 +153,7 @@ describe("integration: reflection and context compaction", () => {
 			const ac = new AbortController();
 
 			// ── Session 1 ────────────────────────────────────────────────────────
+
 			console.log("\n=== SESSION 1: fetch and summarise PDF ===");
 
 			await mailboxRepo.post({
@@ -194,46 +189,11 @@ describe("integration: reflection and context compaction", () => {
 			// Agent must have reported to user after session 1.
 			expect(userMessages.length).toBeGreaterThanOrEqual(1);
 
-			// ── Assertions after session 1 ───────────────────────────────────────
-
-			// 1. Reflection must have saved a summary document.
-			const summaryDocs = await db
-				.collection("conversationMessages")
-				.find({ missionId, agentId: "researcher", "message.role": "summary" })
-				.toArray();
-			expect(
-				summaryDocs.length,
-				"reflection must produce a role:summary document in conversationMessages",
-			).toBeGreaterThan(0);
-
-			// 2. The raw FetchUrl tool-result body must have been trimmed.
-			//    After trim, no document with the large FetchUrl content should remain
-			//    (reflection replaces old raw results with a placeholder).
-			const rawFetchDocs = await db
-				.collection("conversationMessages")
-				.find({
-					missionId,
-					agentId: "researcher",
-					"message.toolName": "FetchUrl",
-				})
-				.toArray();
-			expect(
-				rawFetchDocs.length,
-				"reflection must trim the raw FetchUrl tool-result from conversationMessages",
-			).toBe(0);
-
-			// 3. Mental Map finding-list must have been patched by reflection.
-			const mentalMapHtml = await mentalMapRepo.load("researcher");
-			expect(mentalMapHtml).toBeTruthy();
-			const findingListMatch = mentalMapHtml?.match(
-				/<ul id="finding-list">([\s\S]*?)<\/ul>/,
-			);
-			expect(
-				findingListMatch?.[1]?.includes("<li>"),
-				"reflection must patch the finding-list with at least one item",
-			).toBe(true);
-
 			// ── Session 2 ────────────────────────────────────────────────────────
+			// Reflection fires at the START of session 2 (on session 1's messages).
+			// Assertions on compaction / summary / Mental Map patches are therefore
+			// checked after session 2 completes (reflection has run by then).
+
 			console.log("\n=== SESSION 2: recall chart maximum ===");
 
 			await mailboxRepo.post({
@@ -244,7 +204,9 @@ describe("integration: reflection and context compaction", () => {
 				body: "Looking at the document you analysed last session: at what time does the chart show maximum speed? Give me the specific value.",
 			});
 
+			let session2FetchCalled = false;
 			const session2StartTime = new Date();
+
 			await runOrchestrationLoop(
 				{
 					teamConfig,
@@ -259,11 +221,61 @@ describe("integration: reflection and context compaction", () => {
 						userMessages.push(msg);
 						console.log(`\n[→ USER] ${msg.subject}: ${msg.body.slice(0, 300)}`);
 					},
+					onAgentMessage: (_agentId, msg) => {
+						if (msg.role === "assistant") {
+							// biome-ignore lint/suspicious/noExplicitAny: pi-ai AssistantMessage
+							for (const block of (msg as any).content ?? []) {
+								if (block.type === "toolCall" && block.name === "FetchUrl") {
+									session2FetchCalled = true;
+								}
+							}
+						}
+					},
 				},
 				ac.signal,
 			);
 
 			// ── Assertions after session 2 ───────────────────────────────────────
+
+			// 1. Reflection must have saved a summary document.
+			const summaryDocs = await db
+				.collection("conversationMessages")
+				.find({ missionId, agentId: "researcher", "message.role": "summary" })
+				.toArray();
+			expect(
+				summaryDocs.length,
+				"reflection must produce a role:summary document in conversationMessages",
+			).toBeGreaterThan(0);
+
+			// 2. The raw FetchUrl tool-result must be marked compacted (not deleted —
+			//    documents are retained for auditability and future RAG retrieval).
+			const rawFetchDocs = await db
+				.collection("conversationMessages")
+				.find({
+					missionId,
+					agentId: "researcher",
+					"message.toolName": "FetchUrl",
+				})
+				.toArray();
+			expect(
+				rawFetchDocs.length,
+				"FetchUrl tool-result document must still exist (retained for audit/RAG)",
+			).toBe(1);
+			expect(
+				rawFetchDocs[0].compacted,
+				"FetchUrl tool-result must be marked compacted: true",
+			).toBe(true);
+
+			// 3. Mental Map finding-list must have been patched by reflection.
+			const mentalMapHtml = await mentalMapRepo.load("researcher");
+			expect(mentalMapHtml).toBeTruthy();
+			const findingListMatch = mentalMapHtml?.match(
+				/<ul id="finding-list">([\s\S]*?)<\/ul>/,
+			);
+			expect(
+				findingListMatch?.[1]?.includes("<li>"),
+				"reflection must patch the finding-list with at least one item",
+			).toBe(true);
 
 			// 4. Agent must have replied to user with a time value.
 			const session2UserMsgs = userMessages.filter(
@@ -281,26 +293,10 @@ describe("integration: reflection and context compaction", () => {
 			).toMatch(/\d/);
 
 			// 5. Session 2 must NOT have called FetchUrl (answer came from memory).
-			const session2Docs = await db
-				.collection("conversationMessages")
-				.find({
-					missionId,
-					agentId: "researcher",
-					"message.role": "assistant",
-				})
-				.toArray();
-
-			// biome-ignore lint/suspicious/noExplicitAny: MongoDB document shape
-			const session2FetchCalls = session2Docs.filter((d: any) =>
-				(d.message?.content ?? []).some(
-					// biome-ignore lint/suspicious/noExplicitAny: tool_use block
-					(b: any) => b.type === "tool_use" && b.name === "FetchUrl",
-				),
-			);
 			expect(
-				session2FetchCalls.length,
+				session2FetchCalled,
 				"session 2 must not re-fetch the PDF (agent answers from Mental Map / summary)",
-			).toBe(0);
+			).toBe(false);
 		} finally {
 			await db.collection("mailbox").deleteMany({ missionId });
 			await db.collection("conversationMessages").deleteMany({ missionId });
@@ -308,5 +304,5 @@ describe("integration: reflection and context compaction", () => {
 			await client.close();
 			rmSync(tmpDir, { recursive: true });
 		}
-	}, 300_000); // 5-minute timeout — two sessions + two reflection LLM calls
+	}, 300_000); // 5-minute timeout — two sessions + one reflection LLM call
 });

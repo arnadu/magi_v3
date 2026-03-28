@@ -3,6 +3,7 @@ import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
 import type { ConversationRepository } from "./conversation-repository.js";
+import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MentalMapRepository } from "./mental-map.js";
 import { verifyIsolation } from "./tools.js";
@@ -18,6 +19,8 @@ export interface OrchestratorConfig {
 	mailboxRepo: MailboxRepository;
 	mentalMapRepo: MentalMapRepository;
 	conversationRepo: ConversationRepository;
+	/** Optional LLM call audit log — written for every LLM call across all agents. */
+	llmCallLog?: LlmCallLogRepository;
 	model: Model<string>;
 	/**
 	 * Working directory used for operator-level operations such as @path file
@@ -94,6 +97,7 @@ export async function runOrchestrationLoop(
 		mailboxRepo,
 		mentalMapRepo,
 		conversationRepo,
+		llmCallLog,
 		model,
 		workdir,
 		step = false,
@@ -153,6 +157,7 @@ export async function runOrchestrationLoop(
 		mailboxRepo,
 		mentalMapRepo,
 		conversationRepo,
+		llmCallLog,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();
 			console.log(`\n[→ USER from ${msg.from}] ${msg.subject} (${timestamp})`);

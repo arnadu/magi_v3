@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type TSchema, Type } from "@sinclair/typebox";
@@ -255,7 +255,14 @@ async function runIsolatedToolCall(
 	const toolExecutor = __file.endsWith(".ts")
 		? join(dirname(__file), "..", "dist", "tool-executor.js")
 		: join(dirname(__file), "tool-executor.js");
-	const nodeExe = process.execPath;
+	// Prefer the stable wrapper installed by setup-dev.sh.  The wrapper bakes
+	// in the real node path at setup time, so the sudoers rule never needs to
+	// change when Node is upgraded.  Fall back to process.execPath for
+	// environments where setup-dev.sh has not been run (CI, non-Linux).
+	const MAGI_NODE_WRAPPER = "/usr/local/bin/magi-node";
+	const nodeExe = existsSync(MAGI_NODE_WRAPPER)
+		? MAGI_NODE_WRAPPER
+		: process.execPath;
 	const { timeoutMs } = request;
 
 	try {

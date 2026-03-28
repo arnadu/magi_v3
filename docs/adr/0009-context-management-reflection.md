@@ -1,8 +1,9 @@
-# ADR-0009: Context Management — Tool-Result Scoping, Reflection, and Long-Term Memory
+# ADR-0009: Context Management — Session-Boundary Compaction and Reflection
 
 ## Status
 
-Accepted (designed 2026-03; implementation planned for Sprint 9)
+Accepted and implemented (Sprint 9). See § Divergence from original design for changes
+made during implementation.
 
 ## Context
 
@@ -30,283 +31,243 @@ conversation. A full 1M window is not twice as usable as a 500 k window.
 
 `FetchUrl`, `BrowseWeb`, and `Bash` can return 5–20 k tokens per call. Once an agent has
 reasoned from a result, the raw body is noise. The agent's *reasoning* about the result
-(in its assistant message) is what matters across sessions. MAGI v2 addressed this with
-`filterMainAgentMessages()` — current-turn scoping for high-volume tools.
+(in its assistant message) is what matters across sessions.
 
 ### Reference: MAGI v2 filtering pattern (`messageContext.ts`)
 
+MAGI v2 used per-tool, per-turn filtering (`filterMainAgentMessages`) applied at every
+HTTP request:
+
 ```
-User / Assistant messages: keep all turns
-Editor tool results:        current turn only
+User / Assistant:              keep all turns
+Editor tool results:           current turn only  (old HTML diffs waste tokens)
 High-volume tools (Fetch,
-  WebSearch, InspectImage): current turn only
-RAGSearch / Critique:       keep all turns (persistent reasoning context)
-Sub-agent internals:        excluded — only invocation + final result visible
+  WebSearch, InspectImage):    current turn only
+RAGSearch / Critique:          keep all turns     (persistent reasoning context)
+Sub-agent internals:           excluded — only invocation + final result visible
 ```
 
-The MAGI v3 equivalent must handle: `FetchUrl`, `BrowseWeb`, `Bash`, `SearchWeb`,
-`InspectImage` → current + recent turns only. `PostMessage` and `ListMessages` →
-always kept (small, carry inter-agent provenance).
+This kept the context window bounded within a conversation, but the conversation was
+unbounded across days (no cross-session compaction). MAGI v3 must handle a persistent
+multi-session agent lifetime that v2 never had.
 
 ---
 
 ## Terminology
 
 **Session** = one wakeup-to-sleep cycle. A session begins when `runAgent()` is called
-and ends when `runInnerLoop` returns. A mission consists of many sessions per agent.
+(triggered by an inbox message) and ends when `runInnerLoop` returns. A mission consists
+of many sessions per agent, one per wakeup.
 
-**Reflection** = a post-processing step that runs at the end of a session (and optionally
-mid-session when a token threshold is crossed). It consolidates the session's conversation
-into an updated Mental Map and a narrative summary that replaces old turns in the stored
-history. Reflection is implemented as a separate LLM call with a dedicated system prompt;
-it is not part of the agent's own inner loop.
+**Reflection** = a consolidation step that runs at the *start* of every session (except
+the first). It consolidates the *previous* session's raw messages into an updated Mental
+Map and a cumulative narrative summary before the agent's inner loop begins.
+
+**Compaction** = marking MongoDB documents as `compacted: true` so they are excluded from
+`load()` (prompt preparation) while being retained for audit and future RAG retrieval.
+Documents are never deleted.
 
 ---
 
-## Decisions
+## Decision
 
-### 1. Tool-result scoping in `convertToLlm`
+### Session-boundary compaction
 
-`convertToLlm()` — currently a pass-through in `agent-runner.ts` — is upgraded to a
-context filter that runs once per wakeup, before `runInnerLoop`.
+The compaction unit is the **session**: every session's raw messages are compacted at the
+start of the next session. This is the simplest model that bounds context growth — no
+per-tool rules, no turn-count thresholds within a session.
 
-**Rules:**
+Within a session the agent has full fidelity: every message including large tool-result
+bodies is passed to the LLM unchanged. This is intentional — the agent may need to
+reference a fetch result multiple times within the same task. Across sessions, only the
+summary and the updated Mental Map survive.
 
-| Tool | Retention |
-|------|-----------|
-| `PostMessage`, `ListMessages`, `ReadMessage`, `ListTeam` | Always kept — small, carry inter-agent provenance |
-| `UpdateMentalMap` | Always kept — small; agent needs to see its own map updates |
-| `FetchUrl`, `BrowseWeb`, `Bash`, `SearchWeb`, `InspectImage` | Full body for turns `>= currentTurnNumber - KEEP_FULL_TURNS` (default 2); collapsed to one-line placeholder for older turns |
+### Algorithm: what happens on each wakeup
 
-**Placeholder format:**
 ```
-[FetchUrl result — processed in turn 3, session 2026-03-10T06:00Z]
+runAgent(agentId, inboxMessages, ctx)
+
+  1.  load()  →  history
+      ─────────────────────────────────────────────────────────────────────
+      Returns all non-compacted, non-reflection StoredMessages, oldest first.
+      On the very first wakeup: []
+      On subsequent wakeups:    prior summaries + last session's raw messages
+
+  2.  Reflect (conditional — see threshold below)
+      ─────────────────────────────────────────────────────────────────────
+      sessionMessages = history where role ≠ "summary"
+      previousSummaries = history where role = "summary"
+
+      Skip reflection if:
+        • sessionMessages is empty (first wakeup), OR
+        • peakInputTokens < REFLECTION_CTX_THRESHOLD (120 000 tokens)
+          where peakInputTokens = usage.input of the last AssistantMessage
+          in sessionMessages. The last call has the largest input because it
+          accumulated the full session context. Sessions where even the peak
+          call stayed under 60 % of the 200 k window are too cheap to justify
+          a separate reflection call.
+
+      runReflection(sessionMessages, previousSummaries, lastTurnNumber)
+        a. Build prompt:
+              PRIOR SESSION SUMMARIES  ← previousSummaries joined (extend, not repeat)
+              CURRENT MENTAL MAP       ← current HTML from mentalMapRepo
+              SESSION TRANSCRIPT       ← sessionMessages serialised, tool bodies
+                                         truncated to 2 000 chars
+
+        b. Run mini inner loop with UpdateMentalMap as the only tool.
+              The reflection LLM calls UpdateMentalMap 0-N times to patch
+              changed sections. Only elements with an id attribute are
+              addressable — static sections (no id) are inherently protected.
+              Reflection messages persisted with isReflection:true.
+
+        c. Extract summary from the reflection LLM's final text response.
+
+        d. append(summary at turnNumber = lastTurnNumber + 1)
+              ← saved BEFORE compact. Crash between d and e is safe:
+                old messages remain (redundant, not lost).
+
+        e. compact(keepFrom = lastTurnNumber + 1)
+              ← marks all turnNumber < lastTurnNumber+1 as compacted:true.
+                This includes: old session's raw messages AND any prior
+                summaries (their content is now in the new cumulative summary).
+
+      reload history  →  [new summary only]
+
+  3.  convertToLlm(history)
+      ─────────────────────────────────────────────────────────────────────
+      Simple transform — no per-tool filtering:
+        role:"summary"                → user message "[Session history summary]\n…"
+        role:"user"|"assistant"|      → pass through unchanged
+              "toolResult"
+
+  4.  Build system prompt
+      ─────────────────────────────────────────────────────────────────────
+      systemPrompt = agent role + Mental Map HTML (now updated by reflection)
+                   + skills block
+
+  5.  runInnerLoop(previousMessages, task, tools, onMessage)
+      ─────────────────────────────────────────────────────────────────────
+      Each message persisted to MongoDB immediately via onMessage as it
+      arrives (not batched at end). The agent sees:
+
+        [system]   role + updated Mental Map + skills
+        [user]     "[Session history summary]\n<cumulative narrative>"   ← 0 or 1
+        [user]     formatted inbox messages                              ← new task
+        [assistant → tool → assistant → …]                               ← this session
 ```
 
-**Implementation:**
+### What the LLM sees at the start of session N (N > 1)
+
+```
+SYSTEM PROMPT
+  ┌──────────────────────────────────────────────────────┐
+  │  role description                                    │
+  │  <mental-map>                                        │
+  │    <!-- static: operator-set, no id -->              │
+  │    <section id="finding-list">                       │
+  │      <!-- updated by reflection from sessions 1..N-1 │
+  │    </section>                                        │
+  │    …                                                 │
+  │  </mental-map>                                       │
+  │  skills block                                        │
+  └──────────────────────────────────────────────────────┘
+
+MESSAGES
+  [user]  "[Session history summary]
+           Session 1: fetched article on NVDA earnings; found revenue +12% YoY;
+           posted finding to lead. Session 2: lead asked for sector comparison;
+           fetched semiconductor index data; found NVDA outperforming peers by 8%;
+           posted comparison table."
+
+  [user]  "From lead-analyst (2026-03-25): Please update your thesis for Q2."
+```
+
+No raw tool results from previous sessions. No turn-number-based filtering within the
+current session. Two memory stores work together:
+- **Mental Map** — structured, patchable, visible in every system prompt
+- **Summary** — narrative, cumulative, injected as the opening user message
+
+### Cumulative summaries
+
+Each reflection receives all prior summaries as input and is instructed to extend them
+(not replace them). The resulting summary incorporates everything from sessions 1..N-1 in
+a single narrative. When reflection compacts, it compacts the old summaries too — they are
+no longer needed as the new summary subsumes them.
+
+This means there is always exactly one summary in `load()` after the first reflection.
+
+### Mental Map editing: static and editable zones
+
+The Mental Map HTML distinguishes two zones:
+
+- **Static zones** (no `id` attribute): operator-set constants the agent can read but not
+  modify. `UpdateMentalMap` requires an `id` to address any element; elements without one
+  are inherently protected.
+- **Editable zones** (`id` attribute): agent-writable during a session (via `UpdateMentalMap`)
+  and patched by reflection between sessions.
+
+Both the agent and the reflection LLM use the same `UpdateMentalMap` tool. No separate
+patch-parsing mechanism is needed — the tool's existing ID validation and HTML sanitisation
+apply equally to both callers.
+
+### MongoDB document schema
 
 ```typescript
-const KEEP_FULL_TURNS = 2
-
-const HIGH_VOLUME_TOOLS = new Set([
-  'FetchUrl', 'BrowseWeb', 'Bash', 'SearchWeb', 'InspectImage'
-])
-
-function convertToLlm(stored: StoredMessage[], currentTurnNumber: number): Message[] {
-  return stored.flatMap((sm) => {
-    const m = sm.message
-    if (m.role === 'user' || m.role === 'assistant') return [m]
-
-    if (m.role === 'toolResult') {
-      const isOld = sm.turnNumber < currentTurnNumber - KEEP_FULL_TURNS
-      if (isOld && HIGH_VOLUME_TOOLS.has(m.toolName ?? '')) {
-        // Collapse body — preserve toolCallId so the LLM call/result chain stays valid
-        return [{
-          ...m,
-          content: [{
-            type: 'text',
-            text: `[${m.toolName} result — processed in turn ${sm.turnNumber}]`
-          }]
-        }]
-      }
-      return [m]
-    }
-
-    // Summary messages (role: 'summary') → prepend as user message
-    if ((m as { role: string }).role === 'summary') {
-      return [{ role: 'user', content: `[Session history summary]\n${(m as { content: string }).content}` }]
-    }
-
-    return [m]
-  })
+interface ConversationDoc {
+  agentId:      string
+  missionId:    string
+  turnNumber:   number      // session index (0, 1, 2, …)
+  seqInTurn:    number      // position within the turn (0, 1, 2, …)
+  message:      Message | SummaryMessage
+  savedAt:      Date
+  compacted?:   boolean     // set by compact(); excluded from load()
+  isReflection?: boolean    // set for reflection inner-loop messages; excluded from load()
 }
 ```
 
-### 2. Reflection: post-session and mid-session
+Unique index on `(agentId, missionId, turnNumber, seqInTurn)` — enforces exactly one
+document per position. `seqInTurn` is computed by `countDocuments` before each insert;
+correctness relies on append never being called concurrently for the same
+`(agentId, missionId, turnNumber)` (serialised by the inner loop).
 
-A **reflection** consolidates a session's conversation into:
-1. Mental Map patches (via `UpdateMentalMap`-compatible `<patch id="...">` blocks)
-2. A narrative summary (300–500 words) that replaces old turns in the next session
+### Crash safety
 
-**Trigger conditions:**
+Summary is saved (step 2d) before compaction (step 2e). If the process crashes between
+the two:
+- Old messages remain uncompacted → they appear in `load()` on the next wakeup
+- Reflection retries on the same session on the next wakeup
+- The orphaned reflection messages from the failed attempt remain at `turnNumber =
+  lastTurnNumber + 1` but are excluded from `load()` via `isReflection: true`
+- `UpdateMentalMap` uses replace semantics → idempotent on retry
 
-- **Session end** (always): runs after `runInnerLoop` returns in `runAgent()`, regardless
-  of context size.
-- **Mid-session** (threshold): when the estimated token count of in-session messages
-  exceeds `MID_SESSION_THRESHOLD` (default 80 000 tokens), reflection fires between inner
-  loop turns. The session continues with the compacted context.
+No MongoDB transactions are needed.
 
-**Token estimation heuristic:** `chars / 4` (conservative; overestimates). Applied to
-`JSON.stringify(message)` for each stored message.
+---
 
-**Placement:**
+## Divergence from original design
 
-```
-// agent-runner.ts
+The implementation differs from the draft in several ways:
 
-const newMessages = await runInnerLoop({ ..., transformContext })
-                                                    ↑
-// transformContext hook (inside the loop) handles mid-session threshold:
-// if estimate > threshold → call runReflection() → replace session history with summary
-
-// After runInnerLoop returns:
-await runReflection(agentId, missionId, newMessages, ctx)  // session-end reflection
-await ctx.conversationRepo.append(agentId, missionId, newMessages, turnNumber)
-```
-
-**Reflection system prompt (kept in `src/reflection.ts`):**
-
-```
-You are a reflective summarizer for an AI research agent. You are NOT the agent and must
-NOT continue any task or conversation. Your job is to consolidate what happened in a
-session into two outputs:
-
-1. Mental Map patches — for each section that changed, output:
-   <patch id="element-id">updated content (HTML fragment)</patch>
-   Only output patches for sections that actually changed. Never patch read-only sections
-   (those without an id attribute).
-
-2. A narrative summary of this session — wrap in <summary>...</summary>.
-   Include: what the agent was asked to do, what it found, what decisions it made,
-   what it sent to other agents, and what comes next.
-   Aim for 300–500 words. Be specific: include numbers, tickers, sources, and file paths
-   where relevant. This summary will replace the raw session history for future wakeups.
-```
-
-**Reflection output parsing:**
-
-```typescript
-interface ReflectionResult {
-  patches: Array<{ id: string; content: string }>
-  summary: string
-}
-
-function parseReflection(text: string): ReflectionResult {
-  const patches = [...text.matchAll(/<patch id="([^"]+)">([\s\S]*?)<\/patch>/g)]
-    .map(m => ({ id: m[1], content: m[2].trim() }))
-  const summaryMatch = text.match(/<summary>([\s\S]*?)<\/summary>/)
-  return {
-    patches,
-    summary: summaryMatch?.[1].trim() ?? ''
-  }
-}
-```
-
-### 3. Summary storage and turn trimming
-
-After reflection:
-
-1. Save the narrative summary as a `StoredMessage` with `role: 'summary'` and
-   `turnNumber = currentTurnNumber` (or the mid-session turn at which it was generated).
-2. Call `conversationRepo.trim(agentId, missionId, keepFrom)` where `keepFrom` is the
-   oldest turn to keep verbatim (default: `currentTurnNumber - KEEP_FULL_TURNS`).
-
-The `conversationMessages` MongoDB collection gains a text index on
-`message.content` / `message.text` fields to support the future `AnalyzeMemories` tool
-(see § 5 below). No behavioural change in Sprint 9; the index is scaffolding.
-
-**Reconstructed context at next wakeup:**
-
-```
-[system prompt: role + Mental Map (updated by reflection) + skills]
-[summary message: "[Session history summary]\n<narrative>"]   ← turns 0..N-3
-[turn N-2: full messages, tool results included]
-[turn N-1: full messages, tool results included]
-[new user turn: formatted mailbox messages]
-```
-
-### 4. Structured Mental Map: static and editable zones
-
-Formalises the pattern from MAGI v2:
-
-- **Static zone** (no `id` attribute): operator-set constants the agent reads but cannot
-  modify. Includes mission parameters and `class="instructions"` guidance paragraphs.
-- **Editable zone** (`id` attribute): agent-writable fields, patchable by `UpdateMentalMap`
-  during a session and by `runReflection()` at session end.
-- **`class="instructions"`**: in-situ guidance visible in every wakeup's system prompt.
-  Tells the agent what to record in each section and when. Not patchable (no `id`).
-
-**Standard section IDs (equity research team):**
-
-| id | Owner | Content |
-|----|-------|---------|
-| `recommendation` | Agent + Reflection | Current L/S/neutral, one sentence |
-| `confidence` | Agent + Reflection | 0–1 score |
-| `thesis` | Agent + Reflection | One-paragraph investment thesis |
-| `finding-list` | Agent + Reflection | `<li>` items: fact + source + date |
-| `infra-list` | Agent + Reflection | `<li>` items: scripts, data files, providers |
-| `task-list` | Agent + Reflection | `<li>` items: pending work with agent assignee |
-| `pending-list` | Agent + Reflection | `<li>` items: outstanding inter-agent requests |
-
-The `finding-list` and `task-list` sections include a `class="instructions"` guideline
-specifying the maximum number of items before older ones should be pruned.
-
-### 5. `AnalyzeMemories` tool (scaffolded in Sprint 9, implemented in Sprint 10)
-
-Sprint 9 adds the MongoDB text index on `conversationMessages`. Sprint 10 adds the tool:
-
-```
-AnalyzeMemories(
-  question: string,
-  scope?: 'own' | 'team',   // default: 'own'
-  max_results?: number       // default: 5
-) → { answer: string, sources: Array<{agentId, turnNumber, excerpt}> }
-```
-
-Implementation: MongoDB text search → top-N excerpt retrieval → sub-`completeSimple`
-call with retrieved passages → synthesized answer. No vector database required for the
-initial version.
+| Original design | Actual implementation |
+|---|---|
+| Reflect at session **end** | Reflect at session **start** (next wakeup) — agent sees updated Mental Map and summary from the first message of the new session |
+| `<patch id="…">` XML output parsed by `parseReflection()` | Reflection LLM calls `UpdateMentalMap` tool directly — same tool as the agent; no custom output format |
+| `KEEP_FULL_TURNS = 2` keeps last 2 turns verbatim, collapses older HIGH_VOLUME_TOOLS results | Entire previous session compacted — no per-tool retention rules |
+| `trim()` deletes MongoDB documents | `compact()` marks `compacted: true` — documents retained for audit/RAG |
+| Mid-session reflection at 80k token threshold | Session-end gate implemented: reflection only runs when the last LLM call's input tokens ≥ 60 % of CTX_LIMIT (120 000 / 200 000). Mid-session trigger (fire during `runInnerLoop` without waiting for session end) deferred to Sprint 10. |
+| `AnalyzeMemories` tool (MongoDB text search) | Index scaffolded; tool deferred to Sprint 10 |
 
 ---
 
 ## Files
 
-| File | Change |
-|------|--------|
-| `src/reflection.ts` | **New** — `runReflection(agentId, missionId, sessionMessages, ctx)`, prompts, `parseReflection()`, `serializeForReflection()` |
-| `src/agent-runner.ts` | Wire `convertToLlm` filter; call `runReflection()` after `runInnerLoop`; add mid-session `transformContext` hook |
-| `src/conversation-repository.ts` | Add `saveSummary()` method; add MongoDB text index |
-| `src/loop.ts` | `transformContext` hook receives token estimate; reflection injection on threshold |
-| `config/teams/equity-research.yaml` | Structured `initialMentalMap` per agent with static/editable zones and `instructions` guidance |
-| `tests/reflection.unit.test.ts` | **New** — parse output, token estimation, `convertToLlm` filter rules |
-| `tests/reflection.integration.test.ts` | **New** — see ADR § Integration Test |
-
----
-
-## Integration Test
-
-The integration test for Sprint 9 validates the full reflection + compaction cycle:
-
-**Setup:**
-- Single agent (word-count team config, or a new minimal `reflection-test` team)
-- Seed a workdir with two test documents
-
-**Session 1:**
-1. Wakeup with task: "Fetch [local URL serving ~3 000 words of text], extract the word
-   count, and record your finding."
-2. Agent calls `FetchUrl` → large result body.
-3. Agent reports finding to user via `PostMessage`.
-4. Session ends → reflection fires.
-
-**Assertions after session 1:**
-- `conversationMessages` collection contains a `role: 'summary'` document for this agent.
-- `conversationMessages` no longer contains the raw `FetchUrl` tool result (trimmed).
-- The agent's Mental Map `finding-list` section contains a `<li>` with the word count.
-- Reflection cost logged (one extra `llm-call` event in the monitor or usage accumulator).
-
-**Session 2:**
-1. Wakeup with task: "What did you find in your last research session? Give me the
-   specific number."
-2. Agent has access to: updated Mental Map (with finding) + summary + last 2 turns.
-   The raw `FetchUrl` body is gone.
-
-**Assertions after session 2:**
-- Agent's reply to user contains the correct word count.
-- Agent did NOT re-fetch the URL (no `FetchUrl` tool call in session 2).
-- Total tokens in session 2 context < total tokens in session 1 context (compaction worked).
-
-This test validates: tool-result scoping, reflection execution, summary storage,
-Mental Map patching, and effective context compaction — in one coherent scenario.
+| File | Role |
+|------|------|
+| `src/reflection.ts` | `convertToLlm`, `serializeForReflection`, `buildReflectionSystemPrompt`, `runReflection` |
+| `src/agent-runner.ts` | Wires reflection before `runInnerLoop`; persists reflection messages with `isReflection:true` |
+| `src/conversation-repository.ts` | `StoredMessage`, `SummaryMessage`, `compact()`, `load()` filter, unique index |
+| `tests/reflection.integration.test.ts` | Two-session test: session 1 fetches large URL; session 2 recalls finding from summary without re-fetching. 5 assertions. |
+| `config/teams/reflection-test.yaml` | Single-agent team with structured Mental Map for integration test |
 
 ---
 
@@ -314,18 +275,20 @@ Mental Map patching, and effective context compaction — in one coherent scenar
 
 | | Outcome |
 |-|---------|
-| Context budget | Bounded per session: ~2 k (system) + ~3 k (Mental Map) + ~500 (summary) + ~10–20 k (last 2 turns) = well under 30 k tokens per wakeup on day 15+ |
-| Reflection cost | One additional LLM call per session end (~$0.01–0.05 at Sonnet 4.6 prices for a typical equity research session) |
-| Information loss | Possible: reflection is lossy. Mitigated by: Mental Map preserves key facts; `AnalyzeMemories` tool (Sprint 10) provides recovery path for specific past details |
-| Daemon restart safety | Reflection saves to MongoDB before trimming; crash between reflection and trim is safe (next session has more history than ideal but loses nothing) |
-| Existing tests | No breakage: `convertToLlm` defaults to pass-through if `currentTurnNumber` is 0 or undefined; reflection is skipped if session produces zero messages |
+| Context budget | Bounded per session: system prompt (~5 k) + one cumulative summary (~1 k) + current session messages. A 30-day equity research agent stays well under 50 k tokens per wakeup. |
+| Reflection cost | Gated by the 60 % threshold: only sessions that built significant context trigger a reflection call. Trivial sessions (brief acknowledgments, short ping-pong exchanges) are skipped. Reflection LLM calls are tracked by `UsageAccumulator` and surfaced in the dashboard via the `llm-call` SSE event — previously they were invisible (a `ReflectionContext.onMessage` hook threads them through the same pipeline as regular agent messages). |
+| Information loss | Possible — reflection is lossy. Mitigated by: Mental Map preserves structured facts; `AnalyzeMemories` (Sprint 10) provides recovery path via MongoDB text search over compacted history |
+| Audit trail | All raw messages retained in MongoDB with `compacted:true`; reflection inner-loop messages retained with `isReflection:true`. Full history queryable for debugging and future RAG. |
+| Crash safety | Summary saved before compact — no transactions needed; worst case is a redundant retry |
+| Idempotency | Compaction is idempotent (`updateMany` with `$set`); `UpdateMentalMap` uses replace semantics; reflection can safely retry on the same session |
 
 ## Comparison with prior art
 
-| | MAGI v2 | pi-mono coding-agent | MAGI v3 (this ADR) |
-|-|---------|---------------------|-------------------|
-| Tool scoping | Per-call filter (`filterMainAgentMessages`) | `transformContext` hook | `convertToLlm` once per wakeup |
-| Summary generation | None | Dedicated compaction call | `runReflection()` at session end |
-| Mental Map update | Agent-only (during loop) | N/A (no Mental Map) | Agent during loop + reflection at end |
-| Trigger | N/A | Token threshold | Session end (always) + token threshold (mid-session) |
-| Storage | In-memory only | Session file | MongoDB (`role: 'summary'` document) |
+| | MAGI v2 | MAGI v3 (this ADR) |
+|-|---------|--------------------|
+| Filtering unit | Per-tool, per-turn (`filterMainAgentMessages`) | Per-session (entire session compacted) |
+| Within-session fidelity | High-volume tools dropped after current turn | Full fidelity — all messages passed unchanged |
+| Cross-session memory | None — history grows unboundedly | Summary (narrative) + Mental Map (structured) |
+| Mental Map update | Agent only, during loop | Agent during loop + reflection LLM between sessions |
+| Tool results in context | Current-turn only for Fetch/WebSearch/InspectImage | Not visible across sessions; full body within session |
+| Storage | In-memory only (stateless HTTP) | MongoDB — `compacted` flag preserves raw history |

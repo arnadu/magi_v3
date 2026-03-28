@@ -46,6 +46,7 @@ import type {
 import type { Collection } from "mongodb";
 import { schedule } from "node-cron";
 import { createMongoConversationRepository } from "./conversation-repository.js";
+import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
 import { createMongoMentalMapRepository, initMentalMap } from "./mental-map.js";
@@ -282,6 +283,7 @@ async function main(): Promise<void> {
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
 	const mentalMapRepo = createMongoMentalMapRepository(db);
 	const conversationRepo = createMongoConversationRepository(db);
+	const llmCallLog = createMongoLlmCallLogRepository(db);
 
 	const modelId = process.env.MODEL ?? "claude-sonnet-4-6";
 	const model =
@@ -475,6 +477,7 @@ async function main(): Promise<void> {
 				mailboxRepo,
 				mentalMapRepo,
 				conversationRepo,
+				llmCallLog,
 				model,
 				workdir,
 				workspaceManager,
