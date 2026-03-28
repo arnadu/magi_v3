@@ -16,6 +16,7 @@ import { convertToLlm, runReflection } from "./reflection.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
 import { createInspectImageTool } from "./tools/inspect-image.js";
+import { createResearchTool } from "./tools/research.js";
 import { tryCreateSearchWebTool } from "./tools/search-web.js";
 import type { AclPolicy } from "./tools.js";
 import { createFileTools } from "./tools.js";
@@ -227,6 +228,15 @@ export async function runAgent(
 	// within the same runInnerLoop share one browser session (cookies, auth, history).
 	const browseWebHandle = tryCreateBrowseWebTool(ctx.model, sharedDir);
 
+	// Research sub-loop Bash is restricted to sharedDir only (no workdir).
+	// This lets it read existing artifacts and the research index without
+	// touching the agent's private workspace or running git/write operations.
+	const researchAcl: AclPolicy = {
+		agentId,
+		permittedPaths: [sharedDir],
+		linuxUser,
+	};
+
 	const tools = [
 		...createFileTools(workdir, acl),
 		...createMailboxTools(ctx.mailboxRepo, ctx.teamConfig, agentId, {
@@ -235,6 +245,7 @@ export async function runAgent(
 		createMentalMapTool(ctx.mentalMapRepo, agentId),
 		createFetchUrlTool(ctx.model, sharedDir),
 		createInspectImageTool(workdir, ctx.model, [sharedDir]),
+		createResearchTool(ctx.model, sharedDir, researchAcl),
 		...(searchWebTool ? [searchWebTool] : []),
 		...(browseWebHandle ? [browseWebHandle.tool] : []),
 	];

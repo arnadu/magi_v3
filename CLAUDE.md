@@ -194,6 +194,9 @@ Two packages are built. Key files:
   - Usage: `TEAM_CONFIG=<yaml> MONGODB_URI=<uri> npm run cli:usage` or `npm run cli:usage -- --detail --agent lead-analyst`
 - **Cache cost fix** (`src/models.ts`): `anthropicModel()` previously set `cacheRead: 0, cacheWrite: 0`; now computes from input price ratio (`cacheRead = input × 0.1`, `cacheWrite = input × 1.25`). CLAUDE_SONNET now prices cache operations at $0.30/MTok read and $3.75/MTok write.
 
+**Sprint 10 — Agentic Tools: Research (in progress):**
+- `Research` — agentic tool; delegates a question to an isolated sub-loop that searches the web, fetches sources, and returns a concise finding (200–500 words + source URLs). All intermediate SearchWeb / FetchUrl / Bash calls run inside the sub-loop — they never appear in the main agent's context. Findings cached in `sharedDir/research/index.json` (exact match + `maxAgeHours` freshness); full text in `sharedDir/research/<slug>.md`. Sub-loop tools: FetchUrl, Bash (sharedDir-only ACL), SearchWeb (conditional). `RESEARCH_MAX_TURNS = 10`. See ADR-0010.
+
 **Sprint 8 — Equity Research Team MVP:**
 - Four-agent team tracking NVDA: Lead Analyst (supervisor: user), Economist (supervisor: lead), Junior Analyst (supervisor: lead), Data Scientist (supervisor: lead). Ticker hardcoded in team YAML.
 - Bootstrap phase (operator-guided, 3 steps): Step 1 — operator posts kick-off to all agents simultaneously (mission context, think about your role, proposals requested); Step 2 — operator prompts each agent individually for their proposal (scope, sources, infrastructure, inter-agent dependencies), reviews, may ask follow-ups; Step 3 — operator sends approval to Lead, who coordinates the infrastructure build, Data Scientist commits tracker + scripts, Lead registers the 06:00 daily trigger via `schedule-task` and confirms to user.
@@ -206,6 +209,30 @@ Two packages are built. Key files:
   - `sharedDir/tracker.csv` — performance tracker; columns: `date, ticker, recommendation, rationale_commit, entry_price, exit_price, pnl`; Data Scientist initialises and maintains
   - Daily brief committed to `sharedDir/briefs/YYYY-MM-DD.md` with source citations
 - Exit criteria: (1) all four agents produce coherent individual proposals in Step 2; (2) Data Scientist commits tracker + at least one data collection script after Step 3 approval; (3) Lead registers 06:00 schedule and confirms to user; (4) full daily cycle completes: research committed → brief committed → user receives PostMessage with L/S recommendation, macro/sector/company rationale
+
+**Sprint 10 — Agentic Tools: Research (in progress):**
+- Motivated by token cost analysis of the equity-research mission: agents were independently fetching the same URLs (cross-agent URL duplication ×7–10), running 30–40+ SearchWeb calls per session for slight variations of the same query, and accumulating raw tool results across all LLM calls (O(n²) cache cost). See ADR-0010 for full analysis.
+- **Three tool categories formalised:**
+  1. **Simple tools** — pure functions, no lifecycle (Bash, WriteFile, EditFile, FetchUrl, SearchWeb, InspectImage, PostMessage, UpdateMentalMap, etc.)
+  2. **Stateful tools** — maintain live session across multiple `execute()` calls within one agent turn; require `{ tool, close() }` handle pattern (BrowseWeb — needs one browser session for cookie/auth persistence)
+  3. **Agentic tools** — run their own `runInnerLoop` with a specialized system prompt and restricted tool set; intermediate messages never enter the main agent's context; findings externalized to shared storage (Research)
+- **`Research` agentic tool** (`src/tools/research.ts`):
+  - `createResearchTool(model, sharedDir, acl)` — returns a `MagiTool` (no lifecycle handle; stateless in execution, stateful in knowledge via `sharedDir/research/`)
+  - Cache: `sharedDir/research/index.json` — `ResearchEntry { slug, question, answer (first 500 chars), sources, savedAt, agentId }`; full finding in `sharedDir/research/<slug>.md`. Exact question match + `maxAgeHours` freshness check (default 12h for market data, accept 168h for stable facts). Cache hit returns immediately without spawning sub-loop.
+  - Sub-loop tools: `FetchUrl`, `createBashTool(sharedDir, researchAcl)`, `tryCreateSearchWebTool()` (if key present). Bash restricted to `sharedDir` only — no agent workdir, no git/write operations.
+  - `RESEARCH_MAX_TURNS = 10` — hard cap; sub-loop forces synthesis at limit via `maxTurns` in `InnerLoopConfig`.
+  - Sub-loop system prompt: check existing artifacts first; max 2 SearchWeb calls per concept; synthesize with what's available; output must include a Sources section.
+  - Registered in `agent-runner.ts` with `researchAcl: { permittedPaths: [sharedDir] }` (not workdir).
+- **`maxTurns` in `InnerLoopConfig`** (`src/loop.ts`): hard cap on LLM calls for agentic sub-loops; main agent loops remain uncapped (`undefined`). Loop breaks after `maxTurns` LLM calls regardless of whether tool calls are pending.
+- **`createBashTool(cwd, acl)`** (`src/tools.ts`): exported helper; returns `createFileTools(cwd, acl)[0]` (Bash only); used by Research sub-loop to grant read access to `sharedDir` without write tools.
+- **Efficiency guidelines added to `equity-research.yaml`** for all four agents: check research index before delegating, use Research not SearchWeb/FetchUrl directly, ≤ 10 tool calls per session, `grep -m 20` / `head -n 50` in Bash, accept best-available estimates.
+- Key files:
+  - `src/tools/research.ts` — `ResearchEntry` interface, index helpers, cache lookup, sub-loop execution, finding persistence
+  - `src/loop.ts` — `maxTurns?` in `InnerLoopConfig`; turn cap check after stopReason check
+  - `src/tools.ts` — `createBashTool(cwd, acl)` exported helper
+  - `src/agent-runner.ts` — `researchAcl`, `createResearchTool` registered in tools array
+  - `config/teams/equity-research.yaml` — efficiency guidelines for all four agents
+  - `docs/adr/0010-agentic-tools-research.md` — full design: tool categories, statefulness decision, index schema, O(n²) analysis, equity-research prompt changes
 
 ## Sprint Roadmap
 
@@ -221,7 +248,7 @@ Two packages are built. Key files:
 | 7 | ✅ Done | `BrowseWeb` (Stagehand/Playwright): JS rendering, interactive tasks, session persistence, SSRF blocking, trust boundary markers |
 | 8 | ✅ Done | Equity research MVP: 4-agent NVDA team, `schedule-task` skill, bootstrapping mission, daily brief + L/S rec + performance tracker |
 | 9 | ✅ Done | Context management: session-boundary compaction, reflection (UpdateMentalMap tool + cumulative summary), LLM call audit log (ADR-0009) |
-| 10 | | Work Product Layer UI |
+| 10 | 🔄 In Progress | Agentic tools: Research tool (nested inner loop, isolated context, shared index); efficiency guidelines for equity-research agents (ADR-0010) |
 | 11 | | Cloud burst and scale-out |
 | 12 | | Hardening and launch prep |
 | 13 | | Mission Assistant: LLM operator copilot with read access to all mission state |

@@ -52,6 +52,13 @@ export interface InnerLoopConfig {
 	 */
 	toolTimeoutMs?: number;
 	/**
+	 * Maximum number of LLM calls before the loop exits regardless of whether
+	 * the LLM requested further tool calls. Used by agentic tools (e.g. Research)
+	 * to bound the cost of their sub-loops. Undefined = no cap (default for
+	 * main agent loops).
+	 */
+	maxTurns?: number;
+	/**
 	 * Called immediately after each LLM response (before tool execution).
 	 * Receives the full context that was sent (system prompt + messages) and
 	 * the response. Used to write the LLM call audit log.
@@ -92,6 +99,7 @@ export async function runInnerLoop(
 		onMessage,
 		onLlmCall,
 		toolTimeoutMs = 120_000,
+		maxTurns,
 	} = config;
 	const completeFn: CompleteFn = config.completeFn ?? completeSimple;
 
@@ -144,6 +152,9 @@ export async function runInnerLoop(
 		) {
 			break;
 		}
+
+		// ── Turn cap (agentic sub-loops) ────────────────────────────────────────
+		if (maxTurns !== undefined && turnCount >= maxTurns) break;
 
 		// ── Natural termination ─────────────────────────────────────────────────
 		const toolCalls = assistantMessage.content.filter(

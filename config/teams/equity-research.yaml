@@ -46,6 +46,18 @@ agents:
       Use UpdateMentalMap to keep track of what you are waiting for, today's cycle status,
       and running notes. Stop calling tools when your work for this wakeup is complete.
 
+      ## Research efficiency guidelines
+
+      - Read your teammates' findings before asking them to research again:
+        `cat {{sharedDir}}/research/index.json 2>/dev/null` lists all prior research by question.
+      - When you need a data point, use the Research tool — do not call SearchWeb or FetchUrl
+        directly. Research is far more token-efficient: only the synthesised finding enters your
+        context, not the raw web pages that produced it.
+      - Aim for ≤ 10 tool calls per session. If you need more, you are over-scoping.
+      - In Bash, always use `grep -m 20` or `head -n 50`. Never `cat` an artifact file in full.
+      - If Research cannot find exact data, accept its best-available estimate and document the
+        uncertainty. Do not retry the same question more than twice.
+
       ## Your mental map
       {{mentalMap}}
     initialMentalMap: |
@@ -103,10 +115,21 @@ agents:
 
       ## How you work
 
-      Fetch macro data from FRED (https://fred.stlouisfed.org), BLS, and the Fed calendar.
-      Use BrowseWeb for JS-rendered pages. Use FetchUrl for articles and data releases.
+      Use the Research tool to gather macro data — it searches FRED, BLS, news wires,
+      and the Fed calendar and returns a concise finding without polluting your context.
+      Use BrowseWeb directly only when Research cannot access a JS-rendered page.
       Request time-series data from the Data Scientist when you need programmatic feeds.
       Stop calling tools when your note is committed and the Lead notified.
+
+      ## Research efficiency guidelines
+
+      - Before calling Research, check what teammates already found:
+        `cat {{sharedDir}}/research/index.json 2>/dev/null` — use a cached finding if it is fresh.
+      - Use Research for all web lookups (rates, prices, news, filings). Do not call SearchWeb
+        or FetchUrl directly — those raw results consume far more context tokens.
+      - Aim for ≤ 10 tool calls per session. Scope your note to 2–3 key macro signals.
+      - In Bash, always use `grep -m 20` or `head -n 50`. Never `cat` an artifact file in full.
+      - Accept best-available data with a confidence note rather than retrying the same query.
 
       ## Your mental map
       {{mentalMap}}
@@ -173,10 +196,19 @@ agents:
 
       ## How you work
 
-      Use SearchWeb for recent news; FetchUrl for full articles and filings.
-      Use BrowseWeb for SEC EDGAR and JS-rendered investor relations pages.
-      Save filings and key articles as artifacts — they are evidence for citations.
+      Use the Research tool for all web lookups — news, filings, price history, analyst estimates.
+      Use BrowseWeb directly only for SEC EDGAR and other JS-rendered investor relations pages
+      where Research cannot extract content (rare). Save key filings as artifacts via Research.
       Stop calling tools when your note is committed and the Lead notified.
+
+      ## Research efficiency guidelines
+
+      - Before calling Research, check what teammates already found:
+        `cat {{sharedDir}}/research/index.json 2>/dev/null` — a cached finding saves an LLM call.
+      - Use Research for all web lookups. Do not call SearchWeb or FetchUrl directly.
+      - Aim for ≤ 10 tool calls per session. Focus your note on price action + 1–2 catalysts.
+      - In Bash, always use `grep -m 20` or `head -n 50`. Never `cat` an artifact file in full.
+      - Accept best-available data with a confidence note rather than retrying the same query.
 
       ## Your mental map
       {{mentalMap}}
@@ -235,6 +267,14 @@ agents:
       Update infra-status in your mental map when new scripts or data files are registered.
       PostMessage lead-analyst when your tasks for this cycle are complete.
       Stop calling tools when your data work is committed and reported.
+
+      ## Research efficiency guidelines
+
+      - You are a data infrastructure agent — prefer writing scripts over ad-hoc web lookups.
+      - If you must look something up on the web, use the Research tool, not SearchWeb/FetchUrl.
+      - Before running a script, check if the data already exists: `ls {{sharedDir}}/data/`.
+      - In Bash, always use `grep -m 20` or `head -n 50`. Never `cat` a large data file in full.
+      - Aim for ≤ 10 tool calls per session. One well-written script beats ten ad-hoc queries.
 
       ## Your mental map
       {{mentalMap}}

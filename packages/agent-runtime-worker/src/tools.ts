@@ -358,6 +358,14 @@ export async function verifyIsolation(
  * by setup-dev.sh. Tests that use `linuxUser: ${USER}` or similar are no
  * longer valid — update them to use pool users.
  */
+/**
+ * Create only the Bash tool for use by agentic sub-loops (e.g. Research) that
+ * need read access to the shared directory but must not write mission files.
+ */
+export function createBashTool(cwd: string, acl: AclPolicy): MagiTool {
+	return createFileTools(cwd, acl)[0] as MagiTool;
+}
+
 export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 	const { agentId, permittedPaths, linuxUser } = acl;
 
