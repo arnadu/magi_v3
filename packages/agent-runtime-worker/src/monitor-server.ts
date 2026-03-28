@@ -63,6 +63,8 @@ export interface PlaybookEntry {
  *   GET  /status                    JSON usage + mission info
  *   GET  /agents/:id/mental-map     current mental map HTML
  *   GET  /agents/:id/conversation   last N conversation messages
+ *   GET  /schedule                  pending scheduled wakeups
+ *   GET  /agents/:id/usage          llmCallLog entries for agent
  *   POST /send-message              inject a mailbox message  { to, subject, body }
  *   POST /step                      advance one step (resolves waitForStep)
  *   POST /toggle-step               enable / disable step mode
@@ -298,6 +300,44 @@ export class MonitorServer {
 				.toArray();
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify(msgs));
+			return;
+		}
+
+		// ── GET /schedule
+		if (url === "/schedule" && req.method === "GET") {
+			const docs = await this.db
+				.collection("scheduled_messages")
+				.find({ missionId: this.missionId, deliveredAt: { $exists: false } })
+				.sort({ scheduledFor: 1 })
+				.limit(50)
+				.toArray();
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(docs.map(d => ({
+				id: String(d._id),
+				to: d.to ?? [],
+				subject: d.subject ?? "",
+				cronExpression: d.cronExpression ?? null,
+				scheduledFor: d.scheduledFor ?? null,
+			}))));
+			return;
+		}
+
+		// ── GET /agents/:id/usage
+		const usageMatch = url.match(/^\/agents\/([^/]+)\/usage$/);
+		if (usageMatch && req.method === "GET") {
+			const agentId = decodeURIComponent(usageMatch[1]);
+			const docs = await this.db
+				.collection("llmCallLog")
+				.find({ missionId: this.missionId, agentId })
+				.sort({ turnNumber: 1, savedAt: 1 })
+				.toArray();
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(docs.map(d => ({
+				turnNumber: d.turnNumber ?? 0,
+				isReflection: d.isReflection ?? false,
+				savedAt: d.savedAt,
+				usage: d.usage ?? null,
+			}))));
 			return;
 		}
 

@@ -28,6 +28,14 @@
 <main>
   <!-- Left: message feed + usage -->
   <div class="left-col">
+    <div class="feed-controls">
+      <div class="feed-mode-btns">
+        <button class="feed-mode-btn active" data-mode="all" onclick="setFeedMode('all')">All</button>
+        <button class="feed-mode-btn" data-mode="threads" onclick="setFeedMode('threads')">Threads</button>
+        <button class="feed-mode-btn" data-mode="user" onclick="setFeedMode('user')">&#8594; User</button>
+      </div>
+      <input class="feed-search" id="feed-search" type="text" placeholder="&#128269; filter&#8230;" oninput="setFeedSearch(this.value)">
+    </div>
     <div class="feed" id="feed">
       <div class="empty-state">Waiting for messages&#8230;</div>
     </div>
@@ -48,10 +56,10 @@
       <!-- populated by app.js -->
       <div class="agent-tab" id="tab-playbook" onclick="selectPlaybook()" style="color:var(--accent)">&#128203; Playbook</div>
     </div>
-    <div class="sub-tabs" id="sub-tabs-bar">
+    <div class="sub-tabs" id="sub-tabs-bar" style="display:none">
       <div class="sub-tab active" id="st-mm" onclick="selectSubTab('mm')">Mental Map</div>
-      <div class="sub-tab" id="st-act" onclick="selectSubTab('act')">Activity</div>
-      <div class="sub-tab" id="st-cv" onclick="selectSubTab('cv')">Conversation</div>
+      <div class="sub-tab" id="st-sessions" onclick="selectSubTab('sessions')">Sessions</div>
+      <div class="sub-tab" id="st-usage" onclick="selectSubTab('usage')">Usage</div>
     </div>
     <div class="detail-pane" id="detail-pane">
       <div class="empty-state">Select an agent tab above</div>
@@ -65,9 +73,7 @@
     <h2>Send message</h2>
     <div class="field">
       <label>To</label>
-      <div class="agent-checks" id="to-checks">
-        <!-- populated by app.js -->
-      </div>
+      <div class="agent-checks" id="to-checks"></div>
     </div>
     <div class="field">
       <label>Subject</label>
