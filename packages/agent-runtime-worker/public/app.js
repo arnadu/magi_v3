@@ -6,7 +6,6 @@ const CTX_LIMIT = 200_000;
 let AGENTS = [];
 let PLAYBOOK = [];
 let activeAgent = null;
-let activeSubTab = "mm";     // mm | sessions | usage
 let feedMode = "all";        // all | threads | user
 let feedSearch = "";
 const agentContextTokens = {};
@@ -23,13 +22,8 @@ let stopped = false;
 // Feed data store (all messages, for re-filtering)
 const allMessages = [];
 
-// Sessions tab state
-let sessionConvDocs = [];
-let sessionUsageDocs = [];
-let selectedTurn = null;
-let sessionMode = "summary";  // summary | tools | full
+// Sessions tree state
 let sessionLiveDirty = false;
-const convToolBoxes = new Map();
 
 // Schedule data
 let scheduleData = [];
@@ -178,14 +172,13 @@ function connectSSE() {
 	});
 	es.addEventListener("step-paused", () => { stepWaiting = true; renderStepBtn(); renderQueue(); });
 	es.addEventListener("step-resumed", () => { stepWaiting = false; renderStepBtn(); renderQueue(); });
-	es.addEventListener("mental-map-update", e => {
-		const d = JSON.parse(e.data);
-		if (d.agentId === activeAgent && activeSubTab === "mm") renderMentalMap(d.html);
+	es.addEventListener("mental-map-update", () => {
+		// Mental map snapshots are stored per-LLM-call in the sessions tree — no live rendering needed.
 	});
 	es.addEventListener("conversation-update", e => {
 		const d = JSON.parse(e.data);
 		if (d.agentId !== activeAgent) return;
-		if (activeSubTab === "sessions") appendToSessionsLive(d.message);
+		appendToSessionsLive(d.message);
 	});
 	es.addEventListener("shutdown", e => {
 		const d = JSON.parse(e.data);
@@ -203,7 +196,7 @@ function connectSSE() {
 		renderQueue();
 		renderAgentTabIndicators();
 		// Re-fetch sessions when agent finishes if live updates arrived
-		if (!d.running && activeAgent && activeSubTab === "sessions" && sessionLiveDirty) {
+		if (!d.running && activeAgent && sessionLiveDirty) {
 			sessionLiveDirty = false;
 			loadSessions();
 		}
@@ -452,24 +445,11 @@ function addSysMsg(text) {
 // ── Agent detail ───────────────────────────────────────────────────────────
 function selectAgent(id) {
 	activeAgent = id;
-	convToolBoxes.clear();
-	sessionConvDocs = [];
-	sessionUsageDocs = [];
-	selectedTurn = null;
 	sessionLiveDirty = false;
 	document.querySelectorAll(".agent-tab").forEach(t =>
 		t.classList.toggle("active", t.dataset.id === id));
 	document.getElementById("tab-playbook").classList.remove("active");
-	document.getElementById("sub-tabs-bar").style.display = "";
-	loadDetail();
-}
-
-function selectSubTab(tab) {
-	activeSubTab = tab;
-	document.getElementById("st-mm").classList.toggle("active", tab === "mm");
-	document.getElementById("st-sessions").classList.toggle("active", tab === "sessions");
-	document.getElementById("st-usage").classList.toggle("active", tab === "usage");
-	loadDetail();
+	loadSessions();
 }
 
 function resetPane() {
@@ -480,34 +460,6 @@ function resetPane() {
 	pane.style.gridTemplateColumns = "";
 	pane.innerHTML = "";
 	return pane;
-}
-
-async function loadDetail() {
-	if (!activeAgent) return;
-	if (activeSubTab === "mm") {
-		const pane = resetPane();
-		pane.innerHTML = '<div class="empty-state">Loading\u2026</div>';
-		const r = await fetch(`/agents/${activeAgent}/mental-map`);
-		const data = await r.json();
-		renderMentalMap(data.html);
-	} else if (activeSubTab === "sessions") {
-		await loadSessions();
-	} else if (activeSubTab === "usage") {
-		await loadUsage();
-	}
-}
-
-// ── Mental Map ─────────────────────────────────────────────────────────────
-function renderMentalMap(html) {
-	const pane = resetPane();
-	if (!html) {
-		pane.innerHTML = '<div class="empty-state">Mental map is empty</div>';
-		return;
-	}
-	const div = document.createElement("div");
-	div.className = "mental-map-html";
-	div.innerHTML = html;
-	pane.appendChild(div);
 }
 
 // ── Sessions tree tab ─────────────────────────────────────────────────────
@@ -521,8 +473,6 @@ async function loadSessions() {
 
 	const r = await fetch(`/agents/${activeAgent}/sessions`);
 	const sessions = await r.json();
-	sessionUsageDocs = sessions;
-
 	renderSessionTree(sessions, pane);
 }
 
@@ -602,12 +552,31 @@ function renderSessionRow(session) {
 	return wrap;
 }
 
+/**
+ * Reconstruct callSeq for documents that predate the callSeq field.
+ * Scans messages in seqInTurn order: each AssistantMessage starts a new
+ * LLM call group; ToolResult messages inherit the preceding callSeq.
+ * Documents that already have callSeq are returned unchanged.
+ */
+function normalizeCallSeq(docs) {
+	// If every doc already has callSeq, nothing to do.
+	if (docs.every(d => d.callSeq != null)) return docs;
+	const sorted = [...docs].sort((a, b) => (a.seqInTurn ?? 0) - (b.seqInTurn ?? 0));
+	let seq = -1;
+	return sorted.map(doc => {
+		if (doc.parentToolUseId) return doc; // sub-loop message — keep as-is
+		const role = doc.message?.role;
+		if (role === "assistant") seq++;
+		return { ...doc, callSeq: role === "user" ? -1 : seq };
+	});
+}
+
 async function expandSession(agentId, turnNumber, container) {
 	const r = await fetch(`/agents/${encodeURIComponent(agentId)}/sessions/${turnNumber}`);
 	const data = await r.json();
 	container.innerHTML = "";
 
-	const messages = data.messages || [];
+	const messages = normalizeCallSeq(data.messages || []);
 	const llmCalls = data.llmCalls || [];
 
 	// Group messages by callSeq
@@ -816,80 +785,6 @@ function appendToSessionsLive(doc) {
 }
 
 
-// ── Usage tab ──────────────────────────────────────────────────────────────
-async function loadUsage() {
-	const pane = resetPane();
-	pane.innerHTML = '<div class="empty-state">Loading\u2026</div>';
-	const r = await fetch(`/agents/${activeAgent}/usage`);
-	sessionUsageDocs = await r.json();
-	renderUsageChart(sessionUsageDocs);
-}
-
-function renderUsageChart(docs) {
-	const pane = document.getElementById("detail-pane");
-	if (!pane) return;
-	if (!docs.length) {
-		pane.innerHTML = '<div class="empty-state">No LLM call data yet</div>';
-		return;
-	}
-	const maxTokens = Math.max(CTX_LIMIT,
-		...docs.map(d => d.usage?.inputTokens || 0));
-
-	pane.innerHTML =
-		'<div class="usage-chart">' +
-		'<div class="uc-legend">' +
-		'<span class="uc-leg fresh">fresh input</span>' +
-		'<span class="uc-leg cache">cache read</span>' +
-		'<span class="uc-leg output">output</span>' +
-		'</div>' +
-		'<div class="uc-rows" id="uc-rows"></div>' +
-		'</div>';
-
-	const rows = document.getElementById("uc-rows");
-	for (const d of docs) {
-		const u = d.usage || {};
-		const input = u.inputTokens || 0;
-		const cacheRead = u.cacheReadTokens || 0;
-		const output = u.outputTokens || 0;
-		const freshInput = Math.max(0, input - cacheRead);
-		const cost = u.cost || 0;
-		const freshPct = (freshInput / maxTokens * 100).toFixed(1);
-		const cachePct = (cacheRead / maxTokens * 100).toFixed(1);
-		const outPct = (output / maxTokens * 100).toFixed(1);
-		const ctxPct = input > 0 ? (input / CTX_LIMIT * 100).toFixed(0) : "0";
-		const ctxLimitPct = (CTX_LIMIT / maxTokens * 100).toFixed(1);
-		const row = document.createElement("div");
-		row.className = `uc-row${d.isReflection ? " uc-reflection" : ""}`;
-		row.innerHTML =
-			`<div class="uc-label" title="Session ${d.turnNumber ?? 0}">S${d.turnNumber ?? 0}${d.isReflection ? "\u21ba" : ""}</div>` +
-			`<div class="uc-bar-wrap">` +
-			`<div class="uc-bar">` +
-			`<div class="uc-seg fresh" style="width:${freshPct}%" title="fresh input: ${fmtTok(freshInput)}"></div>` +
-			`<div class="uc-seg cache" style="width:${cachePct}%" title="cache read: ${fmtTok(cacheRead)}"></div>` +
-			`<div class="uc-seg output" style="width:${outPct}%" title="output: ${fmtTok(output)}"></div>` +
-			`<div class="uc-ctx-line" style="left:${ctxLimitPct}%" title="200k ctx limit"></div>` +
-			`</div>` +
-			`</div>` +
-			`<div class="uc-stats">` +
-			`<span title="${input} input tokens">${fmtTok(input)}</span>` +
-			`<span class="uc-ctx-pct${Number(ctxPct) > 80 ? " warn" : ""}">${ctxPct}%</span>` +
-			(cost > 0 ? `<span class="uc-cost">$${cost.toFixed(4)}</span>` : "") +
-			`</div>`;
-		rows.appendChild(row);
-	}
-
-	const totalInput = docs.reduce((s, d) => s + (d.usage?.inputTokens || 0), 0);
-	const totalOutput = docs.reduce((s, d) => s + (d.usage?.outputTokens || 0), 0);
-	const totalCost = docs.reduce((s, d) => s + (d.usage?.cost || 0), 0);
-	const tot = document.createElement("div");
-	tot.className = "uc-total";
-	tot.innerHTML =
-		`<span>${docs.length} LLM calls</span>` +
-		`<span>${fmtTok(totalInput)} total input</span>` +
-		`<span>${fmtTok(totalOutput)} total output</span>` +
-		`<span class="uc-cost">$${totalCost.toFixed(4)}</span>`;
-	rows.appendChild(tot);
-}
 
 function fmtTok(n) {
 	return n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
@@ -1031,7 +926,6 @@ function selectPlaybook() {
 	activeAgent = null;
 	document.querySelectorAll(".agent-tab").forEach(t => t.classList.remove("active"));
 	document.getElementById("tab-playbook").classList.add("active");
-	document.getElementById("sub-tabs-bar").style.display = "none";
 	const pane = resetPane();
 	if (!PLAYBOOK.length) {
 		pane.innerHTML = '<div class="empty-state">No playbook messages defined</div>';
