@@ -312,10 +312,37 @@ async function main(): Promise<void> {
 		ac.abort();
 	});
 
-	// PID file — enables cli:stop and external process management.
+	// PID file — enables cli:stop and guards against duplicate daemons.
 	const missionDir = join(workdir, "missions", missionId);
 	mkdirSync(missionDir, { recursive: true });
 	const pidFile = join(missionDir, "daemon.pid");
+
+	// Check for a running instance before writing our own PID.
+	try {
+		const existingPid = Number.parseInt(readFileSync(pidFile, "utf8").trim(), 10);
+		if (!Number.isNaN(existingPid) && existingPid !== process.pid) {
+			try {
+				// Signal 0 tests liveness without sending a real signal.
+				process.kill(existingPid, 0);
+				// If we reach here the process is alive — refuse to start.
+				console.error(
+					`[daemon] Already running as PID ${existingPid} (mission: ${missionId}).`,
+				);
+				console.error(
+					`[daemon] Run: MISSION_ID=${missionId} npm run cli:stop`,
+				);
+				process.exit(1);
+			} catch {
+				// ESRCH — process is gone; stale PID file, safe to continue.
+				console.warn(
+					`[daemon] Stale PID file (PID ${existingPid} not found) — starting fresh.`,
+				);
+			}
+		}
+	} catch {
+		// PID file missing or unreadable — first start, proceed normally.
+	}
+
 	writeFileSync(pidFile, String(process.pid));
 
 	// Usage accumulator + optional spending cap.
