@@ -33,6 +33,8 @@ export type MonitorEventType =
 	| "conversation-update"
 	| "shutdown"
 	| "cost-limit"
+	| "cost-pause"
+	| "cost-resumed"
 	| "status"
 	| "started";
 
@@ -68,6 +70,7 @@ export interface PlaybookEntry {
  *   POST /send-message              inject a mailbox message  { to, subject, body }
  *   POST /step                      advance one step (resolves waitForStep)
  *   POST /toggle-step               enable / disable step mode
+ *   POST /extend-budget             add USD to spending cap and resume { addUsd }
  *   POST /stop                      graceful daemon shutdown
  */
 export class MonitorServer {
@@ -86,6 +89,13 @@ export class MonitorServer {
 	private runningAgent: string | null = null;
 	private pendingAgents: string[] = [];
 
+	// Budget pause gate
+	private budgetPaused = false;
+	private budgetResolve: (() => void) | null = null;
+	private currentCapUsd: number | null;
+	/** Callback so daemon.ts can update its local maxCostUsd when the cap is raised. */
+	onBudgetExtended?: (newCapUsd: number) => void;
+
 	constructor(
 		private readonly db: Db,
 		private readonly missionId: string,
@@ -95,10 +105,11 @@ export class MonitorServer {
 		private readonly mailboxRepo: MailboxRepository,
 		private readonly agents: AgentInfo[],
 		private readonly onStop: () => void,
-		private readonly maxCostUsd: number | null,
+		maxCostUsd: number | null,
 		private readonly startedAt = new Date(),
 		private readonly playbook: PlaybookEntry[] = [],
 	) {
+		this.currentCapUsd = maxCostUsd;
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
 				console.error("[monitor] Request error:", e);
@@ -138,6 +149,35 @@ export class MonitorServer {
 		this.runningAgent = null;
 		this.pendingAgents = [];
 		this.push("agent-status", { running: null, pending: [] });
+	}
+
+	/**
+	 * Called by the daemon when the spending cap is reached.
+	 * Pushes `cost-pause` to all clients and sets the paused flag.
+	 * The orchestrator must call waitForBudget() between agent turns.
+	 */
+	notifyCostPause(spentUsd: number, capUsd: number): void {
+		this.budgetPaused = true;
+		console.warn(
+			`[monitor] Budget cap $${capUsd.toFixed(2)} reached ($${spentUsd.toFixed(4)} spent) — pausing`,
+		);
+		this.push("cost-pause", {
+			spentUsd,
+			capUsd,
+			budgetPaused: true,
+		});
+		this.push("status", this.statusPayload());
+	}
+
+	/**
+	 * Called by the orchestrator after each agent turn via the waitForBudget hook.
+	 * Resolves immediately when not paused; blocks until the operator extends the budget.
+	 */
+	waitForBudget(): Promise<void> {
+		if (!this.budgetPaused) return Promise.resolve();
+		return new Promise((resolve) => {
+			this.budgetResolve = resolve;
+		});
 	}
 
 	/**
@@ -426,6 +466,40 @@ export class MonitorServer {
 			return;
 		}
 
+		// ── POST /extend-budget
+		if (url === "/extend-budget" && req.method === "POST") {
+			const body = await readBody(req);
+			let addUsd = 5;
+			try {
+				const parsed = JSON.parse(body) as Record<string, unknown>;
+				if (typeof parsed.addUsd === "number" && parsed.addUsd > 0) {
+					addUsd = parsed.addUsd;
+				}
+			} catch {
+				// Malformed JSON — use default $5
+			}
+			const previousCap = this.currentCapUsd ?? 0;
+			this.currentCapUsd = previousCap + addUsd;
+			this.budgetPaused = false;
+			console.log(
+				`[monitor] Budget extended by $${addUsd.toFixed(2)} — new cap: $${this.currentCapUsd.toFixed(2)}`,
+			);
+			this.onBudgetExtended?.(this.currentCapUsd);
+			if (this.budgetResolve) {
+				this.budgetResolve();
+				this.budgetResolve = null;
+			}
+			this.push("cost-resumed", {
+				addUsd,
+				newCapUsd: this.currentCapUsd,
+				budgetPaused: false,
+			});
+			this.push("status", this.statusPayload());
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true, newCapUsd: this.currentCapUsd }));
+			return;
+		}
+
 		// ── POST /stop
 		if (url === "/stop" && req.method === "POST") {
 			res.writeHead(200, { "Content-Type": "application/json" });
@@ -606,7 +680,8 @@ export class MonitorServer {
 			running: this.runningAgent,
 			pending: this.pendingAgents,
 			missionTotalUsd: this.accumulator.totalCostUsd(),
-			maxCostUsd: this.maxCostUsd,
+			maxCostUsd: this.currentCapUsd,
+			budgetPaused: this.budgetPaused,
 			agents: this.accumulator.agents().map((a) => ({
 				agentId: a.agentId,
 				input: a.input,

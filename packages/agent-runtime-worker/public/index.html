@@ -25,6 +25,13 @@
   <span class="q-idle">Idle &#8212; waiting for messages</span>
 </div>
 
+<!-- Budget-pause banner: hidden by default, shown when spending cap is reached -->
+<div class="budget-banner hidden" id="budget-banner">
+  <span class="budget-banner-icon">&#9888;</span>
+  <span class="budget-banner-msg" id="budget-banner-msg">Spending cap reached — mission paused</span>
+  <button class="btn btn-extend-budget" id="extend-budget-btn" onclick="extendBudget()">&#43;$5 and continue</button>
+</div>
+
 <main>
   <!-- Left: message feed + usage -->
   <div class="left-col">

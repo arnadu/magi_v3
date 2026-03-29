@@ -208,9 +208,15 @@ function connectSSE() {
 			loadSessions();
 		}
 	});
-	es.addEventListener("cost-limit", () => {
-		document.getElementById("hcost").classList.add("danger");
-		addSysMsg("\u26a0 Cost limit reached \u2014 daemon aborting");
+	es.addEventListener("cost-pause", e => {
+		const d = JSON.parse(e.data);
+		showBudgetBanner(d.spentUsd, d.capUsd);
+	});
+	es.addEventListener("cost-resumed", e => {
+		const d = JSON.parse(e.data);
+		hideBudgetBanner();
+		maxCostUsd = d.newCapUsd ?? maxCostUsd;
+		addSysMsg(`\u2705 Budget extended +$${d.addUsd?.toFixed(2) ?? "5.00"} \u2014 new cap $${d.newCapUsd?.toFixed(2) ?? "?"}, mission resuming`);
 	});
 }
 
@@ -224,6 +230,8 @@ function applyStatus(s) {
 	runningAgent = s.running ?? null;
 	pendingAgents = s.pending ?? [];
 	if (s.started) setStarted(true);
+	if (s.budgetPaused) showBudgetBanner(s.missionTotalUsd, s.maxCostUsd);
+	else hideBudgetBanner();
 	renderStepBtn();
 	renderQueue();
 	renderAgentTabIndicators();
@@ -247,6 +255,43 @@ function updateCostDisplay(total, max) {
 	el.className = "hcost";
 	if (max && total > max * 0.8) el.classList.add("warn");
 	if (max && total >= max) el.classList.add("danger");
+}
+
+// ── Budget pause banner ────────────────────────────────────────────────────
+function showBudgetBanner(spentUsd, capUsd) {
+	const banner = document.getElementById("budget-banner");
+	const msg = document.getElementById("budget-banner-msg");
+	msg.textContent = `Spending cap of $${capUsd.toFixed(2)} reached ($${spentUsd.toFixed(4)} spent) — mission paused`;
+	banner.classList.remove("hidden");
+	document.getElementById("hcost").classList.add("danger");
+	addSysMsg(`\u26a0 Spending cap $${capUsd.toFixed(2)} reached — mission paused. Click "+$5 and continue" to resume.`);
+}
+
+function hideBudgetBanner() {
+	document.getElementById("budget-banner").classList.add("hidden");
+	document.getElementById("hcost").classList.remove("danger");
+	const btn = document.getElementById("extend-budget-btn");
+	btn.disabled = false;
+	btn.textContent = "+$5 and continue";
+}
+
+async function extendBudget() {
+	const btn = document.getElementById("extend-budget-btn");
+	btn.disabled = true;
+	btn.textContent = "Extending\u2026";
+	try {
+		const r = await fetch("/extend-budget", { method: "POST" });
+		if (!r.ok) {
+			btn.disabled = false;
+			btn.textContent = "+$5 and continue";
+			addSysMsg(`\u274c Failed to extend budget: ${r.statusText}`);
+		}
+		// Banner hidden via cost-resumed SSE event
+	} catch (err) {
+		btn.disabled = false;
+		btn.textContent = "+$5 and continue";
+		addSysMsg(`\u274c Error: ${err.message}`);
+	}
 }
 
 function updateContextBar(agentId, tokens) {

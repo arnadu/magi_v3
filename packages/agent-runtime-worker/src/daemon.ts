@@ -347,7 +347,7 @@ async function main(): Promise<void> {
 
 	// Usage accumulator + optional spending cap.
 	const usageAccumulator = new UsageAccumulator();
-	const maxCostUsd = (() => {
+	let maxCostUsd = (() => {
 		if (!process.env.MAX_COST_USD) return null;
 		const v = Number.parseFloat(process.env.MAX_COST_USD);
 		if (!Number.isFinite(v) || v <= 0) {
@@ -493,6 +493,12 @@ async function main(): Promise<void> {
 		`[daemon] Dashboard: http://localhost:${monitorPort} — click ▶ Start to begin`,
 	);
 
+	// Keep daemon's local maxCostUsd in sync when the operator extends the budget.
+	monitor.onBudgetExtended = (newCapUsd) => {
+		maxCostUsd = newCapUsd;
+		console.log(`[daemon] Spending cap updated to $${newCapUsd.toFixed(2)}`);
+	};
+
 	// Block until the operator clicks Start in the dashboard.
 	await monitor.waitForStart();
 	console.log("[daemon] Mission started — entering orchestration loop");
@@ -510,6 +516,7 @@ async function main(): Promise<void> {
 				workspaceManager,
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
+				waitForBudget: () => monitor.waitForBudget(),
 				onAgentStart: (agentId, pending) =>
 					monitor.notifyAgentStart(agentId, pending),
 				onAgentDone: (agentId) => monitor.notifyAgentDone(agentId),
@@ -535,14 +542,10 @@ async function main(): Promise<void> {
 							maxCostUsd !== null &&
 							usageAccumulator.totalCostUsd() >= maxCostUsd
 						) {
-							console.error(
-								`[daemon] Spending cap $${maxCostUsd.toFixed(2)} reached — aborting`,
+							monitor.notifyCostPause(
+								usageAccumulator.totalCostUsd(),
+								maxCostUsd,
 							);
-							monitor.push("cost-limit", {
-								limitUsd: maxCostUsd,
-								totalUsd: usageAccumulator.totalCostUsd(),
-							});
-							ac.abort();
 						}
 					}
 				},

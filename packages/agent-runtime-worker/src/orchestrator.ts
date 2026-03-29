@@ -72,6 +72,12 @@ export interface OrchestratorConfig {
 	 * This hook takes priority over the TTY readline step mode.
 	 */
 	waitForStep?: () => Promise<void>;
+	/**
+	 * When provided, called after every agent turn. Resolves immediately when
+	 * the mission is within budget; blocks until the operator extends the budget
+	 * via the monitor dashboard (POST /extend-budget) when the cap is reached.
+	 */
+	waitForBudget?: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +309,13 @@ export async function runOrchestrationLoop(
 				);
 
 				config.onAgentDone?.(agentId);
+
+				// Budget gate — blocks between agent turns when spending cap is reached.
+				// Resolves immediately when within budget; suspends until operator extends.
+				if (config.waitForBudget) {
+					await config.waitForBudget();
+					if (signal?.aborted) break;
+				}
 			}
 		}
 
