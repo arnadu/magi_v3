@@ -108,18 +108,34 @@ export function createMongoConversationRepository(
 	const col = db.collection<ConversationDoc>("conversationMessages");
 
 	// Unique compound index — enforces exactly one message per position.
-	// Idempotent; safe to call on every startup.
-	col
-		.createIndex(
-			{ agentId: 1, missionId: 1, turnNumber: 1, seqInTurn: 1 },
-			{ unique: true },
-		)
-		.catch((e: unknown) =>
-			console.warn(
-				"[conversation-repository] Failed to create index:",
-				(e as Error).message,
-			),
-		);
+	// On first run after the Sprint 9→11 upgrade the index exists without
+	// unique:true (error code 85 IndexOptionsConflict). Drop it and recreate.
+	(async () => {
+		const KEY = { agentId: 1, missionId: 1, turnNumber: 1, seqInTurn: 1 };
+		const NAME = "agentId_1_missionId_1_turnNumber_1_seqInTurn_1";
+		try {
+			await col.createIndex(KEY, { unique: true });
+		} catch (e: unknown) {
+			const code = (e as { code?: number }).code;
+			if (code === 85) {
+				// Existing index lacks unique:true — drop and recreate.
+				try {
+					await col.dropIndex(NAME);
+					await col.createIndex(KEY, { unique: true });
+				} catch (e2: unknown) {
+					console.warn(
+						"[conversation-repository] Failed to recreate unique index:",
+						(e2 as Error).message,
+					);
+				}
+			} else {
+				console.warn(
+					"[conversation-repository] Failed to create index:",
+					(e as Error).message,
+				);
+			}
+		}
+	})();
 
 	return {
 		async load(agentId, missionId) {
