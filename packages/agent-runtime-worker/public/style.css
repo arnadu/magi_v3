@@ -840,10 +840,11 @@ main {
 	flex-wrap: wrap;
 }
 .turn-cost { color: var(--accent); }
-.turn-time {
+.turn-seq {
 	font-size: 9px;
 	color: var(--muted);
-	margin-top: 2px;
+	margin-top: 1px;
+	opacity: 0.6;
 }
 .turns-content {
 	display: flex;

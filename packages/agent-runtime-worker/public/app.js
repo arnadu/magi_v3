@@ -567,17 +567,18 @@ function renderTurnList(turns, container) {
 		div.className = `turn-item${t.allReflection ? " turn-reflection" : ""}`;
 		div.dataset.turn = t.turnNumber;
 		div.onclick = () => selectTurn(t.turnNumber);
-		const reflBadge = t.hasReflection ? '<span class="turn-reflect-badge" title="reflection ran">\u21ba</span>' : "";
-		const tokStr = t.peakInput > 0 ? `${Math.round(t.peakInput / 1000)}k` : "";
+		const reflBadge = t.hasReflection ? '<span class="turn-reflect-badge" title="Reflection ran this session">\u21ba</span>' : "";
+		const tokStr = t.peakInput > 0 ? `${Math.round(t.peakInput / 1000)}k ctx` : "";
 		const costStr = t.costUsd > 0 ? `$${t.costUsd.toFixed(3)}` : "";
+		const timeLabel = t.timestamp ? fmtTime(t.timestamp) : `Session ${t.turnNumber}`;
 		div.innerHTML =
-			`<div class="turn-num">T${t.turnNumber}${reflBadge}</div>` +
+			`<div class="turn-num">${esc(timeLabel)}${reflBadge}</div>` +
 			`<div class="turn-stats">` +
-			(t.llmCalls > 0 ? `<span>${t.llmCalls} LLM</span>` : "") +
+			(t.llmCalls > 0 ? `<span>${t.llmCalls} LLM calls</span>` : "") +
 			(tokStr ? `<span>${tokStr}</span>` : "") +
 			(costStr ? `<span class="turn-cost">${costStr}</span>` : "") +
 			`</div>` +
-			(t.timestamp ? `<div class="turn-time">${fmtTime(t.timestamp)}</div>` : "");
+			(!t.timestamp ? "" : `<div class="turn-seq">session ${t.turnNumber}</div>`);
 		container.appendChild(div);
 	}
 }
@@ -806,7 +807,7 @@ function appendToSessionsLive(doc) {
 		div.className = "turn-item";
 		div.dataset.turn = n;
 		div.onclick = () => selectTurn(n);
-		div.innerHTML = `<div class="turn-num">T${n}</div><div class="turn-stats"><span style="color:var(--green)">live</span></div>`;
+		div.innerHTML = `<div class="turn-num">Session ${n} <span style="color:var(--green);font-size:9px">● live</span></div>`;
 		panel.appendChild(div);
 	}
 	// If this turn is selected (or nothing selected yet), append to content
@@ -870,7 +871,7 @@ function renderUsageChart(docs) {
 		const row = document.createElement("div");
 		row.className = `uc-row${d.isReflection ? " uc-reflection" : ""}`;
 		row.innerHTML =
-			`<div class="uc-label">T${d.turnNumber ?? 0}${d.isReflection ? "\u21ba" : ""}</div>` +
+			`<div class="uc-label" title="Session ${d.turnNumber ?? 0}">S${d.turnNumber ?? 0}${d.isReflection ? "\u21ba" : ""}</div>` +
 			`<div class="uc-bar-wrap">` +
 			`<div class="uc-bar">` +
 			`<div class="uc-seg fresh" style="width:${freshPct}%" title="fresh input: ${fmtTok(freshInput)}"></div>` +
