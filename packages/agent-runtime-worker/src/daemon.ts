@@ -49,7 +49,6 @@ import { createMongoConversationRepository } from "./conversation-repository.js"
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { createMongoMentalMapRepository, initMentalMap } from "./mental-map.js";
 import { anthropicModel, CLAUDE_SONNET } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer, type PlaybookEntry } from "./monitor-server.js";
@@ -281,7 +280,6 @@ async function main(): Promise<void> {
 	const { client, db } = await connectMongo(mongoUri);
 
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
-	const mentalMapRepo = createMongoMentalMapRepository(db);
 	const conversationRepo = createMongoConversationRepository(db);
 	const llmCallLog = createMongoLlmCallLogRepository(db);
 
@@ -480,14 +478,6 @@ async function main(): Promise<void> {
 		}
 	}
 
-	// Seed initial mental maps so the dashboard shows them before Start is clicked.
-	for (const agent of teamConfig.agents) {
-		const existing = await mentalMapRepo.load(agent.id);
-		if (!existing) {
-			await mentalMapRepo.save(agent.id, initMentalMap(agent));
-		}
-	}
-
 	console.log(`[daemon] Mission: ${teamConfig.mission.name} (${missionId})`);
 	console.log(
 		`[daemon] Dashboard: http://localhost:${monitorPort} — click ▶ Start to begin`,
@@ -508,7 +498,6 @@ async function main(): Promise<void> {
 			{
 				teamConfig,
 				mailboxRepo,
-				mentalMapRepo,
 				conversationRepo,
 				llmCallLog,
 				model,
@@ -521,6 +510,8 @@ async function main(): Promise<void> {
 					monitor.notifyAgentStart(agentId, pending),
 				onAgentDone: (agentId) => monitor.notifyAgentDone(agentId),
 				onIdle: () => monitor.notifyIdle(),
+				onMentalMapUpdate: (agentId, html) =>
+					monitor.notifyMentalMapUpdate(agentId, html),
 				onAgentMessage: (agentId, msg) => {
 					logMessage(msg, agentId);
 					if (msg.role === "assistant") {

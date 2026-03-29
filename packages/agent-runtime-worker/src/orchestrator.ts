@@ -5,7 +5,6 @@ import { runAgent } from "./agent-runner.js";
 import type { ConversationRepository } from "./conversation-repository.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
-import type { MentalMapRepository } from "./mental-map.js";
 import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
 import type { WorkspaceManager } from "./workspace-manager.js";
@@ -17,7 +16,6 @@ import type { WorkspaceManager } from "./workspace-manager.js";
 export interface OrchestratorConfig {
 	teamConfig: TeamConfig;
 	mailboxRepo: MailboxRepository;
-	mentalMapRepo: MentalMapRepository;
 	conversationRepo: ConversationRepository;
 	/** Optional LLM call audit log — written for every LLM call across all agents. */
 	llmCallLog?: LlmCallLogRepository;
@@ -56,6 +54,8 @@ export interface OrchestratorConfig {
 	onAgentStart?: (agentId: string, pending: string[]) => void;
 	/** Called immediately after an agent's loop returns. */
 	onAgentDone?: (agentId: string) => void;
+	/** Called when an agent's mental map is updated (for SSE push to dashboard). */
+	onMentalMapUpdate?: (agentId: string, html: string) => void;
 	/** Called when the cycle is empty and the loop is about to sleep on waitForMail. */
 	onIdle?: () => void;
 	/**
@@ -101,7 +101,6 @@ export async function runOrchestrationLoop(
 	const {
 		teamConfig,
 		mailboxRepo,
-		mentalMapRepo,
 		conversationRepo,
 		llmCallLog,
 		model,
@@ -161,9 +160,9 @@ export async function runOrchestrationLoop(
 		model,
 		teamConfig,
 		mailboxRepo,
-		mentalMapRepo,
 		conversationRepo,
 		llmCallLog,
+		onMentalMapUpdate: config.onMentalMapUpdate,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();
 			console.log(`\n[→ USER from ${msg.from}] ${msg.subject} (${timestamp})`);

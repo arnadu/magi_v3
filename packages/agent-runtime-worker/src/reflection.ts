@@ -16,7 +16,6 @@ import type {
 	SummaryMessage,
 } from "./conversation-repository.js";
 import { runInnerLoop } from "./loop.js";
-import type { MentalMapRepository } from "./mental-map.js";
 import { createMentalMapTool } from "./mental-map.js";
 
 // ---------------------------------------------------------------------------
@@ -146,7 +145,10 @@ Output the summary as plain text. Do not wrap it in any tags.`;
 
 export interface ReflectionContext {
 	model: import("@mariozechner/pi-ai").Model<string>;
-	mentalMapRepo: MentalMapRepository;
+	/** Returns the current mental map HTML (or null if not yet set). */
+	getMentalMap: () => string | null;
+	/** Called with the updated HTML after a successful UpdateMentalMap patch. */
+	setMentalMap: (html: string) => void;
 	conversationRepo: ConversationRepository;
 	/** The turn number of the session being reflected on (used to compute the compaction cutpoint). */
 	turnNumber: number;
@@ -201,7 +203,7 @@ export async function runReflection(
 
 	// 1. Build the reflection prompt: prior summaries + Mental Map + transcript.
 	const transcript = serializeForReflection(sessionMessages);
-	const currentHtml = await ctx.mentalMapRepo.load(agentId);
+	const currentHtml = ctx.getMentalMap();
 	const priorSummaryBlock =
 		ctx.previousSummaries.length > 0
 			? `PRIOR SESSION SUMMARIES (oldest first — extend, do not repeat):\n${"─".repeat(60)}\n${ctx.previousSummaries.join(`\n${"─".repeat(60)}\n`)}\n\n`
@@ -224,10 +226,11 @@ export async function runReflection(
 	//    compact cutpoint). UpdateMentalMap uses replace semantics so the re-run
 	//    is idempotent from the Mental Map's perspective.
 	const reflectionTurnNumber = ctx.turnNumber + 1;
-	const mentalMapTool = createMentalMapTool(ctx.mentalMapRepo, agentId);
+	const mentalMapTool = createMentalMapTool(ctx.getMentalMap, ctx.setMentalMap);
+	const reflectionSystemPrompt = buildReflectionSystemPrompt();
 	const { messages: reflectionMessages } = await runInnerLoop({
 		model: ctx.model,
-		systemPrompt: buildReflectionSystemPrompt(),
+		getSystemPrompt: () => reflectionSystemPrompt,
 		task: userPrompt,
 		tools: [mentalMapTool],
 		onMessage: async (msg) => {

@@ -9,7 +9,6 @@ import { computeCost, truncateToolBodies } from "./llm-call-log.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
-import type { MentalMapRepository } from "./mental-map.js";
 import { createMentalMapTool, initMentalMap } from "./mental-map.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
@@ -44,7 +43,6 @@ export interface AgentRunContext {
 	model: Model<string>;
 	teamConfig: TeamConfig;
 	mailboxRepo: MailboxRepository;
-	mentalMapRepo: MentalMapRepository;
 	conversationRepo: ConversationRepository;
 	/** Optional LLM call audit log — written for every LLM call including reflection. */
 	llmCallLog?: LlmCallLogRepository;
@@ -54,6 +52,8 @@ export interface AgentRunContext {
 	onUserMessage?: (msg: MailboxMessage) => void;
 	/** Called for every message produced by the inner loop (for logging/streaming). */
 	onMessage?: (msg: Message, allMessages: Message[]) => Promise<void>;
+	/** Called when UpdateMentalMap changes the agent's mental map. Used for SSE push to dashboard. */
+	onMentalMapUpdate?: (agentId: string, html: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +156,12 @@ export async function runAgent(
 			  }
 			: undefined;
 
+	// Load mental map from the most recent AssistantMessage snapshot in conversationMessages.
+	// Falls back to initMentalMap if this is the first wakeup.
+	let currentMentalMapHtml: string =
+		(await ctx.conversationRepo.loadMostRecentMentalMap(agentId, missionId))
+		?? initMentalMap(agent);
+
 	if (sessionMessages.length > 0 && peakInputTokens >= REFLECTION_CTX_THRESHOLD) {
 		const lastTurnNumber = nonSummaryHistory.reduce(
 			(max, sm) => Math.max(max, sm.turnNumber),
@@ -166,7 +172,11 @@ export async function runAgent(
 			.map((sm) => (sm.message as SummaryMessage).content);
 		await runReflection(agentId, missionId, sessionMessages, {
 			model: ctx.model,
-			mentalMapRepo: ctx.mentalMapRepo,
+			getMentalMap: () => currentMentalMapHtml,
+			setMentalMap: (html) => {
+				currentMentalMapHtml = html;
+				ctx.onMentalMapUpdate?.(agentId, html);
+			},
 			conversationRepo: ctx.conversationRepo,
 			turnNumber: lastTurnNumber,
 			previousSummaries,
@@ -183,19 +193,14 @@ export async function runAgent(
 		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
 	const previousMessages = convertToLlm(history);
 
-	// Initialise mental map if this agent has never run before.
-	let mentalMapHtml = await ctx.mentalMapRepo.load(agentId);
-	if (!mentalMapHtml) {
-		mentalMapHtml = initMentalMap(agent);
-		await ctx.mentalMapRepo.save(agentId, mentalMapHtml);
-	}
+	// Track which LLM call within this session we're on.
+	// -1 = task user message (before first LLM call); increments to 0, 1, 2… on each AssistantMessage.
+	let currentCallSeq = -1;
 
-	const systemPrompt = buildSystemPrompt(
-		agent,
-		mentalMapHtml,
-		sharedDir,
-		workdir,
-	);
+	// Getter so the inner loop rebuilds the system prompt each iteration (picks up UpdateMentalMap changes).
+	const getSystemPrompt = () =>
+		buildSystemPrompt(agent, currentMentalMapHtml, sharedDir, workdir);
+
 	const task = formatMessages(messages);
 
 	// Debug: print context passed to the LLM at session start.
@@ -206,7 +211,7 @@ export async function runAgent(
 		console.log(`[DEBUG] Agent: ${agentId}  Turn: ${nextTurnNumber}`);
 		console.log(`${sep}`);
 		console.log("[DEBUG] SYSTEM PROMPT:\n");
-		console.log(systemPrompt);
+		console.log(getSystemPrompt());
 		if (previousMessages.length > 0) {
 			console.log(`\n${"─".repeat(72)}`);
 			console.log("[DEBUG] PREVIOUS MESSAGES (passed as prior context):\n");
@@ -237,15 +242,30 @@ export async function runAgent(
 		linuxUser,
 	};
 
+	const appendSubLoop = async (toolUseId: string, msg: Message) => {
+		await ctx.conversationRepo.append(agentId, missionId, [{
+			turnNumber: nextTurnNumber,
+			callSeq: currentCallSeq,
+			parentToolUseId: toolUseId,
+			message: msg,
+		}]);
+	};
+
 	const tools = [
 		...createFileTools(workdir, acl),
 		...createMailboxTools(ctx.mailboxRepo, ctx.teamConfig, agentId, {
 			onUserMessage: ctx.onUserMessage,
 		}),
-		createMentalMapTool(ctx.mentalMapRepo, agentId),
+		createMentalMapTool(
+			() => currentMentalMapHtml,
+			(html) => {
+				currentMentalMapHtml = html;
+				ctx.onMentalMapUpdate?.(agentId, html);
+			},
+		),
 		createFetchUrlTool(ctx.model, sharedDir),
 		createInspectImageTool(workdir, ctx.model, [sharedDir]),
-		createResearchTool(ctx.model, sharedDir, researchAcl),
+		createResearchTool(ctx.model, sharedDir, researchAcl, { onSubLoopMessage: appendSubLoop }),
 		...(searchWebTool ? [searchWebTool] : []),
 		...(browseWebHandle ? [browseWebHandle.tool] : []),
 	];
@@ -253,7 +273,7 @@ export async function runAgent(
 	try {
 		await runInnerLoop({
 			model: ctx.model,
-			systemPrompt,
+			getSystemPrompt,
 			task,
 			tools,
 			signal,
@@ -262,9 +282,31 @@ export async function runAgent(
 			// does not lose completed work. onMessage does not fire for previousMessages
 			// (already persisted), so there is no risk of duplicates.
 			onMessage: async (msg, allMessages) => {
-				await ctx.conversationRepo.append(agentId, missionId, [
-					{ turnNumber: nextTurnNumber, message: msg },
-				]);
+				if (msg.role === "assistant") {
+					// Increment callSeq first, then capture the current mental map HTML
+					// (which is what was in the system prompt for this LLM call — UpdateMentalMap
+					// runs after AssistantMessage is pushed, so currentMentalMapHtml is the
+					// pre-tool-execution state).
+					currentCallSeq++;
+					const snapshotHtml = currentMentalMapHtml;
+					await ctx.conversationRepo.append(agentId, missionId, [
+						{
+							turnNumber: nextTurnNumber,
+							callSeq: currentCallSeq,
+							mentalMapHtml: snapshotHtml,
+							message: msg,
+						},
+					]);
+				} else {
+					// user task message (callSeq -1) or toolResult (callSeq = current)
+					await ctx.conversationRepo.append(agentId, missionId, [
+						{
+							turnNumber: nextTurnNumber,
+							callSeq: currentCallSeq,
+							message: msg,
+						},
+					]);
+				}
 				await ctx.onMessage?.(msg, allMessages);
 			},
 			onLlmCall: makeOnLlmCall(nextTurnNumber, false),

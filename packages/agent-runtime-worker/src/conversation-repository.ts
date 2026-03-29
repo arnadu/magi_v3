@@ -31,6 +31,22 @@ export interface StoredMessage {
 	 * but retained in MongoDB for debugging and future UI display.
 	 */
 	isReflection?: boolean;
+	/**
+	 * Which LLM call (0-based) within the session produced/preceded this message.
+	 * -1 for the task user message (before any LLM call).
+	 * undefined for reflection messages.
+	 */
+	callSeq?: number;
+	/**
+	 * Snapshot of the agent's mental map HTML at the time of this LLM call.
+	 * Only set on AssistantMessage documents.
+	 */
+	mentalMapHtml?: string;
+	/**
+	 * Set on sub-loop messages (e.g. Research tool inner loop).
+	 * Holds the tool_use block id of the parent tool call that spawned this sub-loop.
+	 */
+	parentToolUseId?: string;
 }
 
 export interface ConversationRepository {
@@ -48,6 +64,11 @@ export interface ConversationRepository {
 	 * auditability and future RAG-based memory retrieval.
 	 */
 	compact(agentId: string, missionId: string, keepFrom: number): Promise<void>;
+	/**
+	 * Return the HTML of the most recently stored mental map for this agent,
+	 * or null if none has been saved yet.
+	 */
+	loadMostRecentMentalMap(agentId: string, missionId: string): Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +94,12 @@ interface ConversationDoc {
 	 * but retained in MongoDB for debugging and future UI display.
 	 */
 	isReflection?: boolean;
+	/** Which LLM call (0-based) within the session this message belongs to. */
+	callSeq?: number;
+	/** Mental map HTML snapshot at the time of this LLM call (AssistantMessages only). */
+	mentalMapHtml?: string;
+	/** Parent tool_use block id for sub-loop messages. */
+	parentToolUseId?: string;
 }
 
 export function createMongoConversationRepository(
@@ -108,6 +135,9 @@ export function createMongoConversationRepository(
 			return docs.map((d) => ({
 				turnNumber: d.turnNumber,
 				message: d.message,
+				...(d.callSeq !== undefined ? { callSeq: d.callSeq } : {}),
+				...(d.mentalMapHtml !== undefined ? { mentalMapHtml: d.mentalMapHtml } : {}),
+				...(d.parentToolUseId !== undefined ? { parentToolUseId: d.parentToolUseId } : {}),
 			}));
 		},
 
@@ -134,6 +164,9 @@ export function createMongoConversationRepository(
 					message: sm.message,
 					savedAt: new Date(),
 					...(sm.isReflection ? { isReflection: true } : {}),
+					...(sm.callSeq !== undefined ? { callSeq: sm.callSeq } : {}),
+					...(sm.mentalMapHtml !== undefined ? { mentalMapHtml: sm.mentalMapHtml } : {}),
+					...(sm.parentToolUseId !== undefined ? { parentToolUseId: sm.parentToolUseId } : {}),
 				});
 			}
 		},
@@ -143,6 +176,14 @@ export function createMongoConversationRepository(
 				{ agentId, missionId, turnNumber: { $lt: keepFrom } },
 				{ $set: { compacted: true } },
 			);
+		},
+
+		async loadMostRecentMentalMap(agentId, missionId) {
+			const doc = await col.findOne(
+				{ agentId, missionId, mentalMapHtml: { $exists: true } },
+				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+			);
+			return (doc?.mentalMapHtml) ?? null;
 		},
 	};
 }

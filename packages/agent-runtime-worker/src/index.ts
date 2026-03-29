@@ -7,10 +7,8 @@ export {
 	createMailboxTools,
 	createMongoMailboxRepository,
 } from "./mailbox.js";
-export type { MentalMapRepository } from "./mental-map.js";
 export {
 	createMentalMapTool,
-	createMongoMentalMapRepository,
 	initMentalMap,
 	patchMentalMap,
 } from "./mental-map.js";

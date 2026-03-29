@@ -21,7 +21,12 @@ export type CompleteFn = (
 
 export interface InnerLoopConfig {
 	model: Model<string>;
-	systemPrompt: string;
+	/**
+	 * Returns the system prompt for the current LLM call. Called once per
+	 * loop iteration so changes from tool calls (e.g. UpdateMentalMap) are
+	 * picked up before the next LLM call.
+	 */
+	getSystemPrompt: () => string;
 	task: string;
 	tools: MagiTool[];
 	signal?: AbortSignal;
@@ -92,7 +97,6 @@ export async function runInnerLoop(
 ): Promise<LoopResult> {
 	const {
 		model,
-		systemPrompt,
 		task,
 		tools,
 		signal,
@@ -122,6 +126,8 @@ export async function runInnerLoop(
 
 	while (true) {
 		turnCount++;
+
+		const systemPrompt = config.getSystemPrompt();
 
 		const context: Context = {
 			systemPrompt,

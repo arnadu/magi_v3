@@ -35,7 +35,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
-import { createMongoMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
@@ -127,7 +126,6 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 			};
 
 			const mailboxRepo = createMongoMailboxRepository(db, missionId);
-			const mentalMapRepo = createMongoMentalMapRepository(db);
 			const conversationRepo = createMongoConversationRepository(db);
 
 			const workspaceManager = new WorkspaceManager({
@@ -158,7 +156,6 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 				{
 					teamConfig,
 					mailboxRepo,
-					mentalMapRepo,
 					conversationRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
@@ -214,9 +211,6 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 		} finally {
 			await db.collection("mailbox").deleteMany({ missionId });
 			await db.collection("conversationMessages").deleteMany({ missionId });
-			await db
-				.collection("mental_maps")
-				.deleteMany({ agentId: { $in: ["lead", "analyst"] } });
 			await client.close();
 			rmSync(tmpDir, { recursive: true });
 		}

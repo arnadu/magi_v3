@@ -45,7 +45,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
-import { createMongoMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
@@ -179,7 +178,6 @@ describe("integration: agent skills — skill creation and discovery", () => {
 			};
 
 			const mailboxRepo = createMongoMailboxRepository(db, missionId);
-			const mentalMapRepo = createMongoMentalMapRepository(db);
 			const conversationRepo = createMongoConversationRepository(db);
 
 			const workspaceManager = new NoTeardownWorkspaceManager({
@@ -211,7 +209,6 @@ describe("integration: agent skills — skill creation and discovery", () => {
 				{
 					teamConfig,
 					mailboxRepo,
-					mentalMapRepo,
 					conversationRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
@@ -286,9 +283,6 @@ describe("integration: agent skills — skill creation and discovery", () => {
 		} finally {
 			await db.collection("mailbox").deleteMany({ missionId });
 			await db.collection("conversationMessages").deleteMany({ missionId });
-			await db
-				.collection("mental_maps")
-				.deleteMany({ agentId: { $in: ["lead", "worker"] } });
 			await client.close();
 			if (!KEEP_WORKSPACE) {
 				rmSync(tmpDir, { recursive: true });

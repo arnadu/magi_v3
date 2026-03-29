@@ -28,7 +28,6 @@ import { describe, expect, it } from "vitest";
 import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
-import { createMongoMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
@@ -106,7 +105,6 @@ describe("integration: multi-agent word count + conversation persistence", () =>
 			};
 
 			const mailboxRepo = createMongoMailboxRepository(db, missionId);
-			const mentalMapRepo = createMongoMentalMapRepository(db);
 			const conversationRepo = createMongoConversationRepository(db);
 
 			const workspaceManager = new SeedingWorkspaceManager(
@@ -134,7 +132,6 @@ describe("integration: multi-agent word count + conversation persistence", () =>
 				{
 					teamConfig,
 					mailboxRepo,
-					mentalMapRepo,
 					conversationRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
@@ -203,9 +200,6 @@ describe("integration: multi-agent word count + conversation persistence", () =>
 			// Clean up MongoDB state for this test run.
 			await db.collection("mailbox").deleteMany({ missionId });
 			await db.collection("conversationMessages").deleteMany({ missionId });
-			await db
-				.collection("mental_maps")
-				.deleteMany({ agentId: { $in: ["lead", "worker"] } });
 			await client.close();
 			rmSync(tmpDir, { recursive: true });
 		}

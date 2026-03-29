@@ -210,11 +210,13 @@ function extractFinding(messages: import("@mariozechner/pi-ai").Message[]): stri
  * @param sharedDir - Mission shared directory; research index and findings are
  *                    written here under research/.
  * @param acl       - ACL policy for Bash access (sharedDir only — no workdir).
+ * @param opts      - Optional callbacks for sub-loop message observation.
  */
 export function createResearchTool(
 	model: Model<string>,
 	sharedDir: string,
 	acl: AclPolicy,
+	opts?: { onSubLoopMessage?: (toolUseId: string, msg: import("@mariozechner/pi-ai").Message) => Promise<void> },
 ): MagiTool {
 	// Build the sub-loop tool set once (stateless tools; safe to reuse).
 	const searchWebTool = tryCreateSearchWebTool();
@@ -257,7 +259,7 @@ export function createResearchTool(
 			),
 		}),
 
-		async execute(_id, rawArgs, signal) {
+		async execute(id, rawArgs, signal) {
 			const args = rawArgs as { question: string; max_age_hours?: number };
 			const question = args.question?.trim();
 			if (!question) return toolErr("Research: question is required");
@@ -291,13 +293,14 @@ export function createResearchTool(
 			try {
 				loopResult = await runInnerLoop({
 					model,
-					systemPrompt,
+					getSystemPrompt: () => systemPrompt,
 					task: question,
 					tools: subLoopTools,
 					signal,
 					maxTurns: RESEARCH_MAX_TURNS,
-					// No onMessage — sub-loop messages are not persisted to conversationMessages.
-					// Findings are durable via sharedDir/research/.
+					onMessage: opts?.onSubLoopMessage
+						? async (msg) => { await opts.onSubLoopMessage!(id as string, msg); }
+						: undefined,
 				});
 			} catch (e) {
 				return toolErr(

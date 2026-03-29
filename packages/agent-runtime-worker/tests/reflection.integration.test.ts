@@ -44,7 +44,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
-import { createMongoMentalMapRepository } from "../src/mental-map.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
@@ -139,7 +138,6 @@ describe("integration: reflection and context compaction", () => {
 			};
 
 			const mailboxRepo = createMongoMailboxRepository(db, missionId);
-			const mentalMapRepo = createMongoMentalMapRepository(db);
 			const conversationRepo = createMongoConversationRepository(db);
 
 			const workspaceManager = new WorkspaceManager({
@@ -172,7 +170,6 @@ describe("integration: reflection and context compaction", () => {
 				{
 					teamConfig,
 					mailboxRepo,
-					mentalMapRepo,
 					conversationRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
@@ -211,7 +208,6 @@ describe("integration: reflection and context compaction", () => {
 				{
 					teamConfig,
 					mailboxRepo,
-					mentalMapRepo,
 					conversationRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
@@ -267,7 +263,14 @@ describe("integration: reflection and context compaction", () => {
 			).toBe(true);
 
 			// 3. Mental Map finding-list must have been patched by reflection.
-			const mentalMapHtml = await mentalMapRepo.load("researcher");
+			const { client: c2, db: db2 } = await connectMongo(MONGODB_URI);
+			const mmDoc = await db2.collection("conversationMessages").findOne(
+				{ agentId: "researcher", missionId, mentalMapHtml: { $exists: true } },
+				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+			);
+			// biome-ignore lint/suspicious/noExplicitAny: dynamic doc
+			const mentalMapHtml = (mmDoc as any)?.mentalMapHtml ?? null;
+			await c2.close();
 			expect(mentalMapHtml).toBeTruthy();
 			const findingListMatch = mentalMapHtml?.match(
 				/<ul id="finding-list">([\s\S]*?)<\/ul>/,
@@ -300,7 +303,6 @@ describe("integration: reflection and context compaction", () => {
 		} finally {
 			await db.collection("mailbox").deleteMany({ missionId });
 			await db.collection("conversationMessages").deleteMany({ missionId });
-			await db.collection("mental_maps").deleteMany({ agentId: "researcher" });
 			await client.close();
 			rmSync(tmpDir, { recursive: true });
 		}

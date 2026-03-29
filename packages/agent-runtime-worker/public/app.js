@@ -510,366 +510,311 @@ function renderMentalMap(html) {
 	pane.appendChild(div);
 }
 
-// ── Sessions tab ───────────────────────────────────────────────────────────
+// ── Sessions tree tab ─────────────────────────────────────────────────────
+
+// State for expanded sessions
+const expandedSessions = new Set();
+
 async function loadSessions() {
-	const pane = document.getElementById("detail-pane");
-	pane.style.padding = "0";
-	pane.style.overflow = "hidden";
-	pane.style.display = "grid";
-	pane.style.gridTemplateColumns = "190px 1fr";
-	pane.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Loading\u2026</div>';
+	const pane = resetPane();
+	pane.innerHTML = '<div class="empty-state">Loading…</div>';
 
-	const [convRes, usageRes] = await Promise.all([
-		fetch(`/agents/${activeAgent}/conversation`),
-		fetch(`/agents/${activeAgent}/usage`),
-	]);
-	sessionConvDocs = await convRes.json();
-	sessionUsageDocs = await usageRes.json();
-	renderSessionsLayout();
+	const r = await fetch(`/agents/${activeAgent}/sessions`);
+	const sessions = await r.json();
+	sessionUsageDocs = sessions;
+
+	renderSessionTree(sessions, pane);
 }
 
-function renderSessionsLayout() {
-	const pane = document.getElementById("detail-pane");
+function renderSessionTree(sessions, pane) {
 	pane.innerHTML = "";
-
-	const turnsPanel = document.createElement("div");
-	turnsPanel.className = "turns-panel";
-	turnsPanel.id = "turns-panel";
-
-	const contentPanel = document.createElement("div");
-	contentPanel.className = "turns-content";
-	contentPanel.innerHTML =
-		'<div class="turns-mode-bar" id="turns-mode-bar">' +
-		'<button class="mode-btn active" data-mode="summary" onclick="setSessionMode(\'summary\')">Summary</button>' +
-		'<button class="mode-btn" data-mode="tools" onclick="setSessionMode(\'tools\')">Tools</button>' +
-		'<button class="mode-btn" data-mode="full" onclick="setSessionMode(\'full\')">Full</button>' +
-		'</div>' +
-		'<div class="turns-body" id="turns-body"><div class="empty-state">Select a session</div></div>';
-
-	pane.appendChild(turnsPanel);
-	pane.appendChild(contentPanel);
-
-	const turns = buildTurnList();
-	renderTurnList(turns, turnsPanel);
-
-	if (turns.length) {
-		const latest = [...turns].reverse().find(t => !t.allReflection) || turns.at(-1);
-		if (latest) selectTurn(latest.turnNumber);
-	}
-}
-
-function buildTurnList() {
-	const convByTurn = new Map();
-	for (const doc of sessionConvDocs) {
-		const n = doc.turnNumber ?? 0;
-		if (!convByTurn.has(n)) convByTurn.set(n, []);
-		convByTurn.get(n).push(doc);
-	}
-	const usageByTurn = new Map();
-	for (const d of sessionUsageDocs) {
-		const n = d.turnNumber ?? 0;
-		if (!usageByTurn.has(n)) usageByTurn.set(n, []);
-		usageByTurn.get(n).push(d);
-	}
-	const allTurns = new Set([...convByTurn.keys(), ...usageByTurn.keys()]);
-	const turns = [];
-	for (const n of [...allTurns].sort((a, b) => a - b)) {
-		const convDocs = convByTurn.get(n) || [];
-		const usageDocs = usageByTurn.get(n) || [];
-		let toolCalls = 0;
-		let timestamp = null;
-		for (const doc of convDocs) {
-			const m = doc.message;
-			if (!m) continue;
-			if (m.role === "assistant")
-				toolCalls += (m.content || []).filter(b => b.type === "toolCall").length;
-			if (!timestamp && m.timestamp) timestamp = m.timestamp;
-		}
-		let peakInput = 0, costUsd = 0, llmCalls = 0;
-		let hasReflection = false;
-		for (const u of usageDocs) {
-			llmCalls++;
-			if (u.isReflection) hasReflection = true;
-			if (u.usage) {
-				peakInput = Math.max(peakInput, u.usage.inputTokens || 0);
-				costUsd += u.usage.cost || 0;
-			}
-		}
-		const allReflection = usageDocs.length > 0 && usageDocs.every(u => u.isReflection);
-		turns.push({ turnNumber: n, toolCalls, llmCalls, peakInput, costUsd, timestamp, hasReflection, allReflection });
-	}
-	return turns;
-}
-
-function renderTurnList(turns, container) {
-	container.innerHTML = "";
-	if (!turns.length) {
-		container.innerHTML = '<div class="empty-state">No sessions yet</div>';
+	if (!sessions.length) {
+		pane.innerHTML = '<div class="empty-state">No sessions yet</div>';
 		return;
 	}
-	for (const t of turns) {
-		const div = document.createElement("div");
-		div.className = `turn-item${t.allReflection ? " turn-reflection" : ""}`;
-		div.dataset.turn = t.turnNumber;
-		div.onclick = () => selectTurn(t.turnNumber);
-		const reflBadge = t.hasReflection ? '<span class="turn-reflect-badge" title="Reflection ran this session">\u21ba</span>' : "";
-		const tokStr = t.peakInput > 0 ? `${Math.round(t.peakInput / 1000)}k ctx` : "";
-		const costStr = t.costUsd > 0 ? `$${t.costUsd.toFixed(3)}` : "";
-		const timeLabel = t.timestamp ? fmtTime(t.timestamp) : `Session ${t.turnNumber}`;
-		div.innerHTML =
-			`<div class="turn-num">${esc(timeLabel)}${reflBadge}</div>` +
-			`<div class="turn-stats">` +
-			(t.llmCalls > 0 ? `<span>${t.llmCalls} LLM calls</span>` : "") +
-			(tokStr ? `<span>${tokStr}</span>` : "") +
-			(costStr ? `<span class="turn-cost">${costStr}</span>` : "") +
-			`</div>` +
-			(!t.timestamp ? "" : `<div class="turn-seq">session ${t.turnNumber}</div>`);
-		container.appendChild(div);
+	const tree = document.createElement("div");
+	tree.className = "session-tree";
+	for (const s of sessions) {
+		tree.appendChild(renderSessionRow(s));
 	}
+	pane.appendChild(tree);
 }
 
-function selectTurn(n) {
-	selectedTurn = n;
-	document.querySelectorAll(".turn-item").forEach(el =>
-		el.classList.toggle("active", Number(el.dataset.turn) === n));
-	renderTurnContent();
-}
+function renderSessionRow(session) {
+	const wrap = document.createElement("div");
+	wrap.dataset.turn = session.turnNumber;
 
-function setSessionMode(mode) {
-	sessionMode = mode;
-	document.querySelectorAll(".mode-btn").forEach(b =>
-		b.classList.toggle("active", b.dataset.mode === mode));
-	renderTurnContent();
-}
+	const isExpanded = expandedSessions.has(session.turnNumber);
+	const hdr = document.createElement("div");
+	hdr.className = "session-row" + (session.isReflection ? " reflection" : "") + (isExpanded ? " expanded" : "");
 
-function renderTurnContent() {
-	const body = document.getElementById("turns-body");
-	if (!body) return;
-	if (selectedTurn === null) {
-		body.innerHTML = '<div class="empty-state">Select a session on the left</div>';
-		return;
-	}
-	const docs = sessionConvDocs.filter(d => (d.turnNumber ?? 0) === selectedTurn);
-	if (!docs.length) {
-		body.innerHTML = '<div class="empty-state">No messages for this session</div>';
-		return;
-	}
-	body.innerHTML = "";
-	convToolBoxes.clear();
-	if (sessionMode === "summary") renderTurnSummary(docs, body);
-	else if (sessionMode === "tools") renderTurnTools(docs, body);
-	else renderTurnFull(docs, body);
-	body.scrollTop = 0;
-}
+	const badge = session.isReflection
+		? '<span class="sr-badge reflection">↺ Reflection</span>'
+		: `<span class="sr-badge">Session ${session.turnNumber}</span>`;
+	const time = session.startTime ? fmtTime(session.startTime) : "";
+	const dur = session.durationMs > 0 ? `${(session.durationMs / 1000).toFixed(0)}s` : "";
+	const tok = session.inputTokens > 0 ? `${Math.round(session.inputTokens / 1000)}k in` : "";
+	const cost = session.costUsd > 0 ? `$${session.costUsd.toFixed(4)}` : "";
+	const calls = session.llmCalls > 0 ? `${session.llmCalls} LLM` : "";
+	const tools = session.toolCalls > 0 ? `${session.toolCalls} tools` : "";
 
-function renderTurnSummary(docs, container) {
-	let any = false;
-	for (const doc of docs) {
-		const m = doc.message;
-		if (!m) continue;
-		if (m.role === "assistant") {
-			const blocks = Array.isArray(m.content) ? m.content : [];
-			for (const b of blocks.filter(b => b.type === "text" && b.text?.trim())) {
-				const el = document.createElement("div");
-				el.className = "sum-text";
-				el.textContent = b.text.trim();
-				container.appendChild(el);
-				any = true;
-			}
-			for (const call of blocks.filter(b => b.type === "toolCall" && b.name === "PostMessage")) {
-				const args = call.arguments || {};
-				const to = Array.isArray(args.to) ? args.to.join(", ") : args.to || "?";
-				const el = document.createElement("div");
-				el.className = "sum-pm";
-				el.innerHTML =
-					`<span class="sum-pm-icon">\u2709</span>` +
-					`<span class="sum-pm-to">\u2192 ${esc(to)}</span>` +
-					(args.subject ? `<span class="sum-pm-subj">${esc(String(args.subject).slice(0, 80))}</span>` : "") +
-					(args.message ? `<div class="sum-pm-body">${esc(String(args.message).slice(0, 300))}</div>` : "");
-				container.appendChild(el);
-				any = true;
-			}
-		} else if (m.role === "toolResult" && m.isError) {
-			const txt = (m.content || []).map(b => b.text).join("").slice(0, 200);
-			const el = document.createElement("div");
-			el.className = "sum-error";
-			el.textContent = `\u2717 ${m.toolName || "?"}: ${txt}`;
-			container.appendChild(el);
-			any = true;
-		}
-	}
-	if (!any) container.innerHTML = '<div class="empty-state">Nothing notable in this session</div>';
-}
+	hdr.innerHTML =
+		`<span class="sr-label">${badge}</span>` +
+		`<span class="sr-meta">` +
+		[time, dur, calls, tools, tok, cost].filter(Boolean).map(x => `<span>${esc(x)}</span>`).join("") +
+		`</span>` +
+		`<span class="sr-arrow">${isExpanded ? "▼" : "▶"}</span>`;
 
-function renderTurnTools(docs, container) {
-	const pending = new Map();
-	let any = false;
-	for (const doc of docs) {
-		const m = doc.message;
-		if (!m) continue;
-		if (m.role === "assistant") {
-			for (const block of (m.content || []).filter(b => b.type === "toolCall")) {
-				const firstKey = Object.keys(block.arguments || {})[0];
-				const firstVal = firstKey ? String(block.arguments[firstKey]).slice(0, 60) : "";
-				const el = document.createElement("div");
-				el.className = "tool-row";
-				el.innerHTML =
-					`<span class="tool-row-icon">${_toolIcon(block.name)}</span>` +
-					`<span class="tool-row-name">${esc(block.name)}</span>` +
-					(firstVal ? `<span class="tool-row-arg">${esc(firstVal)}</span>` : "") +
-					`<span class="tool-row-status pending">\u2026</span>`;
-				container.appendChild(el);
-				pending.set(block.id, el.querySelector(".tool-row-status"));
-				any = true;
-			}
-		} else if (m.role === "toolResult") {
-			const slot = pending.get(m.toolCallId);
-			if (slot) {
-				slot.textContent = m.isError ? "\u2717" : "\u2713";
-				slot.className = `tool-row-status ${m.isError ? "err" : "ok"}`;
-				pending.delete(m.toolCallId);
-			}
-		}
-	}
-	if (!any) container.innerHTML = '<div class="empty-state">No tool calls in this session</div>';
-}
+	const detail = document.createElement("div");
+	detail.className = "session-detail";
+	detail.style.display = isExpanded ? "" : "none";
 
-function renderTurnFull(docs, container) {
-	convToolBoxes.clear();
-	for (const doc of docs) _renderFullDoc(doc, container);
-}
-
-function _renderFullDoc(doc, pane) {
-	const m = doc.message;
-	if (!m) return;
-	const agentId = doc.agentId ?? activeAgent ?? "";
-
-	if (m.role === "user") {
-		const content = typeof m.content === "string" ? m.content
-			: (m.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
-		const el = document.createElement("div");
-		el.className = "conv-bubble conv-bubble-user";
-		el.innerHTML =
-			'<div class="conv-avatar av-user">\uD83D\uDCE8</div>' +
-			'<div class="conv-body">' +
-			'<div class="conv-label">Operator / Mailbox</div>' +
-			`<div class="conv-text">${esc(content)}</div>` +
-			'</div>';
-		pane.appendChild(el);
-	} else if (m.role === "assistant") {
-		const blocks = Array.isArray(m.content) ? m.content : [];
-		const thinking = blocks.filter(b => b.type === "thinking" && b.thinking?.trim());
-		const texts = blocks.filter(b => b.type === "text" && b.text?.trim());
-		const calls = blocks.filter(b => b.type === "toolCall");
-		if (thinking.length) {
-			const full = thinking.map(b => b.thinking).join("\n\n");
-			const el = document.createElement("div");
-			el.className = "conv-bubble";
-			el.innerHTML =
-				'<div class="conv-avatar av-think">\uD83D\uDCAD</div>' +
-				'<div class="conv-body"><div class="conv-label">Thinking</div>' +
-				`<div class="conv-text conv-think-text">${esc(full.slice(0, 600))}${full.length > 600 ? "\u2026" : ""}</div>` +
-				'</div>';
-			pane.appendChild(el);
-		}
-		if (texts.length) {
-			const el = document.createElement("div");
-			el.className = "conv-bubble conv-bubble-agent";
-			el.innerHTML =
-				'<div class="conv-avatar av-agent">AI</div>' +
-				'<div class="conv-body">' +
-				`<div class="conv-text">${esc(texts.map(b => b.text).join("\n\n"))}</div>` +
-				'</div>';
-			pane.appendChild(el);
-		}
-		for (const call of calls) {
-			const box = _makeToolBox(call.name, call.arguments);
-			pane.appendChild(box.el);
-			convToolBoxes.set(`${agentId}:${call.id}`, box.resultEl);
-		}
-	} else if (m.role === "toolResult") {
-		const slot = convToolBoxes.get(`${agentId}:${m.toolCallId}`);
-		if (slot) {
-			_fillResult(slot, m);
+	hdr.onclick = async () => {
+		const nowExpanded = expandedSessions.has(session.turnNumber);
+		if (nowExpanded) {
+			expandedSessions.delete(session.turnNumber);
+			hdr.classList.remove("expanded");
+			hdr.querySelector(".sr-arrow").textContent = "▶";
+			detail.style.display = "none";
 		} else {
-			const txt = (m.content || []).filter(b => b.type === "text").map(b => b.text).join("").slice(0, 500);
-			const el = document.createElement("div");
-			el.className = "conv-tool-box";
-			el.innerHTML =
-				`<div class="conv-tool-hdr" onclick="toggleToolBox(this)">` +
-				`<span class="conv-tool-icon">${_toolIcon(m.toolName)}</span>` +
-				`<span class="conv-tool-name">${esc(m.toolName)}</span>` +
-				'<span class="conv-tool-arrow">\u25b6</span>' +
-				'</div>' +
-				'<div class="conv-tool-body">' +
-				`<div class="conv-tool-result ${m.isError ? "err" : "ok"}">${esc(txt)}</div>` +
-				'</div>';
-			pane.appendChild(el);
+			expandedSessions.add(session.turnNumber);
+			hdr.classList.add("expanded");
+			hdr.querySelector(".sr-arrow").textContent = "▼";
+			detail.style.display = "";
+			if (!detail.dataset.loaded) {
+				detail.innerHTML = '<div class="empty-state">Loading…</div>';
+				await expandSession(activeAgent, session.turnNumber, detail);
+				detail.dataset.loaded = "1";
+			}
 		}
+	};
+
+	wrap.appendChild(hdr);
+	wrap.appendChild(detail);
+
+	if (isExpanded && !detail.dataset.loaded) {
+		detail.innerHTML = '<div class="empty-state">Loading…</div>';
+		expandSession(activeAgent, session.turnNumber, detail).then(() => {
+			detail.dataset.loaded = "1";
+		});
+	}
+
+	return wrap;
+}
+
+async function expandSession(agentId, turnNumber, container) {
+	const r = await fetch(`/agents/${encodeURIComponent(agentId)}/sessions/${turnNumber}`);
+	const data = await r.json();
+	container.innerHTML = "";
+
+	const messages = data.messages || [];
+	const llmCalls = data.llmCalls || [];
+
+	// Group messages by callSeq
+	const byCallSeq = new Map();
+	for (const doc of messages) {
+		const seq = doc.callSeq != null ? doc.callSeq : -1;
+		if (!byCallSeq.has(seq)) byCallSeq.set(seq, []);
+		byCallSeq.get(seq).push(doc);
+	}
+
+	// Build map of sub-loop messages by parentToolUseId
+	const subLoopByToolId = new Map();
+	for (const doc of messages) {
+		if (doc.parentToolUseId) {
+			if (!subLoopByToolId.has(doc.parentToolUseId)) subLoopByToolId.set(doc.parentToolUseId, []);
+			subLoopByToolId.get(doc.parentToolUseId).push(doc);
+		}
+	}
+
+	// Sort llmCalls by savedAt to match callSeq order
+	const sortedLlmCalls = [...llmCalls].sort((a, b) => new Date(a.savedAt) - new Date(b.savedAt));
+	const llmCallBySeq = new Map();
+	sortedLlmCalls.forEach((lc, i) => llmCallBySeq.set(i, lc));
+
+	// Render task user message (callSeq = -1)
+	const taskDocs = byCallSeq.get(-1) || [];
+	for (const doc of taskDocs) {
+		if (doc.message && doc.message.role === "user") {
+			const el = document.createElement("div");
+			el.className = "st-task-msg";
+			const content = typeof doc.message.content === "string"
+				? doc.message.content
+				: (doc.message.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+			el.innerHTML = `<span class="st-task-label">Inbox</span><span class="st-task-body">${esc(content.slice(0, 300))}${content.length > 300 ? "…" : ""}</span>`;
+			container.appendChild(el);
+		}
+	}
+
+	// Render LLM call groups (callSeq 0, 1, 2, ...)
+	const seqs = [...byCallSeq.keys()].filter(s => s >= 0).sort((a, b) => a - b);
+	for (const seq of seqs) {
+		const seqDocs = (byCallSeq.get(seq) || []).filter(d => !d.parentToolUseId);
+		const llmMeta = llmCallBySeq.get(seq);
+		const node = renderLlmCallGroup(seq, seqDocs, llmMeta, subLoopByToolId);
+		container.appendChild(node);
+	}
+
+	if (!seqs.length && !taskDocs.length) {
+		container.innerHTML = '<div class="empty-state">No messages in this session</div>';
 	}
 }
 
-function _makeToolBox(name, args) {
-	const el = document.createElement("div");
-	el.className = "conv-tool-box";
-	const argsStr = JSON.stringify(args, null, 2);
-	// Collapsed by default — no "open" class on conv-tool-body
-	el.innerHTML =
-		`<div class="conv-tool-hdr" onclick="toggleToolBox(this)">` +
-		`<span class="conv-tool-icon">${_toolIcon(name)}</span>` +
-		`<span class="conv-tool-name">${esc(name)}</span>` +
-		'<span class="conv-tool-arrow">\u25b6</span>' +
-		'</div>' +
-		'<div class="conv-tool-body">' +
-		`<div class="conv-tool-args">${esc(argsStr)}</div>` +
-		'<div class="conv-tool-result pending">\u23f3 running\u2026</div>' +
-		'</div>';
-	return { el, resultEl: el.querySelector(".conv-tool-result") };
+function renderLlmCallGroup(callSeq, docs, llmMeta, subLoopByToolId) {
+	const wrap = document.createElement("div");
+	wrap.className = "llm-call-node";
+
+	const assistantDoc = docs.find(d => d.message && d.message.role === "assistant");
+	const toolResultDocs = docs.filter(d => d.message && d.message.role === "toolResult");
+
+	const hdr = document.createElement("div");
+	hdr.className = "llm-call-hdr";
+	const inputTok = llmMeta && llmMeta.usage ? llmMeta.usage.inputTokens || 0 : 0;
+	const outputTok = llmMeta && llmMeta.usage ? llmMeta.usage.outputTokens || 0 : 0;
+	const callCost = llmMeta && llmMeta.usage && llmMeta.usage.cost ? llmMeta.usage.cost.total || 0 : 0;
+	hdr.innerHTML =
+		`<span class="lc-label">LLM call ${callSeq}</span>` +
+		`<span class="lc-meta">` +
+		(inputTok > 0 ? `<span>${Math.round(inputTok / 1000)}k in</span>` : "") +
+		(outputTok > 0 ? `<span>${Math.round(outputTok / 1000)}k out</span>` : "") +
+		(callCost > 0 ? `<span class="lc-cost">$${callCost.toFixed(4)}</span>` : "") +
+		`</span>` +
+		`<span class="lc-arrow">▶</span>`;
+
+	const body = document.createElement("div");
+	body.className = "llm-call-body";
+	body.style.display = "none";
+
+	hdr.onclick = () => {
+		const open = body.style.display !== "none";
+		body.style.display = open ? "none" : "";
+		hdr.querySelector(".lc-arrow").textContent = open ? "▶" : "▼";
+		if (!open && !body.dataset.filled) {
+			body.dataset.filled = "1";
+			fillLlmCallBody(body, assistantDoc, toolResultDocs, subLoopByToolId, llmMeta);
+		}
+	};
+
+	wrap.appendChild(hdr);
+	wrap.appendChild(body);
+	return wrap;
 }
 
-function _fillResult(el, m) {
-	const txt = (m.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-	el.className = `conv-tool-result ${m.isError ? "err" : "ok"}`;
-	el.textContent = txt.slice(0, 1000) + (txt.length > 1000 ? "\u2026" : "");
+function fillLlmCallBody(body, assistantDoc, toolResultDocs, subLoopByToolId, llmMeta) {
+	if (!assistantDoc) return;
+	const m = assistantDoc.message;
+	if (!m) return;
+
+	const blocks = Array.isArray(m.content) ? m.content : [];
+	const texts = blocks.filter(b => b.type === "text" && b.text && b.text.trim());
+	if (texts.length) {
+		const el = document.createElement("div");
+		el.className = "lc-text";
+		el.textContent = texts.map(b => b.text).join("\n\n").slice(0, 600);
+		body.appendChild(el);
+	}
+
+	if (assistantDoc.mentalMapHtml) {
+		const diffRow = document.createElement("div");
+		diffRow.className = "lc-mm-row";
+		diffRow.innerHTML = '<span class="lc-mm-label">🧠 Mental Map</span><span class="lc-mm-arrow">▶</span>';
+		const diffBody = document.createElement("div");
+		diffBody.style.display = "none";
+		diffRow.onclick = () => {
+			const open = diffBody.style.display !== "none";
+			diffBody.style.display = open ? "none" : "";
+			diffRow.querySelector(".lc-mm-arrow").textContent = open ? "▶" : "▼";
+			if (!open && !diffBody.dataset.filled) {
+				diffBody.dataset.filled = "1";
+				diffBody.innerHTML = `<div class="mm-snapshot"><pre>${esc(assistantDoc.mentalMapHtml.slice(0, 1000))}${assistantDoc.mentalMapHtml.length > 1000 ? "…" : ""}</pre></div>`;
+			}
+		};
+		body.appendChild(diffRow);
+		body.appendChild(diffBody);
+	}
+
+	const toolCalls = blocks.filter(b => b.type === "toolCall");
+	for (const call of toolCalls) {
+		const resultDoc = toolResultDocs.find(d => d.message && d.message.toolCallId === call.id);
+		const subMsgs = subLoopByToolId.get(call.id) || [];
+		body.appendChild(renderToolCallRow(call, resultDoc, subMsgs));
+	}
 }
 
-function toggleToolBox(hdr) {
-	const body = hdr.nextElementSibling;
-	const arrow = hdr.querySelector(".conv-tool-arrow");
-	const open = body.classList.toggle("open");
-	arrow.textContent = open ? "\u25bc" : "\u25b6";
+function renderToolCallRow(toolCallBlock, toolResultDoc, subLoopMessages) {
+	const wrap = document.createElement("div");
+	wrap.className = "tool-call-node";
+
+	const argsStr = JSON.stringify(toolCallBlock.arguments || {});
+	const argPreview = argsStr.length > 80 ? argsStr.slice(0, 80) + "…" : argsStr;
+	const result = toolResultDoc ? toolResultDoc.message : null;
+	const resultText = result
+		? (result.content || []).filter(b => b.type === "text").map(b => b.text).join("").slice(0, 80)
+		: "";
+	const isError = result ? result.isError || false : false;
+
+	const hdr = document.createElement("div");
+	hdr.className = "tool-call-hdr";
+	hdr.innerHTML =
+		`<span class="tc-icon">${_toolIcon(toolCallBlock.name)}</span>` +
+		`<span class="tc-name">${esc(toolCallBlock.name)}</span>` +
+		`<span class="tc-arg">${esc(argPreview)}</span>` +
+		(result ? `<span class="tc-status ${isError ? "err" : "ok"}">${isError ? "✗" : "✓"} ${esc(resultText)}</span>` : "") +
+		(subLoopMessages.length ? `<span class="tc-sub">${subLoopMessages.length} sub-loop msgs</span>` : "") +
+		`<span class="tc-arrow">▶</span>`;
+
+	const bdy = document.createElement("div");
+	bdy.style.display = "none";
+
+	hdr.onclick = () => {
+		const open = bdy.style.display !== "none";
+		bdy.style.display = open ? "none" : "";
+		hdr.querySelector(".tc-arrow").textContent = open ? "▶" : "▼";
+		if (!open && !bdy.dataset.filled) {
+			bdy.dataset.filled = "1";
+			const argsEl = document.createElement("pre");
+			argsEl.className = "tc-full-args";
+			argsEl.textContent = JSON.stringify(toolCallBlock.arguments || {}, null, 2).slice(0, 500);
+			bdy.appendChild(argsEl);
+			if (result) {
+				const fullResult = (result.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+				const resEl = document.createElement("pre");
+				resEl.className = `tc-full-result ${isError ? "err" : "ok"}`;
+				resEl.textContent = fullResult.slice(0, 1000) + (fullResult.length > 1000 ? "…" : "");
+				bdy.appendChild(resEl);
+			}
+			if (subLoopMessages.length) {
+				const subHdr = document.createElement("div");
+				subHdr.className = "sub-loop-hdr";
+				subHdr.textContent = `Research sub-loop (${subLoopMessages.length} messages)`;
+				bdy.appendChild(subHdr);
+				for (const sub of subLoopMessages.slice(0, 20)) {
+					const subEl = document.createElement("div");
+					subEl.className = "sub-loop-node";
+					const role = sub.message ? sub.message.role : "?";
+					const subContent = role === "assistant"
+						? (sub.message.content || []).filter(b => b.type === "text").map(b => b.text).join("").slice(0, 200)
+						: role === "toolResult"
+						? (sub.message.content || []).map(b => b.text).join("").slice(0, 200)
+						: "";
+					subEl.innerHTML = `<span class="sub-role">${esc(role)}</span><span class="sub-content">${esc(subContent)}</span>`;
+					bdy.appendChild(subEl);
+				}
+			}
+		}
+	};
+
+	wrap.appendChild(hdr);
+	wrap.appendChild(bdy);
+	return wrap;
 }
 
 function appendToSessionsLive(doc) {
 	if (!doc) return;
 	sessionLiveDirty = true;
-	const n = doc.turnNumber ?? 0;
-	sessionConvDocs.push(doc);
-	// Ensure turn entry exists in list
-	const panel = document.getElementById("turns-panel");
-	if (panel && !panel.querySelector(`[data-turn="${n}"]`)) {
-		const div = document.createElement("div");
-		div.className = "turn-item";
-		div.dataset.turn = n;
-		div.onclick = () => selectTurn(n);
-		div.innerHTML = `<div class="turn-num">Session ${n} <span style="color:var(--green);font-size:9px">● live</span></div>`;
-		panel.appendChild(div);
-	}
-	// If this turn is selected (or nothing selected yet), append to content
-	if (selectedTurn === null || selectedTurn === n) {
-		if (selectedTurn === null) {
-			selectedTurn = n;
-			document.querySelectorAll(".turn-item").forEach(el =>
-				el.classList.toggle("active", Number(el.dataset.turn) === n));
-		}
-		const body = document.getElementById("turns-body");
-		if (body && sessionMode === "full") {
-			body.querySelector(".empty-state")?.remove();
-			_renderFullDoc(doc, body);
-			body.scrollTop = body.scrollHeight;
-		}
-	}
+	// Mark dirty — tree reloads on demand when agent finishes
 }
+
 
 // ── Usage tab ──────────────────────────────────────────────────────────────
 async function loadUsage() {

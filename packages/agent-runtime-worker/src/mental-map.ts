@@ -1,7 +1,6 @@
 import type { AgentConfig } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import { JSDOM } from "jsdom";
-import type { Db } from "mongodb";
 import type { MagiTool, ToolResult } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -80,51 +79,22 @@ export function patchMentalMap(
 }
 
 // ---------------------------------------------------------------------------
-// Repository interface
-// ---------------------------------------------------------------------------
-
-export interface MentalMapRepository {
-	/** Load the current mental map HTML for an agent. Returns null if not yet initialised. */
-	load(agentId: string): Promise<string | null>;
-	/** Persist the full mental map HTML. */
-	save(agentId: string, html: string): Promise<void>;
-}
-
-// ---------------------------------------------------------------------------
-// MongoDB implementation
-// ---------------------------------------------------------------------------
-
-export function createMongoMentalMapRepository(db: Db): MentalMapRepository {
-	const col = db.collection<{ agentId: string; html: string; updatedAt: Date }>(
-		"mental_maps",
-	);
-
-	return {
-		async load(agentId) {
-			const doc = await col.findOne({ agentId });
-			return doc?.html ?? null;
-		},
-		async save(agentId, html) {
-			await col.replaceOne(
-				{ agentId },
-				{ agentId, html, updatedAt: new Date() },
-				{ upsert: true },
-			);
-		},
-	};
-}
-
-// ---------------------------------------------------------------------------
 // Tool factory
 // ---------------------------------------------------------------------------
 
 /**
  * Create the UpdateMentalMap tool for an agent.
- * The tool loads, patches, and saves the mental map in one atomic step.
+ *
+ * The tool operates purely in-memory via get/set callbacks — no database
+ * writes on each call. The mental map is persisted as a snapshot on each
+ * AssistantMessage stored in conversationMessages.
+ *
+ * @param getHtml - Returns the current mental map HTML (or null if not yet set).
+ * @param setHtml - Called with the updated HTML after a successful patch.
  */
 export function createMentalMapTool(
-	repo: MentalMapRepository,
-	agentId: string,
+	getHtml: () => string | null,
+	setHtml: (html: string) => void,
 ): MagiTool {
 	function ok(text: string): ToolResult {
 		return { content: [{ type: "text", text }] };
@@ -159,33 +129,35 @@ export function createMentalMapTool(
 				}),
 			),
 		}),
-		async execute(_id, args) {
+		execute(_id, args) {
 			const operation = args.operation as "replace" | "append" | "remove";
 			const elementId = args.elementId as string;
 			const content = args.content as string | undefined;
 
 			if (operation !== "remove" && !content) {
-				return err(
-					"UpdateMentalMap: content is required for replace and append",
+				return Promise.resolve(
+					err("UpdateMentalMap: content is required for replace and append"),
 				);
 			}
 
-			const current = await repo.load(agentId);
+			const current = getHtml();
 			if (!current) {
-				return err(
-					"UpdateMentalMap: mental map not initialised for this agent",
+				return Promise.resolve(
+					err("UpdateMentalMap: mental map not initialised for this agent"),
 				);
 			}
 
 			const updated = patchMentalMap(current, operation, elementId, content);
 			if (updated === null) {
-				return err(
-					`UpdateMentalMap: element id="${elementId}" not found in mental map`,
+				return Promise.resolve(
+					err(`UpdateMentalMap: element id="${elementId}" not found in mental map`),
 				);
 			}
 
-			await repo.save(agentId, updated);
-			return ok(`Mental map updated: ${operation} on #${elementId}`);
+			setHtml(updated);
+			return Promise.resolve(
+				ok(`Mental map updated: ${operation} on #${elementId}`),
+			);
 		},
 	};
 }

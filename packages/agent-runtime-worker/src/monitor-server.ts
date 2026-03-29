@@ -200,10 +200,14 @@ export class MonitorServer {
 		});
 	}
 
+	/** Called by the agent runner when the mental map changes. Pushes SSE to dashboard. */
+	notifyMentalMapUpdate(agentId: string, html: string): void {
+		this.push("mental-map-update", { agentId, html });
+	}
+
 	async start(port: number): Promise<void> {
 		void this.watchMailbox();
 		void this.watchConversations();
-		void this.watchMentalMaps();
 
 		await new Promise<void>((resolve, reject) => {
 			this.server.listen(port, "0.0.0.0", () => resolve());
@@ -317,29 +321,94 @@ export class MonitorServer {
 		const mentalMapMatch = url.match(/^\/agents\/([^/]+)\/mental-map$/);
 		if (mentalMapMatch && req.method === "GET") {
 			const agentId = decodeURIComponent(mentalMapMatch[1]);
-			const doc = await this.db.collection("mental_maps").findOne({ agentId });
+			const doc = await this.db.collection("conversationMessages").findOne(
+				{ agentId, missionId: this.missionId, mentalMapHtml: { $exists: true } },
+				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+			);
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(
 				JSON.stringify({
 					agentId,
-					html: (doc as { html?: string } | null)?.html ?? "",
+					html: (doc as any)?.mentalMapHtml ?? "",
 				}),
 			);
 			return;
 		}
 
-		// ── GET /agents/:id/conversation
-		const convoMatch = url.match(/^\/agents\/([^/]+)\/conversation$/);
-		if (convoMatch && req.method === "GET") {
-			const agentId = decodeURIComponent(convoMatch[1]);
-			const msgs = await this.db
-				.collection("conversationMessages")
-				.find({ missionId: this.missionId, agentId })
-				.sort({ turnNumber: 1, timestamp: 1 })
-				.limit(200)
+		// ── GET /agents/:id/sessions (metadata only — fast aggregation)
+		const sessionsMatch = url.match(/^\/agents\/([^/]+)\/sessions$/);
+		if (sessionsMatch && req.method === "GET") {
+			const agentId = decodeURIComponent(sessionsMatch[1]);
+
+			const llmDocs = await this.db.collection("llmCallLog")
+				.find({ agentId, missionId: this.missionId })
+				.sort({ turnNumber: 1, savedAt: 1 })
 				.toArray();
+
+			// Group by turnNumber
+			const byTurn = new Map<number, typeof llmDocs>();
+			for (const d of llmDocs) {
+				const t = (d as any).turnNumber ?? 0;
+				if (!byTurn.has(t)) byTurn.set(t, []);
+				byTurn.get(t)!.push(d);
+			}
+
+			// Count tool calls per turn from conversationMessages (non-sub-loop only)
+			const toolCounts = await this.db.collection("conversationMessages").aggregate([
+				{ $match: { agentId, missionId: this.missionId, "message.role": "toolResult", parentToolUseId: { $exists: false } } },
+				{ $group: { _id: "$turnNumber", count: { $sum: 1 } } },
+			]).toArray();
+			const toolCountMap = new Map(toolCounts.map((t: any) => [t._id, t.count]));
+
+			const sessions = Array.from(byTurn.entries()).map(([turn, docs]) => {
+				const isReflection = (docs[0] as any)?.isReflection ?? false;
+				const startTime = (docs[0] as any)?.savedAt;
+				const endTime = (docs[docs.length - 1] as any)?.savedAt;
+				const durationMs = startTime && endTime
+					? new Date(endTime).getTime() - new Date(startTime).getTime()
+					: 0;
+				const totals = docs.reduce((acc: any, d: any) => ({
+					inputTokens: acc.inputTokens + (d.usage?.inputTokens ?? 0),
+					outputTokens: acc.outputTokens + (d.usage?.outputTokens ?? 0),
+					cacheReadTokens: acc.cacheReadTokens + (d.usage?.cacheReadTokens ?? 0),
+					costUsd: acc.costUsd + (d.usage?.cost?.total ?? 0),
+				}), { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 });
+				return {
+					turnNumber: turn,
+					isReflection,
+					startTime,
+					endTime,
+					durationMs,
+					llmCalls: docs.length,
+					toolCalls: toolCountMap.get(turn) ?? 0,
+					...totals,
+				};
+			});
+
+			sessions.sort((a, b) => a.turnNumber - b.turnNumber);
 			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(msgs));
+			res.end(JSON.stringify(sessions));
+			return;
+		}
+
+		// ── GET /agents/:id/sessions/:turn (detail for one session)
+		const sessionDetailMatch = url.match(/^\/agents\/([^/]+)\/sessions\/(\d+)$/);
+		if (sessionDetailMatch && req.method === "GET") {
+			const agentId = decodeURIComponent(sessionDetailMatch[1]);
+			const turnNumber = parseInt(sessionDetailMatch[2], 10);
+
+			const msgs = await this.db.collection("conversationMessages")
+				.find({ agentId, missionId: this.missionId, turnNumber })
+				.sort({ seqInTurn: 1 })
+				.toArray();
+
+			const llmCalls = await this.db.collection("llmCallLog")
+				.find({ agentId, missionId: this.missionId, turnNumber })
+				.sort({ savedAt: 1 })
+				.toArray();
+
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ turnNumber, messages: msgs, llmCalls }));
 			return;
 		}
 
@@ -614,49 +683,6 @@ export class MonitorServer {
 			} catch (e) {
 				console.error(
 					`[monitor] Conversation watch error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
-				);
-				await new Promise<void>((res) => setTimeout(res, backoffMs));
-				backoffMs = Math.min(backoffMs * 2, 30_000);
-			}
-		}
-	}
-
-	private async watchMentalMaps(): Promise<void> {
-		const agentIds = this.agents.map((a) => a.id);
-		let backoffMs = 1_000;
-		while (true) {
-			try {
-				await new Promise<void>((resolve, reject) => {
-					const stream = this.db
-						.collection("mental_maps")
-						.watch(
-							[{ $match: { "fullDocument.agentId": { $in: agentIds } } }],
-							{ fullDocument: "updateLookup" },
-						);
-					stream.on("change", (change) => {
-						const doc = (
-							change as { fullDocument?: { agentId?: string; html?: string } }
-						).fullDocument;
-						if (doc?.agentId) {
-							this.push("mental-map-update", {
-								agentId: doc.agentId,
-								html: doc.html ?? "",
-							});
-						}
-					});
-					stream.on("error", (e) => {
-						stream.close().catch(() => {});
-						reject(e);
-					});
-					this.server.once("close", () => {
-						stream.close().catch(() => {});
-						resolve();
-					});
-				});
-				return;
-			} catch (e) {
-				console.error(
-					`[monitor] Mental map watch error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
 				);
 				await new Promise<void>((res) => setTimeout(res, backoffMs));
 				backoffMs = Math.min(backoffMs * 2, 30_000);

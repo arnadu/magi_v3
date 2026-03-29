@@ -38,7 +38,6 @@ import type {
 } from "@mariozechner/pi-ai";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { createMongoMentalMapRepository } from "./mental-map.js";
 import { anthropicModel, CLAUDE_SONNET } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
@@ -149,7 +148,6 @@ async function main(): Promise<void> {
 
 	const { client, db } = await connectMongo(mongoUri);
 	const mailboxRepo = createMongoMailboxRepository(db, teamConfig.mission.id);
-	const mentalMapRepo = createMongoMentalMapRepository(db);
 	const conversationRepo = createMongoConversationRepository(db);
 
 	const leadAgent = teamConfig.agents[0];
@@ -185,7 +183,6 @@ async function main(): Promise<void> {
 			{
 				teamConfig,
 				mailboxRepo,
-				mentalMapRepo,
 				conversationRepo,
 				model,
 				workdir,
