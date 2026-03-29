@@ -236,13 +236,19 @@ export class MonitorServer {
 
 		// ── Static files (/, /index.html, /style.css, /app.js)
 		if (url === "/" || url === "/index.html") {
-			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+			res.writeHead(200, {
+				"Content-Type": "text/html; charset=utf-8",
+				"Cache-Control": "no-store",
+			});
 			res.end(readFileSync(join(PUBLIC_DIR, "index.html")));
 			return;
 		}
 		if (url === "/style.css" || url === "/app.js") {
 			const ext = url.slice(url.lastIndexOf(".")) as keyof typeof MIME;
-			res.writeHead(200, { "Content-Type": MIME[ext] });
+			res.writeHead(200, {
+				"Content-Type": MIME[ext],
+				"Cache-Control": "no-store",
+			});
 			res.end(readFileSync(join(PUBLIC_DIR, url)));
 			return;
 		}
