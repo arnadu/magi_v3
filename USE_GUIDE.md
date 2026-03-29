@@ -93,30 +93,65 @@ Press `Ctrl+C` to stop tailing.
 
 Starts the team and keeps it running indefinitely. Sleeps on a MongoDB Change Stream when the inbox is empty; wakes automatically when a new message arrives.
 
-**Start the daemon:**
+### Starting the daemon
+
+The daemon is a blocking foreground process — it holds the terminal while it runs and prints all agent activity to stdout. The recommended workflow is to start it in a dedicated terminal (or tmux pane) and use separate terminals for `cli:post`, `cli:tail`, and `cli:stop`.
 
 ```bash
+# Terminal 1 — daemon (stays open, logs here)
 cd packages/agent-runtime-worker
-TEAM_CONFIG=../../config/teams/word-count.yaml npm run daemon
+TEAM_CONFIG=../../config/teams/equity-research.yaml npm run daemon
 ```
 
-**Send a message to the team (from any terminal):**
+If you want to run it in the background and return to the same terminal:
 
 ```bash
-TEAM_CONFIG=../../config/teams/word-count.yaml npm run cli:post -- "count the words in greeting.txt"
+TEAM_CONFIG=../../config/teams/equity-research.yaml npm run daemon &
+# Bring it back to foreground: fg
+# Or just use a second terminal — that's cleaner
 ```
 
-Send to a specific agent instead of the default lead:
+### Sending messages
 
 ```bash
-TEAM_CONFIG=../../config/teams/word-count.yaml npm run cli:post -- --to worker "recount the file"
+# Terminal 2 — operator commands
+TEAM_CONFIG=../../config/teams/equity-research.yaml npm run cli:post -- "your message"
+
+# Send to a specific agent instead of the default lead:
+TEAM_CONFIG=../../config/teams/equity-research.yaml npm run cli:post -- --to economist "re-run macro research"
 ```
 
-**Watch replies:**
+### Watching replies
 
 ```bash
-TEAM_CONFIG=../../config/teams/word-count.yaml npm run cli:tail
+TEAM_CONFIG=../../config/teams/equity-research.yaml npm run cli:tail          # user-facing messages only
+TEAM_CONFIG=../../config/teams/equity-research.yaml npm run cli:tail -- --all # all inter-agent traffic
 ```
+
+### Stopping the daemon
+
+**Preferred — graceful shutdown via PID file:**
+
+```bash
+# From any terminal (daemon keeps running in Terminal 1):
+TEAM_CONFIG=../../config/teams/equity-research.yaml npm run cli:stop
+```
+
+This sends SIGTERM to the daemon process, which finishes any in-progress agent turn, closes the MongoDB connection, writes a final usage summary, and removes the PID file cleanly.
+
+**Dashboard stop button** also works — the ■ Stop button in the monitor UI (http://localhost:4000) sends the same shutdown signal.
+
+**Ctrl+C** works if the daemon is in the foreground (Terminal 1) and not mid-turn. If it appears to hang, Ctrl+C a second time will force-exit.
+
+**Last resort — if the port is still held after the above:**
+
+```bash
+lsof -ti tcp:4000 | xargs kill -9
+```
+
+This hard-kills every process holding port 4000. Only needed if the daemon was killed with Ctrl+Z (suspend, not terminate) or `kill -9` without letting it clean up.
+
+> **Note:** the daemon now refuses to start if another instance is already running for the same mission. If you see `Already running as PID N`, either stop the existing daemon first (`npm run cli:stop`) or check whether it is truly dead (`kill -0 N`; if you get "No such process" the PID file is stale and will be cleaned up automatically on the next start).
 
 ---
 
