@@ -189,6 +189,7 @@ async function main(): Promise<void> {
 				workspaceManager,
 				step: flags.has("--step"),
 				onAgentMessage: (agentId, msg) => logMessage(msg, agentId),
+				teardownOnExit: true,
 			},
 			ac.signal,
 		);

@@ -78,6 +78,15 @@ export interface OrchestratorConfig {
 	 * via the monitor dashboard (POST /extend-budget) when the cap is reached.
 	 */
 	waitForBudget?: () => Promise<void>;
+	/**
+	 * If true, call workspaceManager.teardown() on exit (removing workdirs and
+	 * the shared mission dir). Default: false.
+	 *
+	 * The daemon must NOT set this — the workspace (agent files, git history,
+	 * briefs, scripts) must survive daemon restarts. Only the CLI and integration
+	 * tests set this to true, since they provision a fresh temp workspace per run.
+	 */
+	teardownOnExit?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +330,9 @@ export async function runOrchestrationLoop(
 		console.log(`\n[orchestrator] Mission complete (${cycles} cycle(s))`);
 	} finally {
 		rl?.close();
-		workspaceManager.teardown(teamConfig.mission.id, identities);
+		if (config.teardownOnExit) {
+			workspaceManager.teardown(teamConfig.mission.id, identities);
+		}
 	}
 }
 
