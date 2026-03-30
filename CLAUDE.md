@@ -31,6 +31,13 @@ TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words" --step
 # At any input prompt, type:  @/path/to/file.pdf ask me about this
 # /help lists available commands
 
+# Daemon lifecycle (Sprint 11):
+TEAM_CONFIG=... npm run daemon -w packages/agent-runtime-worker       # start daemon
+TEAM_CONFIG=... npm run cli:reset -w packages/agent-runtime-worker    # wipe MongoDB + workspace and start fresh
+TEAM_CONFIG=... npm run cli:reset -w packages/agent-runtime-worker -- --db-only   # wipe MongoDB only (keep files)
+TEAM_CONFIG=... npm run cli:reset -w packages/agent-runtime-worker -- --yes       # skip confirmation prompt
+# Note: all -w scripts need an absolute TEAM_CONFIG path: TEAM_CONFIG=$PWD/config/teams/...
+
 # Env vars: ANTHROPIC_API_KEY (required), MONGODB_URI (required), TEAM_CONFIG (required),
 #           MODEL (optional — default: claude-sonnet-4-6),
 #           AGENT_WORKDIR (optional — default: cwd; all mission data written here),
@@ -93,7 +100,7 @@ Agents communicate with structured, durable mailbox messages (not free-form chat
 
 Agents share artifact references (datasets, code patches, notebooks, charts, reports, alert payloads), not raw data.
 
-## Current Implementation (Sprints 1–8)
+## Current Implementation (Sprints 1–11)
 
 Two packages are built. Key files:
 
@@ -101,18 +108,18 @@ Two packages are built. Key files:
 - `src/loader.ts` — `loadTeamConfig(path)` / `parseTeamConfig(yaml)`: Zod schema validation; exports `AgentConfig = Record<string,string>` and `TeamConfig`. Required agent fields: `id`, `supervisor`, `systemPrompt`, `initialMentalMap`, `linuxUser`.
 
 **`packages/agent-runtime-worker`** (Sprints 1–4):
-- `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop via `completeSimple`. Terminates when the LLM stops calling tools. Fires `onMessage` after every message. `toolTimeoutMs` (default 120 s) enforced via `withTimeout` on every tool call.
+- `src/loop.ts` — `runInnerLoop(config)`: LLM→tool→LLM loop via `completeSimple`. Terminates when the LLM stops calling tools. Fires `onMessage` after every message. `toolTimeoutMs` (default 120 s) enforced via `withTimeout` on every tool call. `getSystemPrompt: () => string` (not `systemPrompt: string`) — called before each LLM call so mental map changes are visible within the same session (Sprint 11). `maxTurns?` hard-caps LLM calls for agentic sub-loops (Sprint 10). `onLlmCall?` callback fires after each `completeFn` call (Sprint 9).
 - `src/tools.ts` — `createFileTools(workdir, acl: AclPolicy)`: `Bash`, `WriteFile`, `EditFile`. `AclPolicy` carries `agentId`, `permittedPaths`, and `linuxUser`. Shell tools dispatch via `runIsolatedToolCall()`: forks `sudo -u <linuxUser> node tool-executor.js` with only `PATH` and `HOME` set (no secrets in child env). `checkPath` rejects paths outside `permittedPaths` with `PolicyViolationError` before any filesystem access. Bash uses OS-level enforcement (the sudoed user has no write access to other agents' dirs). Response bodies capped at 50 MB; Bash timeout validated (NaN/negative falls back to 30 s default) and capped at 600 s. `verifyIsolation(linuxUser, workdir)`: startup invariant check — forks a child via the normal isolation path and asserts `ANTHROPIC_API_KEY` is absent; throws if sudo is misconfigured or if secrets leak.
 - `src/tool-executor.ts` — clean child entry point for isolated tool execution. Launched by the orchestrator via `sudo -u <linuxUser> node dist/tool-executor.js`. Reads `ToolRequest` JSON from stdin, dispatches to `execBash` / `execWriteFile` / `execEditFile`, writes `ToolResponse` JSON to stdout, exits. Never imports anything that touches secrets.
 - `src/workspace-manager.ts` — **dev stopgap.** `WorkspaceManager` creates per-agent workdirs (`homeBase/linuxUser/missions/missionId`) and the shared mission dir (`missionsBase/missionId/shared`), applies `setfacl` for mutual access. Does NOT create or delete OS users — that is the control plane's job (Sprint 6+). Exports `WorkspaceLayout` and `AgentIdentity { workdir, sharedDir, linuxUser }`. `provision(missionId, agents: Array<{ id, linuxUser }>)` creates `sharedDir/skills/_platform/`, `sharedDir/skills/_team/`, and `sharedDir/skills/mission/`; copies platform and team skill packages in; applies `r-x` setfacl on `_platform/` and `_team/` for agent users, `rwx` on `mission/`; creates `workdir/skills/` per agent; runs `git init -b main` on `sharedDir` and makes an initial commit **only if `.git` does not yet exist** (idempotent — safe to call on daemon restart without polluting git history). `teardown()` logs failures rather than silently ignoring them.
 - `src/mailbox.ts` — `MailboxRepository` (MongoDB, sort-consistent: newest-first); `PostMessage`, `ListTeam`, `ListMessages`, `ReadMessage` tools. Uses `teamConfig.mission.id` (not hardcoded). `PostMessage` validates recipient against team roster; body capped at `MAILBOX_MAX_BODY_BYTES` (100 KB, exported so `monitor-server.ts` uses the same constant).
-- `src/mental-map.ts` — `MentalMapRepository` (MongoDB); `UpdateMentalMap` tool; `patchMentalMap` pure function (jsdom-based, returns `null` on missing element).
+- `src/mental-map.ts` — `UpdateMentalMap` tool; `patchMentalMap` pure function (jsdom-based, returns `null` on missing element). No MongoDB repo — mental map state is held in memory during a session and persisted as `mentalMapHtml` on `AssistantMessage` documents in `conversationMessages` (Sprint 11).
 - `src/artifacts.ts` — `generateArtifactId(sourceHint)`, `saveArtifact(workdir, id, files, meta)`, `saveUpload(workdir, id, files, meta)`. Internal `writeDirectory` helper keeps both paths DRY. Exports `FileEntry { name, content }` used by all tools that write artifact files.
 - `src/mime-types.ts` — shared MIME type constants: `MIME_TO_EXT`, `EXT_TO_MIME`, `VISION_MIMES`. Single source of truth imported by `fetch-url.ts` and `inspect-image.ts` — prevents silent divergence between the two mappings.
 - `src/skills.ts` — `discoverSkills(sharedDir, workdir): SkillsBlock`: scans four tier directories in order (platform → team → mission → agent-local); extracts YAML frontmatter from each top-level `SKILL.md`; resolves name collisions (higher tier wins); returns merged skill list plus three actionable paths. Only real directories are scanned (symlinks excluded, prevents injection via `mission/`). `formatSkillsBlock(block)`: formats the block for system prompt injection.
 - `src/prompt.ts` — `buildSystemPrompt(agent, mentalMapHtml, sharedDir, workdir)`: substitutes `{{mentalMap}}` in `agent.systemPrompt`, then appends the skills block produced by `discoverSkills`/`formatSkillsBlock`. `formatMessages(messages)` formats the inbox as the opening user turn.
-- `src/agent-runner.ts` — `runAgent(agentId, messages, ctx, signal)`: initialises mental map, builds system prompt, derives `permittedPaths = [workdir, sharedDir]` from `AgentIdentity`, creates `AclPolicy`, runs inner loop with all tools.
-- `src/orchestrator.ts` — `runOrchestrationLoop(config, signal)`: provisions workspace, then calls `verifyIsolation()` before the first cycle (fails fast if sudo is misconfigured or secrets leak); inbox-poll scheduling; runs agents in supervisor-depth order (seniors first); supports `--step` mode and live readline input; terminates when no agent has unread messages.
+- `src/agent-runner.ts` — `runAgent(agentId, messages, ctx, signal)`: loads mental map from most recent `mentalMapHtml` in `conversationMessages` (falling back to `initialMentalMap`); holds it in `currentMentalMapHtml`; passes `getSystemPrompt = () => buildSystemPrompt(...)` so mental map changes within the session are reflected in subsequent LLM calls; tracks `currentCallSeq` (incremented per AssistantMessage); wires `UpdateMentalMap` as a pure in-memory tool; appends sub-loop messages from Research with `parentToolUseId`; calls reflection before the inner loop; calls `browseWebHandle?.close()` in finally.
+- `src/orchestrator.ts` — `runOrchestrationLoop(config, signal)`: provisions workspace, then calls `verifyIsolation()` before the first cycle; inbox-poll scheduling; runs agents in supervisor-depth order (seniors first); supports `--step` mode and live readline input; terminates when no agent has unread messages. `teardownOnExit?: boolean` (default `false`) — must be explicitly set to `true` in CLI/tests; the daemon never tears down the workspace so mission files survive restarts (Sprint 11).
 - `src/user-input.ts` — readline handler: `/command` dispatch (`/help`; future commands reserved under `/`); `@path` scanning (extracts `@/abs` or `@./rel` tokens, calls `saveUpload`, appends notice to message body).
 - `src/cli.ts` — multi-agent CLI; requires `TEAM_CONFIG`; derives `teamSkillsPath` from the TEAM_CONFIG path (`<dir>/<basename-without-ext>/skills/`); provisions workspace via `WorkspaceManager`; registers `SearchWeb` when `BRAVE_SEARCH_API_KEY` is set; logs all tool calls and results per agent.
 - `src/models.ts` — `CLAUDE_SONNET` constant; `anthropicModel()` factory.
@@ -151,7 +158,7 @@ Two packages are built. Key files:
 **Sprint 6 — Persistent Daemon and Conversation Persistence (built):**
 - **Conversation persistence** (ADR-0008): each agent maintains a full, growing conversation across all its wakeups within a mission. `src/conversation-repository.ts` (new) provides `StoredMessage` (message + `turnNumber`), `ConversationRepository` interface, and `createMongoConversationRepository`. `InMemoryMailboxRepository` and `InMemoryMentalMapRepository` are deleted — MongoDB is the only implementation for all three repos. `runInnerLoop` gains `previousMessages?: Message[]` and returns `Message[]`. `runAgent` loads history before the loop and appends new messages after. `cli.ts` and `daemon.ts` always use MongoDB. See ADR-0008 for the `convertToLlm` filter hook (compaction placeholder) and the `turnNumber`-based `trim()` API.
 - **Persistent daemon**: `runOrchestrationLoop` sleeps on MongoDB Change Stream instead of exiting when inbox is empty. Separate `daemon.ts` entry point; `cli.ts` keeps its single-run behaviour for tests. `pm2` process definition for local dev. `MONITOR_PORT` (default 4000) and `MAX_COST_USD` are validated at startup — daemon exits with a clear error on invalid values rather than silently misbehaving.
-- **Monitor server** (`src/monitor-server.ts`): HTTP + SSE dashboard. Routes: `GET /` HTML dashboard; `GET /events` SSE stream; `GET /team` agent roster; `GET /status` usage + mission info; `GET /mailbox` last 500 mailbox messages (pre-populates feed on page load); `GET /agents/:id/mental-map`; `GET /agents/:id/conversation`; `POST /send-message` (validates `to[]`, `subject`, `message` — returns 400 on missing/invalid fields); `POST /step`, `POST /toggle-step`, `POST /start`, `POST /stop`. Three Change Stream watchers (mailbox, conversations, mental-maps) reconnect with exponential backoff (1s→30s) on MongoDB error so the dashboard does not go stale.
+- **Monitor server** (`src/monitor-server.ts`): HTTP + SSE dashboard. Routes: `GET /` HTML dashboard; `GET /events` SSE stream; `GET /team` agent roster; `GET /status` usage + mission info; `GET /mailbox` last 500 mailbox messages; `GET /agents/:id/mental-map` (queries most recent `mentalMapHtml` from `conversationMessages`); `GET /agents/:id/sessions` (aggregates `llmCallLog` by `turnNumber`); `GET /agents/:id/sessions/:turn` (messages + llmCalls for one session); `POST /send-message`; `POST /step`, `POST /toggle-step`, `POST /start`, `POST /stop`, `POST /extend-budget`. Two Change Stream watchers (mailbox, conversations) reconnect with exponential backoff.
 - **MongoDB-native operator CLI**:
   - `src/cli-post.ts` (~30 lines) — inserts one `MailboxMessage` to the `mailbox` collection and exits, waking the daemon via Change Stream. `--to <agentId>` targets any agent (default: team lead). Usage: `MISSION_ID=... npm run cli:post -- --to lead "message"` or `npm run cli:post -- --to data-scientist "re-run model"`.
   - `src/cli-tail.ts` (~30 lines) — Change Stream watch on the mailbox; prints messages as they arrive. Default: messages `to: "user"` only. `--all` flag shows full inter-agent traffic (debugging). Usage: `MISSION_ID=... npm run cli:tail` or `npm run cli:tail -- --all`.
@@ -210,7 +217,36 @@ Two packages are built. Key files:
   - Daily brief committed to `sharedDir/briefs/YYYY-MM-DD.md` with source citations
 - Exit criteria: (1) all four agents produce coherent individual proposals in Step 2; (2) Data Scientist commits tracker + at least one data collection script after Step 3 approval; (3) Lead registers 06:00 schedule and confirms to user; (4) full daily cycle completes: research committed → brief committed → user receives PostMessage with L/S recommendation, macro/sector/company rationale
 
-**Sprint 10 — Agentic Tools: Research (in progress):**
+**Sprint 11 — Dashboard UX, Workspace Persistence, and Operational Tooling (built):**
+- **Drop `mental_maps` collection.** Mental map HTML is now stored inline as `mentalMapHtml` on each `AssistantMessage` document in `conversationMessages`. No separate collection, no sync hazard. The current mental map is always the most recent document with `mentalMapHtml` set. `GET /agents/:id/mental-map` queries `conversationMessages` directly.
+- **Per-call mental map snapshots.** `mentalMapHtml` is written on every AssistantMessage (not just at session boundaries), so the full history of how the mental map evolved through a session is visible in the sessions tree.
+- **Dynamic system prompt.** `InnerLoopConfig.systemPrompt: string` → `getSystemPrompt: () => string`. The closure captures `currentMentalMapHtml`, so mental map updates via `UpdateMentalMap` are reflected in all subsequent LLM calls within the same session. Previously the LLM saw a stale map until the next wakeup.
+- **`UpdateMentalMap` is pure in-memory.** The tool patches `currentMentalMapHtml` in `agent-runner.ts` and calls `ctx.onMentalMapUpdate?.(agentId, html)` for the SSE push. No MongoDB write at the tool level — persistence happens implicitly when the next AssistantMessage is stored.
+- **`callSeq` field on `StoredMessage`/`ConversationDoc`.** 0-based index of the LLM call within a session (-1 for the task user message, undefined for sub-loop messages). Used to group messages into LLM call nodes in the sessions tree. Pre-sprint-11 documents lack this field; `normalizeCallSeq()` in the dashboard reconstructs it from `seqInTurn` order for backward compat.
+- **`parentToolUseId` field.** Research sub-loop messages stored in `conversationMessages` with `parentToolUseId` set to the parent tool_use block id. The sessions tree groups them under the parent Research tool call node as a third level.
+- **Sessions tree UI.** Right panel now shows a tree per agent: Session → LLM call → Tool calls. Reflection sessions shown with `↺ Reflection` badge. Each LLM call has a collapsible 🧠 Mental Map row that renders the full HTML in a sandboxed iframe. Mental Map and Usage sub-tabs removed entirely.
+- **Budget pause.** `MAX_COST_USD` no longer terminates the daemon — instead pushes a `cost-pause` SSE event and blocks the orchestration loop via `monitor.waitForBudget()`. A pulsing orange banner appears in the dashboard with a "+$5 and continue" button (`POST /extend-budget`). The daemon's cap is updated in memory; no restart needed.
+- **Workspace persistence across restarts.** `WorkspaceManager.teardown()` is no longer called on daemon shutdown. `OrchestratorConfig.teardownOnExit?: boolean` (default `false`) — only `cli.ts` sets it to `true` (integration tests provision fresh temp dirs). Mission files, git history, scripts, and artifacts survive daemon restarts.
+- **`cli:reset`** (`src/cli-reset.ts`): wipes all MongoDB data for a mission (`mailbox`, `conversationMessages`, `llmCallLog`, `scheduled_messages`) and deletes the workspace directories. Prompts for confirmation. `--db-only` skips filesystem. `--yes` skips prompt. Usage: `TEAM_CONFIG=$PWD/config/teams/... npm run cli:reset -w packages/agent-runtime-worker`.
+- **Clean daemon shutdown.** Three root causes fixed: (1) `server.closeAllConnections()` + destroy SSE sockets before `server.close()` so the port is freed immediately; (2) `stop()` resolves all pending `waitForStart`/`waitForBudget`/`waitForStep` promises so the orchestration loop unblocks; (3) `process.exit(0)` after the finally block terminates MongoDB driver background timers. Double Ctrl-C force-exits immediately.
+- **Cache-Control: no-store** on all static assets (`index.html`, `app.js`, `style.css`) — prevents browser from serving stale dashboard after daemon restart.
+- **MongoDB index migration** (`conversation-repository.ts`): on first run after the sprint-9→11 upgrade the unique index may be missing `unique: true` (error code 85 `IndexOptionsConflict`). The constructor detects this, drops the old index, and recreates it with `unique: true`.
+- Key files changed:
+  - `src/mental-map.ts` — removed `MentalMapRepository`; `createMentalMapTool(getHtml, setHtml)` is now pure in-memory
+  - `src/loop.ts` — `systemPrompt: string` → `getSystemPrompt: () => string`; called inside loop before each `completeFn` call
+  - `src/agent-runner.ts` — loads mental map from `conversationRepo.loadMostRecentMentalMap()`; tracks `currentCallSeq`; wires `UpdateMentalMap` as in-memory; appends sub-loop msgs with `parentToolUseId`; `onMentalMapUpdate` callback
+  - `src/conversation-repository.ts` — `callSeq?`, `mentalMapHtml?`, `parentToolUseId?` on `StoredMessage`/`ConversationDoc`; `loadMostRecentMentalMap()`; index migration for error code 85
+  - `src/reflection.ts` — `getMentalMap`/`setMentalMap` callbacks replace `mentalMapRepo`
+  - `src/orchestrator.ts` — `teardownOnExit?: boolean`; `waitForBudget` hook
+  - `src/daemon.ts` — `let maxCostUsd` (mutable for extend); `initiateShutdown()` with double-Ctrl-C guard; `process.exit(0)` after finally; `onMentalMapUpdate` callback
+  - `src/monitor-server.ts` — `stop()` destroys SSE sockets + resolves all waitFor*; `GET /agents/:id/sessions`, `GET /agents/:id/sessions/:turn`; `POST /extend-budget`; `notifyCostPause`/`waitForBudget`; removed mental-maps Change Stream watcher; `Cache-Control: no-store`
+  - `src/cli-reset.ts` — new: mission reset CLI
+  - `src/cli.ts` — `teardownOnExit: true`
+  - `public/app.js` — sessions tree; `normalizeCallSeq`; budget banner; removed sub-tabs, Mental Map view, Usage view
+  - `public/index.html` — budget banner HTML; removed sub-tabs bar
+  - `public/style.css` — sessions tree styles; budget banner + pulse animation; mental map iframe styles
+
+**Sprint 10 — Agentic Tools: Research (built):**
 - Motivated by token cost analysis of the equity-research mission: agents were independently fetching the same URLs (cross-agent URL duplication ×7–10), running 30–40+ SearchWeb calls per session for slight variations of the same query, and accumulating raw tool results across all LLM calls (O(n²) cache cost). See ADR-0010 for full analysis.
 - **Three tool categories formalised:**
   1. **Simple tools** — pure functions, no lifecycle (Bash, WriteFile, EditFile, FetchUrl, SearchWeb, InspectImage, PostMessage, UpdateMentalMap, etc.)
@@ -248,10 +284,11 @@ Two packages are built. Key files:
 | 7 | ✅ Done | `BrowseWeb` (Stagehand/Playwright): JS rendering, interactive tasks, session persistence, SSRF blocking, trust boundary markers |
 | 8 | ✅ Done | Equity research MVP: 4-agent NVDA team, `schedule-task` skill, bootstrapping mission, daily brief + L/S rec + performance tracker |
 | 9 | ✅ Done | Context management: session-boundary compaction, reflection (UpdateMentalMap tool + cumulative summary), LLM call audit log (ADR-0009) |
-| 10 | 🔄 In Progress | Agentic tools: Research tool (nested inner loop, isolated context, shared index); efficiency guidelines for equity-research agents (ADR-0010) |
-| 11 | | Cloud burst and scale-out |
-| 12 | | Hardening and launch prep |
-| 13 | | Mission Assistant: LLM operator copilot with read access to all mission state |
+| 10 | ✅ Done | Agentic tools: Research tool (nested inner loop, isolated context, shared index); efficiency guidelines for equity-research agents (ADR-0010) |
+| 11 | ✅ Done | Dashboard UX (sessions tree, budget pause, mental map iframe); workspace persistence; `cli:reset`; clean daemon shutdown |
+| 12 | | Cloud burst and scale-out |
+| 13 | | Hardening and launch prep |
+| 14 | | Mission Assistant: LLM operator copilot with read access to all mission state |
 
 ## Development Principles
 
@@ -326,9 +363,11 @@ sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
 Re-run whenever you upgrade Node or switch nvm versions. The wrapper is updated in-place; the sudoers rule stays the same. `tools.ts` uses `/usr/local/bin/magi-node` if it exists, falling back to `process.execPath` for environments where `setup-dev.sh` has not been run (CI, non-Linux).
 
 **Port 4000 already in use on daemon start**
-A previous daemon instance may still hold the port. Find and kill it:
+Since Sprint 11 the daemon shuts down cleanly (port freed on stop/Ctrl-C), so this is now rare. If it happens after a kill -9 or crash:
 ```bash
 lsof -ti tcp:4000 | xargs kill -9
+# Also remove any stale PID file:
+find . -name "daemon.pid" -delete
 ```
 
 **`File is not defined` on Node 18 (Stagehand / undici)**
