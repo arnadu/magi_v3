@@ -217,12 +217,25 @@ export class MonitorServer {
 	}
 
 	stop(): void {
-		this.server.close();
+		// Resolve all blocked waitFor* promises so the orchestration loop can unblock
+		// and reach its finally block before the process exits.
+		this.startResolve?.();
+		this.budgetResolve?.();
+		this.stepResolve?.();
+
+		// Destroy every SSE connection immediately — `server.close()` alone only
+		// stops new connections; existing keep-alive connections hold the port open
+		// and prevent the `close` event (which terminates the Change Stream watchers).
 		for (const client of this.clients) {
-			try {
-				client.end();
-			} catch {}
+			try { client.socket?.destroy(); } catch {}
 		}
+		this.clients.clear();
+
+		// closeAllConnections() destroys remaining keep-alive sockets (Node 18.2+),
+		// then close() stops accepting and emits `close` once all connections are gone.
+		// The `close` event resolves the watchMailbox/watchConversations loops.
+		this.server.closeAllConnections();
+		this.server.close();
 	}
 
 	// ── Request handler ───────────────────────────────────────────────────────

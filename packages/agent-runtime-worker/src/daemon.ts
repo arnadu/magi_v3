@@ -304,11 +304,19 @@ async function main(): Promise<void> {
 	// Abort controller — fired by SIGTERM / SIGINT / cost cap / monitor stop.
 	const ac = new AbortController();
 	const { signal } = ac;
-	process.on("SIGTERM", () => ac.abort());
-	process.on("SIGINT", () => {
-		console.log("\n[daemon] Interrupted — shutting down...");
+	let shutdownInitiated = false;
+	function initiateShutdown(reason: string): void {
+		if (shutdownInitiated) {
+			// Second signal — force exit immediately.
+			console.log("\n[daemon] Force exit");
+			process.exit(1);
+		}
+		shutdownInitiated = true;
+		console.log(`\n[daemon] ${reason} — shutting down… (Ctrl-C again to force)`);
 		ac.abort();
-	});
+	}
+	process.on("SIGTERM", () => initiateShutdown("SIGTERM"));
+	process.on("SIGINT",  () => initiateShutdown("Interrupted"));
 
 	// PID file — enables cli:stop and guards against duplicate daemons.
 	const missionDir = join(workdir, "missions", missionId);
@@ -556,6 +564,10 @@ async function main(): Promise<void> {
 		console.log(usageAccumulator.fullSummary());
 		console.log("[daemon] Shutdown complete");
 	}
+	// Force-exit after cleanup. The MongoDB driver and other async handles can
+	// keep the event loop alive even after client.close() — process.exit() is
+	// the only reliable way to free the port and terminate cleanly.
+	process.exit(0);
 }
 
 main().catch((e) => {
