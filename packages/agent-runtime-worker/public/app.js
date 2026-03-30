@@ -684,22 +684,28 @@ function fillLlmCallBody(body, assistantDoc, toolResultDocs, subLoopByToolId, ll
 	}
 
 	if (assistantDoc.mentalMapHtml) {
-		const diffRow = document.createElement("div");
-		diffRow.className = "lc-mm-row";
-		diffRow.innerHTML = '<span class="lc-mm-label">🧠 Mental Map</span><span class="lc-mm-arrow">▶</span>';
-		const diffBody = document.createElement("div");
-		diffBody.style.display = "none";
-		diffRow.onclick = () => {
-			const open = diffBody.style.display !== "none";
-			diffBody.style.display = open ? "none" : "";
-			diffRow.querySelector(".lc-mm-arrow").textContent = open ? "▶" : "▼";
-			if (!open && !diffBody.dataset.filled) {
-				diffBody.dataset.filled = "1";
-				diffBody.innerHTML = `<div class="mm-snapshot"><pre>${esc(assistantDoc.mentalMapHtml.slice(0, 1000))}${assistantDoc.mentalMapHtml.length > 1000 ? "…" : ""}</pre></div>`;
+		const mmRow = document.createElement("div");
+		mmRow.className = "lc-mm-row";
+		mmRow.innerHTML = '<span class="lc-mm-label">🧠 Mental Map</span><span class="lc-mm-arrow">▶</span>';
+		const mmBody = document.createElement("div");
+		mmBody.className = "mm-iframe-wrap";
+		mmBody.style.display = "none";
+		mmRow.onclick = () => {
+			const open = mmBody.style.display !== "none";
+			mmBody.style.display = open ? "none" : "";
+			mmRow.querySelector(".lc-mm-arrow").textContent = open ? "▶" : "▼";
+			if (!open && !mmBody.dataset.filled) {
+				mmBody.dataset.filled = "1";
+				const iframe = document.createElement("iframe");
+				iframe.className = "mm-iframe";
+				iframe.setAttribute("sandbox", "allow-same-origin");
+				iframe.srcdoc = assistantDoc.mentalMapHtml;
+				mmBody.appendChild(iframe);
 			}
 		};
-		body.appendChild(diffRow);
-		body.appendChild(diffBody);
+		// Insert mental map row before text content
+		body.insertBefore(mmBody, body.firstChild);
+		body.insertBefore(mmRow, mmBody);
 	}
 
 	const toolCalls = blocks.filter(b => b.type === "toolCall");

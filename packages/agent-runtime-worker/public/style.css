@@ -1168,17 +1168,18 @@ main {
 .lc-mm-row:hover { color: var(--text); }
 .lc-mm-label { font-weight: 600; }
 .lc-mm-arrow { margin-left: auto; }
-.mm-snapshot pre {
-	font-size: 10px;
-	white-space: pre-wrap;
-	word-break: break-all;
-	color: var(--muted);
-	background: var(--bg);
-	padding: 5px;
-	border-radius: 3px;
+.mm-iframe-wrap {
 	border: 1px solid var(--border);
-	max-height: 200px;
-	overflow-y: auto;
+	border-radius: 4px;
+	overflow: hidden;
+	margin: 4px 0 6px 0;
+}
+.mm-iframe {
+	width: 100%;
+	height: 420px;
+	border: none;
+	display: block;
+	background: #fff;
 }
 
 /* ── Tool call node ── */
