@@ -66,9 +66,9 @@ Output (digest.json):
 
 USAGE
 -----
-  python3 process_news.py \\
-    --raw     <path/to/raw.json> \\
-    --existing <path/to/digest.json>   (optional; omit or missing → all items are new) \\
+  python3 process_news.py
+    --raw     <path/to/raw.json>
+    --existing <path/to/digest.json>   (optional; omit or missing -> all items are new)
     --output  <path/to/digest.json>
 """
 
