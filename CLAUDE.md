@@ -40,10 +40,22 @@ TEAM_CONFIG=... npm run cli:reset -w packages/agent-runtime-worker -- --yes     
 
 # Env vars: ANTHROPIC_API_KEY (required), MONGODB_URI (required), TEAM_CONFIG (required),
 #           MODEL (optional — default: claude-sonnet-4-6),
+#           VISION_MODEL (optional — default: claude-haiku-4-5-20251001; model for FetchUrl image captioning, InspectImage, BrowseWeb),
 #           AGENT_WORKDIR (optional — default: cwd; all mission data written here),
 #           MONITOR_PORT (optional — default: 4000; must be 1–65535 or daemon exits),
 #           MAX_COST_USD (optional — spending cap; must be a positive number or daemon exits),
 #           BRAVE_SEARCH_API_KEY (optional — enables SearchWeb tool; free tier: 2000 req/month)
+# Data API keys (forwarded to background jobs only — not to agent tool subprocesses):
+#   Defined in .env.data-keys (separate file from .env):
+#           FRED_API_KEY, FMP_API_KEY, NEWSAPIORG_API_KEY
+
+# Python data factory (Sprint 12):
+magi-python3 -c "import yfinance, requests; print('ok')"   # verify shared venv is working
+magi-python3 -m pytest tests/data_factory/ -v              # all data factory tests (requires venv)
+# Manual verification (requires magi-python3 wrapper from setup-dev.sh):
+mkdir -p /tmp/test-factory
+magi-python3 config/teams/equity-research/skills/data-factory/scripts/adapters/adapter_yfinance.py --discover
+magi-python3 config/teams/equity-research/skills/data-factory/scripts/catalog.py list /tmp/test-factory
 ```
 
 Type-check without building:
@@ -270,6 +282,88 @@ Two packages are built. Key files:
   - `config/teams/equity-research.yaml` — efficiency guidelines for all four agents
   - `docs/adr/0010-agentic-tools-research.md` — full design: tool categories, statefulness decision, index schema, O(n²) analysis, equity-research prompt changes
 
+**Sprint 12 — Data Factory + Secondary Model (Phase 1+2 built; Phase 3+ in progress):**
+
+Motivation: during Sprint 11 equity-research operations, 7–10 agents independently fetched the same URLs every cycle, with no time-series persistence between sessions. Sprint 12 builds a pre-fetched data store (data factory) that agents read instead of web-browsing on every wakeup.
+
+- **Phase 1 — Secondary (vision) model (built):**
+  - `CLAUDE_HAIKU` constant in `src/models.ts` — `claude-haiku-4-5-20251001`, $0.80/$4 per MTok input/output.
+  - `visionModel?: Model<string>` added to `OrchestratorConfig` and `AgentRunContext`.
+  - `FetchUrl`, `InspectImage`, and `BrowseWeb` now use `ctx.visionModel ?? ctx.model` — Haiku for image captioning and browser automation; Sonnet kept for agent reasoning, reflection, Research synthesis.
+  - `VISION_MODEL` env var (optional; default: `claude-haiku-4-5-20251001`). Set to `claude-sonnet-4-6` to use a single model everywhere.
+  - `daemon.ts` and `cli.ts` parse `VISION_MODEL` and pass as `visionModel` in the orchestration config.
+
+- **Phase 2 — Data factory Python core (built):**
+  - **Two-skill architecture:** `data-factory/` for Lin (operator); `data-factory-client/` for Alex, Marco, Sam (consumers). Prevents operator instructions from cluttering consumer agent prompts.
+  - **Python venv isolation (PEP 668 fix):** Debian 12+ forbids pip into system Python. `setup-dev.sh` now creates a shared venv at `/opt/magi/venv` (owned root, group `magi-shared`), installs data-factory requirements there, and writes `/usr/local/bin/magi-python3` — a wrapper script (not a symlink; symlinks break venv path resolution) that `exec`s the venv Python. Pool users (`magi-wN`) can run `magi-python3` without knowing about the venv.
+  - **Shebang-based interpreter dispatch:** all Python scripts use `#!/usr/bin/env magi-python3`. The daemon spawns background jobs as `sudo -u <linuxUser> <scriptPath> <args>`; the OS resolves the interpreter from the shebang. No `.sh` extension required; Python and shell scripts are treated identically.
+  - **`.env` split:** orchestrator secrets remain in `.env`; data API keys move to `.env.data-keys` (both git-ignored). `daemon.ts` loads both files. `DATA_KEY_NAMES = ["FRED_API_KEY", "FMP_API_KEY", "NEWSAPIORG_API_KEY"]` and `dataKeysEnv()` (exported from `daemon.ts`) collect the data keys for forwarding to background jobs. These keys are never passed to agent tool subprocesses (`sudo -u` child env contains only `PATH` and `HOME`).
+
+  **Files under `config/teams/equity-research/skills/`:**
+
+  | File | Purpose |
+  |------|---------|
+  | `data-factory/SKILL.md` | Lin's operator guide: setup, refresh, add/remove sources, budget check |
+  | `data-factory/sources.json` | Catalog of all series, news, and document sources |
+  | `data-factory/schedule.json` | `refresh_cron`, `fmp_daily_budget`, `news_max_articles_fetch` |
+  | `data-factory/requirements.txt` | `requests`, `yfinance`, `html2text`, `pytest` |
+  | `data-factory/scripts/refresh.py` | Main orchestrator: deps check, bootstrap config, run adapters, process news digests, synthesise briefs via `magi-tool research`, print catalog summary |
+  | `data-factory/scripts/catalog.py` | `cmd_list`, `cmd_show`, `cmd_refresh` (parallel non-FMP, sequential FMP with budget guard); catalog schema: `{id, output, status, fetched_at, rows, error}` |
+  | `data-factory/scripts/process_news.py` | De-duplication (URL exact + title Levenshtein ≤ 0.15), ranking (newest + NVDA-keyword boost), `is_new` marking; max 30 items; outputs `digest.json` |
+  | `data-factory/scripts/adapters/adapter_fmp.py` | FMP price/OHLCV + SEC filing index (`FMP_API_KEY`) |
+  | `data-factory/scripts/adapters/adapter_fred.py` | FRED macro series: DFF, T10Y2Y, UNRATE, CPIAUCSL (`FRED_API_KEY`) |
+  | `data-factory/scripts/adapters/adapter_yfinance.py` | yfinance OHLCV fallback (no API key) |
+  | `data-factory/scripts/adapters/adapter_newsapi.py` | NewsAPI headlines (`NEWSAPIORG_API_KEY`) |
+  | `data-factory/scripts/adapters/adapter_gdelt.py` | GDELT news events (no API key) |
+  | `data-factory/scripts/adapters/adapter_imf.py` | IMF DataMapper annual macro (no key); nested `values → INDICATOR → COUNTRY → {year: value}` response |
+  | `data-factory/scripts/adapters/adapter_worldbank.py` | World Bank Indicators annual macro (no key); `mrv` param for most-recent N values |
+  | `data-factory-client/SKILL.md` | Consumer guide: check catalog, read series CSVs, read news brief, read filing index |
+  | `data-factory-client/scripts/read-catalog.sh` | Wraps `catalog.py list $FACTORY` |
+  | `data-factory-client/scripts/read-series.sh` | `tail -N $FACTORY/series/<id>.csv` |
+  | `data-factory-client/scripts/read-digest.sh` | Prints `is_new:true` items from `digest.json` as formatted table |
+
+  **Data layout under `$FACTORY/` (live factory dir, not in repo):**
+  ```
+  $FACTORY/
+    catalog.json                        — status of all series (generated by catalog.py)
+    refresh.log                         — append-only refresh history (=== header per run)
+    .fmp_usage_YYYY-MM-DD               — daily FMP call counter (guard at 200/day)
+    series/
+      fmp/NVDA_daily_price.csv          — date,open,high,low,close,volume
+      fred/DFF.csv                      — date,value
+      fred/T10Y2Y.csv                   — date,value
+    news/
+      nvda_competitive_landscape/
+        raw.json                        — adapter output
+        digest.json                     — de-duped, ranked, with is_new flags
+        brief.md                        — LLM-synthesised brief (updated by refresh.py)
+    documents/
+      NVDA/filings/index.json           — [{type, date, url}] — no local copies
+  ```
+
+  **Adapter CLI interface (uniform across all 7 adapters):**
+  ```bash
+  adapter_fmp.py --discover                          # JSON: { "series": [...] }
+  adapter_fmp.py --fetch <outputPath> --series-id <id> --params '<json>'  # exit 0/non-0
+  ```
+
+  **Unit tests (`tests/data_factory/`, stdlib `unittest` — no LLM, no network for yfinance/gdelt):**
+  - `test_catalog.py` — empty factory, refresh with yfinance, error on bad ticker
+  - `test_process_news.py` — URL de-dup, title fuzzy de-dup, `is_new` marking, ranking, truncation to 30
+  - `test_adapter_yfinance.py` — `--discover`, `--fetch` (NVDA CSV columns + rows)
+  - `test_adapter_gdelt.py` — `--discover`, `--fetch` (GDELT headlines)
+  - `test_refresh.py` — 29 tests covering `_resolve_paths`, `_Log`, `bootstrap_config`, `process_news_digests`, `synthesise_briefs` (including skip-when-no-token, brief.md not in context on first run)
+  - Run all: `magi-python3 -m pytest tests/data_factory/ -v` (pytest is in the venv)
+  - Alternatively: `magi-python3 -m unittest discover tests/data_factory -v` (no venv needed for test_refresh.py and test_catalog.py)
+
+  **Key TypeScript changes (Phase 1):**
+  - `src/models.ts` — `CLAUDE_HAIKU` constant
+  - `src/orchestrator.ts` — `visionModel?` in `OrchestratorConfig`
+  - `src/agent-runner.ts` — `visionModel?` in `AgentRunContext`; `ctx.visionModel ?? ctx.model` for FetchUrl, InspectImage, BrowseWeb
+  - `src/daemon.ts` — `VISION_MODEL` env var parsing; `DATA_KEY_NAMES` const; `dataKeysEnv()` exported function; loads `.env.data-keys`
+  - `src/cli.ts` — `VISION_MODEL` parsing and pass-through
+  - `scripts/setup-dev.sh` — creates `/opt/magi/venv`, installs data-factory requirements, writes `/usr/local/bin/magi-python3` wrapper
+
 ## Sprint Roadmap
 
 | Sprint | Status | Focus |
@@ -286,7 +380,7 @@ Two packages are built. Key files:
 | 9 | ✅ Done | Context management: session-boundary compaction, reflection (UpdateMentalMap tool + cumulative summary), LLM call audit log (ADR-0009) |
 | 10 | ✅ Done | Agentic tools: Research tool (nested inner loop, isolated context, shared index); efficiency guidelines for equity-research agents (ADR-0010) |
 | 11 | ✅ Done | Dashboard UX (sessions tree, budget pause, mental map iframe); workspace persistence; `cli:reset`; clean daemon shutdown |
-| 12 | | Cloud burst and scale-out |
+| 12 | 🔄 In Progress | Data factory + secondary model + background jobs + Tool IPC server |
 | 13 | | Hardening and launch prep |
 | 14 | | Mission Assistant: LLM operator copilot with read access to all mission state |
 
@@ -379,6 +473,18 @@ find . -name "daemon.pid" -delete
 import cronParser from "cron-parser";
 const { parseExpression } = cronParser;
 ```
+
+**PEP 668 "externally-managed-environment" when pip-installing on Debian 12+**
+Debian 12 forbids `pip install` into the system Python (returns error about externally-managed-environment). The data factory Python dependencies (`yfinance`, `requests`, etc.) live in a shared venv at `/opt/magi/venv`.
+
+Setup (done once by `scripts/setup-dev.sh`):
+```bash
+sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
+```
+This creates `/opt/magi/venv`, installs data-factory requirements there, and writes the wrapper `/usr/local/bin/magi-python3`. Pool users (`magi-wN`) access it via the `magi-shared` group.
+
+**`magi-python3` must be a wrapper script, not a symlink**
+If you run `sudo ln -sf /opt/magi/venv/bin/python3 /usr/local/bin/magi-python3`, imports will fail with `ModuleNotFoundError` even though the venv has the packages. Python uses the *symlink's filesystem location* (`/usr/local/bin/`) to find its venv — it resolves to the system site-packages, not `/opt/magi/venv/lib`. The wrapper script `exec /opt/magi/venv/bin/python3 "$@"` avoids this. Re-run `setup-dev.sh` to fix it (it creates the wrapper correctly). If you need to overwrite an existing symlink/script in-place: `sudo rm /usr/local/bin/magi-python3` first (can't overwrite a running executable).
 
 ## Quality Requirements
 

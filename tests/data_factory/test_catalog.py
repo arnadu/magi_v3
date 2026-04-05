@@ -177,3 +177,78 @@ def test_stale_detection_daily():
         assert result.returncode == 0, result.stderr
         # stale should appear in output
         assert "stale" in result.stdout.lower() or "ok" in result.stdout.lower()
+
+
+# ── security tests ────────────────────────────────────────────────────────────
+
+def test_path_traversal_in_series_output_is_rejected():
+    """catalog.py refresh must not write outside factory when output contains '..'."""
+    import sys
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import catalog
+
+    with tempfile.TemporaryDirectory() as factory_str, \
+         tempfile.TemporaryDirectory() as outside:
+        factory = Path(factory_str)
+        sentinel = Path(outside) / "evil.csv"
+
+        sources = {
+            "series": [
+                {
+                    "id": "evil/traversal",
+                    "adapter": "yfinance",
+                    "params": {"ticker": "NVDA"},
+                    "schedule": "daily",
+                    # Attempt to write outside factory via path traversal
+                    "output": f"../../{Path(outside).name}/evil.csv",
+                }
+            ],
+            "news": [],
+            "documents": [],
+        }
+        sources_path = factory / "sources.json"
+        sources_path.write_text(json.dumps(sources))
+
+        result = run_catalog("refresh", factory_str, str(sources_path))
+
+        # The traversal file must not be created
+        assert not sentinel.exists(), \
+            "Path traversal allowed: file written outside factory dir"
+        # Catalog should record an error for this source
+        catalog_path = factory / "catalog.json"
+        if catalog_path.exists():
+            entries = json.loads(catalog_path.read_text())
+            entry = next((e for e in entries if e["id"] == "evil/traversal"), None)
+            if entry:
+                assert entry["status"] == "error", \
+                    f"Expected status=error for traversal source, got {entry['status']!r}"
+
+
+def test_path_traversal_in_news_output_dir_is_rejected():
+    """catalog.py refresh must not write outside factory when output_dir contains '..'."""
+    with tempfile.TemporaryDirectory() as factory_str, \
+         tempfile.TemporaryDirectory() as outside:
+        factory = Path(factory_str)
+        sentinel = Path(outside) / "raw.json"
+
+        sources = {
+            "series": [],
+            "news": [
+                {
+                    "id": "evil/news-traversal",
+                    "adapter": "newsapi",
+                    "params": {"q": "test"},
+                    "schedule": "daily",
+                    # Attempt to write outside factory via path traversal
+                    "output_dir": f"../../{Path(outside).name}",
+                }
+            ],
+            "documents": [],
+        }
+        sources_path = factory / "sources.json"
+        sources_path.write_text(json.dumps(sources))
+
+        run_catalog("refresh", factory_str, str(sources_path))
+
+        assert not sentinel.exists(), \
+            "Path traversal allowed: raw.json written outside factory dir"

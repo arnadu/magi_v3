@@ -328,6 +328,27 @@ def cmd_refresh(
 # Adapter execution helpers
 # ---------------------------------------------------------------------------
 
+def _safe_output_path(factory: Path, rel: str, source_id: str) -> Path:
+    """
+    Join *rel* onto *factory* and verify the result stays within *factory*.
+
+    Path traversal guard: sources.json is operator-editable, so an entry like
+    ``"output": "../../etc/passwd"`` would otherwise escape the factory dir.
+    Using .resolve() to canonicalise before the containment check catches both
+    ``..`` segments and symlinks pointing outside.
+
+    Raises ValueError if the resolved path escapes the factory directory.
+    """
+    candidate = (factory / rel).resolve()
+    factory_resolved = factory.resolve()
+    if not candidate.is_relative_to(factory_resolved):
+        raise ValueError(
+            f"Source {source_id!r}: output path {rel!r} escapes factory dir "
+            f"({factory_resolved}). Possible path traversal in sources.json."
+        )
+    return candidate
+
+
 def _run_adapter(
     factory: Path,
     script_dir: Path,
@@ -358,12 +379,18 @@ def _run_adapter(
         _log(log_path, f"[catalog] ERROR {source_id}: adapter not found: {adapter_script}")
         return _make_entry(source, "error", error=f"adapter not found: {adapter}")
 
-    # Determine whether this is a news or series source and set the output path
+    # Determine whether this is a news or series source and set the output path.
+    # _safe_output_path() rejects traversal sequences (e.g. "../../etc") that
+    # could otherwise escape the factory directory.
     source_type = "news" if "output_dir" in source else "series"
-    if source_type == "news":
-        out_path = factory / source["output_dir"] / "raw.json"
-    else:
-        out_path = factory / source["output"]
+    try:
+        if source_type == "news":
+            out_path = _safe_output_path(factory, source["output_dir"], source_id) / "raw.json"
+        else:
+            out_path = _safe_output_path(factory, source["output"], source_id)
+    except ValueError as exc:
+        _log(log_path, f"[catalog] ERROR {source_id}: {exc}")
+        return _make_entry(source, "error", error=str(exc))
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     params_json = json.dumps(source.get("params", {}))

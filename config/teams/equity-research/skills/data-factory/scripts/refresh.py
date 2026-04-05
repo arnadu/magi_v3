@@ -268,9 +268,14 @@ def process_news_digests(factory: Path, sources_path: Path, log: _Log) -> None:
 
     sources = json.loads(sources_path.read_text())
 
+    factory_resolved = factory.resolve()
     for news_src in sources.get("news", []):
         src_id   = news_src["id"]
-        out_dir  = factory / news_src["output_dir"]
+        # Guard against path traversal in sources.json output_dir field
+        out_dir  = (factory / news_src["output_dir"]).resolve()
+        if not out_dir.is_relative_to(factory_resolved):
+            log(f"[process_news] SKIP {src_id}: output_dir escapes factory — possible path traversal")
+            continue
         raw_json = out_dir / "raw.json"
         digest   = out_dir / "digest.json"
 
@@ -330,9 +335,14 @@ def synthesise_briefs(factory: Path, sources_path: Path, log: _Log) -> None:
     max_fetch = int(schedule.get("news_max_articles_fetch", 5))
     log("[refresh] Updating news briefs via Research tool ...")
 
+    factory_resolved = factory.resolve()
     for news_src in sources.get("news", []):
         src_id     = news_src["id"]
-        out_dir    = factory / news_src["output_dir"]
+        # Guard against path traversal in sources.json output_dir field
+        out_dir    = (factory / news_src["output_dir"]).resolve()
+        if not out_dir.is_relative_to(factory_resolved):
+            log(f"[brief] SKIP {src_id}: output_dir escapes factory — possible path traversal")
+            continue
         digest_path = out_dir / "digest.json"
         brief_path  = out_dir / "brief.md"
 
@@ -369,7 +379,11 @@ def synthesise_briefs(factory: Path, sources_path: Path, log: _Log) -> None:
             "--max-age-hours", "0",
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            log(f"[brief] TIMEOUT {src_id}: magi-tool research did not complete within 300s")
+            continue
         if result.returncode != 0:
             log(f"[brief] ERROR {src_id}: {result.stderr.strip()[:300]}")
         else:

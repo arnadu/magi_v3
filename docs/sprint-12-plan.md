@@ -1,5 +1,9 @@
 # Sprint 12 Plan: Data Factory + Secondary Model + run-background
 
+**Status:** Phase 1 ✅ Phase 2 ✅ Phase 3 ← next | Phase 4 | Phase 5
+
+---
+
 ## Context
 
 During Sprint 11 equity research operations, agents spent excessive tokens on redundant web fetches:
@@ -710,17 +714,18 @@ fallback rule (Research only for earnings call transcripts, product press releas
 
 ## Implementation Phases
 
-### Phase 1 — Vision model (TypeScript only, ~30 lines, build immediately)
+### Phase 1 — Vision model ✅ DONE
 
 Files: `models.ts`, `orchestrator.ts`, `agent-runner.ts`, `daemon.ts`, `cli.ts`
 
-**Verification:** `npm run build` clean; start daemon with `VISION_MODEL=claude-haiku-4-5-20251001`;
-run `FetchUrl` on a page with an image; confirm daemon log shows Haiku for `autoDescribeImage`,
-Sonnet for agent reasoning turns.
+`CLAUDE_HAIKU` constant added; `visionModel?` wired through `OrchestratorConfig` → `AgentRunContext`;
+`FetchUrl`, `InspectImage`, `BrowseWeb` use `ctx.visionModel ?? ctx.model`. `VISION_MODEL` env var
+parsed in `daemon.ts` and `cli.ts`. `DATA_KEY_NAMES` + `dataKeysEnv()` added to `daemon.ts`;
+`.env.data-keys` loaded at startup. `setup-dev.sh` creates `/opt/magi/venv` + `magi-python3` wrapper.
 
 ---
 
-### Phase 2 — Data factory Python core (no LLM, no daemon)
+### Phase 2 — Data factory Python core ✅ DONE
 
 Files (all under `config/teams/equity-research/skills/`):
 - `data-factory/requirements.txt`, `sources.json`, `schedule.json`
@@ -734,7 +739,7 @@ Files (all under `config/teams/equity-research/skills/`):
     `adapter_worldbank.py` ← need API keys, verify manually
 - `data-factory-client/scripts/read-catalog.sh`, `read-series.sh`, `read-digest.sh`
 
-**Unit tests** (`tests/data_factory/`, run with `pytest`, no API keys, no LLM):
+**Unit tests** (`tests/data_factory/`, stdlib `unittest` — no API keys, no LLM for yfinance/gdelt):
 
 `test_catalog.py`:
 - Empty factory dir → `catalog.py list` → empty table, exit 0
@@ -752,21 +757,15 @@ Files (all under `config/teams/equity-research/skills/`):
 - `--fetch /tmp/nvda.csv --series-id yfinance/NVDA --params '{"ticker":"NVDA"}'`
   → exit 0, CSV has columns `date,open,high,low,close,volume`, ≥1 row
 
-**Manual verification after unit tests pass:**
-```bash
-pip3 install -r requirements.txt
-mkdir -p /tmp/test-factory
-python3 scripts/catalog.py list /tmp/test-factory          # empty
-python3 scripts/adapters/adapter_yfinance.py --discover    # JSON
-python3 scripts/adapters/adapter_yfinance.py \
-  --fetch /tmp/test-factory/nvda.csv \
-  --series-id yfinance/NVDA --params '{"ticker":"NVDA"}'
-python3 scripts/catalog.py list /tmp/test-factory          # 1 row, status=ok
-```
+All 5 test files passing. Additional notes vs original plan:
+- `refresh.sh` replaced by `refresh.py` — pure Python orchestrator; no bash heredocs
+- `catalog.py` `cmd_refresh` takes `fmp_budget` parameter (was inline)
+- `process_news.py` exports `process()` + `mark_new()` as standalone functions (enables testing)
+- Unit tests use `python3 -m unittest discover tests/data_factory -v` (not pytest — pytest not in PATH without venv)
 
 ---
 
-### Phase 3 — Job scheduling + Tool API (TypeScript, requires daemon)
+### Phase 3 — Job scheduling + Tool API (TypeScript, requires daemon) ← NEXT
 
 Files:
 - `src/background-jobs.ts` — `BackgroundJob` interface, Mongo repo

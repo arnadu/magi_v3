@@ -30,9 +30,15 @@
     "body": "Please present your proposed setup. Cover: (1) the data collection scripts and pipelines you plan to build, (2) the tracker schema and how you will maintain it, (3) how you will make data available to the analysts, and (4) what infrastructure decisions require input from the team."
   },
   {
-    "title": "Step 3 — Approve and build",
+    "title": "Step 2e — Data factory setup (send after reviewing Step 2 proposals)",
+    "to": ["data-scientist"],
+    "subject": "Set up the data factory",
+    "body": "Please set up the data factory now. Follow the instructions in your data-factory skill:\n1. mkdir -p $SHARED_DIR/data-factory\n2. Install Python requirements (magi-python3 handles the venv — no pip install needed)\n3. Copy sources.json and schedule.json from $SKILL_DIR into $SHARED_DIR/data-factory/ (only on first run)\n4. Run a first full refresh: $SKILL_DIR/scripts/refresh.py $SHARED_DIR (5–10 min depending on API availability)\n5. Verify all sources are ok: $SKILL_DIR/scripts/catalog.py list $SHARED_DIR/data-factory\n6. Register the daily 05:30 refresh using the schedule-task skill\n7. PostMessage lead-analyst with the catalog summary and any sources in error status."
+  },
+  {
+    "title": "Step 3 — Approve and build (send after data factory is online)",
     "to": ["lead-analyst"],
     "subject": "Proposals approved — build and go",
-    "body": "Proposals approved. Please coordinate the team to build the infrastructure you described. Once everything is in place, use the schedule-task skill to register the 06:00 daily cycle and confirm to me when the team is ready to begin operations."
+    "body": "Proposals approved and the data factory is online. Please coordinate the team to build any remaining infrastructure. Ensure Economist and Junior Analyst are reading from the data factory catalog before resorting to web research. Once everything is in place, use the schedule-task skill to register the 06:00 daily cycle and confirm to me when the team is ready to begin operations."
   }
 ]
