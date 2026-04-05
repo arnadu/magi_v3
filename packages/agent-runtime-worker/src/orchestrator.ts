@@ -21,6 +21,13 @@ export interface OrchestratorConfig {
 	llmCallLog?: LlmCallLogRepository;
 	model: Model<string>;
 	/**
+	 * Secondary model used for vision-only tasks: FetchUrl image captioning,
+	 * InspectImage, and BrowseWeb page understanding.
+	 * Defaults to model when absent (single-model mode).
+	 * Set VISION_MODEL env var to override; defaults to claude-haiku-4-5-20251001.
+	 */
+	visionModel?: Model<string>;
+	/**
 	 * Working directory used for operator-level operations such as @path file
 	 * uploads typed at the interactive prompt. Not used as an agent workdir —
 	 * each agent gets its own private directory from workspaceManager.
@@ -113,6 +120,7 @@ export async function runOrchestrationLoop(
 		conversationRepo,
 		llmCallLog,
 		model,
+		visionModel = model,
 		workdir,
 		step = false,
 		onUserMessage,
@@ -167,6 +175,7 @@ export async function runOrchestrationLoop(
 
 	const agentCtx = {
 		model,
+		visionModel,
 		teamConfig,
 		mailboxRepo,
 		conversationRepo,

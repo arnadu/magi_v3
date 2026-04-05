@@ -41,6 +41,11 @@ const REFLECTION_CTX_THRESHOLD = 0.6 * CTX_LIMIT; // 120 000 tokens
 
 export interface AgentRunContext {
 	model: Model<string>;
+	/**
+	 * Secondary model for vision-only tasks: FetchUrl image captioning,
+	 * InspectImage, and BrowseWeb. Defaults to model when absent.
+	 */
+	visionModel?: Model<string>;
 	teamConfig: TeamConfig;
 	mailboxRepo: MailboxRepository;
 	conversationRepo: ConversationRepository;
@@ -228,10 +233,12 @@ export async function runAgent(
 		console.log(`${sep}\n`);
 	}
 
+	const visionModel = ctx.visionModel ?? ctx.model;
+
 	const searchWebTool = tryCreateSearchWebTool();
 	// BrowseWebHandle is created here (once per agent turn) so all execute() calls
 	// within the same runInnerLoop share one browser session (cookies, auth, history).
-	const browseWebHandle = tryCreateBrowseWebTool(ctx.model, sharedDir);
+	const browseWebHandle = tryCreateBrowseWebTool(visionModel, sharedDir);
 
 	// Research sub-loop Bash is restricted to sharedDir only (no workdir).
 	// This lets it read existing artifacts and the research index without
@@ -263,8 +270,8 @@ export async function runAgent(
 				ctx.onMentalMapUpdate?.(agentId, html);
 			},
 		),
-		createFetchUrlTool(ctx.model, sharedDir),
-		createInspectImageTool(workdir, ctx.model, [sharedDir]),
+		createFetchUrlTool(visionModel, sharedDir),
+		createInspectImageTool(workdir, visionModel, [sharedDir]),
 		createResearchTool(ctx.model, sharedDir, researchAcl, { onSubLoopMessage: appendSubLoop }),
 		...(searchWebTool ? [searchWebTool] : []),
 		...(browseWebHandle ? [browseWebHandle.tool] : []),

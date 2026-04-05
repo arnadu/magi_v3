@@ -42,3 +42,10 @@ export const CLAUDE_SONNET = anthropicModel("claude-sonnet-4-6", {
 	outputCostPerMillion: 15,
 	maxTokens: 16_000,
 });
+
+/** Claude Haiku 4.5 — secondary model for vision tasks (image captioning, BrowseWeb). */
+export const CLAUDE_HAIKU = anthropicModel("claude-haiku-4-5-20251001", {
+	inputCostPerMillion: 0.8,
+	outputCostPerMillion: 4,
+	maxTokens: 8_096,
+});

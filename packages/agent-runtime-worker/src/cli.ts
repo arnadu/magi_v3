@@ -38,7 +38,7 @@ import type {
 } from "@mariozechner/pi-ai";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { anthropicModel, CLAUDE_SONNET } from "./models.js";
+import { anthropicModel, CLAUDE_HAIKU, CLAUDE_SONNET } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { expandAtPaths } from "./user-input.js";
@@ -80,11 +80,14 @@ function logMessage(msg: Message, agentId?: string): void {
 
 function getModel() {
 	const modelId = process.env.MODEL ?? "claude-sonnet-4-6";
-	return {
-		modelId,
-		model:
-			modelId === "claude-sonnet-4-6" ? CLAUDE_SONNET : anthropicModel(modelId),
-	};
+	const model =
+		modelId === "claude-sonnet-4-6" ? CLAUDE_SONNET : anthropicModel(modelId);
+	const visionModelId = process.env.VISION_MODEL ?? "claude-haiku-4-5-20251001";
+	const visionModel =
+		visionModelId === "claude-haiku-4-5-20251001" ? CLAUDE_HAIKU
+		: visionModelId === "claude-sonnet-4-6" ? CLAUDE_SONNET
+		: anthropicModel(visionModelId);
+	return { modelId, model, visionModel };
 }
 
 function makeAbortController(): AbortController {
@@ -129,7 +132,7 @@ async function main(): Promise<void> {
 	}
 
 	const teamConfig = loadTeamConfig(teamConfigPath);
-	const { modelId, model } = getModel();
+	const { modelId, model, visionModel } = getModel();
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
 	// Team skills live beside the YAML: config/teams/<name>/skills/
@@ -185,6 +188,7 @@ async function main(): Promise<void> {
 				mailboxRepo,
 				conversationRepo,
 				model,
+				visionModel,
 				workdir,
 				workspaceManager,
 				step: flags.has("--step"),

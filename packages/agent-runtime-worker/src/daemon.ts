@@ -12,6 +12,7 @@
  *   MONGODB_URI        required
  *   TEAM_CONFIG        required — path to team config YAML
  *   MODEL              optional — model id (default: claude-sonnet-4-6)
+ *   VISION_MODEL       optional — model for image captioning / BrowseWeb (default: claude-haiku-4-5-20251001)
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
  */
 
@@ -49,7 +50,7 @@ import { createMongoConversationRepository } from "./conversation-repository.js"
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { anthropicModel, CLAUDE_SONNET } from "./models.js";
+import { anthropicModel, CLAUDE_HAIKU, CLAUDE_SONNET } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer, type PlaybookEntry } from "./monitor-server.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
@@ -287,6 +288,12 @@ async function main(): Promise<void> {
 	const model =
 		modelId === "claude-sonnet-4-6" ? CLAUDE_SONNET : anthropicModel(modelId);
 
+	const visionModelId = process.env.VISION_MODEL ?? "claude-haiku-4-5-20251001";
+	const visionModel =
+		visionModelId === "claude-haiku-4-5-20251001" ? CLAUDE_HAIKU
+		: visionModelId === "claude-sonnet-4-6" ? CLAUDE_SONNET
+		: anthropicModel(visionModelId);
+
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 	const teamSkillsPath = join(
 		dirname(teamConfigPath),
@@ -509,6 +516,7 @@ async function main(): Promise<void> {
 				conversationRepo,
 				llmCallLog,
 				model,
+				visionModel,
 				workdir,
 				workspaceManager,
 				waitForMail,
