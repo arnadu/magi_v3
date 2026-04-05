@@ -32,11 +32,36 @@ const { parseExpression } = cronParser;
 
 import { config as dotenvConfig } from "dotenv";
 
-// Load .env from the repo root (two levels up from packages/agent-runtime-worker/).
-dotenvConfig({
-	path: join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".env"),
-	quiet: true,
-});
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+// Load orchestrator secrets (.env) — NEVER forwarded to agent subprocesses.
+dotenvConfig({ path: join(REPO_ROOT, ".env"), quiet: true });
+
+// Load data API keys (.env.data-keys) — forwarded to background jobs only.
+// Kept in a separate file so the forwarding boundary is explicit and auditable.
+dotenvConfig({ path: join(REPO_ROOT, ".env.data-keys"), quiet: true });
+
+/**
+ * Environment variables from .env.data-keys that are safe to forward to
+ * background job subprocesses (refresh.py, adapters, etc.).
+ * These keys only authorize calls to external data APIs; they have no
+ * privilege over the MAGI system itself.
+ */
+export const DATA_KEY_NAMES = ["FRED_API_KEY", "FMP_API_KEY", "NEWSAPIORG_API_KEY"] as const;
+
+/**
+ * Build the env block to pass when spawning a background job.
+ * Includes only DATA_KEY_NAMES that are actually set — missing keys are omitted
+ * rather than forwarded as empty strings, so adapters see a clean "not set" error.
+ */
+export function dataKeysEnv(): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const key of DATA_KEY_NAMES) {
+		const val = process.env[key];
+		if (val) env[key] = val;
+	}
+	return env;
+}
 
 import type {
 	AssistantMessage,

@@ -5,6 +5,7 @@ __pycache__/
 *.js.map
 .env
 .env.local
+.env.data-keys
 *.log
 coverage/
 refs/
