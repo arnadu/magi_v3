@@ -26,7 +26,7 @@ Companion changes:
 
 ## Part 1 — Tool IPC Server + `run-background` + `schedule-job`
 
-### Design goals (revised)
+### Design goals
 
 Agents should be able to write their own scripts, schedule them, and have those scripts call the
 same tools available in the agent loop — with the same privilege boundaries. Specifically:
@@ -87,6 +87,70 @@ operator monitor server (port 4000):
 Bash, WriteFile, EditFile are NOT in the API — the script runs as the agent's linux user already
 and calls these natively. The existing `tool-executor.ts` path (stdin/stdout) is unchanged for
 the agent loop; the HTTP API is the parallel path for agent-written scripts.
+
+### Job scheduling and execution — file-based (no new MongoDB collections)
+
+Job scheduling reuses the **existing `schedule-task` infrastructure** unchanged: the daemon's
+`node-cron` heartbeat fires every minute, reads spec files from `sharedDir/schedules/`, upserts
+into `scheduled_messages`, and delivers overdue entries.
+
+The only extension is that a spec file can carry a `jobSpec` field instead of `to`/`subject`/`body`.
+When the heartbeat encounters a `jobSpec` entry, instead of posting to the mailbox it runs the
+job directly. Everything else — timing, re-arming, crash recovery, idempotent upsert — is
+unchanged.
+
+**Spec file format (extended):**
+
+```json
+{
+  "label": "daily-refresh",
+  "cron": "30 5 * * *",
+  "jobSpec": {
+    "scriptPath": "/missions/equity-research/shared/skills/_team/data-factory/scripts/refresh.py",
+    "agentId": "data-scientist",
+    "args": ["/missions/equity-research/shared"],
+    "notifySubject": "Daily data factory refresh complete"
+  }
+}
+```
+
+One-shot jobs use the same format without the `cron` field — the entry is not re-armed after
+delivery.
+
+**Job state — spool directories under `sharedDir/jobs/`:**
+
+```
+sharedDir/jobs/
+  pending/    ← submit-job.sh drops one-shot spec files here
+  logs/       ← bg-<label>-<ts>.log  (stdout+stderr of spawned script)
+  status/     ← <label>-<ts>.json    { status, startedAt, completedAt, exitCode, pid }
+```
+
+Agents read job status and logs via plain Bash — no MongoDB query needed:
+```bash
+cat $SHARED_DIR/jobs/status/daily-refresh-*.json | tail -1
+tail -50 $SHARED_DIR/jobs/logs/daily-refresh-*.log
+```
+
+**Heartbeat extension in `daemon.ts` (new function `runPendingJobs`, ~40 lines):**
+1. Scan `sharedDir/jobs/pending/` for spec files
+2. Count currently running jobs (status files with `status: "running"`) — cap at 3
+3. For each pending spec (up to the cap):
+   - Validate `scriptPath` within agent's `permittedPaths`
+   - Issue `MAGI_TOOL_TOKEN` from `ToolApiServer`
+   - Move spec file from `pending/` to consumed (or delete it)
+   - Write `status/` file with `status: "running"`
+   - Spawn: `sudo -u <linuxUser> <scriptPath> <args...>`
+     with env `{ PATH, HOME, MAGI_TOOL_URL, MAGI_TOOL_TOKEN, ...dataKeysEnv() }`
+     stdout+stderr piped to `logs/<label>-<ts>.log`
+   - On exit: revoke token, update status file, optionally PostMessage agent
+
+**Why no MongoDB for job state:**
+- Spec files already survive daemon restarts (same as schedule specs)
+- Status files are directly readable by agents via Bash — no query layer needed
+- The `schedule-task` skill already proves the file-based pattern works for scheduling
+- MongoDB is for durable inter-agent communication and conversation history, not for
+  ephemeral job bookkeeping
 
 ### New files
 
@@ -162,82 +226,40 @@ import magi_tool
 
 Or copy it to `$WORKDIR/scripts/` once at setup time.
 
-### Background script execution (`background_jobs` collection)
-
-New MongoDB collection: `background_jobs` (simplified — no job type registry)
-
-```typescript
-interface BackgroundJob {
-    _id: string;
-    missionId: string;
-    scriptPath: string;    // absolute path — validated within agent's permittedPaths
-    linuxUser: string;     // script runs as this OS user via sudo
-    agentId: string;       // for AclPolicy lookup + completion notification
-    args: string[];        // positional args (all within permittedPaths)
-    status: "pending" | "running" | "done" | "failed";
-    createdAt: Date;
-    startedAt?: Date;
-    completedAt?: Date;
-    exitCode?: number;
-    notifySubject?: string;
-}
-```
-
-**Why this is safe:** the script runs as the agent's linux user (same trust level as the Bash
-tool). Arbitrary shell commands from the agent user are already permitted by the security model.
-The difference from the Bash tool is only that the script is long-running and scheduled. The
-only escalation path is the IPC tool calls — and those are gated by the AclPolicy, same as in
-the agent loop.
-
-**Daemon Change Stream watcher** (in `src/daemon.ts`):
-1. Validates `scriptPath` within the agent's `permittedPaths` (server-side re-check)
-2. Issues a fresh `MAGI_TOOL_TOKEN` mapped to the agent's AclPolicy
-3. Sets `status: "running"`, spawns:
-   ```
-   sudo -u <linuxUser> \
-     MAGI_TOOL_URL=http://localhost:4001 \
-     MAGI_TOOL_TOKEN=<uuid> \
-     <scriptPath> <args...>
-   ```
-   with stdout/stderr piped to `sharedDir/logs/bg-<jobId>.log`
-4. On exit: revokes token, sets `status`, posts completion to agent mailbox
-
-**Concurrency**: max 3 simultaneous; excess stay `pending` until a slot frees.
-
-### `run-background` + `schedule-job` platform skill (`packages/skills/run-background/`)
+### `run-background` platform skill (`packages/skills/run-background/`)
 
 ```
 run-background/
   SKILL.md
   scripts/
-    submit-job.sh      # submit one-shot background script (optional — most use cases prefer schedule-job)
-    schedule-job.sh    # submit recurring script (writes to scheduled_messages)
-    job-status.sh      # check status + tail log
-    magi_tool.py       # Python SDK (stdlib only)
+    submit-job.sh    # one-shot: writes spec to sharedDir/jobs/pending/
+    schedule-job.sh  # recurring: writes spec to sharedDir/schedules/ (with jobSpec field)
+    job-status.sh    # read status file + tail log
+    magi_tool.py     # Python SDK (stdlib only)
 ```
 
-**`submit-job.sh`** (optional — useful for ad-hoc/triggered one-shots, e.g. "run refresh now"):
+**`submit-job.sh`** (one-shot, e.g. "run refresh now"):
 ```bash
 submit-job.sh \
-  --script "$WORKDIR/scripts/refresh.sh" \
+  --script "$SKILL_DIR/scripts/refresh.py" \
   --args "$SHARED_DIR" \
-  --agent lin \
+  --agent data-scientist \
   --notify-subject "Refresh complete"
 ```
+Writes `$SHARED_DIR/jobs/pending/<uuid>.json`. Picked up at next heartbeat (≤1 min).
 
-**`schedule-job.sh`**:
+**`schedule-job.sh`** (recurring):
 ```bash
 schedule-job.sh \
   --cron "30 5 * * *" \
-  --script "$WORKDIR/scripts/refresh.sh" \
+  --label "daily-refresh" \
+  --script "$SKILL_DIR/scripts/refresh.py" \
   --args "$SHARED_DIR" \
-  --agent lin \
-  --notify-subject "Daily refresh complete"
+  --agent data-scientist \
+  --notify-subject "Daily data factory refresh complete"
 ```
-
-Writes to `scheduled_messages` (same collection as `schedule-task.sh`). The message body encodes
-a `background_jobs` insert; the existing node-cron heartbeat delivers it; the Change Stream
-watcher picks it up.
+Writes `$SHARED_DIR/schedules/daily-refresh.json` with `jobSpec` field. The heartbeat
+imports it, fires at 05:30 each day, re-arms automatically.
 
 ---
 
@@ -765,21 +787,35 @@ All 5 test files passing. Additional notes vs original plan:
 
 ---
 
-### Phase 3 — Job scheduling + Tool API (TypeScript, requires daemon) ← NEXT
+### Phase 3 — Tool API + Background Jobs (TypeScript, requires daemon) ← NEXT
 
-Files:
-- `src/background-jobs.ts` — `BackgroundJob` interface, Mongo repo
-- `src/tool-api-server.ts` — HTTP server port 4001, token auth, tool dispatch
-- `src/cli-tool.ts` — `magi-tool` CLI (`--context-file`, `--output` flags for research)
-- `src/tools/research.ts` — add `contextFiles?` + `previousResultPath?` (~30 lines)
-- `src/daemon.ts` — start ToolApiServer, background_jobs Change Stream watcher
+**New files:**
+- `src/tool-api-server.ts` — HTTP server port 4001, bearer token auth, tool dispatch
+- `src/cli-tool.ts` — `magi-tool` CLI with `--context-file`, `--output` flags
+
+**Modified files:**
+- `src/daemon.ts` — start ToolApiServer; extend heartbeat with `runPendingJobs()`; extend
+  `importScheduleFiles()` to handle `jobSpec` field; add `TOOL_PORT` env var validation
+- `src/tools/research.ts` — add `contextFiles?` + `previousResultPath?` params (~30 lines)
 - `setup-dev.sh` — install `magi-tool` wrapper at `/usr/local/bin/magi-tool`
+
+**New skill:**
 - `packages/skills/run-background/` — `submit-job.sh`, `schedule-job.sh`, `job-status.sh`,
   `magi_tool.py`
 
-**Verification:** `npm run build` clean; with daemon running, issue a test token and confirm
-`magi-tool fetch-url` returns a JSON artifact; confirm `submit-job.sh` triggers daemon pickup
-and completion PostMessage arrives.
+**No new MongoDB collections.** Job state lives in `sharedDir/jobs/{pending,logs,status}/`.
+Schedule specs live in `sharedDir/schedules/` (existing directory, extended format).
+
+**Build order:**
+1. `tool-api-server.ts` (standalone, no deps)
+2. `daemon.ts` changes (start server, `runPendingJobs`, `jobSpec` in heartbeat)
+3. `cli-tool.ts` + `setup-dev.sh` wrapper
+4. `research.ts` extension (`contextFiles`, `previousResultPath`)
+5. `run-background/` skill scripts + `magi_tool.py`
+
+**Verification:** `npm run build` clean; start daemon; confirm `magi-tool fetch-url
+--params '{"url":"https://example.com"}'` returns a JSON artifact; confirm `submit-job.sh`
+triggers pickup at next heartbeat and a completion PostMessage arrives in the agent mailbox.
 
 ---
 
@@ -830,5 +866,10 @@ None. All gaps resolved:
 - `run-background` builds now — scripts run as agent linux user, IPC for LLM tools
 - HTTP API (not Unix socket) — container-ready; env var `MAGI_TOOL_URL` is the only thing that changes between dev and Kubernetes; bearer token auth is standard
 - Python SDK uses `urllib.request` (stdlib) — no pip install required
+- **No new MongoDB collection for background jobs** — job state in `sharedDir/jobs/` spool
+  directories (pending/, logs/, status/); scheduling reuses existing `sharedDir/schedules/`
+  pattern with an extended spec format (`jobSpec` field alongside existing `to`/`subject`/`body`);
+  the `node-cron` heartbeat already fires every minute and re-arms cron entries — no Change
+  Stream watcher needed
 - Parallel non-FMP adapters via Python threads inside `catalog.py refresh`
 - FMP adapters sequential with 200-call/day budget guard
