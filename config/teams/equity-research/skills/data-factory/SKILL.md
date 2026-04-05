@@ -21,10 +21,10 @@ cp "$SKILL_DIR/sources.json" "$FACTORY/sources.json"
 cp "$SKILL_DIR/schedule.json" "$FACTORY/schedule.json"
 
 # First full refresh (5-10 min depending on API availability)
-python3 "$SKILL_DIR/scripts/refresh.py" "$SHARED_DIR"
+"$SKILL_DIR/scripts/refresh.py" "$SHARED_DIR"
 
 # Verify
-python3 "$SKILL_DIR/scripts/catalog.py" list "$FACTORY"
+"$SKILL_DIR/scripts/catalog.py" list "$FACTORY"
 ```
 
 Then register the daily schedule:
@@ -43,8 +43,8 @@ PostMessage lead-analyst with the catalog summary and any errors.
 
 | Task | Command |
 |------|---------|
-| Check status | `python3 $SKILL_DIR/scripts/catalog.py list $FACTORY` |
-| Manual refresh | `python3 $SKILL_DIR/scripts/refresh.py $SHARED_DIR` |
+| Check status | `$SKILL_DIR/scripts/catalog.py list $FACTORY` |
+| Manual refresh | `$SKILL_DIR/scripts/refresh.py $SHARED_DIR` |
 | Add a series | Edit `$FACTORY/sources.json`, add entry, run refresh |
 | Remove a series | Edit `$FACTORY/sources.json`, remove entry (data files remain) |
 | Check FMP budget | `cat $FACTORY/.fmp_usage_$(date +%Y-%m-%d)` (must be < 200) |

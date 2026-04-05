@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 adapter_fmp.py — Price/volume OHLCV and SEC filing index from Financial Modeling Prep.
 

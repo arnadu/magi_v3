@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 catalog.py — Data factory catalog manager.
 

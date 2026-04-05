@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 adapter_gdelt.py — News articles from the GDELT Project GKG API v2.
 

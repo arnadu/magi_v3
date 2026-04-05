@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 adapter_yfinance.py — OHLCV price/volume data from Yahoo Finance.
 

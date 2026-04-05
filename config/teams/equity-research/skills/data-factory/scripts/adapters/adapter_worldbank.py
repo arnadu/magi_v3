@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 adapter_worldbank.py — Macro indicators from the World Bank Indicators API.
 

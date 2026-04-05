@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 adapter_fred.py — Macro time-series from FRED (Federal Reserve Economic Data).
 

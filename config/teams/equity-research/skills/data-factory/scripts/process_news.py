@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 process_news.py — News de-duplication, ranking, and digest production.
 

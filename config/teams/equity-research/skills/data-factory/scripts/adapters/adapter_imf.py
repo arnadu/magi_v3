@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 adapter_imf.py — Macro indicators from the IMF DataMapper API.
 

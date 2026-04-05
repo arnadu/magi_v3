@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env magi-python3
 """
 adapter_newsapi.py — News headlines from NewsAPI.org.
 
