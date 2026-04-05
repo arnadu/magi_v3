@@ -34,10 +34,40 @@ SHARED_GROUP="magi-shared"
 SHARED_GID=60100
 BASE_UID=60001
 
+# Python version used by the system Python 3
+PYTHON_VER="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+
 echo "[setup-dev] MAGI V3 dev pool setup"
-echo "  Pool size : ${POOL_SIZE}"
-echo "  Home base : ${HOME_BASE}"
-echo "  Missions  : ${MISSIONS}"
+echo "  Pool size  : ${POOL_SIZE}"
+echo "  Home base  : ${HOME_BASE}"
+echo "  Missions   : ${MISSIONS}"
+echo "  Python     : python${PYTHON_VER}"
+echo ""
+
+# ---------------------------------------------------------------------------
+# 0. Python packaging tools
+#    Agents need pip and venv to install data-factory dependencies.
+#    This also installs the data-factory requirements system-wide so that
+#    pool users (magi-wN) can import yfinance, requests, etc. without having
+#    to manage their own virtualenv.
+# ---------------------------------------------------------------------------
+echo "[setup-dev] Installing Python packaging tools ..."
+apt-get install -y --no-install-recommends \
+    "python${PYTHON_VER}-venv" \
+    python3-pip \
+    > /dev/null
+
+# Locate requirements.txt relative to this script (scripts/ → repo root → skill)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DATA_FACTORY_REQS="${SCRIPT_DIR}/../config/teams/equity-research/skills/data-factory/requirements.txt"
+
+if [[ -f "${DATA_FACTORY_REQS}" ]]; then
+    echo "[setup-dev] Installing data-factory Python requirements ..."
+    pip3 install -q -r "${DATA_FACTORY_REQS}"
+    echo "[setup-dev] Python requirements installed."
+else
+    echo "[setup-dev] Note: data-factory requirements.txt not found at ${DATA_FACTORY_REQS} — skipping"
+fi
 echo ""
 
 # ---------------------------------------------------------------------------
