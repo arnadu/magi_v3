@@ -1,0 +1,62 @@
+{
+  "series": [
+    {
+      "id": "yfinance/NVDA_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "NVDA" },
+      "schedule": "daily",
+      "output": "series/yfinance/NVDA_daily.csv"
+    },
+    {
+      "id": "yfinance/SMH_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "SMH" },
+      "schedule": "daily",
+      "output": "series/yfinance/SMH_daily.csv"
+    },
+    {
+      "id": "fred/DFF",
+      "adapter": "fred",
+      "params": { "series_id": "DFF" },
+      "schedule": "daily",
+      "output": "series/fred/DFF.csv"
+    },
+    {
+      "id": "fred/T10Y2Y",
+      "adapter": "fred",
+      "params": { "series_id": "T10Y2Y" },
+      "schedule": "daily",
+      "output": "series/fred/T10Y2Y.csv"
+    },
+    {
+      "id": "fred/CPIAUCSL",
+      "adapter": "fred",
+      "params": { "series_id": "CPIAUCSL" },
+      "schedule": "monthly",
+      "output": "series/fred/CPIAUCSL.csv"
+    },
+    {
+      "id": "fmp/NVDA_filings",
+      "adapter": "fmp",
+      "params": { "ticker": "NVDA", "type": "sec_filings" },
+      "schedule": "weekly",
+      "output": "documents/NVDA/filings/index.json"
+    }
+  ],
+  "news": [
+    {
+      "id": "nvda_competitive_landscape",
+      "adapter": "newsapi",
+      "params": { "q": "NVIDIA GPU datacenter AI chip", "language": "en", "pageSize": 30 },
+      "schedule": "daily",
+      "output_dir": "news/nvda_competitive_landscape"
+    },
+    {
+      "id": "nvda_gdelt",
+      "adapter": "gdelt",
+      "params": { "query": "NVIDIA", "max_records": 30 },
+      "schedule": "daily",
+      "output_dir": "news/nvda_gdelt"
+    }
+  ]
+}

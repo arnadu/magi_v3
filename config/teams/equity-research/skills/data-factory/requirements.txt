@@ -1,0 +1,4 @@
+requests>=2.31
+yfinance>=0.2
+html2text>=2020.1
+pytest>=7.0

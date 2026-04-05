@@ -1,0 +1,5 @@
+{
+  "refresh_cron": "30 5 * * *",
+  "fmp_daily_budget": 200,
+  "news_max_articles_fetch": 5
+}
