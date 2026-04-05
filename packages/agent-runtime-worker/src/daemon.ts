@@ -14,15 +14,14 @@
  *   MODEL              optional — model id (default: claude-sonnet-4-6)
  *   VISION_MODEL       optional — model for image captioning / BrowseWeb (default: claude-haiku-4-5-20251001)
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
+ *   MONITOR_PORT       optional — dashboard HTTP port (default: 4000; must be 1–65535)
+ *   TOOL_PORT          optional — Tool API server port for background jobs (default: 4001; must be 1–65535)
+ *   MAX_COST_USD       optional — spending cap in USD; pauses when reached
  */
 
-import {
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { spawn } from "node:child_process";
+import { createWriteStream, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
@@ -79,7 +78,10 @@ import { anthropicModel, CLAUDE_HAIKU, CLAUDE_SONNET } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer, type PlaybookEntry } from "./monitor-server.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
+import { ToolApiServer } from "./tool-api-server.js";
+import type { AclPolicy } from "./tools.js";
 import { UsageAccumulator } from "./usage.js";
+import type { AgentIdentity } from "./workspace-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
 // ---------------------------------------------------------------------------
@@ -102,18 +104,49 @@ interface ScheduledMessageDoc {
 // Schedule file import
 // ---------------------------------------------------------------------------
 
+/**
+ * A background job to run via sudo as the agent's linux user.
+ * Written to sharedDir/jobs/pending/<id>.json by schedule files (jobSpec field)
+ * or directly by submit-job.sh / the agent.
+ */
+interface JobSpec {
+	/** Unique job id (UUID). */
+	id: string;
+	/** Agent whose linuxUser and ACL the job runs under. */
+	agentId: string;
+	/** OS user to sudo into for script execution. */
+	linuxUser: string;
+	/** Absolute path to the script (shebang selects interpreter). */
+	scriptPath: string;
+	/** Positional arguments passed after scriptPath. */
+	args: string[];
+	/** If set, post a mailbox message to this agent on completion. */
+	notifyAgentId?: string;
+	/** Subject for the completion notification. */
+	notifySubject?: string;
+}
+
 interface ScheduleSpec {
 	label: string;
-	to: string[];
+	/** To / subject / body only required for mailbox-delivery schedules. */
+	to?: string[];
 	cron: string;
-	subject: string;
-	body: string;
+	subject?: string;
+	body?: string;
+	/** If present, fire a background job instead of a mailbox message. */
+	jobSpec?: Omit<JobSpec, "id">;
 }
 
 /**
- * Scan sharedDir/schedules/*.json and upsert each entry into the
- * scheduled_messages collection. Called on startup and on each heartbeat.
- * Re-running with the same label updates the schedule (idempotent).
+ * Scan sharedDir/schedules/*.json and upsert each entry.
+ *
+ * - Specs with `jobSpec`: tracked in scheduled_messages with cron/deliverAt;
+ *   at delivery time the heartbeat writes a job file to jobs/pending/ instead
+ *   of posting a mailbox message.
+ * - Specs without `jobSpec`: upserted as mailbox-delivery entries (existing
+ *   behaviour).
+ *
+ * Called on startup and on each heartbeat. Idempotent (upsert by label).
  */
 async function importScheduleFiles(
 	schedulesDir: string,
@@ -136,13 +169,15 @@ async function importScheduleFiles(
 				{
 					$set: {
 						missionId,
-						to: spec.to,
-						subject: spec.subject,
-						body: spec.body,
+						to: spec.to ?? [],
+						subject: spec.subject ?? spec.label,
+						body: spec.body ?? "",
 						cron: spec.cron,
 						label: spec.label,
 						deliverAt: next,
 						status: "pending",
+						// Store jobSpec so the delivery step can write the job file.
+						...(spec.jobSpec ? { jobSpec: spec.jobSpec } : {}),
 					},
 				},
 				{ upsert: true },
@@ -159,6 +194,160 @@ async function importScheduleFiles(
 }
 
 // ---------------------------------------------------------------------------
+// Background job execution
+// ---------------------------------------------------------------------------
+
+const MAX_CONCURRENT_JOBS = 3;
+/** Track running jobs so we enforce the concurrency limit. */
+let runningJobs = 0;
+
+/**
+ * Scan sharedDir/jobs/pending/*.json and spawn each job (up to
+ * MAX_CONCURRENT_JOBS at a time).
+ *
+ * Job files are written by:
+ *   - The scheduled delivery heartbeat (when a cron spec has a jobSpec field).
+ *   - submit-job.sh (agent or operator one-shots).
+ *
+ * For each pending job:
+ *   1. Move the spec to jobs/running/ (atomically prevents double-execution).
+ *   2. Issue a bearer token for the agent's ACL.
+ *   3. Spawn: sudo -u <linuxUser> <scriptPath> <args...>
+ *      with MAGI_TOOL_URL, MAGI_TOOL_TOKEN, data-key env vars, PATH, HOME.
+ *   4. Pipe stdout+stderr to logs/bg-<id>.log.
+ *   5. On exit: revoke token, write jobs/status/<id>.json, optionally notify.
+ */
+async function runPendingJobs(
+	sharedDir: string,
+	workdir: string,
+	missionId: string,
+	toolApiServer: ToolApiServer,
+	toolPort: number,
+	mailboxRepo: MailboxRepository,
+): Promise<void> {
+	const pendingDir = join(sharedDir, "jobs", "pending");
+	const runningDir = join(sharedDir, "jobs", "running");
+	const statusDir  = join(sharedDir, "jobs", "status");
+	const logsDir    = join(sharedDir, "logs");
+
+	let files: string[];
+	try {
+		files = readdirSync(pendingDir).filter((f) => f.endsWith(".json"));
+	} catch {
+		return; // pending dir does not exist yet
+	}
+
+	for (const file of files) {
+		if (runningJobs >= MAX_CONCURRENT_JOBS) break;
+
+		const pendingPath = join(pendingDir, file);
+		let spec: JobSpec;
+		try {
+			spec = JSON.parse(readFileSync(pendingPath, "utf8")) as JobSpec;
+		} catch {
+			continue; // malformed spec — leave it for the next cycle
+		}
+
+		// Atomically claim the job: move pending → running.
+		const runningPath = join(runningDir, file);
+		try {
+			mkdirSync(runningDir, { recursive: true });
+			mkdirSync(statusDir, { recursive: true });
+			mkdirSync(logsDir, { recursive: true });
+			// Node doesn't expose atomic rename across directories natively,
+			// but writeFileSync + unlinkSync is safe enough for our use case
+			// (single-process daemon, not distributed).
+			writeFileSync(runningPath, readFileSync(pendingPath));
+			unlinkSync(pendingPath);
+		} catch {
+			continue; // race or IO error — skip
+		}
+
+		// Build the agent identity from known workspace layout.
+		const agentWorkdir = join(workdir, "home", spec.linuxUser, "missions", missionId);
+		const acl: AclPolicy = {
+			agentId: spec.agentId,
+			linuxUser: spec.linuxUser,
+			permittedPaths: [agentWorkdir, sharedDir],
+		};
+		const identity: AgentIdentity = {
+			workdir: agentWorkdir,
+			sharedDir,
+			linuxUser: spec.linuxUser,
+		};
+
+		const token = toolApiServer.issueToken(acl, identity);
+		const logPath = join(logsDir, `bg-${spec.id}.log`);
+		const logStream = createWriteStream(logPath, { flags: "a" });
+
+		runningJobs++;
+		console.log(`[daemon:jobs] Starting job ${spec.id} (${spec.scriptPath}) as ${spec.linuxUser}`);
+
+		const child = spawn(
+			"sudo",
+			["-u", spec.linuxUser, spec.scriptPath, ...spec.args],
+			{
+				env: {
+					PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+					HOME: `/home/${spec.linuxUser}`,
+					MAGI_TOOL_URL: `http://127.0.0.1:${toolPort}`,
+					MAGI_TOOL_TOKEN: token,
+					...dataKeysEnv(),
+				},
+				stdio: ["ignore", "pipe", "pipe"],
+			},
+		);
+
+		child.stdout.pipe(logStream);
+		child.stderr.pipe(logStream);
+
+		child.on("close", (exitCode) => {
+			runningJobs--;
+			toolApiServer.revokeToken(token);
+			logStream.end();
+
+			// Clean up the running file.
+			try { unlinkSync(runningPath); } catch {}
+
+			// Write status file.
+			const statusPath = join(statusDir, `${spec.id}.json`);
+			const status = {
+				id: spec.id,
+				scriptPath: spec.scriptPath,
+				exitCode: exitCode ?? -1,
+				completedAt: new Date().toISOString(),
+				logPath,
+			};
+			try { writeFileSync(statusPath, JSON.stringify(status, null, 2)); } catch {}
+
+			const success = exitCode === 0;
+			console.log(
+				`[daemon:jobs] Job ${spec.id} exited ${exitCode ?? "null"} — ${success ? "ok" : "FAILED"}`,
+			);
+
+			// Post completion notification if requested.
+			if (spec.notifyAgentId) {
+				const subject = spec.notifySubject ?? `Background job complete: ${spec.id}`;
+				const body = success
+					? `Job completed successfully.\nLog: ${logPath}`
+					: `Job FAILED (exit ${exitCode ?? "null"}).\nLog: ${logPath}`;
+				mailboxRepo
+					.post({
+						missionId,
+						from: "scheduler",
+						to: [spec.notifyAgentId],
+						subject,
+						body,
+					})
+					.catch((e: unknown) =>
+						console.error(`[daemon:jobs] Failed to notify ${spec.notifyAgentId}: ${(e as Error).message}`),
+					);
+			}
+		});
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Scheduled delivery
 // ---------------------------------------------------------------------------
 
@@ -167,6 +356,10 @@ function startScheduledDelivery(
 	mailboxRepo: MailboxRepository,
 	missionId: string,
 	schedulesDir: string,
+	sharedDir: string,
+	workdir: string,
+	toolApiServer: ToolApiServer,
+	toolPort: number,
 ): () => void {
 	async function deliver(): Promise<void> {
 		// Import any new or updated schedule files first.
@@ -182,16 +375,31 @@ function startScheduledDelivery(
 				{ $set: { status: "delivered" } },
 			);
 			if (!doc) break;
-			await mailboxRepo.post({
-				missionId: doc.missionId,
-				from: "scheduler",
-				to: doc.to,
-				subject: doc.subject,
-				body: doc.body,
-			});
-			console.log(
-				`[daemon:scheduler] Delivered scheduled message to: ${doc.to.join(", ")}`,
-			);
+
+			// Schedule specs with jobSpec: write a job file instead of a mailbox message.
+			const jobSpec = (doc as unknown as { jobSpec?: Omit<JobSpec, "id"> }).jobSpec;
+			if (jobSpec) {
+				const jobId = randomUUID();
+				const pendingDir = join(sharedDir, "jobs", "pending");
+				mkdirSync(pendingDir, { recursive: true });
+				const jobFile: JobSpec = { id: jobId, ...jobSpec };
+				writeFileSync(join(pendingDir, `${jobId}.json`), JSON.stringify(jobFile, null, 2));
+				console.log(
+					`[daemon:scheduler] Job queued: ${doc.label ?? "entry"} → ${jobSpec.scriptPath}`,
+				);
+			} else {
+				await mailboxRepo.post({
+					missionId: doc.missionId,
+					from: "scheduler",
+					to: doc.to,
+					subject: doc.subject,
+					body: doc.body,
+				});
+				console.log(
+					`[daemon:scheduler] Delivered scheduled message to: ${doc.to.join(", ")}`,
+				);
+			}
+
 			// Re-arm cron-based entries so the schedule recurs.
 			if (doc.cron) {
 				try {
@@ -210,6 +418,9 @@ function startScheduledDelivery(
 				}
 			}
 		}
+
+		// Run any pending background jobs (from both scheduled specs and submit-job.sh).
+		await runPendingJobs(sharedDir, workdir, missionId, toolApiServer, toolPort, mailboxRepo);
 	}
 
 	// Deliver any overdue messages immediately on startup (crash recovery).
@@ -422,6 +633,14 @@ async function main(): Promise<void> {
 		);
 		process.exit(1);
 	}
+
+	const toolPort = Number.parseInt(process.env.TOOL_PORT ?? "4001", 10);
+	if (!Number.isFinite(toolPort) || toolPort < 1 || toolPort > 65535) {
+		console.error(
+			`Error: TOOL_PORT must be 1–65535, got: ${process.env.TOOL_PORT}`,
+		);
+		process.exit(1);
+	}
 	const agents = teamConfig.agents.map((a) => ({
 		id: a.id,
 		name: a.name ?? a.id,
@@ -442,6 +661,16 @@ async function main(): Promise<void> {
 	);
 	await monitor.start(monitorPort);
 
+	// Tool API server — exposes LLM tools to background job scripts.
+	const toolApiServer = new ToolApiServer(
+		model,
+		visionModel,
+		join(workdir, "missions", missionId, "shared"),
+		mailboxRepo,
+		teamConfig,
+	);
+	toolApiServer.listen(toolPort);
+
 	// Scheduled message delivery infrastructure.
 	const scheduledCol = db.collection<ScheduledMessageDoc>("scheduled_messages");
 	const sharedDir = join(workdir, "missions", missionId, "shared");
@@ -451,6 +680,10 @@ async function main(): Promise<void> {
 		mailboxRepo,
 		missionId,
 		schedulesDir,
+		sharedDir,
+		workdir,
+		toolApiServer,
+		toolPort,
 	);
 
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.
@@ -587,6 +820,7 @@ async function main(): Promise<void> {
 	} finally {
 		monitor.push("shutdown", { reason: signal.aborted ? "abort" : "normal" });
 		monitor.stop();
+		toolApiServer.stop();
 		stopScheduler();
 		await client.close();
 		// Clean up PID file.

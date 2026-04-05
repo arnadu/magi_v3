@@ -13,6 +13,7 @@
 		"cli:reset": "node dist/cli-reset.js",
 		"cli:usage": "node dist/cli-usage.js",
 		"cli:stop": "node dist/cli-stop.js",
+		"cli:tool": "node dist/cli-tool.js",
 		"install:browsers": "playwright install chromium"
 	},
 	"dependencies": {

@@ -43,6 +43,7 @@ TEAM_CONFIG=... npm run cli:reset -w packages/agent-runtime-worker -- --yes     
 #           VISION_MODEL (optional — default: claude-haiku-4-5-20251001; model for FetchUrl image captioning, InspectImage, BrowseWeb),
 #           AGENT_WORKDIR (optional — default: cwd; all mission data written here),
 #           MONITOR_PORT (optional — default: 4000; must be 1–65535 or daemon exits),
+#           TOOL_PORT (optional — default: 4001; Tool API server for background jobs; must be 1–65535),
 #           MAX_COST_USD (optional — spending cap; must be a positive number or daemon exits),
 #           BRAVE_SEARCH_API_KEY (optional — enables SearchWeb tool; free tier: 2000 req/month)
 # Data API keys (forwarded to background jobs only — not to agent tool subprocesses):
@@ -364,6 +365,18 @@ Motivation: during Sprint 11 equity-research operations, 7–10 agents independe
   - `src/cli.ts` — `VISION_MODEL` parsing and pass-through
   - `scripts/setup-dev.sh` — creates `/opt/magi/venv`, installs data-factory requirements, writes `/usr/local/bin/magi-python3` wrapper
 
+- **Phase 3 — Tool IPC Server + Background Jobs (built):**
+  - **`src/tool-api-server.ts`** — `ToolApiServer` class; HTTP server on `TOOL_PORT` (default 4001, `127.0.0.1` only); bearer token auth (`Map<token, {acl, identity}>`); dispatches POST `/tools/<name>` to FetchUrl (visionModel), InspectImage (visionModel), Research (model + acl), SearchWeb, PostMessage; 120 s per-call timeout; `issueToken(acl, identity)` / `revokeToken(token)`.
+  - **`src/cli-tool.ts`** — `magi-tool` CLI; stdlib HTTP client; flags: `--params '<json>'`, `--question`, `--context-file` (repeatable), `--output`, `--max-age-hours`, `--url`, `--to`, `--subject`, `--body`; `--output` for Research writes the finding to a file; exit 0/1.
+  - **`src/tools/research.ts`** — extended with `context_files?: string[]` and `output_path?: string` params. When `context_files` provided: cache skipped (always fresh), file contents injected as opening context, system prompt instructs sub-loop to fetch provided URLs instead of calling SearchWeb. `output_path` writes the finding text to disk after sub-loop completes (in addition to research cache). All paths validated against `acl.permittedPaths`.
+  - **`src/daemon.ts`** — `TOOL_PORT` env var validated at startup (same pattern as `MONITOR_PORT`); `ToolApiServer` created and started before scheduled delivery; `JobSpec` interface; `runPendingJobs()` scans `sharedDir/jobs/pending/`, spawns `sudo -u <linuxUser> <scriptPath> <args...>` with `MAGI_TOOL_TOKEN`, `MAGI_TOOL_URL`, data-key env vars; max 3 concurrent; pipes stdout/stderr to `logs/bg-<id>.log`; revokes token on exit; writes `jobs/status/<id>.json`; posts completion to mailbox. `ScheduleSpec` extended with `jobSpec?` field: when a cron fires for a job-type schedule, writes a job file to `jobs/pending/` instead of posting to mailbox. `runPendingJobs` called from the heartbeat `deliver()` function.
+  - **`packages/skills/run-background/`** — platform skill: `SKILL.md`, `submit-job.sh` (one-shot), `schedule-job.sh` (recurring via cron), `job-status.sh` (status + log tail), `magi_tool.py` (Python SDK: `call_tool`, `fetch_url`, `research`, `search_web`, `inspect_image`, `post_message`, `get_text`; stdlib only — no pip).
+  - **`scripts/setup-dev.sh`** — writes `/usr/local/bin/magi-tool` wrapper (calls `magi-node dist/cli-tool.js`); same pattern as `magi-node`.
+  - **File-based job state** (no MongoDB `background_jobs` collection): `sharedDir/jobs/pending/` (specs written by submit-job.sh or schedule heartbeat), `jobs/running/` (atomically claimed), `jobs/status/` (final status JSON), `logs/bg-<id>.log` (stdout+stderr). Directly readable via Bash — no query needed.
+
+  **New env var:**
+  - `TOOL_PORT` (optional — default: 4001; Tool API server for background job scripts; must be 1–65535 or daemon exits)
+
 ## Sprint Roadmap
 
 | Sprint | Status | Focus |
@@ -380,7 +393,7 @@ Motivation: during Sprint 11 equity-research operations, 7–10 agents independe
 | 9 | ✅ Done | Context management: session-boundary compaction, reflection (UpdateMentalMap tool + cumulative summary), LLM call audit log (ADR-0009) |
 | 10 | ✅ Done | Agentic tools: Research tool (nested inner loop, isolated context, shared index); efficiency guidelines for equity-research agents (ADR-0010) |
 | 11 | ✅ Done | Dashboard UX (sessions tree, budget pause, mental map iframe); workspace persistence; `cli:reset`; clean daemon shutdown |
-| 12 | 🔄 In Progress | Data factory + secondary model + background jobs + Tool IPC server |
+| 12 | ✅ Done | Data factory + secondary model + Tool IPC server + background jobs |
 | 13 | | Hardening and launch prep |
 | 14 | | Mission Assistant: LLM operator copilot with read access to all mission state |
 

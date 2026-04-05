@@ -12,7 +12,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import { runInnerLoop } from "../loop.js";
@@ -257,44 +257,112 @@ export function createResearchTool(
 						"Use 168 (1 week) for stable facts. Use 1 for breaking news.",
 				}),
 			),
+			context_files: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						"Paths to files to inject as context into the research sub-loop. " +
+						"When provided, the sub-loop is instructed to fetch URLs from these " +
+						"files rather than calling SearchWeb (SearchWeb is disabled). " +
+						"All paths must be within the agent's permitted paths.",
+				}),
+			),
+			output_path: Type.Optional(
+				Type.String({
+					description:
+						"If provided, the finding text is written to this file path in " +
+						"addition to the research cache. Must be within permitted paths.",
+				}),
+			),
 		}),
 
 		async execute(id, rawArgs, signal) {
-			const args = rawArgs as { question: string; max_age_hours?: number };
+			const args = rawArgs as {
+				question: string;
+				max_age_hours?: number;
+				context_files?: string[];
+				output_path?: string;
+			};
 			const question = args.question?.trim();
 			if (!question) return toolErr("Research: question is required");
 
-			const maxAge = args.max_age_hours ?? DEFAULT_MAX_AGE_HOURS;
+			const contextFiles = args.context_files ?? [];
+			const outputPath = args.output_path;
 
-			// 1. Check cache.
-			const index = loadIndex(sharedDir);
-			const cached = findCached(index, question, maxAge);
-			if (cached) {
-				const mdFile = join(researchDir(sharedDir), `${cached.slug}.md`);
-				let fullAnswer = cached.answer;
-				if (existsSync(mdFile)) {
-					try {
-						// Return full finding from .md file (index only stores first 500 chars).
-						const raw = readFileSync(mdFile, "utf-8");
-						// Strip the markdown header (lines before the first ---).
-						const sep = raw.indexOf("\n---\n");
-						fullAnswer = sep !== -1 ? raw.slice(sep + 5).trim() : raw.trim();
-					} catch {
-						// Fall back to truncated answer in index.
-					}
+			// Validate all paths are within permitted paths.
+			const permittedPaths = acl.permittedPaths ?? [];
+			for (const p of [...contextFiles, ...(outputPath ? [outputPath] : [])]) {
+				const abs = resolve(p);
+				const allowed = permittedPaths.some((pp) => abs.startsWith(pp));
+				if (!allowed) {
+					return toolErr(`Research: path not within permitted paths: ${p}`);
 				}
-				return ok(
-					`[Cached finding — ${cached.agentId}, ${new Date(cached.savedAt).toISOString().slice(0, 16)}]\n\n${fullAnswer}`,
-				);
 			}
 
-			// 2. Run research sub-loop.
+			// When context files are provided, always treat as fresh (maxAge = 0).
+			const maxAge = contextFiles.length > 0 ? 0 : (args.max_age_hours ?? DEFAULT_MAX_AGE_HOURS);
+
+			// 1. Check cache (skipped when contextFiles are present — always fresh).
+			if (contextFiles.length === 0) {
+				const index = loadIndex(sharedDir);
+				const cached = findCached(index, question, maxAge);
+				if (cached) {
+					const mdFile = join(researchDir(sharedDir), `${cached.slug}.md`);
+					let fullAnswer = cached.answer;
+					if (existsSync(mdFile)) {
+						try {
+							const raw = readFileSync(mdFile, "utf-8");
+							const sep = raw.indexOf("\n---\n");
+							fullAnswer = sep !== -1 ? raw.slice(sep + 5).trim() : raw.trim();
+						} catch {
+							// Fall back to truncated answer in index.
+						}
+					}
+					const result = `[Cached finding — ${cached.agentId}, ${new Date(cached.savedAt).toISOString().slice(0, 16)}]\n\n${fullAnswer}`;
+					if (outputPath) {
+						try { writeFileSync(outputPath, fullAnswer, "utf-8"); } catch {}
+					}
+					return ok(result);
+				}
+			}
+
+			// 2. Build task string, injecting context file contents when provided.
+			let task = question;
+			if (contextFiles.length > 0) {
+				const sections: string[] = [];
+				for (const filePath of contextFiles) {
+					if (!existsSync(filePath)) continue; // silently skip missing files
+					try {
+						const content = readFileSync(filePath, "utf-8");
+						const label = filePath.split("/").pop() ?? filePath;
+						sections.push(`## Context: ${label}\n\n${content}`);
+					} catch {
+						// Skip unreadable files.
+					}
+				}
+				if (sections.length > 0) {
+					task = `${sections.join("\n\n---\n\n")}\n\n---\n\n## Question\n\n${question}`;
+				}
+			}
+
+			// 3. Choose the effective system prompt.
+			// When context files are provided, instruct the sub-loop to use provided
+			// URLs rather than calling SearchWeb (which is unnecessary and wastes tokens).
+			const effectiveSystemPrompt = contextFiles.length > 0
+				? systemPrompt +
+				  "\n\n## Context-only mode\n" +
+				  "Context files have been provided above. " +
+				  "Fetch URLs found in those files using FetchUrl. " +
+				  "Do NOT call SearchWeb — all URL discovery is already done. " +
+				  "SearchWeb is effectively disabled for this request."
+				: systemPrompt;
+
+			// 4. Run research sub-loop.
 			let loopResult: Awaited<ReturnType<typeof runInnerLoop>>;
 			try {
 				loopResult = await runInnerLoop({
 					model,
-					getSystemPrompt: () => systemPrompt,
-					task: question,
+					getSystemPrompt: () => effectiveSystemPrompt,
+					task,
 					tools: subLoopTools,
 					signal,
 					maxTurns: RESEARCH_MAX_TURNS,
@@ -308,13 +376,22 @@ export function createResearchTool(
 				);
 			}
 
-			// 3. Extract finding.
+			// 5. Extract finding.
 			const finding = extractFinding(loopResult.messages);
 			if (!finding) {
 				return toolErr("Research produced no response. Check SearchWeb API key.");
 			}
 
-			// 4. Persist finding.
+			// 6. Write to output_path if provided.
+			if (outputPath) {
+				try {
+					writeFileSync(outputPath, finding, "utf-8");
+				} catch (e) {
+					console.warn(`[research] Failed to write output_path: ${(e as Error).message}`);
+				}
+			}
+
+			// 7. Persist finding to research cache.
 			const slug = slugify(question);
 			const entry: ResearchEntry = {
 				slug,
