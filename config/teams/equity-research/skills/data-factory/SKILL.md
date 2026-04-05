@@ -2,7 +2,7 @@
 name: data-factory
 description: |
   Pre-fetched data store for NVDA equity research. You (Lin) are the operator.
-  Run refresh.sh daily before writing briefs. Manage sources.json and schedule.json.
+  Run refresh.py daily before writing briefs. Manage sources.json and schedule.json.
   Covers: OHLCV price/volume, macro rates, news digests + briefs, SEC filing index.
 scope: team
 ---
@@ -21,7 +21,7 @@ cp "$SKILL_DIR/sources.json" "$FACTORY/sources.json"
 cp "$SKILL_DIR/schedule.json" "$FACTORY/schedule.json"
 
 # First full refresh (5-10 min depending on API availability)
-bash "$SKILL_DIR/scripts/refresh.sh" "$SHARED_DIR"
+python3 "$SKILL_DIR/scripts/refresh.py" "$SHARED_DIR"
 
 # Verify
 python3 "$SKILL_DIR/scripts/catalog.py" list "$FACTORY"
@@ -31,7 +31,7 @@ Then register the daily schedule:
 ```bash
 bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" \
   --cron "30 5 * * *" \
-  --script "$SKILL_DIR/scripts/refresh.sh" \
+  --script "$SKILL_DIR/scripts/refresh.py" \
   --args "$SHARED_DIR" \
   --agent data-scientist \
   --notify-subject "Daily data factory refresh complete"
@@ -44,7 +44,7 @@ PostMessage lead-analyst with the catalog summary and any errors.
 | Task | Command |
 |------|---------|
 | Check status | `python3 $SKILL_DIR/scripts/catalog.py list $FACTORY` |
-| Manual refresh | `bash $SKILL_DIR/scripts/refresh.sh $SHARED_DIR` |
+| Manual refresh | `python3 $SKILL_DIR/scripts/refresh.py $SHARED_DIR` |
 | Add a series | Edit `$FACTORY/sources.json`, add entry, run refresh |
 | Remove a series | Edit `$FACTORY/sources.json`, remove entry (data files remain) |
 | Check FMP budget | `cat $FACTORY/.fmp_usage_$(date +%Y-%m-%d)` (must be < 200) |
