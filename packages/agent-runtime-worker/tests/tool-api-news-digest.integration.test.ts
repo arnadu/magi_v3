@@ -28,8 +28,7 @@
  * Timeout: 3 minutes (Research sub-loop fetches URLs).
  */
 
-import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -105,7 +104,12 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 			});
 		});
 
-		tmpDir = mkdtempSync(join(tmpdir(), "magi-tool-api-test-"));
+		// Use a fixed directory so output files survive the test run.
+		// Clean up any previous run's output at start (not end) so files
+		// are always available for inspection after the test completes.
+		tmpDir = join(tmpdir(), "magi-tool-api-test");
+		try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+		mkdirSync(tmpDir, { recursive: true });
 		sharedDir = join(tmpDir, "shared");
 
 		// Create a minimal but realistic NVDA news digest.
@@ -172,7 +176,9 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 
 	afterAll(() => {
 		server.stop();
-		try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+		console.log(`\n[test] Output files preserved at: ${tmpDir}`);
+		console.log(`[test]   digest: ${digestPath}`);
+		console.log(`[test]   brief:  ${briefPath}`);
 	});
 
 	it("returns 401 for invalid token", async () => {
