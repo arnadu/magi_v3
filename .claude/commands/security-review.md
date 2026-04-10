@@ -206,4 +206,8 @@ Begin your analysis now. Do this in 3 steps:
 2. Then for each vulnerability identified by the above sub-task, create a new sub-task to filter out false-positives. Launch these sub-tasks as parallel sub-tasks. In the prompt for these sub-tasks, include everything in the "FALSE POSITIVE FILTERING" instructions.
 3. Filter out any vulnerabilities where the sub-task reported a confidence less than 8.
 
-Your final reply must contain the markdown report and nothing else.
+Your final reply must contain the markdown report and nothing else. Append a final line:
+
+**Threat model update needed?** YES / NO — reason in one sentence. (If YES, the operator should
+run `/update-threat-model` before the next `/security-audit`. Triggers: new external HTTP call,
+new subprocess/sudo rule, new server port, new env var forwarding, new MongoDB collection.)
