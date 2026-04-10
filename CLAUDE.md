@@ -366,13 +366,14 @@ Motivation: during Sprint 11 equity-research operations, 7–10 agents independe
   - `scripts/setup-dev.sh` — creates `/opt/magi/venv`, installs data-factory requirements, writes `/usr/local/bin/magi-python3` wrapper
 
 - **Phase 3 — Tool IPC Server + Background Jobs (built):**
-  - **`src/tool-api-server.ts`** — `ToolApiServer` class; HTTP server on `TOOL_PORT` (default 4001, `127.0.0.1` only); bearer token auth (`Map<token, {acl, identity}>`); dispatches POST `/tools/<name>` to FetchUrl (visionModel), InspectImage (visionModel), Research (model + acl), SearchWeb, PostMessage; 120 s per-call timeout; `issueToken(acl, identity)` / `revokeToken(token)`.
-  - **`src/cli-tool.ts`** — `magi-tool` CLI; stdlib HTTP client; flags: `--params '<json>'`, `--question`, `--context-file` (repeatable), `--output`, `--max-age-hours`, `--url`, `--to`, `--subject`, `--body`; `--output` for Research writes the finding to a file; exit 0/1.
+  See [ADR-0011](docs/adr/0011-background-jobs-tool-ipc.md) for the full design rationale, end-to-end sequence, and alternatives considered.
+  - **`src/tool-api-server.ts`** — `ToolApiServer` class; HTTP server on `TOOL_PORT` (default 4001, `127.0.0.1` only); bearer token auth (`Map<token, {acl, identity}>`); dispatches `POST /tools/<name>` to FetchUrl (visionModel), InspectImage (visionModel), Research (model + acl), SearchWeb, PostMessage; 120 s per-call timeout; `issueToken(acl, identity)` / `revokeToken(token)`.
+  - **`src/cli-tool.ts`** — `magi-tool` CLI; stdlib HTTP client; flags: `--params '<json>'`, `--question`, `--context-file` (repeatable), `--output`, `--max-age-hours`, `--url`, `--to <agentId>` (wrapped into array before POST), `--subject`, `--body`; `--output` for Research writes the finding to a file; exit 0/1.
   - **`src/tools/research.ts`** — extended with `context_files?: string[]` and `output_path?: string` params. When `context_files` provided: cache skipped (always fresh), file contents injected as opening context, system prompt instructs sub-loop to fetch provided URLs instead of calling SearchWeb. `output_path` writes the finding text to disk after sub-loop completes (in addition to research cache). All paths validated against `acl.permittedPaths`.
-  - **`src/daemon.ts`** — `TOOL_PORT` env var validated at startup (same pattern as `MONITOR_PORT`); `ToolApiServer` created and started before scheduled delivery; `JobSpec` interface; `runPendingJobs()` scans `sharedDir/jobs/pending/`, spawns `sudo -u <linuxUser> <scriptPath> <args...>` with `MAGI_TOOL_TOKEN`, `MAGI_TOOL_URL`, data-key env vars; max 3 concurrent; pipes stdout/stderr to `logs/bg-<id>.log`; revokes token on exit; writes `jobs/status/<id>.json`; posts completion to mailbox. `ScheduleSpec` extended with `jobSpec?` field: when a cron fires for a job-type schedule, writes a job file to `jobs/pending/` instead of posting to mailbox. `runPendingJobs` called from the heartbeat `deliver()` function.
+  - **`src/daemon.ts`** — `TOOL_PORT` env var validated at startup; `ToolApiServer` created and started before heartbeat; `JobSpec` interface; `runPendingJobs()` spawns `sudo -u <linuxUser> /usr/local/bin/magi-job <scriptPath> <args...>`; max 3 concurrent; revokes token on exit; writes `jobs/status/<id>.json`; posts completion to mailbox. `ScheduleSpec.jobSpec?` field: cron fires → writes job file to `jobs/pending/` instead of posting mailbox message.
   - **`packages/skills/run-background/`** — platform skill: `SKILL.md`, `submit-job.sh` (one-shot), `schedule-job.sh` (recurring via cron), `job-status.sh` (status + log tail), `magi_tool.py` (Python SDK: `call_tool`, `fetch_url`, `research`, `search_web`, `inspect_image`, `post_message`, `get_text`; stdlib only — no pip).
-  - **`scripts/setup-dev.sh`** — writes `/usr/local/bin/magi-tool` wrapper (calls `magi-node dist/cli-tool.js`); same pattern as `magi-node`.
-  - **File-based job state** (no MongoDB `background_jobs` collection): `sharedDir/jobs/pending/` (specs written by submit-job.sh or schedule heartbeat), `jobs/running/` (atomically claimed), `jobs/status/` (final status JSON), `logs/bg-<id>.log` (stdout+stderr). Directly readable via Bash — no query needed.
+  - **`scripts/setup-dev.sh`** — creates `/usr/local/bin/magi-job` wrapper (`exec "$@"`); creates `/usr/local/bin/magi-tool` wrapper; adds NOPASSWD rules + `env_keep` for both wrappers to `/etc/sudoers.d/magi`.
+  - **File-based job state** (no new MongoDB collection): `sharedDir/jobs/pending/` (specs written by submit-job.sh or heartbeat), `jobs/running/` (atomically claimed to prevent double-execution), `jobs/status/` (final status JSON), `logs/bg-<id>.log` (stdout+stderr). Directly readable via Bash — no query needed.
 
   **New env var:**
   - `TOOL_PORT` (optional — default: 4001; Tool API server for background job scripts; must be 1–65535 or daemon exits)
@@ -452,12 +453,19 @@ Pending final decisions at Sprint 0:
 
 ## Known Pitfalls
 
+**Background jobs fail with `sudo: a password is required` or `401 Unauthorized`**
+
+Both symptoms mean `setup-dev.sh` has not been run since the `magi-job` wrapper was added in Sprint 12. See [ADR-0011](docs/adr/0011-background-jobs-tool-ipc.md) for why these rules are needed. Fix:
+```bash
+sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
+```
+
 **sudo prompts appearing in the daemon terminal**
 Agents occasionally generate Bash commands containing `sudo` (e.g. `sudo apt install …`). The tool executes as the pool user (`magi-wN`) which has no sudoers entry. By default `sudo` authenticates via PAM *before* checking authorization, producing a password prompt on the daemon's controlling terminal even though the command will ultimately be denied.
 
 Fix: `/etc/sudoers.d/magi` must include `Defaults:%magi-shared !authenticate`. This skips PAM for the group; the command still fails (no allowing rule), but fails silently. Applied by `scripts/setup-dev.sh` — re-run it if you see prompts:
 ```bash
-sudo scripts/setup-dev.sh
+sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
 ```
 
 **Node binary path wrong in sudoers (nvm users)**

@@ -289,7 +289,7 @@ def cmd_refresh(
     results_lock = threading.Lock()
 
     def run_source(source: dict) -> None:
-        entry = _run_adapter(factory, script_dir, source, log_path)
+        entry = _run_adapter(factory, script_dir, source, log_path, entries)
         with results_lock:
             results[source["id"]] = entry
 
@@ -311,7 +311,7 @@ def cmd_refresh(
             )
             continue
         fmp_inc()
-        results[source["id"]] = _run_adapter(factory, script_dir, source, log_path)
+        results[source["id"]] = _run_adapter(factory, script_dir, source, log_path, entries)
 
     # Merge all results into the existing catalog and persist
     for source_entry in results.values():
@@ -354,6 +354,7 @@ def _run_adapter(
     script_dir: Path,
     source: dict,
     log_path: Path,
+    existing_entries: list | None = None,
 ) -> dict:
     """
     Invoke one adapter script as a subprocess and return a catalog entry.
@@ -392,6 +393,28 @@ def _run_adapter(
         _log(log_path, f"[catalog] ERROR {source_id}: {exc}")
         return _make_entry(source, "error", error=str(exc))
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Skip the adapter if the output file already exists and is fresh.
+    # "Fresh" means either:
+    #   (a) the catalog has a non-stale "ok" entry for this source, OR
+    #   (b) the file was written today (mtime date == today) — covers pre-seeded
+    #       fixtures and manual placements that have no catalog entry yet.
+    # This prevents live network calls from clobbering fixture files in tests
+    # and avoids redundant fetches when refresh runs more than once in a day.
+    if out_path.exists():
+        file_fresh = (date.fromtimestamp(out_path.stat().st_mtime) == date.today())
+        catalog_fresh = False
+        if existing_entries:
+            prev = next((e for e in existing_entries if e.get("id") == source_id), None)
+            catalog_fresh = bool(prev and prev.get("status") == "ok" and not is_stale(prev))
+        if file_fresh or catalog_fresh:
+            _log(log_path, f"[catalog] SKIP {source_id}: output is fresh, not re-fetching")
+            # Return existing catalog entry if available, otherwise synthesise one.
+            if existing_entries:
+                prev = next((e for e in existing_entries if e.get("id") == source_id), None)
+                if prev:
+                    return prev
+            return _make_entry(source, "ok", out_path=out_path)
 
     params_json = json.dumps(source.get("params", {}))
     cmd = [

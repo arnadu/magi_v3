@@ -1,0 +1,14 @@
+{
+  "_comment": "Example sources.json — copy to $FACTORY/sources.json and customise.",
+  "series": [
+    {
+      "id": "yfinance/SPY_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "SPY" },
+      "schedule": "daily",
+      "output": "series/yfinance/SPY_daily.csv"
+    }
+  ],
+  "news": [],
+  "documents": []
+}

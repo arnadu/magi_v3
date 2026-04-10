@@ -285,7 +285,7 @@ async function runPendingJobs(
 
 		const child = spawn(
 			"sudo",
-			["-u", spec.linuxUser, spec.scriptPath, ...spec.args],
+			["-u", spec.linuxUser, "/usr/local/bin/magi-job", spec.scriptPath, ...spec.args],
 			{
 				env: {
 					PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",

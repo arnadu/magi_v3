@@ -9,7 +9,7 @@ import pytest
 
 ADAPTER = str(
     Path(__file__).parent.parent.parent
-    / "config" / "teams" / "equity-research" / "skills" / "data-factory" / "scripts"
+    / "packages" / "skills" / "data-factory" / "scripts"
     / "adapters" / "adapter_yfinance.py"
 )
 

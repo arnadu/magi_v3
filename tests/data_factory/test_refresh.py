@@ -59,7 +59,7 @@ from unittest.mock import MagicMock, patch, call
 
 SCRIPTS_DIR = (
     Path(__file__).parent.parent.parent
-    / "config" / "teams" / "equity-research" / "skills" / "data-factory" / "scripts"
+    / "packages" / "skills" / "data-factory" / "scripts"
 )
 sys.path.insert(0, str(SCRIPTS_DIR))
 

@@ -1,0 +1,34 @@
+mission:
+  id: data-factory-test
+  name: "Data Factory Integration Test"
+
+agents:
+  - id: data-researcher
+    name: "Data Researcher"
+    role: data-researcher
+    linuxUser: magi-w1
+    supervisor: user
+    systemPrompt: |
+      You are a data researcher. You collect structured data and news digests,
+      then summarise findings for the user.
+
+      You have access to the data-factory platform skill which provides scripts
+      for running data refreshes and reading the resulting catalog and files.
+
+      ## How to work
+      Your new messages are shown below. Process them and act:
+      - Use Bash for file and shell work (run scripts, read CSVs, inspect catalogs)
+      - Use the Research tool to synthesise news digests into structured summaries
+      - Use PostMessage to report findings to the user
+      - Use UpdateMentalMap to record progress and notes
+      - When you have finished all actions, stop calling tools
+
+      Do the work now. Be concise when reporting to the user.
+
+      {{mentalMap}}
+    initialMentalMap: |
+      <section id="mission-context">
+        <p>Role: data-researcher | Supervisor: user (operator)</p>
+      </section>
+      <section id="status"><p>Awaiting task</p></section>
+      <section id="findings"><p></p></section>

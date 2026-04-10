@@ -79,7 +79,7 @@ chgrp -R "${SHARED_GROUP}" "${MAGI_VENV}" 2>/dev/null || true
 chmod -R g+rX "${MAGI_VENV}" 2>/dev/null || true
 echo "[setup-dev] Venv ready."
 
-DATA_FACTORY_REQS="${SCRIPT_DIR}/../config/teams/equity-research/skills/data-factory/requirements.txt"
+DATA_FACTORY_REQS="${SCRIPT_DIR}/../packages/skills/data-factory/requirements.txt"
 if [[ -f "${DATA_FACTORY_REQS}" ]]; then
     echo "[setup-dev] Installing data-factory requirements into venv ..."
     "${MAGI_VENV}/bin/pip" install -q -r "${DATA_FACTORY_REQS}"
@@ -210,13 +210,39 @@ EOF
 chmod 755 "${TOOL_WRAPPER}"
 echo "[setup-dev] Wrote wrapper ${TOOL_WRAPPER} → ${CLI_TOOL_JS}"
 
+# ---------------------------------------------------------------------------
+# 4c. Create /usr/local/bin/magi-job — stable entry point for background jobs.
+#     The daemon spawns background job scripts via:
+#       sudo -u magi-wN /usr/local/bin/magi-job <scriptPath> [args...]
+#     The sudoers rule allows magi-job (a fixed path) rather than arbitrary
+#     executables, and env_keep preserves the MAGI tool env vars for the job.
+# ---------------------------------------------------------------------------
+JOB_WRAPPER="/usr/local/bin/magi-job"
+cat > "${JOB_WRAPPER}" << 'EOF'
+#!/bin/sh
+# magi-job — execute a MAGI background job script as the agent linux user.
+# Called by the MAGI daemon via: sudo -u magi-wN /usr/local/bin/magi-job <script> [args...]
+# MAGI_TOOL_URL and MAGI_TOOL_TOKEN are preserved via sudoers env_keep.
+exec "$@"
+EOF
+chmod 755 "${JOB_WRAPPER}"
+echo "[setup-dev] Wrote wrapper ${JOB_WRAPPER}"
+
 POOL_LIST="$(seq -s, -f 'magi-w%.0f' 1 "${POOL_SIZE}")"
 SUDOERS_FILE="/etc/sudoers.d/magi"
 
+# Data key names that background job scripts need access to.
+DATA_KEYS="MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API_KEY"
+
 {
-    # Allow the orchestrator user to run the wrapper as any pool user without
-    # a password.  The wrapper path is fixed; the real node path is inside it.
+    # Allow the orchestrator user to run the node wrapper as any pool user
+    # without a password.  Used by the tool-executor child process.
     printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${POOL_LIST}" "${WRAPPER}"
+    # Allow the orchestrator user to run background job scripts via magi-job.
+    printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${POOL_LIST}" "${JOB_WRAPPER}"
+    # Preserve MAGI tool IPC env vars when running background jobs.
+    # Without env_keep, sudo's env_reset strips these before exec.
+    printf 'Defaults!%s env_keep += "%s"\n' "${JOB_WRAPPER}" "${DATA_KEYS}"
     # Prevent sudo from prompting pool workers for a password.
     # Without this, sudo's default is to authenticate via PAM before checking
     # authorization — so a magi-wN user running "sudo anything" would produce

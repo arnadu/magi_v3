@@ -111,10 +111,24 @@ def fetch(output_path: str, series_id: str, params: dict) -> None:
             headers={"User-Agent": "MAGI-DataFactory/1.0"},
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = json.loads(resp.read().decode())
+            data = resp.read().decode()
+    except urllib.error.HTTPError as exc:
+        print(f"Error: GDELT HTTP {exc.code}: {exc.reason}", file=sys.stderr)
+        sys.exit(1)
     except urllib.error.URLError as exc:
         print(f"Error: GDELT request failed: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    # GDELT returns plain text on rate-limit or error (not JSON).
+    # Detect this before json.loads to produce a clear error message.
+    stripped = data.strip()
+    if not stripped.startswith(("{", "[")):
+        msg = stripped[:200].replace("\n", " ")
+        print(f"Error: non-JSON response from GDELT: {msg}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        raw = json.loads(data)
     except json.JSONDecodeError as exc:
         print(f"Error: invalid JSON from GDELT: {exc}", file=sys.stderr)
         sys.exit(1)

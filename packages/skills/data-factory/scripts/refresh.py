@@ -316,8 +316,8 @@ def synthesise_briefs(factory: Path, sources_path: Path, log: _Log) -> None:
     - Writes the synthesised brief to brief.md via --output
     """
     if not os.environ.get("MAGI_TOOL_TOKEN"):
-        log("[refresh] MAGI_TOOL_TOKEN not set — skipping brief synthesis "
-            "(run as a daemon background job to enable)")
+        log("[refresh] Brief synthesis skipped (MAGI_TOOL_TOKEN not set — "
+            "briefs are updated automatically when refresh runs as a scheduled background job)")
         return
 
     if not sources_path.exists():
@@ -364,10 +364,10 @@ def synthesise_briefs(factory: Path, sources_path: Path, log: _Log) -> None:
             context_args += ["--context-file", str(brief_path)]
 
         question = (
-            f"Update the NVDA news brief based on today's digest. "
+            f"Summarise the latest news for '{src_id}' based on today's digest. "
             f"Fetch up to {max_fetch} new articles (use the URLs provided in the digest). "
-            f"Preserve the previous brief's structure. "
-            f"Highlight what changed since yesterday. "
+            f"Preserve the previous brief's structure if one exists. "
+            f"Highlight what is new or noteworthy. "
             f"Include a Sources section with article URLs."
         )
 

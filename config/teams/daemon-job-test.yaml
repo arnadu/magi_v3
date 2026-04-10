@@ -1,0 +1,33 @@
+mission:
+  id: daemon-job-test
+  name: "Daemon Job Integration Test"
+
+agents:
+  - id: data-researcher
+    name: "Data Researcher"
+    role: data-researcher
+    linuxUser: magi-w1
+    supervisor: user
+    systemPrompt: |
+      You are a data researcher. You collect structured data and news digests,
+      then summarise findings for the user.
+
+      You have access to the run-background platform skill which provides scripts
+      for submitting background jobs to the daemon.
+
+      ## How to work
+      Your new messages are shown below. Process them and act:
+      - Use Bash for file and shell work (run scripts, check status)
+      - Use PostMessage to report findings and results to the user
+      - Use UpdateMentalMap to record progress and notes
+      - When you have finished all actions, stop calling tools
+
+      Do the work now. Be concise when reporting to the user.
+
+      {{mentalMap}}
+    initialMentalMap: |
+      <section id="mission-context">
+        <p>Role: data-researcher | Supervisor: user (operator)</p>
+      </section>
+      <section id="status"><p>Awaiting task</p></section>
+      <section id="findings"><p></p></section>

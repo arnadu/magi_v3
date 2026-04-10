@@ -14,12 +14,12 @@ DF_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../data-factory/scripts" && 
 FACTORY="${SHARED_DIR:?SHARED_DIR not set}/data-factory"
 
 if [[ ! -d "${FACTORY}" ]]; then
-    echo "Data factory not initialised. Ask data-scientist to run refresh.sh." >&2
+    echo "Data factory not initialised. Run data-factory/scripts/refresh.py first." >&2
     exit 1
 fi
 
 if [[ "${1:-}" == "--json" ]]; then
-    python3 "${DF_SCRIPTS}/catalog.py" list "${FACTORY}" --json
+    magi-python3 "${DF_SCRIPTS}/catalog.py" list "${FACTORY}" --json
 else
-    python3 "${DF_SCRIPTS}/catalog.py" list "${FACTORY}"
+    magi-python3 "${DF_SCRIPTS}/catalog.py" list "${FACTORY}"
 fi

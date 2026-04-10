@@ -9,13 +9,13 @@ import pytest
 
 ADAPTER = str(
     Path(__file__).parent.parent.parent
-    / "config" / "teams" / "equity-research" / "skills" / "data-factory" / "scripts"
+    / "packages" / "skills" / "data-factory" / "scripts"
     / "adapters" / "adapter_gdelt.py"
 )
 
 SCRIPTS_DIR = (
     Path(__file__).parent.parent.parent
-    / "config" / "teams" / "equity-research" / "skills" / "data-factory" / "scripts"
+    / "packages" / "skills" / "data-factory" / "scripts"
     / "adapters"
 )
 sys.path.insert(0, str(SCRIPTS_DIR))

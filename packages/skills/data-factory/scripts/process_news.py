@@ -36,7 +36,8 @@ CALL SEQUENCE (inside refresh.sh)
   # Step 2: process_news converts raw → digest.json (normalised, deduped, ranked)
   python3 process_news.py \
       --raw      $FACTORY/news/nvda/raw.json \
-      --existing $FACTORY/news/nvda/digest.json \   # may not exist on first run
+      --existing $FACTORY/news/nvda/digest.json \
+      # (--existing may not exist on first run; process() handles missing file)
       --output   $FACTORY/news/nvda/digest.json
 
   # Step 3: Research tool reads digest.json + brief.md and synthesises a new brief

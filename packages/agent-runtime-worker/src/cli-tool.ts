@@ -156,7 +156,7 @@ function parseArgs(argv: string[]): {
 			params.max_images = Number(val); i++; continue;
 		}
 		if (flag === "--to" && val) {
-			params.to = val; i++; continue;
+			params.to = [val]; i++; continue;
 		}
 		if (flag === "--subject" && val) {
 			params.subject = val; i++; continue;

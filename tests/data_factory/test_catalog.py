@@ -9,7 +9,7 @@ import pytest
 
 SCRIPTS_DIR = (
     Path(__file__).parent.parent.parent
-    / "config" / "teams" / "equity-research" / "skills" / "data-factory" / "scripts"
+    / "packages" / "skills" / "data-factory" / "scripts"
 )
 CATALOG_PY = str(SCRIPTS_DIR / "catalog.py")
 
