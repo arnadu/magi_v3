@@ -107,23 +107,45 @@ Additional notes:
 
 ANALYSIS METHODOLOGY:
 
-Phase 1 - Repository Context Research (Use file search tools):
-- Identify existing security frameworks and libraries in use
-- Look for established secure coding patterns in the codebase
-- Examine existing sanitization and validation patterns
-- Understand the project's security model and threat model (already loaded above)
+The threat model loaded above is your primary guide — not a generic vulnerability checklist.
+Use it as follows:
 
-Phase 2 - Comparative Analysis:
-- Compare new code changes against existing security patterns
-- Identify deviations from established secure practices
-- Look for inconsistent security implementations
-- Flag code that introduces new attack surfaces
+**Phase 1 — Map changed files to trust boundaries**
 
-Phase 3 - Vulnerability Assessment:
-- Examine each modified file for security implications
-- Trace data flow from user inputs to sensitive operations
-- Look for privilege boundaries being crossed unsafely
-- Identify injection points and unsafe deserialization
+Using the "Implementing Files by Boundary" section of the threat model, identify which trust
+boundary (TB-1 through TB-8) each changed file belongs to. A file can belong to multiple
+boundaries. This mapping is the lens for Phase 2.
+
+Example: if `tools/fetch-url.ts` is in the diff → it maps to TB-1 and TB-8. You must then
+check the specific STRIDE rows for TB-1 and TB-8 against the new code.
+
+**Phase 2 — Threat-model-driven analysis (per boundary)**
+
+For each boundary identified in Phase 1, work through the STRIDE rows AND the relevant OWASP
+LLM rows in the threat model:
+
+- **⚠️ open findings rows**: Has the change made the existing vulnerability *worse* or *easier
+  to exploit*? Has it changed the attack surface in a way the current finding description no
+  longer captures?
+- **✅ mitigated rows**: Has the change *weakened or bypassed* the stated mitigation? For
+  example: a ✅ row says "response capped at 50 MB" — does the new code introduce a code path
+  that skips that cap?
+- **~ partial rows**: Has the change moved the needle — better or worse? Does it close the gap
+  or widen it?
+
+This is the most important phase. A change that weakens an existing mitigation is often more
+dangerous than a new vulnerability, because it silently invalidates an assumption the rest of
+the system relies on.
+
+**Phase 3 — New attack surfaces not yet in the threat model**
+
+After the boundary-driven analysis, look at the diff for anything that does NOT map to an
+existing boundary or STRIDE row — new data flows, new external calls, new subprocess patterns.
+These are candidates for new threat model entries (flag for `/update-threat-model`) and may
+also be new findings.
+
+Apply the MAGI-specific checklist below to any new code that touches external HTTP, subprocesses,
+MongoDB queries, file paths, or env var forwarding.
 
 REQUIRED OUTPUT FORMAT:
 
