@@ -105,6 +105,54 @@ graph TB
 
 ---
 
+## Implementing Files by Boundary
+
+This section is the index used by `/security-audit`. For each trust boundary, it lists every
+file that implements that crossing. Update this whenever a boundary's implementation changes.
+
+### TB-1: External HTTP requests (FetchUrl, BrowseWeb, data adapters)
+- `packages/agent-runtime-worker/src/tools/fetch-url.ts` — HTTP GET, HTML/PDF extraction, image download
+- `packages/agent-runtime-worker/src/tools/browse-web.ts` — Playwright/Stagehand, SSRF check (initial nav only)
+- `packages/agent-runtime-worker/src/tools/research.ts` — Research sub-loop; calls FetchUrl and SearchWeb
+- `packages/agent-runtime-worker/src/tools/search-web.ts` — Brave Search API call
+- `packages/skills/data-factory/scripts/adapters/` — all 7 Python adapters (fmp, fred, yfinance, newsapi, gdelt, imf, worldbank)
+
+### TB-2: Monitor server (operator interface)
+- `packages/agent-runtime-worker/src/monitor-server.ts` — HTTP server + SSE; binds `0.0.0.0:4000`; all routes
+
+### TB-3: tool-executor subprocess (Bash, WriteFile, EditFile)
+- `packages/agent-runtime-worker/src/tools.ts` — `checkPath()`, `AclPolicy`, `spawnSync`, clean child env, `verifyIsolation()`
+- `packages/agent-runtime-worker/src/tool-executor.ts` — clean child entry point; reads stdin, dispatches, writes stdout
+
+### TB-4: magi-job subprocess (background jobs + token injection)
+- `packages/agent-runtime-worker/src/daemon.ts` — `runPendingJobs()`: token mint, `sudo` spawn, token revoke, spec validation
+- `scripts/setup-dev.sh` — `magi-job` wrapper at `/usr/local/bin/magi-job`, sudoers NOPASSWD + `env_keep` rules
+
+### TB-5: ToolApiServer — magi-job → daemon IPC
+- `packages/agent-runtime-worker/src/tool-api-server.ts` — HTTP server `127.0.0.1:4001`; bearer token auth; tool dispatch
+- `packages/agent-runtime-worker/src/cli-tool.ts` — `magi-tool` CLI (Node.js client)
+- `packages/skills/run-background/scripts/magi_tool.py` — Python SDK client (stdlib only)
+
+### TB-6: AclPolicy enforcement (LLM output → privileged operations)
+- `packages/agent-runtime-worker/src/tools.ts` — `checkPath()`, `PolicyViolationError`, Bash/WriteFile/EditFile dispatch
+- `packages/agent-runtime-worker/src/agent-runner.ts` — tool registration, `AclPolicy` construction, `researchAcl`
+- `packages/agent-runtime-worker/src/loop.ts` — `maxTurns` cap, tool call dispatch
+
+### TB-7: sharedDir shared write surface
+- `packages/agent-runtime-worker/src/workspace-manager.ts` — `setfacl` provisioning, dir creation, git init
+- `packages/agent-runtime-worker/src/skills.ts` — `discoverSkills()`: SKILL.md frontmatter parsing, scope precedence
+- `packages/agent-runtime-worker/src/daemon.ts` — scheduled message upsert (`spec.label` filter), job spec file reads
+
+### TB-8: Untrusted content → agent context (prompt injection)
+- `packages/agent-runtime-worker/src/tools/fetch-url.ts` — tool result (markdown) injected into LLM messages
+- `packages/agent-runtime-worker/src/tools/browse-web.ts` — trust boundary markers wrapping Stagehand output
+- `packages/agent-runtime-worker/src/prompt.ts` — `buildSystemPrompt()`: mental map + skills block → system prompt
+- `packages/agent-runtime-worker/src/mental-map.ts` — `patchMentalMap()`: jsdom surgical patching of agent-written HTML
+- `packages/agent-runtime-worker/src/reflection.ts` — cumulative summary injected as user message at session start
+- `packages/agent-runtime-worker/src/mailbox.ts` — `listMessages` `$regex` search; message bodies formatted as user turns
+
+---
+
 ## STRIDE Threat Table
 
 Findings reference `docs/security/findings.md` by ID. `✅` = mitigated; `⚠️` = open finding; `~` = partially mitigated; `A` = accepted.
@@ -176,3 +224,22 @@ Findings reference `docs/security/findings.md` by ID. `✅` = mitigated; `⚠️
 | Injected web content overrides agent instructions | **T** | ~ | BrowseWeb has trust boundary markers; FetchUrl lacks them (F-007) |
 | Compromised agent writes adversarial HTML to mental map | **T** | ~ | patchMentalMap uses jsdom surgical patching; arbitrary section insertion possible |
 | MongoDB `$regex` ReDoS via LLM-generated search string | **D** | ⚠️ F-004 | `opts.search` in ListMessages passed as unescaped regex |
+
+---
+
+## OWASP LLM Top 10 Threat Table
+
+STRIDE covers infrastructure threats well but has no category for LLM-specific attack vectors.
+The [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+fills this gap. Only items directly relevant to MAGI are included.
+
+`✅` = mitigated; `⚠️` = open finding; `~` = partially mitigated; `A` = accepted.
+
+| OWASP ID | Name | MAGI relevance | Implementing files | Status | Notes |
+|----------|------|----------------|-------------------|--------|-------|
+| **LLM01** | Prompt Injection | Untrusted content (web pages, news articles, mailbox bodies, SKILL.md descriptions) enters the LLM's context and may override agent instructions or cause the agent to take unintended privileged actions | TB-8 files; `skills.ts`; `mailbox.ts` | ~ | BrowseWeb wraps output in trust boundary markers; FetchUrl does not. No hard technical enforcement — LLM reasoning is the only defence once content is in context. Partially mitigated by role-focused system prompts. |
+| **LLM02** | Insecure Output Handling | LLM output directly drives privileged operations: Bash commands, WriteFile paths, JobSpec `scriptPath` fields, schedule labels, PostMessage recipients. A compromised LLM call can write arbitrary files, run arbitrary scripts, or inject messages. | `tools.ts`; `daemon.ts`; `agent-runner.ts` | ~ | AclPolicy (`checkPath`, `permittedPaths`) constrains file operations. `scriptPath` validated against `permittedPaths` (A6 fix). Schedule label type guard open (F-005). PostMessage recipient validated against team roster. Bash commands are unconstrained within the agent's linuxUser — this is intentional (OS ACLs are the backstop). |
+| **LLM06** | Sensitive Information Disclosure | Agent system prompt contains: role description, mental map (may include data observations), skills block (file paths). If an agent is tricked into sending its system prompt to an external address via PostMessage + FetchUrl, confidential mission context is exfiltrated. | `prompt.ts`; `agent-runner.ts`; `mailbox.ts` | ~ | System prompt does not contain API keys or credentials (these are never injected into prompts). Mental map and skills block are mission-internal but not secret. PostMessage recipients are validated against the team roster — an agent cannot send to an arbitrary external address. |
+| **LLM07** | System Prompt Leakage | An injected instruction could ask the agent to repeat its system prompt back in a message, revealing role constraints and mental map contents to an attacker who controls the FetchUrl target or a compromised agent. | `prompt.ts`; `tools/fetch-url.ts`; `mailbox.ts` | ~ | PostMessage recipients restricted to team roster (no external exfiltration path via mailbox). FetchUrl to an attacker-controlled URL could exfiltrate if the agent is tricked into including system prompt content in the URL. No hard mitigation beyond prompt design. |
+| **LLM08** | Excessive Agency | Agents have broad capabilities: Bash (arbitrary shell commands as their linuxUser), WriteFile, EditFile, PostMessage, Research, FetchUrl, BrowseWeb, scheduled jobs. An injected instruction can cause an agent to take far wider action than intended — deleting files, spamming agents, submitting background jobs. | `agent-runner.ts`; `tools.ts`; `daemon.ts` | ~ | OS-level ACL limits blast radius to the agent's own workdir + sharedDir. `MAX_COST_USD` cap prevents unbounded spending. No per-session action count limit. `RESEARCH_MAX_TURNS=10` limits Research sub-loop depth. No hard limit on Bash calls per session. |
+| **LLM09** | Overreliance | Agents (especially Alex/Marco/Sam) read data factory outputs (briefs, series CSVs) and act on them without independently verifying freshness or accuracy. Stale or corrupted factory data leads to incorrect recommendations with no error signal. | `data-factory-client/SKILL.md`; `catalog.py` | ~ | `catalog.json` tracks `fetched_at` and `status` (ok/error/stale). Consumer SKILL.md instructs agents to check status before use. No enforcement — agents can ignore stale flags. Fallback rule in SKILL.md: use Research tool if status=error/stale. |
