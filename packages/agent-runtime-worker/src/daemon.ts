@@ -24,7 +24,7 @@ import { createWriteStream, mkdirSync, readdirSync, readFileSync, unlinkSync, wr
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTeamConfig } from "@magi/agent-config";
+import { loadTeamConfig, type TeamConfig } from "@magi/agent-config";
 import cronParser from "cron-parser";
 
 const { parseExpression } = cronParser;
@@ -74,7 +74,7 @@ import { createMongoConversationRepository } from "./conversation-repository.js"
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { anthropicModel, CLAUDE_HAIKU, CLAUDE_SONNET } from "./models.js";
+import { CLAUDE_HAIKU, CLAUDE_SONNET, parseModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer, type PlaybookEntry } from "./monitor-server.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
@@ -108,14 +108,16 @@ interface ScheduledMessageDoc {
  * A background job to run via sudo as the agent's linux user.
  * Written to sharedDir/jobs/pending/<id>.json by schedule files (jobSpec field)
  * or directly by submit-job.sh / the agent.
+ *
+ * NOTE: linuxUser is intentionally absent. The daemon derives it from agentId
+ * via the team config at execution time, preventing a compromised agent from
+ * escalating privileges by writing an arbitrary linuxUser into the spec file.
  */
 interface JobSpec {
 	/** Unique job id (UUID). */
 	id: string;
 	/** Agent whose linuxUser and ACL the job runs under. */
 	agentId: string;
-	/** OS user to sudo into for script execution. */
-	linuxUser: string;
 	/** Absolute path to the script (shebang selects interpreter). */
 	scriptPath: string;
 	/** Positional arguments passed after scriptPath. */
@@ -224,6 +226,7 @@ async function runPendingJobs(
 	toolApiServer: ToolApiServer,
 	toolPort: number,
 	mailboxRepo: MailboxRepository,
+	teamConfig: TeamConfig,
 ): Promise<void> {
 	const pendingDir = join(sharedDir, "jobs", "pending");
 	const runningDir = join(sharedDir, "jobs", "running");
@@ -263,17 +266,39 @@ async function runPendingJobs(
 			continue; // race or IO error — skip
 		}
 
-		// Build the agent identity from known workspace layout.
-		const agentWorkdir = join(workdir, "home", spec.linuxUser, "missions", missionId);
+		// Derive linuxUser from the team config — never trust the job file.
+		const agentCfg = teamConfig.agents.find((a) => a.id === spec.agentId);
+		if (!agentCfg) {
+			console.error(
+				`[daemon:jobs] Unknown agentId "${spec.agentId}" in job ${spec.id} — skipping`,
+			);
+			try { unlinkSync(runningPath); } catch {}
+			continue;
+		}
+		const linuxUser = agentCfg.linuxUser;
+		const agentWorkdir = join(workdir, "home", linuxUser, "missions", missionId);
+		const permittedPaths = [agentWorkdir, sharedDir];
+
+		// Validate scriptPath is within the agent's permitted paths.
+		const resolvedScript = join(spec.scriptPath); // normalise without following symlinks
+		const allowed = permittedPaths.some((p) => resolvedScript.startsWith(p + "/") || resolvedScript === p);
+		if (!allowed) {
+			console.error(
+				`[daemon:jobs] scriptPath "${spec.scriptPath}" is outside permitted paths for agent "${spec.agentId}" — skipping`,
+			);
+			try { unlinkSync(runningPath); } catch {}
+			continue;
+		}
+
 		const acl: AclPolicy = {
 			agentId: spec.agentId,
-			linuxUser: spec.linuxUser,
-			permittedPaths: [agentWorkdir, sharedDir],
+			linuxUser,
+			permittedPaths,
 		};
 		const identity: AgentIdentity = {
 			workdir: agentWorkdir,
 			sharedDir,
-			linuxUser: spec.linuxUser,
+			linuxUser,
 		};
 
 		const token = toolApiServer.issueToken(acl, identity);
@@ -281,15 +306,15 @@ async function runPendingJobs(
 		const logStream = createWriteStream(logPath, { flags: "a" });
 
 		runningJobs++;
-		console.log(`[daemon:jobs] Starting job ${spec.id} (${spec.scriptPath}) as ${spec.linuxUser}`);
+		console.log(`[daemon:jobs] Starting job ${spec.id} (${spec.scriptPath}) as ${linuxUser}`);
 
 		const child = spawn(
 			"sudo",
-			["-u", spec.linuxUser, "/usr/local/bin/magi-job", spec.scriptPath, ...spec.args],
+			["-u", linuxUser, "/usr/local/bin/magi-job", spec.scriptPath, ...spec.args],
 			{
 				env: {
 					PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-					HOME: `/home/${spec.linuxUser}`,
+					HOME: `/home/${linuxUser}`,
 					MAGI_TOOL_URL: `http://127.0.0.1:${toolPort}`,
 					MAGI_TOOL_TOKEN: token,
 					...dataKeysEnv(),
@@ -360,6 +385,7 @@ function startScheduledDelivery(
 	workdir: string,
 	toolApiServer: ToolApiServer,
 	toolPort: number,
+	teamConfig: TeamConfig,
 ): () => void {
 	async function deliver(): Promise<void> {
 		// Import any new or updated schedule files first.
@@ -420,7 +446,7 @@ function startScheduledDelivery(
 		}
 
 		// Run any pending background jobs (from both scheduled specs and submit-job.sh).
-		await runPendingJobs(sharedDir, workdir, missionId, toolApiServer, toolPort, mailboxRepo);
+		await runPendingJobs(sharedDir, workdir, missionId, toolApiServer, toolPort, mailboxRepo, teamConfig);
 	}
 
 	// Deliver any overdue messages immediately on startup (crash recovery).
@@ -522,13 +548,13 @@ async function main(): Promise<void> {
 
 	const modelId = process.env.MODEL ?? "claude-sonnet-4-6";
 	const model =
-		modelId === "claude-sonnet-4-6" ? CLAUDE_SONNET : anthropicModel(modelId);
+		modelId === "claude-sonnet-4-6" ? CLAUDE_SONNET : parseModel(modelId);
 
 	const visionModelId = process.env.VISION_MODEL ?? "claude-haiku-4-5-20251001";
 	const visionModel =
 		visionModelId === "claude-haiku-4-5-20251001" ? CLAUDE_HAIKU
 		: visionModelId === "claude-sonnet-4-6" ? CLAUDE_SONNET
-		: anthropicModel(visionModelId);
+		: parseModel(visionModelId);
 
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 	const teamSkillsPath = join(
@@ -684,6 +710,7 @@ async function main(): Promise<void> {
 		workdir,
 		toolApiServer,
 		toolPort,
+		teamConfig,
 	);
 
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.

@@ -5,6 +5,9 @@
 # Writes a job spec to sharedDir/jobs/pending/<jobId>.json.
 # The daemon picks it up on its next heartbeat (within 1 minute).
 #
+# The daemon derives the linux user from the agentId via the team config.
+# Do NOT include a linuxUser field — it would be ignored and is a security risk.
+#
 # Usage:
 #   bash submit-job.sh \
 #     --script   <abs-path-to-script> \
@@ -15,7 +18,6 @@
 #
 # Environment:
 #   SHARED_DIR   (required) — mission shared directory
-#   LINUX_USER   (optional) — override the linux user to run as
 
 set -euo pipefail
 
@@ -49,22 +51,8 @@ if [[ -z "${SHARED_DIR:-}" ]]; then
     exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Derive sharedDir from this script's location if SHARED_DIR not set.
-# This script lives at: sharedDir/skills/_platform/run-background/scripts/submit-job.sh
-# ---------------------------------------------------------------------------
-SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-# _platform/run-background/scripts → _platform/run-background → _platform → skills → sharedDir
-SHARED_DIR="${SHARED_DIR:-$(dirname "$(dirname "$(dirname "$(dirname "$SCRIPTS_DIR")")")")}"
-
 PENDING_DIR="${SHARED_DIR}/jobs/pending"
 mkdir -p "${PENDING_DIR}"
-
-# ---------------------------------------------------------------------------
-# Look up linuxUser from team YAML or fallback to LINUX_USER env var.
-# For simplicity, trust LINUX_USER env var if provided; otherwise use whoami.
-# ---------------------------------------------------------------------------
-LINUX_USER="${LINUX_USER:-$(whoami)}"
 
 # ---------------------------------------------------------------------------
 # Build args JSON array
@@ -81,20 +69,18 @@ OUTPUT="${PENDING_DIR}/${JOB_ID}.json"
 python3 -c "
 import json, sys
 spec = {
-    'id':          sys.argv[1],
-    'agentId':     sys.argv[2],
-    'linuxUser':   sys.argv[3],
-    'scriptPath':  sys.argv[4],
-    'args':        json.loads(sys.argv[5]),
+    'id':         sys.argv[1],
+    'agentId':    sys.argv[2],
+    'scriptPath': sys.argv[3],
+    'args':       json.loads(sys.argv[4]),
 }
-if sys.argv[6]:
-    spec['notifyAgentId'] = sys.argv[7] if sys.argv[7] else sys.argv[2]
-    spec['notifySubject'] = sys.argv[6]
+if sys.argv[5]:
+    spec['notifyAgentId'] = sys.argv[6] if sys.argv[6] else sys.argv[2]
+    spec['notifySubject'] = sys.argv[5]
 print(json.dumps(spec, indent=2))
 " \
     "${JOB_ID}" \
     "${AGENT_ID}" \
-    "${LINUX_USER}" \
     "${SCRIPT_PATH}" \
     "${ARGS_JSON}" \
     "${NOTIFY_SUBJECT}" \
@@ -102,7 +88,7 @@ print(json.dumps(spec, indent=2))
 
 echo "Job submitted: ${JOB_ID}"
 echo "  Script : ${SCRIPT_PATH}"
-echo "  Agent  : ${AGENT_ID} (linux user: ${LINUX_USER})"
+echo "  Agent  : ${AGENT_ID}"
 echo "  Log    : ${SHARED_DIR}/logs/bg-${JOB_ID}.log"
 echo ""
 echo "The daemon will pick it up on the next heartbeat (within 1 minute)."
