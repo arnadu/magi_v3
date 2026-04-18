@@ -19,8 +19,10 @@ import type {
 } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import { runInnerLoop } from "../src/loop.js";
-import { CLAUDE_SONNET } from "../src/models.js";
+import { CLAUDE_SONNET, parseModel } from "../src/models.js";
 import { createFileTools } from "../src/tools.js";
+
+const model = process.env.MODEL ? parseModel(process.env.MODEL) : CLAUDE_SONNET;
 
 const POOL_USER = "magi-w1";
 
@@ -60,8 +62,8 @@ describe("integration: real LLM", () => {
 
 		try {
 			const { messages, turnCount } = await runInnerLoop({
-				model: CLAUDE_SONNET,
-				systemPrompt:
+				model,
+				getSystemPrompt: () =>
 					"You are a helpful agent. Complete the given task using the available tools. When finished, confirm what you did.",
 				task: 'Find the file in the current working directory that contains the string "HELLO WORLD". Edit this file and add a line with the word GOODBYE.',
 				tools: createFileTools(tmpDir, {

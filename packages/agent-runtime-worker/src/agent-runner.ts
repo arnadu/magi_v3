@@ -32,8 +32,11 @@ const CTX_LIMIT = 200_000;
  * Reflection is only run when the last LLM call in the previous session used
  * at least this fraction of the context window. Sessions smaller than this
  * threshold are too cheap to justify a separate reflection call.
+ * Override via REFLECTION_THRESHOLD env var (tokens) for testing.
  */
-const REFLECTION_CTX_THRESHOLD = 0.6 * CTX_LIMIT; // 120 000 tokens
+const REFLECTION_CTX_THRESHOLD = process.env.REFLECTION_THRESHOLD
+	? Number.parseInt(process.env.REFLECTION_THRESHOLD, 10)
+	: 0.6 * CTX_LIMIT; // 120 000 tokens
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,11 +107,12 @@ export async function runAgent(
 	const nonSummaryHistory = history.filter((sm) => sm.message.role !== "summary");
 	const sessionMessages = nonSummaryHistory.map((sm) => sm.message as Message);
 
-	const lastAssistantUsage = [...sessionMessages]
-		.reverse()
-		.find((m): m is AssistantMessage => m.role === "assistant")
-		?.usage as { input: number } | undefined;
-	const peakInputTokens = lastAssistantUsage?.input ?? 0;
+	// Peak input tokens across all LLM calls in the previous session.
+	// Using max (not just the last call) because some models produce shorter
+	// final calls after long intermediate tool-result contexts.
+	const peakInputTokens = sessionMessages
+		.filter((m): m is AssistantMessage => m.role === "assistant")
+		.reduce((max, m) => Math.max(max, ((m.usage as { input?: number })?.input ?? 0)), 0);
 
 	/**
 	 * Build the onLlmCall handler for a given turnNumber and isReflection flag.
@@ -167,7 +171,11 @@ export async function runAgent(
 		(await ctx.conversationRepo.loadMostRecentMentalMap(agentId, missionId))
 		?? initMentalMap(agent);
 
-	if (sessionMessages.length > 0 && peakInputTokens >= REFLECTION_CTX_THRESHOLD) {
+	// Read threshold lazily so REFLECTION_THRESHOLD env var set by tests is honoured.
+	const reflectionThreshold = process.env.REFLECTION_THRESHOLD
+		? Number.parseInt(process.env.REFLECTION_THRESHOLD, 10)
+		: REFLECTION_CTX_THRESHOLD;
+	if (sessionMessages.length > 0 && peakInputTokens >= reflectionThreshold) {
 		const lastTurnNumber = nonSummaryHistory.reduce(
 			(max, sm) => Math.max(max, sm.turnNumber),
 			-1,

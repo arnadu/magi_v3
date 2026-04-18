@@ -44,14 +44,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
-import { CLAUDE_SONNET } from "../src/models.js";
+import { CLAUDE_SONNET, parseModel } from "../src/models.js";
+
+const model = process.env.MODEL ? parseModel(process.env.MODEL) : CLAUDE_SONNET;
 import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
 
-// REFLECTION_THRESHOLD=2000: any real FetchUrl result exceeds this, exercising
-// mid-session threshold code paths (when implemented in Sprint 10).
-process.env.REFLECTION_THRESHOLD = "2000";
+// REFLECTION_THRESHOLD=500: any real FetchUrl session exceeds this even with
+// token-efficient models (e.g. DeepSeek V3.2 uses ~600+ tokens for a PDF fetch).
+process.env.REFLECTION_THRESHOLD = "500";
 
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI)
@@ -171,7 +173,7 @@ describe("integration: reflection and context compaction", () => {
 					teamConfig,
 					mailboxRepo,
 					conversationRepo,
-					model: CLAUDE_SONNET,
+					model,
 					workdir: tmpDir,
 					workspaceManager,
 					maxCycles: 10,
@@ -209,7 +211,7 @@ describe("integration: reflection and context compaction", () => {
 					teamConfig,
 					mailboxRepo,
 					conversationRepo,
-					model: CLAUDE_SONNET,
+					model,
 					workdir: tmpDir,
 					workspaceManager,
 					maxCycles: 5,
@@ -256,10 +258,13 @@ describe("integration: reflection and context compaction", () => {
 			expect(
 				rawFetchDocs.length,
 				"FetchUrl tool-result document must still exist (retained for audit/RAG)",
-			).toBe(1);
+			).toBeGreaterThanOrEqual(1);
+			// At least the session-1 FetchUrl result must be compacted.
+			// There may be additional FetchUrl calls (e.g. Research sub-loop in
+			// session 2) that are not compacted — that is expected and correct.
 			expect(
-				rawFetchDocs[0].compacted,
-				"FetchUrl tool-result must be marked compacted: true",
+				rawFetchDocs.some((d) => d.compacted === true),
+				"at least one FetchUrl tool-result must be marked compacted: true",
 			).toBe(true);
 
 			// 3. Mental Map finding-list must have been patched by reflection.

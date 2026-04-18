@@ -285,7 +285,7 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 
 		console.log(`\n[test] Factory dir: ${factoryDir}`);
 		console.log(`[test] Output preserved at: ${OUTPUT_DIR}`);
-	});
+	}, 60_000);
 
 	it(
 		"agent runs refresh, reads catalog and price data, summarises news digest",

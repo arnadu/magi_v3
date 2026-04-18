@@ -113,19 +113,14 @@ function createBrowseWebHandle(
 	 * The browser is created lazily on the first execute() call and closed by
 	 * the explicit close() call in agent-runner.ts's finally block.
 	 */
-	// Stagehand uses the "provider/modelName" AI SDK format for the agent() loop,
-	// which requires AISdkClient (has getLanguageModel()). The plain "claude-*"
-	// form routes to AnthropicClient which lacks getLanguageModel — agent() breaks.
-	// We use "anthropic/claude-3-7-sonnet-latest" for all Stagehand calls; it is
-	// the best Claude model in the AI SDK provider list and reads ANTHROPIC_API_KEY
-	// from env automatically. Separate from MAGI's own LLM loop model.
-	// Use the AISDK "provider/model" format. The Stagehand-bundled @ai-sdk/anthropic
-	// already knows about claude-sonnet-4-6, so pass it through directly rather
-	// than pinning to an older model version. MAGI_V3's own model also uses
-	// claude-sonnet-4-6, so this is consistent.
+	// Stagehand uses the AI SDK "provider/model" format and only supports providers
+	// bundled with @ai-sdk (Anthropic, OpenAI, etc.). OpenRouter models are not
+	// supported. When the model is not an Anthropic Claude model, fall back to the
+	// bundled Anthropic Sonnet so BrowseWeb always works regardless of the
+	// VISION_MODEL env var. ANTHROPIC_API_KEY is always required.
 	const stagehandModel = model.id.startsWith("claude-")
 		? `anthropic/${model.id}`
-		: model.id;
+		: "anthropic/claude-sonnet-4-6";
 
 	// Per-handle session log file. All Stagehand log lines are appended as NDJSON
 	// so the full browser automation trace is available for debugging.

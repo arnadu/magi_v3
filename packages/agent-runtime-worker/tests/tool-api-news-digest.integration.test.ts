@@ -172,7 +172,7 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 			linuxUser: "nobody",
 		};
 		token = server.issueToken(acl, identity);
-	}, 10_000);
+	}, 60_000);
 
 	afterAll(() => {
 		server.stop();

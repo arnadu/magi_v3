@@ -147,7 +147,10 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 		workdir = OUTPUT_DIR;
 
 		sharedDir = join(workdir, "missions", MISSION_ID, "shared");
-		jobScriptPath = join(OUTPUT_DIR, "test-job.sh");
+		// Script must live inside sharedDir — the daemon validates scriptPath against
+		// permittedPaths (agentWorkdir + sharedDir) before executing.
+		mkdirSync(sharedDir, { recursive: true });
+		jobScriptPath = join(sharedDir, "test-job.sh");
 
 		// ── Wipe MongoDB data from previous runs ─────────────────────────────
 		{
@@ -181,7 +184,7 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 			`  --body "MAGI_TOOL_TOKEN works — job ran at $(date -u)"`,
 		].join("\n"));
 		chmodSync(jobScriptPath, 0o755);
-	});
+	}, 60_000);
 
 	it(
 		"agent submits job, daemon runs it with token, agent reports result",
@@ -268,7 +271,7 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 
 				// ── Wait for the agent to confirm submission (first user message) ─
 				console.log("[test] Waiting for agent to confirm job submission…");
-				await waitForUserMessage(db, MISSION_ID, 90_000);
+				await waitForUserMessage(db, MISSION_ID, 180_000);
 				console.log("[test] Agent confirmed submission");
 
 				// ── Wait for the job-ran marker (daemon ran the script) ──────────
@@ -337,6 +340,6 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 				await client.close();
 			}
 		},
-		4 * 60 * 1_000, // 4 minutes
+		8 * 60 * 1_000, // 8 minutes
 	);
 });

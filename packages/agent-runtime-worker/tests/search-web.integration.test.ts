@@ -32,11 +32,14 @@ import type {
 } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import { runInnerLoop } from "../src/loop.js";
-import { CLAUDE_SONNET } from "../src/models.js";
+import { CLAUDE_HAIKU, CLAUDE_SONNET, parseModel } from "../src/models.js";
 import { createFetchUrlTool } from "../src/tools/fetch-url.js";
 import { createInspectImageTool } from "../src/tools/inspect-image.js";
 import { createSearchWebTool } from "../src/tools/search-web.js";
 import { createFileTools } from "../src/tools.js";
+
+const model = process.env.MODEL ? parseModel(process.env.MODEL) : CLAUDE_SONNET;
+const visionModel = process.env.VISION_MODEL ? parseModel(process.env.VISION_MODEL) : CLAUDE_HAIKU;
 
 const POOL_USER = "magi-w1";
 
@@ -90,8 +93,8 @@ describe("integration: SearchWeb + FetchUrl + auto-describe", () => {
 
 		try {
 			const { messages } = await runInnerLoop({
-				model: CLAUDE_SONNET,
-				systemPrompt:
+				model,
+				getSystemPrompt: () =>
 					"You are a research assistant. Use SearchWeb to find pages, " +
 					"FetchUrl to retrieve them, and report your findings concisely.",
 				task:
@@ -104,8 +107,8 @@ describe("integration: SearchWeb + FetchUrl + auto-describe", () => {
 						linuxUser: POOL_USER,
 					}),
 					createSearchWebTool(apiKey),
-					createFetchUrlTool(CLAUDE_SONNET, workdir),
-					createInspectImageTool(workdir, CLAUDE_SONNET),
+					createFetchUrlTool(visionModel, workdir),
+					createInspectImageTool(workdir, visionModel),
 				],
 			});
 

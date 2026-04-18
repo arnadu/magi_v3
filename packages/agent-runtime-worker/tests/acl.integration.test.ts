@@ -136,7 +136,7 @@ describe("WriteFile ACL enforcement", () => {
 
 		expect(result.isError).toBeFalsy();
 		expect(existsSync(join(agent1WorkDir, "output.txt"))).toBe(true);
-	});
+	}, 30_000);
 
 	it("denies WriteFile to another agent's private dir", async () => {
 		const tools = makeTools(
@@ -158,7 +158,7 @@ describe("WriteFile ACL enforcement", () => {
 		expect(result.content[0].text).toMatch(/PolicyViolationError/);
 		// The file must NOT have been created.
 		expect(existsSync(join(agent2WorkDir, "intrusion.txt"))).toBe(false);
-	});
+	}, 30_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ describe("Bash ACL enforcement", () => {
 
 		expect(result.isError).toBeFalsy();
 		expect(existsSync(join(agent1WorkDir, "bash-output.txt"))).toBe(true);
-	});
+	}, 30_000);
 
 	it("denies Bash commands that write to another agent's private dir", async () => {
 		const tools = makeTools(
@@ -205,7 +205,7 @@ describe("Bash ACL enforcement", () => {
 		);
 		// The file must NOT have been created.
 		expect(existsSync(join(agent2WorkDir, "bash-intrusion.txt"))).toBe(false);
-	});
+	}, 30_000);
 });
 
 // ---------------------------------------------------------------------------

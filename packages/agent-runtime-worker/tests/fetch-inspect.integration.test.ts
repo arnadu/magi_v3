@@ -26,10 +26,13 @@ import type {
 } from "@mariozechner/pi-ai";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runInnerLoop } from "../src/loop.js";
-import { CLAUDE_SONNET } from "../src/models.js";
+import { CLAUDE_HAIKU, CLAUDE_SONNET, parseModel } from "../src/models.js";
 import { createFetchUrlTool } from "../src/tools/fetch-url.js";
 import { createInspectImageTool } from "../src/tools/inspect-image.js";
 import { createFileTools } from "../src/tools.js";
+
+const model = process.env.MODEL ? parseModel(process.env.MODEL) : CLAUDE_SONNET;
+const visionModel = process.env.VISION_MODEL ? parseModel(process.env.VISION_MODEL) : CLAUDE_HAIKU;
 
 const POOL_USER = "magi-w1";
 
@@ -131,8 +134,8 @@ describe("integration: FetchUrl + InspectImage", () => {
 
 		try {
 			const { messages, turnCount } = await runInnerLoop({
-				model: CLAUDE_SONNET,
-				systemPrompt:
+				model,
+				getSystemPrompt: () =>
 					"You are a research assistant. Use the available tools to complete the task. " +
 					"When finished, write a concise summary of what you found.",
 				task:
@@ -146,8 +149,8 @@ describe("integration: FetchUrl + InspectImage", () => {
 						permittedPaths: [workdir],
 						linuxUser: POOL_USER,
 					}),
-					createFetchUrlTool(CLAUDE_SONNET, workdir),
-					createInspectImageTool(workdir, CLAUDE_SONNET),
+					createFetchUrlTool(visionModel, workdir),
+					createInspectImageTool(workdir, visionModel),
 				],
 			});
 
