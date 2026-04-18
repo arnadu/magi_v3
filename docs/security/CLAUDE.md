@@ -66,6 +66,33 @@ The sprint row in `CLAUDE.md` should record `security-review: run` or `security-
 
 ---
 
+## Installing the security skills
+
+The three Claude Code slash commands live in `.claude/commands/` at the project root.
+They are committed to the repository — clone the repo and they are available automatically
+when working in this project with Claude Code.
+
+```
+.claude/commands/
+  threat-model.md      # /threat-model  — update threat-model.md; write new findings
+  security-review.md   # /security-review — diff-driven sprint review; write findings
+  security-audit.md    # /security-audit  — full boundary audit; write findings
+```
+
+### Quick reference
+
+| Command | When to run | Scope | Writes to |
+|---------|-------------|-------|-----------|
+| `/threat-model` | After merging a new feature; after adding an external service | Sprint diff (default) or full (`--full`) | `threat-model.md` + `findings.md` |
+| `/security-review` | Before closing every sprint | Sprint diff only | `findings.md` |
+| `/security-audit` | Every 3–4 sprints; pre-production | All implementing files per boundary | `findings.md` |
+
+All three commands read `docs/security/threat-model.md` and `docs/security/findings.md` at
+startup to avoid re-reporting known findings. Run `/threat-model` first whenever the threat
+model may be stale — it is the input that keeps the other two commands accurate.
+
+---
+
 ## Updating the threat model
 
 `docs/security/threat-model.md` contains the DFD and STRIDE table. Update it when:

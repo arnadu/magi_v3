@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Read, Glob, Grep, LS, Task
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Read, Glob, Grep, LS, Task, Edit, Write
 description: Security review of pending changes, informed by MAGI threat model and findings tracker
 ---
 
@@ -141,8 +141,23 @@ the system relies on.
 
 After the boundary-driven analysis, look at the diff for anything that does NOT map to an
 existing boundary or STRIDE row — new data flows, new external calls, new subprocess patterns.
-These are candidates for new threat model entries (flag for `/update-threat-model`) and may
-also be new findings.
+These may be new findings AND may require a threat model update.
+
+For each new surface found, determine:
+1. Is it a concrete vulnerability? → include in findings output and write to findings.md
+2. Does it represent a new or changed trust boundary, external service, subprocess, server
+   port, or env var forwarding pattern not yet in the threat model?
+
+If (2), produce a structured **Threat Model Gap** entry in this format:
+
+```
+### Threat model gap: <short description>
+- **Boundary affected**: TB-N (or NEW)
+- **Signal**: new external call / new subprocess / new port / new env forwarding / new file
+- **Suggested STRIDE row**: | <threat> | <STRIDE category> | ⚠️ new | <description> |
+- **Suggested implementing-files entry**: `path/to/file.ts` — description
+- **Action**: run `/threat-model` to apply
+```
 
 Apply the MAGI-specific checklist below to any new code that touches external HTTP, subprocesses,
 MongoDB queries, file paths, or env var forwarding.
@@ -222,14 +237,25 @@ FALSE POSITIVE FILTERING:
 
 START ANALYSIS:
 
-Begin your analysis now. Do this in 3 steps:
+Begin your analysis now. Do this in 4 steps:
 
 1. Use a sub-task to identify vulnerabilities. Use the repository exploration tools to understand the codebase context, then analyze the PR changes for security implications. In the prompt for this sub-task, include all of the above.
 2. Then for each vulnerability identified by the above sub-task, create a new sub-task to filter out false-positives. Launch these sub-tasks as parallel sub-tasks. In the prompt for these sub-tasks, include everything in the "FALSE POSITIVE FILTERING" instructions.
 3. Filter out any vulnerabilities where the sub-task reported a confidence less than 8.
+4. **Write confirmed findings to findings.md** (execute before producing the report):
+   - Read `docs/security/findings.md` and find the last `| F-NNN |` row in the Open Findings table
+   - For each confirmed finding (confidence ≥ 8), increment the ID and insert a new row using
+     the Edit tool, immediately before the `---` that separates Open Findings from Accepted Findings:
+     ```
+     | F-NNN | SEVERITY | Next | `file:line` | **Title** — one-sentence description | Recommended fix |
+     ```
+   - If no findings to write, skip this step.
 
-Your final reply must contain the markdown report and nothing else. Append a final line:
+Your final reply must contain the markdown report and nothing else. At the end of the report, append:
 
-**Threat model update needed?** YES / NO — reason in one sentence. (If YES, the operator should
-run `/update-threat-model` before the next `/security-audit`. Triggers: new external HTTP call,
-new subprocess/sudo rule, new server port, new env var forwarding, new MongoDB collection.)
+**Findings written to findings.md:** F-NNN, F-NNN+1, … (or "None")
+
+**Threat model update needed?** YES / NO — reason in one sentence. If YES, list the specific
+gap(s) as structured Threat Model Gap entries (format defined in Phase 3 above) so the operator
+can run `/threat-model` to apply them. Triggers: new external HTTP call, new subprocess/sudo
+rule, new server port, new env var forwarding, new MongoDB collection, new LLM provider.

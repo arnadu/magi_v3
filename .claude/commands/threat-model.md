@@ -1,10 +1,11 @@
 ---
 allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*), Read, Glob, Grep, Edit, Write
-description: Refresh threat-model.md — detect new trust boundaries, actors, and data flows introduced since the last update
+description: Review and update threat-model.md — detect new trust boundaries, actors, and data flows; register new findings in findings.md
 ---
 
 You are a security architect maintaining a living threat model for the MAGI V3 codebase. Your
-job is to bring `docs/security/threat-model.md` up to date with the current code.
+job is to bring `docs/security/threat-model.md` up to date with the current code, and to write
+any concrete new vulnerabilities you find directly to `docs/security/findings.md`.
 
 CURRENT THREAT MODEL:
 
@@ -12,7 +13,7 @@ CURRENT THREAT MODEL:
 !`cat docs/security/threat-model.md`
 ```
 
-CURRENT FINDINGS (for context — do not modify findings.md):
+CURRENT FINDINGS (used to avoid duplicates and determine the next F-NNN ID):
 
 ```
 !`cat docs/security/findings.md`
@@ -22,9 +23,12 @@ CURRENT FINDINGS (for context — do not modify findings.md):
 
 ## Step 1 — Determine scope
 
-If this command was invoked with arguments (e.g. `--sprint` or a file list), use that scope.
-Otherwise, use the sprint diff as the primary signal and the full boundary→files map as a
-secondary check for anything the diff might miss.
+**Mode:** If invoked with `--full` (e.g. `/threat-model --full`), scan all files listed in
+the "Implementing Files by Boundary" section of the threat model regardless of whether they
+appear in the diff. Use this after a merge or for periodic full-model verification.
+
+Otherwise (default), use the sprint diff as the primary signal, with the boundary→files map
+as a secondary check for anything the diff might miss.
 
 Sprint diff (files changed since main):
 
@@ -157,24 +161,63 @@ rows to existing tables over restructuring the document.
 
 ---
 
-## Step 4 — Report
+## Step 4 — Register new findings in findings.md
 
-After editing, produce a brief summary:
+For each signal from Step 2 that is a **concrete vulnerability** (not merely a documentation
+gap or a missing implementing-files entry), write a new row to `docs/security/findings.md`.
+
+**What qualifies as a finding:**
+- A new external HTTP call with no SSRF check → finding
+- A new env var forwarded to the wrong child process → finding
+- A new subprocess boundary with no token revocation → finding
+- A new MongoDB query using unescaped agent-supplied input → finding
+
+**What does NOT qualify:**
+- A new file added to an implementing-files list → not a finding
+- A new ⚠️ STRIDE row for a known-open threat that already has an F-ID → not a new finding
+- A documentation gap in the threat model → not a finding
+
+**How to write findings:**
+
+1. Read `docs/security/findings.md` and find the last `| F-NNN |` row in the Open Findings
+   table. The next finding is F-(N+1).
+
+2. For each finding to register, insert a new row into the Open Findings table using the
+   Edit tool. Insert immediately before the `---` line that separates Open Findings from
+   Accepted Findings. Row format:
+
+   ```
+   | F-NNN | SEVERITY | Next | `file:line` | **Title** — one-sentence description | Recommended fix |
+   ```
+
+   Use `Next` for sprint target (operator assigns sprint during triage).
+
+3. If there are no findings to write, skip this step.
+
+---
+
+## Step 5 — Report
+
+After editing both files, produce a brief summary:
 
 ```
 ## Threat model update summary
 
 **Last updated:** <previous date> → <new date>
 
-**Changes made:**
+**Threat model changes:**
 - [list each edit: "Added X to TB-N implementing files", "New STRIDE row in TB-M: ...", etc.]
 
 **No change needed for:**
 - [list signals that were investigated but were already covered]
 
-**Signals requiring follow-up (not threat model updates — may need findings.md entries):**
-- [list any new potential vulnerabilities found that warrant a new finding; do NOT add to
-  findings.md here — flag for the operator to assess and add manually or via /security-review]
+**New findings written to findings.md:**
+- F-NNN (SEVERITY): <title>
+- [or: None]
+
+**Signals requiring follow-up (not written as findings — need human assessment):**
+- [list any ambiguous signals that might be vulnerabilities but couldn't be confirmed without
+  running the code; describe what to look for]
 ```
 
-If no changes were needed: output `Threat model is up to date. No changes made.`
+If no changes were needed: output `Threat model is up to date. No findings written.`

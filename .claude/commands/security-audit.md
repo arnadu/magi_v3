@@ -1,5 +1,5 @@
 ---
-allowed-tools: Read, Glob, Grep, LS, Task
+allowed-tools: Read, Glob, Grep, LS, Task, Edit, Write
 description: Periodic deep security audit — boundary-by-boundary verification of all threat model mitigations
 ---
 
@@ -50,13 +50,15 @@ Read these files fully:
 - packages/agent-runtime-worker/src/tools/browse-web.ts
 - packages/agent-runtime-worker/src/tools/research.ts
 - packages/agent-runtime-worker/src/tools/search-web.ts
+- packages/agent-runtime-worker/src/models.ts
 
 Check: (1) Does FetchUrl call `isPrivateHost()` before making the HTTP request? (F-001)
 (2) Does BrowseWeb have a `page.route()` interceptor for all requests, not just the initial goto? (F-002)
 (3) Is `PRIVATE_HOST_RE` / `isPrivateHost()` defined in one shared place or duplicated?
 (4) Is the `file://` protocol rejected in FetchUrl?
 (5) Are response sizes capped?
-(6) Are there any new HTTP call sites not in the threat model?
+(6) Does `parseModel()` in models.ts route non-Anthropic model IDs to OpenRouter? Is `OPENROUTER_API_KEY` kept out of child process envs (tool-executor, magi-job)? Does `verifyIsolation()` check for it?
+(7) Are there any new HTTP call sites not in the threat model?
 
 **Sub-task TB-2 — Monitor server:**
 Read: packages/agent-runtime-worker/src/monitor-server.ts
@@ -81,8 +83,8 @@ Read: packages/agent-runtime-worker/src/daemon.ts (focus: runPendingJobs, startS
 Read: scripts/setup-dev.sh (focus: magi-job wrapper, sudoers section)
 
 Check: (1) Is `linuxUser` absent from `JobSpec`? Is it derived from `agentId` via team config?
-(2) Is `scriptPath` validated against `permittedPaths` before spawn?
-(3) Is `MAGI_TOOL_TOKEN` revoked in ALL exit paths (normal, error, timeout)?
+(2) Is `scriptPath` validated against `permittedPaths` before spawn? Does validation use `realpathSync()` (not just `join()`) to prevent symlink traversal? (F-013)
+(3) Is `MAGI_TOOL_TOKEN` revoked in ALL exit paths (normal close, error, spawn failure)? Is there a try/catch around `spawn()` that revokes on synchronous throw? (F-014)
 (4) Is there a wall-clock timeout for hung jobs? (F-006)
 (5) On daemon startup, are orphaned `jobs/running/` entries recovered? (F-010)
 (6) Does the `magi-job` wrapper use `exec "$@"` at a fixed path? Is it the only sudo entry for arbitrary script execution?
@@ -114,7 +116,7 @@ Read: packages/agent-runtime-worker/src/skills.ts
 Read: packages/agent-runtime-worker/src/daemon.ts (focus: scheduled message upsert, spec.label)
 
 Check: (1) Is `spec.label` type-validated as a string before use in the MongoDB upsert filter? (F-005)
-(2) Does `discoverSkills()` truncate or sanitize SKILL.md `description` fields before injecting into the system prompt? (F-007 in threat model)
+(2) Does `discoverSkills()` truncate or sanitize SKILL.md `description` fields before injecting into the system prompt?
 (3) Are `setfacl` permissions correctly applied: `r-x` on `_platform/` and `_team/`, `rwx` on `mission/`?
 (4) Is `git init` idempotent (only runs if `.git` does not yet exist)?
 
@@ -185,3 +187,27 @@ If no new findings: output `No new findings.`
 List any threats you observed that are not captured in the current STRIDE or OWASP tables —
 new attack surfaces, new data flows, or mitigations that have drifted from what the model describes.
 Format as bullet points with the suggested table row addition.
+
+---
+
+WRITE STEP (execute after consolidation, before producing the report):
+
+**New findings** — write any finding from Section 2 (confidence ≥ 8) to findings.md:
+1. Read `docs/security/findings.md` and find the last `| F-NNN |` row in the Open Findings table
+2. For each finding, insert a new row using the Edit tool, immediately before the `---` that
+   separates Open Findings from Accepted Findings:
+   ```
+   | F-NNN | SEVERITY | Next | `file:line` | **Title** — one-sentence description | Recommended fix |
+   ```
+
+**NOT FOUND mitigations** — any ✅ entry in Section 1 marked NOT FOUND means the claimed
+mitigation is absent from the code. Treat it as a new finding with severity matching the
+original STRIDE threat category, and write it to findings.md using the same process.
+
+**STALE findings** — any ⚠️ finding in Section 1 that appears to be fixed: do NOT
+automatically close it. Note it in the report as `[STALE — confirm and close manually]`
+so the operator can add the fix description and move it to Fixed Findings.
+
+At the end of the report, append:
+**Findings written to findings.md:** F-NNN, F-NNN+1, … (or "None")
+**Stale findings to review:** F-NNN (appears fixed), … (or "None")
