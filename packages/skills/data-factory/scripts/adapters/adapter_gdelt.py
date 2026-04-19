@@ -12,8 +12,9 @@ search query.
 No API key required.  GDELT is a public, free service run by Google Jigsaw.
 
 This adapter complements NewsAPI: GDELT has broader geographic coverage and
-no daily request limit, but it covers only the last few days (timespan=3d)
-and does not provide article summaries.
+no daily request limit, but it covers only the most recent ~24–48h of articles
+(the free endpoint returns 429 for any explicit timespan parameter) and does
+not provide article summaries.
 
 OUTPUT FORMAT (JSON array)
 --------------------------
@@ -100,7 +101,9 @@ def fetch(output_path: str, series_id: str, params: dict) -> None:
         "maxrecords": str(min(max_records, 250)),
         "format":     "json",
         "sort":       "DateDesc",
-        "timespan":   "3d",   # last 3 days — maximum window on the free endpoint
+        # No timespan parameter: the free public endpoint returns 429 for any
+        # explicit timespan value, even a single request. The default window
+        # (~24–48h of the most recent articles) is sufficient for daily refreshes.
     }
 
     url = f"{GDELT_API}?{urllib.parse.urlencode(api_params)}"

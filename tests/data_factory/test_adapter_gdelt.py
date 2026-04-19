@@ -80,8 +80,9 @@ def test_fetch_returns_json_array():
         )
 
         if result.returncode != 0:
-            if "request failed" in result.stderr.lower():
-                pytest.skip("GDELT API unavailable (network issue)")
+            stderr_lower = result.stderr.lower()
+            if "request failed" in stderr_lower or "gdelt http" in stderr_lower:
+                pytest.skip(f"GDELT API unavailable: {result.stderr.strip()}")
             pytest.fail(f"Adapter failed: {result.stderr}")
 
         assert out.exists(), "Output JSON not created"
@@ -108,7 +109,7 @@ def test_fetch_max_records_respected():
         )
 
         if result.returncode != 0:
-            pytest.skip("GDELT API unavailable")
+            pytest.skip(f"GDELT API unavailable: {result.stderr.strip()}")
 
         items = json.loads(out.read_text())
         assert len(items) <= 3, f"Expected ≤3 items, got {len(items)}"
