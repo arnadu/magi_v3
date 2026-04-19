@@ -62,7 +62,7 @@ graph TB
     DAEMON <-->|CRUD| MONGO
     MONITOR <-->|"Change Stream\nSSE push"| MONGO
     DAEMON -->|"LLM calls (ANTHROPIC_API_KEY)"| ANTHROPIC
-    DAEMON -->|"LLM calls (OPENROUTER_API_KEY)\nwhen MODEL/VISION_MODEL contains '/'"| OPENROUTER
+    DAEMON -->|"LLM calls (OPENROUTER_API_KEY)\nwhen MODEL or VISION_MODEL is an OpenRouter model"| OPENROUTER
 
     %% Daemon → external
     DAEMON -->|"FetchUrl · BrowseWeb\n⚠️ no SSRF on FetchUrl (F-001)"| WEB

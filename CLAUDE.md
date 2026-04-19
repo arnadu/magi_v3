@@ -40,7 +40,9 @@ TEAM_CONFIG=... npm run cli:reset -w packages/agent-runtime-worker -- --yes     
 
 # Env vars: ANTHROPIC_API_KEY (required), MONGODB_URI (required), TEAM_CONFIG (required),
 #           MODEL (optional — default: claude-sonnet-4-6),
-#           VISION_MODEL (optional — default: claude-haiku-4-5-20251001; model for FetchUrl image captioning, InspectImage, BrowseWeb),
+#           VISION_MODEL (optional — default: claude-haiku-4-5-20251001; model for FetchUrl image captioning, InspectImage, BrowseWeb;
+#                         accepts Anthropic model IDs or OpenRouter model IDs (e.g. "mistralai/ministral-14b-2512");
+#                         BrowseWeb requires ANTHROPIC_API_KEY when provider is anthropic, OPENROUTER_API_KEY when provider is openrouter),
 #           AGENT_WORKDIR (optional — default: cwd; all mission data written here),
 #           MONITOR_PORT (optional — default: 4000; must be 1–65535 or daemon exits),
 #           TOOL_PORT (optional — default: 4001; Tool API server for background jobs; must be 1–65535),
@@ -180,7 +182,7 @@ Two packages are built. Key files:
 
 **Sprint 7 — BrowseWeb (partially built; `schedule-task` + `run-background` deferred to Sprint 8):**
 - `BrowseWeb` — Playwright/Stagehand headless browser; renders JS pages; supports interactive multi-step tasks (form fill, login flows, navigation); session state (cookies, auth tokens) persists across multiple calls within the same agent turn. Conditionally registered (returns `undefined` if Playwright Chromium not installed). SSRF protection: pre-navigation regex + `dns.promises.lookup()` (DNS rebinding), post-redirect hostname check. Trust boundary markers on all results + `content.md` artifact header. Content capped at 5 MB. Stagehand LLM calls surfaced via `logger` callback.
-  - `src/tools/browse-web.ts` — `BrowseWebHandle { tool, close() }` factory; `tryCreateBrowseWebTool(model, sharedDir)` returns `undefined` if Chromium absent; one Stagehand instance (lazy-init) shared across all `execute()` calls within a handle; `close()` called in `runAgent()` finally block. Each handle writes a session log (`sharedDir/logs/browse-web-<ts>.ndjson`); log write failures surface to stderr. Chromium profile dir explicitly set to `sharedDir/logs/profile-<ts>/` (prevents WSL2 UNC path junk directories); cleaned up on `close()`.
+  - `src/tools/browse-web.ts` — `BrowseWebHandle { tool, close() }` factory; `tryCreateBrowseWebTool(model, sharedDir)` returns `undefined` if Chromium absent; one Stagehand instance (lazy-init) shared across all `execute()` calls within a handle; `close()` called in `runAgent()` finally block. Each handle writes a session log (`sharedDir/logs/browse-web-<ts>.ndjson`); log write failures surface to stderr. Chromium profile dir explicitly set to `sharedDir/logs/profile-<ts>/` (prevents WSL2 UNC path junk directories); cleaned up on `close()`. Provider routing: Anthropic models passed as `"anthropic/<id>"` string (reads `ANTHROPIC_API_KEY`); OpenRouter models passed as `{ modelName, apiKey, baseURL }` object pointing to OpenRouter's OpenAI-compatible endpoint (reads `OPENROUTER_API_KEY`); any other provider throws at construction time.
   - `src/agent-runner.ts` — creates `BrowseWebHandle`, registers `browseWebHandle.tool`, calls `browseWebHandle?.close()` in `finally`
   - `tests/browse-web.unit.test.ts` — SSRF regex coverage (loopback, RFC-1918, link-local, public pass-through), URL protocol validation (http/https accepted; file/ftp/javascript rejected), trust boundary marker format
   - `tests/browse-web.integration.test.ts` — Test 1: JS rendering (page with 300ms `setTimeout` content injection; asserts BrowseWeb sees rendered value, not "Loading..."); Test 2: session persistence (login call sets cookie, news call uses same cookie; asserts no "Access denied"); local HTTP server, shared `BrowseWebHandle`; 5-minute timeout; skips gracefully if Chromium absent
@@ -291,7 +293,7 @@ Motivation: during Sprint 11 equity-research operations, 7–10 agents independe
   - `CLAUDE_HAIKU` constant in `src/models.ts` — `claude-haiku-4-5-20251001`, $0.80/$4 per MTok input/output.
   - `visionModel?: Model<string>` added to `OrchestratorConfig` and `AgentRunContext`.
   - `FetchUrl`, `InspectImage`, and `BrowseWeb` now use `ctx.visionModel ?? ctx.model` — Haiku for image captioning and browser automation; Sonnet kept for agent reasoning, reflection, Research synthesis.
-  - `VISION_MODEL` env var (optional; default: `claude-haiku-4-5-20251001`). Set to `claude-sonnet-4-6` to use a single model everywhere.
+  - `VISION_MODEL` env var (optional; default: `claude-haiku-4-5-20251001`). Accepts Anthropic model IDs (e.g. `claude-sonnet-4-6`) or OpenRouter model IDs (e.g. `mistralai/ministral-14b-2512`). BrowseWeb requires the matching API key (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`) and throws at construction time if it is absent — no silent fallback.
   - `daemon.ts` and `cli.ts` parse `VISION_MODEL` and pass as `visionModel` in the orchestration config.
 
 - **Phase 2 — Data factory Python core (built):**

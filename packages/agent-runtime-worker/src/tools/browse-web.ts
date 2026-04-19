@@ -89,14 +89,33 @@ function createBrowseWebHandle(
 	 * The browser is created lazily on the first execute() call and closed by
 	 * the explicit close() call in agent-runner.ts's finally block.
 	 */
-	// Stagehand uses the AI SDK "provider/model" format and only supports providers
-	// bundled with @ai-sdk (Anthropic, OpenAI, etc.). OpenRouter models are not
-	// supported. When the model is not an Anthropic Claude model, fall back to the
-	// bundled Anthropic Sonnet so BrowseWeb always works regardless of the
-	// VISION_MODEL env var. ANTHROPIC_API_KEY is always required.
-	const stagehandModel = model.id.startsWith("claude-")
-		? `anthropic/${model.id}`
-		: "anthropic/claude-sonnet-4-6";
+	// Map the vision model to a Stagehand model config.
+	// - Anthropic: pass "anthropic/<id>" string (reads ANTHROPIC_API_KEY from env)
+	// - OpenRouter: pass { modelName, apiKey, baseURL } using OpenRouter's OpenAI-compatible
+	//   endpoint — ANTHROPIC_API_KEY is not required in this case
+	// - Anything else: fail loudly at construction time
+	type StagehandModel = string | { modelName: string; apiKey: string; baseURL: string };
+	let stagehandModel: StagehandModel;
+	if (model.provider === "anthropic") {
+		stagehandModel = `anthropic/${model.id}`;
+	} else if (model.provider === "openrouter") {
+		const apiKey = process.env.OPENROUTER_API_KEY;
+		if (!apiKey) {
+			throw new Error(
+				`OPENROUTER_API_KEY is required when VISION_MODEL is an OpenRouter model (model: "${model.id}")`,
+			);
+		}
+		stagehandModel = {
+			modelName: model.id,
+			apiKey,
+			baseURL: "https://openrouter.ai/api/v1",
+		};
+	} else {
+		throw new Error(
+			`BrowseWeb does not support vision model provider "${model.provider}" (model: "${model.id}"). ` +
+				`Supported providers: anthropic, openrouter.`,
+		);
+	}
 
 	// Per-handle session log file. All Stagehand log lines are appended as NDJSON
 	// so the full browser automation trace is available for debugging.
@@ -153,9 +172,6 @@ function createBrowseWebHandle(
 
 			const sh = new Stagehand({
 				env: "LOCAL",
-				// "anthropic/model-name" routes through the Vercel AI SDK, which reads
-				// ANTHROPIC_API_KEY from env and returns an AISdkClient. This is required
-				// for agent() (which needs getLanguageModel()) to work.
 				model: stagehandModel,
 				localBrowserLaunchOptions: {
 					executablePath: chromiumPath,
