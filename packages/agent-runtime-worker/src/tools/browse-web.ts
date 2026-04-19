@@ -1,4 +1,3 @@
-import dns from "node:dns/promises";
 import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { LogLine } from "@browserbasehq/stagehand";
@@ -14,6 +13,7 @@ import {
 	generateArtifactId,
 	saveArtifact,
 } from "../artifacts.js";
+import { isPrivateHost, PRIVATE_HOST_RE } from "../ssrf.js";
 import type { MagiTool, ToolResult } from "../tools.js";
 
 // ---------------------------------------------------------------------------
@@ -35,33 +35,9 @@ function toolErr(text: string): ToolResult {
 	return { content: [{ type: "text", text }], isError: true };
 }
 
-// ---------------------------------------------------------------------------
-// SSRF protection
-// ---------------------------------------------------------------------------
-
-/**
- * Matches loopback, private ranges, link-local, and cloud metadata addresses.
- * Applied to both the hostname string and the resolved IP address to catch
- * DNS rebinding attacks.
- */
-export const PRIVATE_HOST_RE =
-	/^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1$|\[::1\]$|localhost$|0\.0\.0\.0$)/i;
-
-async function isPrivateHost(
-	hostname: string,
-	allowedHosts: string[],
-): Promise<boolean> {
-	if (allowedHosts.includes(hostname)) return false;
-	if (PRIVATE_HOST_RE.test(hostname)) return true;
-	try {
-		const { address } = await dns.lookup(hostname);
-		if (allowedHosts.includes(address)) return false;
-		return PRIVATE_HOST_RE.test(address);
-	} catch {
-		// DNS failure — let the browser timeout rather than blocking valid hosts.
-		return false;
-	}
-}
+// SSRF protection helpers are in ../ssrf.ts — imported above.
+// Re-export PRIVATE_HOST_RE so unit tests that import it from here continue to work.
+export { PRIVATE_HOST_RE };
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -198,6 +174,12 @@ function createBrowseWebHandle(
 				initPromise = null;
 				throw e;
 			}
+			// B2 (MEDIUM): Stagehand V3 uses a CDP-native context that does not expose
+			// a Playwright-style route() interceptor. The pre-navigation check above and
+			// post-redirect check in execute() cover the page.goto() path; requests
+			// initiated by agent().execute() (clicks, JS-redirects) are not yet blocked.
+			// Tracked in docs/security/findings.md as B2 — requires CDP Fetch.enable
+			// interception or upgrading to a Stagehand version that exposes page.route().
 			stagehand = sh;
 			return sh;
 		})();

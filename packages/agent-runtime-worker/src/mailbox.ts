@@ -106,9 +106,13 @@ export function createMongoMailboxRepository(
 			const filter: Record<string, unknown> = { missionId, to: agentId };
 			if (opts.since) filter.timestamp = { $gte: opts.since };
 			if (opts.search) {
+				// Escape regex metacharacters and cap length to prevent ReDoS (F-004).
+				const escaped = opts.search
+					.slice(0, 200)
+					.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 				filter.$or = [
-					{ subject: { $regex: opts.search, $options: "i" } },
-					{ body: { $regex: opts.search, $options: "i" } },
+					{ subject: { $regex: escaped, $options: "i" } },
+					{ body: { $regex: escaped, $options: "i" } },
 				];
 			}
 			return col

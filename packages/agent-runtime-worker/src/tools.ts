@@ -1,5 +1,4 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type TSchema, Type } from "@sinclair/typebox";
@@ -119,6 +118,18 @@ function checkPath(
 	if (!isPermitted(target, permittedPaths)) {
 		throw new PolicyViolationError(target, action, agentId);
 	}
+	// Also verify the real path (symlinks resolved) so a symlink inside
+	// permittedPaths pointing outside cannot bypass the check (F-003).
+	let realTarget: string;
+	try {
+		realTarget = realpathSync(target);
+	} catch {
+		// File does not yet exist — check the parent directory instead.
+		realTarget = realpathSync(dirname(target));
+	}
+	if (!isPermitted(realTarget, permittedPaths)) {
+		throw new PolicyViolationError(realTarget, action, agentId);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -155,28 +166,63 @@ function err(text: string): ToolResult {
 // Called from tool-executor.ts (isolated child process).
 // ---------------------------------------------------------------------------
 
-export function execBash(
+export async function execBash(
 	command: string,
 	cwd: string,
 	timeoutMs: number,
-): ToolResult {
-	try {
-		const result = spawnSync("bash", ["-c", command], {
-			cwd,
-			encoding: "utf-8",
-			timeout: timeoutMs,
-			maxBuffer: 10 * 1024 * 1024,
-		});
-		const output = [result.stdout, result.stderr].filter(Boolean).join("");
-		if (result.signal) {
-			return err(`Bash: killed by signal ${result.signal}`);
+): Promise<ToolResult> {
+	// detached: true creates a new process group so that a manual SIGKILL also
+	// kills any background children spawned with & (F-011).
+	const child = execa("bash", ["-c", command], {
+		cwd,
+		encoding: "utf8",
+		maxBuffer: 10 * 1024 * 1024,
+		detached: true,
+	});
+
+	let timedOut = false;
+	const timer = setTimeout(() => {
+		timedOut = true;
+		if (child.pid !== undefined) {
+			try {
+				process.kill(-child.pid, "SIGKILL");
+			} catch {
+				// Process may have already exited.
+			}
 		}
-		if (result.status !== 0 && result.status !== null) {
-			return err(output || `Exited with code ${result.status}`);
+	}, timeoutMs);
+
+	try {
+		const result = await child;
+		const output = [result.stdout, result.stderr].filter(Boolean).join("");
+		if (result.exitCode !== 0) {
+			return err(output || `Exited with code ${result.exitCode}`);
 		}
 		return ok(output || "(no output)");
 	} catch (e) {
+		const exErr = e as {
+			stdout?: string;
+			stderr?: string;
+			exitCode?: number;
+			signal?: string;
+		};
+		const output = [exErr.stdout, exErr.stderr].filter(Boolean).join("");
+		if (timedOut) {
+			return err(
+				`Bash: killed after ${timeoutMs}ms timeout${output ? `\n${output}` : ""}`,
+			);
+		}
+		if (exErr.exitCode !== undefined && exErr.exitCode !== 0) {
+			return err(output || `Exited with code ${exErr.exitCode}`);
+		}
+		if (exErr.signal) {
+			return err(
+				`Bash: killed by signal ${exErr.signal}${output ? `\n${output}` : ""}`,
+			);
+		}
 		return err(`Bash: ${(e as Error).message}`);
+	} finally {
+		clearTimeout(timer);
 	}
 }
 

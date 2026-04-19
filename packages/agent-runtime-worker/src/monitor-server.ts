@@ -210,7 +210,7 @@ export class MonitorServer {
 		void this.watchConversations();
 
 		await new Promise<void>((resolve, reject) => {
-			this.server.listen(port, "0.0.0.0", () => resolve());
+			this.server.listen(port, "127.0.0.1", () => resolve());
 			this.server.once("error", reject);
 		});
 		console.log(`[monitor] Dashboard: http://localhost:${port}`);
@@ -245,7 +245,8 @@ export class MonitorServer {
 		res: ServerResponse,
 	): Promise<void> {
 		const url = req.url?.split("?")[0] ?? "/";
-		res.setHeader("Access-Control-Allow-Origin", "*");
+		res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
+		res.setHeader("Vary", "Origin");
 
 		// ── Static files (/, /index.html, /style.css, /app.js)
 		if (url === "/" || url === "/index.html") {

@@ -55,7 +55,7 @@ def call_tool(name: str, **params) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
+        with urllib.request.urlopen(req, timeout=135) as resp:  # server timeout 120s + 15s buffer
             data = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body_text = e.read().decode("utf-8", errors="replace")

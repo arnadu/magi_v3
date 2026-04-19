@@ -20,9 +20,9 @@
  */
 
 import { spawn } from "node:child_process";
-import { createWriteStream, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { createWriteStream, mkdirSync, readdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig, type TeamConfig } from "@magi/agent-config";
 import cronParser from "cron-parser";
@@ -126,7 +126,16 @@ interface JobSpec {
 	notifyAgentId?: string;
 	/** Subject for the completion notification. */
 	notifySubject?: string;
+	/**
+	 * Wall-clock timeout in milliseconds (F-006).
+	 * The job process (and its entire process group) is killed after this delay.
+	 * Default: 30 minutes.
+	 */
+	timeoutMs?: number;
 }
+
+/** Default job wall-clock timeout: 30 minutes (F-006). */
+const DEFAULT_JOB_TIMEOUT_MS = 30 * 60_000;
 
 interface ScheduleSpec {
 	label: string;
@@ -165,6 +174,14 @@ async function importScheduleFiles(
 		try {
 			const raw = readFileSync(join(schedulesDir, file), "utf8");
 			const spec = JSON.parse(raw) as ScheduleSpec;
+			// F-005: reject specs with a non-string or empty label to prevent
+			// NoSQL operator injection via the { missionId, label } upsert filter.
+			if (typeof spec.label !== "string" || spec.label.length === 0) {
+				console.error(
+					`[daemon:scheduler] Invalid label in ${file} (must be a non-empty string) — skipping`,
+				);
+				continue;
+			}
 			const next = parseExpression(spec.cron).next().toDate();
 			await col.updateOne(
 				{ missionId, label: spec.label },
@@ -219,6 +236,35 @@ let runningJobs = 0;
  *   4. Pipe stdout+stderr to logs/bg-<id>.log.
  *   5. On exit: revoke token, write jobs/status/<id>.json, optionally notify.
  */
+/**
+ * F-010: On daemon startup, jobs left in jobs/running/ from a previous run have
+ * no live token — their magi-tool calls will fail with 401. Move them back to
+ * pending/ so they are retried with a fresh token on the next heartbeat.
+ */
+function recoverOrphanedJobs(sharedDir: string): void {
+	const runningDir = join(sharedDir, "jobs", "running");
+	const pendingDir = join(sharedDir, "jobs", "pending");
+	let files: string[];
+	try {
+		files = readdirSync(runningDir).filter((f) => f.endsWith(".json"));
+	} catch {
+		return; // running dir does not exist yet — nothing to recover
+	}
+	if (files.length === 0) return;
+	mkdirSync(pendingDir, { recursive: true });
+	for (const file of files) {
+		const src = join(runningDir, file);
+		const dst = join(pendingDir, file);
+		try {
+			writeFileSync(dst, readFileSync(src));
+			unlinkSync(src);
+			console.log(`[daemon:jobs] Recovered orphaned job: ${file}`);
+		} catch (e) {
+			console.error(`[daemon:jobs] Failed to recover ${file}: ${(e as Error).message}`);
+		}
+	}
+}
+
 async function runPendingJobs(
 	sharedDir: string,
 	workdir: string,
@@ -279,12 +325,26 @@ async function runPendingJobs(
 		const agentWorkdir = join(workdir, "home", linuxUser, "missions", missionId);
 		const permittedPaths = [agentWorkdir, sharedDir];
 
-		// Validate scriptPath is within the agent's permitted paths.
-		const resolvedScript = join(spec.scriptPath); // normalise without following symlinks
-		const allowed = permittedPaths.some((p) => resolvedScript.startsWith(p + "/") || resolvedScript === p);
-		if (!allowed) {
+		// F-013: Validate scriptPath using resolve() + realpathSync() to prevent
+		// symlink traversal (an agent could symlink a script inside permittedPaths
+		// to an arbitrary executable outside them).
+		let resolvedScript: string;
+		try {
+			resolvedScript = resolve(spec.scriptPath);
+			const realScript = realpathSync(resolvedScript);
+			const scriptAllowed = permittedPaths.some(
+				(p) => realScript === p || realScript.startsWith(p + "/"),
+			);
+			if (!scriptAllowed) {
+				console.error(
+					`[daemon:jobs] scriptPath "${spec.scriptPath}" resolves outside permitted paths for agent "${spec.agentId}" — skipping`,
+				);
+				try { unlinkSync(runningPath); } catch {}
+				continue;
+			}
+		} catch (e) {
 			console.error(
-				`[daemon:jobs] scriptPath "${spec.scriptPath}" is outside permitted paths for agent "${spec.agentId}" — skipping`,
+				`[daemon:jobs] scriptPath "${spec.scriptPath}" could not be resolved: ${(e as Error).message} — skipping`,
 			);
 			try { unlinkSync(runningPath); } catch {}
 			continue;
@@ -301,6 +361,8 @@ async function runPendingJobs(
 			linuxUser,
 		};
 
+		// F-014: Issue token just before spawn — revoke immediately if spawn fails
+		// so the token window is as short as possible.
 		const token = toolApiServer.issueToken(acl, identity);
 		const logPath = join(logsDir, `bg-${spec.id}.log`);
 		const logStream = createWriteStream(logPath, { flags: "a" });
@@ -308,25 +370,48 @@ async function runPendingJobs(
 		runningJobs++;
 		console.log(`[daemon:jobs] Starting job ${spec.id} (${spec.scriptPath}) as ${linuxUser}`);
 
-		const child = spawn(
-			"sudo",
-			["-u", linuxUser, "/usr/local/bin/magi-job", spec.scriptPath, ...spec.args],
-			{
-				env: {
-					PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-					HOME: `/home/${linuxUser}`,
-					MAGI_TOOL_URL: `http://127.0.0.1:${toolPort}`,
-					MAGI_TOOL_TOKEN: token,
-					...dataKeysEnv(),
+		let child: ReturnType<typeof spawn>;
+		try {
+			child = spawn(
+				"sudo",
+				["-u", linuxUser, "/usr/local/bin/magi-job", resolvedScript, ...spec.args],
+				{
+					env: {
+						PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+						HOME: `/home/${linuxUser}`,
+						MAGI_TOOL_URL: `http://127.0.0.1:${toolPort}`,
+						MAGI_TOOL_TOKEN: token,
+						...dataKeysEnv(),
+					},
+					stdio: ["ignore", "pipe", "pipe"],
 				},
-				stdio: ["ignore", "pipe", "pipe"],
-			},
-		);
+			);
+		} catch (e) {
+			// F-014: spawn failed — revoke token immediately so it cannot be used.
+			runningJobs--;
+			toolApiServer.revokeToken(token);
+			logStream.end();
+			try { unlinkSync(runningPath); } catch {}
+			console.error(`[daemon:jobs] Failed to spawn job ${spec.id}: ${(e as Error).message}`);
+			continue;
+		}
 
-		child.stdout.pipe(logStream);
-		child.stderr.pipe(logStream);
+		child.stdout?.pipe(logStream);
+		child.stderr?.pipe(logStream);
+
+		// F-006: Wall-clock timeout — kill the entire process group after timeoutMs.
+		const jobTimeoutMs = spec.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;
+		const timeoutHandle = setTimeout(() => {
+			console.error(`[daemon:jobs] Job ${spec.id} timed out after ${jobTimeoutMs}ms — killing`);
+			if (child.pid !== undefined) {
+				try { process.kill(-child.pid, "SIGKILL"); } catch {}
+			} else {
+				child.kill("SIGKILL");
+			}
+		}, jobTimeoutMs);
 
 		child.on("close", (exitCode) => {
+			clearTimeout(timeoutHandle);
 			runningJobs--;
 			toolApiServer.revokeToken(token);
 			logStream.end();
@@ -701,6 +786,11 @@ async function main(): Promise<void> {
 	const scheduledCol = db.collection<ScheduledMessageDoc>("scheduled_messages");
 	const sharedDir = join(workdir, "missions", missionId, "shared");
 	const schedulesDir = join(sharedDir, "schedules");
+
+	// F-010: Recover jobs that were left in running/ by a prior daemon run.
+	// They have no live token, so their magi-tool calls would fail with 401.
+	// Moving them back to pending/ allows the next heartbeat to retry them.
+	recoverOrphanedJobs(sharedDir);
 	const stopScheduler = startScheduledDelivery(
 		scheduledCol,
 		mailboxRepo,

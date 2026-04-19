@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
+import { isPrivateHost } from "../ssrf.js";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
 import { Type } from "@sinclair/typebox";
@@ -102,6 +103,7 @@ async function fetchImage(
 		const parsed = new URL(imgUrl);
 		// Only http/https images are fetched — file:// is not permitted.
 		if (!["http:", "https:"].includes(parsed.protocol)) return null;
+		if (await isPrivateHost(parsed.hostname)) return null;
 
 		const res = await fetch(imgUrl, { signal });
 		if (!res.ok) return null;
@@ -438,6 +440,11 @@ export function createFetchUrlTool(
 			if (!["http:", "https:"].includes(parsedUrl.protocol)) {
 				return toolErr(
 					`FetchUrl: unsupported protocol "${parsedUrl.protocol}". Use http or https.`,
+				);
+			}
+			if (await isPrivateHost(parsedUrl.hostname)) {
+				return toolErr(
+					`FetchUrl: requests to private/internal addresses are not permitted ("${rawUrl}")`,
 				);
 			}
 
