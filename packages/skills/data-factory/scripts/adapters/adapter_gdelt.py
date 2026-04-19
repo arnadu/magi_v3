@@ -64,6 +64,7 @@ def discover() -> None:
     print(json.dumps({
         "adapter": "gdelt",
         "description": "GDELT Project news search. No API key required.",
+        "rate_limit_seconds": 6,
         "series": [
             {
                 "id": "gdelt/nvidia_news",

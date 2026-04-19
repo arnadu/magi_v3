@@ -83,6 +83,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -236,7 +237,10 @@ def cmd_refresh(
 
     Execution strategy:
     - Non-FMP adapters are run in parallel threads (they are I/O-bound and
-      have no shared API quota).
+      have no shared API quota), with one exception: if an adapter declares
+      ``rate_limit_seconds`` in its ``--discover`` output, all calls to that
+      adapter are serialized with a minimum inter-call delay of that many
+      seconds.  Calls to *different* adapters still run in parallel.
     - FMP adapters are run sequentially after the parallel group finishes.
       Each call first checks the daily counter file; if the budget is already
       exhausted the entry is marked "skipped" and the adapter is not called.
@@ -284,12 +288,48 @@ def cmd_refresh(
     other_sources = [s for s in all_sources if s.get("adapter") != "fmp"]
 
     # --- Parallel phase: non-FMP adapters ---
-    # A shared dict collects results; a lock protects concurrent writes.
+    # Adapters that declare rate_limit_seconds > 0 in --discover are serialized
+    # per-adapter with a minimum delay between calls.  All other adapters run
+    # fully in parallel (current behaviour).
     results: dict[str, dict] = {}
     results_lock = threading.Lock()
 
+    # Discover rate limits once per unique adapter (--discover is fast: no I/O).
+    adapter_rate_limits: dict[str, float] = {}
+    for adapter_name in {s["adapter"] for s in other_sources}:
+        script = script_dir / "adapters" / f"adapter_{adapter_name}.py"
+        if script.exists():
+            try:
+                r = subprocess.run(
+                    [sys.executable, str(script), "--discover"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                meta = json.loads(r.stdout)
+                delay = float(meta.get("rate_limit_seconds", 0))
+                if delay > 0:
+                    adapter_rate_limits[adapter_name] = delay
+            except Exception:
+                pass  # no rate limit info → treat as unrestricted
+
+    # Per-adapter serialization state: lock + last-call monotonic timestamp.
+    adapter_locks: dict[str, tuple[threading.Lock, list[float]]] = {
+        name: (threading.Lock(), [0.0])
+        for name in adapter_rate_limits
+    }
+
     def run_source(source: dict) -> None:
-        entry = _run_adapter(factory, script_dir, source, log_path, entries)
+        adapter = source["adapter"]
+        if adapter in adapter_locks:
+            lock, last = adapter_locks[adapter]
+            with lock:
+                elapsed = time.monotonic() - last[0]
+                min_delay = adapter_rate_limits[adapter]
+                if elapsed < min_delay:
+                    time.sleep(min_delay - elapsed)
+                entry = _run_adapter(factory, script_dir, source, log_path, entries)
+                last[0] = time.monotonic()
+        else:
+            entry = _run_adapter(factory, script_dir, source, log_path, entries)
         with results_lock:
             results[source["id"]] = entry
 
