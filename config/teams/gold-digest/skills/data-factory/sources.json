@@ -1,0 +1,168 @@
+{
+  "_comment": "Gold Macro Digest — data factory sources. Covers gold price, real rates, USD, inflation, and risk assets.",
+  "series": [
+    {
+      "id": "yfinance/GLD_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "GLD" },
+      "schedule": "daily",
+      "output": "series/yfinance/GLD_daily.csv",
+      "_note": "SPDR Gold ETF — primary gold price proxy"
+    },
+    {
+      "id": "yfinance/GC=F_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "GC=F" },
+      "schedule": "daily",
+      "output": "series/yfinance/GCF_daily.csv",
+      "_note": "Gold futures front month (COMEX)"
+    },
+    {
+      "id": "yfinance/DXY_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "DX-Y.NYB" },
+      "schedule": "daily",
+      "output": "series/yfinance/DXY_daily.csv",
+      "_note": "US Dollar Index (DXY) — inverse relationship with gold"
+    },
+    {
+      "id": "yfinance/TLT_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "TLT" },
+      "schedule": "daily",
+      "output": "series/yfinance/TLT_daily.csv",
+      "_note": "20+ year Treasury ETF — long-end rate proxy, risk-off signal"
+    },
+    {
+      "id": "yfinance/TIP_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "TIP" },
+      "schedule": "daily",
+      "output": "series/yfinance/TIP_daily.csv",
+      "_note": "TIPS ETF — inflation-protected Treasury proxy"
+    },
+    {
+      "id": "yfinance/SPY_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "SPY" },
+      "schedule": "daily",
+      "output": "series/yfinance/SPY_daily.csv",
+      "_note": "S&P 500 — risk appetite context"
+    },
+    {
+      "id": "yfinance/SLV_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "SLV" },
+      "schedule": "daily",
+      "output": "series/yfinance/SLV_daily.csv",
+      "_note": "Silver ETF — gold/silver ratio signal"
+    },
+    {
+      "id": "yfinance/GDX_daily",
+      "adapter": "yfinance",
+      "params": { "ticker": "GDX" },
+      "schedule": "daily",
+      "output": "series/yfinance/GDX_daily.csv",
+      "_note": "Gold miners ETF — GDX/GLD ratio leading indicator"
+    },
+    {
+      "id": "fred/GOLDAMGBD228NLBM",
+      "adapter": "fred",
+      "params": { "series_id": "GOLDAMGBD228NLBM" },
+      "schedule": "daily",
+      "output": "series/fred/GOLD_LBMA_AM.csv",
+      "_note": "LBMA Gold Price AM Fix USD/troy oz — authoritative daily gold fix"
+    },
+    {
+      "id": "fred/DFII10",
+      "adapter": "fred",
+      "params": { "series_id": "DFII10" },
+      "schedule": "daily",
+      "output": "series/fred/DFII10.csv",
+      "_note": "10-year TIPS yield — real rate (key driver: negative = bullish gold)"
+    },
+    {
+      "id": "fred/T10YIE",
+      "adapter": "fred",
+      "params": { "series_id": "T10YIE" },
+      "schedule": "daily",
+      "output": "series/fred/T10YIE.csv",
+      "_note": "10-year breakeven inflation rate"
+    },
+    {
+      "id": "fred/DFF",
+      "adapter": "fred",
+      "params": { "series_id": "DFF" },
+      "schedule": "daily",
+      "output": "series/fred/DFF.csv",
+      "_note": "Effective Federal Funds Rate"
+    },
+    {
+      "id": "fred/T10Y2Y",
+      "adapter": "fred",
+      "params": { "series_id": "T10Y2Y" },
+      "schedule": "daily",
+      "output": "series/fred/T10Y2Y.csv",
+      "_note": "10Y-2Y yield curve spread"
+    },
+    {
+      "id": "fred/CPIAUCSL",
+      "adapter": "fred",
+      "params": { "series_id": "CPIAUCSL" },
+      "schedule": "daily",
+      "output": "series/fred/CPIAUCSL.csv",
+      "_note": "CPI All Urban Consumers (monthly)"
+    },
+    {
+      "id": "fred/DTWEXBGS",
+      "adapter": "fred",
+      "params": { "series_id": "DTWEXBGS" },
+      "schedule": "daily",
+      "output": "series/fred/DTWEXBGS.csv",
+      "_note": "USD Broad Goods & Services Trade-Weighted Index (FRED)"
+    }
+  ],
+  "news": [
+    {
+      "id": "news/gold_market_newsapi",
+      "adapter": "newsapi",
+      "params": { "q": "gold XAU precious metals price", "language": "en" },
+      "schedule": "daily",
+      "output_dir": "news/gold_market_newsapi",
+      "_note": "Requires NEWSAPIORG_API_KEY"
+    },
+    {
+      "id": "news/fed_policy_newsapi",
+      "adapter": "newsapi",
+      "params": { "q": "Federal Reserve monetary policy interest rates inflation", "language": "en" },
+      "schedule": "daily",
+      "output_dir": "news/fed_policy_newsapi",
+      "_note": "Requires NEWSAPIORG_API_KEY"
+    },
+    {
+      "id": "news/gold_market_gdelt",
+      "adapter": "gdelt",
+      "params": { "query": "gold market price XAU precious metals", "max_records": 30 },
+      "schedule": "daily",
+      "output_dir": "news/gold_market_gdelt",
+      "_note": "No API key required. Free public endpoint."
+    },
+    {
+      "id": "news/central_bank_gold_gdelt",
+      "adapter": "gdelt",
+      "params": { "query": "central bank gold reserves buying selling", "max_records": 20 },
+      "schedule": "daily",
+      "output_dir": "news/central_bank_gold_gdelt",
+      "_note": "Central bank demand — key structural force for gold"
+    },
+    {
+      "id": "news/fed_policy_gdelt",
+      "adapter": "gdelt",
+      "params": { "query": "Federal Reserve monetary policy real interest rates", "max_records": 20 },
+      "schedule": "daily",
+      "output_dir": "news/fed_policy_gdelt",
+      "_note": "Rate policy signals — drives real rate environment"
+    }
+  ],
+  "documents": []
+}

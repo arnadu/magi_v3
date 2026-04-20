@@ -1,0 +1,6 @@
+{
+  "refresh_cron": "30 5 * * *",
+  "fmp_daily_budget": 0,
+  "news_max_articles_fetch": 10,
+  "_note": "Lin refreshes at 05:30 UTC. Alex runs analysis at 06:00 UTC. No FMP adapter used for gold-digest."
+}
