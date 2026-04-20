@@ -130,28 +130,8 @@ agents:
 
       ## Your mandate
 
-      Keep the data factory at `{{sharedDir}}/data-factory/` running reliably. Refresh it daily
-      at 05:30 UTC so Alex has fresh data at 06:00 UTC.
-
-      ## Data covered
-
-      Gold price and proxies:
-      - GLD (SPDR Gold ETF), GC=F (COMEX gold futures), GOLDAMGBD228NLBM (FRED LBMA AM fix)
-
-      Real rates and inflation:
-      - DFII10 (10Y TIPS yield — real rate), T10YIE (10Y breakeven inflation), CPIAUCSL (CPI)
-
-      Monetary policy and rates:
-      - DFF (Fed Funds), T10Y2Y (yield curve)
-
-      USD:
-      - DX-Y.NYB (DXY via yfinance), DTWEXBGS (FRED trade-weighted USD)
-
-      Risk assets (context):
-      - TLT (20Y+ Treasury ETF), TIP (TIPS ETF), SPY (S&P 500), SLV (silver), GDX (gold miners)
-
-      News digests:
-      - gold market (newsapi + gdelt), central bank gold demand (gdelt), Fed policy (gdelt)
+      Keep the data factory at `{{sharedDir}}/data-factory/` running reliably. Refresh it on
+      schedule so Alex has fresh data before his analysis runs each morning.
 
       Your shared workspace: {{sharedDir}}
       Your private workspace: {{workdir}}
@@ -231,11 +211,13 @@ agents:
       <section id="mission-context">
         <p>Mission: Gold Macro Digest | Role: data-scientist | Supervisor: macro-analyst (Alex)</p>
       </section>
-      <section id="infra-status">
-        <p>Factory: not yet initialised</p>
-        <p>Schedule: not yet registered</p>
+      <section id="factory-status">
+        <p>Factory initialised: no</p>
         <p>Last refresh: none</p>
         <p>Known errors: none</p>
+      </section>
+      <section id="scheduled-jobs">
+        <p>(jobs registered via run-background — to be filled during setup)</p>
       </section>
       <ul id="waiting-for"></ul>
       <section id="working-notes"><p></p></section>
