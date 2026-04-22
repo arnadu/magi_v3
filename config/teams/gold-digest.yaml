@@ -136,42 +136,40 @@ agents:
       Your shared workspace: {{sharedDir}}
       Your private workspace: {{workdir}}
 
+      ## IMPORTANT: API keys and background jobs
+
+      Data API keys (FRED_API_KEY, NEWSAPIORG_API_KEY) are only available to background jobs
+      spawned via the run-background skill — NOT to direct Bash calls. Always run refresh.py
+      through submit-job.sh or schedule-job.sh, never with magi-python3 directly.
+
       ## Setup (first run only)
 
       ```bash
       FACTORY="{{sharedDir}}/data-factory"
       SKILL_SCRIPTS="{{sharedDir}}/skills/_platform/data-factory/scripts"
+      RUN_BG="{{sharedDir}}/skills/_platform/run-background/scripts"
 
-      # Bootstrap factory directory
+      # Bootstrap factory directory and copy config from team skills tier
       mkdir -p "$FACTORY"
-
-      # Copy sources.json from team skills tier
       cp "{{sharedDir}}/skills/_team/data-factory/sources.json" "$FACTORY/sources.json"
-
-      # Copy schedule.json from team skills tier
       cp "{{sharedDir}}/skills/_team/data-factory/schedule.json" "$FACTORY/schedule.json"
 
-      # Run first refresh
-      magi-python3 "$SKILL_SCRIPTS/refresh.py" "{{sharedDir}}"
-
-      # Check results
-      magi-python3 "$SKILL_SCRIPTS/catalog.py" list "$FACTORY"
+      # Run first refresh as a background job (keys are injected by the daemon)
+      bash "$RUN_BG/submit-job.sh" \
+        --label "gold-first-refresh" \
+        --script "$SKILL_SCRIPTS/refresh.py" \
+        --args "{{sharedDir}}" \
+        --agent "data-scientist" \
+        --notify-subject "First gold data refresh complete"
       ```
 
-      ## Daily refresh
-
+      Wait for the completion notification, then check results:
       ```bash
-      FACTORY="{{sharedDir}}/data-factory"
-      SKILL_SCRIPTS="{{sharedDir}}/skills/_platform/data-factory/scripts"
-
-      magi-python3 "$SKILL_SCRIPTS/refresh.py" "{{sharedDir}}"
       magi-python3 "$SKILL_SCRIPTS/catalog.py" list "$FACTORY"
-      tail -20 "$FACTORY/refresh.log"
+      tail -30 "$FACTORY/refresh.log"
       ```
 
-      ## Scheduling (once, during setup)
-
-      Schedule the daily refresh at 05:30 UTC using the run-background skill:
+      ## Scheduling (once, after first refresh succeeds)
 
       ```bash
       bash "{{sharedDir}}/skills/_platform/run-background/scripts/schedule-job.sh" \
@@ -186,9 +184,10 @@ agents:
       ## When a source fails
 
       1. Check the refresh log: `tail -50 "$FACTORY/refresh.log"`
-      2. Check the catalog for the failing entry: `magi-python3 "$SKILL_SCRIPTS/catalog.py" show "$FACTORY" "<id>"`
+      2. Check the catalog: `magi-python3 "$SKILL_SCRIPTS/catalog.py" show "$FACTORY" "<id>"`
       3. If it is a FRED series on a weekend/holiday, the empty result is normal — log it and move on.
-      4. If it is a news adapter, check if the API key is set: `echo $NEWSAPIORG_API_KEY | cut -c1-4`
+      4. If an API-keyed source fails with an auth error, PostMessage the user — the key may be missing
+         from .env.data-keys (only the operator can fix this).
       5. PostMessage macro-analyst if a data source fails and you cannot fix it within this session.
 
       ## How you work
