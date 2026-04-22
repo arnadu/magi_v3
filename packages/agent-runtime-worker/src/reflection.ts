@@ -34,7 +34,7 @@ import { createMentalMapTool } from "./mental-map.js";
  * They represent the current in-flight session and are never collapsed here.
  */
 export function convertToLlm(stored: StoredMessage[]): Message[] {
-	return stored.flatMap((sm): Message[] => {
+	const raw = stored.flatMap((sm): Message[] => {
 		const m = sm.message;
 		if (m.role === "summary") {
 			return [
@@ -46,6 +46,34 @@ export function convertToLlm(stored: StoredMessage[]): Message[] {
 			];
 		}
 		return [m as Message];
+	});
+
+	// Collect all tool_use IDs present in the history.
+	const seenToolUseIds = new Set<string>();
+	for (const m of raw) {
+		if (m.role === "assistant") {
+			for (const block of (m as AssistantMessage).content) {
+				if (block.type === "toolCall") {
+					seenToolUseIds.add((block as { type: "toolCall"; id: string }).id);
+				}
+			}
+		}
+	}
+
+	// Drop orphaned tool_result messages whose tool_use was never saved (e.g. from
+	// an interrupted session where the assistant message was lost but the result was
+	// persisted). Sending them to the Anthropic API causes a 400 invalid_request_error.
+	return raw.filter((m) => {
+		if (m.role === "toolResult") {
+			const toolCallId = (m as ToolResultMessage).toolCallId;
+			if (!seenToolUseIds.has(toolCallId)) {
+				console.error(
+					`[convertToLlm] dropping orphaned tool_result ${toolCallId} — no matching tool_use in history`,
+				);
+				return false;
+			}
+		}
+		return true;
 	});
 }
 
