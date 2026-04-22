@@ -48,33 +48,70 @@ export function convertToLlm(stored: StoredMessage[]): Message[] {
 		return [m as Message];
 	});
 
-	// Collect all tool_use IDs present in the history.
-	const seenToolUseIds = new Set<string>();
+	// Collect all tool_use and tool_result IDs present in the raw history.
+	const toolUseIds = new Set<string>();
+	const toolResultIds = new Set<string>();
 	for (const m of raw) {
 		if (m.role === "assistant") {
 			for (const block of (m as AssistantMessage).content) {
 				if (block.type === "toolCall") {
-					seenToolUseIds.add((block as { type: "toolCall"; id: string }).id);
+					toolUseIds.add((block as { type: "toolCall"; id: string }).id);
 				}
 			}
+		} else if (m.role === "toolResult") {
+			toolResultIds.add((m as ToolResultMessage).toolCallId);
 		}
 	}
 
-	// Drop orphaned tool_result messages whose tool_use was never saved (e.g. from
-	// an interrupted session where the assistant message was lost but the result was
-	// persisted). Sending them to the Anthropic API causes a 400 invalid_request_error.
-	return raw.filter((m) => {
+	// Pass 1: drop orphaned tool_results (result exists but no matching tool_use).
+	// Caused by a crash that lost the assistant message but kept the result.
+	const pass1 = raw.filter((m) => {
 		if (m.role === "toolResult") {
-			const toolCallId = (m as ToolResultMessage).toolCallId;
-			if (!seenToolUseIds.has(toolCallId)) {
+			const id = (m as ToolResultMessage).toolCallId;
+			if (!toolUseIds.has(id)) {
 				console.error(
-					`[convertToLlm] dropping orphaned tool_result ${toolCallId} — no matching tool_use in history`,
+					`[convertToLlm] dropping orphaned tool_result ${id} — no matching tool_use`,
 				);
 				return false;
 			}
 		}
 		return true;
 	});
+
+	// Pass 2: inject synthetic error results for tool_uses with no matching result.
+	// Caused by a crash between saving the assistant message and executing the tool.
+	// Injected immediately after the offending assistant message so the sequence
+	// remains valid: assistant[tool_use] → user[tool_result].
+	const out: Message[] = [];
+	for (const m of pass1) {
+		out.push(m);
+		if (m.role === "assistant") {
+			for (const block of (m as AssistantMessage).content) {
+				if (block.type === "toolCall") {
+					const tc = block as { type: "toolCall"; id: string; name: string };
+					if (!toolResultIds.has(tc.id)) {
+						console.error(
+							`[convertToLlm] injecting synthetic result for tool_use ${tc.id} (${tc.name}) — result was never saved`,
+						);
+						out.push({
+							role: "toolResult",
+							toolCallId: tc.id,
+							toolName: tc.name,
+							content: [
+								{
+									type: "text",
+									text: "Tool result was not saved — the session was interrupted before this tool completed.",
+								},
+							],
+							isError: true,
+							timestamp: Date.now(),
+						} as ToolResultMessage);
+					}
+				}
+			}
+		}
+	}
+	return out;
 }
 
 // ---------------------------------------------------------------------------

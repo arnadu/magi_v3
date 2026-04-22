@@ -65,6 +65,57 @@ export interface AgentRunContext {
 }
 
 // ---------------------------------------------------------------------------
+// Conversation recovery helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when an AssistantMessage represents an Anthropic 400
+ * invalid conversation structure error — a mismatched tool_use/tool_result
+ * sequence in the loaded history. These are recognisable by their message
+ * format: "messages.N.content.M: unexpected `tool_use_id`…"
+ */
+function isConversationStructureError(msg: AssistantMessage): boolean {
+	if (msg.stopReason !== "error") return false;
+	const err = (msg.errorMessage ?? "").toLowerCase();
+	return (
+		err.includes("messages.") &&
+		(err.includes("tool_use") || err.includes("tool_result"))
+	);
+}
+
+/**
+ * Recover from a conversation history that cannot be replayed.
+ *
+ * Inserts a recovery summary (crash-safe: written before the destructive
+ * compact step), then compacts all messages up to and including the current
+ * session's failed messages. The next load() returns only the recovery
+ * summary, letting the agent resume from its last known mental map state.
+ */
+async function forceCompactSession(
+	agentId: string,
+	missionId: string,
+	nextTurnNumber: number,
+	repo: ConversationRepository,
+): Promise<void> {
+	await repo.append(agentId, missionId, [
+		{
+			turnNumber: nextTurnNumber - 1,
+			message: {
+				role: "summary",
+				content:
+					"Previous session could not be replayed: the stored conversation " +
+					"history contained an invalid message sequence (mismatched " +
+					"tool_use/tool_result pairing). The session was discarded. " +
+					"Resuming from the last known mental map state.",
+			} as SummaryMessage,
+		},
+	]);
+	// Compact everything including the current session's failed messages so the
+	// retry starts with only the recovery summary in context.
+	await repo.compact(agentId, missionId, nextTurnNumber + 1);
+}
+
+// ---------------------------------------------------------------------------
 // runAgent
 // ---------------------------------------------------------------------------
 
@@ -202,7 +253,7 @@ export async function runAgent(
 		history = await ctx.conversationRepo.load(agentId, missionId);
 	}
 
-	const nextTurnNumber =
+	let activeTurnNumber =
 		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
 	const previousMessages = convertToLlm(history);
 
@@ -221,7 +272,7 @@ export async function runAgent(
 	if (process.env.DEBUG_SESSIONS === "1") {
 		const sep = "═".repeat(72);
 		console.log(`\n${sep}`);
-		console.log(`[DEBUG] Agent: ${agentId}  Turn: ${nextTurnNumber}`);
+		console.log(`[DEBUG] Agent: ${agentId}  Turn: ${activeTurnNumber}`);
 		console.log(`${sep}`);
 		console.log("[DEBUG] SYSTEM PROMPT:\n");
 		console.log(getSystemPrompt());
@@ -259,7 +310,7 @@ export async function runAgent(
 
 	const appendSubLoop = async (toolUseId: string, msg: Message) => {
 		await ctx.conversationRepo.append(agentId, missionId, [{
-			turnNumber: nextTurnNumber,
+			turnNumber: activeTurnNumber,
 			callSeq: currentCallSeq,
 			parentToolUseId: toolUseId,
 			message: msg,
@@ -285,47 +336,82 @@ export async function runAgent(
 		...(browseWebHandle ? [browseWebHandle.tool] : []),
 	];
 
+	// Persist each message immediately as it arrives. Uses activeTurnNumber via
+	// closure so the retry can update the turn without rebuilding the handler.
+	const onMessageHandler = async (msg: Message, allMessages: Message[]) => {
+		if (msg.role === "assistant") {
+			currentCallSeq++;
+			const snapshotHtml = currentMentalMapHtml;
+			await ctx.conversationRepo.append(agentId, missionId, [
+				{
+					turnNumber: activeTurnNumber,
+					callSeq: currentCallSeq,
+					mentalMapHtml: snapshotHtml,
+					message: msg,
+				},
+			]);
+		} else {
+			await ctx.conversationRepo.append(agentId, missionId, [
+				{
+					turnNumber: activeTurnNumber,
+					callSeq: currentCallSeq,
+					message: msg,
+				},
+			]);
+		}
+		await ctx.onMessage?.(msg, allMessages);
+	};
+
 	try {
-		await runInnerLoop({
+		const result = await runInnerLoop({
 			model: ctx.model,
 			getSystemPrompt,
 			task,
 			tools,
 			signal,
 			previousMessages,
-			// Persist each message immediately as it arrives so a mid-session crash
-			// does not lose completed work. onMessage does not fire for previousMessages
-			// (already persisted), so there is no risk of duplicates.
-			onMessage: async (msg, allMessages) => {
-				if (msg.role === "assistant") {
-					// Increment callSeq first, then capture the current mental map HTML
-					// (which is what was in the system prompt for this LLM call — UpdateMentalMap
-					// runs after AssistantMessage is pushed, so currentMentalMapHtml is the
-					// pre-tool-execution state).
-					currentCallSeq++;
-					const snapshotHtml = currentMentalMapHtml;
-					await ctx.conversationRepo.append(agentId, missionId, [
-						{
-							turnNumber: nextTurnNumber,
-							callSeq: currentCallSeq,
-							mentalMapHtml: snapshotHtml,
-							message: msg,
-						},
-					]);
-				} else {
-					// user task message (callSeq -1) or toolResult (callSeq = current)
-					await ctx.conversationRepo.append(agentId, missionId, [
-						{
-							turnNumber: nextTurnNumber,
-							callSeq: currentCallSeq,
-							message: msg,
-						},
-					]);
-				}
-				await ctx.onMessage?.(msg, allMessages);
-			},
-			onLlmCall: makeOnLlmCall(nextTurnNumber, false),
+			onMessage: onMessageHandler,
+			onLlmCall: makeOnLlmCall(activeTurnNumber, false),
 		});
+
+		// Detect a conversation structure error on the very first LLM call.
+		// turnCount === 1 means no tools ran — the error came from the history,
+		// not from anything this session did. Force-compact the corrupt history
+		// and retry once with a clean slate.
+		const firstAssistant = result.messages.find(
+			(m): m is AssistantMessage => m.role === "assistant",
+		);
+		if (
+			result.turnCount === 1 &&
+			firstAssistant &&
+			isConversationStructureError(firstAssistant) &&
+			activeTurnNumber > 0
+		) {
+			console.error(
+				`[runAgent] ${agentId}: conversation structure error on first LLM call — ` +
+					`force-compacting history and retrying`,
+			);
+			await forceCompactSession(
+				agentId,
+				missionId,
+				activeTurnNumber,
+				ctx.conversationRepo,
+			);
+			const cleanHistory = await ctx.conversationRepo.load(agentId, missionId);
+			activeTurnNumber =
+				cleanHistory.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
+			currentCallSeq = -1;
+			await runInnerLoop({
+				model: ctx.model,
+				getSystemPrompt,
+				task,
+				tools,
+				signal,
+				previousMessages: convertToLlm(cleanHistory),
+				onMessage: onMessageHandler,
+				onLlmCall: makeOnLlmCall(activeTurnNumber, false),
+			});
+		}
 	} finally {
 		// Close the browser session regardless of success or failure.
 		await browseWebHandle?.close();
