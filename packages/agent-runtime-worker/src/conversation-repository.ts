@@ -145,6 +145,12 @@ export function createMongoConversationRepository(
 					missionId,
 					compacted: { $ne: true },
 					isReflection: { $ne: true },
+					// Sub-loop messages (Research internal turns) are stored with
+					// parentToolUseId set for the dashboard sessions tree. They must
+					// not appear in the agent's LLM context — their tool_use/result
+					// pairs interleave with main-loop messages and produce sequences
+					// the Anthropic API rejects.
+					parentToolUseId: { $exists: false },
 				})
 				.sort({ turnNumber: 1, seqInTurn: 1 })
 				.toArray();
