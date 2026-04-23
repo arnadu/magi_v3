@@ -193,11 +193,17 @@ async function importScheduleFiles(
 						body: spec.body ?? "",
 						cron: spec.cron,
 						label: spec.label,
-						deliverAt: next,
 						status: "pending",
 						// Store jobSpec so the delivery step can write the job file.
 						...(spec.jobSpec ? { jobSpec: spec.jobSpec } : {}),
 					},
+					// deliverAt is only written on first creation. On subsequent imports
+					// (daemon restart, heartbeat re-import) the existing value is preserved:
+					// if it is in the past the delivery heartbeat will fire it immediately;
+					// if it is in the future it fires at the scheduled time.
+					// Overwriting it on every import was advancing missed schedules to the
+					// next occurrence, silently skipping the missed run.
+					$setOnInsert: { deliverAt: next },
 				},
 				{ upsert: true },
 			);
