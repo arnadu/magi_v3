@@ -19,15 +19,11 @@
  *   MAX_COST_USD       optional — spending cap in USD; pauses when reached
  */
 
-import { spawn } from "node:child_process";
-import { createWriteStream, mkdirSync, readdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { execSync, spawn } from "node:child_process";
+import { appendFileSync, createWriteStream, mkdirSync, readdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig, type TeamConfig } from "@magi/agent-config";
-import cronParser from "cron-parser";
-
-const { parseExpression } = cronParser;
 
 import { config as dotenvConfig } from "dotenv";
 
@@ -68,8 +64,6 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "@mariozechner/pi-ai";
-import type { Collection } from "mongodb";
-import { schedule } from "node-cron";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
@@ -85,23 +79,7 @@ import type { AgentIdentity } from "./workspace-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
 // ---------------------------------------------------------------------------
-// Scheduled message delivery
-// ---------------------------------------------------------------------------
-
-interface ScheduledMessageDoc {
-	_id: unknown;
-	missionId: string;
-	to: string[];
-	subject: string;
-	body: string;
-	deliverAt: Date;
-	cron?: string;
-	label?: string;
-	status: "pending" | "delivered" | "cancelled";
-}
-
-// ---------------------------------------------------------------------------
-// Schedule file import
+// Background jobs
 // ---------------------------------------------------------------------------
 
 /**
@@ -137,86 +115,6 @@ interface JobSpec {
 /** Default job wall-clock timeout: 30 minutes (F-006). */
 const DEFAULT_JOB_TIMEOUT_MS = 30 * 60_000;
 
-interface ScheduleSpec {
-	label: string;
-	/** To / subject / body only required for mailbox-delivery schedules. */
-	to?: string[];
-	cron: string;
-	subject?: string;
-	body?: string;
-	/** If present, fire a background job instead of a mailbox message. */
-	jobSpec?: Omit<JobSpec, "id">;
-}
-
-/**
- * Scan sharedDir/schedules/*.json and upsert each entry.
- *
- * - Specs with `jobSpec`: tracked in scheduled_messages with cron/deliverAt;
- *   at delivery time the heartbeat writes a job file to jobs/pending/ instead
- *   of posting a mailbox message.
- * - Specs without `jobSpec`: upserted as mailbox-delivery entries (existing
- *   behaviour).
- *
- * Called on startup and on each heartbeat. Idempotent (upsert by label).
- */
-async function importScheduleFiles(
-	schedulesDir: string,
-	col: Collection<ScheduledMessageDoc>,
-	missionId: string,
-): Promise<void> {
-	let files: string[];
-	try {
-		files = readdirSync(schedulesDir).filter((f) => f.endsWith(".json"));
-	} catch {
-		return; // schedules dir does not exist yet — nothing to import
-	}
-	for (const file of files) {
-		try {
-			const raw = readFileSync(join(schedulesDir, file), "utf8");
-			const spec = JSON.parse(raw) as ScheduleSpec;
-			// F-005: reject specs with a non-string or empty label to prevent
-			// NoSQL operator injection via the { missionId, label } upsert filter.
-			if (typeof spec.label !== "string" || spec.label.length === 0) {
-				console.error(
-					`[daemon:scheduler] Invalid label in ${file} (must be a non-empty string) — skipping`,
-				);
-				continue;
-			}
-			const next = parseExpression(spec.cron).next().toDate();
-			await col.updateOne(
-				{ missionId, label: spec.label },
-				{
-					$set: {
-						missionId,
-						to: spec.to ?? [],
-						subject: spec.subject ?? spec.label,
-						body: spec.body ?? "",
-						cron: spec.cron,
-						label: spec.label,
-						status: "pending",
-						// Store jobSpec so the delivery step can write the job file.
-						...(spec.jobSpec ? { jobSpec: spec.jobSpec } : {}),
-					},
-					// deliverAt is only written on first creation. On subsequent imports
-					// (daemon restart, heartbeat re-import) the existing value is preserved:
-					// if it is in the past the delivery heartbeat will fire it immediately;
-					// if it is in the future it fires at the scheduled time.
-					// Overwriting it on every import was advancing missed schedules to the
-					// next occurrence, silently skipping the missed run.
-					$setOnInsert: { deliverAt: next },
-				},
-				{ upsert: true },
-			);
-			console.log(
-				`[daemon:scheduler] Schedule imported: ${spec.label} → next at ${next.toISOString()}`,
-			);
-		} catch (e) {
-			console.error(
-				`[daemon:scheduler] Failed to import ${file}: ${(e as Error).message}`,
-			);
-		}
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Background job execution
@@ -327,7 +225,7 @@ async function runPendingJobs(
 			try { unlinkSync(runningPath); } catch {}
 			continue;
 		}
-		const linuxUser = agentCfg.linuxUser;
+		const linuxUser = agentCfg.linuxUser ?? agentCfg.id;
 		const agentWorkdir = join(workdir, "home", linuxUser, "missions", missionId);
 		const permittedPaths = [agentWorkdir, sharedDir];
 
@@ -464,91 +362,81 @@ async function runPendingJobs(
 }
 
 // ---------------------------------------------------------------------------
-// Scheduled delivery
+// Background job runner
 // ---------------------------------------------------------------------------
 
-function startScheduledDelivery(
-	col: Collection<ScheduledMessageDoc>,
-	mailboxRepo: MailboxRepository,
-	missionId: string,
-	schedulesDir: string,
+/**
+ * Start a heartbeat that checks for pending background jobs every minute.
+ * Scheduled message delivery has moved to the control plane (Sprint 14);
+ * the daemon only handles job files written directly to jobs/pending/ by
+ * agents (submit-job.sh) or by the control plane's scheduler.
+ *
+ * Returns a cleanup function that stops the interval.
+ */
+function startJobRunner(
 	sharedDir: string,
 	workdir: string,
+	missionId: string,
 	toolApiServer: ToolApiServer,
 	toolPort: number,
+	mailboxRepo: MailboxRepository,
 	teamConfig: TeamConfig,
 ): () => void {
-	async function deliver(): Promise<void> {
-		// Import any new or updated schedule files first.
-		await importScheduleFiles(schedulesDir, col, missionId);
-
-		const now = new Date();
-		// Atomically claim each pending message before delivering — prevents
-		// double-delivery if two daemon instances run concurrently or the process
-		// restarts mid-delivery.
-		while (true) {
-			const doc = await col.findOneAndUpdate(
-				{ missionId, status: "pending", deliverAt: { $lte: now } },
-				{ $set: { status: "delivered" } },
-			);
-			if (!doc) break;
-
-			// Schedule specs with jobSpec: write a job file instead of a mailbox message.
-			const jobSpec = (doc as unknown as { jobSpec?: Omit<JobSpec, "id"> }).jobSpec;
-			if (jobSpec) {
-				const jobId = randomUUID();
-				const pendingDir = join(sharedDir, "jobs", "pending");
-				mkdirSync(pendingDir, { recursive: true });
-				const jobFile: JobSpec = { id: jobId, ...jobSpec };
-				writeFileSync(join(pendingDir, `${jobId}.json`), JSON.stringify(jobFile, null, 2));
-				console.log(
-					`[daemon:scheduler] Job queued: ${doc.label ?? "entry"} → ${jobSpec.scriptPath}`,
-				);
-			} else {
-				await mailboxRepo.post({
-					missionId: doc.missionId,
-					from: "scheduler",
-					to: doc.to,
-					subject: doc.subject,
-					body: doc.body,
-				});
-				console.log(
-					`[daemon:scheduler] Delivered scheduled message to: ${doc.to.join(", ")}`,
-				);
-			}
-
-			// Re-arm cron-based entries so the schedule recurs.
-			if (doc.cron) {
-				try {
-					const next = parseExpression(doc.cron).next().toDate();
-					await col.updateOne(
-						{ _id: doc._id },
-						{ $set: { status: "pending", deliverAt: next } },
-					);
-					console.log(
-						`[daemon:scheduler] Re-armed ${doc.label ?? "entry"} → next at ${next.toISOString()}`,
-					);
-				} catch (e) {
-					console.error(
-						`[daemon:scheduler] Failed to re-arm cron entry: ${(e as Error).message}`,
-					);
-				}
-			}
-		}
-
-		// Run any pending background jobs (from both scheduled specs and submit-job.sh).
-		await runPendingJobs(sharedDir, workdir, missionId, toolApiServer, toolPort, mailboxRepo, teamConfig);
+	function tick(): void {
+		runPendingJobs(sharedDir, workdir, missionId, toolApiServer, toolPort, mailboxRepo, teamConfig)
+			.catch((e) => console.error("[daemon:jobs] Heartbeat error:", e));
 	}
 
-	// Deliver any overdue messages immediately on startup (crash recovery).
-	deliver().catch((e) => console.error("[daemon:scheduler] Error:", e));
+	// Run any pending jobs immediately on startup (handles crash recovery).
+	tick();
 
-	// Heartbeat every minute.
-	const task = schedule("* * * * *", () =>
-		deliver().catch((e) => console.error("[daemon:scheduler] Error:", e)),
-	);
+	const handle = setInterval(tick, 60_000);
+	return () => clearInterval(handle);
+}
 
-	return () => task.stop();
+// ---------------------------------------------------------------------------
+// OS user provisioning (production Docker)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure every agent in the team config has a corresponding Linux OS user.
+ *
+ * In dev/test environments, pool users (magi-w1..magi-w5) are created by
+ * setup-dev.sh and already exist — execSync("id ...") succeeds and this
+ * function is a no-op for each such agent.
+ *
+ * In production Docker, agents omit linuxUser and the username defaults to
+ * agent.id. The Dockerfile only creates the magi-shared group; this function
+ * creates per-agent OS users at first startup.
+ *
+ * Idempotent: if the user already exists, the step is skipped silently.
+ */
+function ensureAgentUsers(agents: Array<{ id: string; linuxUser?: string }>): void {
+	for (const agent of agents) {
+		const linuxUser = agent.linuxUser ?? agent.id;
+		try {
+			execSync(`id ${linuxUser}`, { stdio: "ignore" });
+		} catch {
+			// User does not exist — create it.
+			try {
+				execSync(
+					`useradd -m -s /bin/bash -G magi-shared ${linuxUser}`,
+					{ stdio: "inherit" },
+				);
+				// Append a NOPASSWD sudo rule for the magi-node and magi-job wrappers.
+				appendFileSync(
+					"/etc/sudoers.d/magi",
+					`${linuxUser} ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node\n` +
+					`${linuxUser} ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job\n`,
+				);
+				console.log(`[daemon] Created OS user: ${linuxUser}`);
+			} catch (e) {
+				// Non-fatal: in non-root dev environments, useradd requires root.
+				// The pool users already exist so this path is only hit in Docker.
+				console.warn(`[daemon] Could not create OS user ${linuxUser}: ${(e as Error).message}`);
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -631,6 +519,11 @@ async function main(): Promise<void> {
 
 	const teamConfig = loadTeamConfig(teamConfigPath);
 	const missionId = teamConfig.mission.id;
+
+	// Ensure every agent has a Linux OS user. No-op for existing pool users
+	// (dev/test); creates per-agent users in production Docker.
+	ensureAgentUsers(teamConfig.agents);
+
 	const { client, db } = await connectMongo(mongoUri);
 
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
@@ -788,24 +681,21 @@ async function main(): Promise<void> {
 	);
 	toolApiServer.listen(toolPort);
 
-	// Scheduled message delivery infrastructure.
-	const scheduledCol = db.collection<ScheduledMessageDoc>("scheduled_messages");
 	const sharedDir = join(workdir, "missions", missionId, "shared");
-	const schedulesDir = join(sharedDir, "schedules");
 
 	// F-010: Recover jobs that were left in running/ by a prior daemon run.
 	// They have no live token, so their magi-tool calls would fail with 401.
 	// Moving them back to pending/ allows the next heartbeat to retry them.
 	recoverOrphanedJobs(sharedDir);
-	const stopScheduler = startScheduledDelivery(
-		scheduledCol,
-		mailboxRepo,
-		missionId,
-		schedulesDir,
+	// Scheduled message delivery has moved to the control plane (Sprint 14).
+	// The daemon only runs background job files written to jobs/pending/.
+	const stopJobRunner = startJobRunner(
 		sharedDir,
 		workdir,
+		missionId,
 		toolApiServer,
 		toolPort,
+		mailboxRepo,
 		teamConfig,
 	);
 
@@ -944,7 +834,7 @@ async function main(): Promise<void> {
 		monitor.push("shutdown", { reason: signal.aborted ? "abort" : "normal" });
 		monitor.stop();
 		toolApiServer.stop();
-		stopScheduler();
+		stopJobRunner();
 		await client.close();
 		// Clean up PID file.
 		try {

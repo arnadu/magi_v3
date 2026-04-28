@@ -65,7 +65,7 @@ async function main(): Promise<void> {
 
 	const sharedDir = join(workdir, "missions", missionId);
 	const agentDirs = teamConfig.agents.map(a =>
-		join(workdir, "home", a.linuxUser, "missions", missionId),
+		join(workdir, "home", a.linuxUser ?? a.id, "missions", missionId),
 	);
 
 	console.log(`\nMission: ${missionId}`);

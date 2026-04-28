@@ -42,6 +42,23 @@ describe("BrowseWeb URL validation", () => {
 		expect(matchesPrivate("169.254.169.254")).toBe(true); // AWS/Azure metadata
 	});
 
+	it("blocks IPv6 link-local addresses", () => {
+		expect(matchesPrivate("fe80::1")).toBe(true);
+		expect(matchesPrivate("[fe80::1]")).toBe(true);
+		expect(matchesPrivate("fe80::dead:beef")).toBe(true);
+	});
+
+	it("blocks ULA IPv6 (fc00::/7) — covers Fly.io fdaa::/8 WireGuard range", () => {
+		// fc00::/8 low half
+		expect(matchesPrivate("fc00::1")).toBe(true);
+		expect(matchesPrivate("[fc00::1]")).toBe(true);
+		// fd00::/8 high half — includes Fly.io fdaa::/8
+		expect(matchesPrivate("fd00::1")).toBe(true);
+		expect(matchesPrivate("fdaa::1")).toBe(true);
+		expect(matchesPrivate("fdaa:0:3::1")).toBe(true);
+		expect(matchesPrivate("[fdaa:0:3::1]")).toBe(true);
+	});
+
 	it("does NOT block public addresses", () => {
 		expect(matchesPrivate("example.com")).toBe(false);
 		expect(matchesPrivate("8.8.8.8")).toBe(false);

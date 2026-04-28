@@ -1,0 +1,13 @@
+app = "magi-missions"
+primary_region = "iad"
+
+[build]
+  image = "registry.fly.io/magi-missions:latest"
+
+# No [services] block — execution plane machines are internal only.
+# The control plane reaches them via the Fly private WireGuard network.
+# Ports 4000 (monitor/SSE) and 4001 (tool API) are not publicly exposed.
+
+[[mounts]]
+  source = "workspace"
+  destination = "/missions"

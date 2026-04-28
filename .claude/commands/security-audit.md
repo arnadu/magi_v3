@@ -132,6 +132,28 @@ Check: (1) Is `opts.search` in `listMessages` escaped before use as `$regex`? (F
 (4) Are BrowseWeb trust boundary markers present in all code paths (including `agent().execute()` results)?
 (5) Does `formatMessages()` apply any sanitization to mailbox body content before injecting into user turns?
 
+**Sub-task TB-9 — Control plane proxy and Machines API client (Sprint 14+):**
+Read: packages/control-plane/src/proxy.ts
+Read: packages/control-plane/src/fly-machines.ts
+Read: packages/control-plane/src/auth.ts
+
+Check:
+(1) Does `proxy.ts` resolve the execution plane target exclusively from the MongoDB `missions`
+    collection by `machineId`? User-supplied input (path params, query params, headers) must
+    only be used to look up a stored address — never interpolated directly into the proxy target
+    URL or forwarded as a hostname.
+(2) Does the proxy verify machine state is `running` before forwarding? A non-existent or
+    stopped mission must return 404, not attempt a connection.
+(3) Does `auth.ts` validate `CONTROL_API_KEY` on every request before any proxy forwarding or
+    mutating API call?
+(4) Is `FLY_API_TOKEN_MACHINES` read only from `process.env` inside `fly-machines.ts`? Confirm
+    it is absent from the machine env set at creation time — execution plane machines must not
+    inherit the Machines API token.
+(5) Does `fly-machines.ts` construct Machines API URLs using a fixed `FLY_MISSIONS_APP_NAME`
+    env var, never a user-supplied app name?
+(6) Is `PRIVATE_HOST_RE` in `ssrf.ts` extended to cover `fdaa:` (Fly.io WireGuard),
+    `fd[0-9a-f]{2}:` (ULA IPv6 / RFC 4193), and `fe80:` (link-local IPv6)?
+
 **Sub-task OWASP — LLM-specific threats:**
 Read: packages/agent-runtime-worker/src/agent-runner.ts
 Read: packages/agent-runtime-worker/src/prompt.ts

@@ -102,6 +102,33 @@ SECURITY CATEGORIES TO EXAMINE:
 - **MongoDB injection**: New `$regex` or `$where` queries — confirm values are escaped; new upsert filters from agent-supplied data — confirm fields are type-validated (see F-004, F-005)
 - **Monitor server exposure**: New routes added to `monitor-server.ts` — confirm read-only routes do not expose sensitive data; mutating routes should warn if no auth check present
 
+- **Fly.io internal SSRF (IPv6)**: Any change to `ssrf.ts` or `PRIVATE_HOST_RE` — confirm the
+  regex covers `fdaa:` (Fly.io WireGuard range), `fd[0-9a-f]{2}:` (ULA IPv6 / RFC 4193 broadly),
+  and `fe80:` (link-local IPv6). The existing F-001/F-002 SSRF checks cover IPv4 private ranges
+  only; without this, an agent on Fly.io could reach other machines on the private WireGuard mesh
+  via a crafted URL.
+
+- **Control plane proxy target** (Sprint 14+): Changes to `control-plane/src/proxy.ts` — confirm
+  the proxy target is resolved from the MongoDB `missions` collection by `machineId`, never
+  interpolated from a user-supplied header, query parameter, or path segment. Machine state must
+  be `running` before forwarding; non-existent or stopped missions must return 404.
+
+- **Docker image secret contamination** (Sprint 14+): Changes to any `Dockerfile` or
+  `.dockerignore` — confirm `.env`, `.env.*`, and `.env.data-keys` are listed in `.dockerignore`.
+  Confirm no `COPY .env`, `ARG`-baked secret values, or `RUN` commands that write secret material
+  into image layers.
+
+- **FLY_API_TOKEN scope** (Sprint 14+): Changes to `fly-machines.ts`, `.github/workflows/`, or
+  `daemon.ts` — confirm `FLY_API_TOKEN_MACHINES` (runtime Fly secret on magi-control, used by
+  `fly-machines.ts` to call the Machines API) and `FLY_API_TOKEN_CI` (GitHub Actions secret,
+  deploy-only) are distinct tokens. Confirm `FLY_API_TOKEN_MACHINES` is never set on execution
+  plane machine env at creation time (execution machines must not inherit the Machines API token).
+
+- **Daemon privilege** (Sprint 14+): Changes to `packages/agent-runtime-worker/Dockerfile` —
+  confirm the daemon runs as a non-root user (`magi-operator`, uid 999). The `USER` directive
+  must appear before `CMD`. A root-run daemon widens the blast radius of any secret-exfiltration
+  bug because the process owns all Fly-injected secrets.
+
 Additional notes:
 - Even if something is only exploitable from the local network, it can still be a HIGH severity issue
 
@@ -223,6 +250,12 @@ FALSE POSITIVE FILTERING:
 > 5. `sharedDir` being writable by all agents is an accepted design trade-off for collaboration (see A-001 in findings tracker).
 > 6. Environment variables and CLI flags passed by the operator are trusted values. Do not flag them as injection sources.
 > 7. UUIDs used as bearer tokens can be assumed to be unguessable. Do not report entropy concerns about UUID-based tokens.
+> 8. `FLY_API_TOKEN_MACHINES` present in the `magi-control` machine environment is intentional —
+>    it is a deploy-scoped Fly token used only by `fly-machines.ts` to call the Machines API.
+>    Do not report it as a secret-in-env finding.
+> 9. `MONGODB_URI` present in both magi-control and magi-missions machine environments is
+>    intentional — each app connects to the `magi-prod` database with its own scoped credentials.
+>    Do not report it as a secret-in-env finding.
 >
 > SIGNAL QUALITY CRITERIA - For remaining findings, assess:
 > 1. Is there a concrete, exploitable vulnerability with a clear attack path?

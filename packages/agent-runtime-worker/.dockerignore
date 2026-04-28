@@ -1,0 +1,17 @@
+# Never bake secrets into the image.
+.env
+.env.*
+.env.data-keys
+**/.env
+**/.env.*
+
+# Build artifacts and local state — not needed in Docker.
+dist/
+node_modules/
+missions/
+home/
+
+# Dev/test files.
+tests/
+*.test.ts
+*.integration.test.ts

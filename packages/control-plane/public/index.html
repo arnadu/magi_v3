@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MAGI Control Plane</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.05em; color: #a78bfa; }
+    header span { font-size: 13px; color: #64748b; }
+
+    #sign-in-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+
+    #sign-in-box {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 32px;
+      width: 360px;
+    }
+
+    #sign-in-box h2 { font-size: 20px; margin-bottom: 8px; }
+    #sign-in-box .tagline { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+
+    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+
+    input[type="password"], input[type="text"] {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 14px;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #a78bfa; }
+
+    .error-msg { font-size: 12px; color: #f87171; margin-top: 8px; min-height: 16px; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 10px 16px;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: default; }
+
+    .btn-primary { background: #7c3aed; color: #fff; }
+    .btn-danger  { background: #991b1b; color: #fff; }
+    .btn-warning { background: #92400e; color: #fff; }
+    .btn-success { background: #065f46; color: #fff; }
+    .btn-ghost   { background: #1e2235; color: #94a3b8; border: 1px solid #2d3148; }
+
+    main { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+
+    .section-title {
+      font-size: 13px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #64748b;
+      margin-bottom: 16px;
+    }
+
+    /* Launch panel */
+    #launch-panel {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 32px;
+    }
+
+    #launch-panel h2 { font-size: 15px; margin-bottom: 16px; }
+
+    .launch-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .launch-form .field label { margin-bottom: 6px; }
+
+    /* Mission list */
+    #mission-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .mission-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .mission-info { flex: 1; min-width: 0; }
+    .mission-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mission-meta { font-size: 12px; color: #64748b; }
+
+    .status-badge {
+      display: inline-block;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+      padding: 2px 8px; border-radius: 99px;
+    }
+    .status-running      { background: #064e3b; color: #6ee7b7; }
+    .status-suspended    { background: #1e3a5f; color: #93c5fd; }
+    .status-provisioning { background: #3b2f00; color: #fcd34d; }
+    .status-error        { background: #450a0a; color: #fca5a5; }
+    .status-destroyed    { background: #1e1e1e; color: #52525b; }
+
+    .mission-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 0;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: #1a1d27; border: 1px solid #2d3148;
+      border-radius: 8px; padding: 12px 16px;
+      font-size: 14px; color: #e2e8f0;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 200;
+    }
+    #toast.show { opacity: 1; }
+    #toast.error { border-color: #7f1d1d; color: #fca5a5; }
+
+    .spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .confirm-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: none; align-items: center; justify-content: center;
+      z-index: 150;
+    }
+    .confirm-overlay.open { display: flex; }
+    .confirm-box {
+      background: #1a1d27;
+      border: 1px solid #7f1d1d;
+      border-radius: 10px;
+      padding: 28px;
+      width: 340px;
+    }
+    .confirm-box h3 { font-size: 16px; margin-bottom: 10px; }
+    .confirm-box p { font-size: 13px; color: #94a3b8; margin-bottom: 20px; }
+    .confirm-box .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+    @media (max-width: 640px) {
+      .launch-form { grid-template-columns: 1fr; }
+      .mission-actions { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>MAGI Control Plane</h1>
+  <span id="header-status">—</span>
+</header>
+
+<!-- Sign-in overlay -->
+<div id="sign-in-overlay">
+  <div id="sign-in-box">
+    <h2>Sign in</h2>
+    <p class="tagline">Enter your operator API key to access the control plane.</p>
+    <label for="api-key-input">API Key</label>
+    <input type="password" id="api-key-input" placeholder="sk-…" autocomplete="current-password" />
+    <div class="error-msg" id="sign-in-error"></div>
+    <button type="button" class="btn-primary" style="width:100%;margin-top:16px" id="sign-in-btn">Sign in</button>
+  </div>
+</div>
+
+<main>
+  <!-- Launch a new mission -->
+  <div id="launch-panel">
+    <h2>Launch a mission</h2>
+    <div class="launch-form">
+      <div class="field">
+        <label for="new-name">Mission name</label>
+        <input type="text" id="new-name" placeholder="e.g. gold-digest-001" />
+      </div>
+      <div class="field">
+        <label for="new-id">Mission ID</label>
+        <input type="text" id="new-id" placeholder="e.g. gd-001" />
+      </div>
+      <div class="field">
+        <label for="new-team">Team config</label>
+        <input type="text" id="new-team" placeholder="e.g. gold-digest" />
+      </div>
+      <button type="button" class="btn-primary" id="launch-btn">Launch</button>
+    </div>
+  </div>
+
+  <!-- Mission list -->
+  <div class="section-title">Active missions</div>
+  <div id="mission-list">
+    <div class="empty-state" id="loading-state">Loading…</div>
+  </div>
+</main>
+
+<!-- Confirm destroy dialog -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <h3>Destroy mission?</h3>
+    <p id="confirm-msg">This will permanently delete the machine and its volume. All workspace data will be lost.</p>
+    <div class="confirm-actions">
+      <button type="button" class="btn-ghost" id="confirm-cancel">Cancel</button>
+      <button type="button" class="btn-danger" id="confirm-ok">Destroy</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  'use strict';
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+
+  const SESSION_KEY = 'magi_session';
+
+  function getKey() {
+    return localStorage.getItem(SESSION_KEY) || '';
+  }
+
+  function setKey(key) {
+    localStorage.setItem(SESSION_KEY, key);
+    // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API not available in all browsers; server reads this cookie for auth.
+    document.cookie = `magi_session=${encodeURIComponent(key)}; path=/; SameSite=Strict`;
+  }
+
+  function authHeaders() {
+    return { 'Authorization': `Bearer ${getKey()}`, 'Content-Type': 'application/json' };
+  }
+
+  async function apiFetch(path, opts = {}) {
+    const res = await fetch(path, {
+      ...opts,
+      headers: { ...authHeaders(), ...(opts.headers || {}) },
+    });
+    if (res.status === 401) { showSignIn(); return null; }
+    return res;
+  }
+
+  // ── Sign-in ───────────────────────────────────────────────────────────────
+
+  const overlay     = document.getElementById('sign-in-overlay');
+  const apiKeyInput = document.getElementById('api-key-input');
+  const signInBtn   = document.getElementById('sign-in-btn');
+  const signInError = document.getElementById('sign-in-error');
+
+  function showSignIn() { overlay.style.display = 'flex'; }
+  function hideSignIn() { overlay.style.display = 'none'; }
+
+  async function trySignIn() {
+    const key = apiKeyInput.value.trim();
+    if (!key) { signInError.textContent = 'Enter your API key.'; return; }
+    signInBtn.disabled = true;
+    signInBtn.innerHTML = '<span class="spinner"></span>Signing in…';
+    // Verify by hitting a protected endpoint.
+    const res = await fetch('/api/missions', { headers: { 'Authorization': `Bearer ${key}` } });
+    signInBtn.disabled = false;
+    signInBtn.textContent = 'Sign in';
+    if (res.ok || res.status === 200) {
+      setKey(key);
+      signInError.textContent = '';
+      hideSignIn();
+      loadMissions();
+    } else {
+      signInError.textContent = 'Invalid API key.';
+    }
+  }
+
+  signInBtn.addEventListener('click', trySignIn);
+  apiKeyInput.addEventListener('keydown', e => { if (e.key === 'Enter') trySignIn(); });
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+
+  let toastTimer;
+  function showToast(msg, isError = false) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `show${isError ? ' error' : ''}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+  }
+
+  // ── Mission list ──────────────────────────────────────────────────────────
+
+  async function loadMissions() {
+    const res = await apiFetch('/api/missions');
+    if (!res) return;
+    const missions = await res.json();
+    renderMissions(missions);
+    document.getElementById('header-status').textContent =
+      `${missions.filter(m => m.status === 'running').length} running`;
+  }
+
+  function statusBadge(status) {
+    return `<span class="status-badge status-${status}">${status}</span>`;
+  }
+
+  function renderMissions(missions) {
+    const list = document.getElementById('mission-list');
+    if (!missions.length) {
+      list.innerHTML = '<div class="empty-state">No missions yet. Launch one above.</div>';
+      return;
+    }
+    list.innerHTML = missions.map(m => `
+      <div class="mission-card" id="card-${m.missionId}">
+        <div class="mission-info">
+          <div class="mission-name">${esc(m.name)}</div>
+          <div class="mission-meta">
+            ${statusBadge(m.status)}
+            &nbsp;·&nbsp;ID: <code>${esc(m.missionId)}</code>
+            &nbsp;·&nbsp;Team: <code>${esc(m.teamConfig)}</code>
+            &nbsp;·&nbsp;Created: ${new Date(m.createdAt).toLocaleString()}
+          </div>
+        </div>
+        <div class="mission-actions">
+          ${m.status === 'running' ? `
+            <a href="/missions/${esc(m.missionId)}/dashboard" target="_blank">
+              <button class="btn-ghost">Dashboard</button>
+            </a>
+            <button class="btn-warning" onclick="suspendMission('${esc(m.missionId)}')">Suspend</button>
+          ` : ''}
+          ${m.status === 'suspended' ? `
+            <button class="btn-success" onclick="resumeMission('${esc(m.missionId)}')">Resume</button>
+          ` : ''}
+          ${m.status !== 'destroyed' ? `
+            <button class="btn-danger" onclick="confirmDestroy('${esc(m.missionId)}', '${esc(m.name)}')">Destroy</button>
+          ` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ── Launch ────────────────────────────────────────────────────────────────
+
+  document.getElementById('launch-btn').addEventListener('click', async () => {
+    const name      = document.getElementById('new-name').value.trim();
+    const missionId = document.getElementById('new-id').value.trim();
+    const teamConfig = document.getElementById('new-team').value.trim();
+
+    if (!name || !missionId || !teamConfig) {
+      showToast('Fill in all fields before launching.', true);
+      return;
+    }
+
+    const btn = document.getElementById('launch-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Provisioning…';
+
+    const res = await apiFetch('/api/missions', {
+      method: 'POST',
+      body: JSON.stringify({ name, missionId, teamConfig }),
+    });
+
+    btn.disabled = false;
+    btn.textContent = 'Launch';
+
+    if (!res) return;
+    if (res.ok) {
+      document.getElementById('new-name').value = '';
+      document.getElementById('new-id').value = '';
+      document.getElementById('new-team').value = '';
+      showToast(`Mission "${name}" provisioned.`);
+      loadMissions();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      showToast(body.error || 'Provisioning failed.', true);
+    }
+  });
+
+  // ── Suspend / Resume ──────────────────────────────────────────────────────
+
+  async function _suspendMission(id) {
+    const res = await apiFetch(`/api/missions/${id}/suspend`, { method: 'POST' });
+    if (!res) return;
+    if (res.ok) { showToast('Mission suspended.'); loadMissions(); }
+    else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Suspend failed.', true); }
+  }
+
+  async function _resumeMission(id) {
+    const res = await apiFetch(`/api/missions/${id}/resume`, { method: 'POST' });
+    if (!res) return;
+    if (res.ok) { showToast('Mission resumed.'); loadMissions(); }
+    else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Resume failed.', true); }
+  }
+
+  // ── Destroy (with confirmation) ───────────────────────────────────────────
+
+  let pendingDestroyId = null;
+
+  function _confirmDestroy(id, name) {
+    pendingDestroyId = id;
+    document.getElementById('confirm-msg').textContent =
+      `This will permanently delete machine and volume for "${name}". All workspace data will be lost.`;
+    document.getElementById('confirm-overlay').classList.add('open');
+  }
+
+  document.getElementById('confirm-cancel').addEventListener('click', () => {
+    pendingDestroyId = null;
+    document.getElementById('confirm-overlay').classList.remove('open');
+  });
+
+  document.getElementById('confirm-ok').addEventListener('click', async () => {
+    const id = pendingDestroyId;
+    pendingDestroyId = null;
+    document.getElementById('confirm-overlay').classList.remove('open');
+    if (!id) return;
+
+    const res = await apiFetch(`/api/missions/${id}`, { method: 'DELETE' });
+    if (!res) return;
+    if (res.ok) { showToast('Mission destroyed.'); loadMissions(); }
+    else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Destroy failed.', true); }
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+
+  if (getKey()) {
+    hideSignIn();
+    loadMissions();
+  }
+
+  // Auto-refresh every 30 s while the tab is visible.
+  setInterval(() => { if (!document.hidden && getKey()) loadMissions(); }, 30_000);
+</script>
+</body>
+</html>

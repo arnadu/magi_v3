@@ -1,0 +1,9 @@
+app = "magi-missions-dev"
+primary_region = "iad"
+
+[build]
+  image = "registry.fly.io/magi-missions-dev:latest"
+
+[[mounts]]
+  source = "workspace"        # overridden per-machine at creation time
+  destination = "/missions"

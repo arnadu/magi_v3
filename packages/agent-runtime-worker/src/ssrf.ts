@@ -4,9 +4,14 @@ import dns from "node:dns/promises";
  * Matches loopback, private ranges, link-local, and cloud metadata addresses.
  * Applied to both the hostname string and the resolved IP address to catch
  * DNS rebinding attacks.
+ *
+ * IPv6 additions (Sprint 14):
+ *   - fe80: — link-local (RFC 4291)
+ *   - fc/fd prefix — ULA (RFC 4193); covers fdaa::/8 (Fly.io WireGuard mesh)
+ *     and any other provider using the ULA range
  */
 export const PRIVATE_HOST_RE =
-	/^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1$|\[::1\]$|localhost$|0\.0\.0\.0$)/i;
+	/^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1$|\[::1\]$|localhost$|0\.0\.0\.0$|\[?fe80:|\[?f[cd][0-9a-f]{2}:)/i;
 
 /**
  * Returns true if the hostname resolves to a private or internal address.
