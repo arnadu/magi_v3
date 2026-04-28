@@ -361,7 +361,7 @@
         </div>
         <div class="mission-actions">
           ${m.status === 'running' ? `
-            <a href="/missions/${esc(m.missionId)}/" target="_blank">
+            <a href="/missions/${esc(m.missionId)}/?token=${encodeURIComponent(getKey())}" target="_blank">
               <button class="btn-ghost">Dashboard</button>
             </a>
             <button class="btn-warning" onclick="suspendMission('${esc(m.missionId)}')">Suspend</button>
@@ -470,6 +470,10 @@
   // ── Init ──────────────────────────────────────────────────────────────────
 
   if (getKey()) {
+    // Re-hydrate cookie from localStorage so dashboard tab-navigation always works
+    // even after browser restart or cookie expiry.
+    // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API not available in all browsers; server reads this cookie for auth.
+    document.cookie = `magi_session=${encodeURIComponent(getKey())}; path=/; SameSite=Strict; Max-Age=86400`;
     hideSignIn();
     loadMissions();
   }

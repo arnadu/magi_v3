@@ -7,6 +7,7 @@ import type { NextFunction, Request, Response } from "express";
  *   - Authorization: Bearer <key>  (preferred — HTTPS only, not cached)
  *   - X-Api-Key: <key>
  *   - Cookie: magi_session=<key>   (set by the login form)
+ *   - ?token=<key>                 (query param — for dashboard browser navigation)
  *
  * Returns 401 JSON on failure so the UI can redirect to the login page.
  */
@@ -24,7 +25,8 @@ export function requireApiKey(
 	const provided =
 		extractBearer(req.headers.authorization) ??
 		(req.headers["x-api-key"] as string | undefined) ??
-		extractCookie(req.headers.cookie, "magi_session");
+		extractCookie(req.headers.cookie, "magi_session") ??
+		(req.query.token as string | undefined);
 
 	if (!provided || provided !== expectedKey) {
 		res.status(401).json({ error: "Unauthorized" });
