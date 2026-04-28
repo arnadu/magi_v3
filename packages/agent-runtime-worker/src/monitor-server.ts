@@ -210,7 +210,9 @@ export class MonitorServer {
 		void this.watchConversations();
 
 		await new Promise<void>((resolve, reject) => {
-			this.server.listen(port, "127.0.0.1", () => resolve());
+			// Bind to :: (all interfaces, dual-stack) so the Fly.io WireGuard proxy
+			// can reach port 4000 via the machine's fdaa: IPv6 address.
+			this.server.listen(port, "::", () => resolve());
 			this.server.once("error", reject);
 		});
 		console.log(`[monitor] Dashboard: http://localhost:${port}`);
