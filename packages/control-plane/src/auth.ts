@@ -45,5 +45,5 @@ function extractCookie(
 ): string | undefined {
 	if (!cookieHeader) return undefined;
 	const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-	return match?.[1];
+	return match ? decodeURIComponent(match[1]) : undefined;
 }

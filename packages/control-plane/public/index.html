@@ -361,7 +361,7 @@
         </div>
         <div class="mission-actions">
           ${m.status === 'running' ? `
-            <a href="/missions/${esc(m.missionId)}/dashboard" target="_blank">
+            <a href="/missions/${esc(m.missionId)}/" target="_blank">
               <button class="btn-ghost">Dashboard</button>
             </a>
             <button class="btn-warning" onclick="suspendMission('${esc(m.missionId)}')">Suspend</button>

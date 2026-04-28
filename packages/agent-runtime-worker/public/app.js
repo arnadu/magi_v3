@@ -31,8 +31,8 @@ let scheduleData = [];
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 async function init() {
 	const [teamRes, statusRes, playbookRes, mailboxRes, scheduleRes] = await Promise.all([
-		fetch("/team"), fetch("/status"), fetch("/playbook"),
-		fetch("/mailbox"), fetch("/schedule"),
+		fetch("team"), fetch("status"), fetch("playbook"),
+		fetch("mailbox"), fetch("schedule"),
 	]);
 	AGENTS = await teamRes.json();
 	PLAYBOOK = await playbookRes.json();
@@ -55,7 +55,7 @@ async function init() {
 
 async function refreshSchedule() {
 	try {
-		const r = await fetch("/schedule");
+		const r = await fetch("schedule");
 		scheduleData = await r.json();
 		updateScheduleTabs();
 	} catch {}
@@ -154,7 +154,7 @@ function injectAgentColors(agents) {
 // ── SSE ────────────────────────────────────────────────────────────────────
 let es;
 function connectSSE() {
-	es = new EventSource("/events");
+	es = new EventSource("events");
 	es.onopen = () => document.getElementById("dot").classList.remove("dead");
 	es.onerror = () => document.getElementById("dot").classList.add("dead");
 	es.addEventListener("status", e => applyStatus(JSON.parse(e.data)));
@@ -273,7 +273,7 @@ async function extendBudget() {
 	btn.disabled = true;
 	btn.textContent = "Extending\u2026";
 	try {
-		const r = await fetch("/extend-budget", { method: "POST" });
+		const r = await fetch("extend-budget", { method: "POST" });
 		if (!r.ok) {
 			btn.disabled = false;
 			btn.textContent = "+$5 and continue";
@@ -471,7 +471,7 @@ async function loadSessions() {
 	const pane = resetPane();
 	pane.innerHTML = '<div class="empty-state">Loading…</div>';
 
-	const r = await fetch(`/agents/${activeAgent}/sessions`);
+	const r = await fetch(`agents/${activeAgent}/sessions`);
 	const sessions = await r.json();
 	renderSessionTree(sessions, pane);
 }
@@ -572,7 +572,7 @@ function normalizeCallSeq(docs) {
 }
 
 async function expandSession(agentId, turnNumber, container) {
-	const r = await fetch(`/agents/${encodeURIComponent(agentId)}/sessions/${turnNumber}`);
+	const r = await fetch(`agents/${encodeURIComponent(agentId)}/sessions/${turnNumber}`);
 	const data = await r.json();
 	container.innerHTML = "";
 
@@ -810,12 +810,12 @@ function renderStepBtn() {
 
 async function startMission() {
 	if (missionStarted) return;
-	await fetch("/start", { method: "POST" });
+	await fetch("start", { method: "POST" });
 	setStarted(true);
 }
 
 async function toggleStep() {
-	const r = await fetch("/toggle-step", { method: "POST" });
+	const r = await fetch("toggle-step", { method: "POST" });
 	const d = await r.json();
 	stepEnabled = d.stepEnabled;
 	if (!stepEnabled) stepWaiting = false;
@@ -824,7 +824,7 @@ async function toggleStep() {
 }
 
 async function advanceStep() {
-	await fetch("/step", { method: "POST" });
+	await fetch("step", { method: "POST" });
 }
 
 function renderQueue() {
@@ -867,7 +867,7 @@ function renderAgentTabIndicators() {
 function stopDaemon() {
 	if (stopped) return;
 	if (!confirm("Stop the MAGI daemon? This will abort the current mission cycle.")) return;
-	fetch("/stop", { method: "POST" }).catch(() => {});
+	fetch("stop", { method: "POST" }).catch(() => {});
 	document.getElementById("stop-btn").disabled = true;
 	document.getElementById("stop-btn").textContent = "Stopping\u2026";
 }
@@ -897,7 +897,7 @@ async function sendMessage() {
 	const message = document.getElementById("compose-body").value.trim();
 	if (!to.length) { alert("Select at least one recipient"); return; }
 	if (!message) { alert("Message body is required"); return; }
-	const r = await fetch("/send-message", {
+	const r = await fetch("send-message", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ to, subject, message }),
