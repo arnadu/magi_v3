@@ -425,14 +425,14 @@
 
   // ── Suspend / Resume ──────────────────────────────────────────────────────
 
-  async function _suspendMission(id) {
+  async function suspendMission(id) {
     const res = await apiFetch(`/api/missions/${id}/suspend`, { method: 'POST' });
     if (!res) return;
     if (res.ok) { showToast('Mission suspended.'); loadMissions(); }
     else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Suspend failed.', true); }
   }
 
-  async function _resumeMission(id) {
+  async function resumeMission(id) {
     const res = await apiFetch(`/api/missions/${id}/resume`, { method: 'POST' });
     if (!res) return;
     if (res.ok) { showToast('Mission resumed.'); loadMissions(); }
@@ -443,7 +443,7 @@
 
   let pendingDestroyId = null;
 
-  function _confirmDestroy(id, name) {
+  function confirmDestroy(id, name) {
     pendingDestroyId = id;
     document.getElementById('confirm-msg').textContent =
       `This will permanently delete machine and volume for "${name}". All workspace data will be lost.`;
