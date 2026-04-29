@@ -16,7 +16,12 @@ export async function connectMongo(
 	uri: string,
 	dbName?: string,
 ): Promise<MongoConnection> {
-	const client = new MongoClient(uri);
+	// serverSelectionTimeoutMS: fail fast if Atlas is unreachable (e.g. no DNS).
+	// connectTimeoutMS: individual TCP handshake timeout.
+	const client = new MongoClient(uri, {
+		serverSelectionTimeoutMS: 10_000,
+		connectTimeoutMS: 10_000,
+	});
 	await client.connect();
 	return { client, db: dbName ? client.db(dbName) : client.db() };
 }
