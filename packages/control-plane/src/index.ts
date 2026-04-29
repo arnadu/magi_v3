@@ -49,9 +49,6 @@ async function main(): Promise<void> {
 	const { client, db } = await connectMongo(mongoUri);
 	const app = express();
 
-	// Parse JSON request bodies.
-	app.use(express.json());
-
 	// Serve static UI without authentication — the login page itself is public.
 	const publicDir = join(
 		dirname(fileURLToPath(import.meta.url)),
@@ -70,7 +67,9 @@ async function main(): Promise<void> {
 	app.use(requireApiKey);
 
 	// Mission CRUD + lifecycle.
-	app.use("/api/missions", createMissionsRouter(db));
+	// express.json() is scoped here — proxy routes below must NOT consume the
+	// request body or http-proxy-middleware cannot forward it to the daemon.
+	app.use("/api/missions", express.json(), createMissionsRouter(db));
 
 	// Reverse proxy to execution plane machines.
 	app.use(createProxyRouter(db));
