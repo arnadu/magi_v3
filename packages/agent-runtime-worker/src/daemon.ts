@@ -505,26 +505,40 @@ function logMessage(msg: Message, agentId?: string): void {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+	// Synchronous write so the line is never lost if the process exits immediately.
+	process.stdout.write("[daemon] Starting up…\n");
+
 	const teamConfigPath = process.env.TEAM_CONFIG;
 	const mongoUri = process.env.MONGODB_URI;
 
+	process.stdout.write(`[daemon] TEAM_CONFIG=${teamConfigPath ?? "(unset)"}\n`);
+	process.stdout.write(`[daemon] MONGODB_URI=${mongoUri ? "(set)" : "(unset)"}\n`);
+	process.stdout.write(`[daemon] ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY ? "(set)" : "(unset)"}\n`);
+
 	if (!teamConfigPath || !mongoUri) {
-		console.error("Error: TEAM_CONFIG and MONGODB_URI are required");
-		process.exit(1);
+		process.stderr.write("Error: TEAM_CONFIG and MONGODB_URI are required\n");
+		process.exitCode = 1;
+		return;
 	}
 	if (!process.env.ANTHROPIC_API_KEY) {
-		console.error("Error: ANTHROPIC_API_KEY is required");
-		process.exit(1);
+		process.stderr.write("Error: ANTHROPIC_API_KEY is required\n");
+		process.exitCode = 1;
+		return;
 	}
 
+	process.stdout.write("[daemon] Loading team config…\n");
 	const teamConfig = loadTeamConfig(teamConfigPath);
 	const missionId = teamConfig.mission.id;
+	process.stdout.write(`[daemon] Mission: ${missionId} (${teamConfig.agents.length} agents)\n`);
 
 	// Ensure every agent has a Linux OS user. No-op for existing pool users
 	// (dev/test); creates per-agent users in production Docker.
+	process.stdout.write("[daemon] Ensuring agent OS users…\n");
 	ensureAgentUsers(teamConfig.agents);
 
+	process.stdout.write("[daemon] Connecting to MongoDB…\n");
 	const { client, db } = await connectMongo(mongoUri);
+	process.stdout.write("[daemon] MongoDB connected.\n");
 
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
 	const conversationRepo = createMongoConversationRepository(db);
@@ -670,6 +684,7 @@ async function main(): Promise<void> {
 		playbook,
 	);
 	await monitor.start(monitorPort);
+	process.stdout.write(`[daemon] Monitor server listening on port ${monitorPort}\n`);
 
 	// Tool API server — exposes LLM tools to background job scripts.
 	const toolApiServer = new ToolApiServer(
@@ -851,6 +866,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-	console.error(e);
-	process.exit(1);
+	// Synchronous write — async stderr can be lost if process.exit() fires first.
+	process.stderr.write(`[daemon] Fatal error: ${e instanceof Error ? e.stack ?? e.message : String(e)}\n`);
+	process.exitCode = 1;
 });
