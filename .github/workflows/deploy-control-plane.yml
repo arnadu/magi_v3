@@ -21,8 +21,25 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy
-        run: flyctl deploy --config fly.control-dev.toml --remote-only
+      - name: Authenticate with Fly registry
+        run: flyctl auth docker
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}
+
+      - name: Build and push control plane image
+        run: |
+          docker build \
+            -f packages/control-plane/Dockerfile \
+            -t registry.fly.io/magi-control-dev:latest \
+            -t registry.fly.io/magi-control-dev:${{ github.sha }} \
+            .
+          docker push registry.fly.io/magi-control-dev:latest
+          docker push registry.fly.io/magi-control-dev:${{ github.sha }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --config fly.control-dev.toml --image registry.fly.io/magi-control-dev:${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}
 
@@ -35,6 +52,6 @@ jobs:
   #   steps:
   #     - uses: actions/checkout@v4
   #     - uses: superfly/flyctl-actions/setup-flyctl@master
-  #     - run: flyctl deploy --config packages/control-plane/fly.toml --remote-only
+  #     - run: flyctl deploy --config packages/control-plane/fly.toml --image registry.fly.io/magi-control:${{ github.sha }}
   #       env:
   #         FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}

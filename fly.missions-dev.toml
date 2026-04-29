@@ -1,9 +1,0 @@
-app = "magi-missions-dev"
-primary_region = "iad"
-
-[build]
-  dockerfile = "packages/agent-runtime-worker/Dockerfile"
-  # Build context is the repo root (this file must stay at the repo root).
-
-# No [http_service] — execution plane machines have no public endpoints.
-# Machines are provisioned on-demand by the control plane via the Machines API.
