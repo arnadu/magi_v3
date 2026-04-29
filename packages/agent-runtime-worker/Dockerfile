@@ -102,5 +102,4 @@ EXPOSE 4000 4001
 # Run daemon as non-root magi-operator user.
 USER magi-operator
 
-CMD ["node", "--import", "./packages/agent-runtime-worker/dist/node-polyfill.js", \
-     "packages/agent-runtime-worker/dist/daemon.js"]
+CMD ["node", "--import", "./packages/agent-runtime-worker/dist/node-polyfill.js", "packages/agent-runtime-worker/dist/daemon.js"]

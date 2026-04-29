@@ -91,6 +91,13 @@ export async function provisionMission(
 				},
 				mounts: [{ volume: vol.id, path: "/missions" }],
 				// No services — internal access only via WireGuard.
+				// 1 GB RAM: Node + MongoDB driver + agent pool need ~600 MB at idle;
+				// Playwright/Chromium adds another ~400 MB under load.
+				guest: {
+					cpu_kind: "shared",
+					cpus: 1,
+					memory_mb: 1024,
+				},
 			},
 			region,
 		}),
