@@ -540,6 +540,10 @@ async function main(): Promise<void> {
 	process.stdout.write(`[daemon] TEAM_CONFIG=${teamConfigPath ?? "(unset)"}\n`);
 	process.stdout.write(`[daemon] MONGODB_URI=${mongoUri ? "(set)" : "(unset)"}\n`);
 	process.stdout.write(`[daemon] ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY ? "(set)" : "(unset)"}\n`);
+	process.stdout.write(`[daemon] BRAVE_SEARCH_API_KEY=${process.env.BRAVE_SEARCH_API_KEY ? "(set)" : "(unset)"}\n`);
+	for (const key of DATA_KEY_NAMES) {
+		process.stdout.write(`[daemon] ${key}=${process.env[key] ? "(set)" : "(unset)"}\n`);
+	}
 
 	if (!teamConfigPath || !mongoUri) {
 		process.stderr.write("Error: TEAM_CONFIG and MONGODB_URI are required\n");

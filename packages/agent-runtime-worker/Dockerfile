@@ -55,7 +55,11 @@ RUN useradd -m -u 999 -s /bin/bash magi-operator
 # sudoers: magi-operator and pool users may run magi-node and magi-job without
 # a password. The wrappers point to fixed paths — changing Node versions does
 # not require updating sudoers rules.
+# env_keep for magi-job: sudo's default env_reset strips all custom vars before
+# exec. Background jobs need MAGI_TOOL_* for the Tool API and data keys for
+# adapters (FRED, FMP, NewsAPI). Must match DATA_KEY_NAMES in daemon.ts.
 RUN echo "Defaults:%magi-shared !authenticate" > /etc/sudoers.d/magi && \
+    echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API_KEY\"" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
     for i in 1 2 3 4 5; do \
