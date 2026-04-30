@@ -94,6 +94,11 @@ COPY --from=builder /app/packages/ ./packages/
 COPY --from=builder /app/node_modules/ ./node_modules/
 COPY config/ ./config/
 
+# Install data factory Python dependencies into the shared venv.
+# requirements.txt is now present at /app/packages/skills/data-factory/requirements.txt.
+RUN /opt/magi/venv/bin/pip install --no-cache-dir \
+    -r /app/packages/skills/data-factory/requirements.txt
+
 # Volume mount point for the Fly.io workspace volume.
 RUN mkdir -p /missions && chown magi-operator:magi-shared /missions
 

@@ -565,6 +565,7 @@ async function main(): Promise<void> {
 			homeBase: join(workdir, "home"),
 			missionsBase: join(workdir, "missions"),
 		},
+		platformSkillsPath: join(REPO_ROOT, "packages", "skills"),
 		teamSkillsPath,
 	});
 
