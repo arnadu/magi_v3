@@ -26,24 +26,31 @@ SKILL_SCRIPTS="$SHARED_DIR/skills/_platform/data-factory/scripts"
 # 1. Bootstrap factory directories
 mkdir -p "$FACTORY"
 
-# 2. Install Python dependencies (once per environment — already done if magi-python3 exists)
-magi-python3 -m pip install -q -r "$SHARED_DIR/skills/_platform/data-factory/requirements.txt" 2>/dev/null || true
+# 2. Copy sources.json and schedule.json (if your team provides them in _team/)
+# cp "$SHARED_DIR/skills/_team/data-factory-config/sources.json" "$FACTORY/sources.json"
+# Otherwise write sources.json manually — see format below.
 
-# 3. Write your sources.json (see format below)
-# 4. Run the first refresh
-magi-python3 "$SKILL_SCRIPTS/refresh.py" "$SHARED_DIR"
+# 3. Submit the first refresh as a background job.
+#    IMPORTANT: run via background job, NOT direct magi-python3 call.
+#    Direct calls run in the tool subprocess which has no data API keys (FRED, NewsAPI, FMP).
+#    Background jobs receive data keys automatically from the daemon.
+bash "$SHARED_DIR/skills/_platform/run-background/scripts/submit-job.sh" \
+  --script "$SKILL_SCRIPTS/refresh.py" \
+  --args "$SHARED_DIR" \
+  --agent "$AGENT_ID" \
+  --notify-subject "First data refresh complete"
 
-# 5. Check results
+# 4. Wait for the completion notification, then check results
 magi-python3 "$SKILL_SCRIPTS/catalog.py" list "$FACTORY"
 
-# 6. Schedule daily refresh (optional — uses run-background skill)
-# bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" \
-#   --label "daily-refresh" \
-#   --cron "30 5 * * *" \
-#   --script "$SKILL_SCRIPTS/refresh.py" \
-#   --args "$SHARED_DIR" \
-#   --agent "$AGENT_ID" \
-#   --notify-subject "Daily refresh complete"
+# 5. Schedule daily refresh
+bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" \
+  --label "daily-refresh" \
+  --cron "30 5 * * *" \
+  --script "$SKILL_SCRIPTS/refresh.py" \
+  --args "$SHARED_DIR" \
+  --agent "$AGENT_ID" \
+  --notify-subject "Daily refresh complete"
 ```
 
 ## sources.json format
@@ -93,7 +100,8 @@ Write this to `$FACTORY/sources.json`:
 | `newsapi` | news headlines | `NEWSAPIORG_API_KEY` |
 | `fmp` | price/volume, SEC filings | `FMP_API_KEY` |
 
-API keys go in `.env.data-keys` (not `.env`).
+API keys are injected automatically by the daemon when running via background job.
+Direct `magi-python3` calls in agent turns do NOT receive data API keys — use background jobs for any adapter that requires a key.
 
 ## CSV format
 

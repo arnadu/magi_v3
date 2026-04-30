@@ -21,8 +21,12 @@ mkdir -p "$FACTORY"
 cp "$TEAM_CONFIG/sources.json" "$FACTORY/sources.json"
 cp "$TEAM_CONFIG/schedule.json" "$FACTORY/schedule.json"
 
-# 2. Run first refresh (runs directly — no background job needed for first run)
-magi-python3 "$PLATFORM_SCRIPTS/refresh.py" "$SHARED_DIR"
+# 2. Submit the first refresh as a background job (NOT direct magi-python3 — direct calls have no data API keys)
+bash "$SHARED_DIR/skills/_platform/run-background/scripts/submit-job.sh" \
+  --script "$PLATFORM_SCRIPTS/refresh.py" \
+  --args "$SHARED_DIR" \
+  --agent "$AGENT_ID" \
+  --notify-subject "First data refresh complete"
 
 # 3. Check results
 magi-python3 "$PLATFORM_SCRIPTS/catalog.py" list "$FACTORY"
