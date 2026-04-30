@@ -93,9 +93,10 @@ WORKDIR /app
 COPY --from=builder /app/packages/ ./packages/
 COPY --from=builder /app/node_modules/ ./node_modules/
 COPY config/ ./config/
+# packages/skills/ is not in the builder stage (not compiled TypeScript) — copy direct.
+COPY packages/skills/ ./packages/skills/
 
 # Install data factory Python dependencies into the shared venv.
-# requirements.txt is now present at /app/packages/skills/data-factory/requirements.txt.
 RUN /opt/magi/venv/bin/pip install --no-cache-dir \
     -r /app/packages/skills/data-factory/requirements.txt
 
