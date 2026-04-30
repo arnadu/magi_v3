@@ -528,7 +528,12 @@ async function main(): Promise<void> {
 
 	process.stdout.write("[daemon] Loading team config…\n");
 	const teamConfig = loadTeamConfig(teamConfigPath);
-	const missionId = teamConfig.mission.id;
+	// MISSION_ID env var (set by control plane at machine creation) overrides the YAML's
+	// mission.id so each provisioned mission has its own isolated MongoDB namespace.
+	const missionId = process.env.MISSION_ID ?? teamConfig.mission.id;
+	if (process.env.MISSION_ID) {
+		teamConfig.mission.id = missionId;
+	}
 	process.stdout.write(`[daemon] Mission: ${missionId} (${teamConfig.agents.length} agents)\n`);
 
 	// Ensure every agent has a Linux OS user. No-op for existing pool users
