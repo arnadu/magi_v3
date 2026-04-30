@@ -125,6 +125,29 @@ const MAX_CONCURRENT_JOBS = 3;
 let runningJobs = 0;
 
 /**
+ * Read the shebang line from a script and return the interpreter argv prefix.
+ * Handles `#!/usr/bin/env <cmd>` → `/usr/local/bin/<cmd>` and direct paths.
+ * Returns [] if no shebang found (caller falls back to direct execution).
+ *
+ * Why: WriteFile creates files without the execute bit (+x). Rather than
+ * chmod-ing a file owned by a different user, we extract the interpreter from
+ * the shebang and prepend it to the magi-job argv so the OS doesn't need +x.
+ */
+function readShebangInterpreter(scriptPath: string): string[] {
+	try {
+		const head = readFileSync(scriptPath, "utf8").slice(0, 256);
+		const firstLine = head.split("\n")[0] ?? "";
+		if (!firstLine.startsWith("#!")) return [];
+		const shebang = firstLine.slice(2).trim();
+		const envMatch = shebang.match(/^\/usr\/bin\/env\s+(\S+)/);
+		if (envMatch) return [`/usr/local/bin/${envMatch[1]}`];
+		return [shebang.split(/\s+/)[0]];
+	} catch {
+		return [];
+	}
+}
+
+/**
  * Scan sharedDir/jobs/pending/*.json and spawn each job (up to
  * MAX_CONCURRENT_JOBS at a time).
  *
@@ -135,8 +158,10 @@ let runningJobs = 0;
  * For each pending job:
  *   1. Move the spec to jobs/running/ (atomically prevents double-execution).
  *   2. Issue a bearer token for the agent's ACL.
- *   3. Spawn: sudo -u <linuxUser> <scriptPath> <args...>
+ *   3. Spawn: sudo -u <linuxUser> [interpreter] <scriptPath> <args...>
  *      with MAGI_TOOL_URL, MAGI_TOOL_TOKEN, data-key env vars, PATH, HOME.
+ *      Interpreter is extracted from the script's shebang line — the script
+ *      does not need to be executable (+x).
  *   4. Pipe stdout+stderr to logs/bg-<id>.log.
  *   5. On exit: revoke token, write jobs/status/<id>.json, optionally notify.
  */
@@ -272,13 +297,14 @@ async function runPendingJobs(
 		const logStream = createWriteStream(logPath, { flags: "a" });
 
 		runningJobs++;
+		const interpreter = readShebangInterpreter(resolvedScript);
 		console.log(`[daemon:jobs] Starting job ${spec.id} (${spec.scriptPath}) as ${linuxUser}`);
 
 		let child: ReturnType<typeof spawn>;
 		try {
 			child = spawn(
 				"sudo",
-				["-u", linuxUser, "/usr/local/bin/magi-job", resolvedScript, ...spec.args],
+				["-u", linuxUser, "/usr/local/bin/magi-job", ...interpreter, resolvedScript, ...spec.args],
 				{
 					env: {
 						PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
