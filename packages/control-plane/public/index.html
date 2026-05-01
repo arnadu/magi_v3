@@ -252,6 +252,20 @@
   </div>
 </div>
 
+<!-- Log viewer modal -->
+<div class="confirm-overlay" id="log-overlay" style="display:none">
+  <div class="confirm-box" style="max-width:800px;width:90%;max-height:80vh;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">Daemon Log</h3>
+      <div>
+        <button type="button" class="btn-ghost" id="log-refresh-btn" style="margin-right:8px">Refresh</button>
+        <button type="button" class="btn-ghost" id="log-close-btn">Close</button>
+      </div>
+    </div>
+    <pre id="log-content" style="flex:1;overflow-y:auto;background:#0d0f1a;padding:12px;border-radius:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:#94a3b8;max-height:60vh"></pre>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -370,6 +384,7 @@
             <button class="btn-success" onclick="resumeMission('${esc(m.missionId)}')">Resume</button>
           ` : ''}
           ${m.status !== 'destroyed' ? `
+            <button class="btn-ghost" onclick="viewLog('${esc(m.missionId)}')">View Log</button>
             <button class="btn-danger" onclick="confirmDestroy('${esc(m.missionId)}', '${esc(m.name)}')">Destroy</button>
           ` : ''}
         </div>
@@ -465,6 +480,33 @@
     if (!res) return;
     if (res.ok) { showToast('Mission destroyed.'); loadMissions(); }
     else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Destroy failed.', true); }
+  });
+
+  // ── Log viewer ────────────────────────────────────────────────────────────
+
+  let currentLogMissionId = null;
+
+  async function viewLog(id) {
+    currentLogMissionId = id;
+    document.getElementById('log-content').textContent = 'Loading…';
+    document.getElementById('log-overlay').style.display = 'flex';
+    await refreshLog();
+  }
+
+  async function refreshLog() {
+    if (!currentLogMissionId) return;
+    const res = await apiFetch(`/missions/${currentLogMissionId}/log?lines=300`);
+    if (!res) return;
+    const text = await res.text();
+    const el = document.getElementById('log-content');
+    el.textContent = text || '(log empty)';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  document.getElementById('log-refresh-btn').addEventListener('click', refreshLog);
+  document.getElementById('log-close-btn').addEventListener('click', () => {
+    currentLogMissionId = null;
+    document.getElementById('log-overlay').style.display = 'none';
   });
 
   // ── Init ──────────────────────────────────────────────────────────────────

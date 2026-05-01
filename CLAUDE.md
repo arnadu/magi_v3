@@ -24,8 +24,8 @@ npm run lint:fix          # Biome auto-fix
 
 # CLI — run the orchestration loop with a team config
 cd packages/agent-runtime-worker && npm run build   # build first
-TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words"
-TEAM_CONFIG=config/teams/word-count.yaml npm run cli -- "count the words" --step  # pause after each agent
+TEAM_CONFIG=config/teams/test/word-count.yaml npm run cli -- "count the words"
+TEAM_CONFIG=config/teams/test/word-count.yaml npm run cli -- "count the words" --step  # pause after each agent
 
 # Inline @path upload and /command dispatch (Sprint 3):
 # At any input prompt, type:  @/path/to/file.pdf ask me about this
@@ -142,13 +142,13 @@ Two packages are built. Key files:
 - `src/tools/inspect-image.ts` — `createInspectImageTool(workdir, model)`: reads image file (path resolved within workdir — path traversal rejected, symlinks followed with `realpathSync`), base64-encodes it, calls vision LLM via `completeSimple`. MIME type derived from `EXT_TO_MIME` in `src/mime-types.ts`.
 - `src/tools/search-web.ts` — `createSearchWebTool(apiKey)`: Brave Search REST API → ranked markdown result list; saves results as an artifact; not registered when key absent.
 - `tests/loop.integration.test.ts` — Sprint 1: real LLM finds and edits `greeting.txt`.
-- `tests/multi-agent.integration.test.ts` — Sprint 2/4: Lead delegates word-count to Worker; asserts Lead reports "12" to user. Uses real pool users `magi-w1`/`magi-w2`; seeds `greeting.txt` in Worker's workdir; applies setfacl. Loads config from `config/teams/word-count.yaml`.
+- `tests/multi-agent.integration.test.ts` — Sprint 2/4: Lead delegates word-count to Worker; asserts Lead reports "12" to user. Uses real pool users `magi-w1`/`magi-w2`; seeds `greeting.txt` in Worker's workdir; applies setfacl. Loads config from `config/teams/test/word-count.yaml`.
 - `tests/fetch-inspect.integration.test.ts` — Sprint 3: single agent fetches a local HTML page with an image, inspects it; asserts "cat" or "feline" in summary.
 - `tests/fetch-share.integration.test.ts` — Sprint 3/4: two-agent test; Lead fetches a PDF, Worker analyses images via Bash; asserts one artifact folder and both animal species in user message. Uses real pool users.
 - `tests/search-web.integration.test.ts` — Sprint 3: searches "Pale Blue Dot Voyager NASA", fetches Wikipedia top result, inspects photograph; skipped when `BRAVE_SEARCH_API_KEY` absent.
 - `tests/acl.integration.test.ts` — Sprint 4: verifies ACL enforcement without LLM. (1) `WriteFile` to another agent's private dir → `PolicyViolationError`. (2) `Bash` writing to another agent's private dir → OS-level `Permission denied`. Uses real pool users `magi-w1`/`magi-w2`, temp workdirs, and setfacl.
 - `tests/skills.unit.test.ts` — Sprint 5: 11 unit tests for `discoverSkills` and `formatSkillsBlock`. Covers scope shadowing (mission over platform, agent over mission, team over platform), missing tier directories, malformed frontmatter, and `formatSkillsBlock` output format. No LLM, no network.
-- `tests/skills.integration.test.ts` — Sprint 5: two-agent test; Lead creates `report-format` mission skill, delegates PDF analysis to Worker; Worker discovers the skill, fetches PDF via `FetchUrl`, inspects images via `InspectImage`, writes `report.md` with TLDR, commits via `git-provenance`, replies to Lead; Lead reports to user. Assertions: skill file exists, `report.md` contains TLDR, `git log` shows author "worker", user received ≥1 message. Uses `NoTeardownWorkspaceManager` subclass to preserve `sharedDir` for assertions. Config: `config/teams/skills-test.yaml`. 8-minute timeout.
+- `tests/skills.integration.test.ts` — Sprint 5: two-agent test; Lead creates `report-format` mission skill, delegates PDF analysis to Worker; Worker discovers the skill, fetches PDF via `FetchUrl`, inspects images via `InspectImage`, writes `report.md` with TLDR, commits via `git-provenance`, replies to Lead; Lead reports to user. Assertions: skill file exists, `report.md` contains TLDR, `git log` shows author "worker", user received ≥1 message. Uses `NoTeardownWorkspaceManager` subclass to preserve `sharedDir` for assertions. Config: `config/teams/test/skills-test.yaml`. 8-minute timeout.
 
 ## Tool Capabilities (Implementation Priority Order)
 
@@ -380,6 +380,59 @@ Motivation: during Sprint 11 equity-research operations, 7–10 agents independe
   **New env var:**
   - `TOOL_PORT` (optional — default: 4001; Tool API server for background job scripts; must be 1–65535 or daemon exits)
 
+## Cloud Deployment (Fly.io)
+
+### One-command setup
+
+```bash
+cp secrets.env.template secrets.env   # fill in ANTHROPIC_API_KEY, MONGODB_URI, CONTROL_API_KEY + optional data keys
+bash scripts/bootstrap.sh             # creates apps, sets secrets, builds + pushes image, deploys control plane
+```
+
+`bootstrap.sh` accepts `--suffix <name>` to create named instances. Prompted interactively if not passed.
+
+### App naming convention
+
+| Suffix | Apps | Purpose |
+|--------|------|---------|
+| `dev` | `magi-control-dev` / `magi-missions-dev` | CI target; auto-deployed on push to `main` |
+| `test-<label>` | `magi-control-test-hello-world` / … | Isolated integration test environments |
+| `prod-<usecase>` | `magi-control-prod-gold-digest` / … | Production missions |
+
+```bash
+bash scripts/bootstrap.sh --suffix test-hello-world   # smoke test environment
+bash scripts/bootstrap.sh --suffix prod-gold-digest   # production
+```
+
+### Launching a mission
+
+The control plane UI at `https://magi-control-{suffix}.fly.dev` accepts:
+- **Mission ID**: unique identifier (used as MongoDB namespace)
+- **Name**: display name
+- **Team config**: path relative to `config/teams/` in the image, e.g. `test/hello-world` or `gold-digest`
+
+Via API:
+```bash
+curl -X POST https://magi-control-test-hello-world.fly.dev/api/missions \
+  -H "X-API-Key: $CONTROL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"missionId":"hw-001","name":"Smoke test","teamConfig":"test/hello-world"}'
+```
+
+### Team config paths
+
+Production team configs: `config/teams/{name}.yaml` or `config/teams/{name}/` with skills.
+Test team configs: `config/teams/test/{name}.yaml` — never seeded as selectable templates.
+
+| Config | teamConfig value | Purpose |
+|--------|-----------------|---------|
+| `config/teams/gold-digest.yaml` | `gold-digest` | Production gold market mission |
+| `config/teams/equity-research.yaml` | `equity-research` | Production equity research mission |
+| `config/teams/test/hello-world.yaml` | `test/hello-world` | Smoke test (1 agent, no data keys) |
+| `config/teams/test/word-count.yaml` | `test/word-count` | Multi-agent integration test |
+
+---
+
 ## Sprint Roadmap
 
 | Sprint | Status | Focus |
@@ -397,8 +450,9 @@ Motivation: during Sprint 11 equity-research operations, 7–10 agents independe
 | 10 | ✅ Done | Agentic tools: Research tool (nested inner loop, isolated context, shared index); efficiency guidelines for equity-research agents (ADR-0010) |
 | 11 | ✅ Done | Dashboard UX (sessions tree, budget pause, mental map iframe); workspace persistence; `cli:reset`; clean daemon shutdown |
 | 12 | ✅ Done | Data factory + secondary model + Tool IPC server + background jobs |
-| 13 | | Hardening and launch prep |
-| 14 | | Mission Assistant: LLM operator copilot with read access to all mission state |
+| 13 | ✅ Done | Hardening and launch prep |
+| 14 | ✅ Done | Cloud Infrastructure MVP: Fly.io execution plane, control plane, proxy, scheduler |
+| 15 | 🔄 In progress | Developer onboarding: bootstrap.sh, .dockerignore, MongoDB templates, daemon log viewer |
 
 ## Development Principles
 
@@ -413,13 +467,13 @@ Three tiers — apply the right one to the right layer:
 - **Unit tests** — pure, deterministic logic only: config validation, ACL policy evaluation, `UpdateMentalMap` HTML patching. `npm test`, no LLM calls, no network.
 - **Integration tests** — real LLM calls with carefully chosen prompts whose outcomes are deterministic. Tests the full stack end-to-end including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` and `MONGODB_URI` in `.env`. Each test uses a unique `missionId`; `afterEach` cleans up via `deleteMany({ missionId })` on all MongoDB collections. Current scenarios:
   - Sprint 1: single agent finds `greeting.txt` (contains "HELLO WORLD") and appends "GOODBYE".
-  - Sprint 2: two-agent word count — Lead delegates to Worker via mailbox; Worker runs `wc -w`, replies; Lead reports the total (12) to user. Config loaded from `config/teams/word-count.yaml`. Assertion: Lead's final message contains "12".
+  - Sprint 2: two-agent word count — Lead delegates to Worker via mailbox; Worker runs `wc -w`, replies; Lead reports the total (12) to user. Config loaded from `config/teams/test/word-count.yaml`. Assertion: Lead's final message contains "12".
   - Sprint 3a: single agent fetches a local HTML page (served from `testdata/documents/`) containing a cat image; calls `InspectImage`; asserts "cat" or "feline" in user message.
   - Sprint 3b: two agents share a PDF artifact — Lead fetches PDF, Worker reads images via Bash and `InspectImage`; asserts one artifact folder and both "dog" and "cat" in user message.
   - Sprint 3c: real web search — searches "Pale Blue Dot Voyager NASA", fetches Wikipedia top result, inspects photograph; asserts Voyager/Sagan content and image description. Skipped when `BRAVE_SEARCH_API_KEY` absent. 4-minute timeout.
   - Sprint 6a: conversation persistence — extends the word-count test; after Lead reports "12" to user, queries `conversationMessages` collection directly and asserts `turnNumber: 0` and `turnNumber: 1` documents exist for Lead with correct message types (tool calls and results included).
   - Sprint 6b: daemon wake-up — spawns `daemon.ts` subprocess; injects first user message via `cli:post`; polls mailbox until Lead replies to user; asserts reply received within timeout. Requires `MONGODB_URI`. 2-minute timeout.
-  - Sprint 5: two-agent skills test — Lead creates `report-format` mission skill; Worker discovers it, fetches test PDF, writes `report.md` with TLDR, commits via `git-provenance`, reports to Lead; Lead reports to user. Assertions: skill file, TLDR in report, "worker" in `git log`, user message. Config: `config/teams/skills-test.yaml`. 8-minute timeout.
+  - Sprint 5: two-agent skills test — Lead creates `report-format` mission skill; Worker discovers it, fetches test PDF, writes `report.md` with TLDR, commits via `git-provenance`, reports to Lead; Lead reports to user. Assertions: skill file, TLDR in report, "worker" in `git log`, user message. Config: `config/teams/test/skills-test.yaml`. 8-minute timeout.
 - **Evaluation tests** (`eval/`) — golden scenarios asserting structural/policy outcomes (citation coverage, `nextAction` validity, policy enforcement), not content. Run on demand, not in CI.
 
 Test runner: **vitest** — native ESM, no build step needed. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.

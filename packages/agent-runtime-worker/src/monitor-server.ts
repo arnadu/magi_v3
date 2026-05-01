@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
@@ -63,6 +63,7 @@ export interface PlaybookEntry {
  *   GET  /events                    SSE stream
  *   GET  /team                      JSON agent roster
  *   GET  /status                    JSON usage + mission info
+ *   GET  /log?lines=N               tail of daemon.log (default 200, max 2000)
  *   GET  /agents/:id/mental-map     current mental map HTML
  *   GET  /agents/:id/conversation   last N conversation messages
  *   GET  /schedule                  pending scheduled wakeups
@@ -108,6 +109,7 @@ export class MonitorServer {
 		maxCostUsd: number | null,
 		private readonly startedAt = new Date(),
 		private readonly playbook: PlaybookEntry[] = [],
+		private readonly workdir: string = process.cwd(),
 	) {
 		this.currentCapUsd = maxCostUsd;
 		this.server = createServer((req, res) =>
@@ -336,6 +338,24 @@ export class MonitorServer {
 			});
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify(payload));
+			return;
+		}
+
+		// ── GET /log
+		if (url === "/log" && req.method === "GET") {
+			const logPath = join(this.workdir, "daemon.log");
+			const maxLines = Math.min(
+				Number.parseInt(new URL(req.url ?? "/log", "http://x").searchParams.get("lines") ?? "200", 10) || 200,
+				2000,
+			);
+			let body = "";
+			if (existsSync(logPath)) {
+				const content = readFileSync(logPath, "utf8");
+				const lines = content.split("\n");
+				body = lines.slice(-maxLines).join("\n");
+			}
+			res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+			res.end(body);
 			return;
 		}
 

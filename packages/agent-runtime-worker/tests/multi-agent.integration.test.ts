@@ -73,7 +73,7 @@ class SeedingWorkspaceManager extends WorkspaceManager {
 // ---------------------------------------------------------------------------
 
 const TEAM_CONFIG_PATH = fileURLToPath(
-	new URL("../../../config/teams/word-count.yaml", import.meta.url),
+	new URL("../../../config/teams/test/word-count.yaml", import.meta.url),
 );
 
 const MONGODB_URI = process.env.MONGODB_URI;

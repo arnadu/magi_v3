@@ -1,0 +1,18 @@
+# Secrets — must never enter any image layer
+.env
+.env.*
+secrets.env
+secrets.env.*
+**/.env
+**/.env.*
+
+# Dev noise
+**/node_modules
+**/dist
+.git
+.github
+docs
+*.md
+!packages/skills/**/*.md
+!config/**/*.md
+!packages/agent-runtime-worker/Dockerfile

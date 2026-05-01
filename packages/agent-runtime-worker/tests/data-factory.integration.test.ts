@@ -62,7 +62,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) throw new Error("MONGODB_URI is required for integration tests");
 
 const TEAM_CONFIG_PATH = fileURLToPath(
-	new URL("../../../config/teams/data-factory-test.yaml", import.meta.url),
+	new URL("../../../config/teams/test/data-factory-test.yaml", import.meta.url),
 );
 
 /** Fixed output dir — preserved between runs for inspection. Cleaned at test start. */

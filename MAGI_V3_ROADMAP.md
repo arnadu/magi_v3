@@ -713,116 +713,267 @@ Lead        → PostMessage user: brief summary + commit SHA + tracker status
 
 ---
 
-## Sprint 9 (2026-06-29 to 2026-07-10): Reliability and Quality Gates
+## Sprint 9 — Context Management and Reflection ✅ COMPLETED
 
-**Goal: the system runs unattended for 5 days and meets SLOs.**
+**Goal: agents maintain coherent context across sessions without ballooning token cost. Prior session content is compacted at the boundary; a reflection LLM call updates the Mental Map and writes a cumulative narrative summary.**
 
-Deliverables:
-- Retry and backoff for failed tool calls (`FetchUrl`, `BrowseWeb`, `RunBackground`) — configurable per tool in team YAML; exponential backoff with jitter; max retries before escalation via mailbox
-- Runbooks for common failure modes: source feed outage, missed publish SLA, worker crash, mailbox delivery failure, `RunBackground` script crash
-- Skill shadow policy validated: evaluation run with agent-local shadowing enabled vs disabled; document observed behaviour and set default policy
-- **Evaluation harness** (`eval/` directory, run on demand with real LLMs — not part of CI):
-  - Citation coverage per report (assert ≥ 90%, zero uncited claims — verified via `git log` lineage)
-  - `nextAction` always a valid enum value across 50 runs (structural correctness)
-  - Mental Map always has exactly one `in-progress` task when the inner loop is running
-  - Watcher fires an alert within 2 turns of an injected threshold breach
-  - No `prod` artifact committed from a `dev` agent (policy enforcement under real LLM load)
-  - Report freshness SLA compliance across a 5-day golden scenario
-- 5-day unattended run with SLO compliance for the equity research mission
+### Key design (ADR-0009)
 
-Exit criteria: 5 consecutive daily cycles complete within SLA. Evaluation harness reports citation coverage ≥ 90% and zero uncited claims. All evaluation scenarios pass on 3 consecutive runs. Skill shadow policy documented.
+Session-boundary compaction: each session's raw messages are compacted at the start of the *next* session. Within a session the agent has full fidelity. Across sessions, only a cumulative summary and the updated Mental Map survive.
 
----
+**Algorithm on each wakeup (except first):**
+1. `load()` returns prior summaries + last session's raw messages
+2. **Reflection** (conditional): if `peakInputTokens ≥ 120 000` (60 % of context window) — a separate LLM call with only `UpdateMentalMap` available consolidates the session into a cumulative summary and patches the Mental Map
+3. `compact()` marks all compacted messages as `compacted: true` (retained in MongoDB for audit; not loaded again)
+4. `runInnerLoop` starts with: system prompt (updated Mental Map) → summary message → new inbox messages
 
-## Sprint 10 (2026-07-13 to 2026-07-24): Work Product Layer UI and HTTP API
+**What the LLM sees:** `[system: role + updated Mental Map + skills]` → `[user: cumulative session summary]` → `[user: new inbox messages]`. No raw tool results from prior sessions.
 
-**Goal: operators can consume outputs and triage alerts without touching the CLI. The Mission HTTP API ships here, designed to serve the frontend built in the same sprint.**
+### Deliverables
 
-Deliverables:
-- **Mission HTTP API** (deferred from Sprint 6 — built here alongside the frontend that consumes it):
-  - `POST /missions` — start a mission from a team config path; returns `mission_id`
-  - `GET /missions/:id` — status, agent list, turn count, last message timestamp
-  - `GET /missions/:id/messages` — paginated mailbox log
-  - `POST /missions/:id/message` — inject a user message (wraps `cli-post` logic)
-  - `POST /missions/:id/abort` — clean shutdown via SIGTERM
-  - `GET /missions/:id/conversations/:agentId` — paginated conversation history for Evidence Explorer
-- Evaluate `pi-mono/packages/web-ui` (`<pi-chat-panel>`, message components, artifact renderers) vs MAG_v2 Vue.js frontend; adopt whichever integrates faster with MAGI V3's HTTP API
-- **Mission Inbox**: active missions, current agent task (from Mental Map `#tasks` section), pending queue with priority and rationale, SLA/overdue indicators
-- **Report Center**: generated reports, approval state, publication history; diff view uses `git diff` between brief commits
-- **Alert Center**: severity-based alert feed, ack/escalate/snooze controls, audit trail
-- **Ask Console**: Q&A against current mission artifacts with citations and confidence scores
-- **Evidence Explorer**: traces lineage via git log — claim → commit → parent commits → source URLs
-- Mental Map read-only view per agent (operator sees what each agent is thinking and why)
-- **Scheduler widget**: reads `scheduled_messages` collection and displays all `pending` entries as a timeline — agent, subject, scheduled time (absolute + relative), cron expression if repeating, status badge (pending / delivered / cancelled). Operator can cancel a pending entry. Also exposes `GET /missions/:id/schedule` and `DELETE /missions/:id/schedule/:entryId` on the HTTP API.
-
-Exit criteria: Operator completes all five flows (Inbox, Reports, Alerts, Ask, Evidence) without CLI. Every displayed claim links to at least one source commit. Alert ack/escalate/snooze are durable and visible in audit trail. Scheduler widget shows all pending wakeups and operator can cancel one.
+- `src/reflection.ts` — `convertToLlm`, `serializeForReflection`, `buildReflectionSystemPrompt`, `runReflection`
+- `src/agent-runner.ts` — reflection wired before `runInnerLoop`; `makeOnLlmCall` callback for both regular and reflection loops
+- `src/conversation-repository.ts` — `SummaryMessage` type; `compact()` via `updateMany`; unique index migration
+- `src/llm-call-log.ts` — `LlmCallLogEntry` schema; `computeCost()` with per-component USD breakdown; audit log collection `llmCallLog`
+- `src/loop.ts` — `onLlmCall?` callback fires after each `completeFn` call
+- `src/cli-usage.ts` — tabulated cost report from `llmCallLog`; `npm run cli:usage`
+- `src/models.ts` — cache pricing fix: `cacheRead = input × 0.1`, `cacheWrite = input × 1.25`
+- `docs/adr/0009-context-management-reflection.md`
+- `tests/reflection.integration.test.ts` — two-session test; all 5 assertions pass
 
 ---
 
-## Sprint 11 (2026-07-27 to 2026-08-07): Cloud Burst and Scale-Out
+## Sprint 10 — Agentic Tools: Research ✅ COMPLETED
 
-**Goal: the system runs on Kubernetes with autoscaling and tenant isolation.**
+**Goal: agents delegate deep research to an isolated sub-loop rather than running SearchWeb/FetchUrl themselves. The Research tool caches findings in a shared index to prevent redundant fetches across agents.**
 
-Deliverables:
-- Kubernetes deployment: orchestrator and agent-runtime-worker as Deployments; execution sandboxes as Jobs
-- Autoscaling: HPA on agent-runtime-worker based on active mission count and message queue depth
-- Per-mission quotas: token spend and LLM call limits enforced in agent-runtime-worker
-- Tenant isolation: missions in separate Kubernetes namespaces with Pod Security Standards; no cross-mission data leakage
-- Cloud workspace model: Linux ACL policy objects translated to Kubernetes RBAC + pod security context equivalents
-- MinIO as binary artifact backend (large files, images); MongoDB continues to hold message history and scheduled_messages; git remains the lineage store
-- Environment parity: `docker-compose up` boots the full stack locally and runs the equity research cycle
+### Motivation (ADR-0010)
 
-Exit criteria: 50 concurrent agent tasks across 3 missions with bounded cost. Cross-mission isolation test: agent in mission A cannot access shared folder or mailbox of mission B. Local dev boots with `docker-compose up`.
+Token cost analysis of the equity-research mission revealed: agents independently fetching the same URLs (×7–10 cross-agent duplication), 30–40+ SearchWeb calls per session for slight query variations, and O(n²) cache cost from raw tool results accumulating across LLM calls.
+
+### Key design
+
+**Three tool categories formalised:**
+1. **Simple tools** — pure functions, no lifecycle (Bash, WriteFile, FetchUrl, etc.)
+2. **Stateful tools** — maintain live session (`BrowseWeb` — needs browser for cookie persistence)
+3. **Agentic tools** — run their own `runInnerLoop`; intermediate messages never enter main agent context; findings externalised to shared storage (`Research`)
+
+**`Research` tool:**
+- Sub-loop tools: `FetchUrl`, `Bash` (sharedDir-only), `SearchWeb` (conditional)
+- Cache: `sharedDir/research/index.json` + `sharedDir/research/<slug>.md`; exact match + `maxAgeHours` freshness
+- `RESEARCH_MAX_TURNS = 10`; `context_files[]` and `output_path` params for background job use
+- Sub-loop messages stored in `conversationMessages` with `parentToolUseId` linking them to the parent Research tool call
+
+### Deliverables
+
+- `src/tools/research.ts` — cache lookup, sub-loop execution, finding persistence
+- `src/loop.ts` — `maxTurns?` in `InnerLoopConfig`
+- `src/tools.ts` — `createBashTool(cwd, acl)` exported helper
+- `src/agent-runner.ts` — `researchAcl` + `createResearchTool` registered
+- `config/teams/equity-research.yaml` — efficiency guidelines for all four agents
+- `docs/adr/0010-agentic-tools-research.md`
 
 ---
 
-## Sprint 12 (2026-08-10 to 2026-08-21): Hardening and Launch Prep
+## Sprint 11 — Dashboard UX, Workspace Persistence, and Operational Tooling ✅ COMPLETED
 
-Deliverables:
-- Disaster recovery drills: worker crash, MongoDB failover — assert agents resume correctly from MongoDB + git state
-- Red-team prompt suite: prompt injection attempts, privilege escalation, cross-agent data exfiltration via crafted mailbox messages, malicious skill injection attempt
-- Config diff UI and audit log export (Portfolio and Team Design configs are file-based; Sprint 12 adds diff view and export)
-- Production checklist review
-- Launch readiness review
+**Goal: the monitor dashboard becomes a usable operator interface; workspace data survives daemon restarts; the budget cap pauses rather than kills the daemon.**
 
-Exit criteria: DR drills pass. Red-team findings resolved or accepted with documented mitigations. Launch readiness review signed off.
+### Key changes
+
+- **Sessions tree UI**: right panel shows Session → LLM call → Tool calls hierarchy. Reflection sessions shown with `↺` badge. Each LLM call has a collapsible Mental Map iframe.
+- **Dynamic system prompt**: `InnerLoopConfig.systemPrompt: string` → `getSystemPrompt: () => string` — Mental Map changes within a session are reflected in subsequent LLM calls immediately.
+- **Mental Map inline on AssistantMessage**: `mentalMapHtml` stored per-AssistantMessage in `conversationMessages` (not a separate collection). Full evolution history visible in the sessions tree.
+- **Budget pause**: `MAX_COST_USD` pushes a `cost-pause` SSE event and blocks the orchestration loop. Dashboard shows a pulsing banner with "+$5 and continue" button (`POST /extend-budget`).
+- **Workspace persistence**: `teardown()` no longer called on daemon shutdown. `teardownOnExit?: boolean` default `false` — only integration tests set it to `true`. Mission files, git history, and artifacts survive restarts.
+- **`cli:reset`**: wipes MongoDB data + workspace for a mission; `--db-only`, `--yes` flags.
+- **Clean shutdown**: `server.closeAllConnections()` + SSE socket destruction + `process.exit(0)` after finally block. Double Ctrl-C force-exits.
+- **`Cache-Control: no-store`** on all static assets — prevents stale dashboard after restart.
+
+### Deliverables
+
+- `src/mental-map.ts` — removed `MentalMapRepository`; pure in-memory `UpdateMentalMap`
+- `src/loop.ts` — `getSystemPrompt: () => string`
+- `src/agent-runner.ts` — `currentCallSeq`; `onMentalMapUpdate` callback
+- `src/conversation-repository.ts` — `callSeq?`, `mentalMapHtml?`, `parentToolUseId?`; index migration
+- `src/monitor-server.ts` — sessions tree endpoints; `POST /extend-budget`; `notifyCostPause`
+- `src/cli-reset.ts` — mission reset CLI
+- `public/app.js` — sessions tree; budget banner; `normalizeCallSeq`
 
 ---
 
-## Sprint 13 (2026-08-24 to 2026-09-04): Mission Assistant (Operator Copilot)
+## Sprint 12 — Data Factory, Secondary Model, and Background Jobs ✅ COMPLETED
 
-An LLM-powered assistant embedded in the Work Product UI that observes the live mission state — agent conversations, mailbox traffic, git commits, mental maps, tool call logs, error records — and helps the operator understand what is happening, why, and what to do next.
+**Goal: agents read from a pre-fetched data store instead of web-browsing on every wakeup; a cheaper vision model handles image work; background jobs give agents async execution with data API keys.**
 
-**Core capability**: the assistant has read access to all mission state (MongoDB conversation collections, mailbox, mental maps, git log, filesystem) and can answer natural-language questions like:
-- "Why hasn't the Data Scientist done anything?"
-- "What did the Lead Analyst produce in the last cycle?"
-- "An agent said the workspace was reset — is that true?"
-- "The daemon is prompting for a sudo password — what's wrong?"
+### Phase 1 — Secondary model
 
-It synthesises across sources the operator would otherwise have to query manually: conversation history, unread message counts, tool call outcomes, error stop reasons, git history.
+- `CLAUDE_HAIKU` constant (`claude-haiku-4-5-20251001`); `visionModel?` in `OrchestratorConfig`
+- `FetchUrl`, `InspectImage`, `BrowseWeb` use `ctx.visionModel ?? ctx.model` — Haiku for images, Sonnet for reasoning
+- `VISION_MODEL` env var; accepts Anthropic or OpenRouter model IDs
 
-**Deliverables**:
-- `MissionContext` assembler: given a `missionId`, fetches and ranks the most relevant state — recent conversation turns per agent (with tool calls and error stop reasons surfaced), unread mailbox counts, last N git commits, mental map snapshots, last N tool errors. Returned as a compact context block.
-- `/api/assistant` streaming endpoint: accepts operator question + `missionId`; assembles `MissionContext`; calls Claude with a system prompt that defines its role as a read-only mission observer; streams the reply back via SSE.
-- Assistant panel in the Work Product UI: free-text input; streamed markdown reply; conversation is stateless per question (context always rebuilt fresh from live mission state).
-- Proactive digest mode: on each completed orchestration cycle, the assistant generates a one-paragraph "what just happened" summary and posts it to the operator UI automatically (opt-in).
+### Phase 2 — Data factory Python core
 
-**Out of scope for this sprint**: the assistant cannot take actions (post messages, modify configs). It is read-only. Write capability considered for a later sprint once the read-only surface is validated.
+- Two-skill architecture: `data-factory/` (operator Lin) + `data-factory-client/` (consumers)
+- 7 adapters: `yfinance`, `fred`, `newsapi`, `gdelt`, `fmp`, `imf`, `worldbank` — uniform `--discover`/`--fetch` CLI
+- `catalog.py`, `process_news.py`, `refresh.py` — pure Python orchestration
+- Python shared venv at `/opt/magi/venv`; `magi-python3` wrapper (not a symlink); `#!/usr/bin/env magi-python3` shebangs
+- `.env.data-keys` split from `.env`; `DATA_KEY_NAMES` + `dataKeysEnv()` in `daemon.ts`
 
-Exit criteria: operator can ask "what is going on with X agent?" and receive a coherent, grounded answer citing specific evidence from conversation history and git log. Proactive digest appears after each completed cycle.
+### Phase 3 — Tool IPC server and background jobs (ADR-0011)
+
+- `src/tool-api-server.ts` — HTTP server on `TOOL_PORT=4001` (loopback only); bearer token auth; dispatches to all 5 tools
+- `src/cli-tool.ts` — `magi-tool` CLI; `--question`, `--context-file`, `--output`, `--url`, `--to` flags
+- `packages/skills/run-background/` — `submit-job.sh`, `schedule-job.sh`, `job-status.sh`, `magi_tool.py` (stdlib Python SDK)
+- Background jobs: `sudo -u <linuxUser> /usr/local/bin/magi-job <script> <args>`; max 3 concurrent; file-based state (`jobs/pending/`, `jobs/running/`, `jobs/status/`)
+- Data keys forwarded automatically to background jobs via `dataKeysEnv()` + sudoers `env_keep`
+
+---
+
+## Sprint 13 — Hardening and Launch Prep ✅ COMPLETED
+
+**Goal: stabilise the system for production deployment. Fix security gaps, improve startup reliability, tighten MongoDB connectivity, and validate the full stack end-to-end.**
+
+### Key deliverables
+
+- **SSRF hardening**: extended `PRIVATE_HOST_RE` in `ssrf.ts` to cover `fdaa::/8` (Fly.io WireGuard), ULA IPv6 (`fd[0-9a-f]{2}:`), and link-local (`fe80:`) ranges
+- **Daemon startup reliability**: sync checkpoints before entering the orchestration loop; `process.exit(0)` guaranteed after cleanup to flush buffers
+- **MongoDB connection timeout**: 10 s timeout added to `connectMongo()` — fails fast when network is broken rather than hanging indefinitely
+- **Security review**: threat model updated with Sprint 12 attack surfaces (Tool IPC server, background job env isolation); confirmed `FLY_API_TOKEN_MACHINES` scope, `PRIVATE_HOST_RE` coverage, data key forwarding path
+- **`magi-operator` non-root daemon**: Dockerfile `USER magi-operator` directive — daemon runs as uid 999, not root; limits blast radius of a secret-exfiltration bug
+- **`env_keep` for `magi-job`**: sudoers rule ensures `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`, `MAGI_TOOL_URL`, `MAGI_TOOL_TOKEN` survive `sudo`'s default `env_reset` when background jobs run
+- **Gold Digest mission config**: `config/teams/gold-digest/` team config with pre-configured `sources.json`, `schedule.json`, and `SKILL.md` for the data factory skill
+- **Shebang interpreter detection**: `readShebangInterpreter()` in `daemon.ts` — background scripts without execute bit still run correctly; `magi-job` prepends the interpreter rather than exec'ing the script directly
+- **`MISSION_ID` env override**: daemon reads `process.env.MISSION_ID` to override `teamConfig.mission.id` — each provisioned Fly machine gets a unique MongoDB namespace
+
+---
+
+## Sprint 14 — Cloud Infrastructure MVP ✅ COMPLETED
+
+**Goal: a user goes to a URL, signs in, launches a mission, and the system provisions a cloud container, runs the daemon, and proxies the dashboard — all without touching a terminal.**
+
+### Architecture
+
+```
+Browser (HTTPS)
+  ↓
+Control Plane  magi-control.fly.dev  (always-on Fly.io app)
+  ● Mission registry API (CRUD + lifecycle)
+  ● Fly Machines client (provision / suspend / resume / destroy)
+  ● node-cron scheduler (scheduled_messages heartbeat — daemon machines can be fully suspended)
+  ● HTTP reverse proxy (SSE + dashboard → execution plane over Fly WireGuard)
+  ● Vanilla JS single-page UI (mission launcher, status, log viewer)
+  ↓  Fly private WireGuard network
+Execution Plane  magi-missions app  (on-demand Fly Machines, one per active mission)
+  ● Daemon :4000 (monitor server + SSE + Tool API)
+  ● Agent pool magi-w1..magi-w5
+  ● Workspace /missions/{id}/ (Fly Volume, 10 GB)
+```
+
+### Key decisions
+
+- **No public inbound surface on execution plane** — all operator traffic proxied through control plane
+- **Scheduler lives in control plane** — mission machines can be fully suspended between sessions
+- **One Fly.io org** — private WireGuard network is free and automatic
+- **`MISSION_ID` env var** overrides YAML `mission.id` — each provisioned machine gets a unique MongoDB namespace
+- **Shebang interpreter detection** — background scripts run correctly without execute bit
+
+### New package: `packages/control-plane/`
+
+- `src/index.ts` — Express server; `express.json()` scoped to `/api/missions` only (proxy routes must not consume body)
+- `src/auth.ts` — `CONTROL_API_KEY` bearer token middleware
+- `src/missions.ts` — Mission CRUD + lifecycle (provision/suspend/resume/destroy)
+- `src/fly-machines.ts` — Fly Machines API v1 client
+- `src/scheduler.ts` — node-cron heartbeat: delivers `scheduled_messages`, wakes suspended machines
+- `src/proxy.ts` — HTTP reverse proxy to execution plane; target resolved from MongoDB `missions` collection by `machineId` (never user-supplied)
+- `src/mongo.ts` — shared MongoDB connection
+- `public/index.html` — single-page UI; mission list; launch/suspend/resume/destroy; log viewer
+
+### Execution plane changes
+
+- `packages/agent-runtime-worker/Dockerfile` — multi-stage build; Playwright Chromium; `magi-operator` non-root user; `env_keep` sudoers rule; Python venv; skill files copied
+- `packages/agent-runtime-worker/fly.toml` — machine template (no public services)
+- `.github/workflows/build-execution-image.yml` — builds and pushes on `packages/agent-runtime-worker/**` changes
+- `.github/workflows/deploy-control-plane.yml` — deploys on `packages/control-plane/**` changes
+
+---
+
+## Sprint 15 — Developer Onboarding, Deployment Automation & Mission Templates
+
+**Goal: a developer who clones the repo and creates a Fly.io account needs only to fill in a `secrets.env` file and run one script to have a fully deployed system.**
+
+### Part A — `scripts/bootstrap.sh`
+
+Idempotent setup script:
+1. Check prerequisites (`flyctl`, `docker`, `git`, `gh` optional)
+2. Create Fly apps `magi-control` + `magi-missions` (skip if exist)
+3. Source `secrets.env`
+4. Set secrets on both apps
+5. Generate `FLY_API_TOKEN_MACHINES` (deploy-scoped, 1-year) and set on control plane
+6. Build + push execution image to `registry.fly.io/magi-missions:latest`
+7. Deploy control plane via `flyctl deploy`
+8. If `gh` present: set `FLY_API_TOKEN_CI` GitHub secret for CI image builds
+
+`secrets.env.template` committed to repo; `secrets.env` gitignored.
+
+### Part B — Docker hardening
+
+- Root `.dockerignore` prevents `.env`/`secrets.env` from entering image layers
+- `git config --system safe.directory /missions` in Dockerfile — fixes "dubious ownership" errors when pool users (different UIDs) access git repos owned by `magi-operator`
+
+### Part C — MongoDB-backed mission templates
+
+Templates stored in a `templates` MongoDB collection (not baked-in env vars):
+
+```typescript
+interface MissionTemplate {
+  _id: string;           // e.g. "gold-digest"
+  name: string;
+  teamConfigYaml: string;
+  skills: Array<{ path: string; content: string }>;
+  updatedAt: Date;
+}
+```
+
+- `seedTemplates()` reads `config/teams/` on disk → upserts into MongoDB at control plane startup (idempotent)
+- `GET /api/templates` returns template list for UI dropdown
+- At provision: control plane materialises `team.yaml` and skill files onto the Fly Volume via a short-lived setup machine; sets `TEAM_CONFIG=/missions/{id}/team.yaml`
+- Future UI (Sprint 16+): `PUT /api/templates/:id` edits templates without image rebuilds
+
+### Part D — Relocate test team configs
+
+Move 6 test YAMLs (`word-count.yaml`, `skills-test.yaml`, etc.) to `config/teams/test/` — keeps them off the template list; update integration test paths accordingly.
+
+### Part E — Daemon log visibility
+
+- Daemon tees stdout/stderr to `$AGENT_WORKDIR/daemon.log` (append mode, survives restarts)
+- `GET /log?lines=N` endpoint in monitor server — reads tail of log file
+- "View Log" button in control plane UI — fetches and displays last 200 lines in a modal
+
+---
+
+## Sprint 16 — Mission Assistant (Operator Copilot)
+
+An LLM-powered assistant embedded in the operator UI that observes live mission state and helps the operator understand what is happening, why, and what to do next.
+
+- `MissionContext` assembler: fetches and ranks recent conversation turns, unread mailbox counts, last N git commits, mental map snapshots, last N tool errors
+- `/api/assistant` streaming endpoint: operator question + `missionId` → Claude with read-only mission observer system prompt → SSE reply
+- Assistant panel in the UI: free-text input; streamed markdown; stateless per question (context rebuilt fresh each time)
+- Proactive digest: one-paragraph "what just happened" summary after each completed cycle (opt-in)
+- **Out of scope**: assistant cannot take actions — read-only only
 
 ---
 
 ## Deferred Items
 
-These are explicitly out of scope until after launch:
-
-- **Portfolio Layer UI** — create/manage teams, mandates, budgets via UI (managed via config files until then)
-- **Team Design Layer UI** — agent roster, role-capability matrix, ACL editor (managed via config files until then)
-- **Artifact promotion UI** — full approval workflow UI; currently an HTTP API call
-- **Docker/gVisor sandboxing for `RunBackground`** — Linux ACLs (Sprint 4) provide path-level isolation for MVP; container-level sandboxing added if the threat model requires it post-launch
-- **Temporal** — re-evaluate at Sprint 8 if the pm2/node-cron approach proves insufficient under 5-day unattended load (see ADR-0001)
-- **Additional use cases** (Thesis Copilot, Website Rebuild, DPO Operations, etc.) — design validated against spec in parallel; implementation after equity research is stable
+- **Portfolio Layer UI** — create/manage teams, mandates, budgets via UI (config files until then)
+- **Team Design Layer UI** — agent roster, role-capability matrix, ACL editor (config files until then)
+- **Template editor UI** (Sprint 16+) — `PUT /api/templates/:id`; edit YAML and skill files in browser without image rebuild
+- **Dynamic mission config changes** (Sprint 16+) — stop machine, rewrite `team.yaml` on volume via setup machine, restart; no image rebuild
+- **Firebase Auth / multi-user** — single `CONTROL_API_KEY` until then
+- **Temporal** — pm2/node-cron sufficient; re-evaluate if 5-day unattended load reveals gaps (see ADR-0001)
+- **Docker/gVisor sandboxing for `RunBackground`** — Linux ACLs provide path-level isolation for MVP
+- **Additional use cases** (Thesis Copilot, Website Rebuild, DPO Operations, etc.) — design validated against spec; implementation after equity research is stable
 
 ---
 

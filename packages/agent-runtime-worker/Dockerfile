@@ -52,6 +52,12 @@ RUN for i in 1 2 3 4 5; do \
 # Non-root daemon user (uid 999). Owns the daemon process; never runs as root.
 RUN useradd -m -u 999 -s /bin/bash magi-operator
 
+# Allow all users to access git repos under /missions and /app without "dubious
+# ownership" errors. Pool users (uid 60001+) differ from magi-operator (uid 999)
+# which owns the files written to the Fly Volume.
+RUN git config --system safe.directory /missions && \
+    git config --system safe.directory /app
+
 # sudoers: magi-operator and pool users may run magi-node and magi-job without
 # a password. The wrappers point to fixed paths — changing Node versions does
 # not require updating sudoers rules.

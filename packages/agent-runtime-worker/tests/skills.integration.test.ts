@@ -129,6 +129,7 @@ const TEAM_CONFIG_PATH = join(
 	"..",
 	"config",
 	"teams",
+	"test",
 	"skills-test.yaml",
 );
 

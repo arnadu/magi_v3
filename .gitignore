@@ -1,3 +1,5 @@
+secrets.env
+secrets.env.*
 node_modules/
 dist/
 __pycache__/
@@ -21,3 +23,5 @@ packages/agent-runtime-worker/home/
 \\\\wsl.localhost*/
 **/*\\wsl.localhost*/
 packages/agent-runtime-worker/tests/browse-web-last-run.ndjson
+fly.control-*.toml
+!fly.control-dev.toml

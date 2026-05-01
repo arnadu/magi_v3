@@ -534,6 +534,28 @@ async function main(): Promise<void> {
 	// Synchronous write so the line is never lost if the process exits immediately.
 	process.stdout.write("[daemon] Starting up…\n");
 
+	// Tee all stdout/stderr to $AGENT_WORKDIR/daemon.log (append mode, survives
+	// restarts). The operator can read this file via GET /log on the monitor server.
+	const workdirForLog = process.env.AGENT_WORKDIR ?? process.cwd();
+	try {
+		mkdirSync(workdirForLog, { recursive: true });
+		const logStream = createWriteStream(join(workdirForLog, "daemon.log"), { flags: "a" });
+		const origStdoutWrite = process.stdout.write.bind(process.stdout);
+		const origStderrWrite = process.stderr.write.bind(process.stderr);
+		// biome-ignore lint/suspicious/noExplicitAny: wrapping native write
+		(process.stdout.write as any) = (chunk: any, ...args: any[]) => {
+			logStream.write(chunk);
+			return origStdoutWrite(chunk, ...args);
+		};
+		// biome-ignore lint/suspicious/noExplicitAny: wrapping native write
+		(process.stderr.write as any) = (chunk: any, ...args: any[]) => {
+			logStream.write(chunk);
+			return origStderrWrite(chunk, ...args);
+		};
+	} catch {
+		// Log setup failure is non-fatal — daemon continues without file logging.
+	}
+
 	const teamConfigPath = process.env.TEAM_CONFIG;
 	const mongoUri = process.env.MONGODB_URI;
 
@@ -718,6 +740,7 @@ async function main(): Promise<void> {
 		maxCostUsd,
 		new Date(),
 		playbook,
+		workdir,
 	);
 	await monitor.start(monitorPort);
 	process.stdout.write(`[daemon] Monitor server listening on port ${monitorPort}\n`);

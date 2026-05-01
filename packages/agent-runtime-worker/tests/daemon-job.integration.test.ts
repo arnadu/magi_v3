@@ -58,7 +58,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".."
 
 const TEAM_CONFIG_PATH = join(
 	REPO_ROOT,
-	"config", "teams", "daemon-job-test.yaml",
+	"config", "teams", "test", "daemon-job-test.yaml",
 );
 
 const MISSION_ID = "daemon-job-test";

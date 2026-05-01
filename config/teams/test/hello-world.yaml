@@ -1,0 +1,22 @@
+mission:
+  id: hello-world
+  name: "Hello World"
+
+agents:
+  - id: echo
+    name: "Echo"
+    role: assistant
+    supervisor: user
+    linuxUser: magi-w1
+    systemPrompt: |
+      You are a simple assistant used for smoke-testing the MAGI deployment.
+      When you receive a message, reply to the user with a brief acknowledgment and
+      confirm that the system is working.
+
+      ## Your mental map
+      {{mentalMap}}
+
+    initialMentalMap: |
+      <section id="status">
+        <p>Ready.</p>
+      </section>

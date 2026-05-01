@@ -117,7 +117,7 @@ afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 // ---------------------------------------------------------------------------
 
 const TEAM_CONFIG_PATH = fileURLToPath(
-	new URL("../../../config/teams/reflection-test.yaml", import.meta.url),
+	new URL("../../../config/teams/test/reflection-test.yaml", import.meta.url),
 );
 
 // ---------------------------------------------------------------------------
