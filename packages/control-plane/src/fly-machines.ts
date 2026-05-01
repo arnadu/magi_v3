@@ -88,6 +88,15 @@ export async function provisionMission(
 					AGENT_WORKDIR: "/missions",
 					MONITOR_PORT: "4000",
 					TOOL_PORT: "4001",
+					// Pass runtime secrets explicitly — Fly app-level secrets are NOT
+					// automatically injected into machines created via the Machines API.
+					ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
+					MONGODB_URI: process.env.MONGODB_URI ?? "",
+					BRAVE_SEARCH_API_KEY: process.env.BRAVE_SEARCH_API_KEY ?? "",
+					OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
+					FRED_API_KEY: process.env.FRED_API_KEY ?? "",
+					FMP_API_KEY: process.env.FMP_API_KEY ?? "",
+					NEWSAPIORG_API_KEY: process.env.NEWSAPIORG_API_KEY ?? "",
 				},
 				mounts: [{ volume: vol.id, path: "/missions" }],
 				// No services — internal access only via WireGuard.

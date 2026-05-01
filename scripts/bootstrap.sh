@@ -119,7 +119,7 @@ create_app_if_missing "$MISSIONS_APP"
 
 # ── Generate FLY_API_TOKEN_MACHINES ───────────────────────────────────────────
 info "Generating scoped Fly API token for Machines API (1-year expiry)…"
-MACHINES_TOKEN="$(flyctl tokens create deploy -a "$MISSIONS_APP" --expiry 8760h --json 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d'"' -f4)"
+MACHINES_TOKEN="$(flyctl tokens create deploy -a "$MISSIONS_APP" --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
 [[ -n "$MACHINES_TOKEN" ]] || die "Failed to generate FLY_API_TOKEN_MACHINES."
 success "FLY_API_TOKEN_MACHINES generated."
 
@@ -144,7 +144,7 @@ set_secrets_if_needed() {
   for key in "${!pairs[@]}"; do
     [[ -n "${pairs[$key]}" ]] && args+=("${key}=${pairs[$key]}")
   done
-  [[ ${#args[@]} -gt 0 ]] && flyctl secrets set -a "$app" "${args[@]}" --stage
+  [[ ${#args[@]} -gt 0 ]] && flyctl secrets set -a "$app" "${args[@]}"
   success "Secrets set on $app."
 }
 
@@ -213,7 +213,7 @@ fi
 # ── GitHub Actions secret ─────────────────────────────────────────────────────
 if [[ "$GH_AVAILABLE" == true ]]; then
   info "Generating CI deploy token (image push scope)…"
-  CI_TOKEN="$(flyctl tokens create deploy -a "$MISSIONS_APP" --expiry 8760h --json 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d'"' -f4)"
+  CI_TOKEN="$(flyctl tokens create deploy -a "$MISSIONS_APP" --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
   if [[ -n "$CI_TOKEN" ]]; then
     gh secret set FLY_API_TOKEN_CI --body "$CI_TOKEN" 2>/dev/null && \
       success "GitHub secret FLY_API_TOKEN_CI set." || \

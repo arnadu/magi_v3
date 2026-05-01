@@ -452,7 +452,7 @@ Test team configs: `config/teams/test/{name}.yaml` — never seeded as selectabl
 | 12 | ✅ Done | Data factory + secondary model + Tool IPC server + background jobs |
 | 13 | ✅ Done | Hardening and launch prep |
 | 14 | ✅ Done | Cloud Infrastructure MVP: Fly.io execution plane, control plane, proxy, scheduler |
-| 15 | 🔄 In progress | Developer onboarding: bootstrap.sh, .dockerignore, MongoDB templates, daemon log viewer |
+| 15 | ✅ Done | Developer onboarding: `bootstrap.sh` (one-command setup, suffix support), `.dockerignore`, daemon log viewer (`GET /log`), test config relocation, Fly.io deployment hardening |
 
 ## Development Principles
 
@@ -562,6 +562,33 @@ This creates `/opt/magi/venv`, installs data-factory requirements there, and wri
 
 **`magi-python3` must be a wrapper script, not a symlink**
 If you run `sudo ln -sf /opt/magi/venv/bin/python3 /usr/local/bin/magi-python3`, imports will fail with `ModuleNotFoundError` even though the venv has the packages. Python uses the *symlink's filesystem location* (`/usr/local/bin/`) to find its venv — it resolves to the system site-packages, not `/opt/magi/venv/lib`. The wrapper script `exec /opt/magi/venv/bin/python3 "$@"` avoids this. Re-run `setup-dev.sh` to fix it (it creates the wrapper correctly). If you need to overwrite an existing symlink/script in-place: `sudo rm /usr/local/bin/magi-python3` first (can't overwrite a running executable).
+
+**Fly.io app-level secrets are NOT injected into Machines API-created machines**
+`flyctl secrets set` stores secrets at the app level. For apps deployed via `flyctl deploy`, these are automatically injected. For execution plane machines created via the Machines API (as `fly-machines.ts` does), secrets are NOT automatically injected — only the `env` object passed to the API call is available. Fix: `fly-machines.ts` explicitly passes all required secrets (`ANTHROPIC_API_KEY`, `MONGODB_URI`, etc.) in the machine `env` at creation time.
+
+**`flyctl secrets set --stage` + `flyctl deploy` drops the staged secrets**
+`--stage` marks secrets as pending but does NOT apply them when `flyctl deploy` runs. For control plane apps, always use `flyctl secrets set` (without `--stage`) before deploying. If the app has no machines yet, Fly will report "Secrets are staged for the first deployment" — this is fine, the secrets will be applied when the first machine is created by `flyctl deploy`.
+
+**`flyctl secrets set` fails on a Machines-only app with no current release**
+Apps whose machines are all created via the Machines API (execution plane) have no "current release". Running `flyctl secrets set` on them triggers a rolling restart which fails because there is no release image. Use `flyctl machine update <id> --env KEY=value` to update individual machine env vars directly, or use `flyctl secrets set --stage` followed by `flyctl machines restart <id>` (staged secrets ARE picked up on manual restart even though they're not applied by rolling deploy).
+
+**All control planes sharing the same `MONGODB_URI` share the `missions` collection**
+Multiple control plane instances (`magi-control-dev`, `magi-control-test-*`) that point to the same MongoDB URI use the same database (name is taken from the URI). Missions created through any control plane are visible in all. Use separate MongoDB databases (different URI `dbName` suffix) for true isolation between prod and dev.
+
+**Test instances can reuse the dev worker image**
+The execution plane image is app-specific by default (`registry.fly.io/${FLY_MISSIONS_APP_NAME}:latest`). For test instances, set `FLY_MISSIONS_IMAGE=registry.fly.io/magi-missions-dev:latest` as a Fly secret on the test control plane app to reuse the dev image without rebuilding:
+```bash
+flyctl secrets set -a magi-control-test-hello-world FLY_MISSIONS_IMAGE="registry.fly.io/magi-missions-dev:latest"
+```
+
+**Fly `[[vm]]` config syntax: V2 apps require `cpu_kind`/`cpus`, not `size`**
+The V1 `size = "shared-cpu-1x"` field is silently accepted by `flyctl deploy` but results in no machine being created (app stays "pending"). V2 Machines API apps need:
+```toml
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "256mb"
+```
 
 ## Quality Requirements
 

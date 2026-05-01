@@ -898,57 +898,49 @@ Execution Plane  magi-missions app  (on-demand Fly Machines, one per active miss
 
 ---
 
-## Sprint 15 — Developer Onboarding, Deployment Automation & Mission Templates
+## Sprint 15 — Developer Onboarding, Deployment Automation & Mission Templates ✅ Done
 
 **Goal: a developer who clones the repo and creates a Fly.io account needs only to fill in a `secrets.env` file and run one script to have a fully deployed system.**
 
-### Part A — `scripts/bootstrap.sh`
+### Part A — `scripts/bootstrap.sh` ✅
 
-Idempotent setup script:
-1. Check prerequisites (`flyctl`, `docker`, `git`, `gh` optional)
-2. Create Fly apps `magi-control` + `magi-missions` (skip if exist)
-3. Source `secrets.env`
-4. Set secrets on both apps
-5. Generate `FLY_API_TOKEN_MACHINES` (deploy-scoped, 1-year) and set on control plane
-6. Build + push execution image to `registry.fly.io/magi-missions:latest`
-7. Deploy control plane via `flyctl deploy`
+Idempotent setup script (`--suffix <name>` for named instances, interactive prompt if not passed):
+1. Check prerequisites (`flyctl`, `docker`, `git`, `python3`, `gh` optional)
+2. Create Fly apps `magi-control[-suffix]` + `magi-missions[-suffix]` (skip if exist)
+3. Source `secrets.env`; validate required keys
+4. Generate `FLY_API_TOKEN_MACHINES` (deploy-scoped, 1-year) via `python3` JSON extraction
+5. Set secrets on both apps (no `--stage` — must be applied before deploy)
+6. Build + push execution image to `registry.fly.io/magi-missions[-suffix]:latest`
+7. Deploy control plane via `flyctl deploy` (uses `fly.control-dev.toml` as template)
 8. If `gh` present: set `FLY_API_TOKEN_CI` GitHub secret for CI image builds
 
 `secrets.env.template` committed to repo; `secrets.env` gitignored.
 
-### Part B — Docker hardening
+Key lessons from implementation:
+- `flyctl secrets set --stage` + `flyctl deploy` silently drops staged secrets — removed `--stage`
+- `flyctl tokens create deploy --json` output has `"token": "..."` with a space; grep fails; use `python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'`
+- Fly app-level secrets are NOT automatically injected into machines created via the Machines API — `fly-machines.ts` passes all secrets explicitly in the machine `env` block at creation time
+- Test instances can reuse the dev worker image: set `FLY_MISSIONS_IMAGE=registry.fly.io/magi-missions-dev:latest` as a Fly secret on the control plane
+
+### Part B — Docker hardening ✅
 
 - Root `.dockerignore` prevents `.env`/`secrets.env` from entering image layers
 - `git config --system safe.directory /missions` in Dockerfile — fixes "dubious ownership" errors when pool users (different UIDs) access git repos owned by `magi-operator`
+- `[[vm]]` in `fly.control-dev.toml` updated from V1 `size = "shared-cpu-1x"` to V2 `cpu_kind`/`cpus`/`memory`
 
 ### Part C — MongoDB-backed mission templates
 
-Templates stored in a `templates` MongoDB collection (not baked-in env vars):
+Deferred to Sprint 16. Currently `teamConfig` is a free-text path in the UI (e.g. `test/hello-world`, `gold-digest`). Templates collection would enable a UI dropdown without hardcoding paths.
 
-```typescript
-interface MissionTemplate {
-  _id: string;           // e.g. "gold-digest"
-  name: string;
-  teamConfigYaml: string;
-  skills: Array<{ path: string; content: string }>;
-  updatedAt: Date;
-}
-```
+### Part D — Relocate test team configs ✅
 
-- `seedTemplates()` reads `config/teams/` on disk → upserts into MongoDB at control plane startup (idempotent)
-- `GET /api/templates` returns template list for UI dropdown
-- At provision: control plane materialises `team.yaml` and skill files onto the Fly Volume via a short-lived setup machine; sets `TEAM_CONFIG=/missions/{id}/team.yaml`
-- Future UI (Sprint 16+): `PUT /api/templates/:id` edits templates without image rebuilds
+Moved 6 test YAMLs (`word-count.yaml`, `skills-test.yaml`, `fetch-share.yaml`, `reflection-test.yaml`, `daemon-job-test.yaml`, `data-factory-test.yaml`) from `config/teams/` to `config/teams/test/`. Updated all integration test path references. Added `config/teams/test/hello-world.yaml` smoke-test team (1 agent, no data keys).
 
-### Part D — Relocate test team configs
+### Part E — Daemon log visibility ✅
 
-Move 6 test YAMLs (`word-count.yaml`, `skills-test.yaml`, etc.) to `config/teams/test/` — keeps them off the template list; update integration test paths accordingly.
-
-### Part E — Daemon log visibility
-
-- Daemon tees stdout/stderr to `$AGENT_WORKDIR/daemon.log` (append mode, survives restarts)
-- `GET /log?lines=N` endpoint in monitor server — reads tail of log file
-- "View Log" button in control plane UI — fetches and displays last 200 lines in a modal
+- Daemon tees stdout/stderr to `$AGENT_WORKDIR/daemon.log` at startup (append mode, survives restarts, non-fatal on error)
+- `GET /log?lines=N` endpoint in monitor server (default 200, max 2000) — reads tail of log file
+- "View Log" button in control plane UI — fetches and displays last 300 lines in a modal with refresh
 
 ---
 
