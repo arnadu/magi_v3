@@ -150,11 +150,27 @@ Production team configs: `config/teams/{name}.yaml`. Test configs: `config/teams
 | 14 | ✅ Done | Cloud Infrastructure MVP: Fly.io execution plane, control plane, proxy, scheduler |
 | 15 | ✅ Done | Developer onboarding: `bootstrap.sh`, `.dockerignore`, daemon log viewer, test config relocation |
 
+## Sprint Closure Checklist
+
+Run these before marking a sprint done — not optional.
+
+1. **Lint and tests pass** — `npm run lint && npm test`; fix all errors before closing
+2. **Security review** — run `/security-review`; fix CRITICAL/HIGH findings; log others in `docs/security/findings.md`
+3. **Threat model** — if the sprint added a new external HTTP call, a new `sudo` rule, a new process user, or a new IPC port: run `/threat-model` and commit the result
+4. **ADR** — if the sprint made a decision between concrete alternatives (technology, schema, design pattern): write a new ADR in `docs/adr/` linked from the sprint table; mark any superseded ADRs
+5. **CLAUDE.md sprint table** — mark the sprint `✅ Done` with a one-line summary
+
+---
+
 ## Development Principles
 
 **No fallbacks to accommodate tests.** When a sprint introduces a hard requirement, do not make it optional so old tests keep passing. Fix the test, not the production code. Code that silently degrades — optional fields, `?? default` catch-alls — written specifically so old tests keep passing is bad debt.
 
 **No optional security.** Security properties (identity, ACL, OS isolation) are never opt-in or conditional. If a field is required for correct operation, it is `required` in the TypeScript type and in the Zod schema.
+
+**No comments unless the why is non-obvious.** Only add a comment when it explains a hidden constraint, a subtle invariant, a non-obvious workaround, or behaviour that would surprise a reader. Never explain what the code does — well-named identifiers do that. Never reference the current task, fix, or caller — those belong in commit messages and PR descriptions.
+
+**Keep documentation current.** Code changes that introduce new architecture, new trust boundaries, or new design decisions must be accompanied by documentation updates in the same commit. A sprint that builds something new without an ADR or threat model update is incomplete.
 
 ## Testing Approach
 

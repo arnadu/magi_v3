@@ -1,6 +1,6 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 13 — OpenRouter integration (2026-04-18)
+**Last updated:** Sprint 15 — cloud deployment topology (TB-9/10/11); Sprint 13 finding status sync (2026-05-02)
 **Update cadence:** Update whenever a new trust boundary, external service, or privilege level is added.
 
 ---
@@ -14,10 +14,13 @@
 | External web content | **Untrusted** | Injected into agent context via FetchUrl / BrowseWeb / SearchWeb / data adapters |
 | Background job scripts | **Agent-trust** | Run as the agent's `linuxUser`; call ToolApiServer via short-lived bearer token |
 | Other agents in mission | **Agent-trust** | Write to sharedDir; post mailbox messages; write mission skills |
+| Fly.io Machines API | **External service** | Creates, starts, stops, destroys execution plane machines; does not access MongoDB or agent data |
 
 ---
 
-## Data Flow Diagram
+## Data Flow Diagrams
+
+### Execution Plane — Internal Architecture
 
 ```mermaid
 graph TB
@@ -34,11 +37,11 @@ graph TB
         CLITOOL["CLI tools\ncli:post · cli:tail · cli:usage"]
     end
 
-    subgraph HOST ["Host Machine"]
-        subgraph DAEMON_PROC ["Process: remyh (orchestrator)"]
+    subgraph HOST ["Execution Plane Machine"]
+        subgraph DAEMON_PROC ["Process: magi-operator (orchestrator)"]
             DAEMON["Daemon\norchestration loop\nheartbeat · reflection"]
             TOOLAPI["ToolApiServer\n127.0.0.1:4001\nbearer token auth"]
-            MONITOR["MonitorServer\n⚠️ 0.0.0.0:4000\nno auth  (finding F-008)"]
+            MONITOR["MonitorServer\n127.0.0.1:4000\n⚠️ no auth on mutating routes (F-008)"]
         end
 
         subgraph AGENT_PROC ["Subprocess: magi-wN (agent)"]
@@ -54,18 +57,18 @@ graph TB
         end
     end
 
-    %% Operator flows
-    BROWSER -->|"GET/POST\n⚠️ no auth on mutating routes"| MONITOR
+    %% Operator flows (local dev — direct access to port 4000)
+    BROWSER -->|"GET/POST\n⚠️ no auth on mutating routes (F-008)"| MONITOR
     CLITOOL --> MONGO
 
     %% Daemon internal
     DAEMON <-->|CRUD| MONGO
     MONITOR <-->|"Change Stream\nSSE push"| MONGO
     DAEMON -->|"LLM calls (ANTHROPIC_API_KEY)"| ANTHROPIC
-    DAEMON -->|"LLM calls (OPENROUTER_API_KEY)\nwhen MODEL or VISION_MODEL is an OpenRouter model"| OPENROUTER
+    DAEMON -->|"LLM calls (OPENROUTER_API_KEY)\nwhen MODEL or VISION_MODEL contains '/'"| OPENROUTER
 
     %% Daemon → external
-    DAEMON -->|"FetchUrl · BrowseWeb\n⚠️ no SSRF on FetchUrl (F-001)"| WEB
+    DAEMON -->|"FetchUrl · BrowseWeb\nSSRF blocked by ssrf.ts"| WEB
     DAEMON -->|SearchWeb| BRAVE
 
     %% Daemon → subprocesses (sudo boundary)
@@ -81,7 +84,7 @@ graph TB
     %% Background job IPC
     MAGIJOB -->|exec| MAGITOOL
     MAGITOOL -->|"POST /tools/\nAuthorization: Bearer"| TOOLAPI
-    TOOLAPI -->|"LLM calls (ANTHROPIC_API_KEY or OPENROUTER_API_KEY)"| ANTHROPIC
+    TOOLAPI -->|"LLM calls"| ANTHROPIC
     TOOLAPI -->|"FetchUrl · BrowseWeb"| WEB
     TOOLAPI -->|SearchWeb| BRAVE
 
@@ -90,38 +93,80 @@ graph TB
     DAEMON -.->|"read pending specs"| SHARED
 ```
 
+### Cloud Deployment — Control Plane + Execution Plane
+
+```mermaid
+graph TB
+    subgraph OPERATOR ["Operator"]
+        BROWSER2["Browser\nhttps://magi-control-{suffix}.fly.dev"]
+    end
+
+    subgraph CLOUD ["Fly.io (same org — private WireGuard mesh)"]
+        subgraph CTRL ["Control Plane — magi-control-{suffix} · always-on · 256 MB"]
+            CTRL_API["Express API\nmissions CRUD + lifecycle\nauth.ts — X-API-Key check"]
+            CTRL_PROXY["HTTP reverse proxy\n/missions/:id/**\ntarget resolved from MongoDB only"]
+            CTRL_CRON["node-cron\nscheduled_messages heartbeat"]
+            FLY_CLIENT["Fly Machines client\nfly-machines.ts"]
+        end
+
+        subgraph EXEC ["Execution Plane — magi-missions-{suffix} · on-demand · 1 GB · one per mission"]
+            MONITOR_CLOUD["MonitorServer :4000\nno public URL — internal only"]
+            DAEMON_CLOUD["Daemon + agent pool"]
+        end
+    end
+
+    subgraph EXT2 ["External Services"]
+        FLY_API["Fly Machines API\napi.machines.dev/v1"]
+        MONGO_ATLAS[("MongoDB Atlas")]
+        LLM_API["Anthropic / OpenRouter APIs"]
+    end
+
+    BROWSER2 -->|"HTTPS · X-API-Key header · TB-9"| CTRL_API
+    BROWSER2 -->|"HTTPS · X-API-Key header · TB-9"| CTRL_PROXY
+    CTRL_API --> CTRL_CRON
+    CTRL_API --> FLY_CLIENT
+    FLY_CLIENT -->|"HTTPS · FLY_API_TOKEN_MACHINES · TB-10"| FLY_API
+    FLY_API -.->|"provisions / controls"| EXEC
+    CTRL_PROXY -->|"HTTP · WireGuard fdaa::/8 · TB-11"| MONITOR_CLOUD
+    CTRL_API <-->|CRUD| MONGO_ATLAS
+    CTRL_CRON <-->|"read / write"| MONGO_ATLAS
+    DAEMON_CLOUD <-->|CRUD| MONGO_ATLAS
+    DAEMON_CLOUD -->|"LLM calls"| LLM_API
+```
+
 ---
 
 ## Trust Boundaries
 
 | Boundary | Crossing mechanism | Direction |
 |----------|--------------------|-----------|
-| **TB-1** External internet ↔ Daemon | HTTP (FetchUrl, BrowseWeb, APIs, LLM calls) | Inbound: untrusted content; Outbound: requests (including full conversation context to LLM providers) |
-| **TB-2** Operator ↔ MonitorServer | HTTP GET/POST (no auth) | Bidirectional |
-| **TB-3** Daemon (remyh) ↔ tool-executor (magi-wN) | `sudo -u magi-wN`, clean env | Outbound: commands; Inbound: stdout/stderr |
-| **TB-4** Daemon (remyh) ↔ magi-job (magi-wN) | `sudo -u magi-wN`, +token +data keys | Outbound: script + env; Inbound: exit code |
-| **TB-5** magi-job (magi-wN) ↔ ToolApiServer (remyh) | HTTP + bearer token, loopback | Outbound: tool calls; Inbound: results |
-| **TB-6** Agent LLM ↔ tool execution | Tool call parsing + AclPolicy | Agent-controlled input to privileged operations |
-| **TB-7** Agents ↔ sharedDir | Filesystem (Linux ACLs on workdirs only) | All agents read/write shared surface |
-| **TB-8** External content ↔ agent context | FetchUrl/BrowseWeb result injected into LLM messages | Untrusted text into trusted reasoning |
+| **TB-1** | External internet ↔ Daemon | HTTP (FetchUrl, BrowseWeb, APIs, LLM calls) | Inbound: untrusted content; Outbound: requests including full conversation context to LLM providers |
+| **TB-2** | Operator ↔ MonitorServer (local dev) | HTTP GET/POST on localhost:4000; no auth on mutating routes | Bidirectional |
+| **TB-3** | Daemon (magi-operator) ↔ tool-executor (magi-wN) | `sudo -u magi-wN`, clean env | Outbound: commands; Inbound: stdout/stderr |
+| **TB-4** | Daemon ↔ magi-job (magi-wN) | `sudo -u magi-wN`, +token +data keys | Outbound: script + env; Inbound: exit code |
+| **TB-5** | magi-job (magi-wN) ↔ ToolApiServer (magi-operator) | HTTP + bearer token, loopback | Outbound: tool calls; Inbound: results |
+| **TB-6** | Agent LLM ↔ tool execution | Tool call parsing + AclPolicy | Agent-controlled input to privileged operations |
+| **TB-7** | Agents ↔ sharedDir | Filesystem (Linux ACLs on workdirs; sharedDir open to all agents) | All agents read/write shared surface |
+| **TB-8** | External content ↔ agent context | FetchUrl/BrowseWeb result injected into LLM messages | Untrusted text into trusted reasoning |
+| **TB-9** | Browser → Control plane HTTPS | HTTPS to `magi-control-{suffix}.fly.dev`; `X-API-Key` header auth | Bidirectional (REST API + SSE proxy) |
+| **TB-10** | Control plane → Fly Machines API | HTTPS to `api.machines.dev/v1`; `FLY_API_TOKEN_MACHINES` bearer token | Outbound: machine lifecycle commands; Inbound: machine state |
+| **TB-11** | Control plane proxy → Execution plane | HTTP over Fly WireGuard (`fdaa::/8`); no transport auth (network-level only) | Bidirectional (proxy + SSE stream) |
 
 ---
 
 ## Implementing Files by Boundary
-
-This section is the index used by `/security-audit`. For each trust boundary, it lists every
-file that implements that crossing. Update this whenever a boundary's implementation changes.
 
 ### TB-1: External HTTP requests (FetchUrl, BrowseWeb, data adapters, LLM providers)
 - `packages/agent-runtime-worker/src/tools/fetch-url.ts` — HTTP GET, HTML/PDF extraction, image download
 - `packages/agent-runtime-worker/src/tools/browse-web.ts` — Playwright/Stagehand, SSRF check (initial nav only)
 - `packages/agent-runtime-worker/src/tools/research.ts` — Research sub-loop; calls FetchUrl and SearchWeb
 - `packages/agent-runtime-worker/src/tools/search-web.ts` — Brave Search API call
-- `packages/agent-runtime-worker/src/models.ts` — `parseModel()`: routes `provider/model` IDs to OpenRouter; bare IDs to Anthropic; both outbound with full conversation context
+- `packages/agent-runtime-worker/src/ssrf.ts` — `isPrivateHost()` regex + post-DNS-resolution check
+- `packages/agent-runtime-worker/src/models.ts` — `parseModel()`: routes `/`-delimited IDs to OpenRouter; bare IDs to Anthropic
 - `packages/skills/data-factory/scripts/adapters/` — all 7 Python adapters (fmp, fred, yfinance, newsapi, gdelt, imf, worldbank)
 
-### TB-2: Monitor server (operator interface)
-- `packages/agent-runtime-worker/src/monitor-server.ts` — HTTP server + SSE; binds `0.0.0.0:4000`; all routes
+### TB-2: MonitorServer (local dev — operator interface)
+- `packages/agent-runtime-worker/src/monitor-server.ts` — HTTP server + SSE; binds `127.0.0.1:4000`; mutating routes lack auth
 
 ### TB-3: tool-executor subprocess (Bash, WriteFile, EditFile)
 - `packages/agent-runtime-worker/src/tools.ts` — `checkPath()`, `AclPolicy`, `spawnSync`, clean child env, `verifyIsolation()`
@@ -154,100 +199,135 @@ file that implements that crossing. Update this whenever a boundary's implementa
 - `packages/agent-runtime-worker/src/reflection.ts` — cumulative summary injected as user message at session start
 - `packages/agent-runtime-worker/src/mailbox.ts` — `listMessages` `$regex` search; message bodies formatted as user turns
 
+### TB-9: Browser → Control plane (operator HTTPS)
+- `packages/control-plane/src/auth.ts` — `X-API-Key` middleware; validates against `CONTROL_API_KEY` env var
+- `packages/control-plane/src/missions.ts` — mission CRUD + lifecycle routes; input validation for `missionId`, `teamConfig`
+- `packages/control-plane/src/index.ts` — Express app assembly; auth middleware applied to all routes
+
+### TB-10: Control plane → Fly Machines API
+- `packages/control-plane/src/fly-machines.ts` — Machines API client; reads `FLY_API_TOKEN_MACHINES` and `FLY_MISSIONS_APP_NAME` from env only; never user-supplied
+- `packages/control-plane/src/scheduler.ts` — node-cron heartbeat; calls `resumeMission()` before delivering scheduled messages
+
+### TB-11: Control plane proxy → Execution plane
+- `packages/control-plane/src/proxy.ts` — resolves `privateIp` from MongoDB `missions` collection by `missionId`; validates machine state before forwarding
+- `packages/control-plane/src/missions.ts` — stores `machineId` + `privateIp` at provision time
+
 ---
 
 ## STRIDE Threat Table
 
-Findings reference `docs/security/findings.md` by ID. `✅` = mitigated; `⚠️` = open finding; `~` = partially mitigated; `A` = accepted.
+`✅` = mitigated; `⚠️` = open finding (see `findings.md`); `~` = partially mitigated; `A` = accepted.
 
 ### TB-1: External internet → FetchUrl / BrowseWeb
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| SSRF via FetchUrl — fetch internal services | **I / E** | ⚠️ F-001 | No hostname validation in FetchUrl |
-| SSRF via BrowseWeb post-navigation redirect | **I / E** | ⚠️ F-002 | Initial check only; Stagehand can navigate further |
-| DNS rebinding — IP changes between check and connect | **I** | ~ | Post-redirect check provides partial mitigation; fully solved by F-002 fix |
-| Oversized response — OOM crash | **D** | ✅ | 50 MB response cap (S4-M1) |
-| Malicious content injected into agent context | **T** | ~ TB-8 | Trust boundary markers on BrowseWeb; FetchUrl result injected without markers (see TB-8) |
-| Conversation data (system prompt, mental map, tool results) sent to OpenRouter third-party proxy | **I** | ~ | OpenRouter has separate data-retention/logging policy from Anthropic; full financial mission context transmitted when OpenRouter models used; OPENROUTER_API_KEY isolated to daemon process (not forwarded to agent subprocesses or background jobs) |
-| OPENROUTER_API_KEY leaks into tool-executor child env | **I** | ~ | Mitigated by clean-env spawn (only PATH+HOME); `verifyIsolation()` checks `ANTHROPIC_API_KEY` only — does not check `OPENROUTER_API_KEY`; silent gap in startup invariant |
+| SSRF via FetchUrl — fetch internal RFC-1918 or cloud-metadata services | I / E | ✅ F-001 | Fixed Sprint 13: `ssrf.ts` `isPrivateHost()` validates hostname + post-DNS-resolution IP |
+| SSRF via BrowseWeb post-navigation redirect | I / E | ⚠️ F-002 | Initial SSRF check only; Stagehand `agent().execute()` can navigate further without re-checking |
+| DNS rebinding — IP changes between check and connect | I | ~ | Post-redirect check in `fetch-url.ts` partially mitigates; fully resolved when F-002 is fixed |
+| Oversized response — OOM crash | D | ✅ | 50 MB response cap; Content-Length checked before read |
+| Malicious content injected into agent context | T | ~ | Trust boundary markers on BrowseWeb; FetchUrl result injected as plain markdown (see TB-8) |
+| Full conversation context sent to OpenRouter third-party proxy | I | ~ | OpenRouter has separate data-retention policy; `OPENROUTER_API_KEY` is daemon-only, never forwarded to subprocesses |
+| `OPENROUTER_API_KEY` leaked into tool-executor child env | I | ~ | Clean-env spawn (PATH+HOME only) mitigates; `verifyIsolation()` checks `ANTHROPIC_API_KEY` only — does not check `OPENROUTER_API_KEY` |
+| Fly.io WireGuard range (`fdaa::/8`) reachable via FetchUrl/BrowseWeb from execution plane | I / E | ~ | `ssrf.ts` blocks ULA prefix `fd[0-9a-f]{2}:` which covers `fdaa::`; verify after any `ssrf.ts` change |
 
-### TB-2: Operator → MonitorServer
+### TB-2: Operator → MonitorServer (local dev)
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| Unauthenticated POST /stop, /send-message, /extend-budget | **S / E** | ⚠️ F-008 | Binds to 0.0.0.0:4000; no auth on mutating routes |
-| SSE stream exposes all mission data on network | **I** | ⚠️ F-009 | Any host reachable on port 4000 sees full agent activity |
-| CORS wildcard enables cross-origin control | **S / T** | ⚠️ F-012 | `Access-Control-Allow-Origin: *` on all responses; cross-origin page open in operator's browser can call POST /stop, /send-message, /extend-budget |
+| Unauthenticated `POST /stop`, `/send-message`, `/extend-budget` | S / E | ⚠️ F-008 | Binds to `127.0.0.1:4000` (localhost only); no auth on mutating routes |
+| SSE stream exposes all mission data on localhost | I | ⚠️ F-009 | Any process on the machine can subscribe to the full agent activity stream |
 
 ### TB-3: Daemon → tool-executor (sudo boundary)
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| API key leaks into child process env | **I** | ✅ | S4-H2: clean env (PATH+HOME only); verified by `verifyIsolation()` at startup |
-| Agent writes to another agent's workdir via Bash | **T / E** | ✅ | OS Linux ACLs (setfacl); covered by acl.integration.test.ts |
-| Shell injection in setfacl call | **E** | ✅ | S4-H1: `execFileSync("setfacl", [...])`, no shell |
+| API key leaks into child process env | I | ✅ | Clean env (PATH+HOME only); verified by `verifyIsolation()` at startup |
+| Agent writes to another agent's workdir via Bash | T / E | ✅ | OS Linux ACLs (setfacl); covered by `acl.integration.test.ts` |
+| Shell injection in setfacl call | E | ✅ | `execFileSync("setfacl", [...])` — no shell interpolation |
 
 ### TB-4: Daemon → magi-job (sudo boundary + token injection)
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| linuxUser escalation via crafted job spec | **E** | ✅ | A5: linuxUser removed from JobSpec; derived from agentId via team config |
-| scriptPath traversal via symlink — run arbitrary executable | **T / E** | ⚠️ F-013 | A6 fix uses `join()` not `realpathSync()`; symlink in sharedDir/jobs/pending/ passes permittedPaths check but OS follows symlink at execution time |
-| MAGI_TOOL_TOKEN exposed in job log | **I** | A | A-003: token short-lived (revoked on job exit); logs within sharedDir only |
-| MAGI_TOOL_TOKEN orphaned on spawn() failure | **I** | ⚠️ F-014 | Token issued before `spawn()`; only revoked in `close` handler; synchronous throw leaves token live until daemon restart |
-| No wall-clock timeout — hung job holds concurrency slot | **D** | ⚠️ F-006 | No `JobSpec.timeoutMs`; max 3 concurrent slots can all be blocked |
-| Orphaned jobs/running on daemon restart | **D** | ⚠️ F-010 | Jobs in running/ at restart have no token; magi-tool calls fail silently |
+| linuxUser escalation via crafted job spec | E | ✅ | `linuxUser` removed from `JobSpec`; derived from `agentId` via team config (S12-A5) |
+| scriptPath traversal via symlink | T / E | ✅ F-013 | Fixed Sprint 13: `realpathSync()` after `join()`; real path checked against `permittedPaths` |
+| `MAGI_TOOL_TOKEN` not revoked if `spawn()` throws | I | ✅ F-014 | Fixed Sprint 13: token issued inside try; catch revokes immediately |
+| `MAGI_TOOL_TOKEN` exposed in job log files | I | A | Token short-lived (revoked on exit); logs within sharedDir only (A-003) |
+| No wall-clock timeout — hung job holds concurrency slot | D | ✅ F-006 | Fixed Sprint 13: `DEFAULT_JOB_TIMEOUT_MS = 30 min`; SIGKILL to process group on expiry |
+| Orphaned `jobs/running/` on daemon restart | D | ✅ F-010 | Fixed Sprint 13: `recoverOrphanedJobs()` at startup moves running → pending |
 
 ### TB-5: magi-job → ToolApiServer (bearer token)
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| Token theft — leaked token used by another process | **S** | ~ | Short-lived; bound to AclPolicy; cannot escalate beyond it |
-| Token cannot exceed agent's AclPolicy | **E** | ✅ | AclPolicy enforced by ToolApiServer on every call |
-| Client timeout exceeds server timeout — concurrency slot held after 504 | **D** | ⚠️ F-015 | `magi_tool.py` timeout=300 s; server aborts at 120 s; client waits 180 s more, blocking daemon concurrency slot |
+| Token theft — used by another process on same machine | S | ~ | Short-lived; bound to agent's AclPolicy; cannot escalate beyond it |
+| Token exceeds agent's AclPolicy | E | ✅ | AclPolicy enforced by ToolApiServer on every call |
+| Client timeout outlasts server timeout — concurrency slot held | D | ✅ F-015 | Fixed Sprint 13: Python SDK timeout 135 s (server 120 s + 15 s buffer) |
 
 ### TB-6: Agent LLM → tool execution (AclPolicy boundary)
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| Symlink traversal in WriteFile/EditFile | **T / E** | ⚠️ F-003 | `resolve()` normalises `..` but does not follow symlinks |
-| file:// LFI via FetchUrl | **I** | ✅ | S4-C1: file:// protocol rejected |
-| Bash timeout bypass — pass large timeout value | **D** | ✅ | S4-M3: capped at 600 s |
-| Bash background processes escape spawnSync timeout | **D** | ⚠️ F-011 | SIGKILL goes to direct child only; `&` escapes it |
-| PostMessage to arbitrary recipient | **T** | ✅ | S4-M2: recipient validated against team roster |
+| Symlink traversal in WriteFile/EditFile | T / E | ✅ F-003 | Fixed Sprint 13: `realpathSync()` after `resolve()`; both resolved and real paths checked |
+| `file://` LFI via FetchUrl | I | ✅ | `file://` protocol rejected at URL parse (S4-C1) |
+| Bash timeout bypass — pass large timeout value | D | ✅ | Capped at 600 s (S4-M3) |
+| Bash background processes escape spawnSync timeout | D | ✅ F-011 | Fixed Sprint 13: `execa` + `detached: true`; SIGKILL to process group |
+| PostMessage to arbitrary recipient | T | ✅ | Recipient validated against team roster (S4-M2) |
 
 ### TB-7: Agents ↔ sharedDir (shared write surface)
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| Agent overwrites another agent's sharedDir output | **T** | A | Intentional design (collaboration via shared files) |
-| Adversarial SKILL.md in mission/ tier | **T** | ~ | description injected into all agents' system prompts; no sanitization; partially mitigated by symlink exclusion in discoverSkills() |
-| Agent writes crafted schedule label — NoSQL operator injection | **T** | ⚠️ F-005 | `spec.label` used as MongoDB upsert filter without type validation |
+| Agent overwrites another agent's sharedDir output | T | A | Intentional design (collaboration); workdir ACL isolation is the backstop (A-001) |
+| Adversarial SKILL.md in mission/ tier (prompt injection via skill description) | T | ~ | `description` injected into all agents' system prompts; no sanitisation; symlinks excluded in `discoverSkills()` |
+| Agent writes crafted schedule label — MongoDB operator injection | T | ✅ F-005 | Fixed Sprint 13: `typeof spec.label !== 'string'` guard; invalid specs skipped |
 
 ### TB-8: External content → agent context (prompt injection)
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| Injected web content overrides agent instructions | **T** | ~ | BrowseWeb has trust boundary markers; FetchUrl result injected without markers |
-| Compromised agent writes adversarial HTML to mental map | **T** | ~ | patchMentalMap uses jsdom surgical patching; arbitrary section insertion possible |
-| MongoDB `$regex` ReDoS via LLM-generated search string | **D** | ⚠️ F-004 | `opts.search` in ListMessages passed as unescaped regex |
+| Injected web content overrides agent instructions | T | ~ | BrowseWeb has trust boundary markers; FetchUrl result injected as plain markdown |
+| Compromised agent writes adversarial HTML to mental map | T | ~ | `patchMentalMap` uses jsdom surgical patching; arbitrary section insertion possible via id-bearing elements |
+| MongoDB `$regex` ReDoS via LLM-generated search string | D | ✅ F-004 | Fixed Sprint 13: metacharacters escaped; search string capped at 200 chars |
+
+### TB-9: Browser → Control plane HTTPS
+
+| Threat | Category | Status | Notes |
+|--------|----------|--------|-------|
+| API key brute force or theft → unauthorized mission control | S | ~ | Mitigated by strong 32-byte random key and HTTPS; no rate limiting on auth endpoint → ⚠️ F-016 |
+| Malicious `missionId`/`teamConfig` parameters → path traversal | T | ✅ | `missionId` sanitised before use as volume/machine name; `teamConfig` resolved against fixed image paths only |
+| API key intercepted in transit | I | ✅ | Fly.io enforces HTTPS on all `*.fly.dev` domains; HTTP redirects to HTTPS |
+
+### TB-10: Control plane → Fly Machines API
+
+| Threat | Category | Status | Notes |
+|--------|----------|--------|-------|
+| `FLY_API_TOKEN_MACHINES` theft → unauthorized machine creation/destruction | S | ~ | Token is deploy-scoped to one Fly app only; stored as Fly secret, not in code or image |
+| Leaked token used to inject malicious env vars into new machines | T | ~ | App-scoped token cannot affect other Fly apps or Atlas; env vars at create time controlled by `fly-machines.ts` |
+| `FLY_API_TOKEN_MACHINES` forwarded to execution plane machines | I | ✅ | `fly-machines.ts` explicitly does NOT include this token in machine `env` |
+| App name or machine ID from user input → Machines API targeted to wrong app | T | ✅ | App name from `FLY_MISSIONS_APP_NAME` env var only; machine IDs from MongoDB `missions` collection only |
+
+### TB-11: Control plane proxy → Execution plane
+
+| Threat | Category | Status | Notes |
+|--------|----------|--------|-------|
+| Proxy target from user input → SSRF to internal Fly services | T / E | ✅ | `proxy.ts` resolves `privateIp` from MongoDB by `missionId`; never interpolates request parameters |
+| Proxy forwards to stopped machine | D | ✅ | `proxy.ts` validates machine state == "running" before forwarding; returns 404 otherwise |
+| Monitor server unauthenticated mutating routes exposed via proxy | S / E | ⚠️ F-008 | Operator `CONTROL_API_KEY` is the only auth layer; monitor's own mutating endpoints have no token check |
+| WireGuard traffic interceptable within Fly org | I | ~ | WireGuard encrypts in transit; peers in same org share the mesh — acceptable for single-org deployment |
 
 ---
 
 ## OWASP LLM Top 10 Threat Table
 
-STRIDE covers infrastructure threats well but has no category for LLM-specific attack vectors.
-The [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
-fills this gap. Only items directly relevant to MAGI are included.
-
 `✅` = mitigated; `⚠️` = open finding; `~` = partially mitigated; `A` = accepted.
 
-| OWASP ID | Name | MAGI relevance | Implementing files | Status | Notes |
-|----------|------|----------------|-------------------|--------|-------|
-| **LLM01** | Prompt Injection | Untrusted content (web pages, news articles, mailbox bodies, SKILL.md descriptions) enters the LLM's context and may override agent instructions or cause the agent to take unintended privileged actions | TB-8 files; `skills.ts`; `mailbox.ts` | ~ | BrowseWeb wraps output in trust boundary markers; FetchUrl injects result as plain markdown with no boundary markers. SearchWeb result titles/descriptions also unguarded. No hard technical enforcement — LLM reasoning is the only defence once content is in context. Partially mitigated by role-focused system prompts. |
-| **LLM02** | Insecure Output Handling | LLM output directly drives privileged operations: Bash commands, WriteFile paths, JobSpec `scriptPath` fields, schedule labels, PostMessage recipients. A compromised LLM call can write arbitrary files, run arbitrary scripts, or inject messages. | `tools.ts`; `daemon.ts`; `agent-runner.ts` | ~ | AclPolicy (`checkPath`, `permittedPaths`) constrains file operations. `scriptPath` validated against `permittedPaths` (A6 fix). Schedule label type guard open (F-005). PostMessage recipient validated against team roster. Bash commands are unconstrained within the agent's linuxUser — this is intentional (OS ACLs are the backstop). |
-| **LLM06** | Sensitive Information Disclosure | Agent system prompt contains: role description, mental map (may include data observations), skills block (file paths). When using OpenRouter models, the full system prompt and conversation (including financial observations in the mental map) are transmitted to a third-party proxy. | `prompt.ts`; `agent-runner.ts`; `mailbox.ts`; `models.ts` | ~ | System prompt does not contain API keys or credentials. Mental map and skills block are mission-internal. PostMessage recipients validated against team roster. **New risk (OpenRouter):** financial mission context sent to third-party proxy with separate data policy when `MODEL` or `VISION_MODEL` contains `/`. |
-| **LLM07** | System Prompt Leakage | An injected instruction could ask the agent to repeat its system prompt back in a message, revealing role constraints and mental map contents to an attacker who controls the FetchUrl target or a compromised agent. | `prompt.ts`; `tools/fetch-url.ts`; `mailbox.ts` | ~ | PostMessage recipients restricted to team roster (no external exfiltration path via mailbox). FetchUrl to an attacker-controlled URL could exfiltrate if the agent is tricked into including system prompt content in the URL. No hard mitigation beyond prompt design. |
-| **LLM08** | Excessive Agency | Agents have broad capabilities: Bash (arbitrary shell commands as their linuxUser), WriteFile, EditFile, PostMessage, Research, FetchUrl, BrowseWeb, scheduled jobs. An injected instruction can cause an agent to take far wider action than intended — deleting files, spamming agents, submitting background jobs. | `agent-runner.ts`; `tools.ts`; `daemon.ts` | ~ | OS-level ACL limits blast radius to the agent's own workdir + sharedDir. `MAX_COST_USD` cap prevents unbounded spending. No per-turn tool call cap (only `maxTurns` on Research sub-loops). `RESEARCH_MAX_TURNS=10` limits Research sub-loop depth. Background job submission is gated by `runPendingJobs()` validations (agentId, scriptPath) but not by a per-session job count limit. |
-| **LLM09** | Overreliance | Agents (especially Alex/Marco/Sam) read data factory outputs (briefs, series CSVs) and act on them without independently verifying freshness or accuracy. Stale or corrupted factory data leads to incorrect recommendations with no error signal. | `data-factory-client/SKILL.md`; `catalog.py` | ~ | `catalog.json` tracks `fetched_at` and `status` (ok/error/stale). Consumer SKILL.md instructs agents to check status before use. No enforcement — agents can ignore stale flags. Fallback rule in SKILL.md: use Research tool if status=error/stale. |
+| OWASP ID | Name | MAGI relevance | Status | Notes |
+|----------|------|----------------|--------|-------|
+| **LLM01** | Prompt Injection | Untrusted content (web pages, news articles, mailbox bodies, SKILL.md descriptions) enters LLM context and may override agent instructions | ~ | BrowseWeb wraps output in trust boundary markers; FetchUrl and SearchWeb injected as plain markdown. Role-focused system prompts are the only defence once content is in context. |
+| **LLM02** | Insecure Output Handling | LLM output drives: Bash commands, WriteFile paths, JobSpec `scriptPath`, schedule labels, PostMessage recipients | ~ | AclPolicy constrains file paths. `scriptPath` validated against `permittedPaths`. Schedule label type guard added (F-005). PostMessage recipient validated against team roster. Bash unconstrained within `linuxUser` — OS ACLs are the backstop. |
+| **LLM06** | Sensitive Information Disclosure | System prompt contains role, mental map (may include financial observations), skills block. Full conversation transmitted to OpenRouter when non-Anthropic models are used. | ~ | No credentials in system prompt. **OpenRouter risk:** financial mission context sent to third-party proxy with separate data-retention policy when `MODEL` or `VISION_MODEL` contains `/`. |
+| **LLM07** | System Prompt Leakage | Injected instruction asks agent to include system prompt content in a FetchUrl URL, leaking role constraints and mental map. | ~ | PostMessage recipients restricted to team roster (no external exfiltration via mailbox). FetchUrl to attacker-controlled URL could exfiltrate if agent is tricked. No hard mitigation beyond prompt design. |
+| **LLM08** | Excessive Agency | Agents have broad capabilities: Bash (arbitrary shell), WriteFile, EditFile, PostMessage, Research, FetchUrl, BrowseWeb, scheduled jobs. | ~ | OS ACLs limit blast radius to agent's workdir + sharedDir. `MAX_COST_USD` caps spending. No per-session job-submission count limit. `RESEARCH_MAX_TURNS=10` limits Research sub-loop depth. |
+| **LLM09** | Overreliance | Agents read data factory outputs without independently verifying freshness. Stale/corrupted data leads to incorrect recommendations. | ~ | `catalog.json` tracks `fetched_at` and `status`. Consumer SKILL.md instructs checking status before use. No enforcement — agents can ignore stale flags. |

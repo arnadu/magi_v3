@@ -83,7 +83,8 @@ when working in this project with Claude Code.
 
 | Command | When to run | Scope | Writes to |
 |---------|-------------|-------|-----------|
-| `/threat-model` | After merging a new feature; after adding an external service | Sprint diff (default) or full (`--full`) | `threat-model.md` + `findings.md` |
+| `/sprint-close` | At sprint close | Automated checklist: lint, tests, security trigger, threat model trigger, ADR trigger | Reports only |
+| `/threat-model` | After adding an external service, sudo rule, new port, or new process user | Sprint diff (default) or full (`--full`) | `threat-model.md` + `findings.md` |
 | `/security-review` | Before closing every sprint | Sprint diff only | `findings.md` |
 | `/security-audit` | Every 3–4 sprints; pre-production | All implementing files per boundary | `findings.md` |
 

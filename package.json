@@ -12,7 +12,11 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
     "lint": "biome check packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
-    "lint:fix": "biome check --write --unsafe packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts"
+    "lint:fix": "biome check --write --unsafe packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
+    "security:sast": "semgrep scan --config p/default packages/ --error",
+    "security:secrets": "gitleaks detect --source . --no-banner",
+    "security:deps": "npm audit --audit-level=high",
+    "security": "npm run security:sast && npm run security:secrets && npm run security:deps"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
