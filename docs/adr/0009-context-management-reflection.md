@@ -282,6 +282,29 @@ The implementation differs from the draft in several ways:
 | Crash safety | Summary saved before compact — no transactions needed; worst case is a redundant retry |
 | Idempotency | Compaction is idempotent (`updateMany` with `$set`); `UpdateMentalMap` uses replace semantics; reflection can safely retry on the same session |
 
+## Known limitation — Mental Map growth
+
+The **conversation** is bounded by this ADR's session-boundary compaction. The **Mental Map**
+is not. Reflection updates the Mental Map's content between sessions (the reflection LLM calls
+`UpdateMentalMap` 0–N times to patch sections), but there is no mechanism to shrink the HTML
+document itself when it grows too large.
+
+On a long mission an agent may accumulate hundreds of task items and working-note paragraphs.
+The Mental Map is injected into every system prompt; an HTML document that grows to 10 k+ tokens
+is still acceptable (the context window is 200 k), but growth is effectively unbounded today.
+
+Two mitigations are planned but not yet implemented:
+1. **Reflection-time pruning**: extend the reflection prompt to instruct the LLM to mark tasks
+   `done` as stale and remove them, and to condense verbose working-notes entries.
+2. **Size-triggered compaction pass**: if the Mental Map exceeds a token threshold at session
+   start, run a separate "Mental Map compaction" LLM call (distinct from the narrative
+   reflection) that rewrites over-grown sections to a compact summary.
+
+Until these are implemented, operators can manually reset a runaway Mental Map by posting a
+message that instructs the agent to tidy its `tasks` and `working-notes` sections.
+
+---
+
 ## Comparison with prior art
 
 | | MAGI v2 | MAGI v3 (this ADR) |

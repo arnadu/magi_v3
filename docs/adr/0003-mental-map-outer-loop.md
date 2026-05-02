@@ -6,7 +6,7 @@ Accepted
 ## Context
 
 Agents need persistent working memory that survives across inner-loop runs, mailbox
-deliveries, and Temporal replays. This memory must:
+deliveries, and session boundaries. This memory must:
 - Hold a prioritised task queue with deadlines and source references
 - Store free-form working notes the agent updates during planning
 - Track what the agent is waiting for from teammates

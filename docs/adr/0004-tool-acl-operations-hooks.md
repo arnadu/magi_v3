@@ -47,8 +47,9 @@ making it easy to miss and hard to audit.
   the policy denial reason.
 - Operations hooks are pure functions; they are injected in tests via stub implementations
   that assert correct call patterns.
-- `workspace-manager` provisions real Linux ACLs; `identity-access-service` supplies the
-  policy object used to construct the hooks.
+- `WorkspaceManager` provisions real Linux ACLs (`setfacl`) and returns `AgentIdentity`
+  objects. `AclPolicy` is constructed per-agent from the identity and passed to tool
+  factories as the hook source.
 - In integration tests, the OS-level rejection and the policy-level rejection are asserted
   to match for the same path (defense-in-depth test).
 - Tool registration filtering is a pure function `filterTools(allTools, policy) → AgentTool[]`
