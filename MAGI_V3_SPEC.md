@@ -1,5 +1,14 @@
 # MAGI V3 — Technical Specification
 
+> **Implementation Status (as of Sprint 15)**
+>
+> This spec describes the intended architecture, written at Sprint 0. Most of it is implemented as written. The following sections describe components that were **superseded or deferred**:
+> - **§3 Orchestration (Temporal)** — Temporal was dropped (ADR-0001); replaced by pm2 + node-cron
+> - **§6 Mailbox (Redis Streams)** — Redis dropped (ADR-0006); replaced by MongoDB Change Streams
+> - **§9 Artifact Store (MinIO)** — deferred indefinitely; agents use git + shared filesystem instead
+>
+> For the as-built architecture and current file locations, see [CLAUDE.md](CLAUDE.md) and [docs/implementation-history.md](docs/implementation-history.md).
+
 ## 1. Overview
 
 MAGI V3 is an autonomous multi-agent system where teams of AI agents run long-horizon missions. Agents write and run code, browse the web, process data, communicate with teammates, and publish work products.
