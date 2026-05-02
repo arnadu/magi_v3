@@ -85,6 +85,8 @@ See [MAGI_V3_SPEC.md](MAGI_V3_SPEC.md) for the full technical design and [docs/i
 
 ## Cloud Deployment (Fly.io)
 
+**Full deployment guide** (environment strategy, GitHub Actions setup, integration test environments, operations, cost reference, troubleshooting): [docs/deployment.md](docs/deployment.md)
+
 ### One-command setup
 
 ```bash

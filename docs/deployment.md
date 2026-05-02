@@ -1,0 +1,645 @@
+# Deployment and Operations Guide
+
+This document covers the full lifecycle: first-time cloud setup, launching missions, running
+integration tests on Fly.io, day-to-day operations, and cost guidance.
+
+**For local dev setup**, see [USER_GUIDE.md](../USER_GUIDE.md) — this document focuses on the
+cloud path.
+
+---
+
+## Table of Contents
+
+1. [Prerequisites and costs](#1-prerequisites-and-costs)
+2. [First-time setup: `bootstrap.sh`](#2-first-time-setup-bootstrapsh)
+3. [GitHub Actions CI/CD setup](#3-github-actions-cicd-setup)
+4. [Environment strategy](#4-environment-strategy)
+5. [Launching a mission](#5-launching-a-mission)
+6. [Fly.io integration test environments](#6-flyio-integration-test-environments)
+7. [Observing and debugging](#7-observing-and-debugging)
+8. [Operations reference](#8-operations-reference)
+9. [Cost reference](#9-cost-reference)
+10. [Troubleshooting](#10-troubleshooting)
+
+---
+
+## 1. Prerequisites and costs
+
+### Tools required
+
+| Tool | Install | Purpose |
+|------|---------|---------|
+| `flyctl` | `brew install flyctl` or `curl -L https://fly.io/install.sh \| sh` | Fly.io CLI |
+| `docker` | Docker Desktop or CLI | Building execution plane image |
+| `git` | — | Source checkout |
+| `gh` (optional) | `brew install gh` | Setting GitHub Actions secrets |
+
+### Accounts and API keys
+
+You need:
+- **Fly.io account** — free tier covers the control plane machine; execution plane machines are billed when running (see §9)
+- **MongoDB Atlas** — free M0 cluster (512 MB) is sufficient for development and light production use
+- **Anthropic API key** — missions use Claude Sonnet by default; each daily equity-research cycle costs roughly $1–5 depending on team size and research depth
+- **Optional data keys**: `BRAVE_SEARCH_API_KEY` (free tier: 2000 req/month), `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY` — only needed for equity-research or data-factory missions
+
+### Rough cost expectations (upfront)
+
+| Resource | Cost |
+|----------|------|
+| Control plane machine (256 MB, always-on) | ~$1.94/month (within free allowance on most accounts) |
+| Execution plane machine (1 GB, shared CPU) | ~$0.006/hour while running; $0 when suspended |
+| Fly Volume (10 GB per mission) | ~$1.50/month while attached |
+| MongoDB Atlas M0 | Free |
+| Anthropic API | ~$1–10 per mission-day depending on workload |
+
+A typical single-mission dev environment costs under $5/month total.
+
+---
+
+## 2. First-time setup: `bootstrap.sh`
+
+### Step 1 — Fill in secrets
+
+```bash
+cp secrets.env.template secrets.env
+# Edit secrets.env — fill in at minimum:
+#   ANTHROPIC_API_KEY
+#   MONGODB_URI        (Atlas connection string, e.g. mongodb+srv://user:pass@cluster.mongodb.net/magi-dev)
+#   CONTROL_API_KEY    (generate with: openssl rand -hex 32)
+```
+
+`secrets.env` is gitignored. Never commit it.
+
+**MongoDB URI note**: the database name at the end of the URI (e.g. `/magi-dev`) determines which
+database the control plane and execution plane use. Use distinct names per environment to avoid
+missions bleeding between environments (see §4).
+
+### Step 2 — Run bootstrap
+
+```bash
+bash scripts/bootstrap.sh --suffix dev
+```
+
+The `--suffix` parameter is required. It determines the Fly.io app names:
+- `magi-control-dev` — the always-on control plane
+- `magi-missions-dev` — the execution plane machine pool
+
+The script is **idempotent** — safe to re-run. It skips steps that are already done (app already
+exists, image already pushed, etc.).
+
+### What bootstrap.sh does
+
+```
+1. Check prerequisites (flyctl, docker, git)
+2. flyctl auth whoami — prompts login if not authenticated
+3. fly apps create magi-control-{suffix}     (skips if exists)
+4. fly apps create magi-missions-{suffix}    (skips if exists)
+5. Source secrets.env
+6. fly secrets set -a magi-control-{suffix}  MONGODB_URI CONTROL_API_KEY FLY_MISSIONS_APP_NAME
+7. fly secrets set -a magi-missions-{suffix} ANTHROPIC_API_KEY MONGODB_URI + data keys
+8. fly tokens create deploy -a magi-missions-{suffix} → FLY_API_TOKEN_MACHINES
+   fly secrets set -a magi-control-{suffix} FLY_API_TOKEN_MACHINES=<token>
+9. docker build -f packages/agent-runtime-worker/Dockerfile -t registry.fly.io/magi-missions-{suffix}:latest .
+10. flyctl auth docker && docker push registry.fly.io/magi-missions-{suffix}:latest
+11. flyctl deploy --config packages/control-plane/fly.toml --app magi-control-{suffix}
+12. If gh present: gh secret set FLY_API_TOKEN_CI --body <ci-scoped-deploy-token>
+13. Print: "Bootstrap complete. Control plane: https://magi-control-{suffix}.fly.dev"
+```
+
+### Verifying the setup
+
+```bash
+# Control plane should respond
+curl -H "X-API-Key: $CONTROL_API_KEY" \
+  https://magi-control-dev.fly.dev/api/missions
+# Expected: []  (empty list, no missions yet)
+
+# Open the dashboard
+open https://magi-control-dev.fly.dev
+# Enter CONTROL_API_KEY when prompted
+```
+
+### Failure recovery
+
+**`fly apps create` fails with "app name already taken"**  
+App names are globally unique on Fly.io. If `magi-control-dev` is taken, choose a different
+suffix: `bash scripts/bootstrap.sh --suffix yourname-dev`.
+
+**`docker build` fails**  
+Check that Docker Desktop is running. For the first build, downloading base images takes 5–10
+minutes. On a slow connection, the Playwright/Chromium layer (~400 MB) is the bottleneck.
+
+**`flyctl deploy` reports "No machines to update"**  
+The control plane app may have been created but has no machine yet. This is normal on first
+deploy — `flyctl deploy` creates the first machine. If it still fails, check `fly logs -a magi-control-dev`.
+
+**Secrets not injected into execution plane machines**  
+Fly.io app-level secrets are NOT automatically injected into machines created via the Machines
+API. `fly-machines.ts` explicitly passes all required secrets in the machine `env` at creation
+time. If you add a new secret after bootstrap, update it in `fly-machines.ts` and re-run bootstrap
+(or use `flyctl machine update <id> --env KEY=value` on a running machine).
+
+---
+
+## 3. GitHub Actions CI/CD setup
+
+Two workflows automate the full build and deploy cycle on every push to `main`.
+
+### Secret required
+
+Add one GitHub Actions secret to the repository:
+
+```bash
+# From the repository root (or via GitHub UI under Settings > Secrets > Actions)
+gh secret set FLY_API_TOKEN_CI --body "$(flyctl tokens create deploy -a magi-control-dev --expiry 8760h | python3 -c 'import sys; print(sys.stdin.read().strip())')"
+```
+
+This token scopes to deploy-only on the control plane app. It is used for both workflows.
+
+**Do not use a personal access token** — it would have org-level access. Use a deploy-scoped
+token tied to the specific app.
+
+### Workflow 1: `build-execution-image.yml`
+
+Triggers on changes to: `packages/agent-runtime-worker/**`, `packages/agent-config/**`,
+`packages/skills/**`, `config/**`
+
+What it does:
+1. Builds the execution plane Docker image
+2. Pushes as `:latest` and `:{sha}` tags to `registry.fly.io/magi-missions-dev`
+3. Clears `FLY_MISSIONS_IMAGE` on `magi-control-dev` (so it picks up `:latest`)
+
+After this workflow completes, the next mission provisioned will use the new image.
+Running missions are unaffected — they continue on their existing machine image.
+
+### Workflow 2: `deploy-control-plane.yml`
+
+Triggers on changes to: `packages/control-plane/**`, `packages/agent-config/**`,
+`tsconfig.base.json`, `fly.control-dev.toml`
+
+What it does:
+1. Builds the control plane Docker image
+2. Pushes to `registry.fly.io/magi-control-dev`
+3. `flyctl deploy` rolling-restarts the control plane machine
+
+Control plane deploys take about 60 seconds. The dashboard is briefly unavailable during restart.
+Running missions are unaffected — they operate independently of the control plane.
+
+### Verifying CI
+
+After pushing to `main`, check:
+```bash
+gh run list --limit 5
+gh run watch   # stream the latest run
+```
+
+Both workflows should pass. If the execution image workflow takes >10 minutes, the Playwright
+layer may not be cached — this is normal for the first run after a base image update.
+
+---
+
+## 4. Environment strategy
+
+### Naming convention
+
+```
+--suffix dev          →  magi-control-dev    /  magi-missions-dev
+--suffix test-label   →  magi-control-test-label  /  magi-missions-test-label
+--suffix prod-name    →  magi-control-prod-name  /  magi-missions-prod-name
+```
+
+Examples:
+```bash
+bash scripts/bootstrap.sh --suffix dev           # CI target
+bash scripts/bootstrap.sh --suffix test-sprint16 # isolated test environment
+bash scripts/bootstrap.sh --suffix prod-gold-digest  # production mission
+```
+
+### One MongoDB database per environment
+
+All control plane instances with the same `MONGODB_URI` share the same `missions` collection.
+To isolate environments, use different database names in the URI:
+
+```
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/magi-dev      # dev
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/magi-test     # test
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/magi-prod     # production
+```
+
+These are the same Atlas cluster — just different databases. Atlas M0 free tier handles this
+without issue for development-scale workloads.
+
+### Reusing the dev worker image in test environments
+
+Building a separate Docker image for every test environment wastes time. Test environments
+can reuse the dev image:
+
+```bash
+flyctl secrets set -a magi-control-test-sprint16 \
+  FLY_MISSIONS_IMAGE="registry.fly.io/magi-missions-dev:latest"
+```
+
+When `FLY_MISSIONS_IMAGE` is set, `fly-machines.ts` uses it instead of
+`registry.fly.io/{appName}:latest`. The test control plane creates execution plane machines
+from the dev image.
+
+This means a test environment's execution plane runs in the `magi-missions-dev` app but under
+the test control plane's supervision, using the test control plane's MongoDB database.
+
+---
+
+## 5. Launching a mission
+
+### Via the UI
+
+Open `https://magi-control-{suffix}.fly.dev`, sign in with `CONTROL_API_KEY`, and use the
+Launch form. Required fields:
+- **Mission ID** — unique identifier; used as MongoDB namespace (e.g. `gold-001`)
+- **Name** — display name
+- **Team config** — path relative to `config/teams/` in the image (e.g. `test/hello-world`, `gold-digest`)
+
+### Via the API
+
+```bash
+curl -X POST https://magi-control-dev.fly.dev/api/missions \
+  -H "X-API-Key: $CONTROL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "missionId": "hw-001",
+    "name": "Hello World smoke test",
+    "teamConfig": "test/hello-world"
+  }'
+```
+
+Available team configs:
+
+| teamConfig value | Purpose |
+|-----------------|---------|
+| `test/hello-world` | Smoke test (1 agent, no data keys needed) |
+| `test/word-count` | Multi-agent integration test (2 agents) |
+| `gold-digest` | Production gold market mission |
+| `equity-research` | Production 4-agent equity research mission |
+
+### What happens at provision
+
+1. Fly Volume (10 GB) created for workspace persistence
+2. Fly machine created with workspace volume mounted at `/missions`
+3. Daemon starts: sets up agent workspace, establishes MongoDB Change Stream watch
+4. Mission appears in UI with status "running"
+5. Dashboard available via proxy at `https://magi-control-{suffix}.fly.dev/missions/{id}/dashboard`
+
+Provisioning typically takes 20–40 seconds.
+
+---
+
+## 6. Fly.io integration test environments
+
+Use isolated Fly.io environments for integration tests that validate cloud behavior (proxy,
+machine lifecycle, secrets injection) without polluting the dev or production databases.
+
+### Creating a test environment
+
+```bash
+# 1. Set up isolated environment
+bash scripts/bootstrap.sh --suffix test-sprint16
+
+# In secrets.env, use a test-specific MongoDB database:
+# MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/magi-test-sprint16
+
+# 2. Point it at the dev worker image (no need to build a new one)
+flyctl secrets set -a magi-control-test-sprint16 \
+  FLY_MISSIONS_IMAGE="registry.fly.io/magi-missions-dev:latest"
+```
+
+### Running a smoke test mission
+
+```bash
+SUFFIX=test-sprint16
+CONTROL_API_KEY=<key for this instance>
+BASE_URL=https://magi-control-${SUFFIX}.fly.dev
+
+# Launch a mission
+curl -s -X POST $BASE_URL/api/missions \
+  -H "X-API-Key: $CONTROL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"missionId":"smoke-001","name":"Smoke test","teamConfig":"test/hello-world"}' | jq .
+
+# Poll until complete (hello-world agent replies to user and stops)
+for i in $(seq 1 30); do
+  STATUS=$(curl -s -H "X-API-Key: $CONTROL_API_KEY" $BASE_URL/api/missions/smoke-001 | jq -r .status)
+  echo "[$i] $STATUS"
+  [ "$STATUS" = "completed" ] && break
+  sleep 10
+done
+
+# Inspect the dashboard log
+curl -s -H "X-API-Key: $CONTROL_API_KEY" \
+  "$BASE_URL/missions/smoke-001/log?lines=50"
+```
+
+### Cleaning up after tests
+
+```bash
+# Destroy all missions (stops machines + deletes volumes)
+curl -s -H "X-API-Key: $CONTROL_API_KEY" $BASE_URL/api/missions | jq -r '.[].missionId' | while read id; do
+  curl -s -X DELETE -H "X-API-Key: $CONTROL_API_KEY" $BASE_URL/api/missions/$id
+  echo "Destroyed $id"
+done
+
+# Delete the Fly apps
+flyctl apps destroy magi-control-test-sprint16 --yes
+flyctl apps destroy magi-missions-test-sprint16 --yes
+
+# Drop the test MongoDB database
+# (via Atlas UI or mongosh: use magi-test-sprint16; db.dropDatabase())
+```
+
+### Tips for CI integration tests
+
+- Use a matrix of `--suffix` values for parallel test suites
+- Pre-seed `CONTROL_API_KEY` in GitHub Actions secrets as `CONTROL_API_KEY_TEST`
+- The execution plane machine takes ~20–40s to start — budget for this in test timeouts
+- Fly.io free tier includes 3 always-on machines; test control planes count against this limit
+  if left running — always clean up after test runs
+
+---
+
+## 7. Observing and debugging
+
+### Dashboard
+
+Open `https://magi-control-{suffix}.fly.dev` in a browser. After signing in:
+- **Mission list** — shows all missions with status, cost, machine state
+- **Open dashboard** button — proxies to the execution plane monitor at `:4000`; shows:
+  - SSE event stream (live agent messages, tool calls, mailbox activity)
+  - Sessions tree per agent (LLM calls → tool calls → mental map snapshots)
+  - Budget banner when `MAX_COST_USD` is reached
+- **View Log** button — fetches the last 200 lines of `daemon.log` from the execution plane
+
+### Daemon log
+
+The daemon writes all stdout/stderr to `daemon.log` on the Fly Volume at startup. To fetch it:
+
+```bash
+# Via the UI: click "View Log" on any mission
+# Via API:
+curl -H "X-API-Key: $CONTROL_API_KEY" \
+  "https://magi-control-dev.fly.dev/missions/{id}/log?lines=200"
+
+# Increase lines for more context:
+curl -H "X-API-Key: $CONTROL_API_KEY" \
+  "https://magi-control-dev.fly.dev/missions/{id}/log?lines=2000"
+```
+
+### Fly.io platform logs
+
+For low-level Fly.io errors (machine crash, OOM, start failure) that won't appear in daemon.log:
+
+```bash
+fly logs -a magi-missions-dev            # all execution plane machines
+fly logs -a magi-control-dev             # control plane
+fly logs -a magi-missions-dev -i <id>    # specific machine
+```
+
+### Tailing agent mailbox (against cloud MongoDB)
+
+```bash
+# Point MONGODB_URI at the cloud database, then:
+MISSION_ID=hw-001 TEAM_CONFIG=$PWD/config/teams/test/hello-world.yaml \
+  npm run cli:tail -w packages/agent-runtime-worker
+# Shows messages to user as they arrive
+
+# --all flag shows full inter-agent traffic:
+MISSION_ID=hw-001 ... npm run cli:tail -- --all
+```
+
+### LLM call audit
+
+```bash
+MISSION_ID=hw-001 TEAM_CONFIG=$PWD/config/teams/test/hello-world.yaml \
+  MONGODB_URI=<cloud-uri> npm run cli:usage -w packages/agent-runtime-worker
+# Per-agent cost breakdown
+
+npm run cli:usage -- --detail --agent lead-analyst  # per-call rows
+```
+
+### Machine state inspection
+
+```bash
+flyctl machines list -a magi-missions-dev   # all machines
+flyctl machine status <id>                   # single machine state
+fly ssh console -a magi-missions-dev -s      # SSH into a running machine
+```
+
+---
+
+## 8. Operations reference
+
+### Suspend a mission (pause without losing state)
+
+Via UI: click **Suspend** on the mission row.
+
+Via API:
+```bash
+curl -X POST -H "X-API-Key: $CONTROL_API_KEY" \
+  https://magi-control-dev.fly.dev/api/missions/{id}/suspend
+```
+
+The Fly machine stops within seconds. The Fly Volume stays attached. All workspace files,
+git history, and MongoDB conversation history are preserved.
+
+### Resume a mission
+
+Via UI: click **Resume**.
+
+Via API:
+```bash
+curl -X POST -H "X-API-Key: $CONTROL_API_KEY" \
+  https://magi-control-dev.fly.dev/api/missions/{id}/resume
+```
+
+The machine restarts on the same Volume. The daemon re-establishes the MongoDB Change Stream.
+If a scheduled message was pending during suspension, it will be delivered on next heartbeat.
+Typical resume time: 5–15 seconds.
+
+### Destroy a mission (irreversible)
+
+Via UI: click **Destroy** (requires confirmation).
+
+Via API:
+```bash
+curl -X DELETE -H "X-API-Key: $CONTROL_API_KEY" \
+  https://magi-control-dev.fly.dev/api/missions/{id}
+```
+
+This deletes the Fly machine AND the Fly Volume. MongoDB data is not deleted — conversation
+history, mental maps, and the LLM call log remain queryable at any time.
+
+### Update the worker image
+
+Push to `main`. The `build-execution-image.yml` workflow rebuilds and pushes the image,
+then clears the `FLY_MISSIONS_IMAGE` pin on the dev control plane.
+
+The next mission you provision will use the new image. Existing running missions continue
+on their current machine image — they are unaffected until you suspend + resume them
+(resume creates a new machine from the latest image on the same Volume).
+
+To pin a specific image version:
+```bash
+flyctl secrets set -a magi-control-dev \
+  FLY_MISSIONS_IMAGE="registry.fly.io/magi-missions-dev:abc1234"
+```
+
+To return to latest:
+```bash
+flyctl secrets unset -a magi-control-dev FLY_MISSIONS_IMAGE
+```
+
+### Update the control plane
+
+Push to `main`. The `deploy-control-plane.yml` workflow rebuilds and rolling-deploys the
+control plane. The machine restarts in place; the dashboard is briefly unavailable.
+
+To deploy manually (e.g. after changing Fly secrets):
+```bash
+flyctl deploy --config fly.control-dev.toml
+```
+
+### Adding a new secret to running missions
+
+Fly.io app-level secrets are not propagated to existing Machines API machines. To update
+a running mission's environment:
+
+```bash
+flyctl machine update <machine-id> --env KEY=value --app magi-missions-dev
+```
+
+Or: destroy and re-provision the mission (workspace data on the Volume is preserved if you
+reattach the existing Volume ID).
+
+---
+
+## 9. Cost reference
+
+### Fly.io
+
+| Resource | Billing | Notes |
+|----------|---------|-------|
+| Control plane machine (256 MB shared) | ~$1.94/month | Within free allowance on most accounts |
+| Execution plane machine (1 GB shared) | ~$0.006/hour running, $0 stopped | Suspend when idle |
+| Fly Volume (10 GB) | ~$1.50/month | Billed while attached, even when machine is stopped |
+| Private WireGuard networking | Free | Within same org |
+| Fly Container Registry | Free | For images under ~10 GB |
+
+**Free tier**: Fly.io includes 3 always-on shared-cpu-1x 256 MB machines and 3 GB volume
+storage free per month. A control plane + 1–2 test instances fits within the free tier.
+Execution plane machines are billed while running — suspend them when not in use.
+
+### MongoDB Atlas
+
+| Tier | Cost | Notes |
+|------|------|-------|
+| M0 Free | $0 | 512 MB storage; sufficient for dev + light production |
+| M10 Dedicated | ~$57/month | Use if M0 hits storage or connection limits |
+
+For a single equity-research mission, M0 is sufficient for months of history.
+
+### Anthropic API
+
+Approximate costs at current pricing (Claude Sonnet 4.6: $3/$15 per MTok in/out):
+
+| Workload | Estimated cost |
+|----------|---------------|
+| Single smoke test (hello-world) | < $0.01 |
+| Multi-agent word-count test | < $0.10 |
+| Equity-research daily cycle (4 agents, light session) | $1–3 |
+| Equity-research daily cycle (4 agents, full research) | $3–10 |
+| Reflection pass (after long session) | $0.10–0.50 per agent |
+
+The `MAX_COST_USD` environment variable sets a per-mission spending cap. The dashboard shows
+a budget banner when the cap is reached and offers a "+$5 and continue" button.
+
+---
+
+## 10. Troubleshooting
+
+### Execution plane machine not starting
+
+```bash
+fly logs -a magi-missions-dev   # look for startup errors
+```
+
+Common causes:
+- **Missing secret in machine env**: `fly-machines.ts` must pass all required env vars at
+  creation time. Check that `ANTHROPIC_API_KEY` and `MONGODB_URI` appear in the machine's env.
+  Fly app-level secrets are NOT auto-injected into Machines API machines.
+- **Bad TEAM_CONFIG path**: the path must resolve inside `/app/config/teams/` in the image.
+  Check the `teamConfig` value passed to `POST /api/missions` — it should be e.g. `test/hello-world`
+  not a full filesystem path.
+- **OOM (Out of Memory)**: the execution plane machine is configured for 1 GB. If Playwright
+  or multiple agents run simultaneously, peak usage can exceed 1 GB. Check `fly logs` for
+  `OOM` entries. Request a memory upgrade via `flyctl machine update <id> --vm-memory 2048`.
+
+### Dashboard shows "connection refused" or blank
+
+The execution plane machine may be starting or have stopped unexpectedly:
+```bash
+flyctl machine status <id> -a magi-missions-dev
+```
+
+If the machine is stopped, resume it via the UI or API. If it crashed, check `fly logs`.
+
+### `flyctl secrets set` fails on execution plane app
+
+The execution plane app (`magi-missions-{suffix}`) has no deploy release — all its machines
+are created via the Machines API. Running `flyctl secrets set -a magi-missions-{suffix}` triggers
+a rolling restart that fails because there is no release image.
+
+Fix: update individual running machines directly:
+```bash
+flyctl machine update <machine-id> --env KEY=value --app magi-missions-dev
+```
+
+Or set secrets with `--stage` and restart the machine manually:
+```bash
+flyctl secrets set --stage -a magi-missions-dev KEY=value
+flyctl machines restart <machine-id> -a magi-missions-dev
+```
+
+### Multiple control planes sharing the same missions collection
+
+All control planes using the same MongoDB URI (same database name) share the `missions`
+collection. A mission provisioned by `magi-control-dev` is visible and operable from
+`magi-control-test-sprint16` if they point to the same database.
+
+Fix: use distinct database names per environment in the `MONGODB_URI` (see §4).
+
+### Scheduled messages not delivered
+
+The node-cron heartbeat runs in the control plane every minute, scans `scheduled_messages`
+for `deliverAt <= now`, and inserts into `mailbox`. If scheduled messages are not being
+delivered:
+
+1. Check control plane logs: `fly logs -a magi-control-dev`
+2. Verify the control plane's `MONGODB_URI` matches the execution plane's (same database)
+3. Check that `scheduled_messages` documents have `status: "pending"` and correct `deliverAt`
+4. Verify the execution plane machine is running (the Change Stream wake-up only fires if
+   the machine is up when the message is inserted)
+
+### `sudo: a password is required` in daemon logs (local dev)
+
+Pool users (`magi-wN`) have no sudoers entry unless `setup-dev.sh` has been run. This does
+not affect cloud deployments (pool users are created in the Dockerfile with correct sudoers
+rules). For local dev:
+```bash
+sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
+```
+
+See the Known Pitfalls section in [CLAUDE.md](../CLAUDE.md) for the full list of local dev
+setup issues.
+
+---
+
+*For the full technical specification see [MAGI_V3_SPEC.md](../MAGI_V3_SPEC.md). For
+architecture decisions see [docs/adr/](adr/). For sprint build history see
+[docs/implementation-history.md](implementation-history.md).*
