@@ -1,153 +1,158 @@
 # MAGI V3 — Technical Specification
 
-> **Implementation Status (as of Sprint 15)**
->
-> This spec describes the intended architecture, written at Sprint 0. Most of it is implemented as written. The following sections describe components that were **superseded or deferred**:
-> - **§3 Orchestration (Temporal)** — Temporal was dropped (ADR-0001); replaced by pm2 + node-cron
-> - **§6 Mailbox (Redis Streams)** — Redis dropped (ADR-0006); replaced by MongoDB Change Streams
-> - **§9 Artifact Store (MinIO)** — deferred indefinitely; agents use git + shared filesystem instead
->
-> For the as-built architecture and current file locations, see [CLAUDE.md](CLAUDE.md) and [docs/implementation-history.md](docs/implementation-history.md).
-
 ## 1. Overview
 
 MAGI V3 is an autonomous multi-agent system where teams of AI agents run long-horizon missions. Agents write and run code, browse the web, process data, communicate with teammates, and publish work products.
 
 The architecture makes three advances over MAGI V2:
-1. **Durable orchestration** — agent lifecycles are Temporal workflows; they survive crashes, support pause/resume, and respond to schedules and inbound messages.
-2. **Sandboxed execution** — agents run with enterprise-style identity (uid/gid, home dirs, ACL-governed shared folders), with execution isolated per agent.
-3. **Multi-agent coordination** — agents communicate through a structured mailbox system and collaborate on missions via shared artifact references.
-
-MAGI V2's codebase (`/home/remyh/ml/MAGI_v2/MAG_v2`) and pi-mono (`/home/remyh/ml/MAGI_v2/pi-mono`) provide the foundation. V3 does not rewrite the agent loop or tool primitives from scratch — it wraps and extends proven implementations.
+1. **Workspace persistence and isolation** — agents run with OS-level identity (Linux users, ACL-governed dirs); private and shared workspaces survive across sessions on persistent Fly.io volumes.
+2. **Sandboxed tool execution** — all shell tools are dispatched via `sudo -u <linuxUser>` subprocesses with no secrets in the child environment; application-layer ACL validation runs before OS enforcement.
+3. **Scalable multi-agent orchestration** — teams of agents coordinate via a structured mailbox; the daemon sleeps on a MongoDB Change Stream and wakes only when mail arrives or a scheduled trigger fires; each production mission runs as an isolated Fly.io machine.
 
 ---
 
 ## 2. System Architecture
 
-### Control Plane (stable, evolves slowly)
+### Production runtime
 
-| Service | Responsibility |
-|---------|---------------|
-| `mission-api` | REST API — create/update missions, team composition, mandates, policies |
-| `orchestrator` | Temporal workflows for agent lifecycles |
-| `identity-access-service` | Agent identities, roles, uid/gid mapping, ACL policy objects |
-| `mailbox-service` | Durable inter-agent messaging via Redis Streams |
-| `state-store` | MongoDB — Mental Maps, conversation history, artifact metadata, event log |
-| `observability` | OpenTelemetry traces, metrics, log correlation |
+```
+                      Developer / Operator
+                            (browser)
+                                │ HTTPS
+                                ▼
+        ┌───────────────────────────────────────────────────┐
+        │  Control Plane   magi-control-{name}.fly.dev       │
+        │  (always-on Fly.io machine)                        │
+        │                                                    │
+        │   Mission API          Fly Machines client         │
+        │   (CRUD + lifecycle)   (provision/suspend/resume)  │
+        │                                                    │
+        │   Cron scheduler       HTTP reverse proxy          │
+        │   (scheduled_messages  + Single-page UI            │
+        │    delivery)                                       │
+        └──────────────────────────┬─────────────────────────┘
+                                   │  Fly private WireGuard
+                                   │  http://[privateIp]:4000
+                                   ▼
+        ┌───────────────────────────────────────────────────┐
+        │  Execution Plane   magi-missions-* app             │
+        │  (on-demand Fly.io machine, one per active mission)│
+        │                                                    │
+        │   Daemon                                           │
+        │   ├── Monitor server :4000  (SSE dashboard)        │
+        │   ├── Tool API server :4001 (background jobs)      │
+        │   └── Orchestration loop (Change Stream wake-up)   │
+        │                                                    │
+        │   Agent pool (sudo-isolated subprocesses)          │
+        │   magi-w1 │ magi-w2 │ … │ magi-w5                 │
+        │   (no secrets in child env; ACL-enforced dirs)     │
+        │                                                    │
+        │   Workspace /missions/{id}/  (Fly Volume, 10 GB)   │
+        │   ├── shared/  (git repo, skills, research, jobs)  │
+        │   └── home/{user}/missions/{id}/  (per-agent)      │
+        └──────────┬────────────────────────────────────────┘
+                   │  outbound only
+        ┌──────────┼──────────┬──────────────┐
+        ▼          ▼          ▼              ▼
+    MongoDB    Anthropic   Brave         FRED / FMP /
+    Atlas      API         Search API    NewsAPI / etc.
+```
 
-### Execution Plane (evolvable backends)
+### CI/CD pipeline
 
-| Service | Responsibility |
-|---------|---------------|
-| `agent-runtime-worker` | Temporal activity worker — runs outer and inner agent loops |
-| `workspace-manager` | Provisions agent home dirs and mission shared folders with ACL templates |
-| `execution-runner` | Shared worker pool + isolated per-agent pools for shell/code execution |
-| `browser-runner` | Playwright-based browse/download pipeline |
-| `data-processing-runner` | Parsers, ETL, notebooks, analytics |
-| `artifact-store` | MinIO (local) / S3-compatible (cloud) for artifact binary data |
-| `artifact-promotion-service` | Controlled dev→prod release path (Sprint 5+) |
+```
+  Developer
+      │
+      │  git push origin main
+      ▼
+  GitHub (arnadu/magi_v3)
+      │
+      ├── packages/agent-runtime-worker/**  ──▶  build-execution-image.yml
+      │   packages/agent-config/**               │  docker build
+      │   packages/skills/**                     │  docker push
+      │   config/**                              ▼
+      │                              registry.fly.io/magi-missions-dev:latest
+      │                              (pulled by new Execution Plane machines)
+      │
+      └── packages/control-plane/**   ──▶  deploy-control-plane.yml
+          packages/agent-config/**          │  flyctl deploy
+                                            ▼
+                                       magi-control-dev.fly.dev
+                                       (rolling restart)
+```
+
+For local development setup and environment variables, see [USER_GUIDE.md](USER_GUIDE.md).
+
+### Packages
+
+| Package | Role |
+|---------|------|
+| `packages/control-plane/` | Express API, Fly Machines client, cron scheduler, HTTP reverse proxy, single-page UI |
+| `packages/agent-runtime-worker/` | Daemon, orchestration loop, agent runner, monitor server (:4000), tool API server (:4001) |
+| `packages/agent-config/` | Zod schema for team YAML; `loadTeamConfig()`, `parseTeamConfig()` |
+| `packages/skills/` | Platform skills: `skill-creator`, `git-provenance`, `inter-agent-comms`, `run-background`, `schedule-task` |
 
 ### Technology Stack
 
 | Component | Technology |
 |-----------|-----------|
 | Language | TypeScript throughout |
-| Durable orchestration | Temporal |
-| Agent loop primitives | `@mariozechner/pi-agent-core` (pi-mono) |
-| LLM provider abstraction | `@mariozechner/pi-ai` (pi-mono) |
-| State / Mental Maps | MongoDB |
-| Messaging | Redis Streams with consumer groups |
-| Object storage | MinIO (local) / S3-compatible (cloud) |
-| Observability | OpenTelemetry |
-| Container isolation | Docker rootless + seccomp (local), gVisor / Firecracker (cloud) |
+| Linter / formatter | Biome |
+| LLM provider | `@mariozechner/pi-ai` — `completeSimple()` wraps Anthropic API |
+| State store | MongoDB (conversations, mailbox, llmCallLog, scheduled_messages) |
+| Process supervision | pm2 (local dev); node-cron (scheduling) |
+| Browser automation | Playwright + Stagehand |
+| Cloud | Fly.io (control plane always-on; execution plane on-demand machines) |
+| Container isolation | Docker + Linux ACLs (`setfacl`) + sudo subprocess isolation |
 | Filesystem permissions | Linux ACLs (`setfacl`) |
-| Cloud scale-out | Kubernetes |
 
 ---
 
 ## 3. Agent Loop Architecture
 
-### Core concept: two-tier loop
-
-Every agent runs two nested loops at different levels of abstraction:
+### Execution model
 
 ```
-OUTER LOOP — planning tier
-  Purpose:    maintain the Mental Map, process inbound messages, prioritize tasks
-  Tools:      ReadMailbox, UpdateMentalMap, SendMailboxMessage, ReadArtifact (scan only)
-  NOT allowed: ExecProgram, BrowseWeb, AnalyzeData — execution tools are inner-loop only
-  Loop impl:  same LLM→tool→LLM pattern, but constrained toolset and planning prompt
-  Terminates: when Mental Map is current and top task is identified
-
-        ↓  dispatches top task from Mental Map  ↓
-
-INNER LOOP — execution tier
-  Purpose:    execute a single task to completion
-  Tools:      full toolkit (file, bash, web, data, mailbox, artifact tools)
-  Loop impl:  pi-agent-core's agentLoop()
-  Terminates: when nextAction signals done, blocked, or escalate
-
-        ↓  signals Temporal workflow on completion  ↓
-        (workflow triggers outer loop again)
+runOrchestrationLoop()           ← TypeScript scheduler, no LLM calls
+  │
+  │  sleep on MongoDB Change Stream
+  │  (mailbox or scheduled_messages collection)
+  │
+  │  on wake: for each agent with unread mail
+  │           in supervisor-depth order (supervisors run before reports)
+  │
+  └─▶  runAgent(agentId, inboxMessages)
+         │
+         ├── load conversation history from MongoDB
+         ├── run reflection if prior session was large
+         │   (compacts history → cumulative summary → updated Mental Map)
+         │
+         └─▶  runInnerLoop()     ← LLM → tool → LLM until no tool calls
+                │
+                ├── build system prompt (role + Mental Map + skills)
+                ├── LLM call (Claude via completeSimple)
+                ├── execute tool calls (isolated subprocesses)
+                ├── repeat
+                └── terminate when LLM returns no tool_use blocks
 ```
 
-### Temporal workflow model
+**Cycle boundary:** the cycle ends when no agent has unread mail. The daemon then blocks on `collection.watch()` (Change Stream) and uses zero CPU until the next message arrives.
 
-The Temporal workflow is the long-lived envelope around both loops. It maintains minimal durable state and reacts to external triggers.
+**Scheduling:** the control plane's `node-cron` heartbeat (runs every minute) queries `scheduled_messages` for documents whose `deliverAt ≤ now` and inserts them into `mailbox`, which fires the Change Stream and wakes the daemon.
 
-**Workflow state:**
-```typescript
-interface AgentWorkflowState {
-  agentId: string
-  missionId: string
-  mentalMapDocumentId: string      // MongoDB document ID — the Mental Map is the rich state
-  innerLoopRunning: boolean
-  pendingMessageIds: string[]      // mailbox message IDs queued since last outer loop
-}
+**Session boundary:** each wakeup of an agent is one *session*. At the start of the next session, the prior session's raw messages are compacted into a cumulative narrative summary (see §4 — reflection). The agent always starts a new session with: system prompt (role + updated Mental Map + skills) → summary of prior sessions → new inbox messages.
+
+### Tool execution isolation
+
+All shell tools (`Bash`, `WriteFile`, `EditFile`) are dispatched via:
 ```
-
-**Triggers (Temporal signals):**
-- `inbound_message(messageId)` — new mailbox message; queued if inner loop is running, processed immediately otherwise
-- `schedule_fire(triggerName)` — scheduled event (e.g., daily 06:00 ingestion)
-- `critical_alert(messageId)` — high-urgency interrupt; triggers immediate steering of the running inner loop
-- `abort` — graceful shutdown
-
-**Activity sequence:**
+sudo -u <linuxUser> node dist/tool-executor.js
 ```
-loop forever:
-  1. [OUTER LOOP ACTIVITY]  run outer loop → updates Mental Map → returns top task
-  2. [INNER LOOP ACTIVITY]  run inner loop for top task → updates Mental Map on completion
-  3. if pending messages or scheduled trigger: go to 1
-  4. else: workflow.condition() — block until next signal
-```
+The child process receives only `PATH` and `HOME` — no `ANTHROPIC_API_KEY`, `MONGODB_URI`, or other secrets. Application-layer `checkPath` validation runs first; OS-level ACL enforcement runs in the child. Background job scripts (`magi-job`) similarly receive only the data API keys explicitly listed in `DATA_KEY_NAMES`.
 
-**Critical interrupt path:**
-When a `critical_alert` signal arrives while the inner loop is running, the workflow delivers a steering message to the running Activity. pi-agent-core's `getSteeringMessages()` hook picks it up after the current tool call completes, skips remaining tool calls, and terminates cleanly. The outer loop then re-evaluates priorities.
+### Termination
 
-### stop conditions and nextAction
-
-Both loops use structured JSON output to signal their termination state. The LLM produces this in its final response turn (tools are disabled on the penultimate call to force a structured response — a pattern from MAG_v2).
-
-**Outer loop nextAction values:**
-- `triage_complete` — Mental Map updated, top task identified; dispatch inner loop
-- `waiting_for_teammate` — top task is blocked on a dependency; pause until signal
-
-**Inner loop nextAction values:**
-- `publish_and_stop` — task done; artifacts published, outbound messages queued; return to outer loop
-- `wait_for_input` — needs human approval; Temporal workflow pauses on `condition()`
-- `escalate` — unresolvable error, conflicting data, or policy violation; creates a human review task
-- `continue` — (implicit; loop continues if tool calls are present)
-
-The inner loop's `nextAction` response may also carry:
-```typescript
-{
-  nextAction: "publish_and_stop",
-  artifacts_published: ["artifact-id-1"],
-  messages_to_send: [{ to: "junior-analyst-1", intent: "task_request", ... }],
-  todos_to_add: [{ title: "...", priority_score: 80, depends_on: [...] }]
-}
-```
-`todos_to_add` items are merged into the Mental Map by the outer loop on its next run.
+An agent turn terminates when `runInnerLoop` returns — i.e., when the LLM response contains no `tool_use` blocks. The agent is expected to call `PostMessage` before finishing if it has results to deliver. The orchestration loop then checks whether any other agent now has unread mail (from those messages) and runs them if so.
 
 ---
 
@@ -433,13 +438,15 @@ interface MailboxMessage {
 
 `critical` priority messages trigger the Temporal `critical_alert` signal, bypassing the normal triage queue and potentially interrupting the running inner loop.
 
-### Redis Streams implementation
+### MongoDB implementation
 
-Each agent has a dedicated Redis Stream: `mailbox:{agent_id}`. The `mailbox-service` routes messages by `recipient.agent_id` or by role fan-out (publishes to all agents with matching `recipient.role`).
+Messages are stored as documents in the `mailbox` collection, scoped by `mission_id`. The daemon watches for new documents via a **Change Stream** (`collection.watch()` with `operationType: "insert"` filter); when a new message arrives the Change Stream cursor fires and the orchestration loop wakes immediately.
 
-Consumer groups give durable delivery: a message stays in the stream until explicitly acknowledged. The `ReadMailbox` tool reads with `XREADGROUP`; `AckMailboxMessage` calls `XACK`. If an agent crashes mid-processing, the message remains unacknowledged and is re-delivered on restart.
+For role-based delivery (`recipient.role`), the sender looks up all agents in the team config with the matching role and inserts one document per agent.
 
-The Temporal workflow watches for new stream entries and emits `inbound_message` signals; the `mailbox-service` bridges the two systems.
+**Scheduled messages** are stored separately in `scheduled_messages` with a `deliverAt` timestamp. The control plane's `node-cron` heartbeat (runs every minute) queries for `deliverAt ≤ now` documents, inserts them into `mailbox`, and marks them `status: "delivered"`. This fires the Change Stream and wakes the daemon.
+
+Message durability relies on MongoDB write concern; the Change Stream cursor reconnects with exponential backoff on network errors.
 
 ---
 
@@ -706,18 +713,12 @@ All LLM calls are logged with full context (system prompt, message history, raw 
 
 ---
 
-## 14. Codebase Reuse Summary
+## 14. External Dependencies and References
 
-| Component | Source | Notes |
-|-----------|--------|-------|
-| Inner agent loop | `pi-agent-core` `agentLoop()` | Use directly; wire `getSteeringMessages` to Temporal signal handler |
-| Outer agent loop | New, same loop pattern | Constrained toolset, planning prompt |
-| `AgentMessage` types | `pi-agent-core` | Extend via declaration merging for V3 message types |
-| LLM provider abstraction | `@mariozechner/pi-ai` | `streamSimple` + `EventStream` primitives |
-| File tools | pi-mono `coding-agent/src/core/tools/` | Adopt `read`, `edit`, `write`, `ls`, `find`, `grep`, `bash` with Operations hooks |
-| Image handling | MAG_v2 `imageService.ts` + `visionHelper.ts` | Description-first; adapt storage from MongoDB base64 to MinIO |
-| AgentAssetRegistry | MAG_v2 `imageService.ts` | Adapt to hold MinIO keys instead of base64 data |
-| UpdateMentalMap tool | MAG_v2 `Editor` tool | Surgical HTML patch by element ID |
-| Provider abstraction | MAG_v2 `llm/providers/` | Reference for multi-provider normalization patterns |
-| Frontend (Work Product UI) | pi-mono `pi-web-ui` | Evaluate for Mission Inbox, Report Center in Sprint 6 |
-| Multi-LLM model routing | MAG_v2 `modelCapabilities.ts` + reasoning effort pattern | Different models for outer loop (fast) vs inner loop (capable) |
+V3 is implemented from scratch but draws on patterns from two prior projects:
+
+- **`@mariozechner/pi-ai`** — `completeSimple(model, context)` is the non-streaming LLM call used by `runInnerLoop`. This is the only direct runtime dependency on pi-mono.
+- **MAGI v2** — Mental Map design (§4), image handling strategy (§5.4), and UpdateMentalMap tool semantics (§4.3) are adapted from v2's `Editor` tool and vision pipeline.
+- **`pi-web-ui`** — Lit-based web component library; still a candidate for a future React frontend (Sprint 16+); not yet adopted.
+
+For full details on these projects, see [docs/references.md](docs/references.md).

@@ -64,3 +64,13 @@ the loop's actual requirements at this stage.
 
 Until then, `runInnerLoop` in `packages/agent-runtime-worker/src/loop.ts` is the operative
 inner loop implementation.
+
+## Sprint 15 Update — pi-agent-core not adopted
+
+Through Sprint 15, `runInnerLoop` / `completeSimple` continues to be the implementation. The three triggers for adopting `pi-agent-core` did not arise:
+
+- **Streaming to frontend** — the monitor server uses SSE via Change Stream watchers, not streaming LLM output. Real-time feedback is achieved by pushing each complete message after the tool call finishes.
+- **Mid-run steering** — no requirement materialised. Budget pause (`MAX_COST_USD`), step mode, and Ctrl-C abort are all handled at the orchestrator level, not inside `runInnerLoop`.
+- **Context window compaction** — implemented as a custom session-boundary compaction + reflection pass in Sprint 9 (ADR-0009), which fits the MAGI V3 model better than pi-agent-core's in-loop pruning.
+
+**Current status:** `pi-agent-core` adoption is deferred indefinitely. `runInnerLoop` is the permanent implementation. `@mariozechner/pi-ai`'s `completeSimple` remains the only runtime pi-mono dependency.
