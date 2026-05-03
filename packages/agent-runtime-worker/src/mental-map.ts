@@ -150,7 +150,9 @@ export function createMentalMapTool(
 			const updated = patchMentalMap(current, operation, elementId, content);
 			if (updated === null) {
 				return Promise.resolve(
-					err(`UpdateMentalMap: element id="${elementId}" not found in mental map`),
+					err(
+						`UpdateMentalMap: element id="${elementId}" not found in mental map`,
+					),
 				);
 			}
 

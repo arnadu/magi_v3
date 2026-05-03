@@ -155,7 +155,9 @@ export async function runAgent(
 	// content is collapsed here; compaction applies only via the repository's
 	// compact() call inside runReflection, which marks old docs as compacted so
 	// they are excluded from future load() calls.
-	const nonSummaryHistory = history.filter((sm) => sm.message.role !== "summary");
+	const nonSummaryHistory = history.filter(
+		(sm) => sm.message.role !== "summary",
+	);
 	const sessionMessages = nonSummaryHistory.map((sm) => sm.message as Message);
 
 	// Peak input tokens across all LLM calls in the previous session.
@@ -163,7 +165,10 @@ export async function runAgent(
 	// final calls after long intermediate tool-result contexts.
 	const peakInputTokens = sessionMessages
 		.filter((m): m is AssistantMessage => m.role === "assistant")
-		.reduce((max, m) => Math.max(max, ((m.usage as { input?: number })?.input ?? 0)), 0);
+		.reduce(
+			(max, m) => Math.max(max, (m.usage as { input?: number })?.input ?? 0),
+			0,
+		);
 
 	/**
 	 * Build the onLlmCall handler for a given turnNumber and isReflection flag.
@@ -176,7 +181,7 @@ export async function runAgent(
 					messages: Message[];
 					toolNames: string[];
 					response: AssistantMessage;
-			  }) => {
+				}) => {
 					const usage = event.response.usage as {
 						input: number;
 						output: number;
@@ -189,7 +194,7 @@ export async function runAgent(
 						cacheRead: number;
 						cacheWrite: number;
 					};
-					await ctx.llmCallLog!.append({
+					await ctx.llmCallLog?.append({
 						missionId,
 						agentId,
 						turnNumber,
@@ -213,14 +218,14 @@ export async function runAgent(
 							cost: computeCost(usage, modelCost),
 						},
 					});
-			  }
+				}
 			: undefined;
 
 	// Load mental map from the most recent AssistantMessage snapshot in conversationMessages.
 	// Falls back to initMentalMap if this is the first wakeup.
 	let currentMentalMapHtml: string =
-		(await ctx.conversationRepo.loadMostRecentMentalMap(agentId, missionId))
-		?? initMentalMap(agent);
+		(await ctx.conversationRepo.loadMostRecentMentalMap(agentId, missionId)) ??
+		initMentalMap(agent);
 
 	// Read threshold lazily so REFLECTION_THRESHOLD env var set by tests is honoured.
 	const reflectionThreshold = process.env.REFLECTION_THRESHOLD
@@ -244,9 +249,7 @@ export async function runAgent(
 			conversationRepo: ctx.conversationRepo,
 			turnNumber: lastTurnNumber,
 			previousSummaries,
-			onMessage: ctx.onMessage
-				? (msg) => ctx.onMessage!(msg, [])
-				: undefined,
+			onMessage: ctx.onMessage ? (msg) => ctx.onMessage?.(msg, []) : undefined,
 			onLlmCall: makeOnLlmCall(lastTurnNumber + 1, true),
 		});
 		// Reload: compacted docs are now excluded and the new summary is visible.
@@ -284,7 +287,9 @@ export async function runAgent(
 					typeof m.content === "string"
 						? m.content.slice(0, 500)
 						: JSON.stringify(m.content).slice(0, 500);
-				console.log(`  [${m.role}] ${preview}${preview.length >= 500 ? "…" : ""}`);
+				console.log(
+					`  [${m.role}] ${preview}${preview.length >= 500 ? "…" : ""}`,
+				);
 			}
 		} else {
 			console.log("\n[DEBUG] PREVIOUS MESSAGES: (none — first session)");
@@ -309,12 +314,14 @@ export async function runAgent(
 	};
 
 	const appendSubLoop = async (toolUseId: string, msg: Message) => {
-		await ctx.conversationRepo.append(agentId, missionId, [{
-			turnNumber: activeTurnNumber,
-			callSeq: currentCallSeq,
-			parentToolUseId: toolUseId,
-			message: msg,
-		}]);
+		await ctx.conversationRepo.append(agentId, missionId, [
+			{
+				turnNumber: activeTurnNumber,
+				callSeq: currentCallSeq,
+				parentToolUseId: toolUseId,
+				message: msg,
+			},
+		]);
 	};
 
 	const tools = [
@@ -331,7 +338,9 @@ export async function runAgent(
 		),
 		createFetchUrlTool(visionModel, sharedDir),
 		createInspectImageTool(workdir, visionModel, [sharedDir]),
-		createResearchTool(ctx.model, sharedDir, researchAcl, { onSubLoopMessage: appendSubLoop }),
+		createResearchTool(ctx.model, sharedDir, researchAcl, {
+			onSubLoopMessage: appendSubLoop,
+		}),
 		...(searchWebTool ? [searchWebTool] : []),
 		...(browseWebHandle ? [browseWebHandle.tool] : []),
 	];

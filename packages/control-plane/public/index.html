@@ -440,14 +440,14 @@
 
   // ── Suspend / Resume ──────────────────────────────────────────────────────
 
-  async function suspendMission(id) {
+  async function _suspendMission(id) {
     const res = await apiFetch(`/api/missions/${id}/suspend`, { method: 'POST' });
     if (!res) return;
     if (res.ok) { showToast('Mission suspended.'); loadMissions(); }
     else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Suspend failed.', true); }
   }
 
-  async function resumeMission(id) {
+  async function _resumeMission(id) {
     const res = await apiFetch(`/api/missions/${id}/resume`, { method: 'POST' });
     if (!res) return;
     if (res.ok) { showToast('Mission resumed.'); loadMissions(); }
@@ -458,7 +458,7 @@
 
   let pendingDestroyId = null;
 
-  function confirmDestroy(id, name) {
+  function _confirmDestroy(id, name) {
     pendingDestroyId = id;
     document.getElementById('confirm-msg').textContent =
       `This will permanently delete machine and volume for "${name}". All workspace data will be lost.`;
@@ -486,7 +486,7 @@
 
   let currentLogMissionId = null;
 
-  async function viewLog(id) {
+  async function _viewLog(id) {
     currentLogMissionId = id;
     document.getElementById('log-content').textContent = 'Loading…';
     document.getElementById('log-overlay').style.display = 'flex';

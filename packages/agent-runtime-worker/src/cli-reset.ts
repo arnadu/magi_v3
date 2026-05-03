@@ -20,9 +20,9 @@
  *     - $AGENT_WORKDIR/home/<linuxUser>/missions/<missionId>/  (per-agent private dirs)
  */
 
-import { createInterface } from "node:readline";
-import { rmSync, existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig } from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
@@ -36,8 +36,8 @@ import { connectMongo } from "./mongo.js";
 
 async function confirm(prompt: string): Promise<boolean> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
-	return new Promise(resolve => {
-		rl.question(prompt, answer => {
+	return new Promise((resolve) => {
+		rl.question(prompt, (answer) => {
 			rl.close();
 			resolve(answer.trim().toLowerCase() === "y");
 		});
@@ -64,13 +64,15 @@ async function main(): Promise<void> {
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
 	const sharedDir = join(workdir, "missions", missionId);
-	const agentDirs = teamConfig.agents.map(a =>
+	const agentDirs = teamConfig.agents.map((a) =>
 		join(workdir, "home", a.linuxUser ?? a.id, "missions", missionId),
 	);
 
 	console.log(`\nMission: ${missionId}`);
 	console.log(`\nMongoDB data to delete (missionId = "${missionId}"):`);
-	console.log(`  mailbox, conversationMessages, llmCallLog, scheduled_messages`);
+	console.log(
+		`  mailbox, conversationMessages, llmCallLog, scheduled_messages`,
+	);
 	if (!dbOnly) {
 		console.log(`\nFilesystem paths to delete:`);
 		console.log(`  ${sharedDir}`);
@@ -112,13 +114,14 @@ async function main(): Promise<void> {
 				removed++;
 			}
 		}
-		if (removed === 0) console.log(`\nFilesystem: no directories found (already clean)`);
+		if (removed === 0)
+			console.log(`\nFilesystem: no directories found (already clean)`);
 	}
 
 	console.log("\nReset complete. Start the daemon to begin a fresh mission.");
 }
 
-main().catch(e => {
+main().catch((e) => {
 	console.error(e);
 	process.exit(1);
 });

@@ -30,10 +30,14 @@
  *   as the agent's Linux user; they have no need for the API.)
  */
 
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import type { Model } from "@mariozechner/pi-ai";
+import {
+	createServer,
+	type IncomingMessage,
+	type ServerResponse,
+} from "node:http";
 import type { TeamConfig } from "@magi/agent-config";
+import type { Model } from "@mariozechner/pi-ai";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
@@ -153,7 +157,9 @@ export class ToolApiServer {
 		const ctx = this.tokens.get(rawToken);
 		if (!ctx) {
 			res.writeHead(401, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "unauthorized — invalid or expired token" }));
+			res.end(
+				JSON.stringify({ error: "unauthorized — invalid or expired token" }),
+			);
 			return;
 		}
 

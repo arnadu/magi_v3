@@ -80,8 +80,7 @@ export async function provisionMission(
 				// FLY_MISSIONS_IMAGE overrides the default :latest tag; useful when
 				// the latest CI build tag hasn't been aliased to :latest yet.
 				image:
-					process.env.FLY_MISSIONS_IMAGE ??
-					`registry.fly.io/${app}:latest`,
+					process.env.FLY_MISSIONS_IMAGE ?? `registry.fly.io/${app}:latest`,
 				env: {
 					MISSION_ID: missionId,
 					TEAM_CONFIG: `/app/config/teams/${teamConfigName}.yaml`,

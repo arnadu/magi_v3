@@ -1,6 +1,5 @@
 import { join } from "node:path";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
-import { isPrivateHost } from "../ssrf.js";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
 import { Type } from "@sinclair/typebox";
@@ -13,6 +12,7 @@ import {
 	saveArtifact,
 } from "../artifacts.js";
 import { MIME_TO_EXT, VISION_MIMES } from "../mime-types.js";
+import { isPrivateHost } from "../ssrf.js";
 import type { MagiTool, ToolResult } from "../tools.js";
 
 // ---------------------------------------------------------------------------

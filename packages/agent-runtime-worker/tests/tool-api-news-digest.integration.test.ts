@@ -48,7 +48,10 @@ function callToolApi(
 	token: string,
 	toolName: string,
 	params: Record<string, unknown>,
-): Promise<{ result?: { content: Array<{ type: string; text?: string }> }; error?: string }> {
+): Promise<{
+	result?: { content: Array<{ type: string; text?: string }> };
+	error?: string;
+}> {
 	return new Promise((resolve, reject) => {
 		const body = Buffer.from(JSON.stringify(params), "utf8");
 		const req = http.request(
@@ -108,7 +111,9 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 		// Clean up any previous run's output at start (not end) so files
 		// are always available for inspection after the test completes.
 		tmpDir = join(tmpdir(), "magi-tool-api-test");
-		try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+		try {
+			rmSync(tmpDir, { recursive: true, force: true });
+		} catch {}
 		mkdirSync(tmpDir, { recursive: true });
 		sharedDir = join(tmpDir, "shared");
 
@@ -126,7 +131,8 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 					url: "https://en.wikipedia.org/wiki/Nvidia",
 					source: "Wikipedia",
 					published_at: new Date().toISOString(),
-					summary: "NVIDIA Corporation designs and sells GPUs and AI accelerators.",
+					summary:
+						"NVIDIA Corporation designs and sells GPUs and AI accelerators.",
 					is_new: true,
 				},
 			],
@@ -139,16 +145,40 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 
 		// Create a minimal MailboxRepository stub (PostMessage not needed for this test).
 		const mailboxRepoStub = {
-			async post() { return { id: "stub", missionId: "test", from: "test", to: [], subject: "", body: "", createdAt: new Date() }; },
-			async listUnread() { return []; },
-			async listHeaders() { return []; },
-			async read() { return null; },
+			async post() {
+				return {
+					id: "stub",
+					missionId: "test",
+					from: "test",
+					to: [],
+					subject: "",
+					body: "",
+					createdAt: new Date(),
+				};
+			},
+			async listUnread() {
+				return [];
+			},
+			async listHeaders() {
+				return [];
+			},
+			async read() {
+				return null;
+			},
 		};
 
 		// Minimal TeamConfig stub.
 		const teamConfigStub = {
 			mission: { id: "test-mission", name: "Test" },
-			agents: [{ id: "test-agent", supervisor: "user", systemPrompt: "", initialMentalMap: "", linuxUser: "nobody" }],
+			agents: [
+				{
+					id: "test-agent",
+					supervisor: "user",
+					systemPrompt: "",
+					initialMentalMap: "",
+					linuxUser: "nobody",
+				},
+			],
 		};
 
 		server = new ToolApiServer(
@@ -182,7 +212,9 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 	});
 
 	it("returns 401 for invalid token", async () => {
-		const result = await callToolApi(port, "bad-token", "research", { question: "test" });
+		const result = await callToolApi(port, "bad-token", "research", {
+			question: "test",
+		});
 		expect(result).toHaveProperty("error");
 		expect((result.error ?? "").toLowerCase()).toContain("unauthorized");
 	});
@@ -209,9 +241,9 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 			// 1. Response has no error and has result content.
 			expect(result).not.toHaveProperty("error");
 			expect(result.result?.content).toBeDefined();
-			expect(result.result!.content.length).toBeGreaterThan(0);
+			expect(result.result?.content.length).toBeGreaterThan(0);
 
-			const text = result.result!.content
+			const text = result.result?.content
 				.filter((c) => c.type === "text")
 				.map((c) => c.text ?? "")
 				.join("");

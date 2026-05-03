@@ -29,8 +29,8 @@ dotenvConfig({
 	quiet: true,
 });
 
-import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { LlmCallLogEntry } from "./llm-call-log.js";
+import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import { connectMongo } from "./mongo.js";
 
 // ---------------------------------------------------------------------------
@@ -182,7 +182,13 @@ function printDetail(entries: LlmCallLogEntry[]): void {
 			acc.totalCostUsd += e.usage.cost.totalCostUsd;
 			return acc;
 		},
-		{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCostUsd: 0 },
+		{
+			inputTokens: 0,
+			outputTokens: 0,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			totalCostUsd: 0,
+		},
 	);
 
 	console.log(
@@ -199,7 +205,10 @@ function printDetail(entries: LlmCallLogEntry[]): void {
 // Aggregate view: one row per agent + totals
 // ---------------------------------------------------------------------------
 
-function printAggregateSummary(entries: LlmCallLogEntry[], missionId: string): void {
+function printAggregateSummary(
+	entries: LlmCallLogEntry[],
+	missionId: string,
+): void {
 	// Group by agentId.
 	const byAgent = new Map<string, AgentTotals>();
 	for (const e of entries) {
@@ -226,10 +235,18 @@ function printAggregateSummary(entries: LlmCallLogEntry[], missionId: string): v
 		agg.totalCostUsd += e.usage.cost.totalCostUsd;
 	}
 
-	const rows = [...byAgent.values()].sort((a, b) => b.totalCostUsd - a.totalCostUsd);
+	const rows = [...byAgent.values()].sort(
+		(a, b) => b.totalCostUsd - a.totalCostUsd,
+	);
 
-	const first = entries[0]!.savedAt.toISOString().slice(0, 19).replace("T", " ");
-	const last = entries[entries.length - 1]!.savedAt.toISOString().slice(0, 19).replace("T", " ");
+	const first = entries[0]?.savedAt
+		.toISOString()
+		.slice(0, 19)
+		.replace("T", " ");
+	const last = entries[entries.length - 1]?.savedAt
+		.toISOString()
+		.slice(0, 19)
+		.replace("T", " ");
 
 	console.log(`\nLLM Call Audit Log — mission: ${missionId}`);
 	console.log(`Period: ${first} → ${last}  (${entries.length} total calls)\n`);
@@ -300,14 +317,19 @@ function printAggregateSummary(entries: LlmCallLogEntry[], missionId: string): v
 
 	// Cost breakdown.
 	const totalCost = rows.reduce(
-		(acc, r) => {
+		(acc, _r) => {
 			acc.inputCostUsd = 0;
 			acc.outputCostUsd = 0;
 			acc.cacheReadCostUsd = 0;
 			acc.cacheWriteCostUsd = 0;
 			return acc;
 		},
-		{ inputCostUsd: 0, outputCostUsd: 0, cacheReadCostUsd: 0, cacheWriteCostUsd: 0 },
+		{
+			inputCostUsd: 0,
+			outputCostUsd: 0,
+			cacheReadCostUsd: 0,
+			cacheWriteCostUsd: 0,
+		},
 	);
 
 	// Recompute cost breakdown from entries (aggregated AgentTotals don't break it out).
@@ -319,7 +341,12 @@ function printAggregateSummary(entries: LlmCallLogEntry[], missionId: string): v
 			acc.cacheWriteCostUsd += e.usage.cost.cacheWriteCostUsd;
 			return acc;
 		},
-		{ inputCostUsd: 0, outputCostUsd: 0, cacheReadCostUsd: 0, cacheWriteCostUsd: 0 },
+		{
+			inputCostUsd: 0,
+			outputCostUsd: 0,
+			cacheReadCostUsd: 0,
+			cacheWriteCostUsd: 0,
+		},
 	);
 	void totalCost; // unused after refactor above
 

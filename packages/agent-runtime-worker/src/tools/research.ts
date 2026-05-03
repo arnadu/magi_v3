@@ -11,15 +11,15 @@
  * See ADR-0010 for design rationale.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { Type } from "@sinclair/typebox";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
+import { Type } from "@sinclair/typebox";
 import { runInnerLoop } from "../loop.js";
+import type { AclPolicy, MagiTool, ToolResult } from "../tools.js";
+import { createBashTool } from "../tools.js";
 import { createFetchUrlTool } from "./fetch-url.js";
 import { tryCreateSearchWebTool } from "./search-web.js";
-import { createBashTool } from "../tools.js";
-import type { AclPolicy, MagiTool, ToolResult } from "../tools.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -85,8 +85,7 @@ function findCached(
 	const cutoff = Date.now() - maxAgeHours * 3_600_000;
 	return index.find(
 		(e) =>
-			normalise(e.question) === key &&
-			new Date(e.savedAt).getTime() >= cutoff,
+			normalise(e.question) === key && new Date(e.savedAt).getTime() >= cutoff,
 	);
 }
 
@@ -182,12 +181,14 @@ function toolErr(text: string): ToolResult {
 
 /** Extract all URLs from the last assistant message's text blocks. */
 function extractSources(text: string): string[] {
-	const urlRe = /https?:\/\/[^\s\)\"]+/g;
+	const urlRe = /https?:\/\/[^\s)"]+/g;
 	return [...new Set(text.match(urlRe) ?? [])];
 }
 
 /** Extract the final text response from a completed inner loop. */
-function extractFinding(messages: import("@mariozechner/pi-ai").Message[]): string {
+function extractFinding(
+	messages: import("@mariozechner/pi-ai").Message[],
+): string {
 	const last = [...messages]
 		.reverse()
 		.find((m): m is AssistantMessage => m.role === "assistant");
@@ -216,7 +217,12 @@ export function createResearchTool(
 	model: Model<string>,
 	sharedDir: string,
 	acl: AclPolicy,
-	opts?: { onSubLoopMessage?: (toolUseId: string, msg: import("@mariozechner/pi-ai").Message) => Promise<void> },
+	opts?: {
+		onSubLoopMessage?: (
+			toolUseId: string,
+			msg: import("@mariozechner/pi-ai").Message,
+		) => Promise<void>;
+	},
 ): MagiTool {
 	// Build the sub-loop tool set once (stateless tools; safe to reuse).
 	const searchWebTool = tryCreateSearchWebTool();
@@ -231,7 +237,10 @@ export function createResearchTool(
 	];
 
 	// Inject sharedDir into the system prompt so the agent knows where to look.
-	const systemPrompt = RESEARCH_SYSTEM_PROMPT.replace(/<sharedDir>/g, sharedDir);
+	const systemPrompt = RESEARCH_SYSTEM_PROMPT.replace(
+		/<sharedDir>/g,
+		sharedDir,
+	);
 
 	return {
 		name: "Research",
@@ -240,7 +249,9 @@ export function createResearchTool(
 			"fetches sources, and returns a concise finding (200–500 words + source URLs). " +
 			"All intermediate web calls are isolated — they do not appear in your context. " +
 			"Findings are cached in the shared workspace; check the index before calling: " +
-			"`cat " + sharedDir + "/research/index.json 2>/dev/null | head -100`\n\n" +
+			"`cat " +
+			sharedDir +
+			"/research/index.json 2>/dev/null | head -100`\n\n" +
 			"Use this tool instead of calling SearchWeb or FetchUrl directly. " +
 			"It is far more token-efficient: only the synthesised finding enters your context.",
 		parameters: Type.Object({
@@ -299,7 +310,10 @@ export function createResearchTool(
 			}
 
 			// When context files are provided, always treat as fresh (maxAge = 0).
-			const maxAge = contextFiles.length > 0 ? 0 : (args.max_age_hours ?? DEFAULT_MAX_AGE_HOURS);
+			const maxAge =
+				contextFiles.length > 0
+					? 0
+					: (args.max_age_hours ?? DEFAULT_MAX_AGE_HOURS);
 
 			// 1. Check cache (skipped when contextFiles are present — always fresh).
 			if (contextFiles.length === 0) {
@@ -319,7 +333,9 @@ export function createResearchTool(
 					}
 					const result = `[Cached finding — ${cached.agentId}, ${new Date(cached.savedAt).toISOString().slice(0, 16)}]\n\n${fullAnswer}`;
 					if (outputPath) {
-						try { writeFileSync(outputPath, fullAnswer, "utf-8"); } catch {}
+						try {
+							writeFileSync(outputPath, fullAnswer, "utf-8");
+						} catch {}
 					}
 					return ok(result);
 				}
@@ -347,14 +363,15 @@ export function createResearchTool(
 			// 3. Choose the effective system prompt.
 			// When context files are provided, instruct the sub-loop to use provided
 			// URLs rather than calling SearchWeb (which is unnecessary and wastes tokens).
-			const effectiveSystemPrompt = contextFiles.length > 0
-				? systemPrompt +
-				  "\n\n## Context-only mode\n" +
-				  "Context files have been provided above. " +
-				  "Fetch URLs found in those files using FetchUrl. " +
-				  "Do NOT call SearchWeb — all URL discovery is already done. " +
-				  "SearchWeb is effectively disabled for this request."
-				: systemPrompt;
+			const effectiveSystemPrompt =
+				contextFiles.length > 0
+					? systemPrompt +
+						"\n\n## Context-only mode\n" +
+						"Context files have been provided above. " +
+						"Fetch URLs found in those files using FetchUrl. " +
+						"Do NOT call SearchWeb — all URL discovery is already done. " +
+						"SearchWeb is effectively disabled for this request."
+					: systemPrompt;
 
 			// 4. Run research sub-loop.
 			let loopResult: Awaited<ReturnType<typeof runInnerLoop>>;
@@ -367,7 +384,9 @@ export function createResearchTool(
 					signal,
 					maxTurns: RESEARCH_MAX_TURNS,
 					onMessage: opts?.onSubLoopMessage
-						? async (msg) => { await opts.onSubLoopMessage!(id as string, msg); }
+						? async (msg) => {
+								await opts.onSubLoopMessage?.(id as string, msg);
+							}
 						: undefined,
 				});
 			} catch (e) {
@@ -379,7 +398,9 @@ export function createResearchTool(
 			// 5. Extract finding.
 			const finding = extractFinding(loopResult.messages);
 			if (!finding) {
-				return toolErr("Research produced no response. Check SearchWeb API key.");
+				return toolErr(
+					"Research produced no response. Check SearchWeb API key.",
+				);
 			}
 
 			// 6. Write to output_path if provided.
@@ -387,7 +408,9 @@ export function createResearchTool(
 				try {
 					writeFileSync(outputPath, finding, "utf-8");
 				} catch (e) {
-					console.warn(`[research] Failed to write output_path: ${(e as Error).message}`);
+					console.warn(
+						`[research] Failed to write output_path: ${(e as Error).message}`,
+					);
 				}
 			}
 
@@ -405,7 +428,9 @@ export function createResearchTool(
 				saveEntry(sharedDir, entry, finding);
 			} catch (e) {
 				// Persistence failure is non-fatal — still return the finding.
-				console.warn(`[research] Failed to save finding: ${(e as Error).message}`);
+				console.warn(
+					`[research] Failed to save finding: ${(e as Error).message}`,
+				);
 			}
 
 			return ok(finding);

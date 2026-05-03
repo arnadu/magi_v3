@@ -68,7 +68,10 @@ export interface ConversationRepository {
 	 * Return the HTML of the most recently stored mental map for this agent,
 	 * or null if none has been saved yet.
 	 */
-	loadMostRecentMentalMap(agentId: string, missionId: string): Promise<string | null>;
+	loadMostRecentMentalMap(
+		agentId: string,
+		missionId: string,
+	): Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,8 +161,12 @@ export function createMongoConversationRepository(
 				turnNumber: d.turnNumber,
 				message: d.message,
 				...(d.callSeq !== undefined ? { callSeq: d.callSeq } : {}),
-				...(d.mentalMapHtml !== undefined ? { mentalMapHtml: d.mentalMapHtml } : {}),
-				...(d.parentToolUseId !== undefined ? { parentToolUseId: d.parentToolUseId } : {}),
+				...(d.mentalMapHtml !== undefined
+					? { mentalMapHtml: d.mentalMapHtml }
+					: {}),
+				...(d.parentToolUseId !== undefined
+					? { parentToolUseId: d.parentToolUseId }
+					: {}),
 			}));
 		},
 
@@ -187,8 +194,12 @@ export function createMongoConversationRepository(
 					savedAt: new Date(),
 					...(sm.isReflection ? { isReflection: true } : {}),
 					...(sm.callSeq !== undefined ? { callSeq: sm.callSeq } : {}),
-					...(sm.mentalMapHtml !== undefined ? { mentalMapHtml: sm.mentalMapHtml } : {}),
-					...(sm.parentToolUseId !== undefined ? { parentToolUseId: sm.parentToolUseId } : {}),
+					...(sm.mentalMapHtml !== undefined
+						? { mentalMapHtml: sm.mentalMapHtml }
+						: {}),
+					...(sm.parentToolUseId !== undefined
+						? { parentToolUseId: sm.parentToolUseId }
+						: {}),
 				});
 			}
 		},
@@ -205,7 +216,7 @@ export function createMongoConversationRepository(
 				{ agentId, missionId, mentalMapHtml: { $exists: true } },
 				{ sort: { turnNumber: -1, seqInTurn: -1 } },
 			);
-			return (doc?.mentalMapHtml) ?? null;
+			return doc?.mentalMapHtml ?? null;
 		},
 	};
 }

@@ -32,7 +32,7 @@
  * Timeout: 4 minutes (agent cycle × 2 + heartbeat ≤60s + job execution)
  */
 
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
 	chmodSync,
 	existsSync,
@@ -52,13 +52,22 @@ import { connectMongo } from "../src/mongo.js";
 // ---------------------------------------------------------------------------
 
 const MONGODB_URI = process.env.MONGODB_URI;
-if (!MONGODB_URI) throw new Error("MONGODB_URI is required for integration tests");
+if (!MONGODB_URI)
+	throw new Error("MONGODB_URI is required for integration tests");
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const REPO_ROOT = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"..",
+);
 
 const TEAM_CONFIG_PATH = join(
 	REPO_ROOT,
-	"config", "teams", "test", "daemon-job-test.yaml",
+	"config",
+	"teams",
+	"test",
+	"daemon-job-test.yaml",
 );
 
 const MISSION_ID = "daemon-job-test";
@@ -76,10 +85,7 @@ const MARKER_FILE = join(OUTPUT_DIR, "job-ran.txt");
 // ---------------------------------------------------------------------------
 
 /** Poll a URL until it responds 200 or timeout expires. */
-async function waitForHttp(
-	url: string,
-	timeoutMs: number,
-): Promise<void> {
+async function waitForHttp(url: string, timeoutMs: number): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
 		try {
@@ -121,13 +127,13 @@ async function waitForMailboxSubject(
 ): Promise<unknown> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		const msg = await db
-			.collection("mailbox")
-			.findOne({ missionId, subject });
+		const msg = await db.collection("mailbox").findOne({ missionId, subject });
 		if (msg) return msg;
 		await new Promise((r) => setTimeout(r, 2_000));
 	}
-	throw new Error(`Timed out waiting for mailbox message with subject "${subject}"`);
+	throw new Error(
+		`Timed out waiting for mailbox message with subject "${subject}"`,
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +148,9 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 
 	beforeAll(async () => {
 		// ── Clean previous run ───────────────────────────────────────────────
-		try { rmSync(OUTPUT_DIR, { recursive: true, force: true }); } catch {}
+		try {
+			rmSync(OUTPUT_DIR, { recursive: true, force: true });
+		} catch {}
 		mkdirSync(OUTPUT_DIR, { recursive: true });
 		workdir = OUTPUT_DIR;
 
@@ -154,14 +162,22 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 
 		// ── Wipe MongoDB data from previous runs ─────────────────────────────
 		{
+			// biome-ignore lint/style/noNonNullAssertion: MONGODB_URI required for integration tests
 			const { client, db } = await connectMongo(MONGODB_URI!);
 			try {
-				for (const coll of ["mailbox", "conversationMessages", "llmCallLog", "scheduled_messages"]) {
+				for (const coll of [
+					"mailbox",
+					"conversationMessages",
+					"llmCallLog",
+					"scheduled_messages",
+				]) {
 					await db.collection(coll).deleteMany({ missionId: MISSION_ID });
 				}
 				// Also remove the PID file from any prior run.
 				const pidFile = join(workdir, "missions", MISSION_ID, "daemon.pid");
-				try { rmSync(pidFile); } catch {}
+				try {
+					rmSync(pidFile);
+				} catch {}
 			} finally {
 				await client.close();
 			}
@@ -174,26 +190,34 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 		mkdirSync(OUTPUT_DIR, { recursive: true });
 		chmodSync(OUTPUT_DIR, 0o1777); // sticky + world-writable so magi-w1 can write
 
-		writeFileSync(jobScriptPath, [
-			"#!/bin/sh",
-			`# Test job — runs as magi-w1 under the daemon`,
-			`echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${MARKER_FILE}"`,
-			`magi-tool post-message \\`,
-			`  --to data-researcher \\`,
-			`  --subject "test-job-via-token" \\`,
-			`  --body "MAGI_TOOL_TOKEN works — job ran at $(date -u)"`,
-		].join("\n"));
+		writeFileSync(
+			jobScriptPath,
+			[
+				"#!/bin/sh",
+				`# Test job — runs as magi-w1 under the daemon`,
+				`echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${MARKER_FILE}"`,
+				`magi-tool post-message \\`,
+				`  --to data-researcher \\`,
+				`  --subject "test-job-via-token" \\`,
+				`  --body "MAGI_TOOL_TOKEN works — job ran at $(date -u)"`,
+			].join("\n"),
+		);
 		chmodSync(jobScriptPath, 0o755);
 	}, 60_000);
 
 	it(
 		"agent submits job, daemon runs it with token, agent reports result",
 		async () => {
+			// biome-ignore lint/style/noNonNullAssertion: MONGODB_URI required for integration tests
 			const { client, db } = await connectMongo(MONGODB_URI!);
 			const mailboxRepo = createMongoMailboxRepository(db, MISSION_ID);
 			const submitJobScript = join(
 				sharedDir,
-				"skills", "_platform", "run-background", "scripts", "submit-job.sh",
+				"skills",
+				"_platform",
+				"run-background",
+				"scripts",
+				"submit-job.sh",
 			);
 
 			try {
@@ -201,15 +225,13 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 				const daemonDir = join(REPO_ROOT, "packages", "agent-runtime-worker");
 				daemonProc = spawn(
 					"node",
-					[
-						"--import", "./dist/node-polyfill.js",
-						"dist/daemon.js",
-					],
+					["--import", "./dist/node-polyfill.js", "dist/daemon.js"],
 					{
 						cwd: daemonDir,
 						env: {
 							...process.env,
 							TEAM_CONFIG: TEAM_CONFIG_PATH,
+							// biome-ignore lint/style/noNonNullAssertion: MONGODB_URI required for integration tests
 							MONGODB_URI: MONGODB_URI!,
 							AGENT_WORKDIR: workdir,
 							MONITOR_PORT: String(MONITOR_PORT),
@@ -228,14 +250,13 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 				});
 
 				// ── Wait for the monitor server to be ready ──────────────────────
-				await waitForHttp(
-					`http://localhost:${MONITOR_PORT}/status`,
-					30_000,
-				);
+				await waitForHttp(`http://localhost:${MONITOR_PORT}/status`, 30_000);
 				console.log("[test] Monitor server ready");
 
 				// ── Release the start gate ───────────────────────────────────────
-				await fetch(`http://localhost:${MONITOR_PORT}/start`, { method: "POST" });
+				await fetch(`http://localhost:${MONITOR_PORT}/start`, {
+					method: "POST",
+				});
 				console.log("[test] Daemon started (POST /start)");
 
 				// Give the workspace provision a moment to complete before posting.
@@ -280,15 +301,26 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 				while (!existsSync(MARKER_FILE) && Date.now() < markerDeadline) {
 					await new Promise((r) => setTimeout(r, 2_000));
 				}
-				expect(existsSync(MARKER_FILE), "job marker file must exist — script ran").toBe(true);
+				expect(
+					existsSync(MARKER_FILE),
+					"job marker file must exist — script ran",
+				).toBe(true);
 				console.log("[test] Job marker file found");
 
 				// ── Wait for the magi-tool post-message (MAGI_TOOL_TOKEN worked) ─
-				console.log("[test] Waiting for magi-tool post-message (MAGI_TOOL_TOKEN test)…");
-				const tokenMsg = await waitForMailboxSubject(
-					db, MISSION_ID, "test-job-via-token", 30_000,
+				console.log(
+					"[test] Waiting for magi-tool post-message (MAGI_TOOL_TOKEN test)…",
 				);
-				expect(tokenMsg, "magi-tool must have posted message via MAGI_TOOL_TOKEN").toBeTruthy();
+				const tokenMsg = await waitForMailboxSubject(
+					db,
+					MISSION_ID,
+					"test-job-via-token",
+					30_000,
+				);
+				expect(
+					tokenMsg,
+					"magi-tool must have posted message via MAGI_TOOL_TOKEN",
+				).toBeTruthy();
 				console.log("[test] MAGI_TOOL_TOKEN verified");
 
 				// ── Wait for job status file ─────────────────────────────────────
@@ -297,14 +329,18 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 				let statusFile: string | null = null;
 				while (!statusFile && Date.now() < statusDeadline) {
 					try {
-						const files = (await import("node:fs")).readdirSync(statusDir)
+						const files = (await import("node:fs"))
+							.readdirSync(statusDir)
 							.filter((f: string) => f.endsWith(".json"));
 						if (files.length > 0) statusFile = join(statusDir, files[0]);
-					} catch { /* dir not yet created */ }
+					} catch {
+						/* dir not yet created */
+					}
 					if (!statusFile) await new Promise((r) => setTimeout(r, 1_000));
 				}
 				expect(statusFile, "job status file must exist").not.toBeNull();
 				const status = JSON.parse(
+					// biome-ignore lint/style/noNonNullAssertion: guarded by expect above
 					(await import("node:fs")).readFileSync(statusFile!, "utf-8"),
 				) as { exitCode: number };
 				expect(status.exitCode, "job must have exited 0").toBe(0);
@@ -326,13 +362,12 @@ describe("integration: daemon background job execution (Sprint 12)", () => {
 				).toBeGreaterThanOrEqual(2);
 
 				console.log("\n[test] All assertions passed.");
-
 			} finally {
 				// ── Shut down the daemon ─────────────────────────────────────────
 				if (daemonProc) {
 					daemonProc.kill("SIGTERM");
 					await new Promise<void>((resolve) => {
-						daemonProc!.on("close", () => resolve());
+						daemonProc?.on("close", () => resolve());
 						setTimeout(resolve, 5_000); // force-resolve after 5s
 					});
 					daemonProc = null;

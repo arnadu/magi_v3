@@ -39,7 +39,9 @@ import { createSearchWebTool } from "../src/tools/search-web.js";
 import { createFileTools } from "../src/tools.js";
 
 const model = process.env.MODEL ? parseModel(process.env.MODEL) : CLAUDE_SONNET;
-const visionModel = process.env.VISION_MODEL ? parseModel(process.env.VISION_MODEL) : CLAUDE_HAIKU;
+const visionModel = process.env.VISION_MODEL
+	? parseModel(process.env.VISION_MODEL)
+	: CLAUDE_HAIKU;
 
 const POOL_USER = "magi-w1";
 

@@ -114,8 +114,18 @@ export interface LlmCallLogRepository {
  * @param modelCost - the `cost` field from the Model descriptor
  */
 export function computeCost(
-	usage: { input: number; output: number; cacheRead: number; cacheWrite: number },
-	modelCost: { input: number; output: number; cacheRead: number; cacheWrite: number },
+	usage: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	},
+	modelCost: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	},
 ): LlmCallCost {
 	const perToken = (pricePerMillion: number) => pricePerMillion / 1_000_000;
 	const inputCostUsd = usage.input * perToken(modelCost.input);
@@ -127,7 +137,8 @@ export function computeCost(
 		outputCostUsd,
 		cacheReadCostUsd,
 		cacheWriteCostUsd,
-		totalCostUsd: inputCostUsd + outputCostUsd + cacheReadCostUsd + cacheWriteCostUsd,
+		totalCostUsd:
+			inputCostUsd + outputCostUsd + cacheReadCostUsd + cacheWriteCostUsd,
 	};
 }
 
@@ -168,14 +179,20 @@ export function createMongoLlmCallLogRepository(db: Db): LlmCallLogRepository {
 	col
 		.createIndex({ savedAt: 1 })
 		.catch((e: unknown) =>
-			console.warn("[llm-call-log] Failed to create savedAt index:", (e as Error).message),
+			console.warn(
+				"[llm-call-log] Failed to create savedAt index:",
+				(e as Error).message,
+			),
 		);
 
 	// Index for per-agent/per-mission queries.
 	col
 		.createIndex({ missionId: 1, agentId: 1, savedAt: 1 })
 		.catch((e: unknown) =>
-			console.warn("[llm-call-log] Failed to create mission index:", (e as Error).message),
+			console.warn(
+				"[llm-call-log] Failed to create mission index:",
+				(e as Error).message,
+			),
 		);
 
 	return {
@@ -187,7 +204,8 @@ export function createMongoLlmCallLogRepository(db: Db): LlmCallLogRepository {
 			const q: Record<string, unknown> = {};
 			if (filter.missionId !== undefined) q.missionId = filter.missionId;
 			if (filter.agentId !== undefined) q.agentId = filter.agentId;
-			if (filter.isReflection !== undefined) q.isReflection = filter.isReflection;
+			if (filter.isReflection !== undefined)
+				q.isReflection = filter.isReflection;
 			if (filter.from !== undefined || filter.to !== undefined) {
 				const range: Record<string, Date> = {};
 				if (filter.from) range.$gte = filter.from;
@@ -195,7 +213,9 @@ export function createMongoLlmCallLogRepository(db: Db): LlmCallLogRepository {
 				q.savedAt = range;
 			}
 			const docs = await col.find(q).sort({ savedAt: 1 }).toArray();
-			return docs.map(({ _id: _discarded, ...rest }) => rest as LlmCallLogEntry);
+			return docs.map(
+				({ _id: _discarded, ...rest }) => rest as LlmCallLogEntry,
+			);
 		},
 	};
 }

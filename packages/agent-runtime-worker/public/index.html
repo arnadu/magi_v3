@@ -15,10 +15,10 @@
   <span class="hcost" id="hcost">$0.0000</span>
   <span class="hup" id="hup"></span>
   <span class="spacer"></span>
-  <button class="btn btn-start" id="start-btn" onclick="startMission()">&#9654; Start</button>
-  <button class="btn btn-start" onclick="openCompose()">&#9993; Send</button>
-  <button class="btn btn-step-toggle" id="step-btn" onclick="toggleStep()">Step &#9675;</button>
-  <button class="btn btn-stop" id="stop-btn" onclick="stopDaemon()">&#9632; Stop</button>
+  <button type="button" class="btn btn-start" id="start-btn" onclick="startMission()">&#9654; Start</button>
+  <button type="button" class="btn btn-start" onclick="openCompose()">&#9993; Send</button>
+  <button type="button" class="btn btn-step-toggle" id="step-btn" onclick="toggleStep()">Step &#9675;</button>
+  <button type="button" class="btn btn-stop" id="stop-btn" onclick="stopDaemon()">&#9632; Stop</button>
 </header>
 
 <div class="queue-strip" id="queue-strip">
@@ -29,7 +29,7 @@
 <div class="budget-banner hidden" id="budget-banner">
   <span class="budget-banner-icon">&#9888;</span>
   <span class="budget-banner-msg" id="budget-banner-msg">Spending cap reached — mission paused</span>
-  <button class="btn btn-extend-budget" id="extend-budget-btn" onclick="extendBudget()">&#43;$5 and continue</button>
+  <button type="button" class="btn btn-extend-budget" id="extend-budget-btn" onclick="extendBudget()">&#43;$5 and continue</button>
 </div>
 
 <main>
@@ -37,9 +37,9 @@
   <div class="left-col">
     <div class="feed-controls">
       <div class="feed-mode-btns">
-        <button class="feed-mode-btn active" data-mode="all" onclick="setFeedMode('all')">All</button>
-        <button class="feed-mode-btn" data-mode="threads" onclick="setFeedMode('threads')">Threads</button>
-        <button class="feed-mode-btn" data-mode="user" onclick="setFeedMode('user')">&#8594; User</button>
+        <button type="button" class="feed-mode-btn active" data-mode="all" onclick="setFeedMode('all')">All</button>
+        <button type="button" class="feed-mode-btn" data-mode="threads" onclick="setFeedMode('threads')">Threads</button>
+        <button type="button" class="feed-mode-btn" data-mode="user" onclick="setFeedMode('user')">&#8594; User</button>
       </div>
       <input class="feed-search" id="feed-search" type="text" placeholder="&#128269; filter&#8230;" oninput="setFeedSearch(this.value)">
     </div>
@@ -86,8 +86,8 @@
       <textarea id="compose-body" placeholder="Type your message&#8230;"></textarea>
     </div>
     <div class="compose-actions">
-      <button class="btn btn-cancel" onclick="closeCompose()">Cancel</button>
-      <button class="btn btn-send" onclick="sendMessage()">Send</button>
+      <button type="button" class="btn btn-cancel" onclick="closeCompose()">Cancel</button>
+      <button type="button" class="btn btn-send" onclick="sendMessage()">Send</button>
     </div>
   </div>
 </div>

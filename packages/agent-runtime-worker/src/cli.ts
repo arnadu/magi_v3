@@ -84,9 +84,11 @@ function getModel() {
 		modelId === "claude-sonnet-4-6" ? CLAUDE_SONNET : parseModel(modelId);
 	const visionModelId = process.env.VISION_MODEL ?? "claude-haiku-4-5-20251001";
 	const visionModel =
-		visionModelId === "claude-haiku-4-5-20251001" ? CLAUDE_HAIKU
-		: visionModelId === "claude-sonnet-4-6" ? CLAUDE_SONNET
-		: parseModel(visionModelId);
+		visionModelId === "claude-haiku-4-5-20251001"
+			? CLAUDE_HAIKU
+			: visionModelId === "claude-sonnet-4-6"
+				? CLAUDE_SONNET
+				: parseModel(visionModelId);
 	return { modelId, model, visionModel };
 }
 

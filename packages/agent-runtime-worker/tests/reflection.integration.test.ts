@@ -47,6 +47,7 @@ import { createMongoMailboxRepository } from "../src/mailbox.js";
 import { CLAUDE_SONNET, parseModel } from "../src/models.js";
 
 const model = process.env.MODEL ? parseModel(process.env.MODEL) : CLAUDE_SONNET;
+
 import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
@@ -270,7 +271,11 @@ describe("integration: reflection and context compaction", () => {
 			// 3. Mental Map finding-list must have been patched by reflection.
 			const { client: c2, db: db2 } = await connectMongo(MONGODB_URI);
 			const mmDoc = await db2.collection("conversationMessages").findOne(
-				{ agentId: "researcher", missionId, mentalMapHtml: { $exists: true } },
+				{
+					agentId: "researcher",
+					missionId,
+					mentalMapHtml: { $exists: true },
+				},
 				{ sort: { turnNumber: -1, seqInTurn: -1 } },
 			);
 			// biome-ignore lint/suspicious/noExplicitAny: dynamic doc

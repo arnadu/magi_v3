@@ -231,7 +231,9 @@ export class MonitorServer {
 		// stops new connections; existing keep-alive connections hold the port open
 		// and prevent the `close` event (which terminates the Change Stream watchers).
 		for (const client of this.clients) {
-			try { client.socket?.destroy(); } catch {}
+			try {
+				client.socket?.destroy();
+			} catch {}
 		}
 		this.clients.clear();
 
@@ -345,7 +347,11 @@ export class MonitorServer {
 		if (url === "/log" && req.method === "GET") {
 			const logPath = join(this.workdir, "daemon.log");
 			const maxLines = Math.min(
-				Number.parseInt(new URL(req.url ?? "/log", "http://x").searchParams.get("lines") ?? "200", 10) || 200,
+				Number.parseInt(
+					new URL(req.url ?? "/log", "http://x").searchParams.get("lines") ??
+						"200",
+					10,
+				) || 200,
 				2000,
 			);
 			let body = "";
@@ -364,13 +370,18 @@ export class MonitorServer {
 		if (mentalMapMatch && req.method === "GET") {
 			const agentId = decodeURIComponent(mentalMapMatch[1]);
 			const doc = await this.db.collection("conversationMessages").findOne(
-				{ agentId, missionId: this.missionId, mentalMapHtml: { $exists: true } },
+				{
+					agentId,
+					missionId: this.missionId,
+					mentalMapHtml: { $exists: true },
+				},
 				{ sort: { turnNumber: -1, seqInTurn: -1 } },
 			);
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(
 				JSON.stringify({
 					agentId,
+					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB document
 					html: (doc as any)?.mentalMapHtml ?? "",
 				}),
 			);
@@ -382,7 +393,8 @@ export class MonitorServer {
 		if (sessionsMatch && req.method === "GET") {
 			const agentId = decodeURIComponent(sessionsMatch[1]);
 
-			const llmDocs = await this.db.collection("llmCallLog")
+			const llmDocs = await this.db
+				.collection("llmCallLog")
 				.find({ agentId, missionId: this.missionId })
 				.sort({ turnNumber: 1, savedAt: 1 })
 				.toArray();
@@ -390,31 +402,54 @@ export class MonitorServer {
 			// Group by turnNumber
 			const byTurn = new Map<number, typeof llmDocs>();
 			for (const d of llmDocs) {
+				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB document
 				const t = (d as any).turnNumber ?? 0;
 				if (!byTurn.has(t)) byTurn.set(t, []);
-				byTurn.get(t)!.push(d);
+				byTurn.get(t)?.push(d);
 			}
 
 			// Count tool calls per turn from conversationMessages (non-sub-loop only)
-			const toolCounts = await this.db.collection("conversationMessages").aggregate([
-				{ $match: { agentId, missionId: this.missionId, "message.role": "toolResult", parentToolUseId: { $exists: false } } },
-				{ $group: { _id: "$turnNumber", count: { $sum: 1 } } },
-			]).toArray();
-			const toolCountMap = new Map(toolCounts.map((t: any) => [t._id, t.count]));
+			const toolCounts = await this.db
+				.collection("conversationMessages")
+				.aggregate([
+					{
+						$match: {
+							agentId,
+							missionId: this.missionId,
+							"message.role": "toolResult",
+							parentToolUseId: { $exists: false },
+						},
+					},
+					{ $group: { _id: "$turnNumber", count: { $sum: 1 } } },
+				])
+				.toArray();
+			const toolCountMap = new Map(
+				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB aggregate result
+				toolCounts.map((t: any) => [t._id, t.count]),
+			);
 
 			const sessions = Array.from(byTurn.entries()).map(([turn, docs]) => {
+				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
 				const isReflection = (docs[0] as any)?.isReflection ?? false;
+				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
 				const startTime = (docs[0] as any)?.savedAt;
+				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
 				const endTime = (docs[docs.length - 1] as any)?.savedAt;
-				const durationMs = startTime && endTime
-					? new Date(endTime).getTime() - new Date(startTime).getTime()
-					: 0;
-				const totals = docs.reduce((acc: any, d: any) => ({
-					inputTokens: acc.inputTokens + (d.usage?.inputTokens ?? 0),
-					outputTokens: acc.outputTokens + (d.usage?.outputTokens ?? 0),
-					cacheReadTokens: acc.cacheReadTokens + (d.usage?.cacheReadTokens ?? 0),
-					costUsd: acc.costUsd + (d.usage?.cost?.total ?? 0),
-				}), { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 });
+				const durationMs =
+					startTime && endTime
+						? new Date(endTime).getTime() - new Date(startTime).getTime()
+						: 0;
+				const totals = docs.reduce(
+					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
+					(acc: any, d: any) => ({
+						inputTokens: acc.inputTokens + (d.usage?.inputTokens ?? 0),
+						outputTokens: acc.outputTokens + (d.usage?.outputTokens ?? 0),
+						cacheReadTokens:
+							acc.cacheReadTokens + (d.usage?.cacheReadTokens ?? 0),
+						costUsd: acc.costUsd + (d.usage?.cost?.total ?? 0),
+					}),
+					{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 },
+				);
 				return {
 					turnNumber: turn,
 					isReflection,
@@ -434,17 +469,21 @@ export class MonitorServer {
 		}
 
 		// ── GET /agents/:id/sessions/:turn (detail for one session)
-		const sessionDetailMatch = url.match(/^\/agents\/([^/]+)\/sessions\/(\d+)$/);
+		const sessionDetailMatch = url.match(
+			/^\/agents\/([^/]+)\/sessions\/(\d+)$/,
+		);
 		if (sessionDetailMatch && req.method === "GET") {
 			const agentId = decodeURIComponent(sessionDetailMatch[1]);
 			const turnNumber = parseInt(sessionDetailMatch[2], 10);
 
-			const msgs = await this.db.collection("conversationMessages")
+			const msgs = await this.db
+				.collection("conversationMessages")
 				.find({ agentId, missionId: this.missionId, turnNumber })
 				.sort({ seqInTurn: 1 })
 				.toArray();
 
-			const llmCalls = await this.db.collection("llmCallLog")
+			const llmCalls = await this.db
+				.collection("llmCallLog")
 				.find({ agentId, missionId: this.missionId, turnNumber })
 				.sort({ savedAt: 1 })
 				.toArray();
@@ -463,13 +502,17 @@ export class MonitorServer {
 				.limit(50)
 				.toArray();
 			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(docs.map(d => ({
-				id: String(d._id),
-				to: d.to ?? [],
-				subject: d.subject ?? "",
-				cronExpression: d.cronExpression ?? null,
-				scheduledFor: d.scheduledFor ?? null,
-			}))));
+			res.end(
+				JSON.stringify(
+					docs.map((d) => ({
+						id: String(d._id),
+						to: d.to ?? [],
+						subject: d.subject ?? "",
+						cronExpression: d.cronExpression ?? null,
+						scheduledFor: d.scheduledFor ?? null,
+					})),
+				),
+			);
 			return;
 		}
 
@@ -483,12 +526,16 @@ export class MonitorServer {
 				.sort({ turnNumber: 1, savedAt: 1 })
 				.toArray();
 			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(docs.map(d => ({
-				turnNumber: d.turnNumber ?? 0,
-				isReflection: d.isReflection ?? false,
-				savedAt: d.savedAt,
-				usage: d.usage ?? null,
-			}))));
+			res.end(
+				JSON.stringify(
+					docs.map((d) => ({
+						turnNumber: d.turnNumber ?? 0,
+						isReflection: d.isReflection ?? false,
+						savedAt: d.savedAt,
+						usage: d.usage ?? null,
+					})),
+				),
+			);
 			return;
 		}
 

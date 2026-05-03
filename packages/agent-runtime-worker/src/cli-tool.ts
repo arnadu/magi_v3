@@ -46,7 +46,9 @@ import { createRequire } from "node:module";
 // ---------------------------------------------------------------------------
 
 interface ToolResponse {
-	result?: { content: Array<{ type: string; text?: string; [k: string]: unknown }> };
+	result?: {
+		content: Array<{ type: string; text?: string; [k: string]: unknown }>;
+	};
 	error?: string;
 }
 
@@ -61,7 +63,9 @@ function callTool(
 		const url = new URL(`/tools/${encodeURIComponent(toolName)}`, baseUrl);
 		const isHttps = url.protocol === "https:";
 		// eslint-disable-next-line @typescript-eslint/no-var-requires
-		const http = createRequire(import.meta.url)(isHttps ? "https" : "http") as typeof import("node:http");
+		const http = createRequire(import.meta.url)(
+			isHttps ? "https" : "http",
+		) as typeof import("node:http");
 
 		const req = http.request(
 			{
@@ -80,9 +84,17 @@ function callTool(
 				res.on("data", (c: Buffer) => chunks.push(c));
 				res.on("end", () => {
 					try {
-						resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as ToolResponse);
+						resolve(
+							JSON.parse(
+								Buffer.concat(chunks).toString("utf8"),
+							) as ToolResponse,
+						);
 					} catch (e) {
-						reject(new Error(`Failed to parse response JSON: ${(e as Error).message}`));
+						reject(
+							new Error(
+								`Failed to parse response JSON: ${(e as Error).message}`,
+							),
+						);
 					}
 				});
 			},
@@ -107,9 +119,9 @@ function parseArgs(argv: string[]): {
 	if (args.length === 0) {
 		console.error(
 			"Usage: magi-tool <tool-name> [--params '<json>'] [tool-specific flags]\n" +
-			"       magi-tool research --question '...' [--context-file file]... [--output path]\n" +
-			"       magi-tool fetch-url --url 'https://...'\n" +
-			"       magi-tool post-message --to agentId --subject '...' --body '...'",
+				"       magi-tool research --question '...' [--context-file file]... [--output path]\n" +
+				"       magi-tool fetch-url --url 'https://...'\n" +
+				"       magi-tool post-message --to agentId --subject '...' --body '...'",
 		);
 		process.exit(1);
 	}
@@ -135,34 +147,54 @@ function parseArgs(argv: string[]): {
 		const flag = args[i];
 		const val = args[i + 1];
 
-		if (flag === "--params") { i++; continue; } // already handled
+		if (flag === "--params") {
+			i++;
+			continue;
+		} // already handled
 
 		if (flag === "--output" && val) {
-			outputPath = val; i++; continue;
+			outputPath = val;
+			i++;
+			continue;
 		}
 		if (flag === "--question" && val) {
-			params.question = val; i++; continue;
+			params.question = val;
+			i++;
+			continue;
 		}
 		if (flag === "--max-age-hours" && val) {
-			params.max_age_hours = Number(val); i++; continue;
+			params.max_age_hours = Number(val);
+			i++;
+			continue;
 		}
 		if (flag === "--context-file" && val) {
-			contextFiles.push(val); i++; continue;
+			contextFiles.push(val);
+			i++;
+			continue;
 		}
 		if (flag === "--url" && val) {
-			params.url = val; i++; continue;
+			params.url = val;
+			i++;
+			continue;
 		}
 		if (flag === "--max-images" && val) {
-			params.max_images = Number(val); i++; continue;
+			params.max_images = Number(val);
+			i++;
+			continue;
 		}
 		if (flag === "--to" && val) {
-			params.to = [val]; i++; continue;
+			params.to = [val];
+			i++;
+			continue;
 		}
 		if (flag === "--subject" && val) {
-			params.subject = val; i++; continue;
+			params.subject = val;
+			i++;
+			continue;
 		}
 		if (flag === "--body" && val) {
-			params.body = val; i++; continue;
+			params.body = val;
+			i++;
 		}
 		// Unknown flag — silently ignore (forward compatibility).
 	}
@@ -224,7 +256,9 @@ async function main(): Promise<void> {
 		try {
 			writeFileSync(outputPath, text, "utf-8");
 		} catch (e) {
-			console.error(`Error: failed to write output file: ${(e as Error).message}`);
+			console.error(
+				`Error: failed to write output file: ${(e as Error).message}`,
+			);
 			process.exit(1);
 		}
 	}

@@ -6,7 +6,7 @@ const CTX_LIMIT = 200_000;
 let AGENTS = [];
 let PLAYBOOK = [];
 let activeAgent = null;
-let feedMode = "all";        // all | threads | user
+let feedMode = "all"; // all | threads | user
 let feedSearch = "";
 const agentContextTokens = {};
 const agentCosts = {};
@@ -30,10 +30,14 @@ let scheduleData = [];
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 async function init() {
-	const [teamRes, statusRes, playbookRes, mailboxRes, scheduleRes] = await Promise.all([
-		fetch("team"), fetch("status"), fetch("playbook"),
-		fetch("mailbox"), fetch("schedule"),
-	]);
+	const [teamRes, statusRes, playbookRes, mailboxRes, scheduleRes] =
+		await Promise.all([
+			fetch("team"),
+			fetch("status"),
+			fetch("playbook"),
+			fetch("mailbox"),
+			fetch("schedule"),
+		]);
 	AGENTS = await teamRes.json();
 	PLAYBOOK = await playbookRes.json();
 	const status = await statusRes.json();
@@ -65,7 +69,7 @@ async function refreshSchedule() {
 function populateAgentTabs(agents) {
 	const bar = document.getElementById("agent-tabs");
 	const playbook = document.getElementById("tab-playbook");
-	agents.forEach(a => {
+	agents.forEach((a) => {
 		const tab = document.createElement("div");
 		tab.className = `agent-tab ac-${a.id}`;
 		tab.dataset.id = a.id;
@@ -75,7 +79,7 @@ function populateAgentTabs(agents) {
 			'<div class="tab-ctx">' +
 			'<span class="tab-ctx-label">—</span>' +
 			'<div class="tab-ctx-bar"><div class="tab-ctx-fill"></div></div>' +
-			'</div>' +
+			"</div>" +
 			'<div class="tab-sched">—</div>';
 		tab.onclick = () => selectAgent(a.id);
 		bar.insertBefore(tab, playbook);
@@ -83,7 +87,7 @@ function populateAgentTabs(agents) {
 }
 
 function updateScheduleTabs() {
-	AGENTS.forEach(a => {
+	AGENTS.forEach((a) => {
 		const tab = document.querySelector(`.agent-tab[data-id="${a.id}"]`);
 		if (!tab) return;
 		const sched = tab.querySelector(".tab-sched");
@@ -93,8 +97,9 @@ function updateScheduleTabs() {
 			sched.style.color = "var(--green)";
 			return;
 		}
-		const pending = scheduleData.filter(s =>
-			Array.isArray(s.to) && s.to.includes(a.id));
+		const pending = scheduleData.filter(
+			(s) => Array.isArray(s.to) && s.to.includes(a.id),
+		);
 		if (!pending.length) {
 			sched.textContent = "\u2014";
 			sched.style.color = "var(--muted)";
@@ -103,15 +108,18 @@ function updateScheduleTabs() {
 		pending.sort((x, y) => new Date(x.scheduledFor) - new Date(y.scheduledFor));
 		const next = pending[0];
 		const t = next.scheduledFor ? new Date(next.scheduledFor) : null;
-		if (t && !isNaN(t)) {
+		if (t && !Number.isNaN(t)) {
 			const now = new Date();
 			const isToday = t.toDateString() === now.toDateString();
-			sched.textContent = "next: " + (isToday
-				? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-				: t.toLocaleDateString([], { weekday: "short" }) + " " +
-				  t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+			sched.textContent = `next: ${
+				isToday
+					? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+					: t.toLocaleDateString([], { weekday: "short" }) +
+						" " +
+						t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+			}`;
 		} else if (next.cronExpression) {
-			sched.textContent = "cron: " + next.cronExpression;
+			sched.textContent = `cron: ${next.cronExpression}`;
 		} else {
 			sched.textContent = "scheduled";
 		}
@@ -122,10 +130,12 @@ function updateScheduleTabs() {
 function populateToChecks(agents) {
 	const box = document.getElementById("to-checks");
 	box.innerHTML = "";
-	agents.forEach(a => {
+	agents.forEach((a) => {
 		const lbl = document.createElement("label");
 		const chk = document.createElement("input");
-		chk.type = "checkbox"; chk.value = a.id; chk.id = `chk-${a.id}`;
+		chk.type = "checkbox";
+		chk.value = a.id;
+		chk.id = `chk-${a.id}`;
 		lbl.appendChild(chk);
 		lbl.appendChild(document.createTextNode(` ${a.name} (${a.role})`));
 		box.appendChild(lbl);
@@ -144,8 +154,12 @@ function injectAgentColors(agents) {
 		const color = `var(${COLORS[i] || "--muted"})`;
 		return `.ac-${safe}{color:${color}} .ab-${safe}{border-left-color:${color}}`;
 	});
-	lines.push(".ac-scheduler{color:var(--c-sched)} .ab-scheduler{border-left-color:var(--c-sched)}");
-	lines.push(".ac-user{color:var(--c-user)} .ab-user{border-left-color:var(--c-user)}");
+	lines.push(
+		".ac-scheduler{color:var(--c-sched)} .ab-scheduler{border-left-color:var(--c-sched)}",
+	);
+	lines.push(
+		".ac-user{color:var(--c-user)} .ab-user{border-left-color:var(--c-user)}",
+	);
 	const style = document.createElement("style");
 	style.textContent = lines.join("\n");
 	document.head.appendChild(style);
@@ -157,30 +171,38 @@ function connectSSE() {
 	es = new EventSource("events");
 	es.onopen = () => document.getElementById("dot").classList.remove("dead");
 	es.onerror = () => document.getElementById("dot").classList.add("dead");
-	es.addEventListener("status", e => applyStatus(JSON.parse(e.data)));
-	es.addEventListener("mailbox-msg", e => {
+	es.addEventListener("status", (e) => applyStatus(JSON.parse(e.data)));
+	es.addEventListener("mailbox-msg", (e) => {
 		const m = JSON.parse(e.data);
 		allMessages.push(m);
 		renderFeed();
 	});
-	es.addEventListener("llm-call", e => {
+	es.addEventListener("llm-call", (e) => {
 		const d = JSON.parse(e.data);
 		updateCostDisplay(d.missionTotalUsd, maxCostUsd);
 		addLlmCallToUsage(d);
 		agentContextTokens[d.agentId] = d.input;
 		updateContextBar(d.agentId, d.input);
 	});
-	es.addEventListener("step-paused", () => { stepWaiting = true; renderStepBtn(); renderQueue(); });
-	es.addEventListener("step-resumed", () => { stepWaiting = false; renderStepBtn(); renderQueue(); });
+	es.addEventListener("step-paused", () => {
+		stepWaiting = true;
+		renderStepBtn();
+		renderQueue();
+	});
+	es.addEventListener("step-resumed", () => {
+		stepWaiting = false;
+		renderStepBtn();
+		renderQueue();
+	});
 	es.addEventListener("mental-map-update", () => {
 		// Mental map snapshots are stored per-LLM-call in the sessions tree — no live rendering needed.
 	});
-	es.addEventListener("conversation-update", e => {
+	es.addEventListener("conversation-update", (e) => {
 		const d = JSON.parse(e.data);
 		if (d.agentId !== activeAgent) return;
 		appendToSessionsLive(d.message);
 	});
-	es.addEventListener("shutdown", e => {
+	es.addEventListener("shutdown", (e) => {
 		const d = JSON.parse(e.data);
 		document.getElementById("dot").classList.add("dead");
 		document.getElementById("stop-btn").disabled = true;
@@ -189,7 +211,7 @@ function connectSSE() {
 		stopped = true;
 	});
 	es.addEventListener("started", () => setStarted(true));
-	es.addEventListener("agent-status", e => {
+	es.addEventListener("agent-status", (e) => {
 		const d = JSON.parse(e.data);
 		runningAgent = d.running;
 		pendingAgents = d.pending ?? [];
@@ -201,15 +223,17 @@ function connectSSE() {
 			loadSessions();
 		}
 	});
-	es.addEventListener("cost-pause", e => {
+	es.addEventListener("cost-pause", (e) => {
 		const d = JSON.parse(e.data);
 		showBudgetBanner(d.spentUsd, d.capUsd);
 	});
-	es.addEventListener("cost-resumed", e => {
+	es.addEventListener("cost-resumed", (e) => {
 		const d = JSON.parse(e.data);
 		hideBudgetBanner();
 		maxCostUsd = d.newCapUsd ?? maxCostUsd;
-		addSysMsg(`\u2705 Budget extended +$${d.addUsd?.toFixed(2) ?? "5.00"} \u2014 new cap $${d.newCapUsd?.toFixed(2) ?? "?"}, mission resuming`);
+		addSysMsg(
+			`\u2705 Budget extended +$${d.addUsd?.toFixed(2) ?? "5.00"} \u2014 new cap $${d.newCapUsd?.toFixed(2) ?? "?"}, mission resuming`,
+		);
 	});
 }
 
@@ -257,7 +281,9 @@ function showBudgetBanner(spentUsd, capUsd) {
 	msg.textContent = `Spending cap of $${capUsd.toFixed(2)} reached ($${spentUsd.toFixed(4)} spent) — mission paused`;
 	banner.classList.remove("hidden");
 	document.getElementById("hcost").classList.add("danger");
-	addSysMsg(`\u26a0 Spending cap $${capUsd.toFixed(2)} reached — mission paused. Click "+$5 and continue" to resume.`);
+	addSysMsg(
+		`\u26a0 Spending cap $${capUsd.toFixed(2)} reached — mission paused. Click "+$5 and continue" to resume.`,
+	);
 }
 
 function hideBudgetBanner() {
@@ -268,7 +294,7 @@ function hideBudgetBanner() {
 	btn.textContent = "+$5 and continue";
 }
 
-async function extendBudget() {
+async function _extendBudget() {
 	const btn = document.getElementById("extend-budget-btn");
 	btn.disabled = true;
 	btn.textContent = "Extending\u2026";
@@ -294,9 +320,11 @@ function updateContextBar(agentId, tokens) {
 	const fill = tab.querySelector(".tab-ctx-fill");
 	if (!label || !fill) return;
 	const pct = Math.min(100, (tokens / CTX_LIMIT) * 100);
-	label.textContent = tokens >= 1000 ? `${(tokens / 1000).toFixed(0)}k` : String(tokens);
+	label.textContent =
+		tokens >= 1000 ? `${(tokens / 1000).toFixed(0)}k` : String(tokens);
 	fill.style.width = `${pct}%`;
-	fill.style.background = pct > 80 ? "var(--red)" : pct > 60 ? "var(--yellow)" : "var(--green)";
+	fill.style.background =
+		pct > 80 ? "var(--red)" : pct > 60 ? "var(--yellow)" : "var(--green)";
 }
 
 // ── Usage bar (footer) ─────────────────────────────────────────────────────
@@ -308,7 +336,8 @@ function addLlmCallToUsage(d) {
 		const pct = Math.min(100, (d.missionTotalUsd / maxCostUsd) * 100);
 		const fill = document.getElementById("cap-fill");
 		fill.style.width = `${pct}%`;
-		fill.style.background = pct > 80 ? "var(--red)" : pct > 50 ? "var(--yellow)" : "var(--accent)";
+		fill.style.background =
+			pct > 80 ? "var(--red)" : pct > 50 ? "var(--yellow)" : "var(--accent)";
 	}
 }
 
@@ -321,35 +350,39 @@ function updateUsageTable(agents) {
 function renderUsageRow() {
 	const total = Object.values(agentCosts).reduce((s, v) => s + v, 0);
 	const row = document.getElementById("usage-row");
-	row.innerHTML = Object.entries(agentCosts)
+	row.innerHTML = `${Object.entries(agentCosts)
 		.sort((a, b) => b[1] - a[1])
-		.map(([id, cost]) =>
-			`<span><span class="u-agent ac-${id}">${id}</span> <span class="u-val">$${cost.toFixed(4)}</span></span>`)
-		.join("") + `<span class="u-total">mission $${total.toFixed(4)}</span>`;
+		.map(
+			([id, cost]) =>
+				`<span><span class="u-agent ac-${id}">${id}</span> <span class="u-val">$${cost.toFixed(4)}</span></span>`,
+		)
+		.join("")}<span class="u-total">mission $${total.toFixed(4)}</span>`;
 }
 
 // ── Feed ───────────────────────────────────────────────────────────────────
-function setFeedMode(mode) {
+function _setFeedMode(mode) {
 	feedMode = mode;
-	document.querySelectorAll(".feed-mode-btn").forEach(b =>
-		b.classList.toggle("active", b.dataset.mode === mode));
+	document.querySelectorAll(".feed-mode-btn").forEach((b) => {
+		b.classList.toggle("active", b.dataset.mode === mode);
+	});
 	renderFeed();
 }
 
-function setFeedSearch(text) {
+function _setFeedSearch(text) {
 	feedSearch = text.toLowerCase();
 	renderFeed();
 }
 
 function matchesSearch(m) {
 	if (!feedSearch) return true;
-	return [m.from, ...(m.to || []), m.subject || "", m.body || ""]
-		.some(s => String(s).toLowerCase().includes(feedSearch));
+	return [m.from, ...(m.to || []), m.subject || "", m.body || ""].some((s) =>
+		String(s).toLowerCase().includes(feedSearch),
+	);
 }
 
 function renderFeed() {
 	const feed = document.getElementById("feed");
-	const msgs = allMessages.filter(m => {
+	const msgs = allMessages.filter((m) => {
 		if (feedMode === "user" && !(m.to || []).includes("user")) return false;
 		return matchesSearch(m);
 	});
@@ -373,10 +406,13 @@ function renderFeedThreads(feed, msgs) {
 		if (!threads.has(key)) threads.set(key, []);
 		threads.get(key).push(m);
 	}
-	const sorted = [...threads.entries()]
-		.sort((a, b) => new Date(b[1].at(-1).timestamp) - new Date(a[1].at(-1).timestamp));
+	const sorted = [...threads.entries()].sort(
+		(a, b) => new Date(b[1].at(-1).timestamp) - new Date(a[1].at(-1).timestamp),
+	);
 	for (const [, tMsgs] of sorted) {
-		const participants = [...new Set(tMsgs.flatMap(m => [m.from, ...(m.to || [])]))];
+		const participants = [
+			...new Set(tMsgs.flatMap((m) => [m.from, ...(m.to || [])])),
+		];
 		const last = tMsgs.at(-1);
 		const thread = document.createElement("div");
 		thread.className = "feed-thread";
@@ -392,7 +428,7 @@ function renderFeedThreads(feed, msgs) {
 	}
 }
 
-function toggleThread(hdr) {
+function _toggleThread(hdr) {
 	const body = hdr.nextElementSibling;
 	const arrow = hdr.querySelector(".ft-arrow");
 	body.classList.toggle("open");
@@ -410,7 +446,7 @@ function _appendMsgEl(container, m) {
 		`<span class="msg-from ac-${m.from}">${esc(m.from)}</span>` +
 		`<span class="msg-to">\u2192 ${esc((m.to || []).join(", "))}</span>` +
 		`<span class="msg-time">${fmtTime(m.timestamp)}</span>` +
-		'</div>' +
+		"</div>" +
 		`<div class="msg-subj">${esc(m.subject || "")}</div>` +
 		`<div class="msg-body">${esc(preview)}</div>` +
 		(truncated ? '<div class="msg-expand">\u25bc\u00a0more</div>' : "");
@@ -446,8 +482,9 @@ function addSysMsg(text) {
 function selectAgent(id) {
 	activeAgent = id;
 	sessionLiveDirty = false;
-	document.querySelectorAll(".agent-tab").forEach(t =>
-		t.classList.toggle("active", t.dataset.id === id));
+	document.querySelectorAll(".agent-tab").forEach((t) => {
+		t.classList.toggle("active", t.dataset.id === id);
+	});
 	document.getElementById("tab-playbook").classList.remove("active");
 	loadSessions();
 }
@@ -496,14 +533,18 @@ function renderSessionRow(session) {
 
 	const isExpanded = expandedSessions.has(session.turnNumber);
 	const hdr = document.createElement("div");
-	hdr.className = "session-row" + (session.isReflection ? " reflection" : "") + (isExpanded ? " expanded" : "");
+	hdr.className = `session-row${session.isReflection ? " reflection" : ""}${isExpanded ? " expanded" : ""}`;
 
 	const badge = session.isReflection
 		? '<span class="sr-badge reflection">↺ Reflection</span>'
 		: `<span class="sr-badge">Session ${session.turnNumber}</span>`;
 	const time = session.startTime ? fmtTime(session.startTime) : "";
-	const dur = session.durationMs > 0 ? `${(session.durationMs / 1000).toFixed(0)}s` : "";
-	const tok = session.inputTokens > 0 ? `${Math.round(session.inputTokens / 1000)}k in` : "";
+	const dur =
+		session.durationMs > 0 ? `${(session.durationMs / 1000).toFixed(0)}s` : "";
+	const tok =
+		session.inputTokens > 0
+			? `${Math.round(session.inputTokens / 1000)}k in`
+			: "";
 	const cost = session.costUsd > 0 ? `$${session.costUsd.toFixed(4)}` : "";
 	const calls = session.llmCalls > 0 ? `${session.llmCalls} LLM` : "";
 	const tools = session.toolCalls > 0 ? `${session.toolCalls} tools` : "";
@@ -511,7 +552,10 @@ function renderSessionRow(session) {
 	hdr.innerHTML =
 		`<span class="sr-label">${badge}</span>` +
 		`<span class="sr-meta">` +
-		[time, dur, calls, tools, tok, cost].filter(Boolean).map(x => `<span>${esc(x)}</span>`).join("") +
+		[time, dur, calls, tools, tok, cost]
+			.filter(Boolean)
+			.map((x) => `<span>${esc(x)}</span>`)
+			.join("") +
 		`</span>` +
 		`<span class="sr-arrow">${isExpanded ? "▼" : "▶"}</span>`;
 
@@ -560,10 +604,12 @@ function renderSessionRow(session) {
  */
 function normalizeCallSeq(docs) {
 	// If every doc already has callSeq, nothing to do.
-	if (docs.every(d => d.callSeq != null)) return docs;
-	const sorted = [...docs].sort((a, b) => (a.seqInTurn ?? 0) - (b.seqInTurn ?? 0));
+	if (docs.every((d) => d.callSeq != null)) return docs;
+	const sorted = [...docs].sort(
+		(a, b) => (a.seqInTurn ?? 0) - (b.seqInTurn ?? 0),
+	);
 	let seq = -1;
-	return sorted.map(doc => {
+	return sorted.map((doc) => {
 		if (doc.parentToolUseId) return doc; // sub-loop message — keep as-is
 		const role = doc.message?.role;
 		if (role === "assistant") seq++;
@@ -572,7 +618,9 @@ function normalizeCallSeq(docs) {
 }
 
 async function expandSession(agentId, turnNumber, container) {
-	const r = await fetch(`agents/${encodeURIComponent(agentId)}/sessions/${turnNumber}`);
+	const r = await fetch(
+		`agents/${encodeURIComponent(agentId)}/sessions/${turnNumber}`,
+	);
 	const data = await r.json();
 	container.innerHTML = "";
 
@@ -591,15 +639,20 @@ async function expandSession(agentId, turnNumber, container) {
 	const subLoopByToolId = new Map();
 	for (const doc of messages) {
 		if (doc.parentToolUseId) {
-			if (!subLoopByToolId.has(doc.parentToolUseId)) subLoopByToolId.set(doc.parentToolUseId, []);
+			if (!subLoopByToolId.has(doc.parentToolUseId))
+				subLoopByToolId.set(doc.parentToolUseId, []);
 			subLoopByToolId.get(doc.parentToolUseId).push(doc);
 		}
 	}
 
 	// Sort llmCalls by savedAt to match callSeq order
-	const sortedLlmCalls = [...llmCalls].sort((a, b) => new Date(a.savedAt) - new Date(b.savedAt));
+	const sortedLlmCalls = [...llmCalls].sort(
+		(a, b) => new Date(a.savedAt) - new Date(b.savedAt),
+	);
 	const llmCallBySeq = new Map();
-	sortedLlmCalls.forEach((lc, i) => llmCallBySeq.set(i, lc));
+	sortedLlmCalls.forEach((lc, i) => {
+		llmCallBySeq.set(i, lc);
+	});
 
 	// Render task user message (callSeq = -1)
 	const taskDocs = byCallSeq.get(-1) || [];
@@ -607,25 +660,34 @@ async function expandSession(agentId, turnNumber, container) {
 		if (doc.message && doc.message.role === "user") {
 			const el = document.createElement("div");
 			el.className = "st-task-msg";
-			const content = typeof doc.message.content === "string"
-				? doc.message.content
-				: (doc.message.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+			const content =
+				typeof doc.message.content === "string"
+					? doc.message.content
+					: (doc.message.content || [])
+							.filter((b) => b.type === "text")
+							.map((b) => b.text)
+							.join("\n");
 			el.innerHTML = `<span class="st-task-label">Inbox</span><span class="st-task-body">${esc(content.slice(0, 300))}${content.length > 300 ? "…" : ""}</span>`;
 			container.appendChild(el);
 		}
 	}
 
 	// Render LLM call groups (callSeq 0, 1, 2, ...)
-	const seqs = [...byCallSeq.keys()].filter(s => s >= 0).sort((a, b) => a - b);
+	const seqs = [...byCallSeq.keys()]
+		.filter((s) => s >= 0)
+		.sort((a, b) => a - b);
 	for (const seq of seqs) {
-		const seqDocs = (byCallSeq.get(seq) || []).filter(d => !d.parentToolUseId);
+		const seqDocs = (byCallSeq.get(seq) || []).filter(
+			(d) => !d.parentToolUseId,
+		);
 		const llmMeta = llmCallBySeq.get(seq);
 		const node = renderLlmCallGroup(seq, seqDocs, llmMeta, subLoopByToolId);
 		container.appendChild(node);
 	}
 
 	if (!seqs.length && !taskDocs.length) {
-		container.innerHTML = '<div class="empty-state">No messages in this session</div>';
+		container.innerHTML =
+			'<div class="empty-state">No messages in this session</div>';
 	}
 }
 
@@ -633,20 +695,26 @@ function renderLlmCallGroup(callSeq, docs, llmMeta, subLoopByToolId) {
 	const wrap = document.createElement("div");
 	wrap.className = "llm-call-node";
 
-	const assistantDoc = docs.find(d => d.message && d.message.role === "assistant");
-	const toolResultDocs = docs.filter(d => d.message && d.message.role === "toolResult");
+	const assistantDoc = docs.find(
+		(d) => d.message && d.message.role === "assistant",
+	);
+	const toolResultDocs = docs.filter(
+		(d) => d.message && d.message.role === "toolResult",
+	);
 
 	const hdr = document.createElement("div");
 	hdr.className = "llm-call-hdr";
-	const inputTok = llmMeta && llmMeta.usage ? llmMeta.usage.inputTokens || 0 : 0;
-	const outputTok = llmMeta && llmMeta.usage ? llmMeta.usage.outputTokens || 0 : 0;
-	const callCost = llmMeta && llmMeta.usage && llmMeta.usage.cost ? llmMeta.usage.cost.total || 0 : 0;
+	const inputTok = llmMeta?.usage ? llmMeta.usage.inputTokens || 0 : 0;
+	const outputTok = llmMeta?.usage ? llmMeta.usage.outputTokens || 0 : 0;
+	const callCost = llmMeta?.usage?.cost ? llmMeta.usage.cost.total || 0 : 0;
 	hdr.innerHTML =
 		`<span class="lc-label">LLM call ${callSeq}</span>` +
 		`<span class="lc-meta">` +
 		(inputTok > 0 ? `<span>${Math.round(inputTok / 1000)}k in</span>` : "") +
 		(outputTok > 0 ? `<span>${Math.round(outputTok / 1000)}k out</span>` : "") +
-		(callCost > 0 ? `<span class="lc-cost">$${callCost.toFixed(4)}</span>` : "") +
+		(callCost > 0
+			? `<span class="lc-cost">$${callCost.toFixed(4)}</span>`
+			: "") +
 		`</span>` +
 		`<span class="lc-arrow">▶</span>`;
 
@@ -660,7 +728,13 @@ function renderLlmCallGroup(callSeq, docs, llmMeta, subLoopByToolId) {
 		hdr.querySelector(".lc-arrow").textContent = open ? "▶" : "▼";
 		if (!open && !body.dataset.filled) {
 			body.dataset.filled = "1";
-			fillLlmCallBody(body, assistantDoc, toolResultDocs, subLoopByToolId, llmMeta);
+			fillLlmCallBody(
+				body,
+				assistantDoc,
+				toolResultDocs,
+				subLoopByToolId,
+				llmMeta,
+			);
 		}
 	};
 
@@ -669,24 +743,36 @@ function renderLlmCallGroup(callSeq, docs, llmMeta, subLoopByToolId) {
 	return wrap;
 }
 
-function fillLlmCallBody(body, assistantDoc, toolResultDocs, subLoopByToolId, llmMeta) {
+function fillLlmCallBody(
+	body,
+	assistantDoc,
+	toolResultDocs,
+	subLoopByToolId,
+	_llmMeta,
+) {
 	if (!assistantDoc) return;
 	const m = assistantDoc.message;
 	if (!m) return;
 
 	const blocks = Array.isArray(m.content) ? m.content : [];
-	const texts = blocks.filter(b => b.type === "text" && b.text && b.text.trim());
+	const texts = blocks.filter(
+		(b) => b.type === "text" && b.text && b.text.trim(),
+	);
 	if (texts.length) {
 		const el = document.createElement("div");
 		el.className = "lc-text";
-		el.textContent = texts.map(b => b.text).join("\n\n").slice(0, 600);
+		el.textContent = texts
+			.map((b) => b.text)
+			.join("\n\n")
+			.slice(0, 600);
 		body.appendChild(el);
 	}
 
 	if (assistantDoc.mentalMapHtml) {
 		const mmRow = document.createElement("div");
 		mmRow.className = "lc-mm-row";
-		mmRow.innerHTML = '<span class="lc-mm-label">🧠 Mental Map</span><span class="lc-mm-arrow">▶</span>';
+		mmRow.innerHTML =
+			'<span class="lc-mm-label">🧠 Mental Map</span><span class="lc-mm-arrow">▶</span>';
 		const mmBody = document.createElement("div");
 		mmBody.className = "mm-iframe-wrap";
 		mmBody.style.display = "none";
@@ -708,9 +794,11 @@ function fillLlmCallBody(body, assistantDoc, toolResultDocs, subLoopByToolId, ll
 		body.insertBefore(mmRow, mmBody);
 	}
 
-	const toolCalls = blocks.filter(b => b.type === "toolCall");
+	const toolCalls = blocks.filter((b) => b.type === "toolCall");
 	for (const call of toolCalls) {
-		const resultDoc = toolResultDocs.find(d => d.message && d.message.toolCallId === call.id);
+		const resultDoc = toolResultDocs.find(
+			(d) => d.message && d.message.toolCallId === call.id,
+		);
 		const subMsgs = subLoopByToolId.get(call.id) || [];
 		body.appendChild(renderToolCallRow(call, resultDoc, subMsgs));
 	}
@@ -721,10 +809,14 @@ function renderToolCallRow(toolCallBlock, toolResultDoc, subLoopMessages) {
 	wrap.className = "tool-call-node";
 
 	const argsStr = JSON.stringify(toolCallBlock.arguments || {});
-	const argPreview = argsStr.length > 80 ? argsStr.slice(0, 80) + "…" : argsStr;
+	const argPreview = argsStr.length > 80 ? `${argsStr.slice(0, 80)}…` : argsStr;
 	const result = toolResultDoc ? toolResultDoc.message : null;
 	const resultText = result
-		? (result.content || []).filter(b => b.type === "text").map(b => b.text).join("").slice(0, 80)
+		? (result.content || [])
+				.filter((b) => b.type === "text")
+				.map((b) => b.text)
+				.join("")
+				.slice(0, 80)
 		: "";
 	const isError = result ? result.isError || false : false;
 
@@ -734,8 +826,12 @@ function renderToolCallRow(toolCallBlock, toolResultDoc, subLoopMessages) {
 		`<span class="tc-icon">${_toolIcon(toolCallBlock.name)}</span>` +
 		`<span class="tc-name">${esc(toolCallBlock.name)}</span>` +
 		`<span class="tc-arg">${esc(argPreview)}</span>` +
-		(result ? `<span class="tc-status ${isError ? "err" : "ok"}">${isError ? "✗" : "✓"} ${esc(resultText)}</span>` : "") +
-		(subLoopMessages.length ? `<span class="tc-sub">${subLoopMessages.length} sub-loop msgs</span>` : "") +
+		(result
+			? `<span class="tc-status ${isError ? "err" : "ok"}">${isError ? "✗" : "✓"} ${esc(resultText)}</span>`
+			: "") +
+		(subLoopMessages.length
+			? `<span class="tc-sub">${subLoopMessages.length} sub-loop msgs</span>`
+			: "") +
 		`<span class="tc-arrow">▶</span>`;
 
 	const bdy = document.createElement("div");
@@ -749,13 +845,21 @@ function renderToolCallRow(toolCallBlock, toolResultDoc, subLoopMessages) {
 			bdy.dataset.filled = "1";
 			const argsEl = document.createElement("pre");
 			argsEl.className = "tc-full-args";
-			argsEl.textContent = JSON.stringify(toolCallBlock.arguments || {}, null, 2).slice(0, 500);
+			argsEl.textContent = JSON.stringify(
+				toolCallBlock.arguments || {},
+				null,
+				2,
+			).slice(0, 500);
 			bdy.appendChild(argsEl);
 			if (result) {
-				const fullResult = (result.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+				const fullResult = (result.content || [])
+					.filter((b) => b.type === "text")
+					.map((b) => b.text)
+					.join("");
 				const resEl = document.createElement("pre");
 				resEl.className = `tc-full-result ${isError ? "err" : "ok"}`;
-				resEl.textContent = fullResult.slice(0, 1000) + (fullResult.length > 1000 ? "…" : "");
+				resEl.textContent =
+					fullResult.slice(0, 1000) + (fullResult.length > 1000 ? "…" : "");
 				bdy.appendChild(resEl);
 			}
 			if (subLoopMessages.length) {
@@ -767,11 +871,19 @@ function renderToolCallRow(toolCallBlock, toolResultDoc, subLoopMessages) {
 					const subEl = document.createElement("div");
 					subEl.className = "sub-loop-node";
 					const role = sub.message ? sub.message.role : "?";
-					const subContent = role === "assistant"
-						? (sub.message.content || []).filter(b => b.type === "text").map(b => b.text).join("").slice(0, 200)
-						: role === "toolResult"
-						? (sub.message.content || []).map(b => b.text).join("").slice(0, 200)
-						: "";
+					const subContent =
+						role === "assistant"
+							? (sub.message.content || [])
+									.filter((b) => b.type === "text")
+									.map((b) => b.text)
+									.join("")
+									.slice(0, 200)
+							: role === "toolResult"
+								? (sub.message.content || [])
+										.map((b) => b.text)
+										.join("")
+										.slice(0, 200)
+								: "";
 					subEl.innerHTML = `<span class="sub-role">${esc(role)}</span><span class="sub-content">${esc(subContent)}</span>`;
 					bdy.appendChild(subEl);
 				}
@@ -790,9 +902,7 @@ function appendToSessionsLive(doc) {
 	// Mark dirty — tree reloads on demand when agent finishes
 }
 
-
-
-function fmtTok(n) {
+function _fmtTok(n) {
 	return n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
 }
 
@@ -808,13 +918,13 @@ function renderStepBtn() {
 	}
 }
 
-async function startMission() {
+async function _startMission() {
 	if (missionStarted) return;
 	await fetch("start", { method: "POST" });
 	setStarted(true);
 }
 
-async function toggleStep() {
+async function _toggleStep() {
 	const r = await fetch("toggle-step", { method: "POST" });
 	const d = await r.json();
 	stepEnabled = d.stepEnabled;
@@ -823,7 +933,7 @@ async function toggleStep() {
 	renderQueue();
 }
 
-async function advanceStep() {
+async function _advanceStep() {
 	await fetch("step", { method: "POST" });
 }
 
@@ -844,36 +954,41 @@ function renderQueue() {
 		strip.innerHTML = html;
 		return;
 	}
-	strip.innerHTML = '<span class="q-idle">Idle \u2014 waiting for messages</span>';
+	strip.innerHTML =
+		'<span class="q-idle">Idle \u2014 waiting for messages</span>';
 }
 
 function agentDisplayName(id) {
-	const a = AGENTS.find(a => a.id === id);
+	const a = AGENTS.find((a) => a.id === id);
 	return a ? a.name : id;
 }
 
 function renderAgentTabIndicators() {
-	document.querySelectorAll(".agent-tab[data-id]").forEach(tab => {
+	document.querySelectorAll(".agent-tab[data-id]").forEach((tab) => {
 		const id = tab.dataset.id;
 		const nameEl = tab.querySelector(".tab-name");
 		if (!nameEl) return;
-		const base = tab.dataset.baseName || nameEl.textContent.replace(/^\u25b6\u00a0/, "");
+		const base =
+			tab.dataset.baseName || nameEl.textContent.replace(/^\u25b6\u00a0/, "");
 		tab.dataset.baseName = base;
 		nameEl.textContent = id === runningAgent ? `\u25b6\u00a0${base}` : base;
 	});
 	updateScheduleTabs();
 }
 
-function stopDaemon() {
+function _stopDaemon() {
 	if (stopped) return;
-	if (!confirm("Stop the MAGI daemon? This will abort the current mission cycle.")) return;
+	if (
+		!confirm("Stop the MAGI daemon? This will abort the current mission cycle.")
+	)
+		return;
 	fetch("stop", { method: "POST" }).catch(() => {});
 	document.getElementById("stop-btn").disabled = true;
 	document.getElementById("stop-btn").textContent = "Stopping\u2026";
 }
 
 // ── Compose ────────────────────────────────────────────────────────────────
-function openCompose() {
+function _openCompose() {
 	document.getElementById("compose-overlay").classList.remove("hidden");
 	document.getElementById("compose-body").focus();
 }
@@ -883,20 +998,30 @@ function closeCompose() {
 	document.getElementById("compose-overlay").classList.add("hidden");
 }
 
-function closeComposeIfBg(e) {
+function _closeComposeIfBg(e) {
 	if (e.target === document.getElementById("compose-overlay")) closeCompose();
 }
 
 function checkAll() {
-	document.querySelectorAll("#to-checks input[type=checkbox]").forEach(c => { c.checked = true; });
+	document.querySelectorAll("#to-checks input[type=checkbox]").forEach((c) => {
+		c.checked = true;
+	});
 }
 
-async function sendMessage() {
-	const to = [...document.querySelectorAll("#to-checks input:checked")].map(c => c.value);
+async function _sendMessage() {
+	const to = [...document.querySelectorAll("#to-checks input:checked")].map(
+		(c) => c.value,
+	);
 	const subject = document.getElementById("compose-subject").value.trim();
 	const message = document.getElementById("compose-body").value.trim();
-	if (!to.length) { alert("Select at least one recipient"); return; }
-	if (!message) { alert("Message body is required"); return; }
+	if (!to.length) {
+		alert("Select at least one recipient");
+		return;
+	}
+	if (!message) {
+		alert("Message body is required");
+		return;
+	}
 	const r = await fetch("send-message", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -911,7 +1036,9 @@ async function sendMessage() {
 		closeCompose();
 		document.getElementById("compose-body").value = "";
 		document.getElementById("compose-subject").value = "";
-		document.querySelectorAll("#to-checks input").forEach(c => { c.checked = false; });
+		document.querySelectorAll("#to-checks input").forEach((c) => {
+			c.checked = false;
+		});
 	}
 }
 
@@ -928,13 +1055,16 @@ setInterval(() => {
 // ── Playbook ───────────────────────────────────────────────────────────────
 const playbookSent = new Set();
 
-function selectPlaybook() {
+function _selectPlaybook() {
 	activeAgent = null;
-	document.querySelectorAll(".agent-tab").forEach(t => t.classList.remove("active"));
+	document.querySelectorAll(".agent-tab").forEach((t) => {
+		t.classList.remove("active");
+	});
 	document.getElementById("tab-playbook").classList.add("active");
 	const pane = resetPane();
 	if (!PLAYBOOK.length) {
-		pane.innerHTML = '<div class="empty-state">No playbook messages defined</div>';
+		pane.innerHTML =
+			'<div class="empty-state">No playbook messages defined</div>';
 		return;
 	}
 	renderPlaybook();
@@ -943,14 +1073,17 @@ function selectPlaybook() {
 function renderPlaybook() {
 	const pane = resetPane();
 	if (!PLAYBOOK.length) {
-		pane.innerHTML = '<div class="empty-state">No playbook messages defined</div>';
+		pane.innerHTML =
+			'<div class="empty-state">No playbook messages defined</div>';
 		return;
 	}
 	PLAYBOOK.forEach((entry, i) => {
 		const sent = playbookSent.has(i);
 		const div = document.createElement("div");
 		div.className = `pb-item${sent ? " sent" : ""}`;
-		const toHtml = entry.to.map(t => `<span class="ac-${esc(t)}">${esc(t)}</span>`).join(", ");
+		const toHtml = entry.to
+			.map((t) => `<span class="ac-${esc(t)}">${esc(t)}</span>`)
+			.join(", ");
 		div.innerHTML =
 			`<div class="pb-title">${esc(entry.title)}</div>` +
 			`<div class="pb-meta">To: ${toHtml}</div>` +
@@ -958,15 +1091,15 @@ function renderPlaybook() {
 			`<div class="pb-actions">` +
 			`<button class="btn pb-edit" onclick="editPlaybookEntry(${i})">\u270f Edit &amp; Send</button>` +
 			(sent ? '<span class="pb-sent-badge">\u2713 sent</span>' : "") +
-			'</div>';
+			"</div>";
 		pane.appendChild(div);
 	});
 }
 
-function editPlaybookEntry(i) {
+function _editPlaybookEntry(i) {
 	const entry = PLAYBOOK[i];
 	if (!entry) return;
-	document.querySelectorAll("#to-checks input[type=checkbox]").forEach(c => {
+	document.querySelectorAll("#to-checks input[type=checkbox]").forEach((c) => {
 		c.checked = entry.to.includes(c.value);
 	});
 	document.getElementById("compose-subject").value = entry.subject;
@@ -978,32 +1111,45 @@ function editPlaybookEntry(i) {
 
 // ── Tool icons ─────────────────────────────────────────────────────────────
 function _toolIcon(name) {
-	return {
-		Bash: "\u2699", WriteFile: "\u270d", EditFile: "\u270f",
-		PostMessage: "\u2709", UpdateMentalMap: "\uD83E\uDDE0",
-		FetchUrl: "\uD83C\uDF10", BrowseWeb: "\uD83C\uDF10",
-		SearchWeb: "\uD83D\uDD0D", InspectImage: "\uD83D\uDDBC",
-		ListTeam: "\uD83D\uDC65", ListMessages: "\uD83D\uDCEC",
-		ReadMessage: "\uD83D\uDCE8", Research: "\uD83D\uDD2C",
-	}[name] || "\uD83D\uDD27";
+	return (
+		{
+			Bash: "\u2699",
+			WriteFile: "\u270d",
+			EditFile: "\u270f",
+			PostMessage: "\u2709",
+			UpdateMentalMap: "\uD83E\uDDE0",
+			FetchUrl: "\uD83C\uDF10",
+			BrowseWeb: "\uD83C\uDF10",
+			SearchWeb: "\uD83D\uDD0D",
+			InspectImage: "\uD83D\uDDBC",
+			ListTeam: "\uD83D\uDC65",
+			ListMessages: "\uD83D\uDCEC",
+			ReadMessage: "\uD83D\uDCE8",
+			Research: "\uD83D\uDD2C",
+		}[name] || "\uD83D\uDD27"
+	);
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 function esc(s) {
-	return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	return String(s)
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
 }
 
 function fmtTime(ts) {
 	if (!ts) return "";
 	const d = new Date(ts);
-	if (isNaN(d)) return "";
+	if (Number.isNaN(d)) return "";
 	const now = new Date();
 	const isToday = d.toDateString() === now.toDateString();
 	return isToday
 		? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-		: d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " +
-		  d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+		: d.toLocaleDateString([], { month: "short", day: "numeric" }) +
+				" " +
+				d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 // ── Start ──────────────────────────────────────────────────────────────────
-init().catch(e => console.error("[app] init failed:", e));
+init().catch((e) => console.error("[app] init failed:", e));

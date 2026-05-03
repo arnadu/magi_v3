@@ -20,14 +20,28 @@
  */
 
 import { execSync, spawn } from "node:child_process";
-import { appendFileSync, createWriteStream, mkdirSync, readdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	createWriteStream,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTeamConfig, type TeamConfig } from "@magi/agent-config";
 
 import { config as dotenvConfig } from "dotenv";
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const REPO_ROOT = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"..",
+);
 
 // Load orchestrator secrets (.env) — NEVER forwarded to agent subprocesses.
 dotenvConfig({ path: join(REPO_ROOT, ".env"), quiet: true });
@@ -42,7 +56,11 @@ dotenvConfig({ path: join(REPO_ROOT, ".env.data-keys"), quiet: true });
  * These keys only authorize calls to external data APIs; they have no
  * privilege over the MAGI system itself.
  */
-export const DATA_KEY_NAMES = ["FRED_API_KEY", "FMP_API_KEY", "NEWSAPIORG_API_KEY"] as const;
+export const DATA_KEY_NAMES = [
+	"FRED_API_KEY",
+	"FMP_API_KEY",
+	"NEWSAPIORG_API_KEY",
+] as const;
 
 /**
  * Build the env block to pass when spawning a background job.
@@ -114,7 +132,6 @@ interface JobSpec {
 
 /** Default job wall-clock timeout: 30 minutes (F-006). */
 const DEFAULT_JOB_TIMEOUT_MS = 30 * 60_000;
-
 
 // ---------------------------------------------------------------------------
 // Background job execution
@@ -189,7 +206,9 @@ function recoverOrphanedJobs(sharedDir: string): void {
 			unlinkSync(src);
 			console.log(`[daemon:jobs] Recovered orphaned job: ${file}`);
 		} catch (e) {
-			console.error(`[daemon:jobs] Failed to recover ${file}: ${(e as Error).message}`);
+			console.error(
+				`[daemon:jobs] Failed to recover ${file}: ${(e as Error).message}`,
+			);
 		}
 	}
 }
@@ -205,8 +224,8 @@ async function runPendingJobs(
 ): Promise<void> {
 	const pendingDir = join(sharedDir, "jobs", "pending");
 	const runningDir = join(sharedDir, "jobs", "running");
-	const statusDir  = join(sharedDir, "jobs", "status");
-	const logsDir    = join(sharedDir, "logs");
+	const statusDir = join(sharedDir, "jobs", "status");
+	const logsDir = join(sharedDir, "logs");
 
 	let files: string[];
 	try {
@@ -247,11 +266,19 @@ async function runPendingJobs(
 			console.error(
 				`[daemon:jobs] Unknown agentId "${spec.agentId}" in job ${spec.id} — skipping`,
 			);
-			try { unlinkSync(runningPath); } catch {}
+			try {
+				unlinkSync(runningPath);
+			} catch {}
 			continue;
 		}
 		const linuxUser = agentCfg.linuxUser ?? agentCfg.id;
-		const agentWorkdir = join(workdir, "home", linuxUser, "missions", missionId);
+		const agentWorkdir = join(
+			workdir,
+			"home",
+			linuxUser,
+			"missions",
+			missionId,
+		);
 		const permittedPaths = [agentWorkdir, sharedDir];
 
 		// F-013: Validate scriptPath using resolve() + realpathSync() to prevent
@@ -262,20 +289,24 @@ async function runPendingJobs(
 			resolvedScript = resolve(spec.scriptPath);
 			const realScript = realpathSync(resolvedScript);
 			const scriptAllowed = permittedPaths.some(
-				(p) => realScript === p || realScript.startsWith(p + "/"),
+				(p) => realScript === p || realScript.startsWith(`${p}/`),
 			);
 			if (!scriptAllowed) {
 				console.error(
 					`[daemon:jobs] scriptPath "${spec.scriptPath}" resolves outside permitted paths for agent "${spec.agentId}" — skipping`,
 				);
-				try { unlinkSync(runningPath); } catch {}
+				try {
+					unlinkSync(runningPath);
+				} catch {}
 				continue;
 			}
 		} catch (e) {
 			console.error(
 				`[daemon:jobs] scriptPath "${spec.scriptPath}" could not be resolved: ${(e as Error).message} — skipping`,
 			);
-			try { unlinkSync(runningPath); } catch {}
+			try {
+				unlinkSync(runningPath);
+			} catch {}
 			continue;
 		}
 
@@ -298,13 +329,22 @@ async function runPendingJobs(
 
 		runningJobs++;
 		const interpreter = readShebangInterpreter(resolvedScript);
-		console.log(`[daemon:jobs] Starting job ${spec.id} (${spec.scriptPath}) as ${linuxUser}`);
+		console.log(
+			`[daemon:jobs] Starting job ${spec.id} (${spec.scriptPath}) as ${linuxUser}`,
+		);
 
 		let child: ReturnType<typeof spawn>;
 		try {
 			child = spawn(
 				"sudo",
-				["-u", linuxUser, "/usr/local/bin/magi-job", ...interpreter, resolvedScript, ...spec.args],
+				[
+					"-u",
+					linuxUser,
+					"/usr/local/bin/magi-job",
+					...interpreter,
+					resolvedScript,
+					...spec.args,
+				],
 				{
 					env: {
 						PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
@@ -321,8 +361,12 @@ async function runPendingJobs(
 			runningJobs--;
 			toolApiServer.revokeToken(token);
 			logStream.end();
-			try { unlinkSync(runningPath); } catch {}
-			console.error(`[daemon:jobs] Failed to spawn job ${spec.id}: ${(e as Error).message}`);
+			try {
+				unlinkSync(runningPath);
+			} catch {}
+			console.error(
+				`[daemon:jobs] Failed to spawn job ${spec.id}: ${(e as Error).message}`,
+			);
 			continue;
 		}
 
@@ -332,9 +376,13 @@ async function runPendingJobs(
 		// F-006: Wall-clock timeout — kill the entire process group after timeoutMs.
 		const jobTimeoutMs = spec.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;
 		const timeoutHandle = setTimeout(() => {
-			console.error(`[daemon:jobs] Job ${spec.id} timed out after ${jobTimeoutMs}ms — killing`);
+			console.error(
+				`[daemon:jobs] Job ${spec.id} timed out after ${jobTimeoutMs}ms — killing`,
+			);
 			if (child.pid !== undefined) {
-				try { process.kill(-child.pid, "SIGKILL"); } catch {}
+				try {
+					process.kill(-child.pid, "SIGKILL");
+				} catch {}
 			} else {
 				child.kill("SIGKILL");
 			}
@@ -347,7 +395,9 @@ async function runPendingJobs(
 			logStream.end();
 
 			// Clean up the running file.
-			try { unlinkSync(runningPath); } catch {}
+			try {
+				unlinkSync(runningPath);
+			} catch {}
 
 			// Write status file.
 			const statusPath = join(statusDir, `${spec.id}.json`);
@@ -358,7 +408,9 @@ async function runPendingJobs(
 				completedAt: new Date().toISOString(),
 				logPath,
 			};
-			try { writeFileSync(statusPath, JSON.stringify(status, null, 2)); } catch {}
+			try {
+				writeFileSync(statusPath, JSON.stringify(status, null, 2));
+			} catch {}
 
 			const success = exitCode === 0;
 			console.log(
@@ -367,7 +419,8 @@ async function runPendingJobs(
 
 			// Post completion notification if requested.
 			if (spec.notifyAgentId) {
-				const subject = spec.notifySubject ?? `Background job complete: ${spec.id}`;
+				const subject =
+					spec.notifySubject ?? `Background job complete: ${spec.id}`;
 				const body = success
 					? `Job completed successfully.\nLog: ${logPath}`
 					: `Job FAILED (exit ${exitCode ?? "null"}).\nLog: ${logPath}`;
@@ -380,7 +433,9 @@ async function runPendingJobs(
 						body,
 					})
 					.catch((e: unknown) =>
-						console.error(`[daemon:jobs] Failed to notify ${spec.notifyAgentId}: ${(e as Error).message}`),
+						console.error(
+							`[daemon:jobs] Failed to notify ${spec.notifyAgentId}: ${(e as Error).message}`,
+						),
 					);
 			}
 		});
@@ -409,8 +464,15 @@ function startJobRunner(
 	teamConfig: TeamConfig,
 ): () => void {
 	function tick(): void {
-		runPendingJobs(sharedDir, workdir, missionId, toolApiServer, toolPort, mailboxRepo, teamConfig)
-			.catch((e) => console.error("[daemon:jobs] Heartbeat error:", e));
+		runPendingJobs(
+			sharedDir,
+			workdir,
+			missionId,
+			toolApiServer,
+			toolPort,
+			mailboxRepo,
+			teamConfig,
+		).catch((e) => console.error("[daemon:jobs] Heartbeat error:", e));
 	}
 
 	// Run any pending jobs immediately on startup (handles crash recovery).
@@ -437,7 +499,9 @@ function startJobRunner(
  *
  * Idempotent: if the user already exists, the step is skipped silently.
  */
-function ensureAgentUsers(agents: Array<{ id: string; linuxUser?: string }>): void {
+function ensureAgentUsers(
+	agents: Array<{ id: string; linuxUser?: string }>,
+): void {
 	for (const agent of agents) {
 		const linuxUser = agent.linuxUser ?? agent.id;
 		try {
@@ -445,21 +509,22 @@ function ensureAgentUsers(agents: Array<{ id: string; linuxUser?: string }>): vo
 		} catch {
 			// User does not exist — create it.
 			try {
-				execSync(
-					`useradd -m -s /bin/bash -G magi-shared ${linuxUser}`,
-					{ stdio: "inherit" },
-				);
+				execSync(`useradd -m -s /bin/bash -G magi-shared ${linuxUser}`, {
+					stdio: "inherit",
+				});
 				// Append a NOPASSWD sudo rule for the magi-node and magi-job wrappers.
 				appendFileSync(
 					"/etc/sudoers.d/magi",
 					`${linuxUser} ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node\n` +
-					`${linuxUser} ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job\n`,
+						`${linuxUser} ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job\n`,
 				);
 				console.log(`[daemon] Created OS user: ${linuxUser}`);
 			} catch (e) {
 				// Non-fatal: in non-root dev environments, useradd requires root.
 				// The pool users already exist so this path is only hit in Docker.
-				console.warn(`[daemon] Could not create OS user ${linuxUser}: ${(e as Error).message}`);
+				console.warn(
+					`[daemon] Could not create OS user ${linuxUser}: ${(e as Error).message}`,
+				);
 			}
 		}
 	}
@@ -539,7 +604,9 @@ async function main(): Promise<void> {
 	const workdirForLog = process.env.AGENT_WORKDIR ?? process.cwd();
 	try {
 		mkdirSync(workdirForLog, { recursive: true });
-		const logStream = createWriteStream(join(workdirForLog, "daemon.log"), { flags: "a" });
+		const logStream = createWriteStream(join(workdirForLog, "daemon.log"), {
+			flags: "a",
+		});
 		const origStdoutWrite = process.stdout.write.bind(process.stdout);
 		const origStderrWrite = process.stderr.write.bind(process.stderr);
 		// biome-ignore lint/suspicious/noExplicitAny: wrapping native write
@@ -560,11 +627,19 @@ async function main(): Promise<void> {
 	const mongoUri = process.env.MONGODB_URI;
 
 	process.stdout.write(`[daemon] TEAM_CONFIG=${teamConfigPath ?? "(unset)"}\n`);
-	process.stdout.write(`[daemon] MONGODB_URI=${mongoUri ? "(set)" : "(unset)"}\n`);
-	process.stdout.write(`[daemon] ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY ? "(set)" : "(unset)"}\n`);
-	process.stdout.write(`[daemon] BRAVE_SEARCH_API_KEY=${process.env.BRAVE_SEARCH_API_KEY ? "(set)" : "(unset)"}\n`);
+	process.stdout.write(
+		`[daemon] MONGODB_URI=${mongoUri ? "(set)" : "(unset)"}\n`,
+	);
+	process.stdout.write(
+		`[daemon] ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY ? "(set)" : "(unset)"}\n`,
+	);
+	process.stdout.write(
+		`[daemon] BRAVE_SEARCH_API_KEY=${process.env.BRAVE_SEARCH_API_KEY ? "(set)" : "(unset)"}\n`,
+	);
 	for (const key of DATA_KEY_NAMES) {
-		process.stdout.write(`[daemon] ${key}=${process.env[key] ? "(set)" : "(unset)"}\n`);
+		process.stdout.write(
+			`[daemon] ${key}=${process.env[key] ? "(set)" : "(unset)"}\n`,
+		);
 	}
 
 	if (!teamConfigPath || !mongoUri) {
@@ -586,7 +661,9 @@ async function main(): Promise<void> {
 	if (process.env.MISSION_ID) {
 		teamConfig.mission.id = missionId;
 	}
-	process.stdout.write(`[daemon] Mission: ${missionId} (${teamConfig.agents.length} agents)\n`);
+	process.stdout.write(
+		`[daemon] Mission: ${missionId} (${teamConfig.agents.length} agents)\n`,
+	);
 
 	// Ensure every agent has a Linux OS user. No-op for existing pool users
 	// (dev/test); creates per-agent users in production Docker.
@@ -607,9 +684,11 @@ async function main(): Promise<void> {
 
 	const visionModelId = process.env.VISION_MODEL ?? "claude-haiku-4-5-20251001";
 	const visionModel =
-		visionModelId === "claude-haiku-4-5-20251001" ? CLAUDE_HAIKU
-		: visionModelId === "claude-sonnet-4-6" ? CLAUDE_SONNET
-		: parseModel(visionModelId);
+		visionModelId === "claude-haiku-4-5-20251001"
+			? CLAUDE_HAIKU
+			: visionModelId === "claude-sonnet-4-6"
+				? CLAUDE_SONNET
+				: parseModel(visionModelId);
 
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 	const teamSkillsPath = join(
@@ -637,11 +716,13 @@ async function main(): Promise<void> {
 			process.exit(1);
 		}
 		shutdownInitiated = true;
-		console.log(`\n[daemon] ${reason} — shutting down… (Ctrl-C again to force)`);
+		console.log(
+			`\n[daemon] ${reason} — shutting down… (Ctrl-C again to force)`,
+		);
 		ac.abort();
 	}
 	process.on("SIGTERM", () => initiateShutdown("SIGTERM"));
-	process.on("SIGINT",  () => initiateShutdown("Interrupted"));
+	process.on("SIGINT", () => initiateShutdown("Interrupted"));
 
 	// PID file — enables cli:stop and guards against duplicate daemons.
 	const missionDir = join(workdir, "missions", missionId);
@@ -650,7 +731,10 @@ async function main(): Promise<void> {
 
 	// Check for a running instance before writing our own PID.
 	try {
-		const existingPid = Number.parseInt(readFileSync(pidFile, "utf8").trim(), 10);
+		const existingPid = Number.parseInt(
+			readFileSync(pidFile, "utf8").trim(),
+			10,
+		);
 		if (!Number.isNaN(existingPid) && existingPid !== process.pid) {
 			try {
 				// Signal 0 tests liveness without sending a real signal.
@@ -659,9 +743,7 @@ async function main(): Promise<void> {
 				console.error(
 					`[daemon] Already running as PID ${existingPid} (mission: ${missionId}).`,
 				);
-				console.error(
-					`[daemon] Run: MISSION_ID=${missionId} npm run cli:stop`,
-				);
+				console.error(`[daemon] Run: MISSION_ID=${missionId} npm run cli:stop`);
 				process.exit(1);
 			} catch {
 				// ESRCH — process is gone; stale PID file, safe to continue.
@@ -743,7 +825,9 @@ async function main(): Promise<void> {
 		workdir,
 	);
 	await monitor.start(monitorPort);
-	process.stdout.write(`[daemon] Monitor server listening on port ${monitorPort}\n`);
+	process.stdout.write(
+		`[daemon] Monitor server listening on port ${monitorPort}\n`,
+	);
 
 	// Tool API server — exposes LLM tools to background job scripts.
 	const toolApiServer = new ToolApiServer(
@@ -926,6 +1010,8 @@ async function main(): Promise<void> {
 
 main().catch((e) => {
 	// Synchronous write — async stderr can be lost if process.exit() fires first.
-	process.stderr.write(`[daemon] Fatal error: ${e instanceof Error ? e.stack ?? e.message : String(e)}\n`);
+	process.stderr.write(
+		`[daemon] Fatal error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`,
+	);
 	process.exitCode = 1;
 });

@@ -59,7 +59,8 @@ import { WorkspaceManager } from "../src/workspace-manager.js";
 // ---------------------------------------------------------------------------
 
 const MONGODB_URI = process.env.MONGODB_URI;
-if (!MONGODB_URI) throw new Error("MONGODB_URI is required for integration tests");
+if (!MONGODB_URI)
+	throw new Error("MONGODB_URI is required for integration tests");
 
 const TEAM_CONFIG_PATH = fileURLToPath(
 	new URL("../../../config/teams/test/data-factory-test.yaml", import.meta.url),
@@ -78,7 +79,7 @@ const OUTPUT_DIR = join(tmpdir(), "magi-data-factory-test");
  * sp500-news via a "fixture" adapter entry — raw.json is pre-written by the test,
  * so the adapter step is skipped (raw.json already present satisfies refresh.py).
  */
-function buildSourcesJson(factoryDir: string): object {
+function buildSourcesJson(_factoryDir: string): object {
 	return {
 		series: [
 			{
@@ -119,14 +120,16 @@ function buildRawJson(): object {
 				url: "https://en.wikipedia.org/wiki/S%26P_500",
 				source: "Wikipedia",
 				published_at: new Date().toISOString(),
-				summary: "The S&P 500 is a stock market index tracking 500 large US companies.",
+				summary:
+					"The S&P 500 is a stock market index tracking 500 large US companies.",
 			},
 			{
 				title: "Stock market index - Wikipedia",
 				url: "https://en.wikipedia.org/wiki/Stock_market_index",
 				source: "Wikipedia",
 				published_at: new Date().toISOString(),
-				summary: "A stock market index measures the value of a section of the stock market.",
+				summary:
+					"A stock market index measures the value of a section of the stock market.",
 			},
 		],
 	};
@@ -237,7 +240,9 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 
 	beforeAll(async () => {
 		// Clean previous run at start so output files survive for inspection.
-		try { rmSync(OUTPUT_DIR, { recursive: true, force: true }); } catch {}
+		try {
+			rmSync(OUTPUT_DIR, { recursive: true, force: true });
+		} catch {}
 		mkdirSync(OUTPUT_DIR, { recursive: true });
 
 		tmpDir = OUTPUT_DIR;
@@ -246,7 +251,10 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 
 		// Wipe any leftover MongoDB data from previous runs.
 		{
-			const { client: cleanClient, db: cleanDb } = await connectMongo(MONGODB_URI!);
+			const { client: cleanClient, db: cleanDb } = await connectMongo(
+				// biome-ignore lint/style/noNonNullAssertion: MONGODB_URI required for integration tests
+				MONGODB_URI!,
+			);
 			try {
 				for (const coll of ["mailbox", "conversationMessages", "llmCallLog"]) {
 					await cleanDb.collection(coll).deleteMany({ missionId });
@@ -280,7 +288,9 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 		} catch {
 			// setfacl not available or magi-w1 does not exist — test may still pass
 			// if the orchestrator's provision() applies the ACL before the agent runs.
-			console.warn("[test] setfacl failed — ACL may not be applied to pre-created dirs");
+			console.warn(
+				"[test] setfacl failed — ACL may not be applied to pre-created dirs",
+			);
 		}
 
 		console.log(`\n[test] Factory dir: ${factoryDir}`);
@@ -290,6 +300,7 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 	it(
 		"agent runs refresh, reads catalog and price data, summarises news digest",
 		async () => {
+			// biome-ignore lint/style/noNonNullAssertion: MONGODB_URI required for integration tests
 			const { client, db } = await connectMongo(MONGODB_URI!);
 			try {
 				const baseTeamConfig = loadTeamConfig(TEAM_CONFIG_PATH);
@@ -312,9 +323,18 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 				const sharedDir = join(tmpDir, "missions", missionId, "shared");
 				const scriptPath = join(
 					sharedDir,
-					"skills", "_platform", "data-factory", "scripts", "refresh.py",
+					"skills",
+					"_platform",
+					"data-factory",
+					"scripts",
+					"refresh.py",
 				);
-				const digestPath = join(factoryDir, "news", "sp500-news", "digest.json");
+				const digestPath = join(
+					factoryDir,
+					"news",
+					"sp500-news",
+					"digest.json",
+				);
 
 				// Inject a task that tells the agent exactly what to do.
 				// We provide concrete paths so the agent doesn't need to explore — the goal
@@ -363,7 +383,9 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 						maxCycles: 10,
 						onUserMessage: (msg) => {
 							userMessages.push(msg);
-							console.log(`\n[→ USER] ${msg.subject}:\n${msg.body.slice(0, 500)}`);
+							console.log(
+								`\n[→ USER] ${msg.subject}:\n${msg.body.slice(0, 500)}`,
+							);
 						},
 					},
 					ac.signal,
@@ -383,7 +405,7 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 				const spyEntry = catalog.find((e) => e.id === "yfinance/SPY_daily");
 				expect(spyEntry, "catalog must contain SPY entry").toBeDefined();
 				// Accept both ok (network available) and error (network unavailable).
-				expect(["ok", "error"]).toContain(spyEntry!.status);
+				expect(["ok", "error"]).toContain(spyEntry?.status);
 
 				// 2. digest.json must exist (process_news.py ran on fixture raw.json).
 				expect(
@@ -397,9 +419,15 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 				expect(digest.items.length).toBeGreaterThan(0);
 
 				// 3. User must have received a substantive report.
-				expect(userMessages.length, "agent must PostMessage user").toBeGreaterThan(0);
+				expect(
+					userMessages.length,
+					"agent must PostMessage user",
+				).toBeGreaterThan(0);
 
-				const fullReport = userMessages.map((m) => m.body).join(" ").toLowerCase();
+				const fullReport = userMessages
+					.map((m) => m.body)
+					.join(" ")
+					.toLowerCase();
 				expect(fullReport.length).toBeGreaterThan(100);
 
 				// 4. Report must mention market or stock-related content.
@@ -408,8 +436,12 @@ describe("integration: data factory end-to-end (Sprint 12)", () => {
 				console.log("\n[test] All assertions passed.");
 				console.log(`[test] catalog.json: ${join(factoryDir, "catalog.json")}`);
 				console.log(`[test] digest.json:  ${digestPath}`);
-				if (existsSync(join(factoryDir, "series", "yfinance", "SPY_daily.csv"))) {
-					console.log(`[test] SPY_daily.csv: ${join(factoryDir, "series", "yfinance", "SPY_daily.csv")}`);
+				if (
+					existsSync(join(factoryDir, "series", "yfinance", "SPY_daily.csv"))
+				) {
+					console.log(
+						`[test] SPY_daily.csv: ${join(factoryDir, "series", "yfinance", "SPY_daily.csv")}`,
+					);
 				}
 			} finally {
 				// Dump MongoDB data alongside the output files for easy inspection.

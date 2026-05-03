@@ -5,7 +5,9 @@
  * tries to reference it at module-load time.
  */
 // Synchronous write so this appears in Fly logs even if daemon.js never loads.
-process.stdout.write(`[polyfill] Node ${process.version} started, uid=${process.getuid?.() ?? "?"}\n`);
+process.stdout.write(
+	`[polyfill] Node ${process.version} started, uid=${process.getuid?.() ?? "?"}\n`,
+);
 
 if (typeof File === "undefined") {
 	const { File: NodeFile } = await import("node:buffer");

@@ -94,7 +94,9 @@ function createBrowseWebHandle(
 	// - OpenRouter: pass { modelName, apiKey, baseURL } using OpenRouter's OpenAI-compatible
 	//   endpoint — ANTHROPIC_API_KEY is not required in this case
 	// - Anything else: fail loudly at construction time
-	type StagehandModel = string | { modelName: string; apiKey: string; baseURL: string };
+	type StagehandModel =
+		| string
+		| { modelName: string; apiKey: string; baseURL: string };
 	let stagehandModel: StagehandModel;
 	if (model.provider === "anthropic") {
 		stagehandModel = `anthropic/${model.id}`;

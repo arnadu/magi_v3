@@ -6,7 +6,13 @@
  * non-existent or non-running missions return 404.
  */
 
-import type { NextFunction, Request, RequestHandler, Response, Router } from "express";
+import type {
+	NextFunction,
+	Request,
+	RequestHandler,
+	Response,
+	Router,
+} from "express";
 import { Router as createRouter } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import type { Db } from "mongodb";
@@ -27,32 +33,31 @@ export function createProxyRouter(db: Db): Router {
 
 	function getProxy(target: string, missionId: string): RequestHandler {
 		const key = target;
-		if (!proxyCache.has(key)) {
-			proxyCache.set(
-				key,
-				createProxyMiddleware({
-					target,
-					changeOrigin: true,
-					pathRewrite: (path) => path.replace(`/missions/${missionId}`, ""),
-					on: {
-						error: (err, _req, proxyRes) => {
-							console.error(
-								`[proxy] Error forwarding to ${target}: ${(err as Error).message}`,
-							);
-							if (
-								"headersSent" in proxyRes &&
-								!(proxyRes as Response).headersSent
-							) {
-								(proxyRes as Response)
-									.status(502)
-									.json({ error: "Upstream unavailable" });
-							}
-						},
+		let proxy = proxyCache.get(key);
+		if (!proxy) {
+			proxy = createProxyMiddleware({
+				target,
+				changeOrigin: true,
+				pathRewrite: (path) => path.replace(`/missions/${missionId}`, ""),
+				on: {
+					error: (err, _req, proxyRes) => {
+						console.error(
+							`[proxy] Error forwarding to ${target}: ${(err as Error).message}`,
+						);
+						if (
+							"headersSent" in proxyRes &&
+							!(proxyRes as Response).headersSent
+						) {
+							(proxyRes as Response)
+								.status(502)
+								.json({ error: "Upstream unavailable" });
+						}
 					},
-				}),
-			);
+				},
+			});
+			proxyCache.set(key, proxy);
 		}
-		return proxyCache.get(key)!;
+		return proxy;
 	}
 
 	// Proxy /missions/:id/dashboard/** and /missions/:id/events to the execution
