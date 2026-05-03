@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Pre-commit hook: reject commits that fail Biome lint.
+# Install via: git config core.hooksPath .githooks  (done by setup-dev.sh)
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "[pre-commit] Running lint…"
+if ! npm run lint --silent; then
+    echo ""
+    echo "[pre-commit] BLOCKED: fix lint errors before committing."
+    echo "             Run 'npm run lint:fix' for auto-fixable issues."
+    exit 1
+fi

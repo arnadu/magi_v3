@@ -38,6 +38,8 @@ TEAM_CONFIG=<yaml> MONGODB_URI=<uri> npm run cli:usage -w packages/agent-runtime
 npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 ```
 
+**Lint discipline:** Run `npm run lint` after every code change session. The pre-commit hook enforces this at commit time, but run it earlier to catch issues while context is fresh. Use `npm run lint:fix` for auto-fixable formatting/style issues, then fix any remaining errors manually.
+
 **Required env vars:** `ANTHROPIC_API_KEY`, `MONGODB_URI`, `TEAM_CONFIG`
 
 **Optional env vars:**

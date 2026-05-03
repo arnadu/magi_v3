@@ -261,5 +261,11 @@ else
 fi
 
 echo ""
+
+# Install the committed git hooks so lint runs on every commit.
+git config core.hooksPath .githooks
+echo "[setup-dev] Installed git hooks from .githooks/ (lint runs on pre-commit)."
+
+echo ""
 echo "[setup-dev] Done. Pool users: $(seq -s ', ' -f 'magi-w%.0f' 1 "${POOL_SIZE}")"
 echo "            Re-run at any time — it is idempotent."
