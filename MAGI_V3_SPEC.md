@@ -198,7 +198,7 @@ The Mental Map is HTML with stable section IDs. The agent authors prose content 
 </section>
 ```
 
-The `data-priority` attribute (0–100 continuous scale) is set by the outer loop's LLM. The Temporal workflow reads the top `pending` task by priority when dispatching the inner loop.
+The `data-priority` attribute (0–100 continuous scale) is set by the agent during planning. Tasks are surfaced in order of priority in the system prompt.
 
 ### UpdateMentalMap tool
 
@@ -206,86 +206,57 @@ Directly adapted from MAG_v2's `Editor` tool. Targets elements by `id` for surgi
 
 ```typescript
 UpdateMentalMap({
-  id: "tasks",          // target element ID
-  update: "replace" | "append-child" | "prepend-child" | "remove",
+  operation: "replace" | "append-child" | "prepend-child" | "remove",
+  elementId: "tasks",
   content: "<li ...>...</li>"   // new HTML (for replace/append/prepend)
 })
 ```
 
-The outer loop uses `UpdateMentalMap` to: add new tasks from inbound messages, reprioritize existing tasks, mark tasks done, and update working notes. The inner loop uses it to: record findings during execution, mark its assigned task done, and add `todos_to_add` items.
+Agents use `UpdateMentalMap` to: add new tasks from inbound messages, reprioritize existing tasks, mark tasks done, record findings during execution, and update working notes. The reflection pass also calls `UpdateMentalMap` to update the Mental Map with a cumulative session summary.
 
 ### Persistence
 
-Each agent has one Mental Map document in MongoDB per active mission assignment. The document ID is stored in Temporal workflow state. On every outer and inner loop invocation, the agent loads the current Mental Map from MongoDB, operates on it, and persists changes via `UpdateMentalMap` tool calls (each call is an atomic patch to the MongoDB document). The stateless worker pattern is preserved — no in-memory state between activities.
+Each agent has one Mental Map document in MongoDB per active mission assignment (`mental_maps` collection, keyed by `agentId`). At the start of each session the agent loads its current Mental Map from MongoDB; `UpdateMentalMap` tool calls are atomic patches to that document. No in-memory state survives between sessions.
 
 ---
 
 ## 5. Prompt Construction
 
-### Outer loop prompt
+### Session prompt structure
+
+Each agent session (`runInnerLoop`) is built from a single system message followed by the conversation:
 
 ```
-You are the planning mind of {role} on mission {mission_id}.
-Your job is to keep your Mental Map current and decide what to do next.
-You are NOT executing tasks — only planning and coordinating.
+[System message]
+  {agent.systemPrompt}          ← full role description from team YAML (includes {{mentalMap}} substituted with current HTML)
+  {skills block}                ← skill instructions discovered from sharedDir
 
-Tools available: ReadMailbox, UpdateMentalMap, SendMailboxMessage, ReadArtifact
+[User message: prior session summary]   ← only present if prior sessions exist and were reflected
+  Sessions 1..N-1: {cumulative narrative summary written by reflection}
 
-Current time: {ISO timestamp}
-Upcoming deadlines: {list from task data-deadline attributes}
-
-<mental-map>
-{current Mental Map HTML}
-</mental-map>
-
-New events since last planning cycle:
-{list of new mailbox messages with sender, intent, brief content}
-
-Update your Mental Map to reflect these events, reprioritize your task queue,
-and send any immediate acknowledgments. Stop when your Mental Map is current
-and the top task is unambiguous.
+[User message: inbox]
+  {one section per new mailbox message, with sender and body}
 ```
 
-### Inner loop prompt
+The agent then runs `runInnerLoop`, making LLM calls and tool calls until the LLM response
+contains no `tool_use` blocks. There is no separate "outer loop" or "planning LLM" — the single
+LLM call sequence handles planning, tool execution, and message sending in one uninterrupted loop.
 
-```
-You are {role} on mission {mission_id}.
-Execute the following task to completion.
+### Context rules
 
-<mental-map>
-{current Mental Map HTML}
-</mental-map>
+1. **Mental Map is always in full.** It is injected into the system prompt via `{{mentalMap}}` substitution — never truncated. It is the agent's persistent working memory.
+2. **Message history is this agent's turns only.** Prior LLM calls, tool calls, and tool results for this agent within the current session. Cross-agent messages enter only via the inbox user message.
+3. **Session boundary compaction.** At the start of a new session, `reflect()` is called if the prior session was large (peak input tokens ≥ 120k). Reflection writes a cumulative summary as a `SummaryMessage` and marks the prior session's raw messages as `compacted: true`. The LLM then sees the summary in place of the raw history.
+4. **Skills block.** Appended to the system prompt by `formatSkillsBlock()`. Contains the content of each `SKILL.md` discovered in `sharedDir/skills/` (platform, team, and mission tiers).
 
-<current-task>
-{content of the top task <li> element}
-</current-task>
+### Image handling — description-first
 
-<workspace>
-Environment: {dev|prod}
-Home: /home/agents/{agent_id}
-Shared folders: {list of accessible shared paths with r/w permissions}
-</workspace>
+Images fetched via `FetchUrl` or `BrowseWeb` are processed description-first:
+1. **On fetch**: a vision LLM call (`VISION_MODEL`, default: `claude-haiku-4-5-20251001`) generates a short description and stores it in the artifact's `meta.json`.
+2. **In conversation history**: images appear as text descriptions — no raw image bytes in history.
+3. **On-demand analysis**: the agent calls `InspectImage(path, prompt?)` for detailed analysis of a specific image within its workdir.
 
-When done, call PublishArtifact for any outputs, send relevant mailbox messages,
-and return a nextAction response.
-```
-
-### Context assembly rules
-
-1. **System prompt sections** are assembled in the order above. The Mental Map is always included in full (it is the agent's memory — truncating it would cause amnesia).
-2. **Message history** contains only this agent's own turns (its LLM calls, tool calls, and results). Mailbox messages from other agents enter via the `<mental-map>` section (which the outer loop has already processed), not as raw turn history.
-3. **Tool disable on penultimate call** — when the loop approaches `maxTurns - 1`, tools are removed from the call to force a structured `nextAction` response (MAG_v2 pattern).
-4. **Context compaction** — when estimated token count exceeds 60% of context window, turns older than a rolling window are summarized into a compact text block prepended to the history. Recent turns are kept in full.
-
-### Image handling — description-first (MAG_v2 pattern)
-
-The description-first strategy from MAG_v2 is adopted unchanged:
-1. **On upload/fetch**: generate a short AI description and store as metadata (`imageService.analyzeImageWithLogging()`).
-2. **In message history**: inject `"Artifact {id} ({type}): {description}"` as text — no raw image data.
-3. **On-demand analysis**: the agent calls `InspectImage(imageId, question)` when it needs detail from a specific image. The question and answer are logged for evidence lineage.
-4. **Storage**: image binary data in MinIO (not MongoDB base64 blobs as in MAG_v2). The `AgentAssetRegistry` holds metadata only; resolves to MinIO pre-signed URLs when the LLM needs the actual bytes.
-
-Token economy: ~80% reduction versus sending all images in every LLM call. The `magi://` virtual filesystem reference concept from MAG_v2 is adapted: Working Notes and published artifacts use `artifact://{artifact_id}` references; the Work Product UI resolves these to MinIO presigned URLs for display.
+Token economy: ~80% reduction versus sending all images in every LLM call.
 
 ---
 
@@ -309,108 +280,87 @@ interface AgentTool<TSchema extends TSchema> {
 }
 ```
 
-Tools are instantiated with factory functions that receive `Operations` hooks for ACL enforcement (pi-mono pattern):
+Tools are instantiated with factory functions that receive `AclPolicy` hooks for path enforcement:
 
 ```typescript
-const editTool = createEditTool({
-  checkPath: (p) => workspacePolicy.assertWriteAllowed(agentId, p),
-  afterWrite: (p, content) => auditLog.record(agentId, 'file_write', p)
-})
+const bashTool = createBashTool(workdir, aclPolicy);
+// AclPolicy.checkPath() runs before every file operation inside the subprocess
 ```
 
-### Tool sets by tier
+### Tool inventory
 
-**Outer loop tools** (planning only — no execution side effects):
+All tools are registered for every agent. ACL enforcement is path-based, not tool-based.
 
-| Tool | Source | Notes |
-|------|--------|-------|
-| `UpdateMentalMap` | New (adapted from MAG_v2 `Editor`) | Surgical HTML patch via element ID |
-| `ReadMailbox` | New | Returns typed messages with intent, priority, artifact_refs |
-| `AckMailboxMessage` | New | Acknowledge / claim / close a mailbox message |
-| `SendMailboxMessage` | New | Send typed message to agent or role |
-| `ReadArtifact` | New | Read artifact metadata + first N bytes for quick scan |
-
-**Inner loop tools** (execution — full access within policy):
-
-*File tools* — adopted directly from pi-mono `packages/coding-agent/src/core/tools/`:
+**Shell tools** (dispatched via `sudo -u <linuxUser> node tool-executor.js`; child env has only `PATH` and `HOME`):
 
 | Tool | Notes |
 |------|-------|
-| `ReadFile` | Line-offset and limit support for large files |
-| `EditFile` | Surgical string replacement with uniqueness validation (fails on ambiguous match) |
-| `WriteFile` | Full file write |
-| `ListDir` | Directory listing with filtering |
-| `FindFiles` | Pattern-based file search |
-| `GrepFiles` | ripgrep-backed content search |
-| `Bash` | Shell execution with spawn hooks for sandboxing and audit |
+| `Bash` | Shell command execution; `AclPolicy.checkPath` runs on any paths detected in args |
+| `WriteFile` | Full file write; path validated before subprocess spawn |
+| `EditFile` | Surgical `old_string → new_string` replacement with uniqueness validation |
 
-*Image tools* — MAG_v2 pattern:
+**Coordination tools:**
 
 | Tool | Notes |
 |------|-------|
-| `InspectImage` | On-demand detailed analysis; question is required; logs call for evidence lineage |
-| `FetchImage` | Download image from URL, register in AgentAssetRegistry, auto-describe |
+| `PostMessage` | Send a message to one or more agents or to `"user"` |
+| `ListTeam` | List all agents: `id`, `name`, `role`, `supervisor` |
+| `ListMessages` | List inbox headers: `id`, `from`, `subject`, `timestamp`, `readBy` |
+| `ReadMessage` | Read a message body and mark as read |
+| `UpdateMentalMap` | Surgical HTML patch of the agent's Mental Map by element ID |
 
-*Execution tools* — new for V3:
-
-| Tool | Notes |
-|------|-------|
-| `ExecProgram` | Start command in sandbox; returns `program_id` immediately (non-blocking) |
-| `ProgramStatus` | Poll process state, exit code, cpu/mem |
-| `ReadLogs` | Stream/tail logs with filters and line offsets |
-| `StopProgram` | Clean process tree termination |
-
-*Web and data tools* — new for V3:
+**Web and data tools:**
 
 | Tool | Notes |
 |------|-------|
-| `BrowseWeb` | Playwright-based navigate/extract/download; returns structured content + provenance |
-| `FetchData` | Pull URL/API/file; mandatory provenance metadata (URL, timestamp, content hash) |
-| `AnalyzeData` | Run script/notebook in sandbox; return structured outputs + artifact refs |
+| `FetchUrl` | HTTP GET → HTML (Readability) or PDF (mupdf); auto-describes images via vision LLM |
+| `InspectImage` | On-demand detailed analysis of an image in workdir via vision LLM |
+| `SearchWeb` | Brave Search API → ranked result list; conditionally registered when `BRAVE_SEARCH_API_KEY` present |
+| `BrowseWeb` | Stagehand/Playwright JS-rendered browsing; SSRF blocked; conditionally registered when Chromium present |
 
-*Coordination tools* (also available in inner loop):
+**Research tool:**
 
 | Tool | Notes |
 |------|-------|
-| `SendMailboxMessage` | Send typed message mid-execution (e.g., request data from teammate) |
-| `PublishArtifact` | Write to artifact store with metadata + lineage; returns `artifact_id` |
+| `Research` | Nested `runInnerLoop` in isolated context; writes results to `sharedDir/research/` index |
 
-### Tool ACL enforcement
+**Background jobs** (via Tool IPC server at `:4001`, not registered as LLM tools):
 
-At agent instantiation, the tool factory receives workspace policy hooks derived from the agent's role config. The agent never sees tools its policy forbids — they are simply not registered in its tool list. Filtering at registration time, not in the prompt.
+Agents submit long-running work via the `run-background` skill (`magi-job` CLI), which calls the
+Tool IPC server. The server dispatches to Research, SearchWeb, FetchUrl, Bash, or BrowseWeb and
+writes results to `sharedDir/jobs/`. The `schedule-task` skill submits jobs to
+`scheduled_messages` for future delivery.
 
-Example policy-derived filtering:
-- Data Scientist in `dev`: has `ExecProgram`, `AnalyzeData`, `PublishArtifact` (to dev only)
-- Lead Analyst in `prod`: has `PublishArtifact` (to prod), does NOT have `ExecProgram`
-- Watcher: has `SendMailboxMessage` and `ReadMailbox` only — no file or execution tools
+### ACL enforcement
+
+All file paths are validated by `AclPolicy.checkPath(path, "read"|"write")` before any filesystem
+operation. The policy is derived from the agent's `AgentIdentity` (workdir, sharedDir) — agents
+can read/write their private workdir and the shared mission folder; cross-agent private paths are
+denied. OS-level `setfacl` ACLs provide a second enforcement layer at the subprocess level.
 
 ---
 
 ## 7. Agent Identity Model
 
-Each agent has a stable enterprise-style identity assigned at team configuration time:
+Each agent has a resolved identity at runtime:
 
 ```typescript
 interface AgentIdentity {
-  agent_id: string              // stable, unique across missions
-  uid: number                   // Linux uid for filesystem ownership
-  gid: number                   // primary Linux gid (role group)
-  supplementary_gids: number[]  // shared mission folder groups
-  role: string                  // e.g., "lead-analyst", "data-scientist"
-  policy_tags: string[]         // e.g., ["prod-read", "dev-write", "web-allowed"]
-  mission_id: string
-  environment: "dev" | "prod"
+  workdir: string;    // $AGENT_WORKDIR/home/{linuxUser}/missions/{missionId}/
+  sharedDir: string;  // $AGENT_WORKDIR/missions/{missionId}/shared/
+  linuxUser: string;  // OS user this agent's tools execute as (via sudo)
 }
 ```
 
-**Workspace paths:**
-- Private home: `/home/agents/{agent_id}` (private, rwx for uid only)
-- Mission shared: `/missions/{mission_id}/shared/{team_or_role}` (ACL-governed per role)
-- `dev` and `prod` paths are isolated; cross-environment exchange only via promoted artifacts (Sprint 5+)
+`linuxUser` comes from the team YAML (`linuxUser` field, optional; defaults to `agent.id` in
+production Docker). In dev, pre-existing pool users `magi-w1..magi-w5` are assigned. In
+production, dedicated OS users are created per-agent at machine startup.
 
-**ACL policy** is enforced at two levels:
-1. **Linux ACLs** (`setfacl`) on actual filesystem paths — hard enforcement for code execution
-2. **Operations hooks** in tool factories — enforced at the tool level for all file operations, even those not touching the filesystem directly (e.g., artifact publishing to the wrong environment)
+**ACL enforcement:**
+1. **Application layer**: `AclPolicy.checkPath()` runs inside every tool factory before any
+   filesystem call — validates the path is within the agent's permitted directories.
+2. **OS layer**: `setfacl` rules set by `WorkspaceManager.provision()` enforce the same policy
+   at the filesystem level, providing defence-in-depth for subprocess tool calls.
 
 ---
 
@@ -436,7 +386,7 @@ interface MailboxMessage {
 }
 ```
 
-`critical` priority messages trigger the Temporal `critical_alert` signal, bypassing the normal triage queue and potentially interrupting the running inner loop.
+Priority (`normal` / `high`) is advisory — the orchestration loop does not interrupt a running agent turn but processes high-priority messages first in the next cycle.
 
 ### MongoDB implementation
 
@@ -452,39 +402,25 @@ Message durability relies on MongoDB write concern; the Change Stream cursor rec
 
 ## 9. Artifact System
 
-### Artifact types
+Artifacts are directories written to the agent's workdir or sharedDir by `FetchUrl`, `BrowseWeb`,
+or directly by the agent via Bash/WriteFile:
 
-`dataset`, `report`, `alert`, `code`, `notebook`, `chart`, `model`, `raw_data`
-
-### Artifact metadata
-
-```typescript
-interface Artifact {
-  artifact_id: string
-  mission_id: string
-  producer_agent_id: string
-  artifact_type: ArtifactType
-  title: string
-  description: string
-  environment: "dev" | "prod"
-  storage_key: string             // MinIO/S3 object key
-  content_hash: string            // SHA-256 for integrity
-  size_bytes: number
-  lineage: {
-    derived_from: string[]        // parent artifact IDs
-    tool_run_id: string           // which tool invocation produced this
-    source_urls?: string[]        // for data fetched from the web
-  }
-  status: "draft" | "published" | "promoted" | "superseded"
-  created_at: string
-}
+```
+artifacts/{artifact-id}/
+  content.md     # extracted text (Readability/mupdf + inline vision descriptions)
+  meta.json      # provenance sidecar: url, dateCreated, encodingFormat, images[]
+  image-0.jpg    # images extracted from article body (if any)
+  image-1.png
 ```
 
-Lineage is mandatory. Every artifact traces back to its sources (other artifacts or web URLs) and the tool run that produced it. This is what powers the Evidence Explorer in the Work Product UI.
+Artifact IDs are human-readable and sortable: `{slugified-hostname}-{YYYYMMDD}T{HHmmss}` for
+fetched URLs, `{slugified-filename}-{timestamp}` for user uploads.
 
-### Dev/prod separation
+Cross-agent sharing: all fetched content written to `sharedDir/artifacts/` is visible to all
+agents on the mission. Agents discover artifacts via Bash (`ls`, `cat meta.json`).
 
-Dev artifacts are published to the `dev` MinIO bucket prefix. Promotion to `prod` requires the `PromoteArtifact` workflow (Sprint 5+), which runs validation checks and requires explicit approval before moving the artifact to the `prod` prefix and updating its status to `promoted`.
+Provenance metadata in `meta.json` is mandatory. Every artifact traces back to its source URL
+and the timestamp it was fetched.
 
 ---
 
@@ -492,233 +428,146 @@ Dev artifacts are published to the `dev` MinIO bucket prefix. Promotion to `prod
 
 ### Directory layout
 
+All paths are rooted at `$AGENT_WORKDIR` (default: cwd in dev; `/missions` on Fly Volume in production):
+
 ```
-/home/agents/{agent_id}/            private workspace (rwx uid only)
-  scratchpad/                       temporary working files
-  programs/                         code the agent writes and runs
-  downloads/                        data fetched from web/APIs
+$AGENT_WORKDIR/
+  home/{linuxUser}/missions/{missionId}/       ← agent's private workdir
+    artifacts/                                 fetched documents + extracted images
+    uploads/                                   user-uploaded files
 
-/missions/{mission_id}/
-  shared/
-    team/                           all agents on this mission (r for all, w by role policy)
-    {role}/                         role-specific shared folder (e.g., data-scientist/)
-  artifacts/                        symlinks to promoted artifact working copies
-```
-
-### ACL enforcement
-
-The `workspace-manager` service provisions directories and sets ACLs when an agent joins a mission:
-
-```bash
-# Create agent home
-mkdir -p /home/agents/{agent_id}
-chown {uid}:{gid} /home/agents/{agent_id}
-chmod 700 /home/agents/{agent_id}
-
-# Set shared folder ACL
-setfacl -m u:{uid}:rwx /missions/{mission_id}/shared/team    # if policy allows write
-setfacl -m u:{uid}:r-x /missions/{mission_id}/shared/team    # if policy allows read-only
+  missions/{missionId}/shared/                 ← shared mission folder (all agents)
+    artifacts/                                 shared published artifacts
+    research/                                  research index (written by Research tool)
+    briefs/                                    published reports
+    skills/
+      _platform/                               platform skills (read-only, copied at provision)
+      _team/                                   team-specific skills
+      mission/                                 mission-created skills (agent-authored)
+    jobs/
+      pending/   running/   status/            background job state
+    data-factory/                              data factory outputs (catalog, prices, news)
+    (git repo)                                 entire sharedDir is a git repository
 ```
 
-Tool `Operations` hooks enforce the same policy in software before any filesystem call, providing a consistent enforcement layer regardless of whether the underlying path is local or cloud-mounted.
+### Provisioning
+
+`WorkspaceManager.provision(agents, missionId)` is called once at daemon startup:
+1. Creates `sharedDir` and each agent's private `workdir`.
+2. Copies platform and team skill files from `packages/skills/` into `sharedDir/skills/`.
+3. Runs `git init` in `sharedDir` (the `git-provenance` skill teaches agents the commit convention).
+4. Runs `setfacl` to grant each agent's `linuxUser` read/write access to `sharedDir` and read/write
+   access to their own `workdir` only.
 
 ---
 
-## 11. Configuration (Config-First)
+## 11. Configuration
 
-Until Portfolio and Team Design UIs ship, all configuration is YAML files validated against JSON schemas.
+All team configuration is in YAML files validated against the Zod schema in `packages/agent-config/`.
 
-### Team config (`config/teams/{team_id}.yaml`)
+### Team config format (`config/teams/{name}.yaml`)
 
 ```yaml
-team_id: equity-research-eu
-mission_type: equity_research
-environment: prod
+mission:
+  id: equity-research
+  name: "Equity Research Team"
 
 agents:
-  - agent_id: lead-analyst-01
+  - id: lead-analyst
+    name: "Alexandra"
     role: lead-analyst
-    model: claude-sonnet-4-6
-    max_turns_per_run: 20
-    policy_tags: [prod-read, dev-read, web-allowed]
-    tools: [ReadMailbox, AckMailboxMessage, SendMailboxMessage, UpdateMentalMap,
-            ReadFile, EditFile, WriteFile, ListDir, FindFiles, GrepFiles,
-            BrowseWeb, FetchData, InspectImage, PublishArtifact]
-    workspace:
-      home: /home/agents/lead-analyst-01
-      shared_read: [/missions/eq-eu/shared/team]
-      shared_write: []
+    supervisor: user          # escalation target; "user" = operator
+    linuxUser: magi-w1        # optional; defaults to agent id in production Docker
+    systemPrompt: |
+      You are Alexandra, the lead-analyst of the Equity Research Team.
+      ...
+      ## Your mental map
+      {{mentalMap}}
+      ...
+    initialMentalMap: |       # seed HTML injected on first session
+      <section id="mission-context"><p>...</p></section>
+      <section id="tasks"><ol></ol></section>
+      <section id="working-notes"><p></p></section>
 
-  - agent_id: data-scientist-01
+  - id: data-scientist
+    name: "Marcus"
     role: data-scientist
-    model: claude-sonnet-4-6
-    max_turns_per_run: 30
-    policy_tags: [dev-write, web-allowed, exec-allowed]
-    tools: [ReadMailbox, AckMailboxMessage, SendMailboxMessage, UpdateMentalMap,
-            ReadFile, EditFile, WriteFile, ListDir, FindFiles, GrepFiles, Bash,
-            ExecProgram, ProgramStatus, ReadLogs, StopProgram,
-            FetchData, AnalyzeData, InspectImage, PublishArtifact]
-    workspace:
-      home: /home/agents/data-scientist-01
-      shared_read: [/missions/eq-eu/shared/team]
-      shared_write: [/missions/eq-eu/shared/data-scientist]
+    supervisor: lead-analyst
+    linuxUser: magi-w2
+    systemPrompt: |
+      ...
+    initialMentalMap: |
+      ...
 
 schedules:
-  - name: daily-ingestion
-    cron: "0 6 * * 1-5"          # 06:00 weekdays
-    recipient_role: junior-analyst
-    message:
-      intent: task_request
-      priority: high
-      subject: "Daily ingestion cycle"
-      body: "Fetch and process today's market data per mandate."
-      deadline: "T+2h"           # 2 hours from fire time
+  - agent: lead-analyst
+    cron: "30 5 * * 1-5"     # 5:30 AM weekdays UTC
+    subject: "Daily Session"
+    body: "Run the daily gold market brief."
 ```
 
-Required support (Sprint 0): schema validation, dry-run compile to runtime policy objects, diff and change history for auditability. Invalid configs that would create ACL conflicts or invalid tool assignments must be rejected at validation time.
+The Zod schema validates required fields (`id`, `supervisor`, `systemPrompt`, `initialMentalMap`)
+and rejects configs with duplicate agent IDs or unknown supervisor references.
 
 ---
 
 ## 12. Testing Strategy
 
-### Three-tier taxonomy
+### Three tiers
 
-**Tier 1 — Unit tests** (TDD, fast, deterministic, run on every commit via `npm test`)
+**Unit tests** (`npm test`) — pure, deterministic logic only; no LLM calls, no network:
 
-These cover pure functions and deterministic logic only. No LLM calls, no network, no filesystem side effects.
+| What | Approach |
+|------|---------|
+| Zod config validation | Invalid YAML variants; assert exact error messages |
+| ACL policy evaluation | `(linuxUser, path, operation)` → allow/deny |
+| `UpdateMentalMap` HTML patching | Assert DOM state after each operation |
+| `patchMentalMap` idempotency | Same patch applied twice → same result |
+| SSRF regex | Known-private hosts and Fly WireGuard ranges |
+| Cost computation | `computeCost(usage, model)` for cache/non-cache variants |
 
-| What | TDD approach |
-|------|-------------|
-| Config YAML validation | Write invalid config variants; assert exact error messages |
-| ACL policy evaluation | Property-based tests over `(agent_id, path, action)` → `allow/deny` |
-| `UpdateMentalMap` HTML patching | Assert DOM state after each `replace/append/remove` operation |
-| `nextAction` structured output parsing | Given raw LLM response strings (valid and malformed), assert parse results |
-| Mailbox message routing | Given message + agent roster, assert which streams receive it |
-| Artifact lineage validation | Assert all required lineage fields are present and well-formed on `PublishArtifact` |
-| Tool registration filtering | Given a role policy, assert exact tool list produced |
-| Context assembly | Assert assembled prompt contains correct sections; assert tools absent when disabled |
-| Token estimation and compaction trigger | Assert compaction fires at the correct threshold |
-| Operations hook enforcement | Assert hook throws a typed policy error when path is outside allowed set |
+**Integration tests** (`npm run test:integration`) — real LLM calls with deterministic-outcome
+prompts; real MongoDB Atlas; real pool users; full stack:
 
-**Tier 2 — Integration tests** (run on PR, use real infrastructure with `MockLLMProvider`)
+- Each test creates a unique `missionId` via `randomUUID()`
+- `afterEach` cleans up with `deleteMany({ missionId })` on all collections
+- Prompts are chosen so the LLM outcome is deterministic (e.g., "count the words in this file;
+  the answer is 12" → assert reply contains "12")
+- Tests cover: multi-agent word count, skills discovery, reflection, data factory, background jobs,
+  browse-web, fetch/inspect, search-web, tool API
 
-These test plumbing and infrastructure guarantees against real MongoDB, Redis, MinIO, and the Temporal test server. LLM calls are replaced by `MockLLMProvider` — a scripted stub that returns deterministic `nextAction` values and tool calls, verifying the entire loop machinery without actual model inference.
+**Evaluation tests** (`eval/`) — run on demand with real LLMs; assert structural/policy outcomes
+over multiple runs; not in CI. See `eval/` directory.
 
-MongoDB in integration tests runs via `mongodb-memory-server` — the real MongoDB binary in-process, zero external dependency, real query semantics. No JSON file backends or mock drivers. This gives full confidence in repository implementations without requiring a running MongoDB service.
-
-Seed-and-run pattern (adapted from MAG_v2 `backend/tests/integration/`):
-1. **Seed**: write a specific task into an agent's Mental Map; pre-load Redis mailbox with test messages
-2. **Run**: execute the two-tier loop using `MockLLMProvider` with a scripted response sequence
-3. **Assert**: Mental Map has correct task status, artifact published with correct lineage, outbound messages sent
-
-Key integration tests per sprint:
-- *Sprint 1*: Mental Map MongoDB roundtrip (patch → reload → assert idempotency); full outer+inner loop run
-- *Sprint 2*: Temporal crash recovery (kill worker mid-Activity, assert resume on correct task); Redis durable re-delivery after consumer death before `XACK`
-- *Sprint 3*: Workspace provisioning (`setfacl` roundtrip); OS-level write rejection matches policy-level rejection
-- *Sprint 4*: `ExecProgram`/`ReadLogs`/`StopProgram` lifecycle; `PublishArtifact` full lineage roundtrip
-
-`MockLLMProvider` interface:
-```typescript
-interface MockLLMProvider {
-  // Queue up responses in order; each call to the LLM pops one
-  queue(responses: MockResponse[]): void
-}
-
-interface MockResponse {
-  content?: string                        // the msgToUser / nextAction JSON
-  toolCalls?: Array<{ name: string; args: Record<string, unknown> }>
-}
-```
-
-**Tier 3 — Evaluation tests** (`eval/` directory, run on demand with real LLMs, not in CI)
-
-These run the full system against golden scenarios and assert on outcome properties, not exact outputs. They are non-deterministic in detail but stable in aggregate over multiple runs.
-
-```
-eval/
-  scenarios/
-    equity-research/
-      daily-cycle.eval.ts        # full daily cycle; assert citation coverage ≥ 90%
-      threshold-alert.eval.ts    # inject breach; assert alert within 2 turns
-      policy-enforcement.eval.ts # dev agent attempts prod publish; assert denial
-  runner.ts                      # run all scenarios, produce pass/fail report
-```
-
-Assertions in evaluation tests check structural and policy properties, not content:
-- `nextAction` is always a valid enum value (never a free-form string)
-- Every published artifact has at least one `derived_from` entry or one `source_url`
-- Mental Map always has exactly one `in-progress` task when the inner loop is running
-- No `prod` artifact published from a `dev`-environment agent across 50 runs
-- Watcher fires an alert within N turns of a threshold breach (tunable)
-- Report freshness SLA is met on ≥ 90% of runs over a 5-day scenario
-
-Do NOT write evaluation tests for: prompt wording, LLM tool selection choices, or the specific text content of generated reports.
-
-### Repository interfaces
-
-The persistence layer uses three thin, MongoDB-idiomatic repository interfaces. They are not backend-agnostic — they expose MongoDB-native constructs (document IDs, upsert semantics, projection) because abstraction over different backends would introduce a leaky ceiling the moment any MongoDB-specific feature is needed.
-
-The interfaces are injectable, which is sufficient for testability: integration tests pass in a repository backed by `mongodb-memory-server`; production code passes in one backed by the real MongoDB connection.
-
-```typescript
-interface ConversationRepository {
-  append(sessionId: string, messages: AgentMessage[]): Promise<void>
-  load(sessionId: string): Promise<AgentMessage[]>
-  truncate(sessionId: string, keepLast: number): Promise<void>
-}
-
-interface MentalMapRepository {
-  load(agentId: string): Promise<MentalMapDocument | null>
-  save(agentId: string, doc: MentalMapDocument): Promise<void>
-  patch(agentId: string, patch: MentalMapPatch): Promise<MentalMapDocument>
-}
-
-interface ArtifactRepository {
-  create(artifact: Artifact): Promise<string>           // returns artifact ID
-  get(artifactId: string): Promise<Artifact | null>
-  queryByMission(missionId: string, filter?: ArtifactFilter): Promise<Artifact[]>
-}
-```
-
-Interfaces are defined in Sprint 0. First implementations land in Sprint 1 alongside the inner loop.
-
-### TestLogger
-
-Adapted from MAG_v2's `TestLogger` pattern. In test mode (`NODE_ENV=test`), the agent runtime emits structured events to `TestLogger` instead of / in addition to the normal SSE/OTel streams. Integration tests subscribe to `TestLogger` events to assert on agent behaviour without parsing logs.
-
-```typescript
-// In integration tests
-const logger = new TestLogger({ verbose: true })
-const events = await runWithLogger(agentWorkflow, logger)
-
-expect(events).toContainEvent({ type: 'tool_execution_end', toolName: 'PublishArtifact' })
-expect(events).toContainEvent({ type: 'mental_map_updated', sectionId: 'tasks' })
-```
+Do not write tests for prompt wording, LLM tool selection choices, or report content quality.
 
 ---
 
 ## 13. Observability
 
-Every LLM call, tool execution, and Temporal activity emits OpenTelemetry spans with standard attributes:
+**LLM call log** (`llmCallLog` MongoDB collection): every `runInnerLoop` call records model, token
+counts (input, output, cache read, cache write), cost, agentId, missionId, turnNumber, and whether
+it was a reflection call. Query with `npm run cli:usage`.
 
-- `agent.id`, `agent.role`, `mission.id`
-- `llm.model`, `llm.turn`, `llm.tokens_in`, `llm.tokens_out`
-- `tool.name`, `tool.call_id`, `tool.success`
-- `artifact.id`, `artifact.type` (on publish)
-- `mailbox.message_id`, `mailbox.intent` (on send/receive)
+**SSE dashboard** (monitor server, port 4000): real-time mission state streamed to the browser.
+Sections: mission feed (all mailbox messages), agent tabs (sessions tree, mental map iframe, LLM
+call detail), queue strip (current running agent), budget pause banner, usage bar with spending cap.
+Accessible via the control plane proxy at `/missions/{missionId}/dashboard`.
 
-The Evidence Explorer in the Work Product UI traces a report claim back through: claim text → artifact → tool run (span) → source URL or parent artifact. The span tree provides the full provenance chain.
+**Daemon log** (`$AGENT_WORKDIR/daemon.log`): daemon stdout/stderr tee'd to this file at startup.
+Accessible in the browser via `GET /missions/{missionId}/log` → "View Log" button in the UI.
 
-All LLM calls are logged with full context (system prompt, message history, raw response) to support the Explain functionality from MAG_v2. This log is write-once and is the audit record for alignment review.
+**No OpenTelemetry** in the current implementation. Full distributed tracing is a planned
+future capability (Sprint 20+).
 
 ---
 
 ## 14. External Dependencies and References
 
-V3 is implemented from scratch but draws on patterns from two prior projects:
-
-- **`@mariozechner/pi-ai`** — `completeSimple(model, context)` is the non-streaming LLM call used by `runInnerLoop`. This is the only direct runtime dependency on pi-mono.
-- **MAGI v2** — Mental Map design (§4), image handling strategy (§5.4), and UpdateMentalMap tool semantics (§4.3) are adapted from v2's `Editor` tool and vision pipeline.
-- **`pi-web-ui`** — Lit-based web component library; still a candidate for a future React frontend (Sprint 16+); not yet adopted.
+- **`@mariozechner/pi-ai`** — `completeSimple(model, context)` is the non-streaming LLM call
+  used by `runInnerLoop` and `runReflection`. `getModel("openrouter", id)` provides OpenRouter
+  model descriptors. This is the only direct runtime dependency on pi-mono.
+- **MAGI v2** — Mental Map design (§4), image handling strategy (§5), and `UpdateMentalMap`
+  semantics are adapted from v2's `Editor` tool and vision pipeline.
 
 For full details on these projects, see [docs/references.md](docs/references.md).
