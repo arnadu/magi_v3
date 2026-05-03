@@ -38,8 +38,6 @@ TEAM_CONFIG=<yaml> MONGODB_URI=<uri> npm run cli:usage -w packages/agent-runtime
 npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 ```
 
-**Lint discipline:** Run `npm run lint` after every code change session. The pre-commit hook enforces this at commit time, but run it earlier to catch issues while context is fresh. Use `npm run lint:fix` for auto-fixable formatting/style issues, then fix any remaining errors manually.
-
 **Required env vars:** `ANTHROPIC_API_KEY`, `MONGODB_URI`, `TEAM_CONFIG`
 
 **Optional env vars:**
@@ -152,27 +150,81 @@ Production team configs: `config/teams/{name}.yaml`. Test configs: `config/teams
 | 14 | ✅ Done | Cloud Infrastructure MVP: Fly.io execution plane, control plane, proxy, scheduler |
 | 15 | ✅ Done | Developer onboarding: `bootstrap.sh`, `.dockerignore`, daemon log viewer, test config relocation |
 
-## Sprint Closure Checklist
+## Code Quality
 
-Run these before marking a sprint done — not optional.
+Quality is applied **continuously during development**, not recovered at sprint close. These are the standards to meet as code is written.
 
-1. **Lint and tests pass** — `npm run lint && npm test`; fix all errors before closing
-2. **Security review** — run `/security-review`; fix CRITICAL/HIGH findings; log others in `docs/security/findings.md`
-3. **Threat model** — if the sprint added a new external HTTP call, a new `sudo` rule, a new process user, or a new IPC port: run `/threat-model` and commit the result
-4. **ADR** — if the sprint made a decision between concrete alternatives (technology, schema, design pattern): write a new ADR in `docs/adr/` linked from the sprint table; mark any superseded ADRs
-5. **CLAUDE.md sprint table** — mark the sprint `✅ Done` with a one-line summary
+**Types model the domain.** Before implementing a function, get the types right. Where `string` could be more specific — a discriminated union, a named interface, a Zod-validated shape — use it. Reach for `any` or `!` only when genuinely unavoidable; document why with a `biome-ignore` comment. TypeScript strict mode is always on; work with it, not around it.
+
+**Interfaces before implementation.** When adding a module, sketch the interface first. If the API is awkward to use, the abstraction is wrong — fix the design, not the callers.
+
+**Logging survives incidents.** Every `console.error` must answer: what operation failed, what input triggered it, what the downstream consequence is. `console.error(e)` is a placeholder. Prefer structured context: `[daemon] orchestration failed { missionId, agentId, error: e.message }`.
+
+**No deferred debt.** A type cast, a `TODO`, or a hardcoded value is a deliberate trade-off that must be visible. Either fix it in the same commit, or leave a comment explaining the constraint. Invisible debt is worse than acknowledged debt.
+
+**No fallbacks to accommodate tests.** When a hard requirement lands, fix the test. Code that silently degrades — optional fields, `?? default` catch-alls added specifically to keep old tests green — is debt with compounding interest.
+
+**Comments on the non-obvious only.** Well-named identifiers explain the what. Add a comment only for: a hidden constraint, a subtle invariant, a non-obvious workaround, behaviour that would surprise a reader. Never reference the current task or caller — those belong in commit messages.
+
+**Lint after every change session.** Run `npm run lint` before committing. The pre-commit hook enforces this, but earlier is better. Use `npm run lint:fix` for auto-fixable issues, then fix remaining errors manually.
 
 ---
 
-## Development Principles
+## Security
 
-**No fallbacks to accommodate tests.** When a sprint introduces a hard requirement, do not make it optional so old tests keep passing. Fix the test, not the production code. Code that silently degrades — optional fields, `?? default` catch-alls — written specifically so old tests keep passing is bad debt.
+Security is applied **continuously during development**. These are the triggers — moments where you pause and reason about security regardless of what feature you're building.
 
-**No optional security.** Security properties (identity, ACL, OS isolation) are never opt-in or conditional. If a field is required for correct operation, it is `required` in the TypeScript type and in the Zod schema.
+**New external HTTP call** — Is the URL user-influenced? Does `ssrf.ts` need updating (especially for new IPv6 ranges such as Fly WireGuard `fdaa:`)? Does the call transmit secrets? Is the response parsed safely?
 
-**No comments unless the why is non-obvious.** Only add a comment when it explains a hidden constraint, a subtle invariant, a non-obvious workaround, or behaviour that would surprise a reader. Never explain what the code does — well-named identifiers do that. Never reference the current task, fix, or caller — those belong in commit messages and PR descriptions.
+**New subprocess or `sudo` rule** — What is the minimum env the child receives? Does the sudoers rule scope by exact command path? Can an agent influence the arguments?
 
-**Keep documentation current.** Code changes that introduce new architecture, new trust boundaries, or new design decisions must be accompanied by documentation updates in the same commit. A sprint that builds something new without an ADR or threat model update is incomplete.
+**New env var introduced or forwarded** — Which processes receive it? Is it excluded from the Docker image (`.dockerignore`)? Is it scoped correctly (daemon-only; never forwarded to tool-executor children)?
+
+**New MongoDB query using external input** — Is the input used only as a value, never as an operator or field name? Is the query scoped to `missionId`?
+
+**New file path derived from input** — Is it validated by `checkPath` before use? Are symlinks resolved before the ACL check?
+
+**New IPC port or public endpoint** — Is it authenticated? Loopback-only or network-accessible? Is the threat model updated in the same commit?
+
+**Security properties are never optional.** Identity, ACL, and OS isolation are always enforced. If a field is required for correct secure operation, it is `required` in the TypeScript type and in the Zod schema — never made optional to ease testing.
+
+See `docs/security/CLAUDE.md` for the full security practice, and `/security-review`, `/security-audit`, `/threat-model` commands.
+
+---
+
+## Documentation
+
+Documentation updates go in the **same commit as the code change**. Documentation written a week later is written from memory.
+
+**What belongs where:**
+
+| What changed | Where to document |
+|---|---|
+| New architectural decision (technology, schema, design pattern) | New ADR in `docs/adr/`; link from sprint table |
+| New trust boundary, external service, `sudo` rule, or IPC port | `docs/security/threat-model.md` |
+| New or changed env var, CLI flag, or build command | `CLAUDE.md` Commands section |
+| New cloud deployment step or Fly.io operational quirk | `docs/deployment.md` |
+| New agent capability, tool, or inter-agent protocol | `MAGI_V3_SPEC.md` (relevant section) |
+| Subtle code invariant that would surprise a reader | Inline comment in the source |
+| Superseded design or technology | Mark the ADR `SUPERSEDED`; update `CLAUDE.md` if the section is stale |
+
+Aim for: **top-down architecture** (mental model before implementation detail), **subtleties surfaced** (non-obvious constraints and invariants), **operations covered** (install, run, debug, scale). A new person should understand _why_ first, then _what_, then _how_.
+
+---
+
+## Sprint Closure Checklist
+
+Sprint close is a **confirmation pass** — this work should already be done. If a check fails here, that is a process gap to address going forward, not just a box to check now.
+
+1. **Lint and tests pass** — `npm run lint && npm test`
+2. **Security review confirmed** — `/security-review` was run for any new external surface during the sprint; CRITICAL/HIGH findings are fixed; others are logged in `docs/security/findings.md`
+3. **Threat model current** — any new external HTTP call, `sudo` rule, process user, or IPC port was documented in `docs/security/threat-model.md` in the same commit as the code
+4. **ADRs written** — any decision between concrete alternatives has an ADR in `docs/adr/`; superseded ADRs are marked
+5. **CLAUDE.md sprint table** — mark `✅ Done` with a one-line summary
+
+Use `/sprint-close` to run checks 1–2 automatically.
+
+---
 
 ## Testing Approach
 

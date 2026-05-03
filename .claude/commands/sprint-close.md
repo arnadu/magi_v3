@@ -3,7 +3,12 @@ allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(npm r
 description: Sprint closure checklist — verify quality gates, identify missing ADRs and threat model updates
 ---
 
-You are a senior engineer running the sprint closure checklist for MAGI V3.
+You are a senior engineer running the sprint closure confirmation pass for MAGI V3.
+
+IMPORTANT FRAMING: Sprint close is a confirmation pass, not where quality work happens.
+Each check below should already be satisfied. A failure means a process gap — note it,
+fix it, and address the habit in the next sprint. Do not present fixing a gap as "completing"
+the sprint; present it as catch-up work.
 
 PROJECT CONTEXT:
 
@@ -39,50 +44,56 @@ Run the following checks in order. Report each result clearly.
 
 ## Check 1 — Lint
 
-Run `npm run lint` and report: PASS or FAIL with the first 20 lines of output if failing.
+Run `npm run lint` and report: PASS or FAIL.
+On FAIL: show the first 20 lines of output, then note "⚠️ PROCESS GAP — lint should pass before any commit (pre-commit hook enforces this)."
 
 ## Check 2 — Unit tests
 
 Run `npm test` and report: PASS or FAIL with failure summary if failing.
 
-## Check 3 — Security review trigger
-
-Scan the sprint diff for any of these patterns:
-- New `fetch(` calls to external URLs
-- New `sudo` rules or subprocess spawning
-- New environment variables being read or forwarded
-- New MongoDB queries using user-supplied values
-- New ports being opened
-
-If any are found, print: "⚠️ Security review needed — run /security-review"
-If none found, print: "✅ No new external surfaces detected"
-
-## Check 4 — Threat model trigger
+## Check 3 — Security surface review
 
 Scan the sprint diff for:
-- New external HTTP endpoints called (new APIs, new providers)
-- New trust boundaries (new IPC mechanisms, new ports, new process users)
-- New privilege levels (new sudo rules, new OS users)
+- New `fetch(` calls to external URLs
+- New `sudo` rules or subprocess spawning with env forwarding
+- New environment variables being read or forwarded to child processes
+- New MongoDB queries using externally supplied values
+- New ports being opened or new public endpoints
 
-If any are found, print: "⚠️ Threat model update needed — run /threat-model"
-If none, print: "✅ No new trust boundaries detected"
+For each match: confirm whether `/security-review` was already run for it (look in git log for a "security-review" commit or `docs/security/findings.md` update during this sprint).
 
-## Check 5 — ADR trigger
+If coverage is missing: "⚠️ Security review needed — run /security-review"
+If all surfaces are covered: "✅ Security surfaces reviewed"
+
+## Check 4 — Threat model currency
+
+Scan the sprint diff for:
+- New external HTTP endpoints (new APIs, new providers)
+- New trust boundaries (new IPC ports, new process users, new inter-service calls)
+- New privilege levels (new `sudo` rules, new OS users, new Fly machine roles)
+
+For each match: confirm whether `docs/security/threat-model.md` was updated in the same sprint.
+
+If threat model is stale: "⚠️ Threat model update needed — run /threat-model"
+If current: "✅ Threat model is current"
+
+## Check 5 — ADR coverage
 
 Scan the sprint diff for significant architectural decisions:
-- New infrastructure dependencies (new databases, new cloud services, new runtimes)
-- Major new subsystems or protocols
-- Cases where an alternative approach was explicitly rejected
+- New infrastructure dependencies (databases, cloud services, runtimes, protocols)
+- Cases where a concrete alternative was weighed and rejected
+- Major new subsystems
 
-List any that appear to warrant an ADR. For each, suggest a title and the key decision/alternatives.
-Check the existing ADR index — if an ADR for this decision already exists, say so.
+For each candidate: check whether an ADR exists in `docs/adr/`. If not, suggest a title and the key decision/alternatives.
+If a superseded design was removed: check whether the relevant ADR is marked SUPERSEDED.
 
 ## Check 6 — CLAUDE.md sprint table
 
-Read the Sprint Roadmap table in CLAUDE.md. Identify the highest-numbered sprint marked `⬜ In Progress` or not yet marked `✅ Done`. Confirm whether it should now be marked done based on the diff.
+Read the Sprint Roadmap table in CLAUDE.md. Identify the highest-numbered sprint not yet marked `✅ Done`. Confirm whether it should now be marked done based on the diff, and give the one-line summary to use.
 
 ## Summary
 
 Print a concise punch list:
-- ✅ items that are done
-- ⚠️ items that need action before sprint close, with the exact command or file to update
+- ✅ items already done (most items should be here)
+- ⚠️ PROCESS GAP items that need catch-up work, with the exact command or file to update
+- For each gap: note which habit (lint discipline, security trigger, threat model trigger, ADR discipline) should have caught it earlier
