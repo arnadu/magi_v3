@@ -19,6 +19,7 @@ import {
 	resumeMission,
 	suspendMission,
 } from "./fly-machines.js";
+import { getTemplate, patchMissionId } from "./templates.js";
 
 interface MissionDoc {
 	missionId: string;
@@ -99,7 +100,21 @@ export function createMissionsRouter(db: Db): Router {
 		await col.insertOne(doc);
 
 		try {
-			const handle = await provisionMission(missionId, teamConfig);
+			// Look up the template in MongoDB. If found, inject the YAML onto the
+			// volume at provision time so team configs are editable without image rebuilds.
+			const template = await getTemplate(db, teamConfig);
+			const teamConfigYaml = template
+				? patchMissionId(template.teamConfigYaml, missionId)
+				: undefined;
+			if (!template) {
+				console.warn(
+					`[missions] No template found for "${teamConfig}" — falling back to baked-in image path`,
+				);
+			}
+
+			const handle = await provisionMission(missionId, teamConfig, {
+				teamConfigYaml,
+			});
 			await col.updateOne(
 				{ missionId },
 				{

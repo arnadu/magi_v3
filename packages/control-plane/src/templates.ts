@@ -105,3 +105,21 @@ export async function getTemplate(
 ): Promise<MissionTemplate | null> {
 	return db.collection<MissionTemplate>("templates").findOne({ _id: id });
 }
+
+// ---------------------------------------------------------------------------
+// YAML patching
+// ---------------------------------------------------------------------------
+
+/**
+ * Replace the mission.id value in a team config YAML with the actual missionId
+ * assigned at provision time. Only patches the `id:` field within the `mission:`
+ * block — agent `id:` fields (which are list items) are untouched.
+ */
+export function patchMissionId(yaml: string, missionId: string): string {
+	// Match the mission: block header, then lazily consume indented lines until
+	// we find `  id: <value>` and replace only that value.
+	return yaml.replace(
+		/^(mission:\r?\n(?:[ \t]+[^\n]*\r?\n)*?)([ \t]+id:[ \t]*)\S[^\n]*/m,
+		`$1$2${missionId}`,
+	);
+}

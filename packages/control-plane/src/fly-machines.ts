@@ -42,6 +42,14 @@ export interface MachineHandle {
 	volumeId: string;
 }
 
+export interface ProvisionOptions {
+	/** base64-encoded team config YAML from MongoDB templates. When provided the
+	 *  daemon writes it to /missions/team.yaml on first boot instead of reading
+	 *  the baked-in image path. */
+	teamConfigYaml?: string;
+	region?: string;
+}
+
 /**
  * Provision a new execution plane machine for a mission.
  *
@@ -49,12 +57,17 @@ export interface MachineHandle {
  *   1. Create a Fly Volume (10 GB) for workspace persistence.
  *   2. Create a Machine attached to the volume.
  *   3. Return machineId, privateIp, volumeId for storage in MongoDB.
+ *
+ * When opts.teamConfigYaml is provided the machine receives TEAM_CONFIG_YAML
+ * (base64) + TEAM_SKILLS_PATH (image path) so the daemon writes the YAML to
+ * the volume on first boot and still finds skills in the image.
  */
 export async function provisionMission(
 	missionId: string,
 	teamConfigName: string,
-	region = process.env.FLY_REGION ?? "iad",
+	opts: ProvisionOptions = {},
 ): Promise<MachineHandle> {
+	const region = opts.region ?? process.env.FLY_REGION ?? "iad";
 	const app = appName();
 
 	// 1. Create workspace volume.
@@ -72,7 +85,23 @@ export async function provisionMission(
 	}
 	const vol = (await volRes.json()) as { id: string };
 
-	// 2. Create machine.
+	// 2. Build team-config env vars.
+	// When a YAML payload is provided (from MongoDB templates), write it to the
+	// Fly Volume on first boot instead of reading the baked-in image path.
+	// TEAM_SKILLS_PATH keeps skills loading from the image even when YAML is on volume.
+	const teamConfigEnv = opts.teamConfigYaml
+		? {
+				TEAM_CONFIG: "/missions/team.yaml",
+				TEAM_CONFIG_YAML: Buffer.from(opts.teamConfigYaml, "utf-8").toString(
+					"base64",
+				),
+				TEAM_SKILLS_PATH: `/app/config/teams/${teamConfigName}/skills`,
+			}
+		: {
+				TEAM_CONFIG: `/app/config/teams/${teamConfigName}.yaml`,
+			};
+
+	// 3. Create machine.
 	const machineRes = await flyFetch(`/apps/${app}/machines`, {
 		method: "POST",
 		body: JSON.stringify({
@@ -83,7 +112,7 @@ export async function provisionMission(
 					process.env.FLY_MISSIONS_IMAGE ?? `registry.fly.io/${app}:latest`,
 				env: {
 					MISSION_ID: missionId,
-					TEAM_CONFIG: `/app/config/teams/${teamConfigName}.yaml`,
+					...teamConfigEnv,
 					AGENT_WORKDIR: "/missions",
 					MONITOR_PORT: "4000",
 					TOOL_PORT: "4001",

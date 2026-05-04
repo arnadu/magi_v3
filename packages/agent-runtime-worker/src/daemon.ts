@@ -11,6 +11,11 @@
  *   ANTHROPIC_API_KEY  required
  *   MONGODB_URI        required
  *   TEAM_CONFIG        required — path to team config YAML
+ *   TEAM_CONFIG_YAML   optional — base64-encoded YAML; if set and TEAM_CONFIG path does not
+ *                                 yet exist, written to disk on first boot (volume injection)
+ *   TEAM_SKILLS_PATH   optional — override path to team skills dir (default: derived from
+ *                                 TEAM_CONFIG path); set by control plane when YAML is volume-
+ *                                 injected so skills are still read from the image
  *   MODEL              optional — model id (default: claude-sonnet-4-6)
  *   VISION_MODEL       optional — model for image captioning / BrowseWeb (default: claude-haiku-4-5-20251001)
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
@@ -623,6 +628,27 @@ async function main(): Promise<void> {
 		// Log setup failure is non-fatal — daemon continues without file logging.
 	}
 
+	// If control plane injected a base64-encoded YAML via TEAM_CONFIG_YAML, write it to
+	// TEAM_CONFIG path on first boot. Skips if the file already exists (operator edits
+	// and resume-after-suspend are both preserved).
+	const teamConfigYamlEnv = process.env.TEAM_CONFIG_YAML;
+	const teamConfigTarget = process.env.TEAM_CONFIG;
+	if (teamConfigYamlEnv && teamConfigTarget) {
+		try {
+			mkdirSync(dirname(teamConfigTarget), { recursive: true });
+			writeFileSync(
+				teamConfigTarget,
+				Buffer.from(teamConfigYamlEnv, "base64").toString("utf-8"),
+				{ flag: "wx" }, // exclusive-create: no-op if file already exists
+			);
+			process.stdout.write(
+				`[daemon] Wrote team config from env to ${teamConfigTarget}\n`,
+			);
+		} catch {
+			// File already exists from a prior boot — preserved as-is.
+		}
+	}
+
 	const teamConfigPath = process.env.TEAM_CONFIG;
 	const mongoUri = process.env.MONGODB_URI;
 
@@ -689,11 +715,11 @@ async function main(): Promise<void> {
 	const visionModel = resolveModel(visionModelId);
 
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
-	const teamSkillsPath = join(
-		dirname(teamConfigPath),
-		basename(teamConfigPath, ".yaml"),
-		"skills",
-	);
+	// TEAM_SKILLS_PATH is set by the control plane when the YAML is injected from MongoDB
+	// so team-specific skills are still read from the baked-in image path.
+	const teamSkillsPath =
+		process.env.TEAM_SKILLS_PATH ??
+		join(dirname(teamConfigPath), basename(teamConfigPath, ".yaml"), "skills");
 	const workspaceManager = new WorkspaceManager({
 		layout: {
 			homeBase: join(workdir, "home"),

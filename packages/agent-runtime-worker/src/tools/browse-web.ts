@@ -6,7 +6,7 @@ import type { Model } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
 import { Type } from "@sinclair/typebox";
 import { JSDOM } from "jsdom";
-import { chromium } from "playwright-core";
+import { chromium, type Page as PlaywrightPage } from "playwright-core";
 import {
 	type ArtifactMeta,
 	type FileEntry,
@@ -200,7 +200,12 @@ function createBrowseWebHandle(
 			// Limitation: new tabs/popups opened during execute() get a fresh Page
 			// object and will NOT inherit this handler — that case requires browser-
 			// context-level interception, which V3Context does not expose publicly.
-			const initialPage = sh.context.activePage();
+			// Cast to Playwright Page: Stagehand's activePage() returns its own
+			// narrower Page type that omits route() in its TypeScript declarations,
+			// but the underlying object is a real Playwright Page at runtime.
+			const initialPage = sh.context.activePage() as unknown as
+				| PlaywrightPage
+				| undefined;
 			if (initialPage) {
 				await initialPage.route("**/*", async (route) => {
 					const req = route.request();
