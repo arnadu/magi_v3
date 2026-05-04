@@ -1,8 +1,8 @@
 mission:
   id: gold-digest
   name: "Gold Macro Digest"
-  model: anthropic/claude-sonnet-4-6
-  visionModel: anthropic/claude-haiku-4-5-20251001
+  model: deepseek/deepseek-chat
+  visionModel: google/gemini-flash-1.5-8b
 
 agents:
   # ─── Alex — Macro Analyst ──────────────────────────────────────────────────
