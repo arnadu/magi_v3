@@ -47,6 +47,10 @@ export interface ProvisionOptions {
 	 *  daemon writes it to /missions/team.yaml on first boot instead of reading
 	 *  the baked-in image path. */
 	teamConfigYaml?: string;
+	/** All files from config/teams/{id}/ — skills, playbook.json, etc. When
+	 *  provided the daemon writes them to /missions/team/ on first boot so the
+	 *  entire team setup is volume-based and image-independent. */
+	teamFiles?: Array<{ path: string; content: string }>;
 	region?: string;
 }
 
@@ -86,16 +90,25 @@ export async function provisionMission(
 	const vol = (await volRes.json()) as { id: string };
 
 	// 2. Build team-config env vars.
-	// When a YAML payload is provided (from MongoDB templates), write it to the
-	// Fly Volume on first boot instead of reading the baked-in image path.
-	// TEAM_SKILLS_PATH keeps skills loading from the image even when YAML is on volume.
+	// When YAML + files are provided (from MongoDB templates), the daemon writes
+	// them to /missions/team.yaml and /missions/team/* on first boot.
+	// teamDir is derived from TEAM_CONFIG path: dirname + basename without .yaml,
+	// so /missions/team.yaml → teamDir = /missions/team — playbook.json, skills/
+	// all resolve correctly without any extra path overrides.
 	const teamConfigEnv = opts.teamConfigYaml
 		? {
 				TEAM_CONFIG: "/missions/team.yaml",
 				TEAM_CONFIG_YAML: Buffer.from(opts.teamConfigYaml, "utf-8").toString(
 					"base64",
 				),
-				TEAM_SKILLS_PATH: `/app/config/teams/${teamConfigName}/skills`,
+				...(opts.teamFiles && opts.teamFiles.length > 0
+					? {
+							TEAM_FILES_PAYLOAD: Buffer.from(
+								JSON.stringify(opts.teamFiles),
+								"utf-8",
+							).toString("base64"),
+						}
+					: {}),
 			}
 		: {
 				TEAM_CONFIG: `/app/config/teams/${teamConfigName}.yaml`,

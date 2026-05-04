@@ -8,15 +8,21 @@
  * so operator edits made via a future PUT /api/templates/:id are preserved.
  */
 
-import { readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, join, relative } from "node:path";
 import { Router } from "express";
 import type { Db } from "mongodb";
+
+export interface TeamFile {
+	path: string; // relative to team dir, e.g. "skills/data-factory/SKILL.md"
+	content: string; // UTF-8 text
+}
 
 export interface MissionTemplate {
 	_id: string; // template ID, e.g. "gold-digest"
 	name: string; // display name, e.g. "Gold Macro Digest"
 	teamConfigYaml: string; // full YAML content
+	teamFiles: TeamFile[]; // all files under config/teams/{id}/
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -26,8 +32,40 @@ export interface MissionTemplate {
 // ---------------------------------------------------------------------------
 
 /**
- * Read all *.yaml files from config/teams/ (excluding config/teams/test/)
- * and insert them into the templates collection if they do not already exist.
+ * Recursively collect all files under a directory as {path, content} pairs.
+ * Paths are relative to rootDir.
+ */
+function collectFiles(dir: string, rootDir: string): TeamFile[] {
+	const results: TeamFile[] = [];
+	let entries: string[];
+	try {
+		entries = readdirSync(dir);
+	} catch {
+		return results;
+	}
+	for (const entry of entries) {
+		const full = join(dir, entry);
+		const stat = statSync(full);
+		if (stat.isDirectory()) {
+			results.push(...collectFiles(full, rootDir));
+		} else {
+			try {
+				results.push({
+					path: relative(rootDir, full),
+					content: readFileSync(full, "utf-8"),
+				});
+			} catch {
+				/* skip unreadable files */
+			}
+		}
+	}
+	return results;
+}
+
+/**
+ * Read all *.yaml files from config/teams/ (excluding config/teams/test/) and
+ * insert them into the templates collection if they do not already exist.
+ * Backfills teamFiles on documents that were seeded before this field existed.
  * Called once at control plane startup.
  */
 export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
@@ -46,8 +84,6 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 
 	for (const file of files) {
 		const id = basename(file, ".yaml");
-		const existing = await col.findOne({ _id: id });
-		if (existing) continue;
 
 		let yaml: string;
 		try {
@@ -56,6 +92,24 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 			console.warn(
 				`[templates] Could not read ${file}: ${(e as Error).message}`,
 			);
+			continue;
+		}
+
+		const teamDir = join(teamsDir, id);
+		const teamFiles = collectFiles(teamDir, teamDir);
+
+		const existing = await col.findOne({ _id: id });
+		if (existing) {
+			// Backfill teamFiles if missing (templates seeded before this field existed).
+			if (!existing.teamFiles || existing.teamFiles.length === 0) {
+				await col.updateOne(
+					{ _id: id },
+					{ $set: { teamFiles, updatedAt: new Date() } },
+				);
+				console.log(
+					`[templates] Backfilled ${teamFiles.length} files for template: ${id}`,
+				);
+			}
 			continue;
 		}
 
@@ -68,10 +122,13 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 			_id: id,
 			name,
 			teamConfigYaml: yaml,
+			teamFiles,
 			createdAt: now,
 			updatedAt: now,
 		});
-		console.log(`[templates] Seeded template: ${id} ("${name}")`);
+		console.log(
+			`[templates] Seeded template: ${id} ("${name}") with ${teamFiles.length} files`,
+		);
 	}
 }
 

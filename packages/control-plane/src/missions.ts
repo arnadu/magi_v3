@@ -114,6 +114,7 @@ export function createMissionsRouter(db: Db): Router {
 
 			const handle = await provisionMission(missionId, teamConfig, {
 				teamConfigYaml,
+				teamFiles: template?.teamFiles,
 			});
 			await col.updateOne(
 				{ missionId },

@@ -13,9 +13,11 @@
  *   TEAM_CONFIG        required — path to team config YAML
  *   TEAM_CONFIG_YAML   optional — base64-encoded YAML; if set and TEAM_CONFIG path does not
  *                                 yet exist, written to disk on first boot (volume injection)
+ *   TEAM_FILES_PAYLOAD optional — base64-encoded JSON array of {path,content} for all team
+ *                                 files (skills, playbook.json, etc.); written to teamDir on
+ *                                 first boot alongside TEAM_CONFIG_YAML
  *   TEAM_SKILLS_PATH   optional — override path to team skills dir (default: derived from
- *                                 TEAM_CONFIG path); set by control plane when YAML is volume-
- *                                 injected so skills are still read from the image
+ *                                 TEAM_CONFIG path)
  *   MODEL              optional — model id (default: claude-sonnet-4-6)
  *   VISION_MODEL       optional — model for image captioning / BrowseWeb (default: claude-haiku-4-5-20251001)
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
@@ -646,6 +648,42 @@ async function main(): Promise<void> {
 			);
 		} catch {
 			// File already exists from a prior boot — preserved as-is.
+		}
+	}
+
+	// Write team files (skills, playbook.json, etc.) from TEAM_FILES_PAYLOAD to the
+	// team directory on the volume on first boot. Files that already exist are skipped.
+	const teamFilesPayload = process.env.TEAM_FILES_PAYLOAD;
+	const teamConfigYamlTarget = process.env.TEAM_CONFIG;
+	if (teamFilesPayload && teamConfigYamlTarget) {
+		const teamDir = join(
+			dirname(teamConfigYamlTarget),
+			basename(teamConfigYamlTarget, ".yaml"),
+		);
+		try {
+			const files = JSON.parse(
+				Buffer.from(teamFilesPayload, "base64").toString("utf-8"),
+			) as Array<{ path: string; content: string }>;
+			let written = 0;
+			for (const { path: relPath, content } of files) {
+				const dest = join(teamDir, relPath);
+				try {
+					mkdirSync(dirname(dest), { recursive: true });
+					writeFileSync(dest, content, { flag: "wx" });
+					written++;
+				} catch {
+					/* file already exists — preserved */
+				}
+			}
+			if (written > 0) {
+				process.stdout.write(
+					`[daemon] Wrote ${written} team files to ${teamDir}\n`,
+				);
+			}
+		} catch (e) {
+			process.stderr.write(
+				`[daemon] Failed to write team files: ${(e as Error).message}\n`,
+			);
 		}
 	}
 
