@@ -36,7 +36,8 @@ export type MonitorEventType =
 	| "cost-pause"
 	| "cost-resumed"
 	| "status"
-	| "started";
+	| "started"
+	| "agent-error";
 
 export interface AgentInfo {
 	id: string;

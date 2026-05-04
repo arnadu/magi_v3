@@ -18,6 +18,7 @@ import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { createProxyRouter } from "./proxy.js";
 import { startScheduler } from "./scheduler.js";
+import { createTemplatesRouter, seedTemplates } from "./templates.js";
 
 const REPO_ROOT = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -47,6 +48,10 @@ async function main(): Promise<void> {
 	}
 
 	const { client, db } = await connectMongo(mongoUri);
+
+	// Seed templates from disk on every startup (idempotent — skips existing docs).
+	await seedTemplates(db, REPO_ROOT);
+
 	const app = express();
 
 	// Serve static UI without authentication — the login page itself is public.
@@ -65,6 +70,9 @@ async function main(): Promise<void> {
 
 	// All API and proxy routes require authentication.
 	app.use(requireApiKey);
+
+	// Mission templates — list available team configs.
+	app.use("/api/templates", express.json(), createTemplatesRouter(db));
 
 	// Mission CRUD + lifecycle.
 	// express.json() is scoped here — proxy routes below must NOT consume the

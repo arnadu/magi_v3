@@ -14,7 +14,6 @@ These require a fix before production deployment.
 
 | ID | Severity | Sprint target | File:Line | Description | Recommended Fix |
 |----|----------|--------------|-----------|-------------|-----------------|
-| F-002 | HIGH | 14 | `tools/browse-web.ts` | **BrowseWeb post-navigation SSRF** — `stagehand.agent().execute()` can navigate to further URLs (clicks, JS redirects) without SSRF checking. Pre-navigation and post-redirect checks cover `page.goto()` only. | Implement CDP `Fetch.enable` + `Fetch.requestPaused` interception via `sh.context.conn` to block requests to private addresses; Stagehand V3 does not expose a Playwright-style `route()` method. |
 | F-008 | LOW (dev) / HIGH (prod) | Pre-prod | `monitor-server.ts` | **Unauthenticated control endpoints** — `POST /stop`, `POST /send-message`, `POST /extend-budget` have no auth. Anyone who reaches port 4000 can stop the daemon or inject messages. | Add a shared secret header for all mutating endpoints. Gate check on an `MONITOR_TOKEN` env var; skip if absent (dev mode). |
 | F-009 | LOW (dev) / HIGH (prod) | Pre-prod | `monitor-server.ts:GET /events` | **SSE stream exposes all mission data** — if monitor is forwarded to an untrusted network, all agent activity including message bodies is visible. | Addressed by F-007 (localhost binding) for dev; requires auth for production (F-008). |
 | F-016 | LOW | Pre-prod | `packages/control-plane/src/auth.ts` | **No rate limiting on control plane API key auth** — `X-API-Key` header is checked on every request but there is no per-IP request rate limit. Brute force of a short or guessable key is feasible. | Add `express-rate-limit` middleware on the root router (e.g. 100 req/15 min per IP). Strong random keys (`openssl rand -hex 32`) mitigate in practice; rate limiting is defence-in-depth. |
@@ -36,6 +35,12 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 ---
 
 ## Fixed Findings
+
+### Sprint 16
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-002 | HIGH | `tools/browse-web.ts` | **BrowseWeb post-navigation SSRF** — `stagehand.agent().execute()` can navigate to further URLs (clicks, JS redirects) without SSRF checking. | Added `page.route("**/*", handler)` after `sh.init()` to intercept all document/xhr/fetch resource requests and abort those targeting private hosts. Limitation (accepted): new tab/popup pages opened during agent execution do not inherit the route handler — logged in threat model TB-1. |
 
 ### Sprint 4
 

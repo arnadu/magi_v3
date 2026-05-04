@@ -86,7 +86,7 @@ import { createMongoConversationRepository } from "./conversation-repository.js"
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { CLAUDE_HAIKU, CLAUDE_SONNET, parseModel } from "./models.js";
+import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer, type PlaybookEntry } from "./monitor-server.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
@@ -678,17 +678,15 @@ async function main(): Promise<void> {
 	const conversationRepo = createMongoConversationRepository(db);
 	const llmCallLog = createMongoLlmCallLogRepository(db);
 
-	const modelId = process.env.MODEL ?? "claude-sonnet-4-6";
-	const model =
-		modelId === "claude-sonnet-4-6" ? CLAUDE_SONNET : parseModel(modelId);
+	const modelId =
+		teamConfig.mission.model ?? process.env.MODEL ?? "claude-sonnet-4-6";
+	const model = resolveModel(modelId);
 
-	const visionModelId = process.env.VISION_MODEL ?? "claude-haiku-4-5-20251001";
-	const visionModel =
-		visionModelId === "claude-haiku-4-5-20251001"
-			? CLAUDE_HAIKU
-			: visionModelId === "claude-sonnet-4-6"
-				? CLAUDE_SONNET
-				: parseModel(visionModelId);
+	const visionModelId =
+		teamConfig.mission.visionModel ??
+		process.env.VISION_MODEL ??
+		"claude-haiku-4-5-20251001";
+	const visionModel = resolveModel(visionModelId);
 
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 	const teamSkillsPath = join(
@@ -982,6 +980,21 @@ async function main(): Promise<void> {
 								usageAccumulator.totalCostUsd(),
 								maxCostUsd,
 							);
+						}
+						const am = msg as AssistantMessage;
+						if (am.stopReason === "error") {
+							const errMsg = am.errorMessage ?? "";
+							// Classify: credit/auth errors require operator action;
+							// overload/rate-limit errors are transient and auto-resolve.
+							const transient =
+								errMsg.includes("overloaded") ||
+								errMsg.includes("rate limit") ||
+								errMsg.includes("529");
+							monitor.push("agent-error", {
+								agentId,
+								errorMessage: errMsg,
+								transient,
+							});
 						}
 					}
 				},

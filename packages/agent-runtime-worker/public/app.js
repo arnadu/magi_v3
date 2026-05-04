@@ -223,6 +223,10 @@ function connectSSE() {
 			loadSessions();
 		}
 	});
+	es.addEventListener("agent-error", (e) => {
+		const d = JSON.parse(e.data);
+		showAgentErrorBanner(d.agentId, d.errorMessage, d.transient);
+	});
 	es.addEventListener("cost-pause", (e) => {
 		const d = JSON.parse(e.data);
 		showBudgetBanner(d.spentUsd, d.capUsd);
@@ -292,6 +296,58 @@ function hideBudgetBanner() {
 	const btn = document.getElementById("extend-budget-btn");
 	btn.disabled = false;
 	btn.textContent = "+$5 and continue";
+}
+
+// ── Agent error banner ─────────────────────────────────────────────────────
+function showAgentErrorBanner(agentId, errorMessage, transient) {
+	const banner = document.getElementById("agent-error-banner");
+	const msg = document.getElementById("agent-error-msg");
+	const resumeBtn = document.getElementById("agent-error-resume-btn");
+	const hint = document.getElementById("agent-error-hint");
+
+	const short =
+		errorMessage.length > 120 ? `${errorMessage.slice(0, 120)}…` : errorMessage;
+	msg.textContent = `Agent ${agentId} stopped — ${short}`;
+
+	if (transient) {
+		hint.textContent =
+			"Transient error (rate limit / overload) — the agent will retry automatically on the next wakeup.";
+		resumeBtn.classList.add("hidden");
+	} else {
+		hint.textContent =
+			"Provider error (credit exhaustion or auth failure) — resolve the issue then click Resume.";
+		resumeBtn.classList.remove("hidden");
+		resumeBtn.onclick = () => resumeAgentAfterError(agentId);
+	}
+	banner.classList.remove("hidden");
+	addSysMsg(`❌ Agent ${agentId} LLM error: ${short}`);
+}
+
+function hideAgentErrorBanner() {
+	document.getElementById("agent-error-banner").classList.add("hidden");
+}
+
+async function resumeAgentAfterError(agentId) {
+	const btn = document.getElementById("agent-error-resume-btn");
+	btn.disabled = true;
+	btn.textContent = "Sending…";
+	try {
+		await fetch("send-message", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				to: agentId,
+				subject: "Resume after technical interruption",
+				body: "A technical issue (LLM provider error) interrupted your previous session. The issue has been resolved. Review your mental map to recall where you were, then continue your work.",
+			}),
+		});
+		hideAgentErrorBanner();
+		addSysMsg(`✅ Resume message sent to ${agentId}`);
+	} catch {
+		btn.disabled = false;
+		btn.textContent = "Resume";
+		addSysMsg(`⚠ Failed to send resume message to ${agentId}`);
+	}
 }
 
 async function _extendBudget() {

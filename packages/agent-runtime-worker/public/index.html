@@ -32,6 +32,14 @@
   <button type="button" class="btn btn-extend-budget" id="extend-budget-btn" onclick="extendBudget()">&#43;$5 and continue</button>
 </div>
 
+<div class="agent-error-banner hidden" id="agent-error-banner">
+  <span class="agent-error-icon">&#10060;</span>
+  <span class="agent-error-msg" id="agent-error-msg">Agent stopped — LLM provider error</span>
+  <span class="agent-error-hint" id="agent-error-hint"></span>
+  <button type="button" class="btn btn-error-dismiss" onclick="hideAgentErrorBanner()">Dismiss</button>
+  <button type="button" class="btn btn-error-resume hidden" id="agent-error-resume-btn">Resume</button>
+</div>
+
 <main>
   <!-- Left: message feed + usage -->
   <div class="left-col">

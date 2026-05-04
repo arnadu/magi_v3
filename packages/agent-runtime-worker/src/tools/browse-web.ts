@@ -192,12 +192,42 @@ function createBrowseWebHandle(
 				initPromise = null;
 				throw e;
 			}
-			// B2 (MEDIUM): Stagehand V3 uses a CDP-native context that does not expose
-			// a Playwright-style route() interceptor. The pre-navigation check above and
-			// post-redirect check in execute() cover the page.goto() path; requests
-			// initiated by agent().execute() (clicks, JS-redirects) are not yet blocked.
-			// Tracked in docs/security/findings.md as B2 — requires CDP Fetch.enable
-			// interception or upgrading to a Stagehand version that exposes page.route().
+			// Install SSRF route interception on the initial page. Catches document
+			// navigations, XHR, and fetch requests initiated by agent().execute()
+			// (link clicks, JS redirects) that bypass the pre-navigation check on
+			// page.goto(). Static subresources (images, CSS, scripts) are passed
+			// through without DNS lookup to keep page load latency acceptable.
+			// Limitation: new tabs/popups opened during execute() get a fresh Page
+			// object and will NOT inherit this handler — that case requires browser-
+			// context-level interception, which V3Context does not expose publicly.
+			const initialPage = sh.context.activePage();
+			if (initialPage) {
+				await initialPage.route("**/*", async (route) => {
+					const req = route.request();
+					const rt = req.resourceType();
+					if (rt === "document" || rt === "xhr" || rt === "fetch") {
+						try {
+							const parsed = new URL(req.url());
+							if (
+								(parsed.protocol === "http:" || parsed.protocol === "https:") &&
+								(await isPrivateHost(parsed.hostname, allowedHosts))
+							) {
+								writeLog({
+									ts: new Date().toISOString(),
+									event: "ssrf_blocked_route",
+									url: req.url(),
+									resourceType: rt,
+								});
+								await route.abort("blockedbyclient");
+								return;
+							}
+						} catch {
+							// URL parse failure — let browser handle it
+						}
+					}
+					await route.continue();
+				});
+			}
 			stagehand = sh;
 			return sh;
 		})();

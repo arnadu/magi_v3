@@ -47,7 +47,7 @@
 
     label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
 
-    input[type="password"], input[type="text"] {
+    input[type="password"], input[type="text"], select {
       width: 100%;
       background: #0f1117;
       border: 1px solid #2d3148;
@@ -57,8 +57,9 @@
       padding: 10px 12px;
       outline: none;
       transition: border-color 0.15s;
+      appearance: none;
     }
-    input:focus { border-color: #a78bfa; }
+    input:focus, select:focus { border-color: #a78bfa; }
 
     .error-msg { font-size: 12px; color: #f87171; margin-top: 8px; min-height: 16px; }
 
@@ -227,7 +228,9 @@
       </div>
       <div class="field">
         <label for="new-team">Team config</label>
-        <input type="text" id="new-team" placeholder="e.g. gold-digest" />
+        <select id="new-team">
+          <option value="">Loading templates…</option>
+        </select>
       </div>
       <button type="button" class="btn-primary" id="launch-btn">Launch</button>
     </div>
@@ -321,6 +324,7 @@
       setKey(key);
       signInError.textContent = '';
       hideSignIn();
+      loadTemplates();
       loadMissions();
     } else {
       signInError.textContent = 'Invalid API key.';
@@ -350,6 +354,15 @@
     renderMissions(missions);
     document.getElementById('header-status').textContent =
       `${missions.filter(m => m.status === 'running').length} running`;
+  }
+
+  async function loadTemplates() {
+    const res = await apiFetch('/api/templates');
+    if (!res) return;
+    const templates = await res.json();
+    const sel = document.getElementById('new-team');
+    sel.innerHTML = '<option value="">Select template…</option>' +
+      templates.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
   }
 
   function statusBadge(status) {
@@ -440,14 +453,16 @@
 
   // ── Suspend / Resume ──────────────────────────────────────────────────────
 
-  async function _suspendMission(id) {
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
+  async function suspendMission(id) {
     const res = await apiFetch(`/api/missions/${id}/suspend`, { method: 'POST' });
     if (!res) return;
     if (res.ok) { showToast('Mission suspended.'); loadMissions(); }
     else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Suspend failed.', true); }
   }
 
-  async function _resumeMission(id) {
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
+  async function resumeMission(id) {
     const res = await apiFetch(`/api/missions/${id}/resume`, { method: 'POST' });
     if (!res) return;
     if (res.ok) { showToast('Mission resumed.'); loadMissions(); }
@@ -458,7 +473,8 @@
 
   let pendingDestroyId = null;
 
-  function _confirmDestroy(id, name) {
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
+  function confirmDestroy(id, name) {
     pendingDestroyId = id;
     document.getElementById('confirm-msg').textContent =
       `This will permanently delete machine and volume for "${name}". All workspace data will be lost.`;
@@ -486,7 +502,8 @@
 
   let currentLogMissionId = null;
 
-  async function _viewLog(id) {
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
+  async function viewLog(id) {
     currentLogMissionId = id;
     document.getElementById('log-content').textContent = 'Loading…';
     document.getElementById('log-overlay').style.display = 'flex';
@@ -517,6 +534,7 @@
     // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API not available in all browsers; server reads this cookie for auth.
     document.cookie = `magi_session=${encodeURIComponent(getKey())}; path=/; SameSite=Strict; Max-Age=86400`;
     hideSignIn();
+    loadTemplates();
     loadMissions();
   }
 

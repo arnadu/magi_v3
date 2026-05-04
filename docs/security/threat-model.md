@@ -1,6 +1,6 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 15 — cloud deployment topology (TB-9/10/11); Sprint 13 finding status sync (2026-05-02)
+**Last updated:** Sprint 16 — F-002 fixed (BrowseWeb page.route SSRF interception); GET /log added to TB-2; model selection via YAML config (2026-05-04)
 **Update cadence:** Update whenever a new trust boundary, external service, or privilege level is added.
 
 ---
@@ -166,7 +166,7 @@ graph TB
 - `packages/skills/data-factory/scripts/adapters/` — all 7 Python adapters (fmp, fred, yfinance, newsapi, gdelt, imf, worldbank)
 
 ### TB-2: MonitorServer (local dev — operator interface)
-- `packages/agent-runtime-worker/src/monitor-server.ts` — HTTP server + SSE; binds `127.0.0.1:4000`; mutating routes lack auth
+- `packages/agent-runtime-worker/src/monitor-server.ts` — HTTP server + SSE; binds `127.0.0.1:4000`; mutating routes lack auth; `GET /log` returns daemon log file tail
 
 ### TB-3: tool-executor subprocess (Bash, WriteFile, EditFile)
 - `packages/agent-runtime-worker/src/tools.ts` — `checkPath()`, `AclPolicy`, `spawnSync`, clean child env, `verifyIsolation()`
@@ -223,7 +223,7 @@ graph TB
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
 | SSRF via FetchUrl — fetch internal RFC-1918 or cloud-metadata services | I / E | ✅ F-001 | Fixed Sprint 13: `ssrf.ts` `isPrivateHost()` validates hostname + post-DNS-resolution IP |
-| SSRF via BrowseWeb post-navigation redirect | I / E | ⚠️ F-002 | Initial SSRF check only; Stagehand `agent().execute()` can navigate further without re-checking |
+| SSRF via BrowseWeb post-navigation redirect | I / E | ✅ F-002 | Fixed Sprint 16: `page.route("**/*", handler)` intercepts document/xhr/fetch requests during `agent().execute()`; known gap: new tab/popup pages do not inherit handler |
 | DNS rebinding — IP changes between check and connect | I | ~ | Post-redirect check in `fetch-url.ts` partially mitigates; fully resolved when F-002 is fixed |
 | Oversized response — OOM crash | D | ✅ | 50 MB response cap; Content-Length checked before read |
 | Malicious content injected into agent context | T | ~ | Trust boundary markers on BrowseWeb; FetchUrl result injected as plain markdown (see TB-8) |
@@ -237,6 +237,7 @@ graph TB
 |--------|----------|--------|-------|
 | Unauthenticated `POST /stop`, `/send-message`, `/extend-budget` | S / E | ⚠️ F-008 | Binds to `127.0.0.1:4000` (localhost only); no auth on mutating routes |
 | SSE stream exposes all mission data on localhost | I | ⚠️ F-009 | Any process on the machine can subscribe to the full agent activity stream |
+| `GET /log` exposes daemon stdout/stderr (may include agent message excerpts, internal paths) | I | ~ | In local dev: localhost-only (same as F-009). In production: behind TB-9 `X-API-Key` via proxy; only authenticated operators can reach it |
 
 ### TB-3: Daemon → tool-executor (sudo boundary)
 

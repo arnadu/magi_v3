@@ -1181,6 +1181,69 @@ main {
 	animation: none;
 }
 
+/* ── Agent error banner ──────────────────────────────────────────────────── */
+.agent-error-banner {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 16px;
+	background: #2d0a0a;
+	border-top: 2px solid #e05555;
+	border-bottom: 2px solid #e05555;
+	color: #e05555;
+	font-weight: 600;
+	flex-wrap: wrap;
+}
+.agent-error-banner.hidden {
+	display: none;
+}
+.agent-error-icon {
+	font-size: 18px;
+	flex-shrink: 0;
+}
+.agent-error-msg {
+	flex: 1;
+	min-width: 200px;
+}
+.agent-error-hint {
+	font-size: 11px;
+	font-weight: 400;
+	color: #c08080;
+	flex-basis: 100%;
+	padding-left: 30px;
+}
+.btn-error-dismiss {
+	background: transparent;
+	color: #e05555;
+	border: 1px solid #e05555;
+	border-radius: 4px;
+	padding: 5px 12px;
+	font: inherit;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.btn-error-dismiss:hover {
+	background: rgba(224, 85, 85, 0.15);
+}
+.btn-error-resume {
+	background: #e05555;
+	color: #fff;
+	border: none;
+	border-radius: 4px;
+	padding: 5px 14px;
+	font: inherit;
+	font-weight: 700;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.btn-error-resume:hover:not(:disabled) {
+	background: #ff6b6b;
+}
+.btn-error-resume:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
 /* ── Session tree ── */
 .session-tree {
 	padding: 6px;

@@ -38,7 +38,7 @@ import type {
 } from "@mariozechner/pi-ai";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { CLAUDE_HAIKU, CLAUDE_SONNET, parseModel } from "./models.js";
+import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { expandAtPaths } from "./user-input.js";
@@ -78,18 +78,20 @@ function logMessage(msg: Message, agentId?: string): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getModel() {
-	const modelId = process.env.MODEL ?? "claude-sonnet-4-6";
-	const model =
-		modelId === "claude-sonnet-4-6" ? CLAUDE_SONNET : parseModel(modelId);
-	const visionModelId = process.env.VISION_MODEL ?? "claude-haiku-4-5-20251001";
-	const visionModel =
-		visionModelId === "claude-haiku-4-5-20251001"
-			? CLAUDE_HAIKU
-			: visionModelId === "claude-sonnet-4-6"
-				? CLAUDE_SONNET
-				: parseModel(visionModelId);
-	return { modelId, model, visionModel };
+function getModel(teamConfig: {
+	mission: { model?: string; visionModel?: string };
+}) {
+	const modelId =
+		teamConfig.mission.model ?? process.env.MODEL ?? "claude-sonnet-4-6";
+	const visionModelId =
+		teamConfig.mission.visionModel ??
+		process.env.VISION_MODEL ??
+		"claude-haiku-4-5-20251001";
+	return {
+		modelId,
+		model: resolveModel(modelId),
+		visionModel: resolveModel(visionModelId),
+	};
 }
 
 function makeAbortController(): AbortController {
@@ -134,7 +136,7 @@ async function main(): Promise<void> {
 	}
 
 	const teamConfig = loadTeamConfig(teamConfigPath);
-	const { modelId, model, visionModel } = getModel();
+	const { modelId, model, visionModel } = getModel(teamConfig);
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
 	// Team skills live beside the YAML: config/teams/<name>/skills/

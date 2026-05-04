@@ -35,6 +35,10 @@ const TeamConfigSchema = z.object({
 	mission: z.object({
 		id: z.string().trim().min(1),
 		name: z.string().trim().min(1),
+		/** Inner-loop LLM. Overrides the MODEL env var. Use "/" for OpenRouter (e.g. "anthropic/claude-sonnet-4-6"). */
+		model: z.string().trim().min(1).optional(),
+		/** Vision model for FetchUrl, InspectImage, BrowseWeb. Overrides VISION_MODEL env var. */
+		visionModel: z.string().trim().min(1).optional(),
 	}),
 	agents: z.array(AgentSchema).min(1),
 });
