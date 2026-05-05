@@ -18,7 +18,7 @@ import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { createProxyRouter } from "./proxy.js";
 import { startScheduler } from "./scheduler.js";
-import { createTemplatesRouter, seedTemplates } from "./templates.js";
+import { createTemplatesRouter } from "./templates.js";
 
 const REPO_ROOT = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -48,9 +48,6 @@ async function main(): Promise<void> {
 	}
 
 	const { client, db } = await connectMongo(mongoUri);
-
-	// Seed templates from disk on every startup (idempotent — skips existing docs).
-	await seedTemplates(db, REPO_ROOT);
 
 	const app = express();
 

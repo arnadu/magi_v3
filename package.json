@@ -16,7 +16,9 @@
     "security:sast": "semgrep scan --config p/default packages/ --error",
     "security:secrets": "gitleaks detect --source . --no-banner",
     "security:deps": "npm audit --audit-level=high",
-    "security": "npm run security:sast && npm run security:secrets && npm run security:deps"
+    "security": "npm run security:sast && npm run security:secrets && npm run security:deps",
+    "seed-templates": "node scripts/seed-templates.mjs",
+    "seed-templates:force": "node scripts/seed-templates.mjs --force"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
