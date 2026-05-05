@@ -149,6 +149,7 @@ Production team configs: `config/teams/{name}.yaml`. Test configs: `config/teams
 | 13 | ✅ Done | Hardening and launch prep |
 | 14 | ✅ Done | Cloud Infrastructure MVP: Fly.io execution plane, control plane, proxy, scheduler |
 | 15 | ✅ Done | Developer onboarding: `bootstrap.sh`, `.dockerignore`, daemon log viewer, test config relocation |
+| 16 | ✅ Done | Model selection in team YAML (OpenRouter), F-002 SSRF fix, agent-error SSE + dashboard banner, MongoDB-backed templates with provision-time YAML injection, `seed-templates` script |
 
 ## Code Quality
 
