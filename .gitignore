@@ -25,3 +25,4 @@ packages/agent-runtime-worker/home/
 packages/agent-runtime-worker/tests/browse-web-last-run.ndjson
 fly.control-*.toml
 !fly.control-dev.toml
+!fly.control-test-hello-world.toml
