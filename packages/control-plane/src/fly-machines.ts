@@ -184,7 +184,10 @@ export async function suspendMission(machineId: string): Promise<void> {
 
 /**
  * Start (resume) a suspended mission machine.
- * Polls until state == "started" (typically 3–5 s).
+ * Returns as soon as Fly accepts the start request — does not poll for
+ * "started" state to avoid exceeding Fly's ~25 s HTTP proxy timeout.
+ * Callers that need to confirm the machine is running should poll
+ * getMachineState() independently.
  */
 export async function resumeMission(machineId: string): Promise<void> {
 	const app = appName();
@@ -197,20 +200,6 @@ export async function resumeMission(machineId: string): Promise<void> {
 			`Failed to start machine ${machineId}: ${startRes.status} ${body}`,
 		);
 	}
-
-	// Poll until started (max 30 s).
-	const deadline = Date.now() + 30_000;
-	while (Date.now() < deadline) {
-		await new Promise((r) => setTimeout(r, 1_000));
-		const stateRes = await flyFetch(`/apps/${app}/machines/${machineId}`);
-		if (stateRes.ok) {
-			const m = (await stateRes.json()) as { state: string };
-			if (m.state === "started") return;
-		}
-	}
-	throw new Error(
-		`Machine ${machineId} did not reach started state within 30 s`,
-	);
 }
 
 /** Get the current state of a machine. */

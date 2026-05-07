@@ -463,10 +463,25 @@
 
   // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
   async function resumeMission(id) {
+    showToast('Starting machine…');
     const res = await apiFetch(`/api/missions/${id}/resume`, { method: 'POST' });
     if (!res) return;
-    if (res.ok) { showToast('Mission resumed.'); loadMissions(); }
-    else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Resume failed.', true); }
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({}));
+      showToast(b.error || 'Resume failed.', true);
+      return;
+    }
+    // Server fires /start and returns immediately. Poll until live state confirms running.
+    const deadline = Date.now() + 45_000;
+    const poll = async () => {
+      if (Date.now() > deadline) { showToast('Machine start timed out.', true); loadMissions(); return; }
+      const r = await apiFetch(`/api/missions/${id}`);
+      if (!r) return;
+      const m = await r.json().catch(() => null);
+      if (m?.status === 'running') { showToast('Machine started.'); loadMissions(); return; }
+      setTimeout(poll, 2000);
+    };
+    poll();
   }
 
   // ── Destroy (with confirmation) ───────────────────────────────────────────
