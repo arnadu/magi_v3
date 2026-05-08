@@ -29,6 +29,7 @@ sector reports, and event-driven alerts with full citation lineage.
 | 13 | ✅ Done | Hardening | Security review, threat model (TB-1–TB-8), findings.md, quality gates |
 | 14 | ✅ Done | Cloud infrastructure | Fly.io execution/control plane, proxy, scheduler, bootstrap.sh (ADR-0013) |
 | 15 | ✅ Done | Developer onboarding | bootstrap.sh UX, .dockerignore, daemon log viewer, test config relocation, CI quality gate |
+| 16 | ✅ Done | Model selection + templates | OpenRouter multi-LLM (ADR-0012), F-002 SSRF fix, agent-error SSE, MongoDB templates + provision-time injection, non-blocking resume, SHARED_DIR in subprocess env |
 
 ---
 
@@ -36,7 +37,6 @@ sector reports, and event-driven alerts with full citation lineage.
 
 | Sprint | Status | Candidate focus |
 |--------|--------|----------------|
-| 16 | ⬜ Planned | Mission templates UI (MongoDB-backed templates collection, launch from dropdown) |
 | 17 | ⬜ Planned | Firebase Auth + per-user mission isolation on control plane |
 | 18 | ⬜ Planned | Mental map compaction (size-bounded; reflection-time pruning) |
 | 19 | ⬜ Planned | React / Next.js frontend on Vercel; file browser API |

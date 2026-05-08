@@ -1,6 +1,6 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 16 — F-002 fixed (BrowseWeb page.route SSRF interception); GET /log added to TB-2; model selection via YAML config (2026-05-04)
+**Last updated:** Sprint 16 — F-002 fixed (BrowseWeb page.route SSRF interception); GET /log added to TB-2; model selection via YAML config; TB-3 env updated (SHARED_DIR/WORKDIR/AGENT_ID injected, no secrets) (2026-05-08)
 **Update cadence:** Update whenever a new trust boundary, external service, or privilege level is added.
 
 ---
@@ -243,7 +243,7 @@ graph TB
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| API key leaks into child process env | I | ✅ | Clean env (PATH+HOME only); verified by `verifyIsolation()` at startup |
+| API key leaks into child process env | I | ✅ | Child receives PATH + HOME + workspace context (SHARED_DIR, WORKDIR, AGENT_ID — not secrets); `verifyIsolation()` at startup confirms ANTHROPIC_API_KEY absent |
 | Agent writes to another agent's workdir via Bash | T / E | ✅ | OS Linux ACLs (setfacl); covered by `acl.integration.test.ts` |
 | Shell injection in setfacl call | E | ✅ | `execFileSync("setfacl", [...])` — no shell interpolation |
 
