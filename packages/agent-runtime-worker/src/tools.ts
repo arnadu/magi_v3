@@ -49,6 +49,8 @@ export interface ToolRequest {
 	 * Always required — no silent fallback in the child.
 	 */
 	timeoutMs: number;
+	/** Shared mission directory — exposed as SHARED_DIR in the child process. */
+	sharedDir?: string;
 }
 
 export interface ToolResponse {
@@ -100,6 +102,8 @@ export interface AclPolicy {
 	 * Required — absence is a type error.
 	 */
 	linuxUser: string;
+	/** Shared mission directory — injected as SHARED_DIR in shell tool subprocesses. */
+	sharedDir?: string;
 }
 
 function isPermitted(target: string, permittedPaths: string[]): boolean {
@@ -326,6 +330,12 @@ async function runIsolatedToolCall(
 				env: {
 					PATH: process.env.PATH ?? "",
 					HOME: `/home/${linuxUser}`,
+					// Workspace context — convenient for skill scripts (submit-job.sh,
+					// schedule-job.sh, etc.) that require SHARED_DIR and AGENT_ID.
+					// These are not secrets and carry no credentials.
+					AGENT_ID: request.agentId,
+					WORKDIR: request.workdir,
+					...(request.sharedDir ? { SHARED_DIR: request.sharedDir } : {}),
 				},
 				cancelSignal: signal,
 				// Give the child 5 s beyond the tool timeout to flush and exit cleanly.
@@ -419,7 +429,7 @@ export function createBashTool(cwd: string, acl: AclPolicy): MagiTool {
 }
 
 export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
-	const { agentId, permittedPaths, linuxUser } = acl;
+	const { agentId, permittedPaths, linuxUser, sharedDir } = acl;
 
 	// ── Bash ──────────────────────────────────────────────────────────────────
 
@@ -452,6 +462,7 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 					permittedPaths,
 					agentId,
 					timeoutMs,
+					sharedDir,
 				},
 				signal,
 			);

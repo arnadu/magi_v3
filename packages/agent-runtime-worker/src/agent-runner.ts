@@ -143,6 +143,7 @@ export async function runAgent(
 		agentId,
 		permittedPaths,
 		linuxUser,
+		sharedDir,
 	};
 
 	const missionId = ctx.teamConfig.mission.id;
