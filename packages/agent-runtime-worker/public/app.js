@@ -350,7 +350,8 @@ async function resumeAgentAfterError(agentId) {
 	}
 }
 
-async function _extendBudget() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+async function extendBudget() {
 	const btn = document.getElementById("extend-budget-btn");
 	btn.disabled = true;
 	btn.textContent = "Extending\u2026";
@@ -416,7 +417,8 @@ function renderUsageRow() {
 }
 
 // ── Feed ───────────────────────────────────────────────────────────────────
-function _setFeedMode(mode) {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+function setFeedMode(mode) {
 	feedMode = mode;
 	document.querySelectorAll(".feed-mode-btn").forEach((b) => {
 		b.classList.toggle("active", b.dataset.mode === mode);
@@ -424,7 +426,8 @@ function _setFeedMode(mode) {
 	renderFeed();
 }
 
-function _setFeedSearch(text) {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+function setFeedSearch(text) {
 	feedSearch = text.toLowerCase();
 	renderFeed();
 }
@@ -450,7 +453,7 @@ function renderFeed() {
 	if (feedMode === "threads") {
 		renderFeedThreads(feed, msgs);
 	} else {
-		for (const m of msgs) _appendMsgEl(feed, m);
+		for (const m of msgs) appendMsgEl(feed, m);
 		feed.scrollTop = feed.scrollHeight;
 	}
 }
@@ -479,19 +482,20 @@ function renderFeedThreads(feed, msgs) {
 			`<span class="ft-meta">${tMsgs.length}\u00a0msg \u00b7 ${esc(participants.join(", "))} \u00b7 ${fmtTime(last.timestamp)}</span>` +
 			`</div><div class="feed-thread-body"></div>`;
 		const body = thread.querySelector(".feed-thread-body");
-		for (const m of tMsgs) _appendMsgEl(body, m);
+		for (const m of tMsgs) appendMsgEl(body, m);
 		feed.appendChild(thread);
 	}
 }
 
-function _toggleThread(hdr) {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+function toggleThread(hdr) {
 	const body = hdr.nextElementSibling;
 	const arrow = hdr.querySelector(".ft-arrow");
 	body.classList.toggle("open");
 	arrow.textContent = body.classList.contains("open") ? "\u25bc" : "\u25b6";
 }
 
-function _appendMsgEl(container, m) {
+function appendMsgEl(container, m) {
 	const preview = m.bodyPreview || m.body || "";
 	const full = m.body || preview;
 	const truncated = full.length > preview.length;
@@ -974,13 +978,15 @@ function renderStepBtn() {
 	}
 }
 
-async function _startMission() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+async function startMission() {
 	if (missionStarted) return;
 	await fetch("start", { method: "POST" });
 	setStarted(true);
 }
 
-async function _toggleStep() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+async function toggleStep() {
 	const r = await fetch("toggle-step", { method: "POST" });
 	const d = await r.json();
 	stepEnabled = d.stepEnabled;
@@ -989,7 +995,8 @@ async function _toggleStep() {
 	renderQueue();
 }
 
-async function _advanceStep() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+async function advanceStep() {
 	await fetch("step", { method: "POST" });
 }
 
@@ -1032,7 +1039,8 @@ function renderAgentTabIndicators() {
 	updateScheduleTabs();
 }
 
-function _stopDaemon() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+function stopDaemon() {
 	if (stopped) return;
 	if (
 		!confirm("Stop the MAGI daemon? This will abort the current mission cycle.")
@@ -1044,7 +1052,8 @@ function _stopDaemon() {
 }
 
 // ── Compose ────────────────────────────────────────────────────────────────
-function _openCompose() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+function openCompose() {
 	document.getElementById("compose-overlay").classList.remove("hidden");
 	document.getElementById("compose-body").focus();
 }
@@ -1054,7 +1063,8 @@ function closeCompose() {
 	document.getElementById("compose-overlay").classList.add("hidden");
 }
 
-function _closeComposeIfBg(e) {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+function closeComposeIfBg(e) {
 	if (e.target === document.getElementById("compose-overlay")) closeCompose();
 }
 
@@ -1064,7 +1074,8 @@ function checkAll() {
 	});
 }
 
-async function _sendMessage() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+async function sendMessage() {
 	const to = [...document.querySelectorAll("#to-checks input:checked")].map(
 		(c) => c.value,
 	);
@@ -1111,7 +1122,8 @@ setInterval(() => {
 // ── Playbook ───────────────────────────────────────────────────────────────
 const playbookSent = new Set();
 
-function _selectPlaybook() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+function selectPlaybook() {
 	activeAgent = null;
 	document.querySelectorAll(".agent-tab").forEach((t) => {
 		t.classList.remove("active");
@@ -1152,7 +1164,8 @@ function renderPlaybook() {
 	});
 }
 
-function _editPlaybookEntry(i) {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+function editPlaybookEntry(i) {
 	const entry = PLAYBOOK[i];
 	if (!entry) return;
 	document.querySelectorAll("#to-checks input[type=checkbox]").forEach((c) => {
