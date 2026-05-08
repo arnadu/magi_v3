@@ -158,7 +158,6 @@ agents:
 
       # Run first refresh as a background job (keys are injected by the daemon)
       bash "$RUN_BG/submit-job.sh" \
-        --label "gold-first-refresh" \
         --script "$SKILL_SCRIPTS/refresh.py" \
         --args "{{sharedDir}}" \
         --agent "data-scientist" \

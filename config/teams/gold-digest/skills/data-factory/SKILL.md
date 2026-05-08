@@ -14,7 +14,7 @@ Use these with the platform **data-factory** skill scripts.
 ```bash
 FACTORY="$SHARED_DIR/data-factory"
 PLATFORM_SCRIPTS="$SHARED_DIR/skills/_platform/data-factory/scripts"
-TEAM_CONFIG="$SHARED_DIR/skills/_team/data-factory-config"
+TEAM_CONFIG="$SHARED_DIR/skills/_team/data-factory"
 
 # 1. Bootstrap factory from pre-configured sources
 mkdir -p "$FACTORY"
