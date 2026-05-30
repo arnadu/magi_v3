@@ -1,22 +1,67 @@
-import { existsSync, readFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import { join } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Db } from "mongodb";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { UsageAccumulator } from "./usage.js";
 
-// Resolved once at module load; public/ lives next to the compiled JS.
-const PUBLIC_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "public");
+// Default public/ dir: next to the compiled JS (dist/public/).
+// Tests running from src/ via Vitest pass an explicit publicDir to the constructor.
+const DEFAULT_PUBLIC_DIR = join(
+	fileURLToPath(new URL(".", import.meta.url)),
+	"public",
+);
 
 const MIME: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
 	".css": "text/css",
 	".js": "application/javascript",
+};
+
+const TEXT_EXTENSIONS = new Set([
+	".txt",
+	".md",
+	".markdown",
+	".json",
+	".yaml",
+	".yml",
+	".toml",
+	".ts",
+	".js",
+	".mjs",
+	".py",
+	".sh",
+	".bash",
+	".env",
+	".csv",
+	".log",
+	".xml",
+	".html",
+	".css",
+	".sql",
+	".r",
+]);
+
+const IMAGE_MIME: Record<string, string> = {
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif": "image/gif",
+	".svg": "image/svg+xml",
+	".webp": "image/webp",
+	".ico": "image/x-icon",
 };
 
 // ---------------------------------------------------------------------------
@@ -45,13 +90,6 @@ export interface AgentInfo {
 	role: string;
 }
 
-export interface PlaybookEntry {
-	title: string;
-	to: string[];
-	subject: string;
-	body: string;
-}
-
 // ---------------------------------------------------------------------------
 // Monitor server
 // ---------------------------------------------------------------------------
@@ -60,20 +98,28 @@ export interface PlaybookEntry {
  * HTTP + SSE monitoring dashboard.
  *
  * Routes:
- *   GET  /                          HTML dashboard
- *   GET  /events                    SSE stream
- *   GET  /team                      JSON agent roster
- *   GET  /status                    JSON usage + mission info
- *   GET  /log?lines=N               tail of daemon.log (default 200, max 2000)
- *   GET  /agents/:id/mental-map     current mental map HTML
- *   GET  /agents/:id/conversation   last N conversation messages
- *   GET  /schedule                  pending scheduled wakeups
- *   GET  /agents/:id/usage          llmCallLog entries for agent
- *   POST /send-message              inject a mailbox message  { to, subject, body }
- *   POST /step                      advance one step (resolves waitForStep)
- *   POST /toggle-step               enable / disable step mode
- *   POST /extend-budget             add USD to spending cap and resume { addUsd }
- *   POST /stop                      graceful daemon shutdown
+ *   GET    /                              HTML dashboard
+ *   GET    /events                        SSE stream
+ *   GET    /team                          JSON agent roster
+ *   GET    /status                        JSON usage + mission info
+ *   GET    /log?lines=N                   tail of daemon.log
+ *   GET    /mailbox                       recent mailbox messages
+ *   GET    /schedule                      pending scheduled wakeups
+ *   GET    /agents/:id/mental-map         current mental map HTML
+ *   GET    /agents/:id/sessions           session metadata (aggregated)
+ *   GET    /agents/:id/sessions/:turn     session detail (one turn)
+ *   GET    /agents/:id/usage              llmCallLog entries for agent
+ *   GET    /files/shared?path=            browse / read sharedDir
+ *   GET    /files/workdir/:id?path=       browse / read agent workdir
+ *   POST   /files/shared/write            write a file to sharedDir (copilot)
+ *   POST   /files/workdir/:id/write       write a file to agent workdir (copilot)
+ *   DELETE /schedule/:id                  cancel a scheduled message
+ *   POST   /send-message                  inject a mailbox message
+ *   POST   /step                          advance one step
+ *   POST   /toggle-step                   enable / disable step mode
+ *   POST   /extend-budget                 add USD to spending cap
+ *   POST   /start                         unblock waitForStart
+ *   POST   /stop                          graceful daemon shutdown
  */
 export class MonitorServer {
 	private readonly clients = new Set<ServerResponse>();
@@ -87,9 +133,8 @@ export class MonitorServer {
 	private stepEnabled = false;
 	private stepResolve: (() => void) | null = null;
 
-	// Agent queue state
-	private runningAgent: string | null = null;
-	private pendingAgents: string[] = [];
+	// Concurrent agent tracking
+	private runningAgents = new Set<string>();
 
 	// Budget pause gate
 	private budgetPaused = false;
@@ -97,6 +142,9 @@ export class MonitorServer {
 	private currentCapUsd: number | null;
 	/** Callback so daemon.ts can update its local maxCostUsd when the cap is raised. */
 	onBudgetExtended?: (newCapUsd: number) => void;
+
+	// Agent workdir map (populated by daemon after workspace provision)
+	private agentWorkdirs = new Map<string, string>();
 
 	constructor(
 		private readonly db: Db,
@@ -109,8 +157,10 @@ export class MonitorServer {
 		private readonly onStop: () => void,
 		maxCostUsd: number | null,
 		private readonly startedAt = new Date(),
-		private readonly playbook: PlaybookEntry[] = [],
 		private readonly workdir: string = process.cwd(),
+		private readonly sharedDir: string = process.cwd(),
+		private readonly cancelSchedule?: (id: string) => Promise<void>,
+		private readonly publicDir: string = DEFAULT_PUBLIC_DIR,
 	) {
 		this.currentCapUsd = maxCostUsd;
 		this.server = createServer((req, res) =>
@@ -134,47 +184,45 @@ export class MonitorServer {
 		}
 	}
 
-	/** Called by the orchestrator before each agent turn. */
-	notifyAgentStart(agentId: string, pending: string[]): void {
-		this.runningAgent = agentId;
-		this.pendingAgents = pending;
-		this.push("agent-status", { running: agentId, pending });
+	/** Register agent workdir paths after workspace provisioning. */
+	setAgentWorkdirs(map: Map<string, string>): void {
+		this.agentWorkdirs = map;
+	}
+
+	/** Called by the orchestrator when an agent is dispatched. */
+	notifyAgentStart(agentId: string): void {
+		this.runningAgents.add(agentId);
+		this.push("agent-status", { running: [...this.runningAgents] });
 	}
 
 	/** Called by the orchestrator after each agent turn. */
-	notifyAgentDone(_agentId: string): void {
-		this.runningAgent = null;
-		this.push("agent-status", { running: null, pending: this.pendingAgents });
+	notifyAgentDone(agentId: string): void {
+		this.runningAgents.delete(agentId);
+		this.push("agent-status", { running: [...this.runningAgents] });
 	}
 
-	/** Called when the cycle ends and the loop goes idle. */
+	/** Called when the loop goes idle (no agents running, no unread mail). */
 	notifyIdle(): void {
-		this.runningAgent = null;
-		this.pendingAgents = [];
-		this.push("agent-status", { running: null, pending: [] });
+		this.runningAgents.clear();
+		this.push("agent-status", { running: [] });
 	}
 
 	/**
 	 * Called by the daemon when the spending cap is reached.
 	 * Pushes `cost-pause` to all clients and sets the paused flag.
-	 * The orchestrator must call waitForBudget() between agent turns.
 	 */
 	notifyCostPause(spentUsd: number, capUsd: number): void {
 		this.budgetPaused = true;
 		console.warn(
 			`[monitor] Budget cap $${capUsd.toFixed(2)} reached ($${spentUsd.toFixed(4)} spent) — pausing`,
 		);
-		this.push("cost-pause", {
-			spentUsd,
-			capUsd,
-			budgetPaused: true,
-		});
+		this.push("cost-pause", { spentUsd, capUsd, budgetPaused: true });
 		this.push("status", this.statusPayload());
 	}
 
 	/**
 	 * Called by the orchestrator after each agent turn via the waitForBudget hook.
-	 * Resolves immediately when not paused; blocks until the operator extends the budget.
+	 * Resolves immediately when not paused; blocks until operator extends budget.
 	 */
 	waitForBudget(): Promise<void> {
 		if (!this.budgetPaused) return Promise.resolve();
@@ -183,10 +231,7 @@ export class MonitorServer {
 		});
 	}
 
-	/**
-	 * Blocks until the operator clicks "Start" in the dashboard.
-	 * Resolves immediately if already started (e.g. daemon restarted).
-	 */
+	/** Blocks until the operator clicks Start in the dashboard. */
 	waitForStart(): Promise<void> {
 		if (this.started) return Promise.resolve();
 		return new Promise((resolve) => {
@@ -203,7 +248,7 @@ export class MonitorServer {
 		});
 	}
 
-	/** Called by the agent runner when the mental map changes. Pushes SSE to dashboard. */
+	/** Called by the agent runner when the mental map changes. */
 	notifyMentalMapUpdate(agentId: string, html: string): void {
 		this.push("mental-map-update", { agentId, html });
 	}
@@ -222,15 +267,12 @@ export class MonitorServer {
 	}
 
 	stop(): void {
-		// Resolve all blocked waitFor* promises so the orchestration loop can unblock
-		// and reach its finally block before the process exits.
+		// Resolve all blocked waitFor* promises so the orchestration loop can
+		// reach its finally block before the process exits.
 		this.startResolve?.();
 		this.budgetResolve?.();
 		this.stepResolve?.();
 
-		// Destroy every SSE connection immediately — `server.close()` alone only
-		// stops new connections; existing keep-alive connections hold the port open
-		// and prevent the `close` event (which terminates the Change Stream watchers).
 		for (const client of this.clients) {
 			try {
 				client.socket?.destroy();
@@ -238,9 +280,6 @@ export class MonitorServer {
 		}
 		this.clients.clear();
 
-		// closeAllConnections() destroys remaining keep-alive sockets (Node 18.2+),
-		// then close() stops accepting and emits `close` once all connections are gone.
-		// The `close` event resolves the watchMailbox/watchConversations loops.
 		this.server.closeAllConnections();
 		this.server.close();
 	}
@@ -251,17 +290,18 @@ export class MonitorServer {
 		req: IncomingMessage,
 		res: ServerResponse,
 	): Promise<void> {
-		const url = req.url?.split("?")[0] ?? "/";
+		const rawUrl = req.url ?? "/";
+		const url = rawUrl.split("?")[0];
 		res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
 		res.setHeader("Vary", "Origin");
 
-		// ── Static files (/, /index.html, /style.css, /app.js)
+		// ── Static files
 		if (url === "/" || url === "/index.html") {
 			res.writeHead(200, {
 				"Content-Type": "text/html; charset=utf-8",
 				"Cache-Control": "no-store",
 			});
-			res.end(readFileSync(join(PUBLIC_DIR, "index.html")));
+			res.end(readFileSync(join(this.publicDir, "index.html")));
 			return;
 		}
 		if (url === "/style.css" || url === "/app.js") {
@@ -270,7 +310,7 @@ export class MonitorServer {
 				"Content-Type": MIME[ext],
 				"Cache-Control": "no-store",
 			});
-			res.end(readFileSync(join(PUBLIC_DIR, url)));
+			res.end(readFileSync(join(this.publicDir, url)));
 			return;
 		}
 
@@ -294,13 +334,6 @@ export class MonitorServer {
 		if (url === "/team" && req.method === "GET") {
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify(this.agents));
-			return;
-		}
-
-		// ── GET /playbook
-		if (url === "/playbook" && req.method === "GET") {
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(this.playbook));
 			return;
 		}
 
@@ -349,8 +382,7 @@ export class MonitorServer {
 			const logPath = join(this.workdir, "daemon.log");
 			const maxLines = Math.min(
 				Number.parseInt(
-					new URL(req.url ?? "/log", "http://x").searchParams.get("lines") ??
-						"200",
+					new URL(rawUrl, "http://x").searchParams.get("lines") ?? "200",
 					10,
 				) || 200,
 				2000,
@@ -389,7 +421,7 @@ export class MonitorServer {
 			return;
 		}
 
-		// ── GET /agents/:id/sessions (metadata only — fast aggregation)
+		// ── GET /agents/:id/sessions
 		const sessionsMatch = url.match(/^\/agents\/([^/]+)\/sessions$/);
 		if (sessionsMatch && req.method === "GET") {
 			const agentId = decodeURIComponent(sessionsMatch[1]);
@@ -400,7 +432,6 @@ export class MonitorServer {
 				.sort({ turnNumber: 1, savedAt: 1 })
 				.toArray();
 
-			// Group by turnNumber
 			const byTurn = new Map<number, typeof llmDocs>();
 			for (const d of llmDocs) {
 				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB document
@@ -409,7 +440,6 @@ export class MonitorServer {
 				byTurn.get(t)?.push(d);
 			}
 
-			// Count tool calls per turn from conversationMessages (non-sub-loop only)
 			const toolCounts = await this.db
 				.collection("conversationMessages")
 				.aggregate([
@@ -469,7 +499,7 @@ export class MonitorServer {
 			return;
 		}
 
-		// ── GET /agents/:id/sessions/:turn (detail for one session)
+		// ── GET /agents/:id/sessions/:turn
 		const sessionDetailMatch = url.match(
 			/^\/agents\/([^/]+)\/sessions\/(\d+)$/,
 		);
@@ -491,6 +521,29 @@ export class MonitorServer {
 
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ turnNumber, messages: msgs, llmCalls }));
+			return;
+		}
+
+		// ── GET /agents/:id/usage
+		const usageMatch = url.match(/^\/agents\/([^/]+)\/usage$/);
+		if (usageMatch && req.method === "GET") {
+			const agentId = decodeURIComponent(usageMatch[1]);
+			const docs = await this.db
+				.collection("llmCallLog")
+				.find({ missionId: this.missionId, agentId })
+				.sort({ turnNumber: 1, savedAt: 1 })
+				.toArray();
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify(
+					docs.map((d) => ({
+						turnNumber: d.turnNumber ?? 0,
+						isReflection: d.isReflection ?? false,
+						savedAt: d.savedAt,
+						usage: d.usage ?? null,
+					})),
+				),
+			);
 			return;
 		}
 
@@ -517,26 +570,68 @@ export class MonitorServer {
 			return;
 		}
 
-		// ── GET /agents/:id/usage
-		const usageMatch = url.match(/^\/agents\/([^/]+)\/usage$/);
-		if (usageMatch && req.method === "GET") {
-			const agentId = decodeURIComponent(usageMatch[1]);
-			const docs = await this.db
-				.collection("llmCallLog")
-				.find({ missionId: this.missionId, agentId })
-				.sort({ turnNumber: 1, savedAt: 1 })
-				.toArray();
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify(
-					docs.map((d) => ({
-						turnNumber: d.turnNumber ?? 0,
-						isReflection: d.isReflection ?? false,
-						savedAt: d.savedAt,
-						usage: d.usage ?? null,
-					})),
-				),
-			);
+		// ── DELETE /schedule/:id
+		const scheduleDeleteMatch = url.match(/^\/schedule\/([^/]+)$/);
+		if (scheduleDeleteMatch && req.method === "DELETE") {
+			if (!this.cancelSchedule) {
+				res.writeHead(501, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "cancelSchedule not configured" }));
+				return;
+			}
+			try {
+				await this.cancelSchedule(scheduleDeleteMatch[1]);
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ ok: true }));
+			} catch (e) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: (e as Error).message }));
+			}
+			return;
+		}
+
+		// ── GET /files/shared
+		if (url === "/files/shared" && req.method === "GET") {
+			const userPath =
+				new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
+			this.serveFilePath(this.sharedDir, userPath, res);
+			return;
+		}
+
+		// ── GET /files/workdir/:agentId
+		const workdirFileMatch = url.match(/^\/files\/workdir\/([^/]+)$/);
+		if (workdirFileMatch && req.method === "GET") {
+			const agentId = decodeURIComponent(workdirFileMatch[1]);
+			const root = this.agentWorkdirs.get(agentId);
+			if (!root) {
+				res.writeHead(404, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Agent workdir not found" }));
+				return;
+			}
+			const userPath =
+				new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
+			this.serveFilePath(root, userPath, res);
+			return;
+		}
+
+		// ── POST /files/shared/write  (copilot: write a file to sharedDir)
+		if (url === "/files/shared/write" && req.method === "POST") {
+			const body = await readBody(req);
+			this.writeFilePath(this.sharedDir, body, res);
+			return;
+		}
+
+		// ── POST /files/workdir/:agentId/write  (copilot: write a file to agent workdir)
+		const workdirWriteMatch = url.match(/^\/files\/workdir\/([^/]+)\/write$/);
+		if (workdirWriteMatch && req.method === "POST") {
+			const agentId = decodeURIComponent(workdirWriteMatch[1]);
+			const root = this.agentWorkdirs.get(agentId);
+			if (!root) {
+				res.writeHead(404, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Agent workdir not found" }));
+				return;
+			}
+			const body = await readBody(req);
+			this.writeFilePath(root, body, res);
 			return;
 		}
 
@@ -597,7 +692,6 @@ export class MonitorServer {
 		// ── POST /toggle-step
 		if (url === "/toggle-step" && req.method === "POST") {
 			this.stepEnabled = !this.stepEnabled;
-			// If disabling while paused, release the pending step.
 			if (!this.stepEnabled && this.stepResolve) {
 				this.stepResolve();
 				this.stepResolve = null;
@@ -672,6 +766,130 @@ export class MonitorServer {
 		res.writeHead(404).end();
 	}
 
+	// ── File browser ──────────────────────────────────────────────────────────
+
+	private serveFilePath(
+		root: string,
+		userPath: string,
+		res: ServerResponse,
+	): void {
+		const abs = resolve(root, userPath);
+		if (!abs.startsWith(root)) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Path outside root" }));
+			return;
+		}
+		if (!existsSync(abs)) {
+			res.writeHead(404, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Not found" }));
+			return;
+		}
+		const stat = statSync(abs);
+		res.writeHead(200, { "Content-Type": "application/json" });
+		if (stat.isDirectory()) {
+			let entries: string[];
+			try {
+				entries = readdirSync(abs);
+			} catch {
+				entries = [];
+			}
+			const listed = entries.map((name) => {
+				try {
+					const s = statSync(join(abs, name));
+					return {
+						name,
+						type: s.isDirectory() ? "dir" : "file",
+						size: s.isDirectory() ? undefined : s.size,
+						modified: s.mtime.toISOString(),
+					};
+				} catch {
+					return { name, type: "file" as const };
+				}
+			});
+			listed.sort((a, b) => {
+				if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+				return a.name.localeCompare(b.name);
+			});
+			res.end(JSON.stringify({ type: "dir", path: userPath, entries: listed }));
+			return;
+		}
+		// File
+		const ext = extname(abs).toLowerCase();
+		const imageMime = IMAGE_MIME[ext];
+		if (imageMime) {
+			const content = readFileSync(abs).toString("base64");
+			res.end(
+				JSON.stringify({
+					type: "file",
+					name: basename(abs),
+					encoding: "base64",
+					mimeType: imageMime,
+					content,
+				}),
+			);
+			return;
+		}
+		if (TEXT_EXTENSIONS.has(ext) || ext === "") {
+			const MAX_BYTES = 200 * 1024;
+			const raw = readFileSync(abs);
+			const content = raw.slice(0, MAX_BYTES).toString("utf8");
+			res.end(
+				JSON.stringify({
+					type: "file",
+					name: basename(abs),
+					encoding: "text",
+					mimeType: "text/plain",
+					content,
+					truncated: raw.length > MAX_BYTES,
+				}),
+			);
+			return;
+		}
+		res.end(
+			JSON.stringify({ type: "file", name: basename(abs), encoding: "binary" }),
+		);
+	}
+
+	private writeFilePath(
+		root: string,
+		rawBody: string,
+		res: ServerResponse,
+	): void {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(rawBody);
+		} catch {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Invalid JSON" }));
+			return;
+		}
+		const { path: userPath, content } = parsed as Record<string, unknown>;
+		if (typeof userPath !== "string" || typeof content !== "string") {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					error: "path (string) and content (string) are required",
+				}),
+			);
+			return;
+		}
+		const abs = resolve(root, userPath);
+		if (!abs.startsWith(root)) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Path outside root" }));
+			return;
+		}
+		try {
+			mkdirSync(resolve(abs, ".."), { recursive: true });
+			writeFileSync(abs, content, "utf-8");
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true }));
+		} catch (e) {
+			res.writeHead(500, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: (e as Error).message }));
+		}
+	}
+
 	// ── Change stream watchers ────────────────────────────────────────────────
 
 	private async watchMailbox(): Promise<void> {
@@ -716,13 +934,12 @@ export class MonitorServer {
 						stream.close().catch(() => {});
 						reject(e);
 					});
-					// Resolve only when the server itself closes (stream persists indefinitely).
 					this.server.once("close", () => {
 						stream.close().catch(() => {});
 						resolve();
 					});
 				});
-				return; // server closed — stop watching
+				return;
 			} catch (e) {
 				console.error(
 					`[monitor] Mailbox watch error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
@@ -751,10 +968,9 @@ export class MonitorServer {
 					);
 					stream.on("change", (change) => {
 						if (change.operationType !== "insert") return;
-						const doc = change.fullDocument as { agentId: string } & Record<
-							string,
-							unknown
-						>;
+						const doc = change.fullDocument as {
+							agentId: string;
+						} & Record<string, unknown>;
 						this.push("conversation-update", {
 							agentId: doc.agentId,
 							message: doc,
@@ -793,8 +1009,7 @@ export class MonitorServer {
 			uptimeSec,
 			started: this.started,
 			stepEnabled: this.stepEnabled,
-			running: this.runningAgent,
-			pending: this.pendingAgents,
+			running: [...this.runningAgents],
 			missionTotalUsd: this.accumulator.totalCostUsd(),
 			maxCostUsd: this.currentCapUsd,
 			budgetPaused: this.budgetPaused,

@@ -185,9 +185,12 @@ export function createMongoLlmCallLogRepository(db: Db): LlmCallLogRepository {
 			),
 		);
 
-	// Index for per-agent/per-mission queries.
+	// Index for per-agent/per-mission queries sorted by turn then time.
+	// turnNumber must be in the index so the sort in /agents/:id/sessions and
+	// /agents/:id/usage is index-backed; without it MongoDB does an in-memory
+	// sort that exceeds the 32 MB limit on large missions.
 	col
-		.createIndex({ missionId: 1, agentId: 1, savedAt: 1 })
+		.createIndex({ missionId: 1, agentId: 1, turnNumber: 1, savedAt: 1 })
 		.catch((e: unknown) =>
 			console.warn(
 				"[llm-call-log] Failed to create mission index:",

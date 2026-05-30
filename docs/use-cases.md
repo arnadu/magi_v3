@@ -490,6 +490,71 @@ Support a researcher from idea to submission-ready paper with strong reference m
   - argument coherence checks and gap detection
   - citation style compliance checks
 
+## 12) General Purpose Personal Assistant
+### Mandate
+An always-available, persistent intelligent assistant for any on-demand task: research, writing,
+analysis, coding, browsing. Directly competitive with ChatGPT but differentiated by persistent
+memory (mental map), tool depth, and the ability to upgrade to a multi-agent team when the scope
+demands it.
+
+### Team roles
+- Single assistant agent (default)
+- Optionally promoted to multi-agent by the operator
+
+### Core workflows
+- Chat-driven, fully reactive to user messages
+- Web research on demand (SearchWeb + BrowseWeb)
+- Code writing and execution (Bash, WriteFile, EditFile)
+- File and artifact handling
+- Long-running tasks via background jobs
+
+### Work products
+- Answers, summaries, analyses
+- Code artifacts and patches
+- Research reports with citations
+- Any file the user asks the agent to produce
+
+### Cadence
+- On-demand; session resumes where it left off across multiple conversations
+
+### KPIs
+- Task completion rate
+- Context retention across sessions (mental map quality)
+- Response latency at session cold-start
+
+### Sensitivity and approvals
+- Per-user preference; no default approval gates
+- User controls what the agent can access via skill enable/disable
+
+### Failure and alert conditions
+- Tool execution error without recovery
+- Context window overflow without compaction
+
+### V3 MVP scope
+**Quick launch UX** (no form-filling):
+1. Click "New session" on the home screen → session auto-named, machine provisions in background
+2. Execution plane dashboard opens in new browser tab immediately, agent accepts first message
+3. System prompt and initial mental map are pre-filled from the template defaults
+
+**Customisation before first run** (optional, not required):
+- Edit system prompt (free-text textarea, pre-filled with template default)
+- Edit initial mental map (HTML editor, pre-filled)
+- Toggle skills on/off from the mission's default skill library
+
+**Not in MVP:**
+- Inline chat within the control plane (execution plane dashboard tab is acceptable)
+- Skill creation during setup
+- Multi-agent promotion
+
+### Special capability requirements
+- **Instant launch**: session must be usable in under 30 seconds from click — Fly machine provisioning
+  latency is the bottleneck; consider pre-warming or accepting first-message-buffering
+- **Skill toggle UI**: the mission template defines a default skill set; the user can enable or
+  disable individual skills for this session before (or during suspension/edit) without touching
+  the YAML directly — toggle maps to the `skills:` section in the agent's YAML block
+- **Persistent mental map**: agent accumulates context across sessions; the user can inspect
+  and optionally reset the mental map between sessions
+
 ## Cross-Use-Case Prioritization
 ### Phase 1 anchors (immediate)
 - Equity Research Team
@@ -517,3 +582,40 @@ Support a researcher from idea to submission-ready paper with strong reference m
   - evidence lineage
 - Governance controls must be policy-driven, with stricter defaults in high-sensitivity domains.
 - Evaluation must include both generic metrics (freshness, reliability, cost) and domain KPIs.
+
+---
+
+## Product Design Decisions (Control Plane UX)
+
+Recorded here to preserve the reasoning behind product-level choices that span multiple sprints.
+
+### Terminology: Mission vs Session
+- **Mission** = the blueprint: team composition, agent configs, system prompts, skills, mental map
+  templates. Corresponds to what is currently called a "template" in the code.
+- **Session** = a running (or suspended) instance of a mission, with its own conversation history,
+  live mental maps, and Fly machine. Corresponds to what is currently called a "mission" in the code.
+- The code rename can happen gradually; this document uses the intended terminology going forward.
+
+### UI Architecture: Separate Tabs Accepted
+The control plane UI (management + config) and the execution plane dashboard (live agent activity,
+chat) are separate browser UIs accessible via separate URLs. The control plane may open the
+execution plane dashboard in a new browser tab rather than embedding it inline. This trades
+seamlessness for code simplicity and is acceptable for the current phase. Re-evaluate when the
+"general assistant" use case shows that the tab-switch breaks the user workflow.
+
+### Multi-Tenancy Model
+- **Sessions are single-owner**: one user owns a session; this simplifies permission checks and
+  session isolation. Multiple users interacting with the same session's agents is a future
+  capability, not in scope.
+- **Mission templates are shared**: all authenticated users of a control plane instance can see
+  and launch from the same template library. Per-user template libraries are a future capability.
+
+### Home Screen Priority
+The control plane landing page should foreground **active sessions** (health, last activity,
+quick-resume), not the template library. Templates are secondary navigation — a library to
+browse when creating something new, not the daily driver.
+
+### Quick Launch Principle
+For common mission templates (especially single-agent), launching a new session should require
+**zero mandatory form fields**. The session is auto-named (template name + date + short hash).
+Optional customisation (system prompt, mental map, skill toggles) is available but not blocking.

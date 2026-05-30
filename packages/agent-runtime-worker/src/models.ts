@@ -14,6 +14,7 @@ export function anthropicModel(
 		outputCostPerMillion?: number;
 		cacheReadCostPerMillion?: number;
 		cacheWriteCostPerMillion?: number;
+		reasoning?: boolean;
 	} = {},
 ): Model<"anthropic-messages"> {
 	return {
@@ -22,7 +23,7 @@ export function anthropicModel(
 		api: "anthropic-messages",
 		provider: "anthropic",
 		baseUrl: "https://api.anthropic.com",
-		reasoning: false,
+		reasoning: opts.reasoning ?? false,
 		input: ["text", "image"],
 		cost: {
 			input: opts.inputCostPerMillion ?? 3,
@@ -39,11 +40,12 @@ export function anthropicModel(
 	};
 }
 
-/** Claude Sonnet 4.6 — default inner-loop model. */
+/** Claude Sonnet 4.6 — default inner-loop model. Extended thinking enabled. */
 export const CLAUDE_SONNET = anthropicModel("claude-sonnet-4-6", {
 	inputCostPerMillion: 3,
 	outputCostPerMillion: 15,
-	maxTokens: 16_000,
+	maxTokens: 32_000, // raised from 16k to give pi-ai room for thinking budget + text output
+	reasoning: true,
 });
 
 /** Claude Haiku 4.5 — secondary model for vision tasks (image captioning, BrowseWeb). */

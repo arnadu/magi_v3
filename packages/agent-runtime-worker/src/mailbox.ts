@@ -135,6 +135,8 @@ export function createMongoMailboxRepository(
 export interface MailboxToolOptions {
 	/** Called immediately when a message is posted with "user" in the to list. */
 	onUserMessage?: (msg: MailboxMessage) => void;
+	/** Called after every successful PostMessage execution. */
+	onPost?: (msg: MailboxMessage) => void;
 }
 
 /**
@@ -206,6 +208,8 @@ export function createMailboxTools(
 			if (to.includes("user")) {
 				opts.onUserMessage?.(msg);
 			}
+
+			opts.onPost?.(msg);
 
 			return ok(`Message sent (id: ${msg.id}) to: ${to.join(", ")}`);
 		},

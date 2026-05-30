@@ -28,6 +28,9 @@ const AgentSchema = z
 				'must be a valid Linux username (e.g. "magi-w1")',
 			)
 			.optional(),
+		active: z.boolean().optional(),
+		disabledSkills: z.array(z.string()).optional(),
+		disabledTools: z.array(z.string()).optional(),
 	})
 	.catchall(z.string().trim());
 

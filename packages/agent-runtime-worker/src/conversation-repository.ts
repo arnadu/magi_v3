@@ -72,6 +72,28 @@ export interface ConversationRepository {
 		agentId: string,
 		missionId: string,
 	): Promise<string | null>;
+	/**
+	 * Full-text search through ALL stored messages (including compacted and
+	 * reflection) for this agent+mission. Used by AnalyzeMemories to recover
+	 * content that was pruned from the in-memory context.
+	 *
+	 * Matches case-insensitively; returns at most `limit` results sorted by
+	 * savedAt descending (most recent first).
+	 */
+	findRelevant(
+		agentId: string,
+		missionId: string,
+		query: string,
+		limit: number,
+	): Promise<
+		Array<{
+			turnNumber: number;
+			role: string;
+			toolName?: string;
+			savedAt: Date;
+			excerpt: string;
+		}>
+	>;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +239,63 @@ export function createMongoConversationRepository(
 				{ sort: { turnNumber: -1, seqInTurn: -1 } },
 			);
 			return doc?.mentalMapHtml ?? null;
+		},
+
+		async findRelevant(agentId, missionId, query, limit) {
+			// Escape regex metacharacters so the query is treated as a literal string.
+			const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			const re = new RegExp(escaped, "i");
+			// Search both string content (user/summary messages) and array content
+			// (toolResult messages have content: [{ type, text }]).
+			const docs = await col
+				.find({
+					agentId,
+					missionId,
+					$or: [
+						{ "message.content": { $regex: escaped, $options: "i" } },
+						{ "message.content.text": { $regex: escaped, $options: "i" } },
+					],
+				})
+				.sort({ savedAt: -1 })
+				.limit(limit * 3) // over-fetch so we still get `limit` results after text filtering
+				.toArray();
+
+			const results: Array<{
+				turnNumber: number;
+				role: string;
+				toolName?: string;
+				savedAt: Date;
+				excerpt: string;
+			}> = [];
+
+			for (const doc of docs) {
+				if (results.length >= limit) break;
+				const m = doc.message as unknown as Record<string, unknown>;
+				let fullText = "";
+				if (typeof m.content === "string") {
+					fullText = m.content;
+				} else if (Array.isArray(m.content)) {
+					fullText = (m.content as Array<{ text?: string }>)
+						.map((b) => b.text ?? "")
+						.join("\n");
+				}
+				if (!re.test(fullText)) continue;
+				const idx = fullText.search(re);
+				const start = Math.max(0, idx - 100);
+				const end = Math.min(fullText.length, idx + 200);
+				const excerpt =
+					(start > 0 ? "…" : "") +
+					fullText.slice(start, end) +
+					(end < fullText.length ? "…" : "");
+				results.push({
+					turnNumber: doc.turnNumber,
+					role: String(m.role ?? ""),
+					toolName: typeof m.toolName === "string" ? m.toolName : undefined,
+					savedAt: doc.savedAt,
+					excerpt,
+				});
+			}
+			return results;
 		},
 	};
 }

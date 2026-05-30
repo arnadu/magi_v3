@@ -36,6 +36,12 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 
 ## Fixed Findings
 
+### Sprint 17
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-017 | LOW | `tools.ts:verifyIsolation` | **`verifyIsolation()` only checked `ANTHROPIC_API_KEY`** — `OPENROUTER_API_KEY` leak into child process env was not caught by the startup isolation check (primary control — clean-env spawn — was already correct; this was a defense-in-depth gap). | Extended bash probe to test both `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY`; error message names the specific leaked key(s). |
+
 ### Sprint 16
 
 | ID | Severity | Location | Description | Fix applied |

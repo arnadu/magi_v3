@@ -4,7 +4,16 @@
  * Security (S2/S8): targets are always derived from the FLY_MISSIONS_APP_NAME
  * env var and machineIds stored in MongoDB — never from user-supplied parameters.
  * Uses FLY_API_TOKEN_MACHINES (runtime Fly secret), not the CI deploy token.
+ *
+ * Local execution mode (LOCAL_EXECUTION=true):
+ *   Skips all Fly API calls. Writes mission config to LOCAL_MISSIONS_DIR
+ *   (default: ~/.magi/local/{missionId}/). The developer starts the daemon
+ *   manually; the control plane proxy routes dashboard traffic to 127.0.0.1:4000.
  */
+
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const FLY_API_BASE = "https://api.machines.dev/v1";
 
@@ -85,6 +94,11 @@ export async function provisionMission(
 	});
 	if (!volRes.ok) {
 		const body = await volRes.text();
+		if (volRes.status === 401) {
+			throw new Error(
+				"Fly API returned 401 — check FLY_API_TOKEN_MACHINES. Cannot provision missions with a dummy token.",
+			);
+		}
 		throw new Error(`Failed to create volume: ${volRes.status} ${body}`);
 	}
 	const vol = (await volRes.json()) as { id: string };
@@ -140,6 +154,7 @@ export async function provisionMission(
 					NEWSAPIORG_API_KEY: process.env.NEWSAPIORG_API_KEY ?? "",
 				},
 				mounts: [{ volume: vol.id, path: "/missions" }],
+				restart: { policy: "on-failure", max_retries: 3 },
 				// No services — internal access only via WireGuard.
 				// 1 GB RAM: Node + MongoDB driver + agent pool need ~600 MB at idle;
 				// Playwright/Chromium adds another ~400 MB under load.
@@ -183,6 +198,38 @@ export async function suspendMission(machineId: string): Promise<void> {
 }
 
 /**
+ * Update the TEAM_CONFIG_YAML (and optionally TEAM_FILES_PAYLOAD) env vars on a
+ * suspended machine so that the daemon overwrites /missions/team.yaml on next boot.
+ * Uses Fly Machines PATCH which merges env — only the specified keys are overwritten.
+ */
+export async function updateMachineTeamConfig(
+	machineId: string,
+	teamConfigYaml: string,
+	teamFiles?: Array<{ path: string; content: string }>,
+): Promise<void> {
+	const app = appName();
+	const env: Record<string, string> = {
+		TEAM_CONFIG_YAML: Buffer.from(teamConfigYaml, "utf-8").toString("base64"),
+	};
+	if (teamFiles && teamFiles.length > 0) {
+		env.TEAM_FILES_PAYLOAD = Buffer.from(
+			JSON.stringify(teamFiles),
+			"utf-8",
+		).toString("base64");
+	}
+	const res = await flyFetch(`/apps/${app}/machines/${machineId}`, {
+		method: "PATCH",
+		body: JSON.stringify({ config: { env } }),
+	});
+	if (!res.ok) {
+		const body = await res.text();
+		throw new Error(
+			`Failed to update machine config ${machineId}: ${res.status} ${body}`,
+		);
+	}
+}
+
+/**
  * Start (resume) a suspended mission machine.
  * Returns as soon as Fly accepts the start request — does not poll for
  * "started" state to avoid exceeding Fly's ~25 s HTTP proxy timeout.
@@ -202,14 +249,92 @@ export async function resumeMission(machineId: string): Promise<void> {
 	}
 }
 
-/** Get the current state of a machine. */
+/** Get the current state of a machine. Skips Fly for local machines. */
 export async function getMachineState(machineId: string): Promise<string> {
+	if (machineId.startsWith("local-")) return "started";
 	const app = appName();
 	const res = await flyFetch(`/apps/${app}/machines/${machineId}`);
 	if (!res.ok)
 		throw new Error(`Failed to get machine ${machineId}: ${res.status}`);
 	const m = (await res.json()) as { state: string };
 	return m.state;
+}
+
+// ---------------------------------------------------------------------------
+// Local execution mode (LOCAL_EXECUTION=true)
+// ---------------------------------------------------------------------------
+
+export function isLocalExecution(): boolean {
+	return process.env.LOCAL_EXECUTION === "true";
+}
+
+function localMissionsDir(): string {
+	return process.env.LOCAL_MISSIONS_DIR ?? join(homedir(), ".magi", "local");
+}
+
+/**
+ * Provision a local mission by writing config files to disk and returning a
+ * fake MachineHandle pointing at 127.0.0.1. The developer must start the
+ * daemon manually using the printed command.
+ */
+export function provisionLocal(
+	missionId: string,
+	opts: ProvisionOptions,
+): MachineHandle {
+	const missionDir = join(localMissionsDir(), missionId);
+	mkdirSync(missionDir, { recursive: true });
+
+	if (opts.teamConfigYaml) {
+		writeFileSync(join(missionDir, "team.yaml"), opts.teamConfigYaml, "utf-8");
+	}
+	if (opts.teamFiles && opts.teamFiles.length > 0) {
+		for (const f of opts.teamFiles) {
+			const dest = join(missionDir, "team", f.path);
+			mkdirSync(join(dest, ".."), { recursive: true });
+			writeFileSync(dest, f.content, "utf-8");
+		}
+	}
+
+	console.log(`[local-provision] Mission files written to: ${missionDir}`);
+	console.log(
+		`[local-provision] Start the daemon in a separate terminal:\n` +
+			`  TEAM_CONFIG=${join(missionDir, "team.yaml")} \\\n` +
+			`  npm run daemon -w packages/agent-runtime-worker`,
+	);
+
+	return {
+		machineId: `local-${missionId}`,
+		privateIp: "127.0.0.1",
+		volumeId: `local-${missionId}`,
+	};
+}
+
+/** Delete local mission files (best-effort). */
+export function destroyLocal(missionId: string): void {
+	const missionDir = join(localMissionsDir(), missionId);
+	try {
+		rmSync(missionDir, { recursive: true, force: true });
+	} catch {
+		// Non-fatal — directory may not exist.
+	}
+}
+
+/** Update local mission files when config is edited and mission is resumed. */
+export function updateLocalMissionConfig(
+	missionId: string,
+	teamConfigYaml: string,
+	teamFiles?: Array<{ path: string; content: string }>,
+): void {
+	const missionDir = join(localMissionsDir(), missionId);
+	mkdirSync(missionDir, { recursive: true });
+	writeFileSync(join(missionDir, "team.yaml"), teamConfigYaml, "utf-8");
+	if (teamFiles && teamFiles.length > 0) {
+		for (const f of teamFiles) {
+			const dest = join(missionDir, "team", f.path);
+			mkdirSync(join(dest, ".."), { recursive: true });
+			writeFileSync(dest, f.content, "utf-8");
+		}
+	}
 }
 
 /** Destroy a mission machine and its associated volume (irreversible). */

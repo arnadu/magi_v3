@@ -110,3 +110,97 @@ Key lesson: Fly app-level secrets NOT automatically injected into Machines API-c
 
 **Sprint 15 — Developer Onboarding:**
 `scripts/bootstrap.sh`: one-command setup (creates apps, sets secrets, builds + pushes image, deploys control plane); `--suffix <name>` for named instances. Root `.dockerignore` added. Test team configs relocated to `config/teams/test/`. Daemon log viewer: `GET /log?lines=N` in monitor server; "View Log" button in UI. `fly.toml` V1→V2 VM config fix (`cpu_kind`/`cpus` replaces `size`). Proxy `MaxListenersExceededWarning` fixed (proxy instance cached per target URL).
+
+**Sprint 16 — Model Selection + Hardening:**
+OpenRouter support via `MODEL` env var; model specified in team YAML. F-002 SSRF fix (additional IPv6 ranges). `agent-error` SSE event + dashboard banner for LLM provider errors with Resume button. MongoDB-backed team config templates with provision-time YAML injection; `seed-templates` script.
+
+**Sprint 17 — Concurrent Agent Dispatcher:**
+`runOrchestrationLoop` rewritten for fire-and-forget concurrent dispatch. `maxRuns` cap (default 50) limits total agent dispatches per loop lifetime. `isAgentPaused(agentId)` predicate allows per-agent pause without affecting others. `onWorkspaceReady` callback on `OrchestratorConfig` delivers `Map<agentId, workdir>` after provisioning. F-017: `verifyIsolation()` extended to check both `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY` using bash `${var:+word}` probe. Threat model refreshed.
+
+**Sprint 18 — Mission Dashboard UI Rewrite:**
+Full rewrite of the monitor dashboard (`public/index.html`, `public/style.css`, `public/app.js`). Key changes:
+
+*Backend (`monitor-server.ts`):* Concurrent agent tracking — `runningAgents: Set<string>` replaces `runningAgent: string | null`; `agent-status` SSE payload changed from `{ running: string|null, pending: string[] }` to `{ running: string[] }`. `setAgentWorkdirs(map)` method for post-provisioning workdir registration. `GET /files/shared` and `GET /files/workdir/:agentId` endpoints for file browser; `serveFilePath()` serves directory listings, text (200 KB cap), base64 images, or binary sentinel. `DELETE /schedule/:id` endpoint calls `cancelSchedule` callback. Removed `GET /playbook` route. Optional `publicDir` constructor parameter (last arg, defaults to `dist/public/`) allows tests to point at the source `public/` directory without a build step.
+
+*Frontend (`index.html` + `style.css` + `app.js`):* Two-panel layout: left panel is a chat-app-style thread list + chat view + compose bar (all mailbox messages, including agent-to-agent). Right panel has agent tabs (Activity / Mental Map / Files) and a Mission tab (Schedule / Files / Log / Stats). Thread list groups messages by **participant set** (sorted unique `from`+`to` values, pipe-joined) so operator messages and agent replies always appear in the same thread regardless of subject. Unread tracking persisted to `localStorage`. Chat bubbles render markdown via a self-contained `md()` function (~70 lines, no external dependency). Compose bar uses toggleable recipient chips pre-filled from the selected thread; `activeThread` is set before the `fetch()` call in `sendMessage()` so the SSE that arrives during the round-trip already finds the correct thread and calls `renderChatView()`. Kill button (red) replaced Stop button; requires `confirm()` dialog. Context warning: amber tab colour when agent context > 75% of limit. Step button triples as toggle/indicator/advance depending on state. Playbook removed entirely. File browser supports breadcrumb navigation, directory listing sorted dirs-first, text/markdown preview, and image preview. Stats tab shows per-agent cost and context breakdown from accumulated SSE data.
+
+*Dashboard integration test (`tests/dashboard.integration.test.ts`):* Headless Playwright test that spins up a real `MonitorServer` + orchestration loop on a free port, drives the full operator message → agent reply round-trip via browser UI, and asserts both bubbles appear in the same chat thread. Run with `npm run test:integration -- "dashboard"`. Requires `ANTHROPIC_API_KEY`, `MONGODB_URI`, and pool users (`setup-dev.sh`). The workdir is `chmod 0o755` after creation so `magi-w1` can traverse it for isolation verification.
+
+**Sprint 19 — Copilot Agent:**
+Privileged assistant running inside the control plane with full MongoDB + Fly Machines access plus subprocess-isolated Bash/file tools.
+
+*Isolation model:* Dedicated `magi-copilot` OS user (uid 60010) added to the control plane Docker image. Category A tools (Bash, WriteFile, EditFile, FetchUrl, SearchWeb, BrowseWeb) run via `sudo -u magi-copilot magi-node tool-executor.js` — no API keys in child env, workdir scoped to `/home/magi-copilot/workdir`. Category B tools (ListMissions, GetMissionStatus, ReadMissionMailbox, ReadMissionLog, ReadMissionFile, ListSchedule, ListTemplates, GetTemplate, ProposeAction) run in the main process with direct DB access.
+
+*`packages/control-plane/src/copilot-tools.ts`* — B1 read-only tools (eight tools) and B2 `ProposeAction`. `ProposeAction({ type, label, payload })` stores the intent in `PendingActionsStore` and pushes a `copilot-action` SSE event for operator confirmation; returns immediately so the agent can continue its turn. `PendingActionsStore` is an in-memory map shared between the daemon and router.
+
+*`packages/control-plane/src/copilot-daemon.ts`* — `startCopilotDaemon(db, repoRoot, modelId, pushEvent, pending)` — starts the watch loop. Watches the `mailbox` Change Stream for messages addressed to `missionId: "copilot"`, fetches and marks unread messages, calls `runCopilotTurn`. The turn loads conversation history (same `conversationMessages` collection as execution-plane agents), builds the system prompt from `copilot.yaml` with `{{mentalMap}}` substituted, assembles all tools, and calls `runInnerLoop` directly (no `WorkspaceManager` plumbing). Mental map snapshot is persisted on every AssistantMessage. `COPILOT_MISSION_ID = "copilot"` constant exported for router use.
+
+*`packages/control-plane/src/copilot-router.ts`* — `POST /api/copilot/message` inserts a message into the copilot mailbox (triggering the daemon's Change Stream). `GET /api/copilot/events` SSE stream pushed from `CopilotEventBus`. `POST /api/copilot/confirm { pendingActionId }` looks up the pending action and executes it (LaunchMission, SuspendMission, ResumeMission, WriteMissionFile, SaveTemplate, CancelSchedule, CreateSchedule); pushes `copilot-action-result` event. `POST /api/copilot/dismiss` removes a pending action without executing it.
+
+*`packages/control-plane/src/index.ts`* — copilot daemon started when `COPILOT_MISSION_ID` env var is set; copilot router mounted at `/api/copilot`; daemon stopped on SIGTERM/SIGINT.
+
+*`packages/control-plane/Dockerfile`* — added `acl`, `sudo` packages; `magi-shared` group (gid 60100); `magi-copilot` user (uid 60010); `magi-operator` user (uid 999); `magi-node` wrapper; sudoers rule (`magi-operator ALL=(magi-copilot) NOPASSWD: /usr/local/bin/magi-node`); copilot workdir `/home/magi-copilot/workdir`; copies `agent-runtime-worker/dist` (for `tool-executor.js`) and TypeScript source of all packages (so copilot can read the codebase via Bash).
+
+*`config/teams/copilot.yaml`* — copilot agent definition (id: copilot, supervisor: user). System prompt documents the two tool tiers, ProposeAction confirmation model, alert handling workflow, and codebase layout at `/app/packages/`.
+
+*Alert routing:* `orchestrator.ts` gains `copilotMailboxRepo?: MailboxRepository`; posts structured alert messages to the copilot mailbox on wall-clock timeout abort and non-transient agent errors. `daemon.ts` reads `COPILOT_MISSION_ID` and creates a `copilotMailboxRepo` when set.
+
+*Monitor server (`monitor-server.ts`):* Added `POST /files/shared/write` and `POST /files/workdir/:agentId/write` endpoints with path-traversal checks; used by the copilot's `WriteMissionFile` proposed action.
+
+*`packages/agent-runtime-worker/src/index.ts`* — new exports: `Message`, `AssistantMessage` (from pi-ai), `ConversationRepository`, `StoredMessage`, `createMongoConversationRepository`, `resolveModel`, `convertToLlm`, `createBashTool`, `createFetchUrlTool`, `tryCreateSearchWebTool`, `tryCreateBrowseWebTool`.
+
+*Control plane UI (`packages/control-plane/public/index.html`):* Added copilot chat panel: floating robot button (bottom-right), sliding side panel, chat bubbles (from-user / from-copilot / system), confirmation cards for `copilot-action` events (Confirm → `/api/copilot/confirm`, Dismiss → `/api/copilot/dismiss`), action result display, thinking indicator, SSE connection via cookie auth.
+
+**Sprint 20 — Control Plane UX (Extended): Unified Config Editor + Home Screen + Quick Launch + Agent Management + Skill Toggles:**
+
+Sprint 20 landed in two halves. The first half (base) built the three-column sidebar and raw block-editing tabs. The second half (extended) replaced raw textarea blocks with a structured config form and added home screen telemetry, quick launch, agent lifecycle controls, and skill toggles.
+
+*Base layout (Sprint 20 initial):* `#sidebar` (240 px, collapsible to 40 px icon strip) | `#detail-panel` (flex:1) | `#copilot-panel` (420 px, unchanged). Three-column layout replaces the two-column header-tab design. Single `state` object unifies all globals. `renderSidebar()` renders Templates + Missions sections; `selectItem(type, id)` + `renderDetail()` drive navigation.
+
+*Unified Config Editor (`renderConfigForm(type, id, config)`):* Replaces raw block textareas with a structured form. Mission tab (name, model, visionModel, advanced catchall textarea) + one agent tab per agent (name, role, linuxUser, supervisor, model, systemPrompt textarea, skills section, active checkbox, CodeMirror for mental map) + Files tab + Raw YAML (read-only). `state.configAgents` Map (keyed by `'t:id'` / `'m:id'`) is the authoritative agent list — populated by `renderConfigForm`, mutated by `addAgent`/`removeAgent`. YAML is reconstructed at save time via `buildAgentBlock` (js-yaml) + `buildMissionHeader`. 30-second poll re-renders only if the form is not dirty (no unsaved changes).
+
+*YAML utilities:* `parseAgentBlock(block)` parses a single `- id: ...` YAML agent stanza via `jsyaml.load`, preserving native types for `active` (boolean) and `disabledSkills` (array). `buildAgentBlock(fields)` serialises back to YAML; omits `active` when true (cleaner YAML), omits `disabledSkills` when empty. `KNOWN_AGENT_FIELDS` list drives the known/rest split. `availableSkills(teamFiles)` derives the available skill set from platform defaults + team skill files embedded in the template.
+
+*Agent active toggle:* Checkbox in each agent pane bound to `active` field. Unchecked → `active: false` written to YAML. `orchestrator.ts` skips `agent.active === false` in `dispatchReady()` so inactive agents do not receive dispatches. `active` and `disabledSkills` added as explicit optional fields in `AgentSchema` (before `.catchall()`) in `packages/agent-config/src/loader.ts`.
+
+*Skill toggles:* Checkbox row per available skill in each agent pane. Unchecked skills accumulate in `disabledSkills[]`. `prompt.ts` filters `agent.disabledSkills` out of the skills block before injecting into the system prompt.
+
+*Add / Remove agent:* `+ Agent` tab button calls `addAgent(type, id)` which pushes a blank agent into `state.configAgents` and injects a new tab + pane via `renderAgentPane()`. `removeAgent(type, id, agentId)` removes from `state.configAgents` and deletes the tab + pane from DOM. Remove button hidden when only one agent remains. Changes are included in the next `saveConfig()` call.
+
+*Home screen (`renderHome()`):* Shown in `#detail-panel` when `state.selected === null`. Renders clickable session cards for running/suspended missions. Each card shows: name, status badge, unread message count, spend (last hour / today / total), last activity (relative time), and a snippet from the most recent conversation message. Stats fetched from `GET /api/missions/stats` in parallel with the 30 s mission list poll via `loadStats()`.
+
+*Stats endpoint (`GET /api/missions/stats`):* Registered before `/:id` in `missions.ts` to avoid route shadowing. Runs three parallel MongoDB aggregations: unread counts from `mailbox` (read:false), spend breakdown from `llmCallLog` (total/today/lastHour grouped by `missionId`), last activity + snippet from `conversationMessages`.
+
+*Quick launch (`startSession(templateId)`):* Template save bar replaced with "Save template" + "Start session ›". `startSession` reconstructs YAML from current widget state, auto-generates `missionId = "${templateId}-${yyyymmdd}-${4hex}"`, posts to `POST /api/missions` with inline `teamConfigYaml`, opens execution dashboard in new tab, and selects the new mission in the sidebar.
+
+*POST /api/missions — inline YAML:* Extended to accept optional `teamConfigYaml` + `teamFiles` fields in the request body. When present, `parseTeamConfig` validates and `patchMissionId` injects the mission ID; template lookup is skipped. When absent, falls back to template lookup as before.
+
+*POST /api/templates (create):* New `POST /` route in `templates.ts` creates a new template document (409 if already exists). Enables `doSaveAsTemplate(missionId)` in the UI: inline name input in session save bar → slugified ID → `POST /api/templates`.
+
+*Session dual save bar:* Mission config form shows "Save config" + "Save as template…". "Save as template…" reveals an inline name input row; on confirm calls `doSaveAsTemplate`.
+
+*Copilot `save_session_config` action:* `ProposeAction` type added to `VALID_TYPES` and description in `copilot-tools.ts`. `executeAction()` case in `copilot-router.ts`: validates mission is suspended, calls `parseTeamConfig`, updates `missions` collection (`teamConfigYaml`, `teamFiles`), optionally updates `conversationMessages.mentalMapHtml` per-agent if `mentalMaps` map provided.
+
+*G-1 restart policy (closed):* `fly-machines.ts` `provisionMission()` now includes `restart: { policy: "on-failure", max_retries: 3 }` in the machine `config` object. Execution machines self-heal after crash/OOM up to 3 times without operator intervention.
+
+---
+
+## Sprint 21 — In-session context management + extended thinking
+
+Goal: prevent context from growing unboundedly within a single session by stubbing ephemeral tool results and old thinking blocks; give agents a path to recover pruned content; enable extended thinking on the primary model.
+
+**`src/context-utils.ts` (new):** `EPHEMERAL_TOOLS` — `Set` of tool names whose results are large and transient (Bash, SearchWeb, FetchUrl, BrowseWeb, ReadFile, InspectImage). `PRUNED_STUB` — the replacement text injected when a result is pruned. `pruneEphemeralResults(messages, keepLastRounds=2)` — two-pass scan: (1) replace `content` of ephemeral tool results from all rounds except the last `keepLastRounds` with the stub; (2) strip `{ type: "thinking" }` blocks from all assistant messages except the most recent one. Returns a new array; never mutates input. Already-stubbed results are skipped (idempotent). Durable tools (WriteFile, EditFile, PostMessage, …) are never touched.
+
+**`src/models.ts`:** `anthropicModel()` now accepts an optional `reasoning?: boolean` flag and propagates it into the `Model` object. `CLAUDE_SONNET` (`claude-sonnet-4-6`) updated: `reasoning: true`, `maxTokens: 32_000` (raised from 16k to give room for thinking budget alongside text output). `CLAUDE_HAIKU` intentionally left at `reasoning: false` — it is the fast vision model used for captioning in FetchUrl/InspectImage/BrowseWeb; extended thinking there would be wasteful.
+
+**`src/loop.ts`:** `InnerLoopConfig` gains `reasoning?: ThinkingLevel`. `callOpts` construction gates on both `config.reasoning` and `model.reasoning` so that non-thinking models are silently skipped. `MID_SESSION_PRUNE_THRESHOLD = 160_000` tokens (80% of 200k window); after each `assistantMessage` is pushed, `ctxSize = usage.input + usage.cacheRead` is checked — if it exceeds the threshold, `pruneEphemeralResults` runs and `messages.splice` replaces the array in-place. Only the live in-memory array is modified; MongoDB retains full content.
+
+**`src/reflection.ts`:** `convertToLlm` now calls `pruneEphemeralResults(out, 2)` before returning, so cross-session history loaded at session resume is already lean.
+
+**`src/conversation-repository.ts`:** `ConversationRepository` interface gains `findRelevant(agentId, missionId, query, limit)`. MongoDB implementation runs a case-insensitive regex search against `message.content` and `message.content.text` across ALL stored messages (no `compacted` filter — compacted messages are searchable). Over-fetches by 3× then trims to `limit`, extracting a 300-char excerpt window centered on the first match (100 chars before, 200 after).
+
+**`src/tools/analyze-memories.ts` (new):** `createAnalyzeMemoriesTool(cfg)` returns a `MagiTool` named `AnalyzeMemories`. Parent-process tool (not subprocess-isolated). Accepts `query` (required) and `limit` (default 5, max 20). Formats results as `[turn N | role/toolName | timestamp]\nexcerpt` blocks separated by `---`. Used by agents to recover tool outputs that were stubbed by mid-session or cross-session pruning.
+
+**`src/agent-runner.ts`:** `createAnalyzeMemoriesTool` added to the tool list (after `createResearchTool`). `reasoning: "medium"` passed to both `runInnerLoop` calls (main dispatch and retry). `"medium"` gives meaningful reasoning depth without the extreme cost of `"high"`.
+
+**`tests/context-pruning.unit.test.ts` (new):** 9 unit tests covering tool classification, stub behavior for old rounds, durable-tool preservation, idempotency, thinking-block stripping, thinking retention in the last round, finished-conversation behavior (all thinking stripped when last message is a no-tool assistant response), not-enough-rounds no-op, and empty array.

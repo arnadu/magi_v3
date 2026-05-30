@@ -371,9 +371,14 @@ flyctl apps destroy magi-missions-test-sprint16 --yes
 Open `https://magi-control-{suffix}.fly.dev` in a browser. After signing in:
 - **Mission list** — shows all missions with status, cost, machine state
 - **Open dashboard** button — proxies to the execution plane monitor at `:4000`; shows:
-  - SSE event stream (live agent messages, tool calls, mailbox activity)
-  - Sessions tree per agent (LLM calls → tool calls → mental map snapshots)
-  - Budget banner when `MAX_COST_USD` is reached
+  - **Chat panel** (left): all mailbox messages grouped by subject as chat threads; compose bar to inject messages
+  - **Activity tab**: collapsible sessions tree per agent (LLM calls → tool calls → mental map snapshots)
+  - **Mental Map tab**: agent's current mental map rendered inline
+  - **Files tab**: browse agent workdirs and the shared mission directory
+  - **Schedule tab**: pending scheduled messages with Cancel buttons
+  - **Log tab**: tail of `daemon.log` with refresh
+  - **Stats tab**: per-agent cost and context breakdown
+  - Budget banner when `MAX_COST_USD` is reached; Kill button (red) for graceful shutdown
 - **View Log** button — fetches the last 200 lines of `daemon.log` from the execution plane
 
 ### Daemon log

@@ -18,6 +18,7 @@ import { Type } from "@sinclair/typebox";
 import { runInnerLoop } from "../loop.js";
 import type { AclPolicy, MagiTool, ToolResult } from "../tools.js";
 import { createBashTool } from "../tools.js";
+import { tryCreateBrowseWebTool } from "./browse-web.js";
 import { createFetchUrlTool } from "./fetch-url.js";
 import { tryCreateSearchWebTool } from "./search-web.js";
 
@@ -218,19 +219,23 @@ export function createResearchTool(
 	sharedDir: string,
 	acl: AclPolicy,
 	opts?: {
+		/** Vision model for BrowseWeb and FetchUrl image captioning. Defaults to model. */
+		visionModel?: Model<string>;
 		onSubLoopMessage?: (
 			toolUseId: string,
 			msg: import("@mariozechner/pi-ai").Message,
 		) => Promise<void>;
 	},
 ): MagiTool {
-	// Build the sub-loop tool set once (stateless tools; safe to reuse).
+	const visionModel = opts?.visionModel ?? model;
+
+	// Stateless tools — built once and reused across Research calls.
 	const searchWebTool = tryCreateSearchWebTool();
-	const fetchUrlTool = createFetchUrlTool(model, sharedDir);
+	const fetchUrlTool = createFetchUrlTool(visionModel, sharedDir);
 	// Bash with sharedDir as cwd — permits reading artifacts, research index, etc.
 	const bashTool = createBashTool(sharedDir, acl);
 
-	const subLoopTools: MagiTool[] = [
+	const statelessTools: MagiTool[] = [
 		fetchUrlTool,
 		bashTool,
 		...(searchWebTool ? [searchWebTool] : []),
@@ -246,13 +251,14 @@ export function createResearchTool(
 		name: "Research",
 		description:
 			"Delegate a research question to a specialist sub-agent that searches the web, " +
-			"fetches sources, and returns a concise finding (200–500 words + source URLs). " +
+			"fetches sources (including JS-rendered pages via BrowseWeb), and returns a " +
+			"concise finding (200–500 words + source URLs). " +
 			"All intermediate web calls are isolated — they do not appear in your context. " +
 			"Findings are cached in the shared workspace; check the index before calling: " +
 			"`cat " +
 			sharedDir +
 			"/research/index.json 2>/dev/null | head -100`\n\n" +
-			"Use this tool instead of calling SearchWeb or FetchUrl directly. " +
+			"Use this tool instead of calling SearchWeb, FetchUrl, or BrowseWeb directly. " +
 			"It is far more token-efficient: only the synthesised finding enters your context.",
 		parameters: Type.Object({
 			question: Type.String({
@@ -374,6 +380,13 @@ export function createResearchTool(
 					: systemPrompt;
 
 			// 4. Run research sub-loop.
+			// BrowseWeb is stateful (browser session), so create a fresh handle per call
+			// and close it in a finally block regardless of success or failure.
+			const browseHandle = tryCreateBrowseWebTool(visionModel, sharedDir);
+			const subLoopTools = browseHandle
+				? [...statelessTools, browseHandle.tool]
+				: statelessTools;
+
 			let loopResult: Awaited<ReturnType<typeof runInnerLoop>>;
 			try {
 				loopResult = await runInnerLoop({
@@ -393,6 +406,8 @@ export function createResearchTool(
 				return toolErr(
 					`Research sub-loop failed: ${e instanceof Error ? e.message : String(e)}`,
 				);
+			} finally {
+				await browseHandle?.close();
 			}
 
 			// 5. Extract finding.

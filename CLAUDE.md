@@ -47,7 +47,9 @@ npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 - `MONITOR_PORT` (default: 4000; must be 1–65535)
 - `TOOL_PORT` (default: 4001; must be 1–65535)
 - `MAX_COST_USD` (spending cap; triggers budget-pause when reached)
+- `MAX_AGENT_RUN_SECONDS` (per-dispatch wall-clock timeout; default 14400 = 4 h; aborts hung agent runs)
 - `BRAVE_SEARCH_API_KEY` (enables SearchWeb; free tier: 2000 req/month)
+- `COPILOT_MISSION_ID` (control plane only; when set, starts the copilot daemon; value is the missionId for the copilot's mailbox and conversation history, typically `"copilot"`)
 
 **Data API keys** (forwarded to background jobs only — never to agent tool subprocesses):
 Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
@@ -85,71 +87,28 @@ See [MAGI_V3_SPEC.md](MAGI_V3_SPEC.md) for the full technical design and [docs/i
 
 ## Cloud Deployment (Fly.io)
 
-**Full deployment guide** (environment strategy, GitHub Actions setup, integration test environments, operations, cost reference, troubleshooting): [docs/deployment.md](docs/deployment.md)
-
-### One-command setup
-
 ```bash
-cp secrets.env.template secrets.env   # fill in ANTHROPIC_API_KEY, MONGODB_URI, CONTROL_API_KEY + optional data keys
-bash scripts/bootstrap.sh             # creates apps, sets secrets, builds + pushes image, deploys control plane
+cp secrets.env.template secrets.env   # fill in ANTHROPIC_API_KEY, MONGODB_URI, CONTROL_API_KEY
+bash scripts/bootstrap.sh             # creates apps, sets secrets, builds + deploys
 ```
 
-`bootstrap.sh` accepts `--suffix <name>` to create named instances. Prompted interactively if not passed.
-
-### App naming convention
-
-| Suffix | Apps | Purpose |
-|--------|------|---------|
-| `dev` | `magi-control-dev` / `magi-missions-dev` | CI target; auto-deployed on push to `main` |
-| `test-<label>` | `magi-control-test-hello-world` / … | Isolated integration test environments |
-| `prod-<usecase>` | `magi-control-prod-gold-digest` / … | Production missions |
-
-### Launching a mission
-
-The control plane UI at `https://magi-control-{suffix}.fly.dev` accepts Mission ID, Name, and Team config.
-
-Via API:
-```bash
-curl -X POST https://magi-control-dev.fly.dev/api/missions \
-  -H "X-API-Key: $CONTROL_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"missionId":"hw-001","name":"Smoke test","teamConfig":"test/hello-world"}'
-```
-
-### Team config paths
-
-Production team configs: `config/teams/{name}.yaml`. Test configs: `config/teams/test/{name}.yaml` (never shown in UI).
-
-| Config | teamConfig value | Purpose |
-|--------|-----------------|---------|
-| `config/teams/gold-digest.yaml` | `gold-digest` | Production gold market mission |
-| `config/teams/equity-research.yaml` | `equity-research` | Production equity research mission |
-| `config/teams/test/hello-world.yaml` | `test/hello-world` | Smoke test (1 agent) |
-| `config/teams/test/word-count.yaml` | `test/word-count` | Multi-agent integration test |
+Full guide (app naming, GitHub Actions, integration test environments, operations, cost, troubleshooting): [docs/deployment.md](docs/deployment.md)
 
 ---
 
 ## Sprint Roadmap
 
+Full history: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md)
+
 | Sprint | Status | Focus |
 |--------|--------|-------|
-| 0 | ✅ Done | Architecture freeze: six ADRs in `docs/adr/` |
-| 1 | ✅ Done | Inner loop: `runInnerLoop`, 3 tools, MongoDB persistence, CLI, integration test |
-| 2 | ✅ Done | Multi-agent: YAML team config (Zod), mailbox, orchestration loop, supervisor-depth ordering, 5 tools |
-| 3 | ✅ Done | Web search, fetch, artifacts: `FetchUrl`, `InspectImage`, `SearchWeb`; `@path` upload; artifact model |
-| 4 | ✅ Done | Identity, workspace, ACL enforcement: OS-isolated tool execution, `AclPolicy`, `WorkspaceManager`, `tool-executor.ts` |
-| 5 | ✅ Done | Agent Skills: discovery, 3 platform defaults; Bash-based access via sharedDir copy; `provision()` runs `git init` |
-| 6 | ✅ Done | Persistent daemon (MongoDB Change Stream sleep), conversation persistence (ADR-0008), scheduling infra |
-| 7 | ✅ Done | `BrowseWeb` (Stagehand/Playwright): JS rendering, interactive tasks, session persistence, SSRF blocking |
-| 8 | ✅ Done | Equity research MVP: 4-agent NVDA team, `schedule-task` skill, daily brief + L/S rec + performance tracker |
-| 9 | ✅ Done | Context management: session-boundary compaction, reflection (ADR-0009), LLM call audit log |
-| 10 | ✅ Done | Agentic tools: Research tool (nested inner loop, isolated context, shared index) (ADR-0010) |
-| 11 | ✅ Done | Dashboard UX (sessions tree, budget pause, mental map iframe); workspace persistence; `cli:reset` |
-| 12 | ✅ Done | Data factory + secondary model + Tool IPC server + background jobs (ADR-0011) |
-| 13 | ✅ Done | Hardening and launch prep |
-| 14 | ✅ Done | Cloud Infrastructure MVP: Fly.io execution plane, control plane, proxy, scheduler |
-| 15 | ✅ Done | Developer onboarding: `bootstrap.sh`, `.dockerignore`, daemon log viewer, test config relocation |
-| 16 | ✅ Done | Model selection in team YAML (OpenRouter), F-002 SSRF fix, agent-error SSE + dashboard banner, MongoDB-backed templates with provision-time YAML injection, `seed-templates` script |
+| 21 | ✅ Done | Context management (in-session): `pruneEphemeralResults`, thinking-block stripping, mid-session prune at 160k tokens, `AnalyzeMemories` tool, extended thinking on `CLAUDE_SONNET` |
+| 22 | ✅ Done | Copilot unification + config-driven tool library: copilot calls `runAgent` via `additionalTools`; `disabledTools` per-agent YAML; Tier A/B tool library documented in SPEC |
+| 23 | ⬜ Planned | Auth + multi-user: Firebase Auth, `userId` on missions, per-user usage tracking, one copilot per user, fix F-008/F-009/F-016 |
+| 24 | ⬜ Planned | Budget hardening + resilience: hard per-mission spend cap, copilot budget tools, G-2/G-3 |
+| 25 | ⬜ Planned | File I/O: upload to sharedDir, download artifacts, G-4 disk monitoring |
+| 26 | ⬜ Planned | Unified UX + rich artifacts: in-app mission drill-down (iframe panel), shared nav, Mermaid/KaTeX/image rendering |
+| 27 | ⬜ Planned | Launch hardening: G-5 alerting, onboarding flow, usage dashboard, security review |
 
 ## Code Quality
 
@@ -193,6 +152,28 @@ See `docs/security/CLAUDE.md` for the full security practice, and `/security-rev
 
 ---
 
+## Operational Resilience
+
+Operational resilience is applied **continuously during development**. These are the triggers — moments where you pause and reason about failure modes regardless of what feature you're building.
+
+**New long-running process or background loop** — What happens if it crashes or hangs? Is there a watchdog or timeout? Does a stale PID or lock file block the next startup?
+
+**New persistence write** — Is there an atomicity window where a crash leaves state inconsistent? What is lost vs. preserved if the process is killed mid-write? Is the write in a `.finally()` block?
+
+**New scheduled or time-driven action** — What happens if the process is down when the trigger fires? Is there a catch-up scan on restart, or is the action silently skipped?
+
+**New external dependency** — What is the failure mode when the dependency is unavailable (transient vs. extended)? Does the calling code retry? Does it degrade gracefully or freeze?
+
+**New file or volume write** — Can the volume fill up? Is there any monitoring or alerting? What happens to the mission if writes start failing?
+
+**New in-process computation or tool call** — Can it hang indefinitely? Is it guarded by a timeout and AbortSignal? Is the timeout surfaced to the operator?
+
+**Operational resilience is never optional.** When a new component reaches production, its failure mode must be documented in `docs/operational-resilience.md` before the sprint closes.
+
+See `docs/operational-resilience.md` for the full FMEA analysis and gap backlog. Use `/operational-resilience` to review and update the document after a sprint.
+
+---
+
 ## Documentation
 
 Documentation updates go in the **same commit as the code change**. Documentation written a week later is written from memory.
@@ -203,6 +184,7 @@ Documentation updates go in the **same commit as the code change**. Documentatio
 |---|---|
 | New architectural decision (technology, schema, design pattern) | New ADR in `docs/adr/`; link from sprint table |
 | New trust boundary, external service, `sudo` rule, or IPC port | `docs/security/threat-model.md` |
+| New component with failure modes, new external dependency, new scheduled action | `docs/operational-resilience.md` |
 | New or changed env var, CLI flag, or build command | `CLAUDE.md` Commands section |
 | New cloud deployment step or Fly.io operational quirk | `docs/deployment.md` |
 | New agent capability, tool, or inter-agent protocol | `MAGI_V3_SPEC.md` (relevant section) |
@@ -220,8 +202,9 @@ Sprint close is a **confirmation pass** — this work should already be done. If
 1. **Lint and tests pass** — `npm run lint && npm test`
 2. **Security review confirmed** — `/security-review` was run for any new external surface during the sprint; CRITICAL/HIGH findings are fixed; others are logged in `docs/security/findings.md`
 3. **Threat model current** — any new external HTTP call, `sudo` rule, process user, or IPC port was documented in `docs/security/threat-model.md` in the same commit as the code
-4. **ADRs written** — any decision between concrete alternatives has an ADR in `docs/adr/`; superseded ADRs are marked
-5. **CLAUDE.md sprint table** — mark `✅ Done` with a one-line summary
+4. **Operational resilience current** — run `/operational-resilience`; any new component's failure modes are documented in `docs/operational-resilience.md`; any closed gaps are removed from the gap table
+5. **ADRs written** — any decision between concrete alternatives has an ADR in `docs/adr/`; superseded ADRs are marked
+6. **CLAUDE.md sprint table** — mark `✅ Done` with a one-line summary
 
 Use `/sprint-close` to run checks 1–2 automatically.
 
@@ -233,6 +216,7 @@ Three tiers:
 
 - **Unit tests** — pure, deterministic logic only (config validation, ACL policy, HTML patching). `npm test`, no LLM calls, no network.
 - **Integration tests** — real LLM calls with deterministic-outcome prompts. Full stack including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` and `MONGODB_URI`. Each test uses a unique `missionId`; `afterEach` cleans up with `deleteMany({ missionId })`.
+- **Dashboard UI test** (`tests/dashboard.integration.test.ts`) — headless Playwright test that spins up a real `MonitorServer` + orchestration loop on a free port and drives the full operator-message → agent-reply round-trip through the browser UI. Run with `npm run test:integration -- "dashboard"`. Also requires pool users (`setup-dev.sh`). Use this when debugging or changing the dashboard to confirm the SSE message flow end-to-end without a running daemon.
 - **Evaluation tests** (`eval/`) — golden scenarios for structural/policy outcomes. Run on demand, not in CI.
 
 Test runner: **vitest** — native ESM, no build step. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.
@@ -240,19 +224,6 @@ Test runner: **vitest** — native ESM, no build step. Config: `vitest.config.ts
 Do not write tests for prompt wording, LLM tool selection choices, or report content quality — those belong in the evaluation harness.
 
 ## Known Pitfalls
-
-**Pool users and setup-dev.sh (local dev)**
-
-All three symptoms below — `sudo: a password is required`, `401 Unauthorized` from magi-job, and sudo password prompts in the daemon terminal — mean `setup-dev.sh` has not been run (or not since pool users / wrappers were added). Always run with:
-```bash
-sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
-```
-Re-run whenever you upgrade Node or switch nvm versions (the wrapper `/usr/local/bin/magi-node` is updated in-place; plain `sudo` strips nvm from PATH and would exec the wrong node). The `/etc/sudoers.d/magi` must include `Defaults:%magi-shared !authenticate` to suppress PAM prompts for commands that will be denied.
-
-**Port 4000 already in use**
-```bash
-lsof -ti tcp:4000 | xargs kill -9
-```
 
 **`File is not defined` on Node 18**
 The daemon entry point uses `--import ./dist/node-polyfill.js`. If you see this from a different entry point, add the same `--import` flag.
@@ -262,40 +233,6 @@ The daemon entry point uses `--import ./dist/node-polyfill.js`. If you see this 
 import cronParser from "cron-parser";
 const { parseExpression } = cronParser;
 ```
-
-**PEP 668 / `magi-python3` must be a wrapper script, not a symlink**
-Debian 12+ forbids pip into system Python. Setup: `sudo env NODE_BIN=$(which node) scripts/setup-dev.sh` creates `/opt/magi/venv` and writes the wrapper `/usr/local/bin/magi-python3`. A symlink breaks venv path resolution — re-run `setup-dev.sh` to fix.
-
-**Fly.io: app-level secrets NOT injected into Machines API machines**
-`flyctl secrets set` applies to `flyctl deploy`-managed machines only. `fly-machines.ts` explicitly passes all required secrets in the machine `env` at creation time. For execution-plane apps (machines-only, no deploy), use `flyctl machine update <id> --env KEY=value` to update machine env directly.
-
-**Fly.io: `flyctl secrets set --stage` + `flyctl deploy` drops staged secrets**
-Always use `flyctl secrets set` without `--stage` before deploying a control plane app.
-
-**Fly.io: V2 apps require `cpu_kind`/`cpus`/`memory` in `[[vm]]`, not `size`**
-```toml
-[[vm]]
-  cpu_kind = "shared"
-  cpus = 1
-  memory = "256mb"
-```
-The V1 `size = "shared-cpu-1x"` field is silently accepted but results in no machine being created.
-
-**All control planes sharing the same `MONGODB_URI` share the `missions` collection**
-Use separate MongoDB databases (different URI `dbName` suffix) for true isolation between prod and dev.
-
-**Test instances can reuse the dev worker image**
-```bash
-flyctl secrets set -a magi-control-test-hello-world FLY_MISSIONS_IMAGE="registry.fly.io/magi-missions-dev:latest"
-```
-
-## Quality Requirements
-
-- Every claim in a report requires source references and links to evidence lineage in the UI
-- Confidence scores required for forecasts
-- Conflicting signals force a review task (no silent averaging)
-- Alert actions (`ack`, `escalate`, `snooze`) must be durable and auditable
-- Permission denials must be visible and actionable, not silent failures
 
 ## Technology Stack
 

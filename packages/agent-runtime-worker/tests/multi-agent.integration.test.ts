@@ -136,7 +136,7 @@ describe("integration: multi-agent word count + conversation persistence", () =>
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
 					workspaceManager,
-					maxCycles: 20,
+					maxRuns: 20,
 					onUserMessage: (msg) => {
 						userMessages.push(msg);
 						console.log(`\n[→ USER from ${msg.from}] ${msg.subject}`);

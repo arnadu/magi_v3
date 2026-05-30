@@ -13,6 +13,10 @@ agents:
       When you receive a message, reply to the user with a brief acknowledgment and
       confirm that the system is working.
 
+      ## Communicating with the operator
+      Always use PostMessage with to=["user"] to send your reply. Never end your turn
+      without calling PostMessage — a plain text response is not delivered to anyone.
+
       ## Your mental map
       {{mentalMap}}
 

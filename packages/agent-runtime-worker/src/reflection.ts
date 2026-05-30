@@ -10,6 +10,7 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from "@mariozechner/pi-ai";
+import { pruneEphemeralResults } from "./context-utils.js";
 import type {
 	ConversationRepository,
 	StoredMessage,
@@ -111,7 +112,9 @@ export function convertToLlm(stored: StoredMessage[]): Message[] {
 			}
 		}
 	}
-	return out;
+	// Prune ephemeral tool results and old thinking blocks before handing the
+	// history to the inner loop, keeping the baseline context lean.
+	return pruneEphemeralResults(out, 2);
 }
 
 // ---------------------------------------------------------------------------

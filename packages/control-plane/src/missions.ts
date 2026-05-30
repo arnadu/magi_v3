@@ -4,20 +4,28 @@
  * POST   /api/missions              — provision a new mission
  * GET    /api/missions              — list all missions
  * GET    /api/missions/:id          — get one mission
+ * GET    /api/missions/:id/config   — get full YAML config + live mental maps
+ * PUT    /api/missions/:id/config   — update YAML config + mental maps (suspended only)
  * POST   /api/missions/:id/suspend  — stop execution machine
- * POST   /api/missions/:id/resume   — start execution machine
+ * POST   /api/missions/:id/resume   — start execution machine (injects updated YAML)
  * DELETE /api/missions/:id          — destroy machine + volume (irreversible)
  */
 
+import { parseTeamConfig } from "@magi/agent-config";
 import type { Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
 import {
+	destroyLocal,
 	destroyMission,
 	getMachineState,
+	isLocalExecution,
+	provisionLocal,
 	provisionMission,
 	resumeMission,
 	suspendMission,
+	updateLocalMissionConfig,
+	updateMachineTeamConfig,
 } from "./fly-machines.js";
 import { getTemplate, patchMissionId } from "./templates.js";
 
@@ -25,6 +33,10 @@ interface MissionDoc {
 	missionId: string;
 	name: string;
 	teamConfig: string;
+	/** Full YAML stored at provision time; updated on config edit. */
+	teamConfigYaml?: string;
+	/** Team files (skills, etc.) stored at provision time; updated on config edit. */
+	teamFiles?: Array<{ path: string; content: string }>;
 	machineId?: string;
 	privateIp?: string;
 	volumeId?: string;
@@ -41,6 +53,88 @@ export function createMissionsRouter(db: Db): Router {
 	router.get("/", async (_req, res) => {
 		const missions = await col.find({}, { sort: { createdAt: -1 } }).toArray();
 		res.json(missions);
+	});
+
+	// Per-mission telemetry — registered before /:id to avoid route shadowing.
+	router.get("/stats", async (_req, res) => {
+		const missions = await col
+			.find(
+				{ status: { $ne: "destroyed" } },
+				{ projection: { missionId: 1, _id: 0 } },
+			)
+			.toArray();
+		const missionIds = missions.map((m) => m.missionId);
+
+		const now = new Date();
+		const oneHourAgo = new Date(now.getTime() - 3_600_000);
+		const todayStart = new Date(
+			now.getFullYear(),
+			now.getMonth(),
+			now.getDate(),
+		);
+
+		const [unreadCounts, spendDocs, lastActivityDocs] = await Promise.all([
+			db
+				.collection("mailbox")
+				.aggregate([
+					{ $match: { missionId: { $in: missionIds }, read: false } },
+					{ $group: { _id: "$missionId", count: { $sum: 1 } } },
+				])
+				.toArray(),
+			db
+				.collection("llmCallLog")
+				.aggregate([
+					{ $match: { missionId: { $in: missionIds } } },
+					{
+						$group: {
+							_id: "$missionId",
+							total: { $sum: "$cost" },
+							today: {
+								$sum: {
+									$cond: [{ $gte: ["$createdAt", todayStart] }, "$cost", 0],
+								},
+							},
+							lastHour: {
+								$sum: {
+									$cond: [{ $gte: ["$createdAt", oneHourAgo] }, "$cost", 0],
+								},
+							},
+						},
+					},
+				])
+				.toArray(),
+			db
+				.collection("conversationMessages")
+				.aggregate([
+					{ $match: { missionId: { $in: missionIds } } },
+					{ $sort: { createdAt: -1 } },
+					{
+						$group: {
+							_id: "$missionId",
+							lastActivity: { $first: "$createdAt" },
+							snippet: { $first: "$content" },
+						},
+					},
+				])
+				.toArray(),
+		]);
+
+		const stats: Record<string, object> = {};
+		for (const id of missionIds) {
+			const u = unreadCounts.find((d) => d._id === id);
+			const s = spendDocs.find((d) => d._id === id);
+			const a = lastActivityDocs.find((d) => d._id === id);
+			stats[id] = {
+				unread: u?.count ?? 0,
+				spendTotal: s?.total ?? 0,
+				spendToday: s?.today ?? 0,
+				spendLastHour: s?.lastHour ?? 0,
+				lastActivity: a?.lastActivity ?? null,
+				snippet:
+					typeof a?.snippet === "string" ? a.snippet.slice(0, 120) : null,
+			};
+		}
+		res.json(stats);
 	});
 
 	// Get one mission.
@@ -69,18 +163,144 @@ export function createMissionsRouter(db: Db): Router {
 		res.json(mission);
 	});
 
+	// Get full config for editing — YAML + live mental maps per agent.
+	router.get("/:id/config", async (req, res) => {
+		const mission = await col.findOne({ missionId: req.params.id });
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		if (!mission.teamConfigYaml) {
+			res.status(404).json({ error: "No config stored for this mission" });
+			return;
+		}
+
+		// Extract agent IDs from YAML to look up live mental maps.
+		const agentIds = extractAgentIds(mission.teamConfigYaml);
+		const mentalMaps: Record<string, string> = {};
+		const convCol = db.collection("conversationMessages");
+		for (const agentId of agentIds) {
+			const doc = await convCol.findOne(
+				{
+					agentId,
+					missionId: mission.missionId,
+					mentalMapHtml: { $exists: true },
+				},
+				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+			);
+			if (doc?.mentalMapHtml) {
+				mentalMaps[agentId] = doc.mentalMapHtml as string;
+			}
+		}
+
+		res.json({
+			teamConfigYaml: mission.teamConfigYaml,
+			teamFiles: mission.teamFiles ?? [],
+			mentalMaps,
+		});
+	});
+
+	// Update config (YAML + mental maps). Mission must be suspended.
+	router.put("/:id/config", async (req, res) => {
+		const mission = await col.findOne({ missionId: req.params.id });
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		if (mission.status !== "suspended") {
+			res
+				.status(409)
+				.json({ error: "Mission must be suspended before editing config" });
+			return;
+		}
+
+		const { teamConfigYaml, teamFiles, mentalMaps } = req.body as {
+			teamConfigYaml?: string;
+			teamFiles?: Array<{ path: string; content: string }>;
+			mentalMaps?: Record<string, string>;
+		};
+		if (typeof teamConfigYaml !== "string") {
+			res.status(400).json({ error: "teamConfigYaml is required" });
+			return;
+		}
+		try {
+			parseTeamConfig(teamConfigYaml);
+		} catch (e) {
+			res
+				.status(400)
+				.json({ error: `Invalid team config: ${(e as Error).message}` });
+			return;
+		}
+
+		await col.updateOne(
+			{ missionId: req.params.id },
+			{
+				$set: {
+					teamConfigYaml,
+					teamFiles: teamFiles ?? [],
+					updatedAt: new Date(),
+				},
+			},
+		);
+
+		// Update live mental maps in conversationMessages if provided.
+		if (mentalMaps && Object.keys(mentalMaps).length > 0) {
+			const convCol = db.collection("conversationMessages");
+			for (const [agentId, html] of Object.entries(mentalMaps)) {
+				const latest = await convCol.findOne(
+					{
+						agentId,
+						missionId: req.params.id,
+						mentalMapHtml: { $exists: true },
+					},
+					{ sort: { turnNumber: -1, seqInTurn: -1 } },
+				);
+				if (latest) {
+					await convCol.updateOne(
+						{ _id: latest._id },
+						{ $set: { mentalMapHtml: html } },
+					);
+				}
+				// If no record found: mission never ran; initialMentalMap in the YAML is sufficient.
+			}
+		}
+
+		res.json({ ok: true });
+	});
+
 	// Provision a new mission.
 	router.post("/", async (req, res) => {
-		const { missionId, name, teamConfig } = req.body as {
+		const {
+			missionId,
+			name,
+			teamConfig,
+			teamConfigYaml: inlineYaml,
+			teamFiles: inlineFiles,
+		} = req.body as {
 			missionId?: string;
 			name?: string;
 			teamConfig?: string;
+			teamConfigYaml?: string;
+			teamFiles?: Array<{ path: string; content: string }>;
 		};
 		if (!missionId || !name || !teamConfig) {
 			res
 				.status(400)
 				.json({ error: "missionId, name, and teamConfig are required" });
 			return;
+		}
+
+		// Validate inline YAML before inserting the record so a bad payload
+		// never leaves a stuck "provisioning" document.
+		if (inlineYaml) {
+			try {
+				parseTeamConfig(inlineYaml);
+			} catch (e) {
+				res
+					.status(400)
+					.json({ error: `Invalid teamConfigYaml: ${(e as Error).message}` });
+				return;
+			}
 		}
 
 		const existing = await col.findOne({ missionId });
@@ -100,22 +320,36 @@ export function createMissionsRouter(db: Db): Router {
 		await col.insertOne(doc);
 
 		try {
-			// Look up the template in MongoDB. If found, inject the YAML onto the
-			// volume at provision time so team configs are editable without image rebuilds.
-			const template = await getTemplate(db, teamConfig);
-			const teamConfigYaml = template
-				? patchMissionId(template.teamConfigYaml, missionId)
-				: undefined;
-			if (!template) {
-				console.warn(
-					`[missions] No template found for "${teamConfig}" — falling back to baked-in image path`,
-				);
+			// Caller-supplied YAML takes precedence over template lookup.
+			// This allows the UI to launch a customised session without saving
+			// a separate template record.
+			let resolvedYaml: string | undefined;
+			let resolvedFiles: Array<{ path: string; content: string }> = [];
+
+			if (inlineYaml) {
+				resolvedYaml = patchMissionId(inlineYaml, missionId);
+				resolvedFiles = inlineFiles ?? [];
+			} else {
+				const template = await getTemplate(db, teamConfig);
+				if (template) {
+					resolvedYaml = patchMissionId(template.teamConfigYaml, missionId);
+					resolvedFiles = template.teamFiles ?? [];
+				} else {
+					console.warn(
+						`[missions] No template found for "${teamConfig}" — falling back to baked-in image path`,
+					);
+				}
 			}
 
-			const handle = await provisionMission(missionId, teamConfig, {
-				teamConfigYaml,
-				teamFiles: template?.teamFiles,
-			});
+			const handle = isLocalExecution()
+				? provisionLocal(missionId, {
+						teamConfigYaml: resolvedYaml,
+						teamFiles: resolvedFiles,
+					})
+				: await provisionMission(missionId, teamConfig, {
+						teamConfigYaml: resolvedYaml,
+						teamFiles: resolvedFiles,
+					});
 			await col.updateOne(
 				{ missionId },
 				{
@@ -123,6 +357,8 @@ export function createMissionsRouter(db: Db): Router {
 						machineId: handle.machineId,
 						privateIp: handle.privateIp,
 						volumeId: handle.volumeId,
+						teamConfigYaml: resolvedYaml,
+						teamFiles: resolvedFiles,
 						status: "running",
 						updatedAt: new Date(),
 					},
@@ -146,7 +382,9 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 		try {
-			await suspendMission(mission.machineId);
+			if (!mission.machineId.startsWith("local-")) {
+				await suspendMission(mission.machineId);
+			}
 			await col.updateOne(
 				{ missionId: req.params.id },
 				{ $set: { status: "suspended", updatedAt: new Date() } },
@@ -157,7 +395,7 @@ export function createMissionsRouter(db: Db): Router {
 		}
 	});
 
-	// Resume.
+	// Resume — push latest YAML to machine env before starting.
 	router.post("/:id/resume", async (req, res) => {
 		const mission = await col.findOne({ missionId: req.params.id });
 		if (!mission?.machineId) {
@@ -165,7 +403,26 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 		try {
-			await resumeMission(mission.machineId);
+			if (mission.machineId.startsWith("local-")) {
+				// Re-write config files so the developer can restart the daemon.
+				if (mission.teamConfigYaml) {
+					updateLocalMissionConfig(
+						req.params.id,
+						mission.teamConfigYaml,
+						mission.teamFiles ?? [],
+					);
+				}
+			} else {
+				// Push updated YAML to Fly machine env so daemon overwrites volume file on next boot.
+				if (mission.teamConfigYaml) {
+					await updateMachineTeamConfig(
+						mission.machineId,
+						mission.teamConfigYaml,
+						mission.teamFiles ?? [],
+					);
+				}
+				await resumeMission(mission.machineId);
+			}
 			await col.updateOne(
 				{ missionId: req.params.id },
 				{ $set: { status: "running", updatedAt: new Date() } },
@@ -183,17 +440,12 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
-		if (!mission.machineId || !mission.volumeId) {
-			// No Fly resources — just mark destroyed.
-			await col.updateOne(
-				{ missionId: req.params.id },
-				{ $set: { status: "destroyed", updatedAt: new Date() } },
-			);
-			res.json({ status: "destroyed" });
-			return;
-		}
 		try {
-			await destroyMission(mission.machineId, mission.volumeId);
+			if (mission.machineId?.startsWith("local-")) {
+				destroyLocal(req.params.id);
+			} else if (mission.machineId && mission.volumeId) {
+				await destroyMission(mission.machineId, mission.volumeId);
+			}
 			await col.updateOne(
 				{ missionId: req.params.id },
 				{ $set: { status: "destroyed", updatedAt: new Date() } },
@@ -205,6 +457,15 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	return router;
+}
+
+/** Extract all agent IDs from a team YAML using the `  - id:` sequence item pattern. */
+function extractAgentIds(yaml: string): string[] {
+	const ids: string[] = [];
+	for (const m of yaml.matchAll(/^ {2}- id:\s*(\S+)/gm)) {
+		ids.push(m[1]);
+	}
+	return ids;
 }
 
 function liveStateToStatus(flyState: string): MissionDoc["status"] {

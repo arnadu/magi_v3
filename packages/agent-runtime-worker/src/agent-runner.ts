@@ -12,12 +12,13 @@ import { createMailboxTools } from "./mailbox.js";
 import { createMentalMapTool, initMentalMap } from "./mental-map.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
+import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
 import { createInspectImageTool } from "./tools/inspect-image.js";
 import { createResearchTool } from "./tools/research.js";
 import { tryCreateSearchWebTool } from "./tools/search-web.js";
-import type { AclPolicy } from "./tools.js";
+import type { AclPolicy, MagiTool } from "./tools.js";
 import { createFileTools } from "./tools.js";
 import type { AgentIdentity } from "./workspace-manager.js";
 
@@ -62,6 +63,13 @@ export interface AgentRunContext {
 	onMessage?: (msg: Message, allMessages: Message[]) => Promise<void>;
 	/** Called when UpdateMentalMap changes the agent's mental map. Used for SSE push to dashboard. */
 	onMentalMapUpdate?: (agentId: string, html: string) => void;
+	/**
+	 * Extra tools appended after the standard Tier-A tool list.
+	 * Intended for caller-provided tools that require infrastructure not available
+	 * inside agent-runner (e.g. the copilot's elevated MongoDB/Fly tools).
+	 * These are never filtered by agent.disabledTools.
+	 */
+	additionalTools?: MagiTool[];
 }
 
 // ---------------------------------------------------------------------------
@@ -325,10 +333,18 @@ export async function runAgent(
 		]);
 	};
 
+	// Track whether the agent posted to its supervisor this turn.
+	const supervisorId = agent.supervisor ?? "user";
+	let postedToSupervisor = false;
+	let lastAssistantText = "";
+
 	const tools = [
 		...createFileTools(workdir, acl),
 		...createMailboxTools(ctx.mailboxRepo, ctx.teamConfig, agentId, {
 			onUserMessage: ctx.onUserMessage,
+			onPost: (msg) => {
+				if (msg.to.includes(supervisorId)) postedToSupervisor = true;
+			},
 		}),
 		createMentalMapTool(
 			() => currentMentalMapHtml,
@@ -340,17 +356,38 @@ export async function runAgent(
 		createFetchUrlTool(visionModel, sharedDir),
 		createInspectImageTool(workdir, visionModel, [sharedDir]),
 		createResearchTool(ctx.model, sharedDir, researchAcl, {
+			visionModel,
 			onSubLoopMessage: appendSubLoop,
+		}),
+		createAnalyzeMemoriesTool({
+			conversationRepo: ctx.conversationRepo,
+			agentId,
+			missionId,
 		}),
 		...(searchWebTool ? [searchWebTool] : []),
 		...(browseWebHandle ? [browseWebHandle.tool] : []),
 	];
+
+	// Apply disabledTools filter (Tier A only), then append additionalTools (Tier B, never filtered).
+	const disabledToolNames = new Set(agent.disabledTools ?? []);
+	const effectiveTools =
+		disabledToolNames.size > 0
+			? [
+					...tools.filter((t) => !disabledToolNames.has(t.name)),
+					...(ctx.additionalTools ?? []),
+				]
+			: [...tools, ...(ctx.additionalTools ?? [])];
 
 	// Persist each message immediately as it arrives. Uses activeTurnNumber via
 	// closure so the retry can update the turn without rebuilding the handler.
 	const onMessageHandler = async (msg: Message, allMessages: Message[]) => {
 		if (msg.role === "assistant") {
 			currentCallSeq++;
+			// Capture the last plain-text reply for use in the auto-post fallback.
+			const textContent = msg.content.find((b) => b.type === "text");
+			if (textContent && "text" in textContent && textContent.text.trim()) {
+				lastAssistantText = textContent.text.trim();
+			}
 			const snapshotHtml = currentMentalMapHtml;
 			await ctx.conversationRepo.append(agentId, missionId, [
 				{
@@ -372,16 +409,21 @@ export async function runAgent(
 		await ctx.onMessage?.(msg, allMessages);
 	};
 
+	// True when at least one incoming message originated from the supervisor.
+	// Used to decide whether the auto-post safety net should fire.
+	const supervisorTriggered = messages.some((m) => m.from === supervisorId);
+
 	try {
 		const result = await runInnerLoop({
 			model: ctx.model,
 			getSystemPrompt,
 			task,
-			tools,
+			tools: effectiveTools,
 			signal,
 			previousMessages,
 			onMessage: onMessageHandler,
 			onLlmCall: makeOnLlmCall(activeTurnNumber, false),
+			reasoning: "medium",
 		});
 
 		// Detect a conversation structure error on the very first LLM call.
@@ -420,6 +462,28 @@ export async function runAgent(
 				previousMessages: convertToLlm(cleanHistory),
 				onMessage: onMessageHandler,
 				onLlmCall: makeOnLlmCall(activeTurnNumber, false),
+				reasoning: "medium",
+			});
+		}
+
+		// Safety net: if the supervisor triggered this run but the agent never
+		// posted back to them, auto-post a brief status message so the operator
+		// always sees an acknowledgment.
+		if (supervisorTriggered && !postedToSupervisor && !signal?.aborted) {
+			const fallbackBody = lastAssistantText || "Task completed.";
+			const incomingSubject = messages[0]?.subject ?? "";
+			const autoSubject = incomingSubject
+				? `Re: ${incomingSubject}`
+				: "Re: (no subject)";
+			console.warn(
+				`[runAgent] ${agentId}: no PostMessage to supervisor "${supervisorId}" — sending auto-reply`,
+			);
+			await ctx.mailboxRepo.post({
+				missionId,
+				from: agentId,
+				to: [supervisorId],
+				subject: autoSubject,
+				body: fallbackBody,
 			});
 		}
 	} finally {

@@ -6,7 +6,7 @@ import type { Model } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
 import { Type } from "@sinclair/typebox";
 import { JSDOM } from "jsdom";
-import { chromium, type Page as PlaywrightPage } from "playwright-core";
+import { chromium } from "playwright-core";
 import {
 	type ArtifactMeta,
 	type FileEntry,
@@ -123,7 +123,6 @@ function createBrowseWebHandle(
 	// so the full browser automation trace is available for debugging.
 	const sessionId = new Date().toISOString().replace(/[:.]/g, "-");
 	const logsDir = join(sharedDir, "logs");
-	mkdirSync(logsDir, { recursive: true });
 	const logFile = join(logsDir, `browse-web-${sessionId}.ndjson`);
 
 	function writeLog(entry: Record<string, unknown>): void {
@@ -164,6 +163,9 @@ function createBrowseWebHandle(
 		if (initPromise) return initPromise;
 
 		initPromise = (async () => {
+			// Create the logs dir lazily so agents that never call BrowseWeb don't
+			// require write access to sharedDir at startup.
+			mkdirSync(logsDir, { recursive: true });
 			// Chromium profile dir — must be an absolute Linux path.
 			// On WSL2 Stagehand's chrome-launcher would otherwise call `wslpath -w`
 			// and produce a UNC path (\\wsl.localhost\...) which Playwright receives
@@ -192,47 +194,10 @@ function createBrowseWebHandle(
 				initPromise = null;
 				throw e;
 			}
-			// Install SSRF route interception on the initial page. Catches document
-			// navigations, XHR, and fetch requests initiated by agent().execute()
-			// (link clicks, JS redirects) that bypass the pre-navigation check on
-			// page.goto(). Static subresources (images, CSS, scripts) are passed
-			// through without DNS lookup to keep page load latency acceptable.
-			// Limitation: new tabs/popups opened during execute() get a fresh Page
-			// object and will NOT inherit this handler — that case requires browser-
-			// context-level interception, which V3Context does not expose publicly.
-			// Cast to Playwright Page: Stagehand's activePage() returns its own
-			// narrower Page type that omits route() in its TypeScript declarations,
-			// but the underlying object is a real Playwright Page at runtime.
-			const initialPage = sh.context.activePage() as unknown as
-				| PlaywrightPage
-				| undefined;
-			if (initialPage) {
-				await initialPage.route("**/*", async (route) => {
-					const req = route.request();
-					const rt = req.resourceType();
-					if (rt === "document" || rt === "xhr" || rt === "fetch") {
-						try {
-							const parsed = new URL(req.url());
-							if (
-								(parsed.protocol === "http:" || parsed.protocol === "https:") &&
-								(await isPrivateHost(parsed.hostname, allowedHosts))
-							) {
-								writeLog({
-									ts: new Date().toISOString(),
-									event: "ssrf_blocked_route",
-									url: req.url(),
-									resourceType: rt,
-								});
-								await route.abort("blockedbyclient");
-								return;
-							}
-						} catch {
-							// URL parse failure — let browser handle it
-						}
-					}
-					await route.continue();
-				});
-			}
+			// Stagehand V3 replaced Playwright's Page with a custom CDP-based Page
+			// that does not expose route(). Pre-navigation (isPrivateHost before goto)
+			// and post-redirect checks remain the primary SSRF defences; JS-initiated
+			// request interception is not available in this Stagehand version.
 			stagehand = sh;
 			return sh;
 		})();

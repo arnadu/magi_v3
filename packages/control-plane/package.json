@@ -10,6 +10,8 @@
 	},
 	"dependencies": {
 		"@magi/agent-config": "*",
+		"@magi/agent-runtime-worker": "*",
+		"@sinclair/typebox": "^0.34.41",
 		"dotenv": "^17.3.1",
 		"express": "^4.18.0",
 		"http-proxy-middleware": "^3.0.0",

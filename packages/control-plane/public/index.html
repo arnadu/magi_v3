@@ -7,198 +7,284 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    body {
+    html, body {
+      height: 100%; overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f1117;
-      color: #e2e8f0;
-      min-height: 100vh;
+      background: #f8fafc; color: #1e293b;
     }
+    body { display: flex; flex-direction: column; }
 
+    /* ── Header ──────────────────────────────────────────────────────────────── */
     header {
-      background: #1a1d27;
-      border-bottom: 1px solid #2d3148;
-      padding: 0 24px;
-      height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      background: #ffffff; border-bottom: 1px solid #cbd5e1;
+      padding: 0 20px; height: 48px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0; gap: 12px;
     }
+    header h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.08em; color: #7c3aed; }
+    header .hdr-status { font-size: 13px; color: #64748b; }
 
-    header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.05em; color: #a78bfa; }
-    header span { font-size: 13px; color: #64748b; }
-
-    #sign-in-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 100;
-    }
-
-    #sign-in-box {
-      background: #1a1d27;
-      border: 1px solid #2d3148;
-      border-radius: 12px;
-      padding: 32px;
-      width: 360px;
-    }
-
-    #sign-in-box h2 { font-size: 20px; margin-bottom: 8px; }
-    #sign-in-box .tagline { font-size: 13px; color: #64748b; margin-bottom: 24px; }
-
-    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
-
-    input[type="password"], input[type="text"], select {
-      width: 100%;
-      background: #0f1117;
-      border: 1px solid #2d3148;
-      border-radius: 6px;
-      color: #e2e8f0;
-      font-size: 14px;
-      padding: 10px 12px;
-      outline: none;
-      transition: border-color 0.15s;
-      appearance: none;
-    }
-    input:focus, select:focus { border-color: #a78bfa; }
-
-    .error-msg { font-size: 12px; color: #f87171; margin-top: 8px; min-height: 16px; }
-
-    button {
-      cursor: pointer;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 500;
-      padding: 10px 16px;
-      transition: opacity 0.15s;
-    }
+    /* ── Buttons ─────────────────────────────────────────────────────────────── */
+    button { cursor: pointer; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; padding: 10px 16px; transition: opacity 0.15s; }
     button:hover { opacity: 0.85; }
     button:disabled { opacity: 0.4; cursor: default; }
-
     .btn-primary { background: #7c3aed; color: #fff; }
-    .btn-danger  { background: #991b1b; color: #fff; }
-    .btn-warning { background: #92400e; color: #fff; }
-    .btn-success { background: #065f46; color: #fff; }
-    .btn-ghost   { background: #1e2235; color: #94a3b8; border: 1px solid #2d3148; }
+    .btn-danger  { background: #dc2626; color: #fff; }
+    .btn-warning { background: #d97706; color: #fff; }
+    .btn-success { background: #059669; color: #fff; }
+    .btn-ghost   { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    .btn-sm      { padding: 6px 12px; font-size: 13px; }
 
-    main { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
-
-    .section-title {
-      font-size: 13px; font-weight: 600; letter-spacing: 0.08em;
-      text-transform: uppercase; color: #64748b;
-      margin-bottom: 16px;
-    }
-
-    /* Launch panel */
-    #launch-panel {
-      background: #1a1d27;
-      border: 1px solid #2d3148;
-      border-radius: 10px;
-      padding: 20px 24px;
-      margin-bottom: 32px;
-    }
-
-    #launch-panel h2 { font-size: 15px; margin-bottom: 16px; }
-
-    .launch-form {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr auto;
-      gap: 12px;
-      align-items: end;
-    }
-
-    .launch-form .field label { margin-bottom: 6px; }
-
-    /* Mission list */
-    #mission-list { display: flex; flex-direction: column; gap: 12px; }
-
-    .mission-card {
-      background: #1a1d27;
-      border: 1px solid #2d3148;
-      border-radius: 10px;
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .mission-info { flex: 1; min-width: 0; }
-    .mission-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .mission-meta { font-size: 12px; color: #64748b; }
-
-    .status-badge {
-      display: inline-block;
-      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
-      padding: 2px 8px; border-radius: 99px;
-    }
-    .status-running      { background: #064e3b; color: #6ee7b7; }
-    .status-suspended    { background: #1e3a5f; color: #93c5fd; }
-    .status-provisioning { background: #3b2f00; color: #fcd34d; }
-    .status-error        { background: #450a0a; color: #fca5a5; }
-    .status-destroyed    { background: #1e1e1e; color: #52525b; }
-
-    .mission-actions { display: flex; gap: 8px; flex-shrink: 0; }
-
-    .empty-state {
-      text-align: center;
-      padding: 48px 0;
-      color: #475569;
-      font-size: 14px;
-    }
-
-    #toast {
-      position: fixed; bottom: 24px; right: 24px;
-      background: #1a1d27; border: 1px solid #2d3148;
-      border-radius: 8px; padding: 12px 16px;
-      font-size: 14px; color: #e2e8f0;
-      opacity: 0; pointer-events: none;
-      transition: opacity 0.2s;
-      z-index: 200;
-    }
-    #toast.show { opacity: 1; }
-    #toast.error { border-color: #7f1d1d; color: #fca5a5; }
-
-    .spinner {
-      display: inline-block;
-      width: 12px; height: 12px;
-      border: 2px solid rgba(255,255,255,0.2);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      vertical-align: middle;
-      margin-right: 6px;
-    }
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(0,0,0,0.15); border-top-color: #7c3aed; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .confirm-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.6);
-      display: none; align-items: center; justify-content: center;
-      z-index: 150;
+    /* ── Sign-in overlay ─────────────────────────────────────────────────────── */
+    #sign-in-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    #sign-in-box { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 32px; width: 360px; }
+    #sign-in-box h2 { font-size: 20px; margin-bottom: 8px; }
+    #sign-in-box .tagline { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+    label { display: block; font-size: 13px; color: #475569; margin-bottom: 6px; }
+    input[type="password"], input[type="text"] { width: 100%; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; color: #1e293b; font-size: 14px; padding: 10px 12px; outline: none; transition: border-color 0.15s; }
+    input:focus { border-color: #7c3aed; }
+    .error-msg { font-size: 12px; color: #dc2626; margin-top: 8px; min-height: 16px; }
+
+    /* ── Three-column layout ─────────────────────────────────────────────────── */
+    #layout { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: 240px; flex-shrink: 0;
+      background: #ffffff; border-right: 1px solid #cbd5e1;
+      display: flex; flex-direction: column; overflow: hidden;
+      transition: width 0.2s ease;
     }
+    #sidebar.collapsed { width: 40px; }
+
+    .sb-header {
+      padding: 10px 8px; display: flex; justify-content: flex-end; align-items: center;
+      flex-shrink: 0; border-bottom: 1px solid #cbd5e1;
+    }
+    #sidebar.collapsed .sb-header { justify-content: center; }
+
+    .sb-collapse-btn { background: none; border: none; color: #64748b; font-size: 14px; cursor: pointer; padding: 4px 8px; border-radius: 4px; line-height: 1; }
+    .sb-collapse-btn:hover { color: #1e293b; background: #f1f5f9; opacity: 1; }
+
+    .sb-body { flex: 1; overflow-y: auto; padding: 10px 0; }
+
+    .sb-section { margin-bottom: 4px; }
+
+    .sb-section-title {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+      color: #94a3b8; padding: 8px 14px 4px;
+      display: flex; align-items: center; gap: 6px; white-space: nowrap;
+    }
+    #sidebar.collapsed .sb-section-title { visibility: hidden; height: 28px; }
+
+    .sb-item {
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 14px; cursor: pointer; white-space: nowrap; overflow: hidden;
+      border-left: 2px solid transparent;
+    }
+    .sb-item:hover { background: #f1f5f9; }
+    .sb-item.active { background: #f1f5f9; border-left-color: #7c3aed; }
+    #sidebar.collapsed .sb-item { padding: 7px 0; justify-content: center; }
+
+    .sb-item-icon { font-size: 12px; color: #94a3b8; flex-shrink: 0; }
+    .sb-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .sb-item-name { font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; color: #475569; }
+    .sb-item.active .sb-item-name { color: #7c3aed; }
+    .sb-item.active .sb-item-icon { color: #7c3aed; }
+    #sidebar.collapsed .sb-item-name { display: none; }
+
+    .sb-empty { padding: 4px 14px; font-size: 12px; color: #94a3b8; }
+
+    .nav-badge { display: inline-block; background: #dcfce7; color: #059669; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 99px; }
+
+    /* ── Detail panel ────────────────────────────────────────────────────────── */
+    #detail-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+    .detail-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 14px; text-align: center; padding: 40px; }
+
+    .detail-header { padding: 20px 24px 0; flex-shrink: 0; }
+    .detail-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .detail-subtitle { font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-bottom: 4px; }
+    .detail-subtitle code { font-size: 12px; }
+
+    .detail-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+
+    /* ── Detail tabs ─────────────────────────────────────────────────────────── */
+    .dtab-bar { display: flex; border-bottom: 1px solid #cbd5e1; padding: 0 8px; gap: 0; flex-shrink: 0; overflow-x: auto; margin-top: 12px; }
+    .dtab { background: none; border: none; border-bottom: 2px solid transparent; color: #64748b; font-size: 13px; padding: 10px 14px 9px; cursor: pointer; border-radius: 0; flex-shrink: 0; white-space: nowrap; }
+    .dtab:hover { color: #1e293b; opacity: 1; }
+    .dtab.active { color: #7c3aed; border-bottom-color: #7c3aed; }
+
+    .dtab-pane { display: none; }
+    .dtab-pane.active { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+
+    /* ── Block editor ────────────────────────────────────────────────────────── */
+    .block-editor {
+      flex: 1; min-height: 0; width: 100%;
+      background: #f8fafc; border: none;
+      color: #334155; font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12px; line-height: 1.65; padding: 14px 16px;
+      resize: none; outline: none;
+    }
+    .block-editor:focus { background: #f1f5f9; color: #1e293b; }
+
+    .raw-yaml-pre { flex: 1; min-height: 0; overflow-y: auto; background: #f8fafc; color: #475569; font-family: "SF Mono", "Fira Code", monospace; font-size: 11px; line-height: 1.65; padding: 14px 16px; white-space: pre; margin: 0; }
+
+    .files-scroll { flex: 1; overflow-y: auto; padding: 16px; min-height: 0; }
+
+    /* ── File rows ───────────────────────────────────────────────────────────── */
+    .tmpl-file-list { display: flex; flex-direction: column; gap: 6px; }
+    .tmpl-file-row { border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; }
+    .tmpl-file-header { display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #f1f5f9; }
+    .tmpl-file-path { flex: 1; background: transparent; border: none; color: #475569; font-family: monospace; font-size: 12px; outline: none; min-width: 0; }
+    .tmpl-file-path:focus { color: #1e293b; }
+    .tmpl-file-toggle { background: none; border: none; color: #94a3b8; font-size: 10px; padding: 2px 6px; cursor: pointer; flex-shrink: 0; transition: transform 0.15s; }
+    .tmpl-file-row.open .tmpl-file-toggle { transform: rotate(90deg); }
+    .tmpl-file-toggle:hover { color: #475569; opacity: 1; }
+    .tmpl-file-remove { background: none; border: none; color: #94a3b8; font-size: 14px; padding: 2px 4px; cursor: pointer; flex-shrink: 0; line-height: 1; }
+    .tmpl-file-remove:hover { color: #dc2626; opacity: 1; }
+    .file-content-editor { display: none; width: 100%; background: #f8fafc; border: none; border-top: 1px solid #cbd5e1; color: #334155; font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; line-height: 1.65; padding: 12px 14px; resize: vertical; min-height: 100px; max-height: 320px; outline: none; }
+    .tmpl-file-row.open .file-content-editor { display: block; }
+    .file-content-editor:focus { background: #ffffff; }
+    .add-file-btn { margin-top: 8px; font-size: 13px; padding: 7px 14px; }
+
+    /* ── Save bar ────────────────────────────────────────────────────────────── */
+    .save-bar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #cbd5e1; flex-shrink: 0; background: #f8fafc; }
+    .save-status { font-size: 12px; color: #64748b; }
+    .save-status.ok  { color: #059669; }
+    .save-status.err { color: #dc2626; }
+
+    /* ── Mission detail ───────────────────────────────────────────────────────── */
+    .mission-detail-body { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+    .section-title { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; margin-bottom: 10px; }
+    .mission-actions-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .detail-table { border-collapse: collapse; font-size: 13px; }
+    .detail-table td { padding: 5px 16px 5px 0; vertical-align: top; }
+    .detail-table td:first-child { color: #64748b; white-space: nowrap; }
+    .detail-table code { font-size: 12px; }
+
+    /* ── Status badges ───────────────────────────────────────────────────────── */
+    .status-badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 99px; }
+    .status-running      { background: #dcfce7; color: #059669; }
+    .status-suspended    { background: #dbeafe; color: #2563eb; }
+    .status-provisioning { background: #fefce8; color: #d97706; }
+    .status-error        { background: #fee2e2; color: #dc2626; }
+    .status-destroyed    { background: #f1f5f9; color: #94a3b8; }
+
+    .empty-state { text-align: center; padding: 40px 0; color: #94a3b8; font-size: 14px; }
+
+    /* ── Toast ───────────────────────────────────────────────────────────────── */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; font-size: 14px; color: #1e293b; opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 200; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    #toast.show  { opacity: 1; }
+    #toast.error { border-color: #fca5a5; color: #dc2626; }
+
+    /* ── Confirm overlay ─────────────────────────────────────────────────────── */
+    .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 150; }
     .confirm-overlay.open { display: flex; }
-    .confirm-box {
-      background: #1a1d27;
-      border: 1px solid #7f1d1d;
-      border-radius: 10px;
-      padding: 28px;
-      width: 340px;
-    }
+    .confirm-box { background: #ffffff; border: 1px solid #fca5a5; border-radius: 10px; padding: 28px; width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
     .confirm-box h3 { font-size: 16px; margin-bottom: 10px; }
-    .confirm-box p { font-size: 13px; color: #94a3b8; margin-bottom: 20px; }
+    .confirm-box p  { font-size: 13px; color: #475569; margin-bottom: 20px; }
     .confirm-box .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
 
-    @media (max-width: 640px) {
-      .launch-form { grid-template-columns: 1fr; }
-      .mission-actions { flex-wrap: wrap; }
+    /* ── Copilot panel ───────────────────────────────────────────────────────── */
+    #copilot-panel { width: 420px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #cbd5e1; display: flex; flex-direction: column; overflow: hidden; }
+    #copilot-header { padding: 14px 20px; border-bottom: 1px solid #cbd5e1; flex-shrink: 0; }
+    #copilot-header h3 { font-size: 15px; font-weight: 600; color: #7c3aed; }
+    #copilot-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .cop-bubble { max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
+    .cop-bubble.from-copilot { background: #f1f5f9; color: #1e293b; align-self: flex-start; border-bottom-left-radius: 4px; }
+    .cop-bubble.from-user    { background: #7c3aed; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .cop-bubble.system-msg   { color: #94a3b8; font-size: 12px; font-style: italic; align-self: center; }
+    .cop-action-card { background: #faf5ff; border: 1px solid #c4b5fd; border-radius: 10px; padding: 14px 16px; font-size: 13px; align-self: flex-start; width: 100%; }
+    .cop-action-card .action-label { font-weight: 600; color: #7c3aed; margin-bottom: 4px; }
+    .cop-action-card .action-type  { color: #64748b; font-size: 11px; margin-bottom: 10px; font-family: monospace; }
+    .cop-action-card .action-btns  { display: flex; gap: 8px; }
+    .cop-action-card.resolved { border-color: #cbd5e1; background: #f8fafc; }
+    .cop-action-card .action-result { font-size: 12px; color: #059669; margin-top: 8px; }
+    .cop-action-card .action-result.error { color: #dc2626; }
+    #copilot-thinking { font-size: 12px; color: #64748b; font-style: italic; padding: 4px 16px; display: none; flex-shrink: 0; }
+    #copilot-thinking.active { display: block; }
+    .cop-activity { font-size: 11px; padding: 2px 12px 2px 10px; align-self: stretch; font-family: monospace; border-left: 2px solid #e2e8f0; margin: 1px 0; color: #94a3b8; word-break: break-all; white-space: pre-wrap; }
+    .cop-activity.tool-call   { color: #7c3aed; border-left-color: #ddd6fe; }
+    .cop-activity.tool-result { color: #059669; border-left-color: #a7f3d0; }
+    .cop-activity.tool-error  { color: #dc2626; border-left-color: #fca5a5; }
+    #copilot-input-area { padding: 12px 16px; border-top: 1px solid #cbd5e1; display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; }
+    #copilot-input { flex: 1; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; color: #1e293b; font-size: 14px; font-family: inherit; padding: 10px 12px; resize: none; outline: none; min-height: 40px; max-height: 120px; overflow-y: auto; }
+    #copilot-input:focus { border-color: #7c3aed; }
+
+    /* ── CodeMirror light theme adjustments ─────────────────────────────────── */
+    .CodeMirror { font-size: 13px; height: auto; }
+    .CodeMirror-scroll { max-height: 320px; }
+
+    /* ── Config form fields ──────────────────────────────────────────────────── */
+    .form-scroll { flex: 1; overflow-y: auto; padding: 16px 24px; min-height: 0; }
+    .field-group { margin-bottom: 14px; }
+    .field-label { font-size: 11px; color: #64748b; margin-bottom: 4px; display: block; }
+    .field-input { width: 100%; box-sizing: border-box; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; color: #1e293b; padding: 6px 8px; font-size: 13px; font-family: inherit; outline: none; transition: border-color 0.15s; }
+    .field-input:focus { border-color: #7c3aed; }
+    .field-input:disabled { opacity: 0.45; cursor: default; }
+    .field-textarea { font-family: "SF Mono", "Fira Code", monospace; resize: vertical; min-height: 80px; }
+    .field-adv { min-height: 60px; color: #475569; font-size: 12px; }
+    .field-sp { min-height: 160px; }
+    .field-section { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 8px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+    .field-src { font-size: 11px; color: #94a3b8; margin-bottom: 6px; display: block; }
+    .agent-id-badge { font-family: monospace; font-size: 11px; color: #94a3b8; margin-bottom: 12px; }
+    .cm-wrap { border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
+    .cm-disabled .CodeMirror { opacity: 0.45; }
+    .edit-gate-banner { background: #fffbeb; border: 1px solid #d97706; color: #92400e; padding: 8px 12px; border-radius: 6px; margin: 0 24px 12px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+
+    /* ── Skill toggles ───────────────────────────────────────────────────────── */
+    .skill-toggle-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12px; color:#334155; cursor:pointer; }
+    .skill-toggle-row input[type=checkbox] { accent-color:#7c3aed; width:14px; height:14px; flex-shrink:0; }
+    .skill-toggle-row input:disabled { opacity:0.45; cursor:default; }
+    /* ── Agent active row ────────────────────────────────────────────────────── */
+    .agent-active-row .field-label { display:flex; align-items:center; gap:6px; font-size:12px; color:#334155; cursor:pointer; user-select:none; }
+    .agent-active-row .field-label input[type=checkbox] { accent-color:#7c3aed; width:14px; height:14px; }
+    /* ── Home screen session cards ───────────────────────────────────────────── */
+    .home-screen { padding:20px; overflow-y:auto; flex:1; }
+    .home-title  { font-size:16px; font-weight:600; color:#1e293b; margin-bottom:16px; }
+    .home-empty  { padding:40px 20px; color:#94a3b8; text-align:center; font-size:13px; }
+    .session-card { background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:14px 16px; margin-bottom:12px; cursor:pointer; transition:border-color .15s; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+    .session-card:hover { border-color:#94a3b8; }
+    .card-header  { display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+    .card-name    { font-weight:600; color:#1e293b; font-size:14px; }
+    .stat-badge   { font-size:11px; padding:2px 6px; border-radius:4px; }
+    .stat-unread  { background:#ede9fe; color:#7c3aed; border:1px solid #c4b5fd; }
+    .card-stats   { display:flex; gap:12px; font-size:11px; color:#64748b; flex-wrap:wrap; }
+    .card-activity { color:#94a3b8; }
+    .card-snippet { margin-top:6px; font-size:11px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    /* ── Save-as-template inline row ─────────────────────────────────────────── */
+    .save-as-tpl-row { display:none; gap:8px; align-items:center; padding:8px 16px; border-top:1px solid #e2e8f0; background:#f8fafc; flex-shrink:0; }
+    .save-as-tpl-input { flex:1; max-width:220px; }
+    /* ── Add agent tab button ────────────────────────────────────────────────── */
+    .dtab-add { font-size:11px; color:#64748b; border:1px dashed #cbd5e1; }
+    .dtab-add:hover { color:#7c3aed; border-color:#7c3aed; opacity:1; }
+    /* ── Small extra-small button ────────────────────────────────────────────── */
+    .btn-xs { padding:2px 8px; font-size:11px; }
+
+    /* ── Responsive ──────────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      html, body { overflow: auto; }
+      #layout { flex-direction: column; overflow: visible; }
+      #sidebar { width: 100%; height: auto; border-right: none; border-bottom: 1px solid #cbd5e1; }
+      #sidebar.collapsed { width: 100%; height: 40px; }
+      #detail-panel { overflow: visible; min-height: 400px; }
+      #copilot-panel { width: 100%; border-left: none; border-top: 1px solid #cbd5e1; height: 320px; flex-shrink: 0; }
     }
   </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/mode/xml/xml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 </head>
 <body>
 
 <header>
-  <h1>MAGI Control Plane</h1>
-  <span id="header-status">—</span>
+  <h1>MAGI</h1>
+  <span class="hdr-status" id="header-status">—</span>
 </header>
 
 <!-- Sign-in overlay -->
@@ -213,41 +299,54 @@
   </div>
 </div>
 
-<main>
-  <!-- Launch a new mission -->
-  <div id="launch-panel">
-    <h2>Launch a mission</h2>
-    <div class="launch-form">
-      <div class="field">
-        <label for="new-name">Mission name</label>
-        <input type="text" id="new-name" placeholder="e.g. gold-digest-001" />
+<div id="layout">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sb-header">
+      <button type="button" class="sb-collapse-btn" id="sb-collapse-btn" onclick="toggleSidebar()">‹</button>
+    </div>
+    <div class="sb-body">
+      <div class="sb-section">
+        <div class="sb-section-title">Templates</div>
+        <div id="sidebar-templates"><div class="sb-empty">Loading…</div></div>
       </div>
-      <div class="field">
-        <label for="new-id">Mission ID</label>
-        <input type="text" id="new-id" placeholder="e.g. gd-001" />
+      <div class="sb-section">
+        <div class="sb-section-title">
+          Missions <span id="running-badge" class="nav-badge" style="display:none">0</span>
+        </div>
+        <div id="sidebar-missions"><div class="sb-empty">Loading…</div></div>
       </div>
-      <div class="field">
-        <label for="new-team">Team config</label>
-        <select id="new-team">
-          <option value="">Loading templates…</option>
-        </select>
-      </div>
-      <button type="button" class="btn-primary" id="launch-btn">Launch</button>
     </div>
   </div>
 
-  <!-- Mission list -->
-  <div class="section-title">Active missions</div>
-  <div id="mission-list">
-    <div class="empty-state" id="loading-state">Loading…</div>
+  <!-- Detail panel -->
+  <div id="detail-panel">
+    <div class="detail-empty">Select a template or mission from the sidebar.</div>
   </div>
-</main>
+
+  <!-- Copilot pane (unchanged) -->
+  <div id="copilot-panel">
+    <div id="copilot-header">
+      <h3>MAGI Copilot</h3>
+    </div>
+    <div id="copilot-messages">
+      <div class="cop-bubble system-msg">Copilot is ready. Ask a question or describe a task.</div>
+    </div>
+    <div id="copilot-thinking">Copilot is thinking…</div>
+    <div id="copilot-input-area">
+      <textarea id="copilot-input" rows="1" placeholder="Message the copilot…"></textarea>
+      <button type="button" class="btn-primary" id="copilot-send">Send</button>
+    </div>
+  </div>
+
+</div>
 
 <!-- Confirm destroy dialog -->
 <div class="confirm-overlay" id="confirm-overlay">
   <div class="confirm-box">
     <h3>Destroy mission?</h3>
-    <p id="confirm-msg">This will permanently delete the machine and its volume. All workspace data will be lost.</p>
+    <p id="confirm-msg">This will permanently delete the machine and its volume.</p>
     <div class="confirm-actions">
       <button type="button" class="btn-ghost" id="confirm-cancel">Cancel</button>
       <button type="button" class="btn-danger" id="confirm-ok">Destroy</button>
@@ -257,12 +356,12 @@
 
 <!-- Log viewer modal -->
 <div class="confirm-overlay" id="log-overlay" style="display:none">
-  <div class="confirm-box" style="max-width:800px;width:90%;max-height:80vh;display:flex;flex-direction:column">
+  <div class="confirm-box" style="max-width:800px;width:90%;max-height:80vh;display:flex;flex-direction:column;border-color:#2d3148">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h3 style="margin:0">Daemon Log</h3>
       <div>
-        <button type="button" class="btn-ghost" id="log-refresh-btn" style="margin-right:8px">Refresh</button>
-        <button type="button" class="btn-ghost" id="log-close-btn">Close</button>
+        <button type="button" class="btn-ghost btn-sm" id="log-refresh-btn" style="margin-right:8px">Refresh</button>
+        <button type="button" class="btn-ghost btn-sm" id="log-close-btn">Close</button>
       </div>
     </div>
     <pre id="log-content" style="flex:1;overflow-y:auto;background:#0d0f1a;padding:12px;border-radius:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:#94a3b8;max-height:60vh"></pre>
@@ -277,46 +376,204 @@
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   const SESSION_KEY = 'magi_session';
-
-  function getKey() {
-    return localStorage.getItem(SESSION_KEY) || '';
-  }
-
-  function setKey(key) {
-    localStorage.setItem(SESSION_KEY, key);
+  function getKey() { return localStorage.getItem(SESSION_KEY) || ''; }
+  function setKey(k) {
+    localStorage.setItem(SESSION_KEY, k);
     // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API not available in all browsers; server reads this cookie for auth.
-    document.cookie = `magi_session=${encodeURIComponent(key)}; path=/; SameSite=Strict`;
+    document.cookie = `magi_session=${encodeURIComponent(k)}; path=/; SameSite=Strict`;
   }
-
-  function authHeaders() {
-    return { 'Authorization': `Bearer ${getKey()}`, 'Content-Type': 'application/json' };
-  }
-
+  function authHeaders() { return { 'Authorization': `Bearer ${getKey()}`, 'Content-Type': 'application/json' }; }
   async function apiFetch(path, opts = {}) {
-    const res = await fetch(path, {
-      ...opts,
-      headers: { ...authHeaders(), ...(opts.headers || {}) },
-    });
+    const res = await fetch(path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
     if (res.status === 401) { showSignIn(); return null; }
     return res;
   }
 
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // ── State ─────────────────────────────────────────────────────────────────
+
+  const state = {
+    templates: [],            // [{id, name}]
+    missions:  [],            // [{missionId, name, status, teamConfig, createdAt, updatedAt}]
+    templateCache: new Map(), // templateId → {id, name, teamConfigYaml, teamFiles}
+    missionConfigCache: new Map(), // missionId → {teamConfigYaml, teamFiles, mentalMaps}
+    cmEditors: new Map(),     // "cm-${ctxKey}-${agentId}" → CodeMirror instance
+    configAgents: new Map(),  // ctxKey → [parsedAgentFields] — mutated by add/remove agent
+    sessionStats: {},         // { [missionId]: { unread, spendLastHour, spendToday, spendTotal, lastActivity, snippet } }
+    selected: null,           // {type: 'template'|'mission', id} | null
+    sidebarCollapsed: false,
+  };
+
+  // ── YAML utilities ────────────────────────────────────────────────────────
+
+  // Split YAML into header + per-agent raw blocks (used for tab labels + raw preview).
+  function parseYamlBlocks(yaml) {
+    const normalized = yaml.replace(/\r\n/g, '\n');
+    const m = normalized.match(/^agents:\s*$/m);
+    if (!m) return { header: normalized, agents: [] };
+
+    const headerEnd = m.index + m[0].length + 1;
+    const header = normalized.slice(0, headerEnd);
+    const rest   = normalized.slice(headerEnd);
+
+    const lines = rest.split('\n');
+    const rawBlocks = [];
+    let cur = null;
+    for (const line of lines) {
+      if (/^ {2}- id:/.test(line)) {
+        if (cur !== null) rawBlocks.push(cur);
+        cur = [line];
+      } else if (cur !== null) {
+        cur.push(line);
+      }
+    }
+    if (cur !== null) rawBlocks.push(cur);
+
+    const agents = rawBlocks.map(bLines => {
+      const block = bLines.join('\n');
+      const id = (block.match(/^\s*-\s+id:\s*(\S+)/) || [])[1] || 'unknown';
+      const nm = (block.match(/^\s+name:\s*["']?([^"'\n]+)/m) || [])[1] || id;
+      return { id, name: nm.trim().replace(/["']$/, ''), block };
+    });
+
+    return { header, agents };
+  }
+
+  const KNOWN_AGENT_FIELDS  = ['id', 'name', 'role', 'linuxUser', 'supervisor', 'model', 'systemPrompt', 'initialMentalMap', 'active', 'disabledSkills'];
+  const KNOWN_MISSION_FIELDS = ['id', 'name', 'model', 'visionModel'];
+
+  // Parse a raw agent block ("  - id: foo\n    name: bar\n...") into widget values.
+  function parseAgentBlock(block) {
+    try {
+      const deindented = block.split('\n').map(l => l.slice(2)).join('\n');
+      const items = jsyaml.load(deindented);
+      const agent = (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object') ? items[0] : {};
+      const known = {};
+      const rest  = {};
+      for (const [k, v] of Object.entries(agent)) {
+        if (KNOWN_AGENT_FIELDS.includes(k)) known[k] = v; // preserve type (bool, array, etc.)
+        else rest[k] = v;
+      }
+      return {
+        id:              String(known.id              ?? ''),
+        name:            String(known.name            ?? ''),
+        role:            String(known.role            ?? ''),
+        linuxUser:       String(known.linuxUser       ?? ''),
+        supervisor:      String(known.supervisor      ?? ''),
+        model:           String(known.model           ?? ''),
+        systemPrompt:    String(known.systemPrompt    ?? ''),
+        initialMentalMap: String(known.initialMentalMap ?? ''),
+        active:          known.active !== false,  // true unless explicitly false
+        disabledSkills:  Array.isArray(known.disabledSkills) ? known.disabledSkills : [],
+        advanced: Object.keys(rest).length > 0 ? jsyaml.dump(rest, { lineWidth: -1, indent: 2 }) : '',
+      };
+    } catch {
+      const id = (block.match(/^\s*-\s+id:\s*(\S+)/) || [])[1] || 'unknown';
+      return { id, name: id, role: '', linuxUser: '', supervisor: '', model: '', systemPrompt: '', initialMentalMap: '', active: true, disabledSkills: [], advanced: '' };
+    }
+  }
+
+  // Rebuild a raw agent block from widget values.
+  function buildAgentBlock(fields) {
+    const obj = {};
+    // String-valued known fields (skip id-like, active, disabledSkills — handled separately)
+    const STRING_AGENT_FIELDS = ['id', 'name', 'role', 'linuxUser', 'supervisor', 'model', 'systemPrompt', 'initialMentalMap'];
+    for (const k of STRING_AGENT_FIELDS) {
+      const v = fields[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') obj[k] = String(v);
+    }
+    // Only emit active:false when explicitly disabled (omit true to keep YAML clean)
+    if (fields.active === false) obj.active = false;
+    // Only emit disabledSkills when non-empty
+    if (Array.isArray(fields.disabledSkills) && fields.disabledSkills.length > 0) {
+      obj.disabledSkills = fields.disabledSkills;
+    }
+    if (fields.advanced?.trim()) {
+      try {
+        const extra = jsyaml.load(fields.advanced);
+        if (extra && typeof extra === 'object') Object.assign(obj, extra);
+      } catch { /* ignore malformed advanced */ }
+    }
+    const raw = jsyaml.dump([obj], { lineWidth: -1, indent: 2 }).trimEnd();
+    // raw is a YAML sequence "- id: ...\n  name: ...\n..." — re-indent with 2 extra spaces
+    const lines = raw.split('\n');
+    return `  ${lines[0]}\n${lines.slice(1).map(l => `  ${l}`).join('\n')}`;
+  }
+
+  // Return list of skill names available for a config (platform + team skills from files).
+  function availableSkills(teamFiles) {
+    const platform = ['git-provenance', 'skill-creator', 'inter-agent-comms', 'run-background', 'schedule-task'];
+    const team = (teamFiles ?? [])
+      .map(f => { const m = f.path.match(/^skills\/([^/]+)\/SKILL\.md$/); return m ? m[1] : null; })
+      .filter(Boolean);
+    return [...new Set([...platform, ...team])];
+  }
+
+  // Parse the mission header block into widget values.
+  function parseMissionHeader(header) {
+    try {
+      const noAgents = header.replace(/\nagents:\s*\n?$/, '').trim();
+      const parsed = jsyaml.load(noAgents);
+      const mission = (parsed && typeof parsed === 'object' && parsed.mission) ? parsed.mission : {};
+      const known = {};
+      const rest  = {};
+      for (const [k, v] of Object.entries(mission)) {
+        if (KNOWN_MISSION_FIELDS.includes(k)) known[k] = v;
+        else rest[k] = v;
+      }
+      return {
+        id:          String(known.id          ?? ''),
+        name:        String(known.name        ?? ''),
+        model:       String(known.model       ?? ''),
+        visionModel: String(known.visionModel ?? ''),
+        advanced: Object.keys(rest).length > 0 ? jsyaml.dump(rest, { lineWidth: -1, indent: 2 }) : '',
+      };
+    } catch {
+      return { id: '', name: '', model: '', visionModel: '', advanced: '' };
+    }
+  }
+
+  // Rebuild the mission header YAML block from widget values.
+  function buildMissionHeader(fields) {
+    const mission = {};
+    for (const k of KNOWN_MISSION_FIELDS) {
+      const v = fields[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') mission[k] = String(v);
+    }
+    if (fields.advanced?.trim()) {
+      try {
+        const extra = jsyaml.load(fields.advanced);
+        if (extra && typeof extra === 'object') Object.assign(mission, extra);
+      } catch { /* ignore malformed advanced */ }
+    }
+    return `${jsyaml.dump({ mission }, { lineWidth: -1, indent: 2 })}\nagents:\n`;
+  }
+
+  // Reconstruct full teamConfigYaml from widget values.
+  function reconstructYaml(missionFields, agentFieldsList) {
+    return buildMissionHeader(missionFields) + agentFieldsList.map(buildAgentBlock).join('\n');
+  }
+
   // ── Sign-in ───────────────────────────────────────────────────────────────
 
-  const overlay     = document.getElementById('sign-in-overlay');
-  const apiKeyInput = document.getElementById('api-key-input');
-  const signInBtn   = document.getElementById('sign-in-btn');
-  const signInError = document.getElementById('sign-in-error');
+  const signInOverlay = document.getElementById('sign-in-overlay');
+  const apiKeyInput   = document.getElementById('api-key-input');
+  const signInBtn     = document.getElementById('sign-in-btn');
+  const signInError   = document.getElementById('sign-in-error');
 
-  function showSignIn() { overlay.style.display = 'flex'; }
-  function hideSignIn() { overlay.style.display = 'none'; }
+  function showSignIn() { signInOverlay.style.display = 'flex'; }
+  function hideSignIn() { signInOverlay.style.display = 'none'; }
 
   async function trySignIn() {
     const key = apiKeyInput.value.trim();
     if (!key) { signInError.textContent = 'Enter your API key.'; return; }
     signInBtn.disabled = true;
     signInBtn.innerHTML = '<span class="spinner"></span>Signing in…';
-    // Verify by hitting a protected endpoint.
     const res = await fetch('/api/missions', { headers: { 'Authorization': `Bearer ${key}` } });
     signInBtn.disabled = false;
     signInBtn.textContent = 'Sign in';
@@ -326,6 +583,7 @@
       hideSignIn();
       loadTemplates();
       loadMissions();
+      connectCopilotSse();
     } else {
       signInError.textContent = 'Invalid API key.';
     }
@@ -345,115 +603,756 @@
     toastTimer = setTimeout(() => { el.className = ''; }, 3500);
   }
 
-  // ── Mission list ──────────────────────────────────────────────────────────
+  // ── Sidebar ───────────────────────────────────────────────────────────────
 
-  async function loadMissions() {
-    const res = await apiFetch('/api/missions');
-    if (!res) return;
-    const missions = await res.json();
-    renderMissions(missions);
-    document.getElementById('header-status').textContent =
-      `${missions.filter(m => m.status === 'running').length} running`;
+  function statusDotColor(status) {
+    return { running: '#6ee7b7', suspended: '#93c5fd', provisioning: '#fcd34d', error: '#fca5a5', destroyed: '#52525b' }[status] || '#475569';
   }
+
+  function renderSidebar() {
+    const tmplEl = document.getElementById('sidebar-templates');
+    const msnEl  = document.getElementById('sidebar-missions');
+    if (!tmplEl || !msnEl) return;
+
+    tmplEl.innerHTML = state.templates.length
+      ? state.templates.map(t => {
+          const active = state.selected?.type === 'template' && state.selected?.id === t.id;
+          return `<div class="sb-item${active ? ' active' : ''}" onclick="selectItem('template','${esc(t.id)}')">
+            <span class="sb-item-icon">▪</span>
+            <span class="sb-item-name">${esc(t.name)}</span>
+          </div>`;
+        }).join('')
+      : '<div class="sb-empty">No templates</div>';
+
+    msnEl.innerHTML = state.missions.length
+      ? state.missions.map(m => {
+          const active = state.selected?.type === 'mission' && state.selected?.id === m.missionId;
+          return `<div class="sb-item${active ? ' active' : ''}" onclick="selectItem('mission','${esc(m.missionId)}')">
+            <span class="sb-item-dot" style="background:${statusDotColor(m.status)}"></span>
+            <span class="sb-item-name">${esc(m.name)}</span>
+          </div>`;
+        }).join('')
+      : '<div class="sb-empty">No missions</div>';
+  }
+
+  function selectItem(type, id) {
+    state.selected = { type, id };
+    renderSidebar();
+    renderDetail();
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in sidebar HTML
+  function toggleSidebar() {
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    document.getElementById('sidebar').classList.toggle('collapsed', state.sidebarCollapsed);
+    const btn = document.getElementById('sb-collapse-btn');
+    if (btn) btn.textContent = state.sidebarCollapsed ? '›' : '‹';
+  }
+
+  // ── Home screen ───────────────────────────────────────────────────────────
+
+  function relativeTime(date) {
+    const secs = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (secs < 60) return `${secs}s ago`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+    if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+    return `${Math.floor(secs / 86400)}d ago`;
+  }
+
+  function renderHome() {
+    const active = state.missions.filter(m => m.status === 'running' || m.status === 'suspended');
+    if (active.length === 0) {
+      document.getElementById('detail-panel').innerHTML =
+        '<div class="home-screen"><div class="home-title">Active Sessions</div><div class="home-empty">No active sessions. Select a template to launch one.</div></div>';
+      return;
+    }
+    const cards = active.map(m => {
+      const s = state.sessionStats[m.missionId] ?? {};
+      const unread = s.unread ?? 0;
+      const unreadBadge = unread > 0
+        ? `<span class="stat-badge stat-unread">${unread} unread</span>` : '';
+      const spendH = s.spendLastHour != null ? `$${s.spendLastHour.toFixed(3)}/hr` : '–';
+      const spendD = s.spendToday    != null ? `$${s.spendToday.toFixed(3)} today` : '–';
+      const spendT = s.spendTotal    != null ? `$${s.spendTotal.toFixed(2)} total` : '–';
+      const lastAct = s.lastActivity ? relativeTime(new Date(s.lastActivity)) : 'no activity';
+      const snippet = s.snippet ? `<div class="card-snippet">${esc(s.snippet)}</div>` : '';
+      return `
+        <div class="session-card" onclick="selectItem('mission','${esc(m.missionId)}')">
+          <div class="card-header">
+            <span class="card-name">${esc(m.name)}</span>
+            <span class="status-badge status-${esc(m.status)}">${esc(m.status)}</span>
+            ${unreadBadge}
+          </div>
+          <div class="card-stats">
+            <span>${spendH}</span><span>${spendD}</span><span>${spendT}</span>
+            <span class="card-activity">Active ${lastAct}</span>
+          </div>
+          ${snippet}
+        </div>`;
+    }).join('');
+    document.getElementById('detail-panel').innerHTML =
+      `<div class="home-screen"><div class="home-title">Active Sessions</div>${cards}</div>`;
+  }
+
+  async function loadStats() {
+    const res = await apiFetch('/api/missions/stats');
+    if (res?.ok) state.sessionStats = await res.json();
+  }
+
+  // ── Detail panel ──────────────────────────────────────────────────────────
+
+  function renderDetail() {
+    if (!state.selected) {
+      renderHome();
+      return;
+    }
+    if (state.selected.type === 'template') renderTemplateDetail(state.selected.id);
+    else renderMissionDetail(state.selected.id);
+  }
+
+  async function renderTemplateDetail(id) {
+    if (!state.templateCache.has(id)) {
+      document.getElementById('detail-panel').innerHTML =
+        '<div class="detail-empty"><span class="spinner"></span> Loading…</div>';
+      const res = await apiFetch(`/api/templates/${encodeURIComponent(id)}`);
+      if (!res || !res.ok) {
+        document.getElementById('detail-panel').innerHTML =
+          '<div class="detail-empty">Failed to load template.</div>';
+        return;
+      }
+      const detail = await res.json();
+      state.templateCache.set(id, detail);
+    }
+    if (state.selected?.type !== 'template' || state.selected?.id !== id) return;
+    const cached = state.templateCache.get(id);
+    renderConfigForm({
+      type: 'template', id,
+      config: { teamConfigYaml: cached.teamConfigYaml, teamFiles: cached.teamFiles ?? [] },
+      status: undefined,
+      name: cached.name,
+    });
+  }
+
+  // ── Unified config form (templates + suspended missions) ──────────────────
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
+  function switchDetailTab(btn, paneId) {
+    const body = btn.closest('.detail-body');
+    if (!body) return;
+    for (const b of body.querySelectorAll('.dtab')) b.classList.remove('active');
+    btn.classList.add('active');
+    for (const p of body.querySelectorAll('.dtab-pane')) p.classList.remove('active');
+    document.getElementById(paneId)?.classList.add('active');
+    const saveBar = body.querySelector('.save-bar');
+    if (saveBar) saveBar.style.display = paneId.endsWith('-raw') ? 'none' : '';
+  }
+
+  function renderAgentPane(ei, _id, _ctxKey, a, canEdit, config) {
+    const dis = canEdit ? '' : 'disabled';
+    const skills = availableSkills(config.teamFiles);
+    const disSet = new Set(a.disabledSkills ?? []);
+    const skillRows = skills.map(s => {
+      const checked = !disSet.has(s) ? 'checked' : '';
+      return `<label class="skill-toggle-row">
+        <input type="checkbox" id="fn-skill-${ei}-${esc(a.id)}-${esc(s)}" ${checked} ${dis}>
+        <span>${esc(s)}</span>
+      </label>`;
+    }).join('');
+    const removeBtn = canEdit
+      ? `<button type="button" class="btn-danger btn-xs" style="margin-left:8px" onclick="removeAgent('${esc(a._type ?? 'template')}','${ei}','${esc(a.id)}')">Remove</button>`
+      : '';
+    return `
+      <div class="dtab-pane" id="dtab-pane-${ei}-agent-${esc(a.id)}">
+        <div class="form-scroll">
+          <div class="agent-id-badge">id: ${esc(a.id)}${removeBtn}</div>
+          <div class="field-group agent-active-row">
+            <label class="field-label">
+              <input type="checkbox" id="fn-active-${ei}-${esc(a.id)}" ${a.active !== false ? 'checked' : ''} ${dis}>
+              Active — agent participates in dispatch
+            </label>
+          </div>
+          <div class="field-group"><label class="field-label">Name</label>
+            <input class="field-input" type="text" id="fn-name-${ei}-${esc(a.id)}" value="${esc(a.name)}" ${dis}></div>
+          <div class="field-group"><label class="field-label">Role</label>
+            <input class="field-input" type="text" id="fn-role-${ei}-${esc(a.id)}" value="${esc(a.role)}" ${dis}></div>
+          <div class="field-group"><label class="field-label">Linux User</label>
+            <input class="field-input" type="text" id="fn-linuxUser-${ei}-${esc(a.id)}" value="${esc(a.linuxUser)}" ${dis}></div>
+          <div class="field-group"><label class="field-label">Supervisor</label>
+            <input class="field-input" type="text" id="fn-supervisor-${ei}-${esc(a.id)}" value="${esc(a.supervisor)}" list="agent-list-${ei}" ${dis}></div>
+          <div class="field-group"><label class="field-label">Model</label>
+            <input class="field-input" type="text" id="fn-model-${ei}-${esc(a.id)}" value="${esc(a.model)}" list="model-list-${ei}" ${dis}></div>
+          <div class="field-section">System Prompt</div>
+          <div class="field-group">
+            <textarea class="field-input field-textarea field-sp" id="fn-sp-${ei}-${esc(a.id)}" ${dis}>${esc(a.systemPrompt)}</textarea>
+          </div>
+          <div class="field-section">Mental Map</div>
+          <div class="field-group">
+            <small class="field-src">${esc(a._mentalMapLabel ?? 'Template initial value')}</small>
+            <div class="cm-wrap${canEdit ? '' : ' cm-disabled'}" id="cm-wrap-${ei}-${esc(a.id)}"></div>
+          </div>
+          <div class="field-section">Skills</div>
+          <div class="field-group">${skillRows}</div>
+          <div class="field-section">Advanced</div>
+          <div class="field-group">
+            <textarea class="field-input field-textarea field-adv" id="fn-adv-${ei}-${esc(a.id)}" ${dis}>${esc(a.advanced)}</textarea>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function renderConfigForm({ type, id, config, status, name }) {
+    const canEdit = type === 'template' || status === 'suspended';
+    const ei = esc(id);
+    // ctxKey scopes CM editor map keys to avoid template/mission collisions
+    const ctxKey = (type === 'template' ? 't:' : 'm:') + id;
+
+    const { teamConfigYaml, teamFiles, mentalMaps } = config;
+    const { header, agents } = parseYamlBlocks(teamConfigYaml ?? '');
+    const mf = parseMissionHeader(header ?? '');
+    const parsedAgents = agents.map(a => {
+      const fields = parseAgentBlock(a.block);
+      const liveMap = mentalMaps?.[a.id];
+      fields._mentalMapValue = liveMap ?? fields.initialMentalMap ?? '';
+      fields._mentalMapLabel = liveMap ? 'Live state (last session)' : 'Template initial value';
+      fields._type = type;
+      return fields;
+    });
+
+    // Store parsed agents in state so add/remove can mutate them
+    state.configAgents.set(ctxKey, parsedAgents);
+
+    const modelSuggestions = [
+      'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
+      'openrouter/anthropic/claude-sonnet-4-5',
+      'openrouter/google/gemini-2.5-flash',
+      'openrouter/openai/gpt-4o',
+    ].map(m => `<option value="${esc(m)}">`).join('');
+
+    const agentIdOptions = `${parsedAgents.map(a => `<option value="${esc(a.id)}">`).join('')}<option value="user">`;
+
+    const agentTabs = parsedAgents.map(a =>
+      `<button class="dtab" type="button" onclick="switchDetailTab(this,'dtab-pane-${ei}-agent-${esc(a.id)}')">${esc(a.name || a.id)}</button>`
+    ).join('');
+
+    const agentPanes = parsedAgents.map(a => renderAgentPane(ei, id, ctxKey, a, canEdit, config)).join('');
+
+    const dis = canEdit ? '' : 'disabled';
+    const missionPane = `
+      <div class="dtab-pane active" id="dtab-pane-${ei}-mission">
+        <div class="form-scroll">
+          <div class="field-group"><label class="field-label">ID</label>
+            <input class="field-input" type="text" value="${esc(mf.id)}" disabled></div>
+          <div class="field-group"><label class="field-label">Name</label>
+            <input class="field-input" type="text" id="fn-name-${ei}" value="${esc(mf.name)}" ${dis}></div>
+          <div class="field-group"><label class="field-label">Model</label>
+            <input class="field-input" type="text" id="fn-model-${ei}" value="${esc(mf.model)}" list="model-list-${ei}" ${dis}></div>
+          <div class="field-group"><label class="field-label">Vision Model</label>
+            <input class="field-input" type="text" id="fn-vmodel-${ei}" value="${esc(mf.visionModel)}" list="model-list-${ei}" ${dis}></div>
+          <div class="field-section">Advanced</div>
+          <div class="field-group">
+            <textarea class="field-input field-textarea field-adv" id="fn-adv-${ei}" ${dis}>${esc(mf.advanced)}</textarea>
+          </div>
+          <datalist id="model-list-${ei}">${modelSuggestions}</datalist>
+          <datalist id="agent-list-${ei}">${agentIdOptions}</datalist>
+        </div>
+      </div>`;
+
+    const fileRows = (teamFiles ?? []).map((f, i) => fileRowHtml(id, i, f.path, f.content)).join('');
+
+    const gateHtml = (!canEdit && type === 'mission') ? `
+      <div class="edit-gate-banner">
+        ⚠ Suspend this mission to edit its configuration.
+        <button type="button" class="btn-warning btn-sm" onclick="suspendMission('${ei}')">Suspend</button>
+      </div>` : '';
+
+    const headerHtml = type === 'template'
+      ? `<div class="detail-header">
+          <div class="detail-title">${esc(name ?? id)}</div>
+          <div class="detail-subtitle"><code>${ei}</code></div>
+        </div>`
+      : `<div class="detail-header">
+          <div class="detail-title">${esc(name ?? id)}</div>
+          <div class="detail-subtitle">
+            <span class="status-badge status-${esc(status ?? '')}">${esc(status ?? '')}</span>
+            <code>${ei}</code>
+          </div>
+          <div class="mission-actions-row" style="margin-top:10px">
+            ${status === 'running' ? `
+              <a href="/missions/${ei}/" target="_blank" style="text-decoration:none">
+                <button type="button" class="btn-ghost btn-sm">Dashboard ↗</button>
+              </a>
+              <button type="button" class="btn-warning btn-sm" onclick="suspendMission('${ei}')">Suspend</button>` : ''}
+            ${status === 'suspended' ? `
+              <button type="button" class="btn-success btn-sm" onclick="resumeMission('${ei}')">Resume</button>` : ''}
+            ${status !== 'destroyed' ? `
+              <button type="button" class="btn-ghost btn-sm" onclick="viewLog('${ei}')">View log</button>
+              <button type="button" class="btn-danger btn-sm" onclick="confirmDestroy('${ei}','${esc(name ?? id)}')">Destroy</button>` : ''}
+          </div>
+        </div>`;
+
+    const addAgentBtn = canEdit
+      ? `<button class="dtab dtab-add" type="button" onclick="addAgent('${esc(type)}','${ei}')">+ Agent</button>`
+      : '';
+
+    const saveBarContent = type === 'template' ? `
+      <button type="button" class="btn-ghost btn-sm" onclick="saveConfig('template','${ei}')">Save template</button>
+      <button type="button" class="btn-primary btn-sm" onclick="startSession('${ei}')">Start session ›</button>
+    ` : `
+      <button type="button" class="btn-ghost btn-sm" onclick="saveConfig('mission','${ei}')">Save config</button>
+      <button type="button" class="btn-ghost btn-sm" onclick="toggleSaveAsTemplate('${ei}')">Save as template…</button>
+    `;
+
+    document.getElementById('detail-panel').innerHTML = `
+      ${headerHtml}
+      ${gateHtml}
+      <div class="detail-body">
+        <div class="dtab-bar">
+          <button class="dtab active" type="button" onclick="switchDetailTab(this,'dtab-pane-${ei}-mission')">Mission</button>
+          ${agentTabs}
+          ${addAgentBtn}
+          <button class="dtab" type="button" onclick="switchDetailTab(this,'dtab-pane-${ei}-files')">Files</button>
+          <button class="dtab" type="button" onclick="switchDetailTab(this,'dtab-pane-${ei}-raw')">Raw YAML</button>
+        </div>
+        ${missionPane}
+        ${agentPanes}
+        <div class="dtab-pane" id="dtab-pane-${ei}-files">
+          <div class="files-scroll">
+            <div class="tmpl-file-list" id="file-list-${ei}">${fileRows}</div>
+            <button type="button" class="btn-ghost btn-sm add-file-btn" onclick="addFileRow('${ei}')">+ Add file</button>
+          </div>
+        </div>
+        <div class="dtab-pane" id="dtab-pane-${ei}-raw">
+          <pre class="raw-yaml-pre" id="raw-pre-${ei}">${esc(teamConfigYaml ?? '')}</pre>
+        </div>
+        <div class="save-bar" id="save-bar-${ei}" ${!canEdit ? 'style="display:none"' : ''}>
+          <span class="save-status" id="save-status-${ei}"></span>
+          ${saveBarContent}
+        </div>
+        <div class="save-as-tpl-row" id="save-as-tpl-row-${ei}">
+          <input class="field-input save-as-tpl-input" type="text" id="save-as-tpl-name-${ei}" placeholder="Template name…">
+          <button type="button" class="btn-primary btn-sm" onclick="doSaveAsTemplate('${ei}')">Save</button>
+        </div>
+      </div>`;
+
+    // Create CodeMirror editors after DOM is ready
+    setTimeout(() => {
+      for (const agent of state.configAgents.get(ctxKey) ?? []) {
+        const cmKey = `cm-${ctxKey}-${agent.id}`;
+        const wrap  = document.getElementById(`cm-wrap-${id}-${agent.id}`);
+        if (wrap && typeof CodeMirror !== 'undefined' && !wrap.__cmInit) {
+          wrap.__cmInit = true;
+          const cm = CodeMirror(wrap, {
+            value: agent._mentalMapValue || '',
+            mode: 'xml',
+            lineNumbers: true,
+            lineWrapping: true,
+            tabSize: 2,
+            readOnly: !canEdit,
+          });
+          state.cmEditors.set(cmKey, cm);
+        }
+      }
+    }, 0);
+  }
+
+  async function renderMissionDetail(id) {
+    const m = state.missions.find(ms => ms.missionId === id);
+    if (!m) {
+      document.getElementById('detail-panel').innerHTML =
+        '<div class="detail-empty">Mission not found.</div>';
+      return;
+    }
+
+    // Use cached config if available, otherwise fetch
+    let config = state.missionConfigCache.get(id);
+    if (!config) {
+      document.getElementById('detail-panel').innerHTML =
+        '<div class="detail-empty"><span class="spinner"></span> Loading config…</div>';
+      const res = await apiFetch(`/api/missions/${encodeURIComponent(id)}/config`);
+      if (state.selected?.type !== 'mission' || state.selected?.id !== id) return;
+      if (res?.ok) {
+        config = await res.json();
+        state.missionConfigCache.set(id, config);
+      } else if (res?.status === 404) {
+        // Mission has no stored config (provisioned before this feature)
+        document.getElementById('detail-panel').innerHTML = `
+          <div class="detail-header">
+            <div class="detail-title">${esc(m.name)}</div>
+            <div class="detail-subtitle">
+              <span class="status-badge status-${esc(m.status)}">${esc(m.status)}</span>
+              <code>${esc(m.missionId)}</code>
+            </div>
+          </div>
+          <div style="padding:24px;color:#475569;font-size:14px">No config stored for this mission.</div>`;
+        return;
+      } else {
+        document.getElementById('detail-panel').innerHTML =
+          '<div class="detail-empty">Failed to load config.</div>';
+        return;
+      }
+    }
+
+    renderConfigForm({ type: 'mission', id, config, status: m.status, name: m.name });
+  }
+
+  // ── Shared field-collection helpers ──────────────────────────────────────
+
+  function readMissionFields(ctxId, rawId) {
+    return {
+      id:          rawId,
+      name:        document.getElementById(`fn-name-${ctxId}`)?.value    ?? '',
+      model:       document.getElementById(`fn-model-${ctxId}`)?.value   ?? '',
+      visionModel: document.getElementById(`fn-vmodel-${ctxId}`)?.value  ?? '',
+      advanced:    document.getElementById(`fn-adv-${ctxId}`)?.value     ?? '',
+    };
+  }
+
+  function collectAgentFields(ctxId, ctxKey, agents, config) {
+    return agents.map(a => {
+      const aid = esc(a.id);
+      const cmKey = `cm-${ctxKey}-${a.id}`;
+      const mentalMapVal = state.cmEditors.get(cmKey)?.getValue() ?? a._mentalMapValue ?? '';
+      const allSkills = availableSkills(config.teamFiles ?? []);
+      const disabledSkills = allSkills.filter(s => {
+        const cb = document.getElementById(`fn-skill-${ctxId}-${aid}-${esc(s)}`);
+        return cb && !cb.checked;
+      });
+      const activeCb = document.getElementById(`fn-active-${ctxId}-${aid}`);
+      return {
+        id:              a.id,
+        name:            document.getElementById(`fn-name-${ctxId}-${aid}`)?.value       ?? a.name ?? '',
+        role:            document.getElementById(`fn-role-${ctxId}-${aid}`)?.value       ?? '',
+        linuxUser:       document.getElementById(`fn-linuxUser-${ctxId}-${aid}`)?.value  ?? '',
+        supervisor:      document.getElementById(`fn-supervisor-${ctxId}-${aid}`)?.value ?? '',
+        model:           document.getElementById(`fn-model-${ctxId}-${aid}`)?.value      ?? '',
+        systemPrompt:    document.getElementById(`fn-sp-${ctxId}-${aid}`)?.value         ?? '',
+        initialMentalMap: mentalMapVal,
+        active:          activeCb ? activeCb.checked : true,
+        disabledSkills,
+        advanced:        document.getElementById(`fn-adv-${ctxId}-${aid}`)?.value        ?? '',
+      };
+    });
+  }
+
+  function collectTeamFiles(ctxId) {
+    return Array.from(document.querySelectorAll(`#file-list-${ctxId} .tmpl-file-row`))
+      .map(row => ({
+        path:    row.querySelector('.tmpl-file-path')?.value?.trim() ?? '',
+        content: row.querySelector('.file-content-editor')?.value    ?? '',
+      }))
+      .filter(f => f.path);
+  }
+
+  // ── Config saving ─────────────────────────────────────────────────────────
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
+  async function saveConfig(type, id) {
+    const ctxKey = (type === 'template' ? 't:' : 'm:') + id;
+    const config = type === 'template'
+      ? (state.templateCache.get(id) ?? { teamFiles: [] })
+      : (state.missionConfigCache.get(id) ?? { teamFiles: [] });
+
+    const missionFields = readMissionFields(id, id);
+    // Recover the real mission id from the cached YAML (id input is read-only)
+    const cachedYaml = config.teamConfigYaml ?? '';
+    missionFields.id = parseMissionHeader(parseYamlBlocks(cachedYaml).header ?? '').id || id;
+
+    const agents = state.configAgents.get(ctxKey) ?? [];
+    const agentFieldsList = collectAgentFields(id, ctxKey, agents, config);
+    const teamConfigYaml = reconstructYaml(missionFields, agentFieldsList);
+    const teamFiles = collectTeamFiles(id);
+
+    const statusEl = document.getElementById(`save-status-${id}`);
+    const setStatus = (msg, cls) => {
+      if (statusEl) { statusEl.textContent = msg; statusEl.className = `save-status ${cls}`; }
+    };
+    setStatus('Saving…', '');
+
+    let res;
+    if (type === 'template') {
+      res = await apiFetch(`/api/templates/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ teamConfigYaml, teamFiles }),
+      });
+    } else {
+      const mentalMaps = {};
+      for (const a of agents) {
+        const cm = state.cmEditors.get(`cm-${ctxKey}-${a.id}`);
+        if (cm) mentalMaps[a.id] = cm.getValue();
+      }
+      res = await apiFetch(`/api/missions/${encodeURIComponent(id)}/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ teamConfigYaml, teamFiles, mentalMaps }),
+      });
+    }
+
+    if (!res) { setStatus('', ''); return; }
+
+    if (res.ok) {
+      if (type === 'template') {
+        const cached = state.templateCache.get(id) ?? {};
+        state.templateCache.set(id, { ...cached, teamConfigYaml, teamFiles });
+      } else {
+        const cached = state.missionConfigCache.get(id) ?? {};
+        state.missionConfigCache.set(id, { ...cached, teamConfigYaml, teamFiles });
+      }
+      const rawPre = document.getElementById(`raw-pre-${id}`);
+      if (rawPre) rawPre.textContent = teamConfigYaml;
+      setStatus('Saved', 'ok');
+      setTimeout(() => setStatus('', ''), 3000);
+    } else {
+      const b = await res.json().catch(() => ({}));
+      setStatus(b.error || 'Save failed', 'err');
+    }
+  }
+
+  // ── Quick launch ──────────────────────────────────────────────────────────
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
+  async function startSession(templateId) {
+    const ctxKey = `t:${templateId}`;
+    const config = state.templateCache.get(templateId) ?? { teamFiles: [] };
+
+    const mf = readMissionFields(templateId, templateId);
+    const cachedYaml = config.teamConfigYaml ?? '';
+    mf.id = parseMissionHeader(parseYamlBlocks(cachedYaml).header ?? '').id || templateId;
+
+    const agents = state.configAgents.get(ctxKey) ?? [];
+    const agentFieldsList = collectAgentFields(templateId, ctxKey, agents, config);
+    const teamConfigYaml = reconstructYaml(mf, agentFieldsList);
+    const teamFiles = collectTeamFiles(templateId);
+
+    const now = new Date();
+    const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const hex  = Math.random().toString(16).slice(2, 6);
+    const missionId   = `${templateId}-${date}-${hex}`;
+    const missionName = `${mf.name || templateId} ${date}-${hex}`;
+
+    const saveBar = document.getElementById(`save-bar-${templateId}`);
+    const btn = saveBar?.querySelector('.btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Launching…'; }
+
+    const res = await apiFetch('/api/missions', {
+      method: 'POST',
+      body: JSON.stringify({ missionId, name: missionName, teamConfig: templateId, teamConfigYaml, teamFiles }),
+    });
+
+    if (btn) { btn.disabled = false; btn.textContent = 'Start session ›'; }
+
+    if (!res || !res.ok) {
+      const b = await res?.json().catch(() => ({})) ?? {};
+      showToast(b.error || 'Launch failed.', true); return;
+    }
+    showToast(`Session ${missionId} launched.`);
+    await loadMissions();
+    selectItem('mission', missionId);
+    window.open(`/missions/${encodeURIComponent(missionId)}/`, '_blank');
+  }
+
+  // ── Save-as-template inline flow ──────────────────────────────────────────
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
+  function toggleSaveAsTemplate(missionId) {
+    const row = document.getElementById(`save-as-tpl-row-${missionId}`);
+    if (row) row.style.display = row.style.display === 'none' || !row.style.display ? 'flex' : 'none';
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
+  async function doSaveAsTemplate(missionId) {
+    const nameInput = document.getElementById(`save-as-tpl-name-${missionId}`);
+    const name = nameInput?.value?.trim();
+    if (!name) { showToast('Enter a template name.', true); return; }
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    const ctxKey = `m:${missionId}`;
+    const config = state.missionConfigCache.get(missionId) ?? { teamFiles: [] };
+    const mf = readMissionFields(missionId, missionId);
+    mf.id = slug;
+
+    const agents = state.configAgents.get(ctxKey) ?? [];
+    const agentFieldsList = collectAgentFields(missionId, ctxKey, agents, config);
+    const teamConfigYaml = reconstructYaml(mf, agentFieldsList);
+    const teamFiles = collectTeamFiles(missionId);
+
+    const res = await apiFetch('/api/templates', {
+      method: 'POST',
+      body: JSON.stringify({ id: slug, name, teamConfigYaml, teamFiles }),
+    });
+    if (!res || !res.ok) {
+      const b = await res?.json().catch(() => ({})) ?? {};
+      showToast(b.error || 'Save failed.', true); return;
+    }
+    showToast(`Template "${name}" saved.`);
+    await loadTemplates();
+    selectItem('template', slug);
+  }
+
+  // ── File rows ─────────────────────────────────────────────────────────────
+
+  function fileRowHtml(id, idx, path, content) {
+    return `
+      <div class="tmpl-file-row" id="file-row-${esc(id)}-${idx}">
+        <div class="tmpl-file-header">
+          <button type="button" class="tmpl-file-toggle" onclick="toggleFileRow('${esc(id)}',${idx})">›</button>
+          <input class="tmpl-file-path" type="text" value="${esc(path)}" placeholder="path/to/file.md" />
+          <button type="button" class="tmpl-file-remove" onclick="removeFileRow('${esc(id)}',${idx})" title="Remove file">×</button>
+        </div>
+        <textarea class="file-content-editor">${esc(content)}</textarea>
+      </div>`;
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in fileRowHtml
+  function toggleFileRow(id, idx) {
+    document.getElementById(`file-row-${id}-${idx}`)?.classList.toggle('open');
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in fileRowHtml
+  function removeFileRow(id, idx) {
+    document.getElementById(`file-row-${id}-${idx}`)?.remove();
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
+  function addFileRow(id) {
+    const list = document.getElementById(`file-list-${id}`);
+    if (!list) return;
+    const idx = Date.now();
+    const div = document.createElement('div');
+    div.innerHTML = fileRowHtml(id, idx, '', '');
+    const row = div.firstElementChild;
+    if (row) {
+      list.appendChild(row);
+      row.classList.add('open');
+      row.querySelector('.tmpl-file-path')?.focus();
+    }
+  }
+
+  // ── Add / remove agent ────────────────────────────────────────────────────
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
+  function addAgent(type, id) {
+    const ctxKey = (type === 'template' ? 't:' : 'm:') + id;
+    const agents = state.configAgents.get(ctxKey) ?? [];
+    const newId  = `new-agent-${agents.length + 1}`;
+    const blank  = {
+      id: newId, name: 'New Agent', role: '', linuxUser: '', supervisor: 'user',
+      model: '', systemPrompt: 'You are a helpful assistant.',
+      initialMentalMap: '<h1>Mental Map</h1>', active: true, disabledSkills: [], advanced: '',
+      _mentalMapValue: '<h1>Mental Map</h1>', _mentalMapLabel: 'Template initial value',
+      _type: type,
+    };
+    agents.push(blank);
+    state.configAgents.set(ctxKey, agents);
+
+    const config = type === 'template'
+      ? (state.templateCache.get(id) ?? { teamFiles: [] })
+      : (state.missionConfigCache.get(id) ?? { teamFiles: [] });
+    const ei = esc(id);
+    const canEdit = true; // only reachable when canEdit
+    const paneHtml = renderAgentPane(ei, id, ctxKey, blank, canEdit, config);
+
+    // Inject tab button before the "+" button
+    const tabBar = document.querySelector(`#detail-panel .dtab-bar`);
+    if (tabBar) {
+      const addBtn = tabBar.querySelector('.dtab-add');
+      const tabBtn = document.createElement('button');
+      tabBtn.className = 'dtab';
+      tabBtn.type = 'button';
+      tabBtn.textContent = blank.name;
+      tabBtn.setAttribute('onclick', `switchDetailTab(this,'dtab-pane-${ei}-agent-${esc(newId)}')`);
+      tabBar.insertBefore(tabBtn, addBtn ?? null);
+    }
+
+    // Inject pane before the files pane
+    const filePane = document.getElementById(`dtab-pane-${id}-files`);
+    if (filePane) {
+      const div = document.createElement('div');
+      div.innerHTML = paneHtml;
+      const newPane = div.firstElementChild;
+      if (newPane) filePane.parentNode.insertBefore(newPane, filePane);
+    }
+
+    // Create CM editor for new agent
+    setTimeout(() => {
+      const cmKey = `cm-${ctxKey}-${newId}`;
+      const wrap  = document.getElementById(`cm-wrap-${id}-${esc(newId)}`);
+      if (wrap && typeof CodeMirror !== 'undefined' && !wrap.__cmInit) {
+        wrap.__cmInit = true;
+        const cm = CodeMirror(wrap, {
+          value: blank._mentalMapValue,
+          mode: 'xml',
+          lineNumbers: true,
+          lineWrapping: true,
+          tabSize: 2,
+        });
+        state.cmEditors.set(cmKey, cm);
+      }
+    }, 0);
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderAgentPane
+  function removeAgent(type, id, agentId) {
+    const ctxKey = (type === 'template' ? 't:' : 'm:') + id;
+    const agents = (state.configAgents.get(ctxKey) ?? []).filter(a => a.id !== agentId);
+    if (agents.length === 0) { showToast('Cannot remove the last agent.', true); return; }
+    state.configAgents.set(ctxKey, agents);
+
+    // Remove tab + pane from DOM
+    const ei = esc(id);
+    const escapedAgentId = esc(agentId);
+    document.querySelector(`[onclick*="dtab-pane-${ei}-agent-${escapedAgentId}"]`)?.remove();
+    document.getElementById(`dtab-pane-${id}-agent-${agentId}`)?.remove();
+    state.cmEditors.delete(`cm-${ctxKey}-${agentId}`);
+
+    // Switch back to Mission tab
+    const missionTab = document.querySelector(`[onclick*="dtab-pane-${ei}-mission"]`);
+    if (missionTab) switchDetailTab(missionTab, `dtab-pane-${id}-mission`);
+  }
+
+  // ── Data loading ──────────────────────────────────────────────────────────
 
   async function loadTemplates() {
     const res = await apiFetch('/api/templates');
     if (!res) return;
-    const templates = await res.json();
-    const sel = document.getElementById('new-team');
-    sel.innerHTML = '<option value="">Select template…</option>' +
-      templates.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+    state.templates = await res.json();
+    renderSidebar();
   }
 
-  function statusBadge(status) {
-    return `<span class="status-badge status-${status}">${status}</span>`;
-  }
-
-  function renderMissions(missions) {
-    const list = document.getElementById('mission-list');
-    if (!missions.length) {
-      list.innerHTML = '<div class="empty-state">No missions yet. Launch one above.</div>';
-      return;
-    }
-    list.innerHTML = missions.map(m => `
-      <div class="mission-card" id="card-${m.missionId}">
-        <div class="mission-info">
-          <div class="mission-name">${esc(m.name)}</div>
-          <div class="mission-meta">
-            ${statusBadge(m.status)}
-            &nbsp;·&nbsp;ID: <code>${esc(m.missionId)}</code>
-            &nbsp;·&nbsp;Team: <code>${esc(m.teamConfig)}</code>
-            &nbsp;·&nbsp;Created: ${new Date(m.createdAt).toLocaleString()}
-          </div>
-        </div>
-        <div class="mission-actions">
-          ${m.status === 'running' ? `
-            <a href="/missions/${esc(m.missionId)}/" target="_blank">
-              <button class="btn-ghost">Dashboard</button>
-            </a>
-            <button class="btn-warning" onclick="suspendMission('${esc(m.missionId)}')">Suspend</button>
-          ` : ''}
-          ${m.status === 'suspended' ? `
-            <button class="btn-success" onclick="resumeMission('${esc(m.missionId)}')">Resume</button>
-          ` : ''}
-          ${m.status !== 'destroyed' ? `
-            <button class="btn-ghost" onclick="viewLog('${esc(m.missionId)}')">View Log</button>
-            <button class="btn-danger" onclick="confirmDestroy('${esc(m.missionId)}', '${esc(m.name)}')">Destroy</button>
-          ` : ''}
-        </div>
-      </div>
-    `).join('');
-  }
-
-  function esc(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  // ── Launch ────────────────────────────────────────────────────────────────
-
-  document.getElementById('launch-btn').addEventListener('click', async () => {
-    const name      = document.getElementById('new-name').value.trim();
-    const missionId = document.getElementById('new-id').value.trim();
-    const teamConfig = document.getElementById('new-team').value.trim();
-
-    if (!name || !missionId || !teamConfig) {
-      showToast('Fill in all fields before launching.', true);
-      return;
-    }
-
-    const btn = document.getElementById('launch-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span>Provisioning…';
-
-    const res = await apiFetch('/api/missions', {
-      method: 'POST',
-      body: JSON.stringify({ name, missionId, teamConfig }),
-    });
-
-    btn.disabled = false;
-    btn.textContent = 'Launch';
-
+  async function loadMissions() {
+    const prevMissions = state.missions.slice();
+    const [res] = await Promise.all([
+      apiFetch('/api/missions'),
+      loadStats(),
+    ]);
     if (!res) return;
-    if (res.ok) {
-      document.getElementById('new-name').value = '';
-      document.getElementById('new-id').value = '';
-      document.getElementById('new-team').value = '';
-      showToast(`Mission "${name}" provisioned.`);
-      loadMissions();
-    } else {
-      const body = await res.json().catch(() => ({}));
-      showToast(body.error || 'Provisioning failed.', true);
+    state.missions = await res.json();
+    renderSidebar();
+
+    const running = state.missions.filter(m => m.status === 'running').length;
+    document.getElementById('header-status').textContent = `${running} running`;
+    const badge = document.getElementById('running-badge');
+    if (badge) { badge.textContent = String(running); badge.style.display = running > 0 ? '' : 'none'; }
+
+    // When nothing is selected, refresh the home screen with latest stats
+    if (!state.selected) {
+      renderHome();
+      return;
     }
-  });
+
+    // Refresh mission detail only when status changed — preserves in-progress edits
+    if (state.selected?.type === 'mission') {
+      const selId = state.selected.id;
+      const prev  = prevMissions.find(m => m.missionId === selId);
+      const curr  = state.missions.find(m => m.missionId === selId);
+      if (!prev || prev.status !== curr?.status) {
+        state.missionConfigCache.delete(selId);
+        renderMissionDetail(selId);
+      }
+    }
+  }
 
   // ── Suspend / Resume ──────────────────────────────────────────────────────
 
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
   async function suspendMission(id) {
     const res = await apiFetch(`/api/missions/${id}/suspend`, { method: 'POST' });
     if (!res) return;
@@ -461,17 +1360,12 @@
     else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Suspend failed.', true); }
   }
 
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
   async function resumeMission(id) {
     showToast('Starting machine…');
     const res = await apiFetch(`/api/missions/${id}/resume`, { method: 'POST' });
     if (!res) return;
-    if (!res.ok) {
-      const b = await res.json().catch(() => ({}));
-      showToast(b.error || 'Resume failed.', true);
-      return;
-    }
-    // Server fires /start and returns immediately. Poll until live state confirms running.
+    if (!res.ok) { const b = await res.json().catch(() => ({})); showToast(b.error || 'Resume failed.', true); return; }
     const deadline = Date.now() + 45_000;
     const poll = async () => {
       if (Date.now() > deadline) { showToast('Machine start timed out.', true); loadMissions(); return; }
@@ -484,11 +1378,11 @@
     poll();
   }
 
-  // ── Destroy (with confirmation) ───────────────────────────────────────────
+  // ── Destroy ───────────────────────────────────────────────────────────────
 
   let pendingDestroyId = null;
 
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
   function confirmDestroy(id, name) {
     pendingDestroyId = id;
     document.getElementById('confirm-msg').textContent =
@@ -506,18 +1400,24 @@
     pendingDestroyId = null;
     document.getElementById('confirm-overlay').classList.remove('open');
     if (!id) return;
-
     const res = await apiFetch(`/api/missions/${id}`, { method: 'DELETE' });
     if (!res) return;
-    if (res.ok) { showToast('Mission destroyed.'); loadMissions(); }
-    else { const b = await res.json().catch(() => ({})); showToast(b.error || 'Destroy failed.', true); }
+    if (res.ok) {
+      showToast('Mission destroyed.');
+      if (state.selected?.type === 'mission' && state.selected?.id === id) state.selected = null;
+      await loadMissions();
+      renderDetail();
+    } else {
+      const b = await res.json().catch(() => ({}));
+      showToast(b.error || 'Destroy failed.', true);
+    }
   });
 
   // ── Log viewer ────────────────────────────────────────────────────────────
 
   let currentLogMissionId = null;
 
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick handlers in renderMissions
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
   async function viewLog(id) {
     currentLogMissionId = id;
     document.getElementById('log-content').textContent = 'Loading…';
@@ -529,9 +1429,8 @@
     if (!currentLogMissionId) return;
     const res = await apiFetch(`/missions/${currentLogMissionId}/log?lines=300`);
     if (!res) return;
-    const text = await res.text();
     const el = document.getElementById('log-content');
-    el.textContent = text || '(log empty)';
+    el.textContent = await res.text() || '(log empty)';
     el.scrollTop = el.scrollHeight;
   }
 
@@ -541,19 +1440,191 @@
     document.getElementById('log-overlay').style.display = 'none';
   });
 
+  // ── Copilot ───────────────────────────────────────────────────────────────
+
+  const copilotMessages = document.getElementById('copilot-messages');
+  const copilotThinking = document.getElementById('copilot-thinking');
+  const copilotInput    = document.getElementById('copilot-input');
+  let copilotSse = null;
+  let copilotRunning = false;
+
+  function copilotScrollBottom() { copilotMessages.scrollTop = copilotMessages.scrollHeight; }
+
+  function addBubble(text, cls) {
+    const el = document.createElement('div');
+    el.className = `cop-bubble ${cls}`;
+    el.textContent = text;
+    copilotMessages.appendChild(el);
+    copilotScrollBottom();
+    return el;
+  }
+
+  function addSystemMsg(text) { addBubble(text, 'system-msg'); }
+
+  function addActivityItem(text, cls) {
+    const el = document.createElement('div');
+    el.className = `cop-activity ${cls}`;
+    el.textContent = text;
+    copilotMessages.appendChild(el);
+    copilotScrollBottom();
+    return el;
+  }
+
+  // Return the most informative single-line summary of a tool call's arguments.
+  function formatToolArgs(_name, args) {
+    if (!args || typeof args !== 'object') return '';
+    const val =
+      args.command ??      // Bash
+      args.query ??        // SearchWeb, AnalyzeMemories
+      args.task ??         // BrowseWeb
+      args.missionId ??    // GetMissionStatus, ReadMissionMailbox, ReadMissionLog, ReadMissionFile
+      args.id ??           // GetTemplate, cancel_schedule
+      args.path ??         // ReadMissionFile
+      args.label ??        // ProposeAction (most readable field)
+      args.url ??          // FetchUrl
+      null;
+    if (val == null) return '';
+    const s = String(val);
+    return s.length > 70 ? `${s.slice(0, 70)}…` : s;
+  }
+
+  function addActionCard(id, type, label) {
+    const card = document.createElement('div');
+    card.className = 'cop-action-card';
+    card.id = `action-${id}`;
+    card.innerHTML = `
+      <div class="action-label">${esc(label)}</div>
+      <div class="action-type">type: ${esc(type)}</div>
+      <div class="action-btns">
+        <button type="button" class="btn-success btn-sm" onclick="confirmCopilotAction('${esc(id)}')">Confirm</button>
+        <button type="button" class="btn-ghost btn-sm" onclick="dismissCopilotAction('${esc(id)}')">Dismiss</button>
+      </div>`;
+    copilotMessages.appendChild(card);
+    copilotScrollBottom();
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in addActionCard
+  async function confirmCopilotAction(id) {
+    const card = document.getElementById(`action-${id}`);
+    if (card) { const btns = card.querySelector('.action-btns'); if (btns) btns.innerHTML = '<span class="spinner"></span>Executing…'; }
+    const res = await apiFetch('/api/copilot/confirm', { method: 'POST', body: JSON.stringify({ pendingActionId: id }) });
+    if (!res) return;
+    if (!res.ok) { const b = await res.json().catch(() => ({})); showToast(b.error || 'Action failed.', true); }
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in addActionCard
+  async function dismissCopilotAction(id) {
+    await apiFetch('/api/copilot/dismiss', { method: 'POST', body: JSON.stringify({ pendingActionId: id }) });
+    const card = document.getElementById(`action-${id}`);
+    if (card) card.classList.add('resolved');
+  }
+
+  function connectCopilotSse() {
+    if (copilotSse) { copilotSse.close(); copilotSse = null; }
+    copilotSse = new EventSource('/api/copilot/events');
+
+    copilotSse.addEventListener('copilot-msg', e => {
+      const msg = JSON.parse(e.data);
+      addBubble(msg.body ?? '', 'from-copilot');
+      copilotRunning = false;
+      copilotThinking.classList.remove('active');
+    });
+
+    copilotSse.addEventListener('copilot-action', e => {
+      const action = JSON.parse(e.data);
+      addActionCard(action.id, action.type, action.label);
+      copilotRunning = false;
+      copilotThinking.classList.remove('active');
+    });
+
+    copilotSse.addEventListener('copilot-action-result', e => {
+      const result = JSON.parse(e.data);
+      const card = document.getElementById(`action-${result.id}`);
+      if (card) {
+        card.classList.add('resolved');
+        const btns = card.querySelector('.action-btns');
+        if (btns) btns.innerHTML = '';
+        const info = document.createElement('div');
+        info.className = `action-result${result.ok ? '' : ' error'}`;
+        info.textContent = result.ok ? `✓ ${result.result}` : `✗ ${result.error}`;
+        card.appendChild(info);
+        if (result.ok && result.result?.includes('Template')) loadTemplates();
+        copilotScrollBottom();
+      }
+    });
+
+    copilotSse.addEventListener('copilot-loop-msg', e => {
+      const msg = JSON.parse(e.data);
+      if (!copilotRunning) {
+        copilotRunning = true;
+        copilotThinking.classList.add('active');
+      }
+      if (msg.role === 'assistant') {
+        for (const block of (msg.content ?? [])) {
+          if (block.type === 'toolCall') {
+            const arg = formatToolArgs(block.name, block.arguments);
+            addActivityItem(
+              arg ? `▶ ${block.name}: ${arg}` : `▶ ${block.name}`,
+              'tool-call'
+            );
+          }
+          // Skip text blocks (duplicate of PostMessage body) and thinking blocks (internal).
+        }
+      } else if (msg.role === 'toolResult') {
+        // PostMessage result is already shown as the main copilot-msg bubble.
+        if (msg.toolName === 'PostMessage') return;
+        const text = (msg.content ?? [])
+          .filter(b => b.type === 'text').map(b => b.text).join('\n');
+        const preview = text.length > 150 ? `${text.slice(0, 150)}…` : text;
+        addActivityItem(
+          `← ${msg.toolName}: ${preview}`,
+          msg.isError ? 'tool-error' : 'tool-result'
+        );
+      }
+      copilotScrollBottom();
+    });
+
+    copilotSse.onerror = () => {
+      copilotRunning = false;
+      copilotThinking.classList.remove('active');
+    };
+  }
+
+  async function sendCopilotMessage() {
+    const text = copilotInput.value.trim();
+    if (!text) return;
+    copilotInput.value = '';
+    copilotInput.style.height = 'auto';
+    addBubble(text, 'from-user');
+    copilotRunning = true;
+    copilotThinking.classList.add('active');
+    copilotScrollBottom();
+    const res = await apiFetch('/api/copilot/message', {
+      method: 'POST',
+      body: JSON.stringify({ subject: 'Operator message', body: text }),
+    });
+    if (!res || !res.ok) {
+      copilotRunning = false;
+      copilotThinking.classList.remove('active');
+      addSystemMsg('Failed to send message.');
+    }
+  }
+
+  document.getElementById('copilot-send').addEventListener('click', sendCopilotMessage);
+  copilotInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCopilotMessage(); } });
+  copilotInput.addEventListener('input', () => { copilotInput.style.height = 'auto'; copilotInput.style.height = `${copilotInput.scrollHeight}px`; });
+
   // ── Init ──────────────────────────────────────────────────────────────────
 
   if (getKey()) {
-    // Re-hydrate cookie from localStorage so dashboard tab-navigation always works
-    // even after browser restart or cookie expiry.
     // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API not available in all browsers; server reads this cookie for auth.
     document.cookie = `magi_session=${encodeURIComponent(getKey())}; path=/; SameSite=Strict; Max-Age=86400`;
     hideSignIn();
     loadTemplates();
     loadMissions();
+    connectCopilotSse();
   }
 
-  // Auto-refresh every 30 s while the tab is visible.
   setInterval(() => { if (!document.hidden && getKey()) loadMissions(); }, 30_000);
 </script>
 </body>

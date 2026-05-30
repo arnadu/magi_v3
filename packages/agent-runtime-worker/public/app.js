@@ -1,150 +1,119 @@
-// MAGI Monitor — app.js v2
+// MAGI Monitor — app.js v3 (Sprint 18)
 
 const CTX_LIMIT = 200_000;
 
 // ── State ──────────────────────────────────────────────────────────────────
 let AGENTS = [];
-let PLAYBOOK = [];
-let activeAgent = null;
-let feedMode = "all"; // all | threads | user
-let feedSearch = "";
+let activeAgent = null; // null = Mission tab
+let activeTab = null; // "activity"|"mentalmap"|"files"|"schedule"|"log"|"stats"
+let activeThread = null; // threadKey of selected thread
+
 const agentContextTokens = {};
 const agentCosts = {};
-let missionStarted = false;
 let stepEnabled = false;
 let stepWaiting = false;
-let runningAgent = null;
-let pendingAgents = [];
+let runningAgents = new Set();
 let startedAt = Date.now();
 let maxCostUsd = null;
 let stopped = false;
 
-// Feed data store (all messages, for re-filtering)
 const allMessages = [];
-
-// Sessions tree state
-let sessionLiveDirty = false;
-
-// Schedule data
+const threads = new Map(); // threadKey → { subject, messages[], participants Set }
 let scheduleData = [];
+
+// Unread tracking (persisted to localStorage)
+const seenAt = new Map(); // threadKey → Date
+
+// Session tree state
+let sessionLiveDirty = false;
+const expandedSessions = new Set();
+
+// File browser state
+let filePath = "";
+let fileBrowserType = "shared";
+let fileBrowserAgentId = null;
+
+// Compose recipients
+let composeRecipients = [];
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 async function init() {
-	const [teamRes, statusRes, playbookRes, mailboxRes, scheduleRes] =
-		await Promise.all([
-			fetch("team"),
-			fetch("status"),
-			fetch("playbook"),
-			fetch("mailbox"),
-			fetch("schedule"),
-		]);
+	loadSeenState();
+
+	const [teamRes, statusRes, mailboxRes, scheduleRes] = await Promise.all([
+		fetch("team"),
+		fetch("status"),
+		fetch("mailbox"),
+		fetch("schedule"),
+	]);
+
 	AGENTS = await teamRes.json();
-	PLAYBOOK = await playbookRes.json();
 	const status = await statusRes.json();
 	const history = await mailboxRes.json();
 	scheduleData = await scheduleRes.json();
 
-	populateAgentTabs(AGENTS);
-	populateToChecks(AGENTS);
 	injectAgentColors(AGENTS);
+	populateAgentTabs(AGENTS);
+	renderRecipientChips();
 	applyStatus(status);
-	updateScheduleTabs();
 
 	for (const m of history) allMessages.push(m);
-	renderFeed();
+	buildThreads();
+	renderThreadList();
+
+	selectMissionTab();
 
 	setInterval(refreshSchedule, 60_000);
+	setInterval(updateUptime, 1000);
 	connectSSE();
 }
 
-async function refreshSchedule() {
+function loadSeenState() {
 	try {
-		const r = await fetch("schedule");
-		scheduleData = await r.json();
-		updateScheduleTabs();
+		const raw = localStorage.getItem("magi-seen-threads");
+		if (raw) {
+			const obj = JSON.parse(raw);
+			for (const [k, v] of Object.entries(obj)) seenAt.set(k, new Date(v));
+		}
+	} catch {}
+}
+
+function persistSeen() {
+	try {
+		const obj = {};
+		for (const [k, v] of seenAt.entries()) obj[k] = v.toISOString();
+		localStorage.setItem("magi-seen-threads", JSON.stringify(obj));
 	} catch {}
 }
 
 // ── Agent tabs ─────────────────────────────────────────────────────────────
 function populateAgentTabs(agents) {
 	const bar = document.getElementById("agent-tabs");
-	const playbook = document.getElementById("tab-playbook");
+	bar.innerHTML = "";
+
 	agents.forEach((a) => {
 		const tab = document.createElement("div");
-		tab.className = `agent-tab ac-${a.id}`;
+		tab.className = "agent-tab";
 		tab.dataset.id = a.id;
 		tab.innerHTML =
 			`<div class="tab-name">${esc(a.name)}</div>` +
 			`<div class="tab-role">${esc(a.role)}</div>` +
-			'<div class="tab-ctx">' +
-			'<span class="tab-ctx-label">—</span>' +
-			'<div class="tab-ctx-bar"><div class="tab-ctx-fill"></div></div>' +
-			"</div>" +
-			'<div class="tab-sched">—</div>';
+			`<div class="tab-ctx">` +
+			`<span class="tab-ctx-label">—</span>` +
+			`<div class="tab-ctx-bar"><div class="tab-ctx-fill"></div></div>` +
+			`</div>`;
 		tab.onclick = () => selectAgent(a.id);
-		bar.insertBefore(tab, playbook);
+		bar.appendChild(tab);
 	});
-}
 
-function updateScheduleTabs() {
-	AGENTS.forEach((a) => {
-		const tab = document.querySelector(`.agent-tab[data-id="${a.id}"]`);
-		if (!tab) return;
-		const sched = tab.querySelector(".tab-sched");
-		if (!sched) return;
-		if (a.id === runningAgent) {
-			sched.textContent = "\u25b6 running";
-			sched.style.color = "var(--green)";
-			return;
-		}
-		const pending = scheduleData.filter(
-			(s) => Array.isArray(s.to) && s.to.includes(a.id),
-		);
-		if (!pending.length) {
-			sched.textContent = "\u2014";
-			sched.style.color = "var(--muted)";
-			return;
-		}
-		pending.sort((x, y) => new Date(x.scheduledFor) - new Date(y.scheduledFor));
-		const next = pending[0];
-		const t = next.scheduledFor ? new Date(next.scheduledFor) : null;
-		if (t && !Number.isNaN(t)) {
-			const now = new Date();
-			const isToday = t.toDateString() === now.toDateString();
-			sched.textContent = `next: ${
-				isToday
-					? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-					: t.toLocaleDateString([], { weekday: "short" }) +
-						" " +
-						t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-			}`;
-		} else if (next.cronExpression) {
-			sched.textContent = `cron: ${next.cronExpression}`;
-		} else {
-			sched.textContent = "scheduled";
-		}
-		sched.style.color = "var(--muted)";
-	});
-}
-
-function populateToChecks(agents) {
-	const box = document.getElementById("to-checks");
-	box.innerHTML = "";
-	agents.forEach((a) => {
-		const lbl = document.createElement("label");
-		const chk = document.createElement("input");
-		chk.type = "checkbox";
-		chk.value = a.id;
-		chk.id = `chk-${a.id}`;
-		lbl.appendChild(chk);
-		lbl.appendChild(document.createTextNode(` ${a.name} (${a.role})`));
-		box.appendChild(lbl);
-	});
-	const all = document.createElement("label");
-	all.style.cssText = "margin-left:auto;color:var(--muted);cursor:pointer";
-	all.onclick = checkAll;
-	all.textContent = "All";
-	box.appendChild(all);
+	const missionTab = document.createElement("div");
+	missionTab.className = "agent-tab mission-tab";
+	missionTab.id = "tab-mission";
+	missionTab.innerHTML =
+		`<div class="tab-name">Mission</div>` +
+		`<div class="tab-role">overview</div>`;
+	missionTab.onclick = selectMissionTab;
+	bar.appendChild(missionTab);
 }
 
 function injectAgentColors(agents) {
@@ -166,78 +135,92 @@ function injectAgentColors(agents) {
 }
 
 // ── SSE ────────────────────────────────────────────────────────────────────
-let es;
 function connectSSE() {
-	es = new EventSource("events");
+	const es = new EventSource("events");
 	es.onopen = () => document.getElementById("dot").classList.remove("dead");
 	es.onerror = () => document.getElementById("dot").classList.add("dead");
+
 	es.addEventListener("status", (e) => applyStatus(JSON.parse(e.data)));
+
 	es.addEventListener("mailbox-msg", (e) => {
 		const m = JSON.parse(e.data);
 		allMessages.push(m);
-		renderFeed();
+		buildThreads();
+		renderThreadList();
+		if (activeThread === threadKey(m)) renderChatView();
 	});
+
 	es.addEventListener("llm-call", (e) => {
 		const d = JSON.parse(e.data);
 		updateCostDisplay(d.missionTotalUsd, maxCostUsd);
-		addLlmCallToUsage(d);
+		agentCosts[d.agentId] = d.agentTotalUsd;
 		agentContextTokens[d.agentId] = d.input;
 		updateContextBar(d.agentId, d.input);
+		if (activeTab === "stats" && activeAgent === null) renderStats();
 	});
+
 	es.addEventListener("step-paused", () => {
 		stepWaiting = true;
 		renderStepBtn();
-		renderQueue();
 	});
+
 	es.addEventListener("step-resumed", () => {
 		stepWaiting = false;
 		renderStepBtn();
-		renderQueue();
 	});
-	es.addEventListener("mental-map-update", () => {
-		// Mental map snapshots are stored per-LLM-call in the sessions tree — no live rendering needed.
-	});
+
 	es.addEventListener("conversation-update", (e) => {
 		const d = JSON.parse(e.data);
-		if (d.agentId !== activeAgent) return;
-		appendToSessionsLive(d.message);
+		if (d.agentId === activeAgent && activeTab === "activity") {
+			sessionLiveDirty = true;
+		}
 	});
-	es.addEventListener("shutdown", (e) => {
-		const d = JSON.parse(e.data);
-		document.getElementById("dot").classList.add("dead");
-		document.getElementById("stop-btn").disabled = true;
-		document.getElementById("stop-btn").textContent = "\u2014 stopped";
-		addSysMsg(`Daemon stopped: ${d.reason || "unknown"}`);
-		stopped = true;
+
+	es.addEventListener("mental-map-update", () => {
+		if (activeAgent && activeTab === "mentalmap") loadMentalMap();
 	});
-	es.addEventListener("started", () => setStarted(true));
+
 	es.addEventListener("agent-status", (e) => {
 		const d = JSON.parse(e.data);
-		runningAgent = d.running;
-		pendingAgents = d.pending ?? [];
-		renderQueue();
+		const wasRunning = new Set(runningAgents);
+		runningAgents = new Set(d.running || []);
 		renderAgentTabIndicators();
-		// Re-fetch sessions when agent finishes if live updates arrived
-		if (!d.running && activeAgent && sessionLiveDirty) {
+		if (
+			activeAgent &&
+			activeTab === "activity" &&
+			sessionLiveDirty &&
+			wasRunning.has(activeAgent) &&
+			!runningAgents.has(activeAgent)
+		) {
 			sessionLiveDirty = false;
 			loadSessions();
 		}
 	});
+
 	es.addEventListener("agent-error", (e) => {
 		const d = JSON.parse(e.data);
 		showAgentErrorBanner(d.agentId, d.errorMessage, d.transient);
 	});
+
 	es.addEventListener("cost-pause", (e) => {
 		const d = JSON.parse(e.data);
 		showBudgetBanner(d.spentUsd, d.capUsd);
 	});
+
 	es.addEventListener("cost-resumed", (e) => {
 		const d = JSON.parse(e.data);
 		hideBudgetBanner();
 		maxCostUsd = d.newCapUsd ?? maxCostUsd;
-		addSysMsg(
-			`\u2705 Budget extended +$${d.addUsd?.toFixed(2) ?? "5.00"} \u2014 new cap $${d.newCapUsd?.toFixed(2) ?? "?"}, mission resuming`,
-		);
+	});
+
+	es.addEventListener("shutdown", () => {
+		document.getElementById("dot").classList.add("dead");
+		const btn = document.getElementById("kill-btn");
+		if (btn) {
+			btn.disabled = true;
+			btn.textContent = "— stopped";
+		}
+		stopped = true;
 	});
 }
 
@@ -248,126 +231,31 @@ function applyStatus(s) {
 	startedAt = Date.now() - s.uptimeSec * 1000;
 	maxCostUsd = s.maxCostUsd;
 	stepEnabled = s.stepEnabled;
-	runningAgent = s.running ?? null;
-	pendingAgents = s.pending ?? [];
-	if (s.started) setStarted(true);
+	runningAgents = new Set(s.running || []);
+
 	if (s.budgetPaused) showBudgetBanner(s.missionTotalUsd, s.maxCostUsd);
 	else hideBudgetBanner();
 	renderStepBtn();
-	renderQueue();
 	renderAgentTabIndicators();
-	updateCostDisplay(s.missionTotalUsd, s.maxCostUsd);
-	updateUsageTable(s.agents);
-}
-
-function setStarted(val) {
-	missionStarted = val;
-	const btn = document.getElementById("start-btn");
-	if (val) {
-		btn.textContent = "\u25cf Running";
-		btn.className = "btn btn-start running";
-		btn.disabled = true;
+	updateCostDisplay(s.missionTotalUsd ?? 0, s.maxCostUsd);
+	if (s.agents) {
+		for (const a of s.agents) {
+			agentCosts[a.agentId] = a.costUsd;
+			if (a.input) {
+				agentContextTokens[a.agentId] = a.input;
+				updateContextBar(a.agentId, a.input);
+			}
+		}
 	}
 }
 
 function updateCostDisplay(total, max) {
 	const el = document.getElementById("hcost");
-	el.textContent = `$${total.toFixed(4)}`;
+	if (!el) return;
+	el.textContent = `$${(total ?? 0).toFixed(4)}`;
 	el.className = "hcost";
 	if (max && total > max * 0.8) el.classList.add("warn");
 	if (max && total >= max) el.classList.add("danger");
-}
-
-// ── Budget pause banner ────────────────────────────────────────────────────
-function showBudgetBanner(spentUsd, capUsd) {
-	const banner = document.getElementById("budget-banner");
-	const msg = document.getElementById("budget-banner-msg");
-	msg.textContent = `Spending cap of $${capUsd.toFixed(2)} reached ($${spentUsd.toFixed(4)} spent) — mission paused`;
-	banner.classList.remove("hidden");
-	document.getElementById("hcost").classList.add("danger");
-	addSysMsg(
-		`\u26a0 Spending cap $${capUsd.toFixed(2)} reached — mission paused. Click "+$5 and continue" to resume.`,
-	);
-}
-
-function hideBudgetBanner() {
-	document.getElementById("budget-banner").classList.add("hidden");
-	document.getElementById("hcost").classList.remove("danger");
-	const btn = document.getElementById("extend-budget-btn");
-	btn.disabled = false;
-	btn.textContent = "+$5 and continue";
-}
-
-// ── Agent error banner ─────────────────────────────────────────────────────
-function showAgentErrorBanner(agentId, errorMessage, transient) {
-	const banner = document.getElementById("agent-error-banner");
-	const msg = document.getElementById("agent-error-msg");
-	const resumeBtn = document.getElementById("agent-error-resume-btn");
-	const hint = document.getElementById("agent-error-hint");
-
-	const short =
-		errorMessage.length > 120 ? `${errorMessage.slice(0, 120)}…` : errorMessage;
-	msg.textContent = `Agent ${agentId} stopped — ${short}`;
-
-	if (transient) {
-		hint.textContent =
-			"Transient error (rate limit / overload) — the agent will retry automatically on the next wakeup.";
-		resumeBtn.classList.add("hidden");
-	} else {
-		hint.textContent =
-			"Provider error (credit exhaustion or auth failure) — resolve the issue then click Resume.";
-		resumeBtn.classList.remove("hidden");
-		resumeBtn.onclick = () => resumeAgentAfterError(agentId);
-	}
-	banner.classList.remove("hidden");
-	addSysMsg(`❌ Agent ${agentId} LLM error: ${short}`);
-}
-
-function hideAgentErrorBanner() {
-	document.getElementById("agent-error-banner").classList.add("hidden");
-}
-
-async function resumeAgentAfterError(agentId) {
-	const btn = document.getElementById("agent-error-resume-btn");
-	btn.disabled = true;
-	btn.textContent = "Sending…";
-	try {
-		await fetch("send-message", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				to: agentId,
-				subject: "Resume after technical interruption",
-				body: "A technical issue (LLM provider error) interrupted your previous session. The issue has been resolved. Review your mental map to recall where you were, then continue your work.",
-			}),
-		});
-		hideAgentErrorBanner();
-		addSysMsg(`✅ Resume message sent to ${agentId}`);
-	} catch {
-		btn.disabled = false;
-		btn.textContent = "Resume";
-		addSysMsg(`⚠ Failed to send resume message to ${agentId}`);
-	}
-}
-
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-async function extendBudget() {
-	const btn = document.getElementById("extend-budget-btn");
-	btn.disabled = true;
-	btn.textContent = "Extending\u2026";
-	try {
-		const r = await fetch("extend-budget", { method: "POST" });
-		if (!r.ok) {
-			btn.disabled = false;
-			btn.textContent = "+$5 and continue";
-			addSysMsg(`\u274c Failed to extend budget: ${r.statusText}`);
-		}
-		// Banner hidden via cost-resumed SSE event
-	} catch (err) {
-		btn.disabled = false;
-		btn.textContent = "+$5 and continue";
-		addSysMsg(`\u274c Error: ${err.message}`);
-	}
 }
 
 function updateContextBar(agentId, tokens) {
@@ -382,209 +270,438 @@ function updateContextBar(agentId, tokens) {
 	fill.style.width = `${pct}%`;
 	fill.style.background =
 		pct > 80 ? "var(--red)" : pct > 60 ? "var(--yellow)" : "var(--green)";
+	tab.classList.toggle("ctx-warn", pct > 75);
 }
 
-// ── Usage bar (footer) ─────────────────────────────────────────────────────
-function addLlmCallToUsage(d) {
-	agentCosts[d.agentId] = d.agentTotalUsd;
-	renderUsageRow();
-	if (maxCostUsd) {
-		document.getElementById("cap-wrap").style.display = "block";
-		const pct = Math.min(100, (d.missionTotalUsd / maxCostUsd) * 100);
-		const fill = document.getElementById("cap-fill");
-		fill.style.width = `${pct}%`;
-		fill.style.background =
-			pct > 80 ? "var(--red)" : pct > 50 ? "var(--yellow)" : "var(--accent)";
+function renderAgentTabIndicators() {
+	document.querySelectorAll(".agent-tab[data-id]").forEach((tab) => {
+		tab.classList.toggle("running", runningAgents.has(tab.dataset.id));
+	});
+}
+
+// ── Budget pause banner ────────────────────────────────────────────────────
+function showBudgetBanner(spentUsd, capUsd) {
+	const banner = document.getElementById("budget-banner");
+	const msg = document.getElementById("budget-msg");
+	if (!banner || !msg) return;
+	msg.textContent = `Spending cap of $${capUsd?.toFixed(2) ?? "?"} reached ($${spentUsd?.toFixed(4) ?? "?"} spent) — mission paused`;
+	banner.classList.remove("hidden");
+	document.getElementById("hcost")?.classList.add("danger");
+}
+
+function hideBudgetBanner() {
+	document.getElementById("budget-banner")?.classList.add("hidden");
+	document.getElementById("hcost")?.classList.remove("danger");
+	const btn = document.getElementById("extend-btn");
+	if (btn) {
+		btn.disabled = false;
+		btn.textContent = "+$5 and continue";
 	}
 }
 
-function updateUsageTable(agents) {
-	if (!agents || !agents.length) return;
-	for (const a of agents) agentCosts[a.agentId] = a.costUsd;
-	renderUsageRow();
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+async function extendBudget() {
+	const btn = document.getElementById("extend-btn");
+	if (btn) {
+		btn.disabled = true;
+		btn.textContent = "Extending…";
+	}
+	try {
+		const r = await fetch("extend-budget", { method: "POST" });
+		if (!r.ok && btn) {
+			btn.disabled = false;
+			btn.textContent = "+$5 and continue";
+		}
+	} catch {
+		if (btn) {
+			btn.disabled = false;
+			btn.textContent = "+$5 and continue";
+		}
+	}
 }
 
-function renderUsageRow() {
-	const total = Object.values(agentCosts).reduce((s, v) => s + v, 0);
-	const row = document.getElementById("usage-row");
-	row.innerHTML = `${Object.entries(agentCosts)
-		.sort((a, b) => b[1] - a[1])
-		.map(
-			([id, cost]) =>
-				`<span><span class="u-agent ac-${id}">${id}</span> <span class="u-val">$${cost.toFixed(4)}</span></span>`,
-		)
-		.join("")}<span class="u-total">mission $${total.toFixed(4)}</span>`;
+// ── Agent error banner ─────────────────────────────────────────────────────
+function showAgentErrorBanner(agentId, errorMessage, transient) {
+	const banner = document.getElementById("agent-error-banner");
+	const msg = document.getElementById("ae-msg");
+	const hint = document.getElementById("ae-hint");
+	const resumeBtn = document.getElementById("ae-resume-btn");
+	if (!banner || !msg) return;
+	const short =
+		errorMessage.length > 120 ? `${errorMessage.slice(0, 120)}…` : errorMessage;
+	msg.textContent = `Agent ${agentId} stopped — ${short}`;
+	if (transient) {
+		if (hint)
+			hint.textContent =
+				"Transient error (rate limit / overload) — the agent will retry automatically on the next wakeup.";
+		resumeBtn?.classList.add("hidden");
+	} else {
+		if (hint)
+			hint.textContent =
+				"Provider error (credit exhaustion or auth failure) — resolve the issue then click Resume.";
+		if (resumeBtn) {
+			resumeBtn.classList.remove("hidden");
+			resumeBtn.onclick = () => resumeAgentAfterError(agentId);
+		}
+	}
+	banner.classList.remove("hidden");
 }
 
-// ── Feed ───────────────────────────────────────────────────────────────────
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-function setFeedMode(mode) {
-	feedMode = mode;
-	document.querySelectorAll(".feed-mode-btn").forEach((b) => {
-		b.classList.toggle("active", b.dataset.mode === mode);
-	});
-	renderFeed();
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+function hideAgentErrorBanner() {
+	document.getElementById("agent-error-banner")?.classList.add("hidden");
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-function setFeedSearch(text) {
-	feedSearch = text.toLowerCase();
-	renderFeed();
+async function resumeAgentAfterError(agentId) {
+	const btn = document.getElementById("ae-resume-btn");
+	if (btn) {
+		btn.disabled = true;
+		btn.textContent = "Sending…";
+	}
+	try {
+		await fetch("send-message", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				to: [agentId],
+				subject: "Resume after technical interruption",
+				message:
+					"A technical issue (LLM provider error) interrupted your previous session. The issue has been resolved. Review your mental map to recall where you were, then continue your work.",
+			}),
+		});
+		hideAgentErrorBanner();
+	} catch {
+		if (btn) {
+			btn.disabled = false;
+			btn.textContent = "Resume";
+		}
+	}
 }
 
-function matchesSearch(m) {
-	if (!feedSearch) return true;
-	return [m.from, ...(m.to || []), m.subject || "", m.body || ""].some((s) =>
-		String(s).toLowerCase().includes(feedSearch),
-	);
+// ── Thread list + chat view ────────────────────────────────────────────────
+// Thread key is the sorted, pipe-joined set of participants — all messages
+// between the same people go in one thread regardless of subject.
+function threadKey(msg) {
+	const parts = new Set([msg.from, ...(msg.to || [])]);
+	return [...parts].sort().join("|");
 }
 
-function renderFeed() {
-	const feed = document.getElementById("feed");
-	const msgs = allMessages.filter((m) => {
-		if (feedMode === "user" && !(m.to || []).includes("user")) return false;
-		return matchesSearch(m);
-	});
-	feed.innerHTML = "";
-	if (!msgs.length) {
-		feed.innerHTML = '<div class="empty-state">No messages</div>';
+function buildThreads() {
+	threads.clear();
+	for (const m of allMessages) {
+		const key = threadKey(m);
+		if (!threads.has(key)) {
+			threads.set(key, {
+				subject: m.subject || "(no subject)",
+				messages: [],
+				participants: new Set(),
+			});
+		}
+		const t = threads.get(key);
+		t.messages.push(m);
+		t.participants.add(m.from);
+		for (const r of m.to || []) t.participants.add(r);
+	}
+}
+
+function threadUnreadCount(key) {
+	const t = threads.get(key);
+	if (!t) return 0;
+	const seen = seenAt.get(key);
+	if (!seen) return t.messages.length;
+	return t.messages.filter((m) => new Date(m.timestamp) > seen).length;
+}
+
+function renderThreadList() {
+	const list = document.getElementById("thread-list");
+	if (!threads.size) {
+		list.innerHTML = '<div class="empty-state">Waiting for messages…</div>';
 		return;
 	}
-	if (feedMode === "threads") {
-		renderFeedThreads(feed, msgs);
-	} else {
-		for (const m of msgs) appendMsgEl(feed, m);
-		feed.scrollTop = feed.scrollHeight;
+	const sorted = [...threads.entries()].sort((a, b) => {
+		const aLast = new Date(a[1].messages.at(-1)?.timestamp ?? 0);
+		const bLast = new Date(b[1].messages.at(-1)?.timestamp ?? 0);
+		return bLast - aLast;
+	});
+	list.innerHTML = "";
+	for (const [key, t] of sorted) {
+		const unread = threadUnreadCount(key);
+		const last = t.messages.at(-1);
+		const participants = [...t.participants]
+			.filter((p) => p !== "user")
+			.join(", ");
+		const row = document.createElement("div");
+		row.className = `thread-row${unread > 0 ? " unread" : ""}${activeThread === key ? " selected" : ""}`;
+		row.onclick = () => openThread(key);
+		row.innerHTML =
+			`<span class="tr-dot"></span>` +
+			`<div class="tr-body">` +
+			`<div class="tr-subject">${esc(t.subject)}</div>` +
+			`<div class="tr-meta">${esc(participants || "(system)")} · ${fmtTime(last?.timestamp)} · ${t.messages.length}</div>` +
+			`</div>`;
+		list.appendChild(row);
 	}
 }
 
-function renderFeedThreads(feed, msgs) {
-	const threads = new Map();
-	for (const m of msgs) {
-		const key = (m.subject || "(no subject)").toLowerCase().trim();
-		if (!threads.has(key)) threads.set(key, []);
-		threads.get(key).push(m);
+function openThread(key) {
+	activeThread = key;
+	seenAt.set(key, new Date());
+	persistSeen();
+	renderThreadList();
+	renderChatView();
+	const t = threads.get(key);
+	if (t) {
+		const recipients = [...t.participants].filter((p) => p !== "user");
+		setComposeRecipients(recipients);
 	}
-	const sorted = [...threads.entries()].sort(
-		(a, b) => new Date(b[1].at(-1).timestamp) - new Date(a[1].at(-1).timestamp),
+}
+
+function renderChatView() {
+	const view = document.getElementById("chat-view");
+	if (!activeThread) {
+		view.innerHTML = '<div class="empty-state">Select a thread</div>';
+		return;
+	}
+	const t = threads.get(activeThread);
+	if (!t) {
+		view.innerHTML = '<div class="empty-state">Thread not found</div>';
+		return;
+	}
+	view.innerHTML = "";
+	for (const m of t.messages) {
+		const bubble = document.createElement("div");
+		bubble.className = `bubble ab-${m.from}`;
+		bubble.innerHTML =
+			`<div class="bubble-hdr">` +
+			`<span class="bubble-from ac-${m.from}">${esc(m.from)}</span>` +
+			`<span class="bubble-to">→ ${esc((m.to || []).join(", "))}</span>` +
+			`<span class="bubble-time">${fmtTime(m.timestamp)}</span>` +
+			`</div>` +
+			`<div class="bubble-subject">${esc(m.subject || "")}</div>` +
+			`<div class="bubble-body">${md(m.body || "")}</div>`;
+		view.appendChild(bubble);
+	}
+	view.scrollTop = view.scrollHeight;
+}
+
+// ── Markdown renderer ──────────────────────────────────────────────────────
+function md(text) {
+	if (!text) return "";
+	// Escape HTML
+	let s = String(text)
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
+
+	// Fenced code blocks (must come before inline code)
+	s = s.replace(
+		/```[^\n]*\n([\s\S]*?)```/g,
+		(_, code) => `<pre><code>${code.trimEnd()}</code></pre>`,
 	);
-	for (const [, tMsgs] of sorted) {
-		const participants = [
-			...new Set(tMsgs.flatMap((m) => [m.from, ...(m.to || [])])),
-		];
-		const last = tMsgs.at(-1);
-		const thread = document.createElement("div");
-		thread.className = "feed-thread";
-		thread.innerHTML =
-			`<div class="feed-thread-hdr" onclick="toggleThread(this)">` +
-			`<span class="ft-arrow">\u25b6</span>` +
-			`<span class="ft-subj">${esc(tMsgs[0].subject || "(no subject)")}</span>` +
-			`<span class="ft-meta">${tMsgs.length}\u00a0msg \u00b7 ${esc(participants.join(", "))} \u00b7 ${fmtTime(last.timestamp)}</span>` +
-			`</div><div class="feed-thread-body"></div>`;
-		const body = thread.querySelector(".feed-thread-body");
-		for (const m of tMsgs) appendMsgEl(body, m);
-		feed.appendChild(thread);
+
+	// Inline code
+	s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+
+	// Headers
+	s = s.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+	s = s.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+	s = s.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+
+	// Bold and italic
+	s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+	s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+	// Links
+	s = s.replace(
+		/\[([^\]]+)\]\(([^)]+)\)/g,
+		'<a href="$2" target="_blank" rel="noopener">$1</a>',
+	);
+
+	// Bullet lists (consecutive lines starting with - or *)
+	s = s.replace(/((?:^[ \t]*[-*] .+(?:\n|$))+)/gm, (block) => {
+		const items = block
+			.trim()
+			.split(/\n/)
+			.map((line) => `<li>${line.replace(/^[ \t]*[-*] /, "")}</li>`)
+			.join("");
+		return `<ul>${items}</ul>`;
+	});
+
+	// Paragraphs (double newlines become paragraph breaks)
+	s = s
+		.split(/\n\n+/)
+		.map((para) => {
+			const trimmed = para.trim();
+			if (!trimmed) return "";
+			// Don't wrap block-level elements
+			if (/^<(?:h[123]|pre|ul|ol|li)/.test(trimmed)) return trimmed;
+			return `<p>${trimmed.replace(/\n/g, "<br>")}</p>`;
+		})
+		.filter(Boolean)
+		.join("");
+
+	return s;
+}
+
+// ── Compose bar ────────────────────────────────────────────────────────────
+function setComposeRecipients(ids) {
+	composeRecipients = [...new Set(ids)];
+	renderRecipientChips();
+}
+
+function toggleRecipient(id) {
+	if (composeRecipients.includes(id)) {
+		composeRecipients = composeRecipients.filter((r) => r !== id);
+	} else {
+		composeRecipients.push(id);
+	}
+	renderRecipientChips();
+}
+
+function renderRecipientChips() {
+	const box = document.getElementById("compose-recipients");
+	if (!box) return;
+	box.innerHTML = "";
+	AGENTS.forEach((a) => {
+		const chip = document.createElement("span");
+		chip.className = `recipient-chip${composeRecipients.includes(a.id) ? " selected" : ""}`;
+		chip.textContent = a.name;
+		chip.onclick = () => toggleRecipient(a.id);
+		box.appendChild(chip);
+	});
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+function openCompose(recipientId) {
+	if (recipientId) setComposeRecipients([recipientId]);
+	document.getElementById("compose-body")?.focus();
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+async function sendMessage() {
+	const to = composeRecipients;
+	const message = document.getElementById("compose-body")?.value.trim() ?? "";
+	if (!to.length) {
+		alert("Select at least one recipient");
+		return;
+	}
+	if (!message) {
+		alert("Message body is required");
+		return;
+	}
+	// Set activeThread before the fetch so the SSE that arrives during the
+	// round-trip (Change Stream fires before the HTTP response resolves) already
+	// finds the correct activeThread and calls renderChatView().
+	activeThread = [...new Set(["user", ...to])].sort().join("|");
+	const r = await fetch("send-message", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ to, subject: "Operator message", message }),
+	});
+	if (r.ok) {
+		const textarea = document.getElementById("compose-body");
+		if (textarea) textarea.value = "";
 	}
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-function toggleThread(hdr) {
-	const body = hdr.nextElementSibling;
-	const arrow = hdr.querySelector(".ft-arrow");
-	body.classList.toggle("open");
-	arrow.textContent = body.classList.contains("open") ? "\u25bc" : "\u25b6";
-}
-
-function appendMsgEl(container, m) {
-	const preview = m.bodyPreview || m.body || "";
-	const full = m.body || preview;
-	const truncated = full.length > preview.length;
-	const div = document.createElement("div");
-	div.className = `msg ab-${m.from}`;
-	div.innerHTML =
-		'<div class="msg-hdr">' +
-		`<span class="msg-from ac-${m.from}">${esc(m.from)}</span>` +
-		`<span class="msg-to">\u2192 ${esc((m.to || []).join(", "))}</span>` +
-		`<span class="msg-time">${fmtTime(m.timestamp)}</span>` +
-		"</div>" +
-		`<div class="msg-subj">${esc(m.subject || "")}</div>` +
-		`<div class="msg-body">${esc(preview)}</div>` +
-		(truncated ? '<div class="msg-expand">\u25bc\u00a0more</div>' : "");
-	if (truncated) {
-		div.style.cursor = "pointer";
-		div.addEventListener("click", () => {
-			const bodyEl = div.querySelector(".msg-body");
-			const expandEl = div.querySelector(".msg-expand");
-			if (div.dataset.expanded) {
-				bodyEl.textContent = preview;
-				expandEl.textContent = "\u25bc\u00a0more";
-				delete div.dataset.expanded;
-			} else {
-				bodyEl.textContent = full;
-				expandEl.textContent = "\u25b2\u00a0less";
-				div.dataset.expanded = "1";
-			}
-		});
-	}
-	container.appendChild(div);
-}
-
-function addSysMsg(text) {
-	const feed = document.getElementById("feed");
-	const div = document.createElement("div");
-	div.className = "msg";
-	div.innerHTML = `<div class="msg-sys">${esc(text)}</div>`;
-	feed.appendChild(div);
-	feed.scrollTop = feed.scrollHeight;
-}
-
-// ── Agent detail ───────────────────────────────────────────────────────────
+// ── Right panel tab routing ────────────────────────────────────────────────
 function selectAgent(id) {
 	activeAgent = id;
 	sessionLiveDirty = false;
+	filePath = "";
 	document.querySelectorAll(".agent-tab").forEach((t) => {
 		t.classList.toggle("active", t.dataset.id === id);
 	});
-	document.getElementById("tab-playbook").classList.remove("active");
-	loadSessions();
+	showTab("activity");
 }
 
-function resetPane() {
-	const pane = document.getElementById("detail-pane");
-	pane.style.padding = "10px";
-	pane.style.overflow = "auto";
-	pane.style.display = "";
-	pane.style.gridTemplateColumns = "";
-	pane.innerHTML = "";
-	return pane;
+function selectMissionTab() {
+	activeAgent = null;
+	filePath = "";
+	document.querySelectorAll(".agent-tab").forEach((t) => {
+		t.classList.remove("active");
+	});
+	document.getElementById("tab-mission")?.classList.add("active");
+	showTab("schedule");
 }
 
-// ── Sessions tree tab ─────────────────────────────────────────────────────
+function showTab(tab) {
+	activeTab = tab;
+	renderContentTabs();
+	loadTabContent();
+}
 
-// State for expanded sessions
-const expandedSessions = new Set();
+function renderContentTabs() {
+	const bar = document.getElementById("content-tabs");
+	if (!bar) return;
+	const tabs =
+		activeAgent === null
+			? ["schedule", "files", "log", "stats"]
+			: ["activity", "mentalmap", "files"];
+	bar.innerHTML = tabs
+		.map(
+			(t) =>
+				`<div class="content-tab${activeTab === t ? " active" : ""}" onclick="showTab('${t}')">${tabLabel(t)}</div>`,
+		)
+		.join("");
+}
 
+function tabLabel(t) {
+	return (
+		{
+			activity: "Activity",
+			mentalmap: "Mental Map",
+			files: "Files",
+			schedule: "Schedule",
+			log: "Log",
+			stats: "Stats",
+		}[t] || t
+	);
+}
+
+function loadTabContent() {
+	switch (activeTab) {
+		case "activity":
+			loadSessions();
+			break;
+		case "mentalmap":
+			loadMentalMap();
+			break;
+		case "files":
+			loadFiles(activeAgent ? "workdir" : "shared", activeAgent);
+			break;
+		case "schedule":
+			loadSchedule();
+			break;
+		case "log":
+			loadLog();
+			break;
+		case "stats":
+			renderStats();
+			break;
+	}
+}
+
+// ── Activity tab — sessions tree ───────────────────────────────────────────
 async function loadSessions() {
-	const pane = resetPane();
+	if (!activeAgent) return;
+	const pane = document.getElementById("detail-pane");
 	pane.innerHTML = '<div class="empty-state">Loading…</div>';
-
-	const r = await fetch(`agents/${activeAgent}/sessions`);
-	const sessions = await r.json();
-	renderSessionTree(sessions, pane);
-}
-
-function renderSessionTree(sessions, pane) {
-	pane.innerHTML = "";
-	if (!sessions.length) {
-		pane.innerHTML = '<div class="empty-state">No sessions yet</div>';
-		return;
+	try {
+		const r = await fetch(`agents/${encodeURIComponent(activeAgent)}/sessions`);
+		const sessions = await r.json();
+		pane.innerHTML = "";
+		if (!sessions.length) {
+			pane.innerHTML = '<div class="empty-state">No sessions yet</div>';
+			return;
+		}
+		const tree = document.createElement("div");
+		tree.className = "session-tree";
+		for (const s of sessions) tree.appendChild(renderSessionRow(s));
+		pane.appendChild(tree);
+	} catch {
+		pane.innerHTML = '<div class="empty-state">Failed to load sessions</div>';
 	}
-	const tree = document.createElement("div");
-	tree.className = "session-tree";
-	for (const s of sessions) {
-		tree.appendChild(renderSessionRow(s));
-	}
-	pane.appendChild(tree);
 }
 
 function renderSessionRow(session) {
@@ -663,14 +780,13 @@ function renderSessionRow(session) {
  * Documents that already have callSeq are returned unchanged.
  */
 function normalizeCallSeq(docs) {
-	// If every doc already has callSeq, nothing to do.
 	if (docs.every((d) => d.callSeq != null)) return docs;
 	const sorted = [...docs].sort(
 		(a, b) => (a.seqInTurn ?? 0) - (b.seqInTurn ?? 0),
 	);
 	let seq = -1;
 	return sorted.map((doc) => {
-		if (doc.parentToolUseId) return doc; // sub-loop message — keep as-is
+		if (doc.parentToolUseId) return doc;
 		const role = doc.message?.role;
 		if (role === "assistant") seq++;
 		return { ...doc, callSeq: role === "user" ? -1 : seq };
@@ -687,7 +803,6 @@ async function expandSession(agentId, turnNumber, container) {
 	const messages = normalizeCallSeq(data.messages || []);
 	const llmCalls = data.llmCalls || [];
 
-	// Group messages by callSeq
 	const byCallSeq = new Map();
 	for (const doc of messages) {
 		const seq = doc.callSeq != null ? doc.callSeq : -1;
@@ -695,7 +810,6 @@ async function expandSession(agentId, turnNumber, container) {
 		byCallSeq.get(seq).push(doc);
 	}
 
-	// Build map of sub-loop messages by parentToolUseId
 	const subLoopByToolId = new Map();
 	for (const doc of messages) {
 		if (doc.parentToolUseId) {
@@ -705,7 +819,6 @@ async function expandSession(agentId, turnNumber, container) {
 		}
 	}
 
-	// Sort llmCalls by savedAt to match callSeq order
 	const sortedLlmCalls = [...llmCalls].sort(
 		(a, b) => new Date(a.savedAt) - new Date(b.savedAt),
 	);
@@ -714,7 +827,6 @@ async function expandSession(agentId, turnNumber, container) {
 		llmCallBySeq.set(i, lc);
 	});
 
-	// Render task user message (callSeq = -1)
 	const taskDocs = byCallSeq.get(-1) || [];
 	for (const doc of taskDocs) {
 		if (doc.message && doc.message.role === "user") {
@@ -727,12 +839,13 @@ async function expandSession(agentId, turnNumber, container) {
 							.filter((b) => b.type === "text")
 							.map((b) => b.text)
 							.join("\n");
-			el.innerHTML = `<span class="st-task-label">Inbox</span><span class="st-task-body">${esc(content.slice(0, 300))}${content.length > 300 ? "…" : ""}</span>`;
+			el.innerHTML =
+				`<span class="st-task-label">Inbox</span>` +
+				`<span class="st-task-body">${esc(content.slice(0, 300))}${content.length > 300 ? "…" : ""}</span>`;
 			container.appendChild(el);
 		}
 	}
 
-	// Render LLM call groups (callSeq 0, 1, 2, ...)
 	const seqs = [...byCallSeq.keys()]
 		.filter((s) => s >= 0)
 		.sort((a, b) => a - b);
@@ -821,10 +934,7 @@ function fillLlmCallBody(
 	if (texts.length) {
 		const el = document.createElement("div");
 		el.className = "lc-text";
-		el.textContent = texts
-			.map((b) => b.text)
-			.join("\n\n")
-			.slice(0, 600);
+		el.textContent = texts.map((b) => b.text).join("\n\n");
 		body.appendChild(el);
 	}
 
@@ -832,7 +942,8 @@ function fillLlmCallBody(
 		const mmRow = document.createElement("div");
 		mmRow.className = "lc-mm-row";
 		mmRow.innerHTML =
-			'<span class="lc-mm-label">🧠 Mental Map</span><span class="lc-mm-arrow">▶</span>';
+			'<span class="lc-mm-label">🧠 Mental Map</span>' +
+			'<span class="lc-mm-arrow">▶</span>';
 		const mmBody = document.createElement("div");
 		mmBody.className = "mm-iframe-wrap";
 		mmBody.style.display = "none";
@@ -849,7 +960,6 @@ function fillLlmCallBody(
 				mmBody.appendChild(iframe);
 			}
 		};
-		// Insert mental map row before text content
 		body.insertBefore(mmBody, body.firstChild);
 		body.insertBefore(mmRow, mmBody);
 	}
@@ -944,7 +1054,9 @@ function renderToolCallRow(toolCallBlock, toolResultDoc, subLoopMessages) {
 										.join("")
 										.slice(0, 200)
 								: "";
-					subEl.innerHTML = `<span class="sub-role">${esc(role)}</span><span class="sub-content">${esc(subContent)}</span>`;
+					subEl.innerHTML =
+						`<span class="sub-role">${esc(role)}</span>` +
+						`<span class="sub-content">${esc(subContent)}</span>`;
 					bdy.appendChild(subEl);
 				}
 			}
@@ -956,246 +1068,427 @@ function renderToolCallRow(toolCallBlock, toolResultDoc, subLoopMessages) {
 	return wrap;
 }
 
-function appendToSessionsLive(doc) {
-	if (!doc) return;
-	sessionLiveDirty = true;
-	// Mark dirty — tree reloads on demand when agent finishes
-}
-
-function _fmtTok(n) {
-	return n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
-}
-
-// ── Step / queue controls ──────────────────────────────────────────────────
-function renderStepBtn() {
-	const btn = document.getElementById("step-btn");
-	if (stepEnabled) {
-		btn.textContent = "Step \u25cf";
-		btn.className = "btn btn-step-toggle on";
-	} else {
-		btn.textContent = "Step \u25cb";
-		btn.className = "btn btn-step-toggle";
+// ── Mental Map tab ─────────────────────────────────────────────────────────
+async function loadMentalMap() {
+	if (!activeAgent) return;
+	const pane = document.getElementById("detail-pane");
+	pane.innerHTML = '<div class="empty-state">Loading…</div>';
+	try {
+		const r = await fetch(
+			`agents/${encodeURIComponent(activeAgent)}/mental-map`,
+		);
+		if (!r.ok) {
+			pane.innerHTML = '<div class="empty-state">No mental map yet</div>';
+			return;
+		}
+		const data = await r.json();
+		if (!data.html) {
+			pane.innerHTML = '<div class="empty-state">No mental map yet</div>';
+			return;
+		}
+		pane.innerHTML = "";
+		const iframe = document.createElement("iframe");
+		iframe.className = "mm-iframe";
+		iframe.setAttribute("sandbox", "allow-same-origin");
+		iframe.srcdoc = data.html;
+		pane.appendChild(iframe);
+	} catch {
+		pane.innerHTML = '<div class="empty-state">Failed to load mental map</div>';
 	}
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-async function startMission() {
-	if (missionStarted) return;
-	await fetch("start", { method: "POST" });
-	setStarted(true);
+// ── Files tab ──────────────────────────────────────────────────────────────
+async function loadFiles(type, agentId) {
+	fileBrowserType = type;
+	fileBrowserAgentId = agentId;
+	await refreshFileBrowser();
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
+async function refreshFileBrowser() {
+	const pane = document.getElementById("detail-pane");
+	pane.innerHTML = '<div class="empty-state">Loading…</div>';
+	const type = fileBrowserType;
+	const agentId = fileBrowserAgentId;
+	const url =
+		type === "shared"
+			? `files/shared?path=${encodeURIComponent(filePath)}`
+			: `files/workdir/${encodeURIComponent(agentId)}?path=${encodeURIComponent(filePath)}`;
+	try {
+		const r = await fetch(url);
+		if (!r.ok) {
+			pane.innerHTML = '<div class="empty-state">Not available</div>';
+			return;
+		}
+		const data = await r.json();
+		pane.innerHTML = "";
+		if (data.type === "dir") renderFileTree(pane, data.entries);
+		else renderFilePreview(pane, data);
+	} catch {
+		pane.innerHTML = '<div class="empty-state">Failed to load files</div>';
+	}
+}
+
+function buildBreadcrumb(onNav) {
+	const bc = document.createElement("div");
+	bc.className = "file-breadcrumb";
+	const parts = filePath ? filePath.split("/").filter(Boolean) : [];
+
+	// Up button — visible whenever we're inside a subdirectory
+	if (filePath) {
+		const parentPath = filePath.includes("/")
+			? filePath.split("/").slice(0, -1).join("/")
+			: "";
+		const upBtn = document.createElement("button");
+		upBtn.type = "button";
+		upBtn.className = "file-up-btn";
+		upBtn.title = "Go up one level";
+		upBtn.textContent = "↑ Up";
+		upBtn.onclick = () => onNav(parentPath);
+		bc.appendChild(upBtn);
+	}
+
+	const rootLabel =
+		fileBrowserType === "shared"
+			? "mission"
+			: (fileBrowserAgentId ?? "workdir");
+	const rootSeg = document.createElement("span");
+	rootSeg.className = "file-bc-seg";
+	rootSeg.textContent = rootLabel;
+	rootSeg.onclick = () => onNav("");
+	bc.appendChild(rootSeg);
+
+	parts.forEach((part, i) => {
+		const path = parts.slice(0, i + 1).join("/");
+		const sep = document.createElement("span");
+		sep.className = "file-bc-sep";
+		sep.textContent = " / ";
+		bc.appendChild(sep);
+		const seg = document.createElement("span");
+		seg.className = "file-bc-seg";
+		seg.textContent = part;
+		seg.onclick = () => onNav(path);
+		bc.appendChild(seg);
+	});
+
+	return bc;
+}
+
+function renderFileTree(pane, entries) {
+	const nav = (path) => {
+		filePath = path;
+		refreshFileBrowser();
+	};
+
+	pane.appendChild(buildBreadcrumb(nav));
+
+	const list = document.createElement("div");
+	list.className = "file-tree";
+
+	const sorted = [...(entries || [])].sort((a, b) => {
+		if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+		return a.name.localeCompare(b.name);
+	});
+
+	for (const entry of sorted) {
+		const row = document.createElement("div");
+		row.className = `file-entry ${entry.type}`;
+		const icon = entry.type === "dir" ? "📂" : "📄";
+		const size = entry.size ? ` (${fmtBytes(entry.size)})` : "";
+		row.innerHTML =
+			`<span class="file-entry-icon">${icon}</span>` +
+			`<span class="file-entry-name">${esc(entry.name)}${esc(size)}</span>`;
+		const entryPath = filePath ? `${filePath}/${entry.name}` : entry.name;
+		row.onclick = () => nav(entryPath);
+		list.appendChild(row);
+	}
+
+	pane.appendChild(list);
+}
+
+function renderFilePreview(pane, data) {
+	const nav = (path) => {
+		filePath = path;
+		refreshFileBrowser();
+	};
+
+	pane.appendChild(buildBreadcrumb(nav));
+
+	const preview = document.createElement("div");
+	preview.className = "file-preview";
+
+	if (data.encoding === "binary") {
+		preview.innerHTML =
+			'<div class="empty-state">Binary file — cannot preview</div>';
+	} else if (data.encoding === "base64") {
+		const img = document.createElement("img");
+		img.src = `data:${data.mimeType};base64,${data.content}`;
+		img.style.maxWidth = "100%";
+		preview.appendChild(img);
+	} else {
+		const isMarkdown =
+			filePath.endsWith(".md") || filePath.endsWith(".markdown");
+		const content = document.createElement("div");
+		content.className = "file-preview-content";
+		if (isMarkdown) {
+			content.innerHTML = md(data.content || "");
+		} else {
+			const pre = document.createElement("pre");
+			pre.textContent = data.content || "";
+			content.appendChild(pre);
+		}
+		if (data.truncated) {
+			const note = document.createElement("div");
+			note.className = "file-truncated-note";
+			note.textContent = "… (file truncated at 200 KB)";
+			content.appendChild(note);
+		}
+		preview.appendChild(content);
+	}
+
+	pane.appendChild(preview);
+}
+
+function fmtBytes(n) {
+	if (n < 1024) return `${n}B`;
+	if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+	return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+// ── Schedule tab ───────────────────────────────────────────────────────────
+async function loadSchedule() {
+	const pane = document.getElementById("detail-pane");
+	pane.innerHTML = '<div class="empty-state">Loading…</div>';
+	try {
+		const r = await fetch("schedule");
+		scheduleData = await r.json();
+		renderSchedule();
+	} catch {
+		pane.innerHTML = '<div class="empty-state">Failed to load schedule</div>';
+	}
+}
+
+function renderSchedule() {
+	const pane = document.getElementById("detail-pane");
+	pane.innerHTML = "";
+	if (!scheduleData.length) {
+		pane.innerHTML = '<div class="empty-state">No scheduled messages</div>';
+		return;
+	}
+	const table = document.createElement("table");
+	table.className = "schedule-table";
+	table.innerHTML = `<thead><tr><th>To</th><th>Subject</th><th>When</th><th></th></tr></thead>`;
+	const tbody = document.createElement("tbody");
+	for (const s of scheduleData) {
+		const when = s.scheduledFor
+			? fmtTime(s.scheduledFor)
+			: s.cronExpression
+				? `cron: ${s.cronExpression}`
+				: "—";
+		const tr = document.createElement("tr");
+		tr.innerHTML =
+			`<td>${esc((s.to || []).join(", "))}</td>` +
+			`<td>${esc(s.subject || "")}</td>` +
+			`<td>${esc(when)}</td>`;
+		const td = document.createElement("td");
+		const btn = document.createElement("button");
+		btn.className = "btn btn-cancel";
+		btn.textContent = "Cancel";
+		btn.onclick = () => cancelSchedule(s.id);
+		td.appendChild(btn);
+		tr.appendChild(td);
+		tbody.appendChild(tr);
+	}
+	table.appendChild(tbody);
+	pane.appendChild(table);
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from dynamically-created onclick
+async function cancelSchedule(id) {
+	await fetch(`schedule/${encodeURIComponent(id)}`, { method: "DELETE" });
+	await loadSchedule();
+}
+
+async function refreshSchedule() {
+	try {
+		const r = await fetch("schedule");
+		scheduleData = await r.json();
+		if (activeTab === "schedule" && activeAgent === null) renderSchedule();
+	} catch {}
+}
+
+// ── Log tab ────────────────────────────────────────────────────────────────
+async function loadLog() {
+	const pane = document.getElementById("detail-pane");
+	pane.innerHTML = '<div class="empty-state">Loading…</div>';
+	try {
+		const r = await fetch("log?lines=300");
+		if (!r.ok) {
+			pane.innerHTML = '<div class="empty-state">Log not available</div>';
+			return;
+		}
+		const text = await r.text();
+		pane.innerHTML = "";
+		const toolbar = document.createElement("div");
+		toolbar.className = "log-toolbar";
+		const refreshBtn = document.createElement("button");
+		refreshBtn.className = "btn";
+		refreshBtn.textContent = "Refresh";
+		refreshBtn.onclick = loadLog;
+		toolbar.appendChild(refreshBtn);
+		pane.appendChild(toolbar);
+		const pre = document.createElement("pre");
+		pre.className = "log-content";
+		pre.textContent = text;
+		pane.appendChild(pre);
+		pre.scrollTop = pre.scrollHeight;
+	} catch {
+		pane.innerHTML = '<div class="empty-state">Failed to load log</div>';
+	}
+}
+
+// ── Stats tab ──────────────────────────────────────────────────────────────
+function renderStats() {
+	const pane = document.getElementById("detail-pane");
+	pane.innerHTML = "";
+	const total = Object.values(agentCosts).reduce((s, v) => s + v, 0);
+
+	const grid = document.createElement("div");
+	grid.className = "stats-grid";
+
+	const totalCard = document.createElement("div");
+	totalCard.className = "stat-card";
+	totalCard.innerHTML =
+		`<div class="stat-label">Mission Total</div>` +
+		`<div class="stat-value">$${total.toFixed(4)}</div>`;
+	grid.appendChild(totalCard);
+
+	if (maxCostUsd) {
+		const capCard = document.createElement("div");
+		capCard.className = "stat-card";
+		const pct = Math.min(100, (total / maxCostUsd) * 100).toFixed(1);
+		capCard.innerHTML =
+			`<div class="stat-label">Spending Cap</div>` +
+			`<div class="stat-value">$${maxCostUsd.toFixed(2)} (${pct}% used)</div>`;
+		grid.appendChild(capCard);
+	}
+
+	const agentCount = document.createElement("div");
+	agentCount.className = "stat-card";
+	agentCount.innerHTML =
+		`<div class="stat-label">Agents</div>` +
+		`<div class="stat-value">${AGENTS.length}</div>`;
+	grid.appendChild(agentCount);
+
+	pane.appendChild(grid);
+
+	if (Object.keys(agentCosts).length) {
+		const table = document.createElement("table");
+		table.className = "stat-table";
+		table.innerHTML = `<thead><tr><th>Agent</th><th>Cost</th><th>Context</th></tr></thead>`;
+		const tbody = document.createElement("tbody");
+		for (const [id, cost] of Object.entries(agentCosts).sort(
+			(a, b) => b[1] - a[1],
+		)) {
+			const ctx = agentContextTokens[id] ?? 0;
+			const ctxPct = Math.round((ctx / CTX_LIMIT) * 100);
+			const tr = document.createElement("tr");
+			tr.innerHTML =
+				`<td class="ac-${id}">${esc(id)}</td>` +
+				`<td>$${cost.toFixed(4)}</td>` +
+				`<td>${ctx > 0 ? `${Math.round(ctx / 1000)}k (${ctxPct}%)` : "—"}</td>`;
+			tbody.appendChild(tr);
+		}
+		table.appendChild(tbody);
+		pane.appendChild(table);
+	}
+}
+
+// ── Step / Kill ────────────────────────────────────────────────────────────
+function renderStepBtn() {
+	const btn = document.getElementById("step-btn");
+	if (!btn) return;
+	if (stepEnabled && stepWaiting) {
+		btn.textContent = "▶ Run";
+		btn.className = "btn btn-step waiting";
+		btn.onclick = advanceStep;
+	} else if (stepEnabled) {
+		btn.textContent = "Step ●";
+		btn.className = "btn btn-step on";
+		btn.onclick = toggleStep;
+	} else {
+		btn.textContent = "Step ○";
+		btn.className = "btn btn-step";
+		btn.onclick = toggleStep;
+	}
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
 async function toggleStep() {
 	const r = await fetch("toggle-step", { method: "POST" });
 	const d = await r.json();
 	stepEnabled = d.stepEnabled;
 	if (!stepEnabled) stepWaiting = false;
 	renderStepBtn();
-	renderQueue();
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
 async function advanceStep() {
 	await fetch("step", { method: "POST" });
 }
 
-function renderQueue() {
-	const strip = document.getElementById("queue-strip");
-	if (!strip) return;
-	if (stepEnabled && stepWaiting && runningAgent) {
-		let html = `<button class="btn-run" onclick="advanceStep()">\u25b6 Run ${esc(agentDisplayName(runningAgent))}</button>`;
-		for (const id of pendingAgents)
-			html += `<span class="q-arrow">\u2192</span><span class="q-agent">${esc(agentDisplayName(id))}</span>`;
-		strip.innerHTML = html;
-		return;
-	}
-	if (runningAgent) {
-		let html = `<span class="q-agent running">${esc(agentDisplayName(runningAgent))}</span>`;
-		for (const id of pendingAgents)
-			html += `<span class="q-arrow">\u2192</span><span class="q-agent">${esc(agentDisplayName(id))}</span>`;
-		strip.innerHTML = html;
-		return;
-	}
-	strip.innerHTML =
-		'<span class="q-idle">Idle \u2014 waiting for messages</span>';
-}
-
-function agentDisplayName(id) {
-	const a = AGENTS.find((a) => a.id === id);
-	return a ? a.name : id;
-}
-
-function renderAgentTabIndicators() {
-	document.querySelectorAll(".agent-tab[data-id]").forEach((tab) => {
-		const id = tab.dataset.id;
-		const nameEl = tab.querySelector(".tab-name");
-		if (!nameEl) return;
-		const base =
-			tab.dataset.baseName || nameEl.textContent.replace(/^\u25b6\u00a0/, "");
-		tab.dataset.baseName = base;
-		nameEl.textContent = id === runningAgent ? `\u25b6\u00a0${base}` : base;
-	});
-	updateScheduleTabs();
-}
-
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-function stopDaemon() {
+// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
+async function killDaemon() {
 	if (stopped) return;
 	if (
-		!confirm("Stop the MAGI daemon? This will abort the current mission cycle.")
+		!confirm(
+			"Stop all agents and shut down the daemon?\nThis cannot be undone.",
+		)
 	)
 		return;
-	fetch("stop", { method: "POST" }).catch(() => {});
-	document.getElementById("stop-btn").disabled = true;
-	document.getElementById("stop-btn").textContent = "Stopping\u2026";
-}
-
-// ── Compose ────────────────────────────────────────────────────────────────
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-function openCompose() {
-	document.getElementById("compose-overlay").classList.remove("hidden");
-	document.getElementById("compose-body").focus();
-}
-
-function closeCompose() {
-	delete document.getElementById("compose-overlay").dataset.playbookIdx;
-	document.getElementById("compose-overlay").classList.add("hidden");
-}
-
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-function closeComposeIfBg(e) {
-	if (e.target === document.getElementById("compose-overlay")) closeCompose();
-}
-
-function checkAll() {
-	document.querySelectorAll("#to-checks input[type=checkbox]").forEach((c) => {
-		c.checked = true;
-	});
-}
-
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-async function sendMessage() {
-	const to = [...document.querySelectorAll("#to-checks input:checked")].map(
-		(c) => c.value,
-	);
-	const subject = document.getElementById("compose-subject").value.trim();
-	const message = document.getElementById("compose-body").value.trim();
-	if (!to.length) {
-		alert("Select at least one recipient");
-		return;
+	const btn = document.getElementById("kill-btn");
+	if (btn) {
+		btn.disabled = true;
+		btn.textContent = "Stopping…";
 	}
-	if (!message) {
-		alert("Message body is required");
-		return;
-	}
-	const r = await fetch("send-message", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ to, subject, message }),
-	});
-	if (r.ok) {
-		const idx = document.getElementById("compose-overlay").dataset.playbookIdx;
-		if (idx !== undefined) {
-			playbookSent.add(Number(idx));
-			if (activeAgent === null) renderPlaybook();
+	try {
+		await fetch("stop", { method: "POST" });
+	} catch {
+		if (btn) {
+			btn.disabled = false;
+			btn.textContent = "■ Kill";
 		}
-		closeCompose();
-		document.getElementById("compose-body").value = "";
-		document.getElementById("compose-subject").value = "";
-		document.querySelectorAll("#to-checks input").forEach((c) => {
-			c.checked = false;
-		});
 	}
 }
 
 // ── Uptime ─────────────────────────────────────────────────────────────────
-setInterval(() => {
+function updateUptime() {
 	const sec = Math.floor((Date.now() - startedAt) / 1000);
 	const h = Math.floor(sec / 3600);
 	const m = Math.floor((sec % 3600) / 60);
 	const s = sec % 60;
-	document.getElementById("hup").textContent =
-		h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
-}, 1000);
-
-// ── Playbook ───────────────────────────────────────────────────────────────
-const playbookSent = new Set();
-
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-function selectPlaybook() {
-	activeAgent = null;
-	document.querySelectorAll(".agent-tab").forEach((t) => {
-		t.classList.remove("active");
-	});
-	document.getElementById("tab-playbook").classList.add("active");
-	const pane = resetPane();
-	if (!PLAYBOOK.length) {
-		pane.innerHTML =
-			'<div class="empty-state">No playbook messages defined</div>';
-		return;
-	}
-	renderPlaybook();
-}
-
-function renderPlaybook() {
-	const pane = resetPane();
-	if (!PLAYBOOK.length) {
-		pane.innerHTML =
-			'<div class="empty-state">No playbook messages defined</div>';
-		return;
-	}
-	PLAYBOOK.forEach((entry, i) => {
-		const sent = playbookSent.has(i);
-		const div = document.createElement("div");
-		div.className = `pb-item${sent ? " sent" : ""}`;
-		const toHtml = entry.to
-			.map((t) => `<span class="ac-${esc(t)}">${esc(t)}</span>`)
-			.join(", ");
-		div.innerHTML =
-			`<div class="pb-title">${esc(entry.title)}</div>` +
-			`<div class="pb-meta">To: ${toHtml}</div>` +
-			`<div class="pb-preview">${esc(entry.body.slice(0, 200))}${entry.body.length > 200 ? "\u2026" : ""}</div>` +
-			`<div class="pb-actions">` +
-			`<button class="btn pb-edit" onclick="editPlaybookEntry(${i})">\u270f Edit &amp; Send</button>` +
-			(sent ? '<span class="pb-sent-badge">\u2713 sent</span>' : "") +
-			"</div>";
-		pane.appendChild(div);
-	});
-}
-
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick / oninput / dynamically-generated onclick
-function editPlaybookEntry(i) {
-	const entry = PLAYBOOK[i];
-	if (!entry) return;
-	document.querySelectorAll("#to-checks input[type=checkbox]").forEach((c) => {
-		c.checked = entry.to.includes(c.value);
-	});
-	document.getElementById("compose-subject").value = entry.subject;
-	document.getElementById("compose-body").value = entry.body;
-	document.getElementById("compose-overlay").dataset.playbookIdx = String(i);
-	document.getElementById("compose-overlay").classList.remove("hidden");
-	document.getElementById("compose-body").focus();
+	const el = document.getElementById("hup");
+	if (el)
+		el.textContent = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 // ── Tool icons ─────────────────────────────────────────────────────────────
 function _toolIcon(name) {
 	return (
 		{
-			Bash: "\u2699",
-			WriteFile: "\u270d",
-			EditFile: "\u270f",
-			PostMessage: "\u2709",
-			UpdateMentalMap: "\uD83E\uDDE0",
-			FetchUrl: "\uD83C\uDF10",
-			BrowseWeb: "\uD83C\uDF10",
-			SearchWeb: "\uD83D\uDD0D",
-			InspectImage: "\uD83D\uDDBC",
-			ListTeam: "\uD83D\uDC65",
-			ListMessages: "\uD83D\uDCEC",
-			ReadMessage: "\uD83D\uDCE8",
-			Research: "\uD83D\uDD2C",
-		}[name] || "\uD83D\uDD27"
+			Bash: "⚙",
+			WriteFile: "✍",
+			EditFile: "✏",
+			PostMessage: "✉",
+			UpdateMentalMap: "🧠",
+			FetchUrl: "🌐",
+			BrowseWeb: "🌐",
+			SearchWeb: "🔍",
+			InspectImage: "🖼",
+			ListTeam: "👥",
+			ListMessages: "📬",
+			ReadMessage: "📨",
+			Research: "🔬",
+		}[name] || "🔧"
 	);
 }
 
@@ -1210,7 +1503,7 @@ function esc(s) {
 function fmtTime(ts) {
 	if (!ts) return "";
 	const d = new Date(ts);
-	if (Number.isNaN(d)) return "";
+	if (Number.isNaN(d.getTime())) return "";
 	const now = new Date();
 	const isToday = d.toDateString() === now.toDateString();
 	return isToday
@@ -1219,6 +1512,68 @@ function fmtTime(ts) {
 				" " +
 				d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+
+// ── Theme toggle ──────────────────────────────────────────────────────────
+function _toggleTheme() {
+	const light = document.body.classList.toggle("light");
+	localStorage.setItem("magi-theme", light ? "light" : "dark");
+}
+
+(function applyStoredTheme() {
+	if (localStorage.getItem("magi-theme") !== "dark") {
+		document.body.classList.add("light");
+	}
+})();
+
+// ── Panel resize ──────────────────────────────────────────────────────────
+(function initPanelResize() {
+	const handle = document.getElementById("panel-resize-handle");
+	const main = document.querySelector("main");
+	if (!handle || !main) return;
+
+	const MIN_W = 220;
+	const MAX_W = 800;
+	const STORED_KEY = "magi-left-col-w";
+
+	function applyWidth(w) {
+		const clamped = Math.max(MIN_W, Math.min(MAX_W, w));
+		document.documentElement.style.setProperty("--left-col-w", `${clamped}px`);
+		return clamped;
+	}
+
+	// Restore saved width.
+	const saved = parseInt(localStorage.getItem(STORED_KEY) ?? "", 10);
+	if (!Number.isNaN(saved)) applyWidth(saved);
+
+	let startX = 0;
+	let startW = 0;
+
+	function onMouseMove(e) {
+		applyWidth(startW + (e.clientX - startX));
+	}
+
+	function onMouseUp(e) {
+		handle.classList.remove("dragging");
+		document.removeEventListener("mousemove", onMouseMove);
+		document.removeEventListener("mouseup", onMouseUp);
+		const finalW = applyWidth(startW + (e.clientX - startX));
+		localStorage.setItem(STORED_KEY, String(finalW));
+	}
+
+	handle.addEventListener("mousedown", (e) => {
+		startX = e.clientX;
+		startW = parseInt(
+			getComputedStyle(document.documentElement).getPropertyValue(
+				"--left-col-w",
+			),
+			10,
+		);
+		handle.classList.add("dragging");
+		document.addEventListener("mousemove", onMouseMove);
+		document.addEventListener("mouseup", onMouseUp);
+		e.preventDefault();
+	});
+})();
 
 // ── Start ──────────────────────────────────────────────────────────────────
 init().catch((e) => console.error("[app] init failed:", e));

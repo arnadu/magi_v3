@@ -246,8 +246,13 @@ LLM call sequence handles planning, tool execution, and message sending in one u
 
 1. **Mental Map is always in full.** It is injected into the system prompt via `{{mentalMap}}` substitution — never truncated. It is the agent's persistent working memory.
 2. **Message history is this agent's turns only.** Prior LLM calls, tool calls, and tool results for this agent within the current session. Cross-agent messages enter only via the inbox user message.
-3. **Session boundary compaction.** At the start of a new session, `reflect()` is called if the prior session was large (peak input tokens ≥ 120k). Reflection writes a cumulative summary as a `SummaryMessage` and marks the prior session's raw messages as `compacted: true`. The LLM then sees the summary in place of the raw history.
-4. **Skills block.** Appended to the system prompt by `formatSkillsBlock()`. Contains the content of each `SKILL.md` discovered in `sharedDir/skills/` (platform, team, and mission tiers).
+3. **Session boundary compaction.** At the start of a new session, `reflect()` is called if the prior session was large (peak input tokens ≥ 120k). Reflection writes a cumulative summary as a `SummaryMessage` and marks the prior session's raw messages as `compacted: true`. The LLM then sees the summary in place of the raw history. `convertToLlm` also calls `pruneEphemeralResults(out, 2)` so cross-session history is lean before the inner loop starts.
+4. **In-session ephemeral pruning.** After each LLM call, if `usage.input + usage.cacheRead > 160,000` tokens (80% of the 200k window), `pruneEphemeralResults(messages, 2)` stubs the `content` of all ephemeral tool results (Bash, SearchWeb, FetchUrl, BrowseWeb, ReadFile, InspectImage) from every round except the two most recent, and strips `thinking` blocks from all but the most recent assistant message. MongoDB retains full content; agents can recover pruned results on demand via `AnalyzeMemories`.
+5. **Skills block.** Appended to the system prompt by `formatSkillsBlock()`. Contains the content of each `SKILL.md` discovered in `sharedDir/skills/` (platform, team, and mission tiers).
+
+### Extended thinking
+
+`CLAUDE_SONNET` runs with extended thinking enabled (`reasoning: "medium"`). Thinking blocks are visible in the LLM response but stripped from all but the most recent assistant message by `pruneEphemeralResults` before the next LLM call. `CLAUDE_HAIKU` (vision model) has thinking disabled — it is used for fast, cheap captioning where extended reasoning would be wasteful. OpenRouter models are silently skipped if `model.reasoning === false`.
 
 ### Image handling — description-first
 
@@ -287,42 +292,81 @@ const bashTool = createBashTool(workdir, aclPolicy);
 // AclPolicy.checkPath() runs before every file operation inside the subprocess
 ```
 
-### Tool inventory
+### Tool library — two tiers
 
-All tools are registered for every agent. ACL enforcement is path-based, not tool-based.
+Tools are organised into two tiers:
 
-**Shell tools** (dispatched via `sudo -u <linuxUser> node tool-executor.js`; child env has only `PATH` and `HOME`):
+```
+Tier A — Standard tools (agent-runtime-worker)     selectable per-agent via disabledTools[]
+├── Always on:  Bash, WriteFile, EditFile
+│               PostMessage, ListMessages, ReadMessage, ListTeam, UpdateMentalMap
+│               FetchUrl, AnalyzeMemories
+├── Optional:   Research, InspectImage, BrowseWeb, SearchWeb
+└── Conditional: SearchWeb (needs BRAVE_SEARCH_API_KEY), BrowseWeb (needs Chromium)
 
-| Tool | Notes |
-|------|-------|
-| `Bash` | Shell command execution; `AclPolicy.checkPath` runs on any paths detected in args |
-| `WriteFile` | Full file write; path validated before subprocess spawn |
-| `EditFile` | Surgical `old_string → new_string` replacement with uniqueness validation |
+Tier B — Elevated tools (control-plane, copilot only)   injected via additionalTools
+└── ListMissions, GetMissionStatus, ReadMissionMailbox, ReadMissionLog, ReadMissionFile,
+    ListSchedule, ListTemplates, GetTemplate, ProposeAction
+```
 
-**Coordination tools:**
+`runAgent` builds the full Tier A list, filters it by `agent.disabledTools`, then appends
+`AgentRunContext.additionalTools` (Tier B). Tier B tools are never filtered by `disabledTools`.
 
-| Tool | Notes |
-|------|-------|
-| `PostMessage` | Send a message to one or more agents or to `"user"` |
-| `ListTeam` | List all agents: `id`, `name`, `role`, `supervisor` |
-| `ListMessages` | List inbox headers: `id`, `from`, `subject`, `timestamp`, `readBy` |
-| `ReadMessage` | Read a message body and mark as read |
-| `UpdateMentalMap` | Surgical HTML patch of the agent's Mental Map by element ID |
+### Tier A tool inventory
 
-**Web and data tools:**
+Every tool name is case-sensitive and can appear in `disabledTools` in the agent YAML.
 
-| Tool | Notes |
-|------|-------|
-| `FetchUrl` | HTTP GET → HTML (Readability) or PDF (mupdf); auto-describes images via vision LLM |
-| `InspectImage` | On-demand detailed analysis of an image in workdir via vision LLM |
-| `SearchWeb` | Brave Search API → ranked result list; conditionally registered when `BRAVE_SEARCH_API_KEY` present |
-| `BrowseWeb` | Stagehand/Playwright JS-rendered browsing; SSRF blocked; conditionally registered when Chromium present |
+| Tool name | Category | Notes | Conditional on |
+|-----------|----------|-------|----------------|
+| `Bash` | Shell | Command execution via `sudo -u <linuxUser>`; `AclPolicy.checkPath` validates paths | — |
+| `WriteFile` | Shell | Full file write; path validated before subprocess spawn | — |
+| `EditFile` | Shell | Surgical `old_string → new_string` replacement | — |
+| `PostMessage` | Coordination | Send a message to one or more agents or to `"user"` | — |
+| `ListMessages` | Coordination | List inbox headers | — |
+| `ReadMessage` | Coordination | Read a message body and mark as read | — |
+| `ListTeam` | Coordination | List all agents: id, name, role, supervisor | — |
+| `UpdateMentalMap` | Coordination | Surgical HTML patch of the agent's Mental Map by element ID | — |
+| `FetchUrl` | Web/data | HTTP GET → HTML (Readability) or PDF; auto-describes images via vision LLM | — |
+| `InspectImage` | Web/data | On-demand detailed analysis of an image in workdir via vision LLM | — |
+| `SearchWeb` | Web/data | Brave Search API → ranked result list | `BRAVE_SEARCH_API_KEY` |
+| `BrowseWeb` | Web/data | Stagehand/Playwright JS-rendered browsing; SSRF blocked | Chromium present |
+| `Research` | Agentic | Nested `runInnerLoop` in isolated context; writes results to `sharedDir/research/` | — |
+| `AnalyzeMemories` | Memory | Searches full conversation history (incl. compacted/pruned turns) in MongoDB; recovers stubbed tool outputs | — |
 
-**Research tool:**
+### Per-agent tool configuration
 
-| Tool | Notes |
-|------|-------|
-| `Research` | Nested `runInnerLoop` in isolated context; writes results to `sharedDir/research/` index |
+Agents opt out of specific Tier A tools via `disabledTools` in the team YAML — the same
+pattern as `disabledSkills`:
+
+```yaml
+agents:
+  - id: report-writer
+    disabledTools:
+      - Research     # writer agent doesn't need the expensive nested research loop
+      - BrowseWeb    # no browser needed for formatting/writing tasks
+```
+
+Tool names must match the table above exactly (case-sensitive). Omitting `disabledTools`
+gives the agent the full Tier A set (minus tools blocked by missing env/Chromium).
+
+### Tier B elevated tools (copilot only)
+
+Tier B tools require infrastructure only available in the control plane (MongoDB `db` handle,
+Fly Machines API, SSE push channel). They are constructed by `copilot-daemon.ts` and injected
+into `AgentRunContext.additionalTools`. They are never available to execution-plane agents and
+cannot be disabled via `disabledTools`.
+
+| Tool name | Purpose |
+|-----------|---------|
+| `ListMissions` | List all missions with status |
+| `GetMissionStatus` | Full status including live Fly machine state |
+| `ReadMissionMailbox` | Read recent messages from any mission's mailbox |
+| `ReadMissionLog` | Read daemon log from a running mission's monitor server |
+| `ReadMissionFile` | Browse/read files in a mission's sharedDir or agent workdir |
+| `ListSchedule` | List scheduled messages |
+| `ListTemplates` | List available team config templates |
+| `GetTemplate` | Read full YAML + files for a template |
+| `ProposeAction` | Propose a mutating action; operator must confirm before execution |
 
 **Background jobs** (via Tool IPC server at `:4001`, not registered as LLM tools):
 

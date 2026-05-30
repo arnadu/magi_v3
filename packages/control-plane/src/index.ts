@@ -14,11 +14,14 @@ import { fileURLToPath } from "node:url";
 import { config as dotenvConfig } from "dotenv";
 import express from "express";
 import { requireApiKey } from "./auth.js";
+import { startCopilotDaemon } from "./copilot-daemon.js";
+import { CopilotEventBus, createCopilotRouter } from "./copilot-router.js";
+import { PendingActionsStore } from "./copilot-tools.js";
 import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { createProxyRouter } from "./proxy.js";
 import { startScheduler } from "./scheduler.js";
-import { createTemplatesRouter } from "./templates.js";
+import { createTemplatesRouter, seedTemplates } from "./templates.js";
 
 const REPO_ROOT = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -49,6 +52,26 @@ async function main(): Promise<void> {
 
 	const { client, db } = await connectMongo(mongoUri);
 
+	// Seed templates from config/teams/ on startup (idempotent).
+	await seedTemplates(db, REPO_ROOT);
+
+	// Start copilot daemon (optional — only when COPILOT_MISSION_ID is set).
+	const eventBus = new CopilotEventBus();
+	const pendingActions = new PendingActionsStore();
+	let stopCopilot: (() => void) | undefined;
+	if (process.env.COPILOT_MISSION_ID) {
+		const modelId = process.env.MODEL ?? "claude-sonnet-4-6";
+		const handle = startCopilotDaemon(
+			db,
+			REPO_ROOT,
+			modelId,
+			(type, data) => eventBus.push(type, data),
+			pendingActions,
+		);
+		stopCopilot = () => handle.stop();
+		console.log("[control-plane] Copilot daemon started");
+	}
+
 	const app = express();
 
 	// Serve static UI without authentication — the login page itself is public.
@@ -70,6 +93,13 @@ async function main(): Promise<void> {
 
 	// Mission templates — list available team configs.
 	app.use("/api/templates", express.json(), createTemplatesRouter(db));
+
+	// Copilot chat API + SSE.
+	app.use(
+		"/api/copilot",
+		express.json(),
+		createCopilotRouter(db, eventBus, pendingActions),
+	);
 
 	// Mission CRUD + lifecycle.
 	// express.json() is scoped here — proxy routes below must NOT consume the
@@ -97,6 +127,7 @@ async function main(): Promise<void> {
 	async function shutdown(): Promise<void> {
 		console.log("[control-plane] Shutting down…");
 		stopScheduler();
+		stopCopilot?.();
 		server.close(() => {
 			client
 				.close()

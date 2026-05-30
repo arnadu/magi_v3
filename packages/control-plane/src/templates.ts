@@ -10,6 +10,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
+import { parseTeamConfig } from "@magi/agent-config";
 import { Router } from "express";
 import type { Db } from "mongodb";
 
@@ -72,7 +73,9 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 	const teamsDir = join(repoRoot, "config", "teams");
 	let files: string[];
 	try {
-		files = readdirSync(teamsDir).filter((f) => f.endsWith(".yaml"));
+		files = readdirSync(teamsDir).filter(
+			(f) => f.endsWith(".yaml") && f !== "copilot.yaml",
+		);
 	} catch (e) {
 		console.warn(
 			`[templates] Could not read ${teamsDir}: ${(e as Error).message}`,
@@ -138,6 +141,46 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 
 export function createTemplatesRouter(db: Db): Router {
 	const router = Router();
+	const col = db.collection<MissionTemplate>("templates");
+
+	/** Create a new template. */
+	router.post("/", async (req, res) => {
+		const { id, name, teamConfigYaml, teamFiles } = req.body as {
+			id?: string;
+			name?: string;
+			teamConfigYaml?: string;
+			teamFiles?: Array<{ path: string; content: string }>;
+		};
+		if (!id || !name || typeof teamConfigYaml !== "string") {
+			res
+				.status(400)
+				.json({ error: "id, name, and teamConfigYaml are required" });
+			return;
+		}
+		try {
+			parseTeamConfig(teamConfigYaml);
+		} catch (e) {
+			res
+				.status(400)
+				.json({ error: `Invalid team config: ${(e as Error).message}` });
+			return;
+		}
+		const existing = await col.findOne({ _id: id });
+		if (existing) {
+			res.status(409).json({ error: "Template already exists" });
+			return;
+		}
+		const now = new Date();
+		await col.insertOne({
+			_id: id,
+			name,
+			teamConfigYaml,
+			teamFiles: teamFiles ?? [],
+			createdAt: now,
+			updatedAt: now,
+		});
+		res.status(201).json({ ok: true, id });
+	});
 
 	/** List all templates — returns [{id, name}] sorted by id. */
 	router.get("/", async (_req, res) => {
@@ -147,6 +190,56 @@ export function createTemplatesRouter(db: Db): Router {
 			.sort({ _id: 1 })
 			.toArray();
 		res.json(templates.map((t) => ({ id: t._id, name: t.name })));
+	});
+
+	/** Get full template detail — returns {id, name, teamConfigYaml, teamFiles}. */
+	router.get("/:id", async (req, res) => {
+		const template = await getTemplate(db, req.params.id);
+		if (!template) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		res.json({
+			id: template._id,
+			name: template.name,
+			teamConfigYaml: template.teamConfigYaml,
+			teamFiles: template.teamFiles,
+		});
+	});
+
+	/** Update a template's YAML and files. */
+	router.put("/:id", async (req, res) => {
+		const { teamConfigYaml, teamFiles } = req.body as {
+			teamConfigYaml?: string;
+			teamFiles?: Array<{ path: string; content: string }>;
+		};
+		if (typeof teamConfigYaml !== "string") {
+			res.status(400).json({ error: "teamConfigYaml is required" });
+			return;
+		}
+		try {
+			parseTeamConfig(teamConfigYaml);
+		} catch (e) {
+			res
+				.status(400)
+				.json({ error: `Invalid team config: ${(e as Error).message}` });
+			return;
+		}
+		const result = await db.collection<MissionTemplate>("templates").updateOne(
+			{ _id: req.params.id },
+			{
+				$set: {
+					teamConfigYaml,
+					teamFiles: teamFiles ?? [],
+					updatedAt: new Date(),
+				},
+			},
+		);
+		if (result.matchedCount === 0) {
+			res.status(404).json({ error: "Template not found" });
+			return;
+		}
+		res.json({ ok: true });
 	});
 
 	return router;

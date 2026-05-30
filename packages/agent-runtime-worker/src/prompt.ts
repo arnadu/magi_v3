@@ -20,7 +20,13 @@ export function buildSystemPrompt(
 		.replace(/\{\{mentalMap\}\}/g, mentalMapHtml)
 		.replace(/\{\{sharedDir\}\}/g, sharedDir)
 		.replace(/\{\{workdir\}\}/g, workdir);
-	const skillsBlock = formatSkillsBlock(discoverSkills(sharedDir, workdir));
+	const block = discoverSkills(sharedDir, workdir);
+	const disabled = new Set(agent.disabledSkills ?? []);
+	const filtered = {
+		...block,
+		skills: block.skills.filter((s) => !disabled.has(s.name)),
+	};
+	const skillsBlock = formatSkillsBlock(filtered);
 	return `${base}\n\n${skillsBlock}`;
 }
 

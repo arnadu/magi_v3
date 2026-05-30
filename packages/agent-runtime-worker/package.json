@@ -14,6 +14,8 @@
 		"cli:usage": "node dist/cli-usage.js",
 		"cli:stop": "node dist/cli-stop.js",
 		"cli:tool": "node dist/cli-tool.js",
+		"cli:analyze-dump": "node dist/cli-analyze-dump.js",
+		"cli:analyze": "node dist/cli-analyze-dump.js | python3 scripts/analyze-tokens.py",
 		"install:browsers": "playwright install chromium"
 	},
 	"dependencies": {

@@ -6,7 +6,7 @@
 <title>MAGI Monitor</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="light">
 
 <header>
   <span class="dot" id="dot"></span>
@@ -15,90 +15,61 @@
   <span class="hcost" id="hcost">$0.0000</span>
   <span class="hup" id="hup"></span>
   <span class="spacer"></span>
-  <button type="button" class="btn btn-start" id="start-btn" onclick="startMission()">&#9654; Start</button>
-  <button type="button" class="btn btn-start" onclick="openCompose()">&#9993; Send</button>
-  <button type="button" class="btn btn-step-toggle" id="step-btn" onclick="toggleStep()">Step &#9675;</button>
-  <button type="button" class="btn btn-stop" id="stop-btn" onclick="stopDaemon()">&#9632; Stop</button>
+  <button type="button" class="btn btn-compose" onclick="openCompose(null)">&#9993; Send</button>
+  <button type="button" class="btn btn-step" id="step-btn" onclick="toggleStep()">Step &#9675;</button>
+  <button type="button" class="btn btn-kill" id="kill-btn" onclick="killDaemon()">&#9632; Kill</button>
+  <button type="button" class="btn btn-theme" id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark theme">&#9788;</button>
 </header>
 
-<div class="queue-strip" id="queue-strip">
-  <span class="q-idle">Idle &#8212; waiting for messages</span>
-</div>
-
-<!-- Budget-pause banner: hidden by default, shown when spending cap is reached -->
 <div class="budget-banner hidden" id="budget-banner">
-  <span class="budget-banner-icon">&#9888;</span>
-  <span class="budget-banner-msg" id="budget-banner-msg">Spending cap reached — mission paused</span>
-  <button type="button" class="btn btn-extend-budget" id="extend-budget-btn" onclick="extendBudget()">&#43;$5 and continue</button>
+  <span class="budget-icon">&#9888;</span>
+  <span class="budget-msg" id="budget-msg">Spending cap reached — mission paused</span>
+  <button type="button" class="btn btn-extend" id="extend-btn" onclick="extendBudget()">&#43;$5 and continue</button>
 </div>
 
 <div class="agent-error-banner hidden" id="agent-error-banner">
-  <span class="agent-error-icon">&#10060;</span>
-  <span class="agent-error-msg" id="agent-error-msg">Agent stopped — LLM provider error</span>
-  <span class="agent-error-hint" id="agent-error-hint"></span>
-  <button type="button" class="btn btn-error-dismiss" onclick="hideAgentErrorBanner()">Dismiss</button>
-  <button type="button" class="btn btn-error-resume hidden" id="agent-error-resume-btn">Resume</button>
+  <span class="ae-icon">&#10060;</span>
+  <span class="ae-msg" id="ae-msg">Agent stopped</span>
+  <span class="ae-hint" id="ae-hint"></span>
+  <button type="button" class="btn btn-dismiss" onclick="hideAgentErrorBanner()">Dismiss</button>
+  <button type="button" class="btn btn-resume hidden" id="ae-resume-btn">Resume</button>
 </div>
 
 <main>
-  <!-- Left: message feed + usage -->
+  <!-- Left: thread list + chat + compose -->
   <div class="left-col">
-    <div class="feed-controls">
-      <div class="feed-mode-btns">
-        <button type="button" class="feed-mode-btn active" data-mode="all" onclick="setFeedMode('all')">All</button>
-        <button type="button" class="feed-mode-btn" data-mode="threads" onclick="setFeedMode('threads')">Threads</button>
-        <button type="button" class="feed-mode-btn" data-mode="user" onclick="setFeedMode('user')">&#8594; User</button>
-      </div>
-      <input class="feed-search" id="feed-search" type="text" placeholder="&#128269; filter&#8230;" oninput="setFeedSearch(this.value)">
-    </div>
-    <div class="feed" id="feed">
+    <div class="thread-list" id="thread-list">
       <div class="empty-state">Waiting for messages&#8230;</div>
     </div>
-    <div class="usage-bar">
-      <div class="usage-row" id="usage-row">
-        <span style="color:var(--muted)">No LLM calls yet</span>
-        <span class="u-total" id="u-total">$0.0000</span>
+    <div class="chat-view" id="chat-view">
+      <div class="empty-state">Select a thread</div>
+    </div>
+    <div class="compose-bar" id="compose-bar">
+      <div class="compose-recipients" id="compose-recipients">
+        <!-- recipient chips populated by app.js -->
       </div>
-      <div id="cap-wrap" style="display:none">
-        <div class="cap-bar"><div class="cap-fill" id="cap-fill" style="width:0%"></div></div>
+      <div class="compose-input-row">
+        <textarea id="compose-body" placeholder="Message&#8230;" rows="2"></textarea>
+        <button type="button" class="btn btn-send" onclick="sendMessage()">Send</button>
       </div>
     </div>
   </div>
 
-  <!-- Right: agent tabs + detail -->
+  <div class="panel-resize-handle" id="panel-resize-handle"></div>
+
+  <!-- Right: agent tabs + content tabs + detail pane -->
   <div class="right-col">
     <div class="agent-tabs" id="agent-tabs">
-      <!-- populated by app.js -->
-      <div class="agent-tab" id="tab-playbook" onclick="selectPlaybook()" style="color:var(--accent)">&#128203; Playbook</div>
+      <!-- per-agent tabs + Mission tab, populated by app.js -->
     </div>
-<div class="detail-pane" id="detail-pane">
-      <div class="empty-state">Select an agent tab above</div>
+    <div class="content-tabs" id="content-tabs">
+      <!-- Activity | Mental Map | Files  OR  Schedule | Files | Log | Stats -->
+    </div>
+    <div class="detail-pane" id="detail-pane">
+      <div class="empty-state">Select an agent or Mission above</div>
     </div>
   </div>
 </main>
-
-<!-- Compose overlay -->
-<div class="overlay hidden" id="compose-overlay" onclick="closeComposeIfBg(event)">
-  <div class="compose">
-    <h2>Send message</h2>
-    <div class="field">
-      <label>To</label>
-      <div class="agent-checks" id="to-checks"></div>
-    </div>
-    <div class="field">
-      <label>Subject</label>
-      <input type="text" id="compose-subject" placeholder="(optional)">
-    </div>
-    <div class="field">
-      <label>Message</label>
-      <textarea id="compose-body" placeholder="Type your message&#8230;"></textarea>
-    </div>
-    <div class="compose-actions">
-      <button type="button" class="btn btn-cancel" onclick="closeCompose()">Cancel</button>
-      <button type="button" class="btn btn-send" onclick="sendMessage()">Send</button>
-    </div>
-  </div>
-</div>
 
 <script src="app.js"></script>
 </body>

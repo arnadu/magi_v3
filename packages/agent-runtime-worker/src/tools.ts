@@ -373,9 +373,11 @@ export async function verifyIsolation(
 ): Promise<void> {
 	const result = await runIsolatedToolCall(linuxUser, {
 		tool: "Bash",
-		// Outputs "LEAKED" if ANTHROPIC_API_KEY is set in the child env, empty otherwise.
-		// biome-ignore lint/suspicious/noTemplateCurlyInString: bash ${var:+value} syntax, not a JS template
-		args: { command: 'echo "${ANTHROPIC_API_KEY:+LEAKED}"' },
+		// Outputs single-char tokens for each leaked key; empty if env is clean.
+		args: {
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: bash ${var:+word} expansion
+			command: 'echo "${ANTHROPIC_API_KEY:+A} ${OPENROUTER_API_KEY:+O}"',
+		},
 		workdir,
 		permittedPaths: [workdir],
 		agentId: "_isolation-check",
@@ -391,9 +393,18 @@ export async function verifyIsolation(
 	}
 
 	const output = result.content[0].text.trim();
-	if (output === "LEAKED") {
+	if (output.length > 0) {
+		const keyNames: Record<string, string> = {
+			A: "ANTHROPIC_API_KEY",
+			O: "OPENROUTER_API_KEY",
+		};
+		const leaked = output
+			.split(/\s+/)
+			.filter(Boolean)
+			.map((t) => keyNames[t] ?? t)
+			.join(", ");
 		throw new Error(
-			`CRITICAL: secret containment broken — ANTHROPIC_API_KEY is visible in the ` +
+			`CRITICAL: secret containment broken — ${leaked} visible in the ` +
 				`child process environment running as "${linuxUser}". ` +
 				`Shell tools are not safe to run until this is fixed.`,
 		);

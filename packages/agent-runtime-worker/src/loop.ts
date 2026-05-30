@@ -4,10 +4,35 @@ import type {
 	Message,
 	Model,
 	SimpleStreamOptions,
+	ThinkingLevel,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import { completeSimple } from "@mariozechner/pi-ai";
+import { pruneEphemeralResults } from "./context-utils.js";
 import type { MagiTool } from "./tools.js";
+
+// ---------------------------------------------------------------------------
+// Helpers
+
+function is429(msg: AssistantMessage): boolean {
+	return (
+		msg.stopReason === "error" && (msg.errorMessage?.includes("429") ?? false)
+	);
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve) => {
+		const t = setTimeout(resolve, ms);
+		signal?.addEventListener(
+			"abort",
+			() => {
+				clearTimeout(t);
+				resolve();
+			},
+			{ once: true },
+		);
+	});
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,7 +99,15 @@ export interface InnerLoopConfig {
 		toolNames: string[];
 		response: AssistantMessage;
 	}) => Promise<void>;
+	/**
+	 * Extended thinking level to request on each LLM call.
+	 * Only applied when model.reasoning === true; silently ignored otherwise.
+	 */
+	reasoning?: ThinkingLevel;
 }
+
+// Prune ephemeral tool results when context exceeds 80% of the 200k window.
+const MID_SESSION_PRUNE_THRESHOLD = 160_000;
 
 export interface LoopResult {
 	messages: Message[];
@@ -104,6 +137,7 @@ export async function runInnerLoop(
 		onLlmCall,
 		toolTimeoutMs = 120_000,
 		maxTurns,
+		reasoning,
 	} = config;
 	const completeFn: CompleteFn = config.completeFn ?? completeSimple;
 
@@ -140,7 +174,26 @@ export async function runInnerLoop(
 		};
 
 		// ── LLM call ────────────────────────────────────────────────────────────
-		const assistantMessage = await completeFn(model, context, { signal });
+		// Cap max output tokens: some OpenRouter model entries set maxTokens == contextWindow
+		// (no room for input). Mirror the 32k cap that the Anthropic provider uses.
+		const maxOutputTokens = Math.min(model.maxTokens, 32_000);
+		const callOpts: SimpleStreamOptions = {
+			signal,
+			maxTokens: maxOutputTokens,
+			// Enable extended thinking only when the model declares reasoning support.
+			...(reasoning && model.reasoning ? { reasoning } : {}),
+		};
+		let assistantMessage = await completeFn(model, context, callOpts);
+		// Retry on 429 (upstream rate-limit) with exponential backoff.
+		for (let attempt = 1; attempt <= 3 && is429(assistantMessage); attempt++) {
+			const delayMs = 5_000 * 2 ** (attempt - 1); // 5s, 10s, 20s
+			console.warn(
+				`[loop] 429 rate-limit from ${model.id} — retrying in ${delayMs / 1000}s (attempt ${attempt}/3)`,
+			);
+			await sleep(delayMs, signal);
+			if (signal?.aborted) break;
+			assistantMessage = await completeFn(model, context, callOpts);
+		}
 		if (onLlmCall) {
 			await onLlmCall({
 				systemPrompt,
@@ -150,6 +203,19 @@ export async function runInnerLoop(
 			});
 		}
 		await pushAndNotify(assistantMessage);
+
+		// Mid-session pruning: stub old ephemeral tool results and strip thinking
+		// blocks when context grows large, to prevent hitting the 200k limit.
+		const ctxSize =
+			(assistantMessage.usage?.input ?? 0) +
+			(assistantMessage.usage?.cacheRead ?? 0);
+		if (ctxSize > MID_SESSION_PRUNE_THRESHOLD) {
+			const pruned = pruneEphemeralResults(messages, 2);
+			messages.splice(0, messages.length, ...pruned);
+			console.warn(
+				`[loop] context ${Math.round(ctxSize / 1_000)}k tokens — pruned ephemeral tool results`,
+			);
+		}
 
 		// Abort on LLM error or explicit abort signal
 		if (

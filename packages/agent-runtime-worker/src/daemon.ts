@@ -89,13 +89,14 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "@mariozechner/pi-ai";
+import { ObjectId } from "mongodb";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
 import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
-import { MonitorServer, type PlaybookEntry } from "./monitor-server.js";
+import { MonitorServer } from "./monitor-server.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
@@ -630,29 +631,24 @@ async function main(): Promise<void> {
 		// Log setup failure is non-fatal — daemon continues without file logging.
 	}
 
-	// If control plane injected a base64-encoded YAML via TEAM_CONFIG_YAML, write it to
-	// TEAM_CONFIG path on first boot. Skips if the file already exists (operator edits
-	// and resume-after-suspend are both preserved).
+	// Write TEAM_CONFIG_YAML env var to the TEAM_CONFIG path on every boot.
+	// Always overwrites so that config edits made via the control plane (stored
+	// in MongoDB and pushed back via Fly machine env update on resume) take effect.
 	const teamConfigYamlEnv = process.env.TEAM_CONFIG_YAML;
 	const teamConfigTarget = process.env.TEAM_CONFIG;
 	if (teamConfigYamlEnv && teamConfigTarget) {
-		try {
-			mkdirSync(dirname(teamConfigTarget), { recursive: true });
-			writeFileSync(
-				teamConfigTarget,
-				Buffer.from(teamConfigYamlEnv, "base64").toString("utf-8"),
-				{ flag: "wx" }, // exclusive-create: no-op if file already exists
-			);
-			process.stdout.write(
-				`[daemon] Wrote team config from env to ${teamConfigTarget}\n`,
-			);
-		} catch {
-			// File already exists from a prior boot — preserved as-is.
-		}
+		mkdirSync(dirname(teamConfigTarget), { recursive: true });
+		writeFileSync(
+			teamConfigTarget,
+			Buffer.from(teamConfigYamlEnv, "base64").toString("utf-8"),
+		);
+		process.stdout.write(
+			`[daemon] Wrote team config from env to ${teamConfigTarget}\n`,
+		);
 	}
 
 	// Write team files (skills, playbook.json, etc.) from TEAM_FILES_PAYLOAD to the
-	// team directory on the volume on first boot. Files that already exist are skipped.
+	// team directory on every boot. Always overwrites so control-plane edits take effect.
 	const teamFilesPayload = process.env.TEAM_FILES_PAYLOAD;
 	const teamConfigYamlTarget = process.env.TEAM_CONFIG;
 	if (teamFilesPayload && teamConfigYamlTarget) {
@@ -667,13 +663,9 @@ async function main(): Promise<void> {
 			let written = 0;
 			for (const { path: relPath, content } of files) {
 				const dest = join(teamDir, relPath);
-				try {
-					mkdirSync(dirname(dest), { recursive: true });
-					writeFileSync(dest, content, { flag: "wx" });
-					written++;
-				} catch {
-					/* file already exists — preserved */
-				}
+				mkdirSync(dirname(dest), { recursive: true });
+				writeFileSync(dest, content);
+				written++;
 			}
 			if (written > 0) {
 				process.stdout.write(
@@ -741,6 +733,11 @@ async function main(): Promise<void> {
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
 	const conversationRepo = createMongoConversationRepository(db);
 	const llmCallLog = createMongoLlmCallLogRepository(db);
+
+	const copilotMissionId = process.env.COPILOT_MISSION_ID;
+	const copilotMailboxRepo = copilotMissionId
+		? createMongoMailboxRepository(db, copilotMissionId)
+		: undefined;
 
 	const modelId =
 		teamConfig.mission.model ?? process.env.MODEL ?? "claude-sonnet-4-6";
@@ -838,20 +835,6 @@ async function main(): Promise<void> {
 	}
 
 	// Monitor server — SSE dashboard on MONITOR_PORT (default 4000).
-	// Load playbook.json from the team config directory if present.
-	const teamDir = join(
-		dirname(teamConfigPath),
-		basename(teamConfigPath, ".yaml"),
-	);
-	let playbook: PlaybookEntry[] = [];
-	try {
-		playbook = JSON.parse(
-			readFileSync(join(teamDir, "playbook.json"), "utf8"),
-		) as PlaybookEntry[];
-	} catch {
-		/* no playbook file — that's fine */
-	}
-
 	const monitorPort = Number.parseInt(process.env.MONITOR_PORT ?? "4000", 10);
 	if (!Number.isFinite(monitorPort) || monitorPort < 1 || monitorPort > 65535) {
 		console.error(
@@ -872,6 +855,7 @@ async function main(): Promise<void> {
 		name: a.name ?? a.id,
 		role: a.role ?? a.id,
 	}));
+	const sharedDir = join(workdir, "missions", missionId, "shared");
 	const monitor = new MonitorServer(
 		db,
 		missionId,
@@ -883,8 +867,13 @@ async function main(): Promise<void> {
 		() => ac.abort(),
 		maxCostUsd,
 		new Date(),
-		playbook,
 		workdir,
+		sharedDir,
+		async (id) => {
+			await db
+				.collection("scheduled_messages")
+				.deleteOne({ _id: new ObjectId(id) });
+		},
 	);
 	await monitor.start(monitorPort);
 	process.stdout.write(
@@ -895,13 +884,11 @@ async function main(): Promise<void> {
 	const toolApiServer = new ToolApiServer(
 		model,
 		visionModel,
-		join(workdir, "missions", missionId, "shared"),
+		sharedDir,
 		mailboxRepo,
 		teamConfig,
 	);
 	toolApiServer.listen(toolPort);
-
-	const sharedDir = join(workdir, "missions", missionId, "shared");
 
 	// F-010: Recover jobs that were left in running/ by a prior daemon run.
 	// They have no live token, so their magi-tool calls would fail with 401.
@@ -985,9 +972,7 @@ async function main(): Promise<void> {
 	}
 
 	console.log(`[daemon] Mission: ${teamConfig.mission.name} (${missionId})`);
-	console.log(
-		`[daemon] Dashboard: http://localhost:${monitorPort} — click ▶ Start to begin`,
-	);
+	console.log(`[daemon] Dashboard: http://localhost:${monitorPort}`);
 
 	// Keep daemon's local maxCostUsd in sync when the operator extends the budget.
 	monitor.onBudgetExtended = (newCapUsd) => {
@@ -995,9 +980,7 @@ async function main(): Promise<void> {
 		console.log(`[daemon] Spending cap updated to $${newCapUsd.toFixed(2)}`);
 	};
 
-	// Block until the operator clicks Start in the dashboard.
-	await monitor.waitForStart();
-	console.log("[daemon] Mission started — entering orchestration loop");
+	console.log("[daemon] Entering orchestration loop");
 
 	try {
 		await runOrchestrationLoop(
@@ -1010,11 +993,12 @@ async function main(): Promise<void> {
 				visionModel,
 				workdir,
 				workspaceManager,
+				copilotMailboxRepo,
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
-				onAgentStart: (agentId, pending) =>
-					monitor.notifyAgentStart(agentId, pending),
+				onAgentStart: (agentId) => monitor.notifyAgentStart(agentId),
+				onWorkspaceReady: (workdirs) => monitor.setAgentWorkdirs(workdirs),
 				onAgentDone: (agentId) => monitor.notifyAgentDone(agentId),
 				onIdle: () => monitor.notifyIdle(),
 				onMentalMapUpdate: (agentId, html) =>

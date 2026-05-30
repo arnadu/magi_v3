@@ -9,6 +9,11 @@ import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
 import type { WorkspaceManager } from "./workspace-manager.js";
 
+// Per-dispatch wall-clock timeout: abort a hung agent run after this many
+// seconds. Override with MAX_AGENT_RUN_SECONDS env var. Default 4 hours.
+const MAX_AGENT_RUN_SECONDS =
+	Number(process.env.MAX_AGENT_RUN_SECONDS) || 4 * 3600;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -39,13 +44,19 @@ export interface OrchestratorConfig {
 	 */
 	workspaceManager: WorkspaceManager;
 	/**
-	 * Max orchestration cycles before aborting.
-	 * One cycle = one pass through all agents with unread mail.
+	 * Max total agent dispatches across the whole loop lifetime.
 	 * Default: 50.
 	 */
-	maxCycles?: number;
+	maxRuns?: number;
 	/**
-	 * If true, pause after each runAgent() call and prompt the operator to
+	 * Wall-clock timeout per agent dispatch in seconds. If a single agent run
+	 * exceeds this limit (hung LLM call, pathological tool loop), the dispatch
+	 * is aborted via AbortSignal and the orchestrator continues normally.
+	 * Defaults to MAX_AGENT_RUN_SECONDS env var, or 4 hours.
+	 */
+	maxAgentRunSeconds?: number;
+	/**
+	 * If true, pause after each agent dispatch and prompt the operator to
 	 * continue or inject a message. Useful during development.
 	 */
 	step?: boolean;
@@ -54,33 +65,33 @@ export interface OrchestratorConfig {
 	/** Called for every inner-loop message produced by any agent (for logging/streaming). */
 	onAgentMessage?: (agentId: string, msg: Message) => void;
 	/**
-	 * Called just before an agent is about to run.
-	 * `pending` lists the agents that will run later in this same cycle
-	 * (not including agentId itself). The monitor uses this to show the queue.
+	 * Called just before an agent is dispatched.
+	 * `activePeers` lists the agents currently running concurrently (not including agentId).
 	 */
-	onAgentStart?: (agentId: string, pending: string[]) => void;
+	onAgentStart?: (agentId: string, activePeers: string[]) => void;
 	/** Called immediately after an agent's loop returns. */
 	onAgentDone?: (agentId: string) => void;
 	/** Called when an agent's mental map is updated (for SSE push to dashboard). */
 	onMentalMapUpdate?: (agentId: string, html: string) => void;
-	/** Called when the cycle is empty and the loop is about to sleep on waitForMail. */
+	/** Called when no agents are running and no agent has unread mail. */
 	onIdle?: () => void;
 	/**
-	 * When provided, called instead of breaking when inbox is empty.
+	 * When provided, called to block until a new mailbox message arrives.
 	 * The daemon supplies a Change Stream watch that resolves when a new
-	 * MailboxMessage is inserted. After it resolves, the loop continues.
-	 * When absent (cli.ts / tests), the loop exits on empty inbox.
+	 * MailboxMessage is inserted. After it resolves, the loop re-dispatches.
+	 * When absent (cli.ts / tests), the loop exits when all work is drained.
 	 */
 	waitForMail?: () => Promise<void>;
 	/**
-	 * When provided, called before every agent turn. Resolves immediately when
+	 * When provided, called before every agent dispatch. Resolves immediately when
 	 * step mode is off; blocks until the operator clicks "Run" in the monitor
 	 * dashboard (or calls POST /step) when step mode is on.
 	 * This hook takes priority over the TTY readline step mode.
+	 * When present, dispatch is serialised: one agent starts per permit.
 	 */
 	waitForStep?: () => Promise<void>;
 	/**
-	 * When provided, called after every agent turn. Resolves immediately when
+	 * When provided, called after every agent dispatch. Resolves immediately when
 	 * the mission is within budget; blocks until the operator extends the budget
 	 * via the monitor dashboard (POST /extend-budget) when the cap is reached.
 	 */
@@ -94,6 +105,22 @@ export interface OrchestratorConfig {
 	 * tests set this to true, since they provision a fresh temp workspace per run.
 	 */
 	teardownOnExit?: boolean;
+	/**
+	 * Optional predicate; returns true if the named agent should be skipped in
+	 * dispatch. Reserved for the Copilot sprint (PauseAgent capability).
+	 */
+	isAgentPaused?: (agentId: string) => boolean;
+	/**
+	 * Called once after workspace provisioning, with a map of agentId → workdir.
+	 * The daemon uses this to register workdirs with the monitor server for the
+	 * file browser.
+	 */
+	onWorkspaceReady?: (workdirs: Map<string, string>) => void;
+	/**
+	 * When provided, wall-clock timeouts and non-transient agent errors are posted
+	 * as alert messages to this mailbox so the copilot can diagnose and respond.
+	 */
+	copilotMailboxRepo?: MailboxRepository;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,14 +128,17 @@ export interface OrchestratorConfig {
 // ---------------------------------------------------------------------------
 
 /**
- * Sequential orchestration loop.
+ * Concurrent orchestration loop.
  *
- * Scheduling rule: an agent runs when it has unread messages in its inbox.
- * The loop terminates when no agent has unread messages, or when maxCycles
- * is reached, or when the AbortSignal fires.
+ * Scheduling rule: an agent is dispatched whenever it has unread messages and
+ * is not already running. Multiple agents run concurrently as independent
+ * fire-and-forget promises.
+ *
+ * The loop terminates when no agent has unread messages (and none are running),
+ * or when maxRuns is reached, or when the AbortSignal fires.
  *
  * The workspaceManager provisions per-agent private directories and ACL
- * enforcement before the first cycle and tears them down on exit.
+ * enforcement before the first dispatch and tears them down on exit.
  */
 export async function runOrchestrationLoop(
 	config: OrchestratorConfig,
@@ -126,7 +156,8 @@ export async function runOrchestrationLoop(
 		onUserMessage,
 		workspaceManager,
 	} = config;
-	const maxCycles = config.maxCycles ?? 50;
+	const maxRuns = config.maxRuns ?? 50;
+	const missionId = teamConfig.mission.id;
 
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config must have at least one agent");
@@ -138,13 +169,16 @@ export async function runOrchestrationLoop(
 		id: a.id,
 		linuxUser: a.linuxUser ?? a.id,
 	}));
-	const identities = workspaceManager.provision(
-		teamConfig.mission.id,
-		agentDefs,
-	);
+	const identities = workspaceManager.provision(missionId, agentDefs);
 	console.log(
 		`[orchestrator] Workspace provisioned for ${identities.size} agent(s)`,
 	);
+	if (config.onWorkspaceReady) {
+		const workdirMap = new Map(
+			[...identities.entries()].map(([id, ws]) => [id, ws.workdir]),
+		);
+		config.onWorkspaceReady(workdirMap);
+	}
 
 	// Verify isolation invariant: ANTHROPIC_API_KEY must not be visible in
 	// child processes. Fails fast if sudo is misconfigured or secrets leak.
@@ -191,50 +225,236 @@ export async function runOrchestrationLoop(
 		},
 	};
 
-	// Precompute supervisor-depth for every agent (depth 0 = reports to user).
-	// Used to run senior agents before juniors within each cycle.
-	const agentDepth = buildAgentDepths(teamConfig.agents);
+	// Concurrent dispatcher state.
+	const active = new Map<string, AbortController>(); // agentId → AbortController
+	const activePromises = new Map<string, Promise<void>>(); // agentId → completion promise
+	let totalRuns = 0;
 
-	let cycles = 0;
+	// Drain buffered user input → post to lead's inbox.
+	async function flushInputBuffer(): Promise<void> {
+		while (inputBuffer.length > 0) {
+			const line = inputBuffer.shift() as string;
+			const body = await processUserInput(line, workdir);
+			if (!body) continue;
+			await mailboxRepo.post({
+				missionId,
+				from: "user",
+				to: [leadAgent.id],
+				subject: "User message",
+				body,
+			});
+		}
+	}
 
-	try {
-		// eslint-disable-next-line no-constant-condition
-		while (true) {
-			if (signal?.aborted) break;
+	async function anyAgentHasUnreadMail(): Promise<boolean> {
+		for (const agent of teamConfig.agents) {
+			if (await mailboxRepo.hasUnread(agent.id)) return true;
+		}
+		return false;
+	}
 
-			// Drain buffered user input → post to lead's inbox.
-			while (inputBuffer.length > 0) {
-				const line = inputBuffer.shift() as string;
-				const body = await processUserInput(line, workdir);
-				if (!body) continue; // was a /command or empty
-				await mailboxRepo.post({
-					missionId: teamConfig.mission.id,
-					from: "user",
-					to: [leadAgent.id],
-					subject: "User message",
-					body,
-				});
-			}
+	async function checkIdle(): Promise<void> {
+		if (active.size > 0 || signal?.aborted) return;
+		if (!(await anyAgentHasUnreadMail())) config.onIdle?.();
+	}
 
-			// Find agents with unread messages, seniors first.
-			const agentsWithMail: string[] = [];
-			for (const agent of teamConfig.agents) {
-				if (await mailboxRepo.hasUnread(agent.id)) {
-					agentsWithMail.push(agent.id);
+	/**
+	 * Dispatch all agents that have unread mail and are not already running or
+	 * paused. Agents run concurrently — no await on runAgent.
+	 */
+	async function dispatchReady(): Promise<void> {
+		if (signal?.aborted) return;
+
+		await flushInputBuffer();
+
+		for (const agent of teamConfig.agents) {
+			const agentId = agent.id;
+			if (active.has(agentId)) continue;
+			if (config.isAgentPaused?.(agentId)) continue;
+			if (agent.active === false) continue;
+			if (totalRuns >= maxRuns) break;
+
+			// Skip agents with no pending mail before acquiring step/budget permits.
+			if (!(await mailboxRepo.hasUnread(agentId))) continue;
+
+			// Step mode: serialise dispatch — one agent starts per permit.
+			if (config.waitForStep) {
+				await config.waitForStep();
+				if (signal?.aborted) return;
+			} else if (step && rl) {
+				// TTY step mode — readline prompt before dispatching.
+				const input = await promptUser(
+					rl,
+					`[step] About to run ${agent.name ?? agentId}. Press Enter or type a message: `,
+				);
+				if (input) {
+					const body = await processUserInput(input, workdir);
+					if (body) {
+						await mailboxRepo.post({
+							missionId,
+							from: "user",
+							to: [leadAgent.id],
+							subject: "User message",
+							body,
+						});
+					}
 				}
+				if (signal?.aborted) return;
 			}
-			agentsWithMail.sort(
-				(a, b) => (agentDepth.get(a) ?? 0) - (agentDepth.get(b) ?? 0),
+
+			// Budget gate — blocks when the spending cap is reached.
+			if (config.waitForBudget) {
+				await config.waitForBudget();
+				if (signal?.aborted) return;
+			}
+
+			// Re-check after yielding for step/budget: mail might have been consumed
+			// or the agent might have been dispatched by a concurrent dispatchReady call.
+			if (active.has(agentId)) continue;
+			if (!(await mailboxRepo.hasUnread(agentId))) continue;
+
+			const messages = await mailboxRepo.listUnread(agentId);
+			if (messages.length === 0) continue;
+
+			await mailboxRepo.markRead(
+				messages.map((m) => m.id),
+				agentId,
 			);
 
-			if (agentsWithMail.length === 0) {
-				config.onIdle?.();
-				if (config.waitForMail) {
-					// Daemon mode: sleep on Change Stream until a new message arrives.
+			const identity = identities.get(agentId);
+			if (!identity)
+				throw new Error(`No workspace identity for agent "${agentId}"`);
+
+			totalRuns++;
+			const ctrl = new AbortController();
+			const onParentAbort = () => ctrl.abort();
+			signal?.addEventListener("abort", onParentAbort, { once: true });
+
+			// Per-dispatch wall-clock timeout. Guards against hung LLM calls or
+			// pathological tool loops that would otherwise freeze the orchestrator
+			// indefinitely. Abort propagates into runAgent via the existing signal.
+			const maxRunMs =
+				(config.maxAgentRunSeconds ?? MAX_AGENT_RUN_SECONDS) * 1000;
+			const runTimeoutId = setTimeout(() => {
+				if (!ctrl.signal.aborted) {
+					console.warn(
+						`[orchestrator] ${agentId} exceeded ${maxRunMs / 1000}s wall-clock limit — aborting`,
+					);
+					ctrl.abort();
+					config.copilotMailboxRepo
+						?.post({
+							missionId: "copilot",
+							from: "system",
+							to: ["copilot"],
+							subject: `Agent timeout: ${agentId}`,
+							body:
+								`Agent "${agentId}" in mission "${missionId}" exceeded the ` +
+								`${maxRunMs / 1000}s wall-clock limit and was aborted. ` +
+								`Please investigate and consider resuming or restarting the mission.`,
+						})
+						.catch((e: Error) =>
+							console.error(
+								`[orchestrator] failed to post copilot alert: ${e.message}`,
+							),
+						);
+				}
+			}, maxRunMs);
+
+			active.set(agentId, ctrl);
+			config.onAgentStart?.(
+				agentId,
+				[...active.keys()].filter((id) => id !== agentId),
+			);
+
+			console.log(
+				`\n[orchestrator] Running ${agent.name ?? agentId}` +
+					` (${identity.linuxUser}) (${messages.length} message(s))`,
+			);
+
+			const promise = runAgent(
+				agentId,
+				messages,
+				{
+					...agentCtx,
+					identity,
+					onMessage: config.onAgentMessage
+						? async (msg: Message) => config.onAgentMessage?.(agentId, msg)
+						: undefined,
+				},
+				ctrl.signal,
+			)
+				.catch((err) => {
+					if (!ctrl.signal.aborted) {
+						const errMsg = (err as Error).message;
+						console.error(`[orchestrator] ${agentId} error: ${errMsg}`);
+						config.copilotMailboxRepo
+							?.post({
+								missionId: "copilot",
+								from: "system",
+								to: ["copilot"],
+								subject: `Agent error: ${agentId}`,
+								body:
+									`Agent "${agentId}" in mission "${missionId}" encountered an error: ` +
+									`${errMsg}`,
+							})
+							.catch((e: Error) =>
+								console.error(
+									`[orchestrator] failed to post copilot alert: ${e.message}`,
+								),
+							);
+					}
+				})
+				.finally(() => {
+					clearTimeout(runTimeoutId);
+					signal?.removeEventListener("abort", onParentAbort);
+					active.delete(agentId);
+					activePromises.delete(agentId);
+					config.onAgentDone?.(agentId);
+					void checkIdle();
+				});
+
+			activePromises.set(agentId, promise);
+			// No await — concurrent fire-and-forget dispatch.
+		}
+	}
+
+	try {
+		// Initial dispatch — run all agents with pending mail.
+		await dispatchReady();
+
+		if (config.waitForMail) {
+			// Daemon mode: the Change Stream drives re-dispatch.
+			// waitForMail() blocks until a mailbox insert fires (user→agent or agent→agent).
+			while (!signal?.aborted && totalRuns < maxRuns) {
+				try {
 					await config.waitForMail();
+				} catch {
+					break; // Change Stream error or abort
+				}
+				if (signal?.aborted) break;
+				await dispatchReady();
+			}
+		} else {
+			// CLI mode: drain all work, then exit or offer TTY prompt.
+			while (!signal?.aborted) {
+				// Wait for all currently running agents to complete.
+				const snapshot = [...activePromises.values()];
+				if (snapshot.length > 0) {
+					await Promise.allSettled(snapshot);
+					// Re-dispatch: agents may have posted mail to each other during their run.
+					await dispatchReady();
 					continue;
 				}
-				// CLI mode: offer the operator a prompt.
+
+				// No active agents — check for remaining unread mail.
+				if (await anyAgentHasUnreadMail()) {
+					await dispatchReady();
+					// If nothing was dispatched (maxRuns cap or all agents paused), stop.
+					if (active.size === 0) break;
+					continue;
+				}
+
+				// Truly idle — offer TTY prompt or exit.
 				if (rl) {
 					const input = await promptUser(
 						rl,
@@ -244,100 +464,26 @@ export async function runOrchestrationLoop(
 						const body = await processUserInput(input, workdir);
 						if (body) {
 							await mailboxRepo.post({
-								missionId: teamConfig.mission.id,
+								missionId,
 								from: "user",
 								to: [leadAgent.id],
 								subject: "User message",
 								body,
 							});
-						}
-						continue; // restart the loop (even for /commands, re-check mail)
-					}
-				}
-				break; // natural termination
-			}
-
-			if (cycles >= maxCycles) {
-				console.warn(
-					`[orchestrator] maxCycles (${maxCycles}) reached — aborting`,
-				);
-				break;
-			}
-			cycles++;
-
-			// Run each agent with unread mail sequentially.
-			for (let i = 0; i < agentsWithMail.length; i++) {
-				const agentId = agentsWithMail[i];
-				if (signal?.aborted) break;
-
-				const messages = await mailboxRepo.listUnread(agentId);
-				await mailboxRepo.markRead(
-					messages.map((m) => m.id),
-					agentId,
-				);
-
-				const agent = teamConfig.agents.find((a) => a.id === agentId);
-				const identity = identities.get(agentId);
-				if (!identity)
-					throw new Error(`No workspace identity for agent "${agentId}"`);
-
-				// Notify monitor of upcoming agent + remaining queue, then pause if in step mode.
-				const pending = agentsWithMail.slice(i + 1);
-				config.onAgentStart?.(agentId, pending);
-
-				if (config.waitForStep) {
-					// Web step mode — monitor shows agent name and "Run" button.
-					await config.waitForStep();
-				} else if (step && rl) {
-					// TTY step mode — readline prompt before running.
-					const input = await promptUser(
-						rl,
-						`[step] About to run ${agent?.name ?? agentId}. Press Enter or type a message: `,
-					);
-					if (input) {
-						const body = await processUserInput(input, workdir);
-						if (body) {
-							await mailboxRepo.post({
-								missionId: teamConfig.mission.id,
-								from: "user",
-								to: [leadAgent.id],
-								subject: "User message",
-								body,
-							});
+							await dispatchReady();
+							continue;
 						}
 					}
 				}
-
-				console.log(
-					`\n[orchestrator] Running ${agent?.name ?? agentId}` +
-						` (${identity.linuxUser}) (${messages.length} message(s))`,
-				);
-
-				await runAgent(
-					agentId,
-					messages,
-					{
-						...agentCtx,
-						identity,
-						onMessage: config.onAgentMessage
-							? async (msg: Message) => config.onAgentMessage?.(agentId, msg)
-							: undefined,
-					},
-					signal,
-				);
-
-				config.onAgentDone?.(agentId);
-
-				// Budget gate — blocks between agent turns when spending cap is reached.
-				// Resolves immediately when within budget; suspends until operator extends.
-				if (config.waitForBudget) {
-					await config.waitForBudget();
-					if (signal?.aborted) break;
-				}
+				break; // Natural termination.
 			}
 		}
 
-		console.log(`\n[orchestrator] Mission complete (${cycles} cycle(s))`);
+		// Shutdown: abort all running agents and wait for clean exit.
+		for (const ctrl of active.values()) ctrl.abort();
+		await Promise.allSettled([...activePromises.values()]);
+
+		console.log(`\n[orchestrator] Mission complete (${totalRuns} run(s))`);
 	} finally {
 		rl?.close();
 		if (config.teardownOnExit) {
@@ -354,31 +500,4 @@ function promptUser(rl: readline.Interface, prompt: string): Promise<string> {
 	return new Promise((resolve) => {
 		rl.question(prompt, (answer) => resolve(answer.trim()));
 	});
-}
-
-/**
- * Compute supervisor depth for each agent (depth 0 = supervisor is "user").
- * Used to run senior agents before juniors within a cycle.
- * Cycle-safe: a cycle in the supervisor graph is treated as depth 0.
- */
-function buildAgentDepths(
-	agents: { id: string; supervisor: string }[],
-): Map<string, number> {
-	const depths = new Map<string, number>();
-
-	function depth(id: string, visiting: Set<string>): number {
-		if (depths.has(id)) return depths.get(id) as number;
-		if (visiting.has(id)) return 0; // cycle guard
-		visiting.add(id);
-		const agent = agents.find((a) => a.id === id);
-		const d =
-			!agent || agent.supervisor === "user"
-				? 0
-				: 1 + depth(agent.supervisor, visiting);
-		depths.set(id, d);
-		return d;
-	}
-
-	for (const agent of agents) depth(agent.id, new Set());
-	return depths;
 }
