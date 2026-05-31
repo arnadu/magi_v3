@@ -135,7 +135,7 @@ function parseArgs(argv: string[]): {
 	const paramsIdx = args.indexOf("--params");
 	if (paramsIdx !== -1 && args[paramsIdx + 1]) {
 		try {
-			Object.assign(params, JSON.parse(args[paramsIdx + 1]));
+			Object.assign(params, JSON.parse(args[paramsIdx + 1])); // nosemgrep: javascript.lang.security.insecure-object-assign.insecure-object-assign -- params is a local CLI arg object, not a web response or DB document
 		} catch {
 			console.error("Error: --params must be valid JSON");
 			process.exit(1);

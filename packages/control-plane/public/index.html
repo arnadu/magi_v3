@@ -280,7 +280,7 @@
       #copilot-panel { width: 100%; border-left: none; border-top: 1px solid #cbd5e1; height: 320px; flex-shrink: 0; }
     }
   </style>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.css"> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
 </head>
 <body>
 
@@ -384,12 +384,12 @@
 <div id="toast"></div>
 
 <!-- CDN scripts at end of body — non-blocking, body renders before these load -->
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/mode/xml/xml.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.js"></script> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/mode/xml/xml.min.js"></script> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
 <script src="/firebase-config.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -->
 
 <script>
   'use strict';

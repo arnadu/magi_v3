@@ -114,7 +114,7 @@ def fetch(output_path: str, series_id: str, params: dict) -> None:
             url,
             headers={"User-Agent": "MAGI-DataFactory/1.0"},
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL constructed from hardcoded base + API params; no user input reaches the scheme or host
             data = resp.read().decode()
     except urllib.error.HTTPError as exc:
         print(f"Error: GDELT HTTP {exc.code}: {exc.reason}", file=sys.stderr)

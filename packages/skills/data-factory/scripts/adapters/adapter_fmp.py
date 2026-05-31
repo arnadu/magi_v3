@@ -192,7 +192,7 @@ def _get_json(url: str) -> dict | list:
     record the failure without crashing the entire refresh run.
     """
     try:
-        with urllib.request.urlopen(url, timeout=30) as resp:
+        with urllib.request.urlopen(url, timeout=30) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL constructed from hardcoded base + API params; no user input reaches the scheme or host
             return json.loads(resp.read().decode())
     except urllib.error.URLError as exc:
         print(f"Error: FMP request failed: {exc}", file=sys.stderr)

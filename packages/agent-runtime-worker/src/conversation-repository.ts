@@ -244,7 +244,7 @@ export function createMongoConversationRepository(
 		async findRelevant(agentId, missionId, query, limit) {
 			// Escape regex metacharacters so the query is treated as a literal string.
 			const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-			const re = new RegExp(escaped, "i");
+			const re = new RegExp(escaped, "i"); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- escaped is fully sanitized by the metachar-escape on the line above
 			// Search both string content (user/summary messages) and array content
 			// (toolResult messages have content: [{ type, text }]).
 			const docs = await col

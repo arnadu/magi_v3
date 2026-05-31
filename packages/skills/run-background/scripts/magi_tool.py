@@ -55,7 +55,7 @@ def call_tool(name: str, **params) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=135) as resp:  # server timeout 120s + 15s buffer
+        with urllib.request.urlopen(req, timeout=135) as resp:  # server timeout 120s + 15s buffer  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is the loopback tool API server; no user input reaches scheme or host
             data = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body_text = e.read().decode("utf-8", errors="replace")
