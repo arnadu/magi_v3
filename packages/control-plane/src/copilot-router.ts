@@ -4,6 +4,10 @@
  * POST /api/copilot/message   — inject an operator message into the copilot mailbox
  * GET  /api/copilot/events    — SSE stream of copilot events (messages, actions, etc.)
  * POST /api/copilot/confirm   — confirm and execute a proposed action
+ * POST /api/copilot/dismiss   — dismiss a pending action without executing
+ *
+ * Each authenticated user gets an isolated copilot daemon (missionId = "copilot-{userId}")
+ * started lazily on first message. SSE events are routed per-user.
  */
 
 import { randomUUID } from "node:crypto";
@@ -12,7 +16,10 @@ import { createMongoMailboxRepository } from "@magi/agent-runtime-worker";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { type Db, ObjectId } from "mongodb";
-import { COPILOT_MISSION_ID } from "./copilot-daemon.js";
+import {
+	type CopilotDaemonHandle,
+	startCopilotDaemon,
+} from "./copilot-daemon.js";
 import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
 import {
 	provisionMission,
@@ -22,28 +29,30 @@ import {
 import { getTemplate } from "./templates.js";
 
 // ---------------------------------------------------------------------------
-// SSE client registry
+// Per-user SSE event bus
 // ---------------------------------------------------------------------------
 
 export class CopilotEventBus {
-	private readonly clients = new Set<Response>();
+	private readonly clients = new Map<string, Set<Response>>();
 
-	addClient(res: Response): void {
-		this.clients.add(res);
+	addClient(userId: string, res: Response): void {
+		if (!this.clients.has(userId)) this.clients.set(userId, new Set());
+		this.clients.get(userId)?.add(res);
 	}
 
-	removeClient(res: Response): void {
-		this.clients.delete(res);
+	removeClient(userId: string, res: Response): void {
+		this.clients.get(userId)?.delete(res);
 	}
 
-	/** Push an event to all connected SSE clients. */
-	push(type: string, data: unknown): void {
+	/** Push an event only to SSE clients belonging to userId. */
+	push(userId: string, type: string, data: unknown): void {
 		const payload = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
-		for (const res of this.clients) {
+		const set = this.clients.get(userId) ?? new Set();
+		for (const res of set) {
 			try {
 				res.write(payload);
 			} catch {
-				this.clients.delete(res);
+				set.delete(res);
 			}
 		}
 	}
@@ -55,11 +64,29 @@ export class CopilotEventBus {
 
 export function createCopilotRouter(
 	db: Db,
-	eventBus: CopilotEventBus,
+	repoRoot: string,
 	pending: PendingActionsStore,
 ): Router {
 	const router = createRouter();
-	const mailboxRepo = createMongoMailboxRepository(db, COPILOT_MISSION_ID);
+	const eventBus = new CopilotEventBus();
+	const modelId = process.env.MODEL ?? "claude-sonnet-4-6";
+
+	// userId → running daemon handle (lazy-started on first message)
+	const runningDaemons = new Map<string, CopilotDaemonHandle>();
+
+	function ensureCopilotRunning(userId: string): void {
+		if (runningDaemons.has(userId)) return;
+		const missionId = `copilot-${userId}`;
+		const handle = startCopilotDaemon(
+			db,
+			repoRoot,
+			modelId,
+			(type, data) => eventBus.push(userId, type, data),
+			pending,
+			missionId,
+		);
+		runningDaemons.set(userId, handle);
+	}
 
 	// ── POST /api/copilot/message ─────────────────────────────────────────────
 
@@ -72,8 +99,13 @@ export function createCopilotRouter(
 			res.status(400).json({ error: "body is required" });
 			return;
 		}
+
+		ensureCopilotRunning(req.userId);
+
+		const missionId = `copilot-${req.userId}`;
+		const mailboxRepo = createMongoMailboxRepository(db, missionId);
 		const msg = await mailboxRepo.post({
-			missionId: COPILOT_MISSION_ID,
+			missionId,
 			from: "user",
 			to: ["copilot"],
 			subject: subject ?? "(no subject)",
@@ -83,6 +115,7 @@ export function createCopilotRouter(
 	});
 
 	// ── GET /api/copilot/events ───────────────────────────────────────────────
+	// Token is already verified by requireAuth via ?token= query param.
 
 	router.get("/events", (req: Request, res: Response) => {
 		res.setHeader("Content-Type", "text/event-stream");
@@ -99,11 +132,11 @@ export function createCopilotRouter(
 			}
 		}, 25_000);
 
-		eventBus.addClient(res);
+		eventBus.addClient(req.userId, res);
 
 		req.on("close", () => {
 			clearInterval(keepalive);
-			eventBus.removeClient(res);
+			eventBus.removeClient(req.userId, res);
 		});
 	});
 
@@ -127,8 +160,8 @@ export function createCopilotRouter(
 		pending.delete(pendingActionId);
 
 		try {
-			const result = await executeAction(db, action);
-			eventBus.push("copilot-action-result", {
+			const result = await executeAction(db, action, req.userId);
+			eventBus.push(req.userId, "copilot-action-result", {
 				id: pendingActionId,
 				ok: true,
 				result,
@@ -136,7 +169,7 @@ export function createCopilotRouter(
 			res.json({ ok: true, result });
 		} catch (e) {
 			const msg = (e as Error).message;
-			eventBus.push("copilot-action-result", {
+			eventBus.push(req.userId, "copilot-action-result", {
 				id: pendingActionId,
 				ok: false,
 				error: msg,
@@ -166,6 +199,7 @@ export function createCopilotRouter(
 
 interface MissionDoc {
 	missionId: string;
+	userId: string;
 	name: string;
 	teamConfig: string;
 	machineId?: string;
@@ -176,7 +210,11 @@ interface MissionDoc {
 	updatedAt: Date;
 }
 
-async function executeAction(db: Db, action: PendingAction): Promise<string> {
+async function executeAction(
+	db: Db,
+	action: PendingAction,
+	userId: string,
+): Promise<string> {
 	const payload = action.payload as Record<string, unknown>;
 	const missions = db.collection<MissionDoc>("missions");
 	const now = new Date();
@@ -200,6 +238,7 @@ async function executeAction(db: Db, action: PendingAction): Promise<string> {
 
 			await missions.insertOne({
 				missionId,
+				userId,
 				name,
 				teamConfig: templateId,
 				machineId: handle.machineId,
@@ -274,7 +313,6 @@ async function executeAction(db: Db, action: PendingAction): Promise<string> {
 					  }>
 					| undefined) ?? [];
 
-			// Template _id is a user-defined string, not ObjectId.
 			await db.collection<{ _id: string }>("templates").updateOne(
 				{ _id: id },
 				{
@@ -346,7 +384,6 @@ async function executeAction(db: Db, action: PendingAction): Promise<string> {
 
 		case "cancel_schedule": {
 			const scheduleId = payload.id as string;
-			// scheduled_messages use auto-generated ObjectId; convert string → ObjectId.
 			const oid = new ObjectId(scheduleId);
 			await db
 				.collection("scheduled_messages")

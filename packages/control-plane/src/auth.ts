@@ -1,37 +1,58 @@
 import type { NextFunction, Request, Response } from "express";
+import type { Db } from "mongodb";
+import { verifyFirebaseToken } from "./firebase.js";
+import { syncFirebaseUser } from "./users.js";
 
 /**
- * Middleware that validates the CONTROL_API_KEY on every request.
+ * Dual-mode authentication middleware.
  *
- * Accepts the key via:
- *   - Authorization: Bearer <key>  (preferred — HTTPS only, not cached)
- *   - X-Api-Key: <key>
- *   - Cookie: magi_session=<key>   (set by the login form; re-hydrated from localStorage on page load)
+ * Accepts credentials via:
+ *   Authorization: Bearer <token>   (preferred)
+ *   X-Api-Key: <key>
+ *   Cookie: magi_session=<key>       (set by legacy login form)
+ *   ?token=<token>                   (query param — required for EventSource SSE)
  *
- * Returns 401 JSON on failure so the UI can redirect to the login page.
+ * Two credential types are accepted:
+ *   CONTROL_API_KEY  → req.userId = "admin", req.isAdmin = true  (sees all missions)
+ *   Firebase JWT     → req.userId = Firebase UID, req.isAdmin = false
  */
-export function requireApiKey(
-	req: Request,
-	res: Response,
-	next: NextFunction,
-): void {
-	const expectedKey = process.env.CONTROL_API_KEY;
-	if (!expectedKey) {
-		res.status(500).json({ error: "CONTROL_API_KEY not configured" });
-		return;
-	}
+export function createAuthMiddleware(db: Db) {
+	return async function requireAuth(
+		req: Request,
+		res: Response,
+		next: NextFunction,
+	): Promise<void> {
+		const provided =
+			extractBearer(req.headers.authorization) ??
+			(req.headers["x-api-key"] as string | undefined) ??
+			extractCookie(req.headers.cookie, "magi_session") ??
+			(req.query.token as string | undefined);
 
-	const provided =
-		extractBearer(req.headers.authorization) ??
-		(req.headers["x-api-key"] as string | undefined) ??
-		extractCookie(req.headers.cookie, "magi_session");
+		// 1. CONTROL_API_KEY → admin (CI, headless scripts, bootstrap.sh)
+		const apiKey = process.env.CONTROL_API_KEY;
+		if (apiKey && provided === apiKey) {
+			req.userId = "admin";
+			req.isAdmin = true;
+			next();
+			return;
+		}
 
-	if (!provided || provided !== expectedKey) {
+		// 2. Firebase JWT → regular user
+		if (provided) {
+			try {
+				const { uid, email, displayName } = await verifyFirebaseToken(provided);
+				await syncFirebaseUser(db, uid, email, displayName);
+				req.userId = uid;
+				req.isAdmin = false;
+				next();
+				return;
+			} catch {
+				// Invalid or expired token — fall through to 401
+			}
+		}
+
 		res.status(401).json({ error: "Unauthorized" });
-		return;
-	}
-
-	next();
+	};
 }
 
 function extractBearer(header: string | undefined): string | undefined {

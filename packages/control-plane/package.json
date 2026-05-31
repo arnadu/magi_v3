@@ -12,17 +12,19 @@
 		"@magi/agent-config": "*",
 		"@magi/agent-runtime-worker": "*",
 		"@sinclair/typebox": "^0.34.41",
+		"cron-parser": "^4.9.0",
 		"dotenv": "^17.3.1",
 		"express": "^4.18.0",
+		"express-rate-limit": "^7.5.0",
+		"firebase-admin": "^13.10.0",
 		"http-proxy-middleware": "^3.0.0",
 		"mongodb": "^6.0.0",
-		"node-cron": "^3.0.0",
-		"cron-parser": "^4.9.0"
+		"node-cron": "^3.0.0"
 	},
 	"devDependencies": {
 		"@types/express": "^4.17.0",
 		"@types/node": "^22.0.0",
 		"@types/node-cron": "^3.0.11",
-		"typescript": "^5.7.0"
+		"typescript": "^6.0.0"
 	}
 }

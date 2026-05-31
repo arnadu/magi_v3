@@ -47,6 +47,11 @@
     input[type="password"], input[type="text"] { width: 100%; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; color: #1e293b; font-size: 14px; padding: 10px 12px; outline: none; transition: border-color 0.15s; }
     input:focus { border-color: #7c3aed; }
     .error-msg { font-size: 12px; color: #dc2626; margin-top: 8px; min-height: 16px; }
+    #google-signin-btn { width: 100%; background: #fff; border: 1px solid #cbd5e1; color: #1e293b; font-size: 14px; font-weight: 500; padding: 10px 16px; border-radius: 6px; cursor: pointer; transition: background 0.15s; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    #google-signin-btn:before { content: ''; display: inline-block; width: 18px; height: 18px; background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="%23EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.5 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6.1C12.3 13.1 17.7 9.5 24 9.5z"/><path fill="%2334A853" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.4c-.5 2.8-2.2 5.2-4.7 6.8l7.3 5.7c4.3-4 6.8-9.9 6.8-16.5z"/><path fill="%23FBBC05" d="M10.4 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.9-4.6L2.6 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.6 10.7l7.8-6.1z"/><path fill="%234285F4" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.3-5.7c-2 1.4-4.6 2.2-7.9 2.2-6.3 0-11.7-3.6-13.6-9l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/></svg>') center/contain no-repeat; }
+    #google-signin-btn:hover { background: #f8fafc; }
+    .hdr-user { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+    .user-email { font-size: 12px; color: #64748b; }
 
     /* ── Three-column layout ─────────────────────────────────────────────────── */
     #layout { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
@@ -279,23 +284,28 @@
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/mode/xml/xml.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <script src="/firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 </head>
 <body>
 
 <header>
   <h1>MAGI</h1>
   <span class="hdr-status" id="header-status">—</span>
+  <div class="hdr-user" id="hdr-user" style="display:none">
+    <span id="user-email" class="user-email"></span>
+    <button type="button" class="btn-ghost btn-sm" onclick="signOut()">Sign out</button>
+  </div>
 </header>
 
 <!-- Sign-in overlay -->
 <div id="sign-in-overlay">
   <div id="sign-in-box">
-    <h2>Sign in</h2>
-    <p class="tagline">Enter your operator API key to access the control plane.</p>
-    <label for="api-key-input">API Key</label>
-    <input type="password" id="api-key-input" placeholder="sk-…" autocomplete="current-password" />
+    <h2>MAGI</h2>
+    <p class="tagline">Sign in with your Google account to access the control plane.</p>
+    <button type="button" id="google-signin-btn" onclick="signInWithGoogle()">Sign in with Google</button>
     <div class="error-msg" id="sign-in-error"></div>
-    <button type="button" class="btn-primary" style="width:100%;margin-top:16px" id="sign-in-btn">Sign in</button>
   </div>
 </div>
 
@@ -375,16 +385,19 @@
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
-  const SESSION_KEY = 'magi_session';
-  function getKey() { return localStorage.getItem(SESSION_KEY) || ''; }
-  function setKey(k) {
-    localStorage.setItem(SESSION_KEY, k);
-    // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API not available in all browsers; server reads this cookie for auth.
-    document.cookie = `magi_session=${encodeURIComponent(k)}; path=/; SameSite=Strict`;
+  firebase.initializeApp(window.FIREBASE_CONFIG);
+
+  async function getToken() {
+    const user = firebase.auth().currentUser;
+    if (!user) return null;
+    try { return await user.getIdToken(); } catch { return null; }
   }
-  function authHeaders() { return { 'Authorization': `Bearer ${getKey()}`, 'Content-Type': 'application/json' }; }
+
   async function apiFetch(path, opts = {}) {
-    const res = await fetch(path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
+    const token = await getToken();
+    if (!token) { showSignIn(); return null; }
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) };
+    const res = await fetch(path, { ...opts, headers });
     if (res.status === 401) { showSignIn(); return null; }
     return res;
   }
@@ -562,35 +575,25 @@
   // ── Sign-in ───────────────────────────────────────────────────────────────
 
   const signInOverlay = document.getElementById('sign-in-overlay');
-  const apiKeyInput   = document.getElementById('api-key-input');
-  const signInBtn     = document.getElementById('sign-in-btn');
-  const signInError   = document.getElementById('sign-in-error');
 
   function showSignIn() { signInOverlay.style.display = 'flex'; }
   function hideSignIn() { signInOverlay.style.display = 'none'; }
 
-  async function trySignIn() {
-    const key = apiKeyInput.value.trim();
-    if (!key) { signInError.textContent = 'Enter your API key.'; return; }
-    signInBtn.disabled = true;
-    signInBtn.innerHTML = '<span class="spinner"></span>Signing in…';
-    const res = await fetch('/api/missions', { headers: { 'Authorization': `Bearer ${key}` } });
-    signInBtn.disabled = false;
-    signInBtn.textContent = 'Sign in';
-    if (res.ok || res.status === 200) {
-      setKey(key);
-      signInError.textContent = '';
-      hideSignIn();
-      loadTemplates();
-      loadMissions();
-      connectCopilotSse();
-    } else {
-      signInError.textContent = 'Invalid API key.';
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick
+  async function signInWithGoogle() {
+    const errorEl = document.getElementById('sign-in-error');
+    errorEl.textContent = '';
+    try {
+      await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    } catch (e) {
+      errorEl.textContent = e.message || 'Sign in failed.';
     }
   }
 
-  signInBtn.addEventListener('click', trySignIn);
-  apiKeyInput.addEventListener('keydown', e => { if (e.key === 'Enter') trySignIn(); });
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick
+  function signOut() {
+    firebase.auth().signOut().catch(() => {});
+  }
 
   // ── Toast ─────────────────────────────────────────────────────────────────
 
@@ -1519,9 +1522,11 @@
     if (card) card.classList.add('resolved');
   }
 
-  function connectCopilotSse() {
+  async function connectCopilotSse() {
     if (copilotSse) { copilotSse.close(); copilotSse = null; }
-    copilotSse = new EventSource('/api/copilot/events');
+    const token = await getToken();
+    if (!token) return;
+    copilotSse = new EventSource(`/api/copilot/events?token=${encodeURIComponent(token)}`);
 
     copilotSse.addEventListener('copilot-msg', e => {
       const msg = JSON.parse(e.data);
@@ -1616,16 +1621,23 @@
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
-  if (getKey()) {
-    // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API not available in all browsers; server reads this cookie for auth.
-    document.cookie = `magi_session=${encodeURIComponent(getKey())}; path=/; SameSite=Strict; Max-Age=86400`;
-    hideSignIn();
-    loadTemplates();
-    loadMissions();
-    connectCopilotSse();
-  }
+  firebase.auth().onAuthStateChanged(async (user) => {
+    const hdrUser = document.getElementById('hdr-user');
+    const userEmailEl = document.getElementById('user-email');
+    if (user) {
+      if (hdrUser) hdrUser.style.display = 'flex';
+      if (userEmailEl) userEmailEl.textContent = user.email || '';
+      hideSignIn();
+      loadTemplates();
+      loadMissions();
+      connectCopilotSse();
+    } else {
+      if (hdrUser) hdrUser.style.display = 'none';
+      showSignIn();
+    }
+  });
 
-  setInterval(() => { if (!document.hidden && getKey()) loadMissions(); }, 30_000);
+  setInterval(() => { if (!document.hidden && firebase.auth().currentUser) loadMissions(); }, 30_000);
 </script>
 </body>
 </html>

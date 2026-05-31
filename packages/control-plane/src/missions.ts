@@ -12,7 +12,7 @@
  */
 
 import { parseTeamConfig } from "@magi/agent-config";
-import type { Router } from "express";
+import type { Request, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
 import {
@@ -31,6 +31,8 @@ import { getTemplate, patchMissionId } from "./templates.js";
 
 interface MissionDoc {
 	missionId: string;
+	/** Firebase UID of the owner, or "admin" for CONTROL_API_KEY-created missions. */
+	userId: string;
 	name: string;
 	teamConfig: string;
 	/** Full YAML stored at provision time; updated on config edit. */
@@ -45,21 +47,31 @@ interface MissionDoc {
 	updatedAt: Date;
 }
 
+/** Admin sees all missions; regular users see only their own. */
+function userFilter(req: Request): Partial<MissionDoc> {
+	return req.isAdmin ? {} : { userId: req.userId };
+}
+
 export function createMissionsRouter(db: Db): Router {
 	const router = createRouter();
 	const col = db.collection<MissionDoc>("missions");
 
-	// List all missions.
-	router.get("/", async (_req, res) => {
-		const missions = await col.find({}, { sort: { createdAt: -1 } }).toArray();
+	// Create userId index on first router mount (idempotent).
+	void col.createIndex({ userId: 1, createdAt: -1 });
+
+	// List missions (scoped to current user unless admin).
+	router.get("/", async (req, res) => {
+		const missions = await col
+			.find(userFilter(req), { sort: { createdAt: -1 } })
+			.toArray();
 		res.json(missions);
 	});
 
 	// Per-mission telemetry — registered before /:id to avoid route shadowing.
-	router.get("/stats", async (_req, res) => {
+	router.get("/stats", async (req, res) => {
 		const missions = await col
 			.find(
-				{ status: { $ne: "destroyed" } },
+				{ ...userFilter(req), status: { $ne: "destroyed" } },
 				{ projection: { missionId: 1, _id: 0 } },
 			)
 			.toArray();
@@ -139,7 +151,10 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Get one mission.
 	router.get("/:id", async (req, res) => {
-		const mission = await col.findOne({ missionId: req.params.id });
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
 		if (!mission) {
 			res.status(404).json({ error: "Not found" });
 			return;
@@ -165,7 +180,10 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Get full config for editing — YAML + live mental maps per agent.
 	router.get("/:id/config", async (req, res) => {
-		const mission = await col.findOne({ missionId: req.params.id });
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
 		if (!mission) {
 			res.status(404).json({ error: "Not found" });
 			return;
@@ -202,7 +220,10 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Update config (YAML + mental maps). Mission must be suspended.
 	router.put("/:id/config", async (req, res) => {
-		const mission = await col.findOne({ missionId: req.params.id });
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
 		if (!mission) {
 			res.status(404).json({ error: "Not found" });
 			return;
@@ -311,6 +332,7 @@ export function createMissionsRouter(db: Db): Router {
 
 		const doc: MissionDoc = {
 			missionId,
+			userId: req.userId,
 			name,
 			teamConfig,
 			status: "provisioning",
@@ -376,7 +398,10 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Suspend.
 	router.post("/:id/suspend", async (req, res) => {
-		const mission = await col.findOne({ missionId: req.params.id });
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
 		if (!mission?.machineId) {
 			res.status(404).json({ error: "Not found or no machine" });
 			return;
@@ -397,7 +422,10 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Resume — push latest YAML to machine env before starting.
 	router.post("/:id/resume", async (req, res) => {
-		const mission = await col.findOne({ missionId: req.params.id });
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
 		if (!mission?.machineId) {
 			res.status(404).json({ error: "Not found or no machine" });
 			return;
@@ -435,7 +463,10 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Destroy (irreversible).
 	router.delete("/:id", async (req, res) => {
-		const mission = await col.findOne({ missionId: req.params.id });
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
 		if (!mission) {
 			res.status(404).json({ error: "Not found" });
 			return;

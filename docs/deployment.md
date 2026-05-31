@@ -14,12 +14,13 @@ cloud path.
 2. [First-time setup: `bootstrap.sh`](#2-first-time-setup-bootstrapsh)
 3. [GitHub Actions CI/CD setup](#3-github-actions-cicd-setup)
 4. [Environment strategy](#4-environment-strategy)
-5. [Launching a mission](#5-launching-a-mission)
-6. [Fly.io integration test environments](#6-flyio-integration-test-environments)
-7. [Observing and debugging](#7-observing-and-debugging)
-8. [Operations reference](#8-operations-reference)
-9. [Cost reference](#9-cost-reference)
-10. [Troubleshooting](#10-troubleshooting)
+5. [Firebase Authentication setup](#5-firebase-authentication-setup)
+6. [Launching a mission](#6-launching-a-mission)
+7. [Fly.io integration test environments](#7-flyio-integration-test-environments)
+8. [Observing and debugging](#8-observing-and-debugging)
+9. [Operations reference](#9-operations-reference)
+10. [Cost reference](#10-cost-reference)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
@@ -248,12 +249,98 @@ the test control plane's supervision, using the test control plane's MongoDB dat
 
 ---
 
-## 5. Launching a mission
+## 5. Firebase Authentication setup
+
+MAGI uses Firebase Authentication (Google OAuth) so each user has a distinct identity and sees only their own missions. `CONTROL_API_KEY` is retained for admin access, CI, and headless scripts.
+
+### Firebase projects
+
+Two existing projects are reused from MAGI V2:
+
+| Environment | Firebase project ID | Purpose |
+|-------------|-------------------|---------|
+| Local dev + Fly dev | `magi-68bb2` | Development |
+| Fly prod | `magi-prod-b9403` | Production |
+
+### Step 1 — Download service account key
+
+In the Firebase console for each project:
+1. **Project Settings → Service accounts → Generate new private key**
+2. Download the JSON file; minify it to one line for use as a Fly secret
+
+```bash
+# Minify (remove newlines) for use as a secret
+cat magi-68bb2-firebase-adminsdk.json | tr -d '\n'
+```
+
+### Step 2 — Add Firebase Authorized Domains
+
+In **Firebase console → Authentication → Settings → Authorized domains**, add:
+
+| Project | Domains |
+|---------|---------|
+| `magi-68bb2` | `localhost`, `magi-control-dev.fly.dev` |
+| `magi-prod-b9403` | Each `magi-control-prod-*.fly.dev` suffix you deploy |
+
+`localhost` is already in the default list. Fly.io deploy domains must be added manually.
+
+### Step 3 — Set Fly secrets
+
+```bash
+# Dev environment (magi-68bb2 project)
+fly secrets set \
+  FIREBASE_SERVICE_ACCOUNT_KEY="$(cat magi-68bb2-firebase-adminsdk.json | tr -d '\n')" \
+  FIREBASE_CLIENT_API_KEY="AIzaSyDj6CTM8fPIKs4NxPFH-qOGEqagnzGCf-4" \
+  FIREBASE_CLIENT_AUTH_DOMAIN="magi-68bb2.firebaseapp.com" \
+  FIREBASE_CLIENT_PROJECT_ID="magi-68bb2" \
+  --app magi-control-dev
+
+# Prod environment (magi-prod-b9403 project)
+fly secrets set \
+  FIREBASE_SERVICE_ACCOUNT_KEY="$(cat magi-prod-b9403-firebase-adminsdk.json | tr -d '\n')" \
+  FIREBASE_CLIENT_API_KEY="AIzaSyD3tpiIRNc06fbpxGFTbe0Yr2QPMECQXj8" \
+  FIREBASE_CLIENT_AUTH_DOMAIN="magi-prod-b9403.firebaseapp.com" \
+  FIREBASE_CLIENT_PROJECT_ID="magi-prod-b9403" \
+  --app magi-control-prod-gold-digest
+```
+
+The `FIREBASE_CLIENT_*` values are public client-side identifiers — not secrets — but storing
+them as Fly secrets keeps configuration environment-specific without hardcoding in HTML.
+
+### Step 4 — Local dev
+
+Add to your `.env` (copied from `secrets.env.template`):
+
+```
+FIREBASE_SERVICE_ACCOUNT_KEY={"type":"service_account",...}   # from magi-68bb2 console
+FIREBASE_CLIENT_API_KEY=AIzaSyDj6CTM8fPIKs4NxPFH-qOGEqagnzGCf-4
+FIREBASE_CLIENT_AUTH_DOMAIN=magi-68bb2.firebaseapp.com
+FIREBASE_CLIENT_PROJECT_ID=magi-68bb2
+```
+
+Open `http://localhost:3001` → "Sign in with Google" → OAuth popup → Firebase validates
+against `magi-68bb2` → Express verifies JWT with the same service account key.
+
+For headless testing (e.g. `npm run test:integration`): set `CONTROL_API_KEY` and pass it via
+`Authorization: Bearer` or `X-Api-Key` — the admin fallback requires no Firebase setup.
+
+### Step 5 — One-time MongoDB migration
+
+Existing missions have no `userId` field. Run once per database after deploying:
+
+```javascript
+// Run in MongoDB Atlas → Collections → magi-dev → missions → Aggregation, or via mongosh:
+db.missions.updateMany({ userId: { $exists: false } }, { $set: { userId: "admin" } })
+```
+
+---
+
+## 6. Launching a mission
 
 ### Via the UI
 
-Open `https://magi-control-{suffix}.fly.dev`, sign in with `CONTROL_API_KEY`, and use the
-Launch form. Required fields:
+Open `https://magi-control-{suffix}.fly.dev`, sign in with Google (or use `CONTROL_API_KEY`
+via API for admin access), and use the Launch form. Required fields:
 - **Mission ID** — unique identifier; used as MongoDB namespace (e.g. `gold-001`)
 - **Name** — display name
 - **Team config** — path relative to `config/teams/` in the image (e.g. `test/hello-world`, `gold-digest`)
@@ -292,7 +379,7 @@ Provisioning typically takes 20–40 seconds.
 
 ---
 
-## 6. Fly.io integration test environments
+## 7. Fly.io integration test environments
 
 Use isolated Fly.io environments for integration tests that validate cloud behavior (proxy,
 machine lifecycle, secrets injection) without polluting the dev or production databases.
@@ -364,7 +451,7 @@ flyctl apps destroy magi-missions-test-sprint16 --yes
 
 ---
 
-## 7. Observing and debugging
+## 8. Observing and debugging
 
 ### Dashboard
 
@@ -438,7 +525,7 @@ fly ssh console -a magi-missions-dev -s      # SSH into a running machine
 
 ---
 
-## 8. Operations reference
+## 9. Operations reference
 
 ### Suspend a mission (pause without losing state)
 
@@ -524,7 +611,7 @@ reattach the existing Volume ID).
 
 ---
 
-## 9. Cost reference
+## 10. Cost reference
 
 ### Fly.io
 
@@ -566,7 +653,7 @@ a budget banner when the cap is reached and offers a "+$5 and continue" button.
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 ### Execution plane machine not starting
 
