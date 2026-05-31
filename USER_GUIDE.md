@@ -2,12 +2,7 @@
 
 ## Prerequisites
 
-Copy `.env.example` to `.env` and fill in the required values:
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-MONGODB_URI=mongodb+srv://...@cluster0.example.mongodb.net/magi_v3_dev
-```
+Copy `secrets.env.template` to `.env` and fill in the required values. At minimum you need `ANTHROPIC_API_KEY`, `MONGODB_URI`, and `CONTROL_API_KEY`. For the control plane UI (Google Sign-In), also fill in the four Firebase vars — see [docs/deployment.md §5](docs/deployment.md#5-firebase-authentication-setup) for where to get them.
 
 Run the dev setup script **as root** to create pool users and configure passwordless sudo for agent isolation:
 
@@ -57,11 +52,14 @@ Run both commands once after cloning; re-run after Playwright version upgrades.
 
 **Terminal 1 — control plane:**
 ```bash
-LOCAL_EXECUTION=true COPILOT_MISSION_ID=copilot \
-FLY_API_TOKEN_MACHINES=dummy FLY_MISSIONS_APP_NAME=dummy \
+LOCAL_EXECUTION=true FLY_API_TOKEN_MACHINES=dummy FLY_MISSIONS_APP_NAME=dummy \
 node --import ./packages/agent-runtime-worker/dist/node-polyfill.js \
   packages/control-plane/dist/index.js
 ```
+
+The control plane loads `.env` automatically via dotenv — the Firebase vars you set there are picked up at startup. No need to inline them in the command.
+
+**Authenticate.** Open **http://localhost:3000** in your browser and click **Sign in with Google**. A Firebase OAuth popup opens; sign in with any Google account. Each account sees only its own missions. To skip Google auth (e.g. in scripts or CI), use `CONTROL_API_KEY` as a bearer token — it grants full admin visibility.
 
 **Launch a session from the UI.** The terminal prints the daemon start command, e.g.:
 ```

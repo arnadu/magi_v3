@@ -115,9 +115,9 @@ curl -H "X-API-Key: $CONTROL_API_KEY" \
   https://magi-control-dev.fly.dev/api/missions
 # Expected: []  (empty list, no missions yet)
 
-# Open the dashboard
+# Open the dashboard — sign in with Google
 open https://magi-control-dev.fly.dev
-# Enter CONTROL_API_KEY when prompted
+# Click "Sign in with Google"; CONTROL_API_KEY can be used via X-API-Key header for API/CI access
 ```
 
 ### Failure recovery

@@ -281,12 +281,6 @@
     }
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/mode/xml/xml.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
-  <script src="/firebase-config.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 </head>
 <body>
 
@@ -303,8 +297,17 @@
 <div id="sign-in-overlay">
   <div id="sign-in-box">
     <h2>MAGI</h2>
-    <p class="tagline">Sign in with your Google account to access the control plane.</p>
+    <p class="tagline">Sign in with Google, or use an admin API key for local dev.</p>
     <button type="button" id="google-signin-btn" onclick="signInWithGoogle()">Sign in with Google</button>
+    <div style="display:flex;align-items:center;gap:8px;margin:16px 0 12px;">
+      <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+      <span style="font-size:12px;color:#94a3b8;">or</span>
+      <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+    </div>
+    <label for="api-key-input">Admin API key</label>
+    <input type="password" id="api-key-input" placeholder="CONTROL_API_KEY from .env"
+      onkeydown="if(event.key==='Enter')signInWithApiKey()">
+    <button type="button" class="btn-primary" style="width:100%;margin-top:10px;" onclick="signInWithApiKey()">Sign in with key</button>
     <div class="error-msg" id="sign-in-error"></div>
   </div>
 </div>
@@ -380,17 +383,41 @@
 
 <div id="toast"></div>
 
+<!-- CDN scripts at end of body — non-blocking, body renders before these load -->
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/lib/codemirror.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.19/mode/xml/xml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<script src="/firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
 <script>
   'use strict';
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
-  firebase.initializeApp(window.FIREBASE_CONFIG);
+  // Admin API key (CONTROL_API_KEY) stored in sessionStorage for local-dev use.
+  // Cleared on tab close; never persisted to localStorage.
+  const ADMIN_KEY_SESSION = 'magi_admin_key';
+
+  // Only initialize Firebase when a real API key is configured.
+  // Without this guard, Firebase makes background requests with an empty key
+  // and logs auth/invalid-api-key errors continuously.
+  const firebaseConfigured = !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey);
+  if (firebaseConfigured) {
+    firebase.initializeApp(window.FIREBASE_CONFIG);
+  }
 
   async function getToken() {
-    const user = firebase.auth().currentUser;
-    if (!user) return null;
-    try { return await user.getIdToken(); } catch { return null; }
+    // Firebase path — preferred for multi-user deployments
+    if (firebaseConfigured) {
+      const user = firebase.auth().currentUser;
+      if (user) {
+        try { return await user.getIdToken(); } catch { /* fall through */ }
+      }
+    }
+    // Admin API key fallback — local dev / CI
+    return sessionStorage.getItem(ADMIN_KEY_SESSION) ?? null;
   }
 
   async function apiFetch(path, opts = {}) {
@@ -398,7 +425,7 @@
     if (!token) { showSignIn(); return null; }
     const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) };
     const res = await fetch(path, { ...opts, headers });
-    if (res.status === 401) { showSignIn(); return null; }
+    if (res.status === 401) { sessionStorage.removeItem(ADMIN_KEY_SESSION); showSignIn(); return null; }
     return res;
   }
 
@@ -583,6 +610,10 @@
   async function signInWithGoogle() {
     const errorEl = document.getElementById('sign-in-error');
     errorEl.textContent = '';
+    if (!firebaseConfigured) {
+      errorEl.textContent = 'Firebase not configured. Use admin key below.';
+      return;
+    }
     try {
       await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
     } catch (e) {
@@ -591,8 +622,31 @@
   }
 
   // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick
+  async function signInWithApiKey() {
+    const input = /** @type {HTMLInputElement} */ (document.getElementById('api-key-input'));
+    const errorEl = document.getElementById('sign-in-error');
+    const key = input.value.trim();
+    if (!key) { errorEl.textContent = 'Enter an API key.'; return; }
+    errorEl.textContent = '';
+    // Validate by probing /api/missions — server returns 401 if wrong, list if correct.
+    const res = await fetch('/api/missions', { headers: { 'Authorization': `Bearer ${key}` } });
+    if (res.status === 401) { errorEl.textContent = 'Invalid key.'; return; }
+    sessionStorage.setItem(ADMIN_KEY_SESSION, key);
+    hideSignIn();
+    loadTemplates();
+    loadMissions();
+    connectCopilotSse();
+    const hdrUser = document.getElementById('hdr-user');
+    const userEmailEl = document.getElementById('user-email');
+    if (hdrUser) hdrUser.style.display = 'flex';
+    if (userEmailEl) userEmailEl.textContent = 'admin';
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick
   function signOut() {
-    firebase.auth().signOut().catch(() => {});
+    sessionStorage.removeItem(ADMIN_KEY_SESSION);
+    if (firebaseConfigured) firebase.auth().signOut().catch(() => {});
+    else showSignIn();
   }
 
   // ── Toast ─────────────────────────────────────────────────────────────────
@@ -1621,23 +1675,42 @@
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
-  firebase.auth().onAuthStateChanged(async (user) => {
+  function initApp(userEmail) {
     const hdrUser = document.getElementById('hdr-user');
     const userEmailEl = document.getElementById('user-email');
-    if (user) {
-      if (hdrUser) hdrUser.style.display = 'flex';
-      if (userEmailEl) userEmailEl.textContent = user.email || '';
-      hideSignIn();
-      loadTemplates();
-      loadMissions();
-      connectCopilotSse();
+    if (hdrUser) hdrUser.style.display = 'flex';
+    if (userEmailEl) userEmailEl.textContent = userEmail;
+    hideSignIn();
+    loadTemplates();
+    loadMissions();
+    connectCopilotSse();
+  }
+
+  if (firebaseConfigured) {
+    firebase.auth().onAuthStateChanged(async (user) => {
+      if (user) {
+        initApp(user.email || '');
+      } else if (sessionStorage.getItem(ADMIN_KEY_SESSION)) {
+        initApp('admin');
+      } else {
+        const hdrUser = document.getElementById('hdr-user');
+        if (hdrUser) hdrUser.style.display = 'none';
+        showSignIn();
+      }
+    });
+  } else {
+    // Firebase not configured — check for stored admin key, else show sign-in.
+    if (sessionStorage.getItem(ADMIN_KEY_SESSION)) {
+      initApp('admin');
     } else {
-      if (hdrUser) hdrUser.style.display = 'none';
       showSignIn();
     }
-  });
+  }
 
-  setInterval(() => { if (!document.hidden && firebase.auth().currentUser) loadMissions(); }, 30_000);
+  setInterval(() => {
+    const loggedIn = (firebaseConfigured && firebase.auth().currentUser) || sessionStorage.getItem(ADMIN_KEY_SESSION);
+    if (!document.hidden && loggedIn) loadMissions();
+  }, 30_000);
 </script>
 </body>
 </html>

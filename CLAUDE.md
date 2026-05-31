@@ -49,7 +49,8 @@ npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 - `MAX_COST_USD` (spending cap; triggers budget-pause when reached)
 - `MAX_AGENT_RUN_SECONDS` (per-dispatch wall-clock timeout; default 14400 = 4 h; aborts hung agent runs)
 - `BRAVE_SEARCH_API_KEY` (enables SearchWeb; free tier: 2000 req/month)
-- `COPILOT_MISSION_ID` (control plane only; when set, starts the copilot daemon; value is the missionId for the copilot's mailbox and conversation history, typically `"copilot"`)
+- `FIREBASE_SERVICE_ACCOUNT_KEY` (control plane only; Firebase Admin SDK service account JSON, minified to one line — required for Google Sign-In)
+- `FIREBASE_CLIENT_API_KEY`, `FIREBASE_CLIENT_AUTH_DOMAIN`, `FIREBASE_CLIENT_PROJECT_ID` (control plane only; served to the browser via `/firebase-config.js`; public client-side values)
 
 **Data API keys** (forwarded to background jobs only — never to agent tool subprocesses):
 Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
