@@ -105,7 +105,7 @@ done
 # ── Create Fly apps (idempotent) ───────────────────────────────────────────────
 create_app_if_missing() {
   local app="$1"
-  if flyctl apps list --json 2>/dev/null | grep -q "\"Name\":\"$app\""; then
+  if flyctl status -a "$app" >/dev/null 2>&1; then
     info "App '$app' already exists — skipping creation."
   else
     info "Creating Fly.io app: $app"
@@ -133,7 +133,7 @@ set_secrets_if_needed() {
   else
     # Check if secrets are already set by looking for any known key
     local first_key="${!pairs[*]%% *}"
-    if flyctl secrets list -a "$app" --json 2>/dev/null | grep -q "\"Name\":\"$first_key\""; then
+    if flyctl secrets list -a "$app" --json 2>/dev/null | grep -q "\"$first_key\""; then
       info "Secrets already set on $app — skipping (use --reset-secrets to overwrite)."
       return 0
     fi
