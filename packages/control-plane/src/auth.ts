@@ -46,9 +46,13 @@ export function createAuthMiddleware(db: Db) {
 				req.isAdmin = false;
 				next();
 				return;
-			} catch {
-				// Invalid or expired token — fall through to 401
+			} catch (e) {
+				console.error(
+					`[auth] Firebase token verification failed: ${(e as Error).message}`,
+				);
 			}
+		} else {
+			console.warn(`[auth] 401 — no credential on ${req.method} ${req.path}`);
 		}
 
 		res.status(401).json({ error: "Unauthorized" });
