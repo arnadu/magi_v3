@@ -153,6 +153,10 @@ declare -A CONTROL_SECRETS=(
   [CONTROL_API_KEY]="${CONTROL_API_KEY}"
   [FLY_API_TOKEN_MACHINES]="${MACHINES_TOKEN}"
   [FLY_MISSIONS_APP_NAME]="${MISSIONS_APP}"
+  [FIREBASE_SERVICE_ACCOUNT_KEY]="${FIREBASE_SERVICE_ACCOUNT_KEY:-}"
+  [FIREBASE_CLIENT_API_KEY]="${FIREBASE_CLIENT_API_KEY:-}"
+  [FIREBASE_CLIENT_AUTH_DOMAIN]="${FIREBASE_CLIENT_AUTH_DOMAIN:-}"
+  [FIREBASE_CLIENT_PROJECT_ID]="${FIREBASE_CLIENT_PROJECT_ID:-}"
 )
 set_secrets_if_needed "$CONTROL_APP" CONTROL_SECRETS
 
@@ -234,5 +238,5 @@ echo "  Control plane:  https://${CONTROL_APP}.fly.dev"
 echo "  Execution pool: ${MISSIONS_APP} (machines created per mission)"
 echo "  Image:          ${IMAGE}"
 echo ""
-echo "  Sign in with CONTROL_API_KEY from $SECRETS_FILE"
+echo "  Sign in with Google OAuth (or use CONTROL_API_KEY as admin fallback)"
 echo ""
