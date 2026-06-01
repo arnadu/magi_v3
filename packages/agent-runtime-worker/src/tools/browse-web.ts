@@ -1,7 +1,6 @@
 import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import type { LogLine } from "@browserbasehq/stagehand";
-import { V3 as Stagehand } from "@browserbasehq/stagehand";
+import type { LogLine, V3 as Stagehand } from "@browserbasehq/stagehand";
 import type { Model } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
 import { Type } from "@sinclair/typebox";
@@ -163,6 +162,11 @@ function createBrowseWebHandle(
 		if (initPromise) return initPromise;
 
 		initPromise = (async () => {
+			// Dynamically import stagehand so the module is only resolved when
+			// BrowseWeb is actually used. A static import would cause
+			// ERR_MODULE_NOT_FOUND at startup on the control plane (or any other
+			// context where Playwright / Chromium is not installed).
+			const { V3: StagehandClass } = await import("@browserbasehq/stagehand");
 			// Create the logs dir lazily so agents that never call BrowseWeb don't
 			// require write access to sharedDir at startup.
 			mkdirSync(logsDir, { recursive: true });
@@ -174,7 +178,7 @@ function createBrowseWebHandle(
 			mkdirSync(dir, { recursive: true });
 			profileDir = dir;
 
-			const sh = new Stagehand({
+			const sh = new StagehandClass({
 				env: "LOCAL",
 				model: stagehandModel,
 				localBrowserLaunchOptions: {
