@@ -6,6 +6,7 @@ on:
     paths:
       - 'packages/control-plane/**'
       - 'packages/agent-config/**'
+      - 'packages/agent-runtime-worker/**'
       - 'tsconfig.base.json'
       - 'fly.control-dev.toml'
 

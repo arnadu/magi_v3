@@ -1,5 +1,6 @@
 # Build from repo root:
 #   docker build -f packages/control-plane/Dockerfile -t magi-control .
+# agent-runtime-worker is included in the image (copilot daemon); changes there also trigger this deploy.
 
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
 FROM node:20-slim AS builder
