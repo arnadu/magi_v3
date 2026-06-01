@@ -141,11 +141,29 @@ set_secrets_if_needed() {
   fi
 
   local args=()
+  local skipped=()
   for key in "${!pairs[@]}"; do
-    [[ -n "${pairs[$key]}" ]] && args+=("${key}=${pairs[$key]}")
+    if [[ -n "${pairs[$key]}" ]]; then
+      args+=("${key}=${pairs[$key]}")
+    else
+      skipped+=("$key")
+    fi
   done
-  [[ ${#args[@]} -gt 0 ]] && flyctl secrets set -a "$app" "${args[@]}"
-  success "Secrets set on $app."
+
+  if [[ ${#skipped[@]} -gt 0 ]]; then
+    warn "Skipping empty secrets on $app: ${skipped[*]}"
+    warn "  → Fill these in $SECRETS_FILE and re-run with --reset-secrets"
+  fi
+
+  if [[ ${#args[@]} -gt 0 ]]; then
+    local keys_only=()
+    for kv in "${args[@]}"; do keys_only+=("${kv%%=*}"); done
+    info "Writing secrets to $app: ${keys_only[*]}"
+    flyctl secrets set -a "$app" "${args[@]}"
+    success "Secrets set on $app."
+  else
+    warn "No secrets to set on $app — all values were empty."
+  fi
 }
 
 declare -A CONTROL_SECRETS=(
