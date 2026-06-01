@@ -235,7 +235,10 @@ fi
 # ── GitHub Actions secret ─────────────────────────────────────────────────────
 if [[ "$GH_AVAILABLE" == true ]]; then
   info "Generating CI deploy token (image push scope)…"
-  CI_TOKEN="$(flyctl tokens create deploy -a "$MISSIONS_APP" --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+  # The CI token must cover both apps: control-plane deploys to registry.fly.io/CONTROL_APP
+  # and the execution plane builds push to registry.fly.io/MISSIONS_APP.
+  # Use an org-level token so a single secret covers all apps in the org.
+  CI_TOKEN="$(flyctl tokens create org --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
   if [[ -n "$CI_TOKEN" ]]; then
     gh secret set FLY_API_TOKEN_CI --body "$CI_TOKEN" 2>/dev/null && \
       success "GitHub secret FLY_API_TOKEN_CI set." || \
@@ -245,7 +248,7 @@ else
   echo ""
   warn "Set the following GitHub Actions secret manually:"
   warn "  Name:  FLY_API_TOKEN_CI"
-  warn "  Value: a deploy token from 'flyctl tokens create deploy -a ${MISSIONS_APP}'"
+  warn "  Value: an org-level token from 'flyctl tokens create org'"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
