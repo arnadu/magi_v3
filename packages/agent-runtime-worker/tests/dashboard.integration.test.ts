@@ -108,7 +108,7 @@ function makeWaitForMail(
 describe("dashboard — message round-trip", () => {
 	it("operator message appears in chat and agent reply follows in same thread", async () => {
 		const missionId = `dashboard-test-${randomUUID()}`;
-		const MONGODB_URI = process.env.MONGODB_URI!;
+		const MONGODB_URI = process.env.MONGODB_URI ?? "";
 		const port = await freePort();
 		const workdir = mkdtempSync(join(tmpdir(), "magi-dashboard-test-"));
 		// Pool users (magi-w1) need execute permission to traverse the workdir.

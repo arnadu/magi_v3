@@ -403,7 +403,7 @@
   // Only initialize Firebase when a real API key is configured.
   // Without this guard, Firebase makes background requests with an empty key
   // and logs auth/invalid-api-key errors continuously.
-  const firebaseConfigured = !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey);
+  const firebaseConfigured = !!(window.FIREBASE_CONFIG?.apiKey);
   if (firebaseConfigured) {
     firebase.initializeApp(window.FIREBASE_CONFIG);
   }
@@ -792,7 +792,6 @@
 
   // ── Unified config form (templates + suspended missions) ──────────────────
 
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
   function switchDetailTab(btn, paneId) {
     const body = btn.closest('.detail-body');
     if (!body) return;

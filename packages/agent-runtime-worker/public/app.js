@@ -347,7 +347,6 @@ function showAgentErrorBanner(agentId, errorMessage, transient) {
 	banner.classList.remove("hidden");
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
 function hideAgentErrorBanner() {
 	document.getElementById("agent-error-banner")?.classList.add("hidden");
 }
@@ -1302,7 +1301,6 @@ function renderSchedule() {
 	pane.appendChild(table);
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: called from dynamically-created onclick
 async function cancelSchedule(id) {
 	await fetch(`schedule/${encodeURIComponent(id)}`, { method: "DELETE" });
 	await loadSchedule();
@@ -1422,8 +1420,6 @@ function renderStepBtn() {
 	}
 }
 
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
-// biome-ignore lint/correctness/noUnusedVariables: called from HTML onclick
 async function toggleStep() {
 	const r = await fetch("toggle-step", { method: "POST" });
 	const d = await r.json();
