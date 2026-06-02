@@ -75,6 +75,20 @@ export interface ProvisionOptions {
  * (base64) + TEAM_SKILLS_PATH (image path) so the daemon writes the YAML to
  * the volume on first boot and still finds skills in the image.
  */
+
+/**
+ * Build a Fly volume name from a missionId.
+ * Fly Volumes API constraint: lowercase [a-z0-9_], max 30 chars.
+ * missionId format: {template}-{YYYYMMDD}-{4hex}
+ * Strategy: hyphens → underscores, lowercase; if > 30 chars keep first 16 + last 14
+ * (_YYYYMMDD_xxxx) so the unique timestamp suffix is always preserved.
+ */
+function flyVolumeName(missionId: string): string {
+	const slug = missionId.toLowerCase().replace(/-/g, "_");
+	// 14 = length of "_YYYYMMDD_xxxx" tail; 30 - 14 = 16 chars for the prefix.
+	return slug.length <= 30 ? slug : `${slug.slice(0, 16)}${slug.slice(-14)}`;
+}
+
 export async function provisionMission(
 	missionId: string,
 	teamConfigName: string,
@@ -87,7 +101,7 @@ export async function provisionMission(
 	const volRes = await flyFetch(`/apps/${app}/volumes`, {
 		method: "POST",
 		body: JSON.stringify({
-			name: `workspace${missionId.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+			name: flyVolumeName(missionId),
 			size_gb: 10,
 			region,
 		}),
