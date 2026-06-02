@@ -73,6 +73,10 @@ async function main(): Promise<void> {
 
 	const app = express();
 
+	// Fly.io terminates TLS and sets X-Forwarded-For. Trust one proxy hop so
+	// express-rate-limit can correctly identify client IPs.
+	app.set("trust proxy", 1);
+
 	// ── Public routes (no auth) ───────────────────────────────────────────────
 
 	// Serve static UI without authentication — the login page is public.
