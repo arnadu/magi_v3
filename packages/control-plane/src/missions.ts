@@ -43,6 +43,8 @@ interface MissionDoc {
 	privateIp?: string;
 	volumeId?: string;
 	status: "provisioning" | "running" | "suspended" | "destroyed" | "error";
+	/** Set when status === "error"; cleared on successful resume. */
+	errorMessage?: string;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -388,11 +390,15 @@ export function createMissionsRouter(db: Db): Router {
 			);
 			res.status(201).json({ ...doc, ...handle, status: "running" });
 		} catch (e) {
+			const errorMessage = (e as Error).message;
+			console.error(
+				`[missions] provision failed { missionId: "${missionId}", error: "${errorMessage}" }`,
+			);
 			await col.updateOne(
 				{ missionId },
-				{ $set: { status: "error", updatedAt: new Date() } },
+				{ $set: { status: "error", errorMessage, updatedAt: new Date() } },
 			);
-			res.status(500).json({ error: (e as Error).message });
+			res.status(500).json({ error: errorMessage });
 		}
 	});
 
@@ -416,6 +422,9 @@ export function createMissionsRouter(db: Db): Router {
 			);
 			res.json({ status: "suspended" });
 		} catch (e) {
+			console.error(
+				`[missions] suspend failed { missionId: "${req.params.id}", error: "${(e as Error).message}" }`,
+			);
 			res.status(500).json({ error: (e as Error).message });
 		}
 	});
@@ -457,6 +466,9 @@ export function createMissionsRouter(db: Db): Router {
 			);
 			res.json({ status: "running" });
 		} catch (e) {
+			console.error(
+				`[missions] resume failed { missionId: "${req.params.id}", error: "${(e as Error).message}" }`,
+			);
 			res.status(500).json({ error: (e as Error).message });
 		}
 	});
@@ -483,6 +495,9 @@ export function createMissionsRouter(db: Db): Router {
 			);
 			res.json({ status: "destroyed" });
 		} catch (e) {
+			console.error(
+				`[missions] destroy failed { missionId: "${req.params.id}", error: "${(e as Error).message}" }`,
+			);
 			res.status(500).json({ error: (e as Error).message });
 		}
 	});

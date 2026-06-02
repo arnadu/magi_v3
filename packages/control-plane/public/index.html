@@ -1030,7 +1030,10 @@
         config = await res.json();
         state.missionConfigCache.set(id, config);
       } else if (res?.status === 404) {
-        // Mission has no stored config (provisioned before this feature)
+        // Mission has no stored config (provisioned before this feature, or failed before YAML was written)
+        const errorNote = m.errorMessage
+          ? `<div style="margin-top:12px;padding:10px 14px;background:#fee2e2;border-radius:6px;color:#dc2626;font-size:13px;font-family:monospace">${esc(m.errorMessage)}</div>`
+          : '<div style="margin-top:12px;color:#475569;font-size:14px">No config stored for this mission.</div>';
         document.getElementById('detail-panel').innerHTML = `
           <div class="detail-header">
             <div class="detail-title">${esc(m.name)}</div>
@@ -1039,7 +1042,7 @@
               <code>${esc(m.missionId)}</code>
             </div>
           </div>
-          <div style="padding:24px;color:#475569;font-size:14px">No config stored for this mission.</div>`;
+          <div style="padding:24px">${errorNote}</div>`;
         return;
       } else {
         document.getElementById('detail-panel').innerHTML =
