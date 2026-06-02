@@ -87,7 +87,7 @@ export async function provisionMission(
 	const volRes = await flyFetch(`/apps/${app}/volumes`, {
 		method: "POST",
 		body: JSON.stringify({
-			name: `workspace_${missionId.replace(/[^a-z0-9_]/gi, "_")}`,
+			name: `workspace${missionId.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
 			size_gb: 10,
 			region,
 		}),
