@@ -19,6 +19,7 @@ import type { Db } from "mongodb";
 
 interface MissionDoc {
 	missionId: string;
+	userId: string;
 	privateIp?: string;
 	machineId?: string;
 	status: string;
@@ -68,9 +69,12 @@ export function createProxyRouter(db: Db): Router {
 			const missionId = req.params.id;
 
 			// S2: resolve target from DB — never trust user input.
+			// S9 (F-019): scope lookup to the requesting user so a user cannot proxy
+			// into another user's mission. Admins bypass the filter.
+			const ownerFilter = req.isAdmin ? {} : { userId: req.userId };
 			const mission = await db
 				.collection<MissionDoc>("missions")
-				.findOne({ missionId });
+				.findOne({ missionId, ...ownerFilter });
 
 			if (!mission || !mission.privateIp) {
 				res.status(404).json({ error: "Mission not found" });
