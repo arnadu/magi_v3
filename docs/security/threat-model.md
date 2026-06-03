@@ -1,6 +1,6 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 23 — Firebase Auth + multi-user: new TB-12 (browser ↔ Firebase), TB-13 (`magi_session` cookie), TB-14 (`/firebase-config.js`); `users` MongoDB collection added; per-user copilot daemons (`copilot-{uid}`); proxy IDOR gap noted (F-019); F-009 and F-016 closed (2026-06-03)
+**Last updated:** Sprint 23 — Firebase Auth + multi-user + security hardening: TB-12/13/14 added; F-008 (MonitorServer HMAC token), F-019 (proxy IDOR), F-020 (pending-action ownership), F-009, F-016 all closed (2026-06-03)
 **Update cadence:** Update whenever a new trust boundary, external service, or privilege level is added.
 
 ---
@@ -151,7 +151,7 @@ graph TB
 | Boundary | Crossing mechanism | Direction |
 |----------|--------------------|-----------|
 | **TB-1** | External internet ↔ Daemon | HTTP (FetchUrl, BrowseWeb, APIs, LLM calls) | Inbound: untrusted content; Outbound: requests including full conversation context to LLM providers |
-| **TB-2** | Operator ↔ MonitorServer (local dev) | HTTP GET/POST on localhost:4000; no auth on mutating routes | Bidirectional |
+| **TB-2** | Operator ↔ MonitorServer (local dev) | HTTP GET/POST on localhost:4000; `MONITOR_TOKEN` env var absent in dev → no auth check on mutating routes | Bidirectional |
 | **TB-3** | Daemon (magi-operator) ↔ tool-executor (magi-wN) | `sudo -u magi-wN`, clean env | Outbound: commands; Inbound: stdout/stderr |
 | **TB-4** | Daemon ↔ magi-job (magi-wN) | `sudo -u magi-wN`, +token +data keys | Outbound: script + env; Inbound: exit code |
 | **TB-5** | magi-job (magi-wN) ↔ ToolApiServer (magi-operator) | HTTP + bearer token, loopback | Outbound: tool calls; Inbound: results |
@@ -160,7 +160,7 @@ graph TB
 | **TB-8** | External content ↔ agent context | FetchUrl/BrowseWeb result injected into LLM messages | Untrusted text into trusted reasoning |
 | **TB-9** | Browser → Control plane HTTPS | HTTPS to `magi-control-{suffix}.fly.dev`; dual-mode auth: `Authorization: Bearer <Firebase JWT>` (preferred), `X-Api-Key: <CONTROL_API_KEY>` (admin/CI), `Cookie: magi_session=<token>` (cross-tab), `?token=<token>` (SSE `EventSource`) | Bidirectional (REST API + SSE proxy) |
 | **TB-10** | Control plane → Fly Machines API | HTTPS to `api.machines.dev/v1`; `FLY_API_TOKEN_MACHINES` bearer token | Outbound: machine lifecycle commands; Inbound: machine state |
-| **TB-11** | Control plane proxy → Execution plane | HTTP over Fly WireGuard (`fdaa::/8`); no transport auth (network-level only) | Bidirectional (proxy + SSE stream) |
+| **TB-11** | Control plane proxy → Execution plane | HTTP over Fly WireGuard (`fdaa::/8`); proxy injects `x-monitor-token` header (HMAC-derived, unique per mission); MonitorServer checks token on all mutating routes | Bidirectional (proxy + SSE stream) |
 | **TB-12** | Browser ↔ Firebase Auth (Google OAuth) | Browser opens Google OAuth popup; Firebase client SDK receives JWT; control plane calls `getAuth().verifyIdToken()` over HTTPS to Firebase Admin API | Outbound: auth request; Inbound: signed JWT; server calls Firebase to verify |
 | **TB-13** | `magi_session` cookie → Control plane | Client-accessible cookie set by browser JS on sign-in; `SameSite=Strict`, `max-age=3600`, `path=/`; carries Firebase JWT or `CONTROL_API_KEY`; no `Secure` flag (Fly.io enforces HTTPS at load balancer) | Browser → server on every same-origin request |
 | **TB-14** | `/firebase-config.js` unauthenticated endpoint | Express `GET /firebase-config.js` serves `FIREBASE_CLIENT_API_KEY`, `FIREBASE_CLIENT_AUTH_DOMAIN`, `FIREBASE_CLIENT_PROJECT_ID` from env as a JS snippet; no auth; `Cache-Control: no-store` | Server → browser; public (client-side Firebase identifiers, not secrets) |
@@ -236,15 +236,18 @@ graph TB
 - `packages/control-plane/src/scheduler.ts` — node-cron heartbeat; calls `resumeMission()` before delivering scheduled messages
 
 ### TB-11: Control plane proxy → Execution plane
-- `packages/control-plane/src/proxy.ts` — resolves `privateIp` from MongoDB `missions` collection by `missionId`; validates machine state before forwarding; **does not apply `userId` filter** (⚠️ F-019)
-- `packages/control-plane/src/missions.ts` — stores `machineId` + `privateIp` at provision time; `userFilter(req)` applied to all CRUD routes
+- `packages/control-plane/src/proxy.ts` — resolves `privateIp` from MongoDB `missions` collection by `{ missionId, userId }` (F-019 fixed); validates machine state; re-derives `MONITOR_TOKEN = HMAC-SHA256(MONITOR_SIGNING_KEY, missionId)` and injects as `x-monitor-token` header
+- `packages/control-plane/src/monitor-token.ts` — `deriveMonitorToken(missionId)`: HMAC-SHA256 using `MONITOR_SIGNING_KEY` (control-plane-only Fly secret); returns empty string when key is absent (local dev)
+- `packages/agent-runtime-worker/src/monitor-server.ts` — reads `MONITOR_TOKEN` env var (set at provision); `tokenOk()` checks `x-monitor-token` header on all non-GET requests; skips check when env var absent (dev mode)
+- `packages/control-plane/src/fly-machines.ts` — derives and injects `MONITOR_TOKEN` into machine env at provision time; `MONITOR_SIGNING_KEY` never leaves the control plane
 
 ### MongoDB `users` collection (new Sprint 23 surface)
 - `packages/control-plane/src/users.ts` — `syncFirebaseUser()` upserts on every authenticated request; stores `uid` (Firebase UID, used as `userId` throughout), `email`, `displayName`, `createdAt`, `lastLoginAt`; no secrets stored; `uid` is never derived from request body
-- `packages/control-plane/src/copilot-router.ts` — `missionId = copilot-{userId}` provides per-user daemon namespace; `CopilotEventBus` segregates SSE streams by `userId`; `pending` action store is shared across users (actions addressed by UUID, no `userId` check on `confirm`/`dismiss`) — see below
+- `packages/control-plane/src/copilot-router.ts` — `missionId = copilot-{userId}` provides per-user daemon namespace; `CopilotEventBus` segregates SSE streams by `userId`
 
 ### Per-user copilot daemons (`copilot-{uid}`)
-- `packages/control-plane/src/copilot-router.ts` — `ensureCopilotRunning(userId)` lazily starts one daemon per authenticated user keyed by Firebase UID; `missionId = copilot-{userId}` isolates mailbox and conversation namespaces; SSE events routed per `userId` via `CopilotEventBus`; **pending action store is flat (not userId-scoped)**: `confirm` and `dismiss` accept a `pendingActionId` and execute regardless of whether the calling user owns the action — a user who guesses another user's UUID can confirm or dismiss their pending action (⚠️ F-020)
+- `packages/control-plane/src/copilot-router.ts` — `ensureCopilotRunning(userId)` lazily starts one daemon per authenticated user keyed by Firebase UID; `missionId = copilot-{userId}` isolates mailbox and conversation namespaces; SSE events routed per `userId` via `CopilotEventBus`
+- `packages/control-plane/src/copilot-tools.ts` — `PendingAction.userId` stamps the owning user on every proposed action; `confirm` and `dismiss` verify `action.userId === req.userId` before executing (F-020 fixed)
 
 ---
 
