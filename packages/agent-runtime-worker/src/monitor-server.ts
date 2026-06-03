@@ -146,6 +146,11 @@ export class MonitorServer {
 	// Agent workdir map (populated by daemon after workspace provision)
 	private agentWorkdirs = new Map<string, string>();
 
+	// Per-machine auth token for mutating routes.
+	// Set via MONITOR_TOKEN env var at machine creation time.
+	// Empty/absent = local dev mode: no check performed.
+	private readonly monitorToken = process.env.MONITOR_TOKEN ?? "";
+
 	constructor(
 		private readonly db: Db,
 		private readonly missionId: string,
@@ -286,6 +291,12 @@ export class MonitorServer {
 
 	// ── Request handler ───────────────────────────────────────────────────────
 
+	/** Returns true if the request carries the correct monitor token (or no token is configured). */
+	private tokenOk(req: IncomingMessage): boolean {
+		if (!this.monitorToken) return true;
+		return req.headers["x-monitor-token"] === this.monitorToken;
+	}
+
 	private async handleRequest(
 		req: IncomingMessage,
 		res: ServerResponse,
@@ -294,6 +305,14 @@ export class MonitorServer {
 		const url = rawUrl.split("?")[0];
 		res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
 		res.setHeader("Vary", "Origin");
+
+		// All mutating requests require the monitor token when one is configured.
+		// GET requests (dashboard UI, SSE stream, file reads) are read-only and exempt.
+		if (req.method !== "GET" && !this.tokenOk(req)) {
+			res.writeHead(401, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Unauthorized" }));
+			return;
+		}
 
 		// ── Static files
 		if (url === "/" || url === "/index.html") {

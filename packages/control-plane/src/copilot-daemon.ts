@@ -235,7 +235,14 @@ async function runWatchLoop(
 				},
 				onMentalMapUpdate: (_agentId, html) =>
 					pushEvent("copilot-mental-map", html),
-				additionalTools: createCopilotTools(db, pushEvent, pending),
+				additionalTools: createCopilotTools(
+					db,
+					pushEvent,
+					pending,
+					missionId.startsWith("copilot-")
+						? missionId.slice("copilot-".length)
+						: missionId,
+				),
 			};
 			await runAgent(agentId, messages, ctx, signal);
 			console.log("[copilot-daemon] Turn complete");

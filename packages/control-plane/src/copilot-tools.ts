@@ -23,6 +23,8 @@ import type { MissionTemplate } from "./templates.js";
 
 export interface PendingAction {
 	id: string;
+	/** Firebase UID of the user whose copilot proposed this action. */
+	userId: string;
 	type: string;
 	label: string;
 	payload: unknown;
@@ -89,6 +91,7 @@ export function createCopilotTools(
 	db: Db,
 	pushEvent: (type: string, data: unknown) => void,
 	pending: PendingActionsStore,
+	userId: string,
 ): MagiTool[] {
 	function ok(text: string): ToolResult {
 		return { content: [{ type: "text", text }] };
@@ -394,6 +397,7 @@ export function createCopilotTools(
 
 			const action: PendingAction = {
 				id: randomUUID(),
+				userId,
 				type,
 				label,
 				payload,

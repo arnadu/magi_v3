@@ -157,6 +157,11 @@ export function createCopilotRouter(
 			return;
 		}
 
+		if (!req.isAdmin && action.userId !== req.userId) {
+			res.status(403).json({ error: "Forbidden" });
+			return;
+		}
+
 		pending.delete(pendingActionId);
 
 		try {
@@ -184,6 +189,11 @@ export function createCopilotRouter(
 		const { pendingActionId } = req.body as { pendingActionId?: string };
 		if (!pendingActionId) {
 			res.status(400).json({ error: "pendingActionId is required" });
+			return;
+		}
+		const action = pending.get(pendingActionId);
+		if (action && !req.isAdmin && action.userId !== req.userId) {
+			res.status(403).json({ error: "Forbidden" });
 			return;
 		}
 		pending.delete(pendingActionId);

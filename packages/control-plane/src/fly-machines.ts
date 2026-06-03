@@ -14,6 +14,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { deriveMonitorToken } from "./monitor-token.js";
 
 const FLY_API_BASE = "https://api.machines.dev/v1";
 
@@ -157,6 +158,9 @@ export async function provisionMission(
 					AGENT_WORKDIR: "/missions",
 					MONITOR_PORT: "4000",
 					TOOL_PORT: "4001",
+					// Per-mission auth token for MonitorServer mutating routes.
+					// Derived from MONITOR_SIGNING_KEY (control plane only) — never stored in MongoDB.
+					MONITOR_TOKEN: deriveMonitorToken(missionId),
 					// Pass runtime secrets explicitly — Fly app-level secrets are NOT
 					// automatically injected into machines created via the Machines API.
 					ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",

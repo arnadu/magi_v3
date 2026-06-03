@@ -117,6 +117,13 @@ create_app_if_missing() {
 create_app_if_missing "$CONTROL_APP"
 create_app_if_missing "$MISSIONS_APP"
 
+# ── Auto-generate MONITOR_SIGNING_KEY if not set ──────────────────────────────
+if [[ -z "${MONITOR_SIGNING_KEY:-}" ]]; then
+  info "MONITOR_SIGNING_KEY not set — generating a new one…"
+  MONITOR_SIGNING_KEY="$(openssl rand -hex 32)"
+  success "MONITOR_SIGNING_KEY generated (add to $SECRETS_FILE to persist it)."
+fi
+
 # ── Generate FLY_API_TOKEN_MACHINES ───────────────────────────────────────────
 info "Generating scoped Fly API token for Machines API (1-year expiry)…"
 MACHINES_TOKEN="$(flyctl tokens create deploy -a "$MISSIONS_APP" --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
@@ -169,6 +176,7 @@ set_secrets_if_needed() {
 declare -A CONTROL_SECRETS=(
   [MONGODB_URI]="${MONGODB_URI}"
   [CONTROL_API_KEY]="${CONTROL_API_KEY}"
+  [MONITOR_SIGNING_KEY]="${MONITOR_SIGNING_KEY}"
   [FLY_API_TOKEN_MACHINES]="${MACHINES_TOKEN}"
   [FLY_MISSIONS_APP_NAME]="${MISSIONS_APP}"
   [FIREBASE_SERVICE_ACCOUNT_KEY]="${FIREBASE_SERVICE_ACCOUNT_KEY:-}"

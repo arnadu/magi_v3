@@ -16,6 +16,7 @@ import type {
 import { Router as createRouter } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import type { Db } from "mongodb";
+import { deriveMonitorToken } from "./monitor-token.js";
 
 interface MissionDoc {
 	missionId: string;
@@ -93,6 +94,12 @@ export function createProxyRouter(db: Db): Router {
 				? `[${mission.privateIp}]`
 				: mission.privateIp;
 			const target = `http://${ip}:4000`;
+
+			// Inject per-mission auth token so MonitorServer can verify the request
+			// came through the authenticated proxy. Derived from MONITOR_SIGNING_KEY
+			// (control plane env only) — never stored in MongoDB.
+			const monitorToken = deriveMonitorToken(missionId);
+			if (monitorToken) req.headers["x-monitor-token"] = monitorToken;
 
 			getProxy(target, missionId)(req, res, next);
 		},

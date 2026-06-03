@@ -51,6 +51,7 @@ npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 - `BRAVE_SEARCH_API_KEY` (enables SearchWeb; free tier: 2000 req/month)
 - `FIREBASE_SERVICE_ACCOUNT_KEY` (control plane only; Firebase Admin SDK service account JSON, minified to one line — required for Google Sign-In)
 - `FIREBASE_CLIENT_API_KEY`, `FIREBASE_CLIENT_AUTH_DOMAIN`, `FIREBASE_CLIENT_PROJECT_ID` (control plane only; served to the browser via `/firebase-config.js`; public client-side values)
+- `MONITOR_SIGNING_KEY` (control plane only; HMAC key for per-mission MonitorServer tokens — generate with `openssl rand -hex 32`; never forwarded to execution plane machines)
 
 **Data API keys** (forwarded to background jobs only — never to agent tool subprocesses):
 Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
