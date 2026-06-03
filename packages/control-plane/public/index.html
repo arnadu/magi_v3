@@ -420,6 +420,22 @@
     return sessionStorage.getItem(ADMIN_KEY_SESSION) ?? null;
   }
 
+  // ── Session cookie (cross-tab auth) ──────────────────────────────────────
+  // The magi_session cookie carries the current auth token so that pages
+  // opened in new tabs (e.g. the mission dashboard) are authenticated without
+  // needing to pass tokens in the URL. The server's requireAuth middleware
+  // already reads this cookie.
+  function setSessionCookie(token) {
+    // SameSite=Strict prevents cross-site requests from carrying the cookie.
+    // No Secure flag needed — the server enforces HTTPS at the load-balancer.
+    // biome-ignore lint/suspicious/noDocumentCookie: intentional cross-tab session cookie
+    document.cookie = `magi_session=${encodeURIComponent(token)}; path=/; SameSite=Strict; max-age=3600`;
+  }
+  function clearSessionCookie() {
+    // biome-ignore lint/suspicious/noDocumentCookie: intentional cross-tab session cookie
+    document.cookie = 'magi_session=; path=/; SameSite=Strict; max-age=0';
+  }
+
   async function apiFetch(path, opts = {}) {
     const token = await getToken();
     if (!token) { showSignIn(); return null; }
@@ -632,6 +648,7 @@
     const res = await fetch('/api/missions', { headers: { 'Authorization': `Bearer ${key}` } });
     if (res.status === 401) { errorEl.textContent = 'Invalid key.'; return; }
     sessionStorage.setItem(ADMIN_KEY_SESSION, key);
+    setSessionCookie(key);
     hideSignIn();
     loadTemplates();
     loadMissions();
@@ -645,6 +662,7 @@
   // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick
   function signOut() {
     sessionStorage.removeItem(ADMIN_KEY_SESSION);
+    clearSessionCookie();
     if (firebaseConfigured) firebase.auth().signOut().catch(() => {});
     else showSignIn();
   }
@@ -1689,12 +1707,17 @@
   }
 
   if (firebaseConfigured) {
-    firebase.auth().onAuthStateChanged(async (user) => {
+    // onIdTokenChanged fires on sign-in, sign-out, AND every hourly token refresh,
+    // so the magi_session cookie is always a valid, non-expired token.
+    firebase.auth().onIdTokenChanged(async (user) => {
       if (user) {
+        const token = await user.getIdToken();
+        setSessionCookie(token);
         initApp(user.email || '');
       } else if (sessionStorage.getItem(ADMIN_KEY_SESSION)) {
         initApp('admin');
       } else {
+        clearSessionCookie();
         const hdrUser = document.getElementById('hdr-user');
         if (hdrUser) hdrUser.style.display = 'none';
         showSignIn();
