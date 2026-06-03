@@ -47,7 +47,7 @@ You need:
 
 | Resource | Cost |
 |----------|------|
-| Control plane machine (256 MB, always-on) | ~$1.94/month (within free allowance on most accounts) |
+| Control plane machine (512 MB, always-on) | ~$3.88/month (shared-cpu-1x 512 MB) |
 | Execution plane machine (1 GB, shared CPU) | ~$0.006/hour while running; $0 when suspended |
 | Fly Volume (10 GB per mission) | ~$1.50/month while attached |
 | MongoDB Atlas M0 | Free |
@@ -65,8 +65,17 @@ A typical single-mission dev environment costs under $5/month total.
 cp secrets.env.template secrets.env
 # Edit secrets.env — fill in at minimum:
 #   ANTHROPIC_API_KEY
-#   MONGODB_URI        (Atlas connection string, e.g. mongodb+srv://user:pass@cluster.mongodb.net/magi-dev)
-#   CONTROL_API_KEY    (generate with: openssl rand -hex 32)
+#   MONGODB_URI         (Atlas connection string, e.g. mongodb+srv://user:pass@cluster.mongodb.net/magi-dev)
+#   CONTROL_API_KEY     (generate with: openssl rand -hex 32)
+#
+# For Google Sign-In (see §5 for how to get these values):
+#   FIREBASE_SERVICE_ACCOUNT_KEY  (JSON — must be single-quoted in the file)
+#   FIREBASE_CLIENT_API_KEY
+#   FIREBASE_CLIENT_AUTH_DOMAIN
+#   FIREBASE_CLIENT_PROJECT_ID
+#
+# Without Firebase vars the control plane starts fine but the Sign-in with Google button
+# is hidden; users must sign in with CONTROL_API_KEY via the admin key fallback.
 ```
 
 `secrets.env` is gitignored. Never commit it.
@@ -96,14 +105,16 @@ exists, image already pushed, etc.).
 3. fly apps create magi-control-{suffix}     (skips if exists)
 4. fly apps create magi-missions-{suffix}    (skips if exists)
 5. Source secrets.env
-6. fly secrets set -a magi-control-{suffix}  MONGODB_URI CONTROL_API_KEY FLY_MISSIONS_APP_NAME
-7. fly secrets set -a magi-missions-{suffix} ANTHROPIC_API_KEY MONGODB_URI + data keys
-8. fly tokens create deploy -a magi-missions-{suffix} → FLY_API_TOKEN_MACHINES
-   fly secrets set -a magi-control-{suffix} FLY_API_TOKEN_MACHINES=<token>
+6. fly tokens create deploy -a magi-missions-{suffix} → FLY_API_TOKEN_MACHINES
+7. fly secrets set -a magi-control-{suffix}  MONGODB_URI CONTROL_API_KEY FLY_MISSIONS_APP_NAME
+                                              FLY_API_TOKEN_MACHINES
+                                              FIREBASE_SERVICE_ACCOUNT_KEY (if set)
+                                              FIREBASE_CLIENT_API_KEY / AUTH_DOMAIN / PROJECT_ID (if set)
+8. fly secrets set -a magi-missions-{suffix} ANTHROPIC_API_KEY MONGODB_URI + data keys
 9. docker build -f packages/agent-runtime-worker/Dockerfile -t registry.fly.io/magi-missions-{suffix}:latest .
 10. flyctl auth docker && docker push registry.fly.io/magi-missions-{suffix}:latest
-11. flyctl deploy --config packages/control-plane/fly.toml --app magi-control-{suffix}
-12. If gh present: gh secret set FLY_API_TOKEN_CI --body <ci-scoped-deploy-token>
+11. flyctl deploy --config fly.control-{suffix}.toml --app magi-control-{suffix}
+12. If gh present: flyctl tokens create org personal → gh secret set FLY_API_TOKEN_CI
 13. Print: "Bootstrap complete. Control plane: https://magi-control-{suffix}.fly.dev"
 ```
 
@@ -152,13 +163,15 @@ Add one GitHub Actions secret to the repository:
 
 ```bash
 # From the repository root (or via GitHub UI under Settings > Secrets > Actions)
-gh secret set FLY_API_TOKEN_CI --body "$(flyctl tokens create deploy -a magi-control-dev --expiry 8760h | python3 -c 'import sys; print(sys.stdin.read().strip())')"
+gh secret set FLY_API_TOKEN_CI --body "$(flyctl tokens create org personal --expiry 8760h --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
 ```
 
-This token scopes to deploy-only on the control plane app. It is used for both workflows.
+This must be an **org-level token** (not app-scoped) because the CI pipeline pushes images to
+two different registries: `registry.fly.io/magi-control-dev` (control plane) and
+`registry.fly.io/magi-missions-dev` (execution plane). An app-scoped token only covers its own
+app's registry and will fail for the other.
 
-**Do not use a personal access token** — it would have org-level access. Use a deploy-scoped
-token tied to the specific app.
+`bootstrap.sh --suffix dev` generates and sets this token automatically when `gh` is available.
 
 ### Workflow 1: `build-execution-image.yml`
 
@@ -176,7 +189,7 @@ Running missions are unaffected — they continue on their existing machine imag
 ### Workflow 2: `deploy-control-plane.yml`
 
 Triggers on changes to: `packages/control-plane/**`, `packages/agent-config/**`,
-`tsconfig.base.json`, `fly.control-dev.toml`
+`packages/agent-runtime-worker/**`, `tsconfig.base.json`, `fly.control-dev.toml`
 
 What it does:
 1. Builds the control plane Docker image
@@ -286,8 +299,20 @@ In **Firebase console → Authentication → Settings → Authorized domains**, 
 
 ### Step 3 — Set Fly secrets
 
+Fill in the Firebase vars in `secrets.env` before running `bootstrap.sh`:
+
 ```bash
-# Dev environment (magi-68bb2 project)
+# secrets.env (gitignored — fill in once, bootstrap.sh reads it)
+FIREBASE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"magi-68bb2",...}'
+FIREBASE_CLIENT_API_KEY=AIzaSyDj6CTM8fPIKs4NxPFH-qOGEqagnzGCf-4
+FIREBASE_CLIENT_AUTH_DOMAIN=magi-68bb2.firebaseapp.com
+FIREBASE_CLIENT_PROJECT_ID=magi-68bb2
+```
+
+`bootstrap.sh` sets these on the control plane app automatically. To update an existing
+deployment without re-running the full bootstrap:
+
+```bash
 fly secrets set \
   FIREBASE_SERVICE_ACCOUNT_KEY="$(cat magi-68bb2-firebase-adminsdk.json | tr -d '\n')" \
   FIREBASE_CLIENT_API_KEY="AIzaSyDj6CTM8fPIKs4NxPFH-qOGEqagnzGCf-4" \
@@ -295,7 +320,7 @@ fly secrets set \
   FIREBASE_CLIENT_PROJECT_ID="magi-68bb2" \
   --app magi-control-dev
 
-# Prod environment (magi-prod-b9403 project)
+# Prod (magi-prod-b9403 project):
 fly secrets set \
   FIREBASE_SERVICE_ACCOUNT_KEY="$(cat magi-prod-b9403-firebase-adminsdk.json | tr -d '\n')" \
   FIREBASE_CLIENT_API_KEY="AIzaSyD3tpiIRNc06fbpxGFTbe0Yr2QPMECQXj8" \
@@ -303,6 +328,10 @@ fly secrets set \
   FIREBASE_CLIENT_PROJECT_ID="magi-prod-b9403" \
   --app magi-control-prod-gold-digest
 ```
+
+> **Note on quoting `FIREBASE_SERVICE_ACCOUNT_KEY`**: the JSON value must be single-quoted in
+> `secrets.env` (not double-quoted) so the shell doesn't interpret `{`, `:`, and `"` as syntax.
+> `bootstrap.sh` sources the file with `set -o allexport`.
 
 The `FIREBASE_CLIENT_*` values are public client-side identifiers — not secrets — but storing
 them as Fly secrets keeps configuration environment-specific without hardcoding in HTML.
@@ -617,15 +646,16 @@ reattach the existing Volume ID).
 
 | Resource | Billing | Notes |
 |----------|---------|-------|
-| Control plane machine (256 MB shared) | ~$1.94/month | Within free allowance on most accounts |
+| Control plane machine (512 MB shared) | ~$3.88/month | Firebase Admin SDK requires more RAM than 256 MB |
 | Execution plane machine (1 GB shared) | ~$0.006/hour running, $0 stopped | Suspend when idle |
 | Fly Volume (10 GB) | ~$1.50/month | Billed while attached, even when machine is stopped |
 | Private WireGuard networking | Free | Within same org |
 | Fly Container Registry | Free | For images under ~10 GB |
 
-**Free tier**: Fly.io includes 3 always-on shared-cpu-1x 256 MB machines and 3 GB volume
-storage free per month. A control plane + 1–2 test instances fits within the free tier.
-Execution plane machines are billed while running — suspend them when not in use.
+**Free tier**: Fly.io includes 3 always-on shared-cpu-1x 256 MB machines free per month, but the
+control plane runs at 512 MB due to Firebase Admin SDK memory requirements — it counts as a
+paid machine (~$3.88/month). Execution plane machines are billed while running — suspend them
+when not in use.
 
 ### MongoDB Atlas
 

@@ -105,7 +105,7 @@ Full history: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md)
 |--------|--------|-------|
 | 21 | ✅ Done | Context management (in-session): `pruneEphemeralResults`, thinking-block stripping, mid-session prune at 160k tokens, `AnalyzeMemories` tool, extended thinking on `CLAUDE_SONNET` |
 | 22 | ✅ Done | Copilot unification + config-driven tool library: copilot calls `runAgent` via `additionalTools`; `disabledTools` per-agent YAML; Tier A/B tool library documented in SPEC |
-| 23 | ⬜ Planned | Auth + multi-user: Firebase Auth, `userId` on missions, per-user usage tracking, one copilot per user, fix F-008/F-009/F-016 |
+| 23 | ✅ Done | Auth + multi-user: Firebase Auth (Google OAuth), `userId` on missions, per-user scoping, one copilot per user (`copilot-{uid}`), `/api/usage`, `magi_session` cookie for dashboard tabs, fix F-009/F-016 |
 | 24 | ⬜ Planned | Budget hardening + resilience: hard per-mission spend cap, copilot budget tools, G-2/G-3 |
 | 25 | ⬜ Planned | File I/O: upload to sharedDir, download artifacts, G-4 disk monitoring |
 | 26 | ⬜ Planned | Unified UX + rich artifacts: in-app mission drill-down (iframe panel), shared nav, Mermaid/KaTeX/image rendering |
