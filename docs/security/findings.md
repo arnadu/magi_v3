@@ -14,10 +14,10 @@ These require a fix before production deployment.
 
 | ID | Severity | Sprint target | File:Line | Description | Recommended Fix |
 |----|----------|--------------|-----------|-------------|-----------------|
+| F-019 | HIGH | Sprint 24 | `packages/control-plane/src/proxy.ts:73` | **IDOR — proxy route lacks userId scope** — `proxy.ts` resolves the target machine from `{ missionId }` with no `userId` filter. Any authenticated user who knows (or guesses) another user's `missionId` can proxy into that mission's MonitorServer and issue unauthenticated control commands (`POST /stop`, `POST /send-message`, etc.) as the MonitorServer has no auth of its own (F-008). `missionId` values are UUIDs but are returned to the owning user in API responses and potentially predictable from naming conventions. | Apply `userFilter(req)` to the MongoDB query in `proxy.ts` (matching the pattern in `missions.ts`); admin bypass preserved via `req.isAdmin`. |
+| F-020 | MEDIUM | Sprint 24 | `packages/control-plane/src/copilot-router.ts:153` | **Pending action store not userId-scoped** — `POST /api/copilot/confirm` and `POST /api/copilot/dismiss` accept a `pendingActionId` (UUID) and execute/dismiss the action without checking that it belongs to the calling user. A user who learns another user's `pendingActionId` can confirm that user's pending action (e.g. `launch_mission`, `suspend_mission`) against missions they do not own. Attack surface is low in practice because `pendingActionId` is a random UUID and the action must also reference resources the attacker controls — but the missing ownership check is a structural gap. | Add `userId` to `PendingAction`; in `confirm` and `dismiss`, verify `action.userId === req.userId` (or `req.isAdmin`). |
 | F-018 | LOW | Pre-prod | `packages/control-plane/public/index.html` | **CDN scripts loaded without Subresource Integrity (SRI)** — CoderMirror (jsdelivr), js-yaml (jsdelivr), and Firebase Auth SDK (gstatic.com) are loaded without `integrity` and `crossorigin` attributes. A CDN compromise could inject arbitrary JavaScript. Currently suppressed in SAST with `nosemgrep`. | Add `integrity="sha384-..."` and `crossorigin="anonymous"` to all external `<script>` and `<link>` tags. Compute hashes with `openssl dgst -sha384 -binary <file> \| openssl base64 -A`. Re-compute whenever a CDN dependency version is bumped. |
-| F-008 | LOW (dev) / HIGH (prod) | Pre-prod | `monitor-server.ts` | **Unauthenticated control endpoints** — `POST /stop`, `POST /send-message`, `POST /extend-budget` have no auth. Anyone who reaches port 4000 can stop the daemon or inject messages. | Add a shared secret header for all mutating endpoints. Gate check on an `MONITOR_TOKEN` env var; skip if absent (dev mode). |
-| F-009 | LOW (dev) / HIGH (prod) | Pre-prod | `monitor-server.ts:GET /events` | **SSE stream exposes all mission data** — if monitor is forwarded to an untrusted network, all agent activity including message bodies is visible. | Addressed by F-007 (localhost binding) for dev; requires auth for production (F-008). |
-| F-016 | LOW | Pre-prod | `packages/control-plane/src/auth.ts` | **No rate limiting on control plane API key auth** — `X-API-Key` header is checked on every request but there is no per-IP request rate limit. Brute force of a short or guessable key is feasible. | Add `express-rate-limit` middleware on the root router (e.g. 100 req/15 min per IP). Strong random keys (`openssl rand -hex 32`) mitigate in practice; rate limiting is defence-in-depth. |
+| F-008 | LOW (dev) / HIGH (prod) | Pre-prod | `monitor-server.ts` | **Unauthenticated control endpoints** — `POST /stop`, `POST /send-message`, `POST /extend-budget` have no auth. Anyone who reaches port 4000 can stop the daemon or inject messages. Severity elevated to HIGH in production because F-019 allows an authenticated user to reach port 4000 on any machine. | Add a shared secret header for all mutating endpoints. Gate check on an `MONITOR_TOKEN` env var; skip if absent (dev mode). Fix F-019 first to reduce the reachable surface. |
 
 ---
 
@@ -36,6 +36,13 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 ---
 
 ## Fixed Findings
+
+### Sprint 23
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-009 | LOW (dev) / HIGH (prod) | `monitor-server.ts:GET /events` | **SSE stream unauthenticated** — any process on the machine (dev) or any authenticated operator (prod via proxy) could read all agent activity including message bodies from the SSE stream. | Sprint 23: `GET /events` on the copilot now requires authentication via `?token=` query param verified by `requireAuth` in the control plane. Mission MonitorServer SSE is behind the TB-9 auth boundary (Firebase JWT / `CONTROL_API_KEY`) via the proxy. Residual gap: `proxy.ts` lacks `userId` scope (F-019), so auth gates entry but does not prevent cross-user SSE access at the proxy level. |
+| F-016 | LOW | `packages/control-plane/src/auth.ts` | **No rate limiting on control plane API key auth** — no per-IP request rate limit; brute force of a guessable key feasible. | Sprint 23: `express-rate-limit` (30 req/60 s) applied to `/api/copilot`; `app.set("trust proxy", 1)` ensures client IP is correctly extracted behind Fly.io's TLS termination. Full root-router rate limit remains desirable as defence-in-depth but direct API key brute-force is now significantly harder. |
 
 ### Sprint 17
 
