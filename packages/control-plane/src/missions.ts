@@ -431,8 +431,9 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Resume — push latest YAML to machine env before starting.
 	router.post("/:id/resume", async (req, res) => {
+		const missionId = req.params.id;
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId,
 			...userFilter(req),
 		});
 		if (!mission?.machineId) {
@@ -444,30 +445,71 @@ export function createMissionsRouter(db: Db): Router {
 				// Re-write config files so the developer can restart the daemon.
 				if (mission.teamConfigYaml) {
 					updateLocalMissionConfig(
-						req.params.id,
+						missionId,
 						mission.teamConfigYaml,
 						mission.teamFiles ?? [],
 					);
 				}
 			} else {
 				// Push updated YAML to Fly machine env so daemon overwrites volume file on next boot.
+				// If the machine no longer exists (404) — e.g. deleted outside MAGI —
+				// re-provision a new machine against the surviving workspace volume.
+				let machineGone = false;
 				if (mission.teamConfigYaml) {
-					await updateMachineTeamConfig(
-						mission.machineId,
-						mission.teamConfigYaml,
-						mission.teamFiles ?? [],
-					);
+					try {
+						await updateMachineTeamConfig(
+							mission.machineId,
+							mission.teamConfigYaml,
+							mission.teamFiles ?? [],
+						);
+					} catch (e) {
+						if ((e as Error).message.includes("404")) {
+							machineGone = true;
+							console.warn(
+								`[missions] machine ${mission.machineId} not found on Fly — re-provisioning with existing volume`,
+							);
+						} else {
+							throw e;
+						}
+					}
 				}
+
+				if (machineGone) {
+					if (!mission.volumeId) {
+						throw new Error(
+							"Fly machine is gone and no volume ID is stored — mission cannot be resumed",
+						);
+					}
+					const handle = await provisionMission(missionId, mission.teamConfig, {
+						existingVolumeId: mission.volumeId,
+						teamConfigYaml: mission.teamConfigYaml,
+						teamFiles: mission.teamFiles ?? [],
+					});
+					await col.updateOne(
+						{ missionId },
+						{
+							$set: {
+								machineId: handle.machineId,
+								privateIp: handle.privateIp,
+								status: "running",
+								updatedAt: new Date(),
+							},
+						},
+					);
+					res.json({ status: "running" });
+					return;
+				}
+
 				await resumeMission(mission.machineId);
 			}
 			await col.updateOne(
-				{ missionId: req.params.id },
+				{ missionId },
 				{ $set: { status: "running", updatedAt: new Date() } },
 			);
 			res.json({ status: "running" });
 		} catch (e) {
 			console.error(
-				`[missions] resume failed { missionId: "${req.params.id}", error: "${(e as Error).message}" }`,
+				`[missions] resume failed { missionId: "${missionId}", error: "${(e as Error).message}" }`,
 			);
 			res.status(500).json({ error: (e as Error).message });
 		}

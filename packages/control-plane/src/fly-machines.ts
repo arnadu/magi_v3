@@ -62,6 +62,10 @@ export interface ProvisionOptions {
 	 *  entire team setup is volume-based and image-independent. */
 	teamFiles?: Array<{ path: string; content: string }>;
 	region?: string;
+	/** When set, skip volume creation and attach this existing volume instead.
+	 *  Used when re-provisioning a machine whose Fly machine was deleted but
+	 *  whose workspace volume is still intact. */
+	existingVolumeId?: string;
 }
 
 /**
@@ -98,25 +102,34 @@ export async function provisionMission(
 	const region = opts.region ?? process.env.FLY_REGION ?? "iad";
 	const app = appName();
 
-	// 1. Create workspace volume.
-	const volRes = await flyFetch(`/apps/${app}/volumes`, {
-		method: "POST",
-		body: JSON.stringify({
-			name: flyVolumeName(missionId),
-			size_gb: 10,
-			region,
-		}),
-	});
-	if (!volRes.ok) {
-		const body = await volRes.text();
-		if (volRes.status === 401) {
-			throw new Error(
-				"Fly API returned 401 — check FLY_API_TOKEN_MACHINES. Cannot provision missions with a dummy token.",
-			);
+	// 1. Create workspace volume — or reuse an existing one when re-provisioning.
+	let volumeId: string;
+	if (opts.existingVolumeId) {
+		volumeId = opts.existingVolumeId;
+		console.log(
+			`[fly-machines] re-provisioning ${missionId} with existing volume ${volumeId}`,
+		);
+	} else {
+		const volRes = await flyFetch(`/apps/${app}/volumes`, {
+			method: "POST",
+			body: JSON.stringify({
+				name: flyVolumeName(missionId),
+				size_gb: 10,
+				region,
+			}),
+		});
+		if (!volRes.ok) {
+			const body = await volRes.text();
+			if (volRes.status === 401) {
+				throw new Error(
+					"Fly API returned 401 — check FLY_API_TOKEN_MACHINES. Cannot provision missions with a dummy token.",
+				);
+			}
+			throw new Error(`Failed to create volume: ${volRes.status} ${body}`);
 		}
-		throw new Error(`Failed to create volume: ${volRes.status} ${body}`);
+		const vol = (await volRes.json()) as { id: string };
+		volumeId = vol.id;
 	}
-	const vol = (await volRes.json()) as { id: string };
 
 	// 2. Build team-config env vars.
 	// When YAML + files are provided (from MongoDB templates), the daemon writes
@@ -171,7 +184,7 @@ export async function provisionMission(
 					FMP_API_KEY: process.env.FMP_API_KEY ?? "",
 					NEWSAPIORG_API_KEY: process.env.NEWSAPIORG_API_KEY ?? "",
 				},
-				mounts: [{ volume: vol.id, path: "/missions" }],
+				mounts: [{ volume: volumeId, path: "/missions" }],
 				restart: { policy: "on-failure", max_retries: 3 },
 				// No services — internal access only via WireGuard.
 				// 1 GB RAM: Node + MongoDB driver + agent pool need ~600 MB at idle;
@@ -197,7 +210,7 @@ export async function provisionMission(
 	return {
 		machineId: machine.id,
 		privateIp: machine.private_ip,
-		volumeId: vol.id,
+		volumeId,
 	};
 }
 
