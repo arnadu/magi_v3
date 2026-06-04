@@ -274,6 +274,16 @@ export async function resumeMission(machineId: string): Promise<void> {
 	});
 	if (!startRes.ok) {
 		const body = await startRes.text();
+		// 400 "machine already started" is not an error for our purposes — the
+		// machine is running, which is what resume wants. Fly returns this when
+		// the machine was already in a running state (e.g. manually started from
+		// the Fly dashboard before the MAGI resume was called).
+		if (startRes.status === 400 && body.toLowerCase().includes("already")) {
+			console.log(
+				`[fly-machines] machine ${machineId} was already started — treating as success`,
+			);
+			return;
+		}
 		throw new Error(
 			`Failed to start machine ${machineId}: ${startRes.status} ${body}`,
 		);
