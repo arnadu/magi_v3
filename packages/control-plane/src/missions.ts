@@ -20,6 +20,7 @@ import {
 	destroyMission,
 	getMachineState,
 	isLocalExecution,
+	machineExists,
 	provisionLocal,
 	provisionMission,
 	resumeMission,
@@ -464,10 +465,22 @@ export function createMissionsRouter(db: Db): Router {
 						);
 					} catch (e) {
 						if ((e as Error).message.includes("404")) {
-							machineGone = true;
-							console.warn(
-								`[missions] machine ${mission.machineId} not found on Fly — re-provisioning with existing volume`,
-							);
+							// PATCH returned 404 — verify whether the machine truly no longer
+							// exists or whether the PATCH endpoint is simply unavailable for
+							// this machine state. Only re-provision if the machine is gone.
+							const exists = await machineExists(mission.machineId);
+							if (!exists) {
+								machineGone = true;
+								console.warn(
+									`[missions] machine ${mission.machineId} confirmed absent from Fly — re-provisioning with existing volume`,
+								);
+							} else {
+								// Machine exists — PATCH failed for another reason (e.g. machine
+								// state rejects env updates). Skip the env update and proceed to start.
+								console.warn(
+									`[missions] PATCH failed with 404 but machine ${mission.machineId} still exists — skipping env update, proceeding to start`,
+								);
+							}
 						} else {
 							throw e;
 						}

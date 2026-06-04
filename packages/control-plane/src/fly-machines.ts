@@ -291,6 +291,17 @@ export async function getMachineState(machineId: string): Promise<string> {
 	return m.state;
 }
 
+/**
+ * Returns true if the machine exists on Fly, false if the API returns 404.
+ * Used to distinguish "PATCH failed because machine is gone" from "PATCH failed
+ * for another reason while the machine still exists".
+ */
+export async function machineExists(machineId: string): Promise<boolean> {
+	const app = appName();
+	const res = await flyFetch(`/apps/${app}/machines/${machineId}`);
+	return res.status !== 404;
+}
+
 // ---------------------------------------------------------------------------
 // Local execution mode (LOCAL_EXECUTION=true)
 // ---------------------------------------------------------------------------
