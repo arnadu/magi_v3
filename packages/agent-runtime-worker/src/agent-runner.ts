@@ -79,15 +79,23 @@ export interface AgentRunContext {
 /**
  * Returns true when an AssistantMessage represents an Anthropic 400
  * invalid conversation structure error — a mismatched tool_use/tool_result
- * sequence in the loaded history. These are recognisable by their message
- * format: "messages.N.content.M: unexpected `tool_use_id`…"
+ * sequence, consecutive same-role messages, or other history structure
+ * violations. Recognisable patterns:
+ *   "messages.N.content.M: unexpected `tool_use_id`…"   (tool pairing error)
+ *   "messages: roles must alternate…"                    (consecutive user msgs)
+ *   "first message must use the `user` role"             (history ordering)
  */
 function isConversationStructureError(msg: AssistantMessage): boolean {
 	if (msg.stopReason !== "error") return false;
 	const err = (msg.errorMessage ?? "").toLowerCase();
 	return (
-		err.includes("messages.") &&
-		(err.includes("tool_use") || err.includes("tool_result"))
+		// Tool use/result pairing mismatch
+		(err.includes("messages.") &&
+			(err.includes("tool_use") || err.includes("tool_result"))) ||
+		// Consecutive same-role messages (e.g. two "user" turns in a row)
+		err.includes("roles must alternate") ||
+		err.includes("first message must use") ||
+		err.includes("unexpected role")
 	);
 }
 
@@ -113,8 +121,8 @@ async function forceCompactSession(
 				content:
 					"Previous session could not be replayed: the stored conversation " +
 					"history contained an invalid message sequence (mismatched " +
-					"tool_use/tool_result pairing). The session was discarded. " +
-					"Resuming from the last known mental map state.",
+					"tool_use/tool_result pairing or consecutive same-role messages). " +
+					"The session was discarded. Resuming from the last known mental map state.",
 			} as SummaryMessage,
 		},
 	]);
