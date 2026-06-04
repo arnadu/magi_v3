@@ -997,6 +997,12 @@ async function main(): Promise<void> {
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
+				onAgentError: (agentId, errorMessage) =>
+					monitor.push("agent-error", {
+						agentId,
+						errorMessage,
+						transient: false,
+					}),
 				onAgentStart: (agentId) => monitor.notifyAgentStart(agentId),
 				onWorkspaceReady: (workdirs) => monitor.setAgentWorkdirs(workdirs),
 				onAgentDone: (agentId) => monitor.notifyAgentDone(agentId),

@@ -1635,6 +1635,14 @@
       }
     });
 
+    copilotSse.addEventListener('copilot-error', e => {
+      const { errorMessage } = JSON.parse(e.data);
+      addActivityItem(`⚠ Error: ${errorMessage}`, 'tool-error');
+      copilotRunning = false;
+      copilotThinking.classList.remove('active');
+      copilotScrollBottom();
+    });
+
     copilotSse.addEventListener('copilot-loop-msg', e => {
       const msg = JSON.parse(e.data);
       if (!copilotRunning) {
@@ -1642,6 +1650,15 @@
         copilotThinking.classList.add('active');
       }
       if (msg.role === 'assistant') {
+        // Surface LLM errors (budget, overload, etc.) — belt-and-suspenders for
+        // paths that don't emit copilot-error separately.
+        if (msg.stopReason === 'error') {
+          addActivityItem(`⚠ LLM error: ${msg.errorMessage || '(no details)'}`, 'tool-error');
+          copilotRunning = false;
+          copilotThinking.classList.remove('active');
+          copilotScrollBottom();
+          return;
+        }
         for (const block of (msg.content ?? [])) {
           if (block.type === 'toolCall') {
             const arg = formatToolArgs(block.name, block.arguments);

@@ -15,10 +15,12 @@ import { loadTeamConfig } from "@magi/agent-config";
 import {
 	type AgentIdentity,
 	type AgentRunContext,
+	type AssistantMessage,
 	createMongoConversationRepository,
 	createMongoLlmCallLogRepository,
 	createMongoMailboxRepository,
 	type LlmCallLogRepository,
+	type Message,
 	resolveModel,
 	runAgent,
 } from "@magi/agent-runtime-worker";
@@ -230,8 +232,18 @@ async function runWatchLoop(
 				llmCallLog,
 				identity: COPILOT_IDENTITY,
 				onUserMessage: (msg) => pushEvent("copilot-msg", msg),
-				onMessage: async (msg) => {
+				onMessage: async (msg: Message) => {
 					pushEvent("copilot-loop-msg", msg);
+					// Surface LLM errors (budget exhausted, overloaded, etc.) to the
+					// Fly log and the copilot chat UI — these would otherwise be silent.
+					if (msg.role === "assistant") {
+						const am = msg as AssistantMessage;
+						if (am.stopReason === "error") {
+							const errorMessage = am.errorMessage ?? "LLM error (no details)";
+							console.error(`[copilot-daemon] LLM error: ${errorMessage}`);
+							pushEvent("copilot-error", { errorMessage });
+						}
+					}
 				},
 				onMentalMapUpdate: (_agentId, html) =>
 					pushEvent("copilot-mental-map", html),
@@ -248,7 +260,9 @@ async function runWatchLoop(
 			console.log("[copilot-daemon] Turn complete");
 		} catch (e) {
 			if (!signal.aborted) {
-				console.error(`[copilot-daemon] Turn error: ${(e as Error).message}`);
+				const errorMessage = (e as Error).message;
+				console.error(`[copilot-daemon] Turn error: ${errorMessage}`);
+				pushEvent("copilot-error", { errorMessage });
 			}
 		}
 	}

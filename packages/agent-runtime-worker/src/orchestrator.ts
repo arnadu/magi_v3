@@ -121,6 +121,13 @@ export interface OrchestratorConfig {
 	 * as alert messages to this mailbox so the copilot can diagnose and respond.
 	 */
 	copilotMailboxRepo?: MailboxRepository;
+	/**
+	 * Called when runAgent rejects (whole-turn crash, not an LLM error).
+	 * LLM errors are surfaced via onAgentMessage with stopReason === "error".
+	 * The daemon wires this to monitor.push("agent-error") so the dashboard
+	 * shows a red banner for whole-turn crashes as well.
+	 */
+	onAgentError?: (agentId: string, errorMessage: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +394,7 @@ export async function runOrchestrationLoop(
 					if (!ctrl.signal.aborted) {
 						const errMsg = (err as Error).message;
 						console.error(`[orchestrator] ${agentId} error: ${errMsg}`);
+						config.onAgentError?.(agentId, errMsg);
 						config.copilotMailboxRepo
 							?.post({
 								missionId: "copilot",
