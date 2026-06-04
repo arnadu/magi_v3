@@ -896,10 +896,13 @@
     state.configAgents.set(ctxKey, parsedAgents);
 
     const modelSuggestions = [
-      'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
-      'openrouter/anthropic/claude-sonnet-4-5',
-      'openrouter/google/gemini-2.5-flash',
-      'openrouter/openai/gpt-4o',
+      // Anthropic direct
+      'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
+      // OpenRouter — prefix with provider/model (no "openrouter/" prefix)
+      'anthropic/claude-sonnet-4-6', 'anthropic/claude-opus-4-8',
+      'deepseek/deepseek-chat',
+      'google/gemini-2.5-flash', 'google/gemini-flash-1.5-8b',
+      'openai/gpt-4o', 'openai/o3-mini',
     ].map(m => `<option value="${esc(m)}">`).join('');
 
     const agentIdOptions = `${parsedAgents.map(a => `<option value="${esc(a.id)}">`).join('')}<option value="user">`;

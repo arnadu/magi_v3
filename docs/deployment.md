@@ -114,8 +114,11 @@ exists, image already pushed, etc.).
 7. fly tokens create deploy -a magi-missions-{suffix} → FLY_API_TOKEN_MACHINES
 8. fly secrets set -a magi-control-{suffix}  MONGODB_URI CONTROL_API_KEY MONITOR_SIGNING_KEY
                                               FLY_API_TOKEN_MACHINES FLY_MISSIONS_APP_NAME
+                                              ANTHROPIC_API_KEY OPENROUTER_API_KEY (if set)
                                               FIREBASE_SERVICE_ACCOUNT_KEY (if set)
                                               FIREBASE_CLIENT_API_KEY / AUTH_DOMAIN / PROJECT_ID (if set)
+   Note: ANTHROPIC_API_KEY is required on the control plane because the copilot
+   daemon runs there and makes direct LLM calls.
 9. fly secrets set -a magi-missions-{suffix} ANTHROPIC_API_KEY MONGODB_URI + data keys
 10. docker build -f packages/agent-runtime-worker/Dockerfile -t registry.fly.io/magi-missions-{suffix}:latest .
 11. flyctl auth docker && docker push registry.fly.io/magi-missions-{suffix}:latest
