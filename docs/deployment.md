@@ -117,8 +117,6 @@ exists, image already pushed, etc.).
                                               ANTHROPIC_API_KEY OPENROUTER_API_KEY (if set)
                                               FIREBASE_SERVICE_ACCOUNT_KEY (if set)
                                               FIREBASE_CLIENT_API_KEY / AUTH_DOMAIN / PROJECT_ID (if set)
-   Note: ANTHROPIC_API_KEY is required on the control plane because the copilot
-   daemon runs there and makes direct LLM calls.
 9. fly secrets set -a magi-missions-{suffix} ANTHROPIC_API_KEY MONGODB_URI + data keys
 10. docker build -f packages/agent-runtime-worker/Dockerfile -t registry.fly.io/magi-missions-{suffix}:latest .
 11. flyctl auth docker && docker push registry.fly.io/magi-missions-{suffix}:latest
@@ -318,25 +316,16 @@ FIREBASE_CLIENT_AUTH_DOMAIN=magi-68bb2.firebaseapp.com
 FIREBASE_CLIENT_PROJECT_ID=magi-68bb2
 ```
 
-`bootstrap.sh` sets these on the control plane app automatically. To update an existing
-deployment without re-running the full bootstrap:
+`bootstrap.sh` sets these on the control plane app automatically. Fill in the values in
+`secrets.env`, then run:
 
 ```bash
-fly secrets set \
-  FIREBASE_SERVICE_ACCOUNT_KEY="$(cat magi-68bb2-firebase-adminsdk.json | tr -d '\n')" \
-  FIREBASE_CLIENT_API_KEY="AIzaSyDj6CTM8fPIKs4NxPFH-qOGEqagnzGCf-4" \
-  FIREBASE_CLIENT_AUTH_DOMAIN="magi-68bb2.firebaseapp.com" \
-  FIREBASE_CLIENT_PROJECT_ID="magi-68bb2" \
-  --app magi-control-dev
-
-# Prod (magi-prod-b9403 project):
-fly secrets set \
-  FIREBASE_SERVICE_ACCOUNT_KEY="$(cat magi-prod-b9403-firebase-adminsdk.json | tr -d '\n')" \
-  FIREBASE_CLIENT_API_KEY="AIzaSyD3tpiIRNc06fbpxGFTbe0Yr2QPMECQXj8" \
-  FIREBASE_CLIENT_AUTH_DOMAIN="magi-prod-b9403.firebaseapp.com" \
-  FIREBASE_CLIENT_PROJECT_ID="magi-prod-b9403" \
-  --app magi-control-prod-gold-digest
+# First time (or to update secrets on an existing deployment):
+bash scripts/bootstrap.sh --suffix dev --reset-secrets --skip-docker --skip-deploy
 ```
+
+`--reset-secrets` overwrites all control plane secrets even if they were already set.
+`--skip-docker` and `--skip-deploy` skip the image build and deploy so only secrets change.
 
 > **Note on quoting `FIREBASE_SERVICE_ACCOUNT_KEY`**: the JSON value must be single-quoted in
 > `secrets.env` (not double-quoted) so the shell doesn't interpret `{`, `:`, and `"` as syntax.
@@ -635,17 +624,23 @@ To deploy manually (e.g. after changing Fly secrets):
 flyctl deploy --config fly.control-dev.toml
 ```
 
-### Adding a new secret to running missions
+### Adding or updating a secret
 
-Fly.io app-level secrets are not propagated to existing Machines API machines. To update
-a running mission's environment:
+**Control plane secrets** (e.g. adding a new LLM provider key): update `secrets.env`, then:
+```bash
+bash scripts/bootstrap.sh --suffix dev --reset-secrets --skip-docker --skip-deploy
+```
+This re-sets all control plane secrets and restarts the control plane automatically.
 
+**Execution plane secrets**: Fly.io app-level secrets are not propagated to existing Machines
+API machines — `fly-machines.ts` passes secrets explicitly at creation time. To update a
+running mission's environment:
 ```bash
 flyctl machine update <machine-id> --env KEY=value --app magi-missions-dev
 ```
-
-Or: destroy and re-provision the mission (workspace data on the Volume is preserved if you
-reattach the existing Volume ID).
+Or: destroy and re-provision the mission (workspace data on the Volume is preserved).
+New missions provisioned after the bootstrap.sh re-run will automatically pick up the
+new secrets.
 
 ---
 
