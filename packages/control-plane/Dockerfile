@@ -42,7 +42,8 @@ RUN groupadd -g 60100 magi-shared
 RUN useradd -m -u 60010 -s /bin/bash -G magi-shared magi-copilot
 
 # Non-root daemon user that owns the control-plane process.
-RUN useradd -m -u 999 -s /bin/bash magi-operator
+# Member of magi-shared so it can write to the copilot workdir for skill provisioning.
+RUN useradd -m -u 999 -s /bin/bash -G magi-shared magi-operator
 
 # magi-node wrapper — stable path used by sudoers rule so Node version upgrades
 # don't require updating sudoers.
@@ -54,9 +55,11 @@ RUN echo "magi-operator ALL=(magi-copilot) NOPASSWD: /usr/local/bin/magi-node" \
     > /etc/sudoers.d/magi && \
     chmod 440 /etc/sudoers.d/magi
 
-# Copilot workdir (ephemeral; important state lives in MongoDB).
+# Copilot workdir — owned by magi-copilot, group magi-shared so magi-operator
+# can create subdirectories (e.g. skills/_platform) at runtime.
 RUN mkdir -p /home/magi-copilot/workdir && \
-    chown magi-copilot:magi-copilot /home/magi-copilot/workdir
+    chown magi-copilot:magi-shared /home/magi-copilot/workdir && \
+    chmod 2775 /home/magi-copilot/workdir
 
 # Copy built artifacts and production node_modules from builder.
 COPY --from=builder /app/node_modules ./node_modules
