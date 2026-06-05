@@ -16,17 +16,15 @@ import type { Request, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
 import {
+	deleteMachine,
 	destroyLocal,
 	destroyMission,
 	getMachineState,
 	isLocalExecution,
-	machineExists,
 	provisionLocal,
 	provisionMission,
-	resumeMission,
 	suspendMission,
 	updateLocalMissionConfig,
-	updateMachineTeamConfig,
 } from "./fly-machines.js";
 import { getTemplate, patchMissionId } from "./templates.js";
 
@@ -452,68 +450,45 @@ export function createMissionsRouter(db: Db): Router {
 					);
 				}
 			} else {
-				// Push updated YAML to Fly machine env so daemon overwrites volume file on next boot.
-				// If the machine no longer exists (404) — e.g. deleted outside MAGI —
-				// re-provision a new machine against the surviving workspace volume.
-				let machineGone = false;
-				if (mission.teamConfigYaml) {
-					try {
-						await updateMachineTeamConfig(
-							mission.machineId,
-							mission.teamConfigYaml,
-							mission.teamFiles ?? [],
-						);
-					} catch (e) {
-						if ((e as Error).message.includes("404")) {
-							// PATCH returned 404 — verify whether the machine truly no longer
-							// exists or whether the PATCH endpoint is simply unavailable for
-							// this machine state. Only re-provision if the machine is gone.
-							const exists = await machineExists(mission.machineId);
-							if (!exists) {
-								machineGone = true;
-								console.warn(
-									`[missions] machine ${mission.machineId} confirmed absent from Fly — re-provisioning with existing volume`,
-								);
-							} else {
-								// Machine exists — PATCH failed for another reason (e.g. machine
-								// state rejects env updates). Skip the env update and proceed to start.
-								console.warn(
-									`[missions] PATCH failed with 404 but machine ${mission.machineId} still exists — skipping env update, proceeding to start`,
-								);
-							}
-						} else {
-							throw e;
-						}
-					}
-				}
-
-				if (machineGone) {
-					if (!mission.volumeId) {
-						throw new Error(
-							"Fly machine is gone and no volume ID is stored — mission cannot be resumed",
-						);
-					}
-					const handle = await provisionMission(missionId, mission.teamConfig, {
-						existingVolumeId: mission.volumeId,
-						teamConfigYaml: mission.teamConfigYaml,
-						teamFiles: mission.teamFiles ?? [],
-					});
-					await col.updateOne(
-						{ missionId },
-						{
-							$set: {
-								machineId: handle.machineId,
-								privateIp: handle.privateIp,
-								status: "running",
-								updatedAt: new Date(),
-							},
-						},
+				// Resume on Fly: delete the stopped machine and provision a fresh one
+				// against the preserved workspace volume. This guarantees the new machine
+				// boots with the current config from MongoDB — the Fly PATCH API for
+				// env-var updates on stopped machines is unreliable.
+				if (!mission.volumeId) {
+					throw new Error(
+						"No volume ID stored for this mission — cannot resume",
 					);
-					res.json({ status: "running" });
-					return;
 				}
-
-				await resumeMission(mission.machineId);
+				// Best-effort delete of the old machine. If it's already gone (deleted
+				// outside MAGI), skip and proceed to provision.
+				try {
+					await deleteMachine(mission.machineId);
+					console.log(
+						`[missions] deleted old machine ${mission.machineId} before re-provision`,
+					);
+				} catch (e) {
+					console.warn(
+						`[missions] could not delete machine ${mission.machineId}: ${(e as Error).message} — proceeding to provision anyway`,
+					);
+				}
+				const handle = await provisionMission(missionId, mission.teamConfig, {
+					existingVolumeId: mission.volumeId,
+					teamConfigYaml: mission.teamConfigYaml,
+					teamFiles: mission.teamFiles ?? [],
+				});
+				await col.updateOne(
+					{ missionId },
+					{
+						$set: {
+							machineId: handle.machineId,
+							privateIp: handle.privateIp,
+							status: "running",
+							updatedAt: new Date(),
+						},
+					},
+				);
+				res.json({ status: "running" });
+				return;
 			}
 			await col.updateOne(
 				{ missionId },

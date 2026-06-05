@@ -229,33 +229,21 @@ export async function suspendMission(machineId: string): Promise<void> {
 }
 
 /**
- * Update the TEAM_CONFIG_YAML (and optionally TEAM_FILES_PAYLOAD) env vars on a
- * suspended machine so that the daemon overwrites /missions/team.yaml on next boot.
- * Uses Fly Machines PATCH which merges env — only the specified keys are overwritten.
+ * Delete a Fly machine without deleting its attached volume.
+ * Used during resume to replace a stopped machine with a fresh one that
+ * carries the latest config from MongoDB, since the Fly Machines PATCH API
+ * is unreliable for env-var updates on stopped machines.
  */
-export async function updateMachineTeamConfig(
-	machineId: string,
-	teamConfigYaml: string,
-	teamFiles?: Array<{ path: string; content: string }>,
-): Promise<void> {
+export async function deleteMachine(machineId: string): Promise<void> {
 	const app = appName();
-	const env: Record<string, string> = {
-		TEAM_CONFIG_YAML: Buffer.from(teamConfigYaml, "utf-8").toString("base64"),
-	};
-	if (teamFiles && teamFiles.length > 0) {
-		env.TEAM_FILES_PAYLOAD = Buffer.from(
-			JSON.stringify(teamFiles),
-			"utf-8",
-		).toString("base64");
-	}
-	const res = await flyFetch(`/apps/${app}/machines/${machineId}`, {
-		method: "PATCH",
-		body: JSON.stringify({ config: { env } }),
+	// force=true ensures the machine is removed even if it is still stopping.
+	const res = await flyFetch(`/apps/${app}/machines/${machineId}?force=true`, {
+		method: "DELETE",
 	});
 	if (!res.ok) {
 		const body = await res.text();
 		throw new Error(
-			`Failed to update machine config ${machineId}: ${res.status} ${body}`,
+			`Failed to delete machine ${machineId}: ${res.status} ${body}`,
 		);
 	}
 }
