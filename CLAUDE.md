@@ -52,6 +52,8 @@ npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 - `FIREBASE_SERVICE_ACCOUNT_KEY` (control plane only; Firebase Admin SDK service account JSON, minified to one line — required for Google Sign-In)
 - `FIREBASE_CLIENT_API_KEY`, `FIREBASE_CLIENT_AUTH_DOMAIN`, `FIREBASE_CLIENT_PROJECT_ID` (control plane only; served to the browser via `/firebase-config.js`; public client-side values)
 - `MONITOR_SIGNING_KEY` (control plane only; HMAC key for per-mission MonitorServer tokens — generate with `openssl rand -hex 32`; never forwarded to execution plane machines)
+- `GH_TOKEN` (control plane only; GitHub personal access token with `repo` scope — used by copilot's `ListIssues`/`CreateIssue`/`CloseIssue`/`AddIssueComment` tools; optional but required for issue tracking)
+- `GITHUB_REPO` (control plane only; GitHub repo in `owner/repo` format; default `arnadu/magi_v3`)
 
 **Data API keys** (forwarded to background jobs only — never to agent tool subprocesses):
 Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
@@ -224,6 +226,30 @@ Three tiers:
 Test runner: **vitest** — native ESM, no build step. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.
 
 Do not write tests for prompt wording, LLM tool selection choices, or report content quality — those belong in the evaluation harness.
+
+## Bug and Issue Tracking
+
+Bugs and deferred improvements are tracked as **GitHub Issues** at
+[github.com/arnadu/magi_v3/issues](https://github.com/arnadu/magi_v3/issues).
+
+Label conventions:
+
+| Label | Use for |
+|-------|---------|
+| `bug` | Broken behaviour |
+| `enhancement` | Improvement to existing functionality |
+| `deferred` | Known gap, accepted for now, queued for a future sprint |
+| `ux` | Presentation or interaction issue |
+| `security` | Security finding (link to `docs/security/findings.md`) |
+
+The **copilot** has built-in `ListIssues`, `CreateIssue`, `CloseIssue`, and `AddIssueComment`
+tools and will proactively raise issues when it encounters bugs during troubleshooting.
+Execution-plane agents can use the `github-issues` platform skill (`packages/skills/github-issues/`).
+
+When closing a sprint, check open `deferred` issues to decide if any should be promoted
+into the upcoming sprint's scope.
+
+---
 
 ## Known Pitfalls
 

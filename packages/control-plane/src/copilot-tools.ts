@@ -8,6 +8,10 @@
  * B2: Mutating tools via ProposeAction — operator must confirm before execution.
  *     The tool pushes a `copilot-action` SSE event and returns immediately.
  *     Execution happens in copilot-router.ts when the operator confirms.
+ *
+ * B3: GitHub Issues tools (ListIssues, CreateIssue, CloseIssue, AddIssueComment) —
+ *     direct GitHub REST API calls using GH_TOKEN. No operator confirmation required;
+ *     GitHub issues are low-risk, fully reversible actions.
  */
 
 import { randomUUID } from "node:crypto";
@@ -419,6 +423,175 @@ export function createCopilotTools(
 		},
 	};
 
+	// ─── B3: GitHub Issues ───────────────────────────────────────────────────
+
+	const GITHUB_REPO = process.env.GITHUB_REPO ?? "arnadu/magi_v3";
+	const GH_TOKEN = process.env.GH_TOKEN;
+
+	async function ghFetch(
+		path: string,
+		options: RequestInit = {},
+	): Promise<Response> {
+		if (!GH_TOKEN)
+			throw new Error(
+				"GH_TOKEN is not set — cannot access GitHub API. Set it in bootstrap.sh.",
+			);
+		return fetch(`https://api.github.com${path}`, {
+			...options,
+			headers: {
+				Authorization: `Bearer ${GH_TOKEN}`,
+				Accept: "application/vnd.github.v3+json",
+				"Content-Type": "application/json",
+				...options.headers,
+			},
+		});
+	}
+
+	const listIssues: MagiTool = {
+		name: "ListIssues",
+		description:
+			"List open GitHub Issues in the MAGI repository. " +
+			"Use to check known bugs and deferred items before raising a new issue. " +
+			"Optionally filter by label: bug, enhancement, deferred, ux, security.",
+		parameters: Type.Object({
+			label: Type.Optional(
+				Type.String({
+					description: "Filter by label name (omit for all open issues)",
+				}),
+			),
+		}),
+		async execute(_id, args) {
+			const label = args.label as string | undefined;
+			const qs = label ? `&labels=${encodeURIComponent(label)}` : "";
+			try {
+				const res = await ghFetch(
+					`/repos/${GITHUB_REPO}/issues?state=open&per_page=50${qs}`,
+				);
+				if (!res.ok) return err(`GitHub API returned ${res.status}`);
+				const issues = (await res.json()) as Array<{
+					number: number;
+					title: string;
+					labels: Array<{ name: string }>;
+					body: string | null;
+					html_url: string;
+					created_at: string;
+				}>;
+				if (issues.length === 0) return ok("(no open issues)");
+				const rows = issues
+					.map((i) => {
+						const labels =
+							i.labels.map((l) => l.name).join(", ") || "(no labels)";
+						const first = (i.body ?? "").split("\n")[0].slice(0, 120);
+						return `#${i.number} [${labels}] ${i.title}${first ? `\n  ${first}` : ""}`;
+					})
+					.join("\n\n");
+				return ok(rows);
+			} catch (e) {
+				return err(`GitHub API error: ${(e as Error).message}`);
+			}
+		},
+	};
+
+	const createIssue: MagiTool = {
+		name: "CreateIssue",
+		description:
+			"Create a GitHub Issue in the MAGI repository. " +
+			"Use to record bugs or deferred improvements discovered during a session. " +
+			"Always call ListIssues first to avoid duplicates. " +
+			"Good body structure: **Observed:** … **Expected:** … **Impact:** … **Proposed fix:** …",
+		parameters: Type.Object({
+			title: Type.String({
+				description: "Issue title — concise, action-oriented",
+			}),
+			body: Type.String({ description: "Issue body (markdown)" }),
+			labels: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						"Labels to apply: bug, enhancement, deferred, ux, security",
+				}),
+			),
+		}),
+		async execute(_id, args) {
+			const title = args.title as string;
+			const body = args.body as string;
+			const labels = (args.labels as string[] | undefined) ?? [];
+			try {
+				const res = await ghFetch(`/repos/${GITHUB_REPO}/issues`, {
+					method: "POST",
+					body: JSON.stringify({ title, body, labels }),
+				});
+				if (!res.ok) {
+					const text = await res.text();
+					return err(`GitHub API returned ${res.status}: ${text}`);
+				}
+				const issue = (await res.json()) as {
+					number: number;
+					html_url: string;
+				};
+				return ok(`Created #${issue.number}: ${issue.html_url}`);
+			} catch (e) {
+				return err(`GitHub API error: ${(e as Error).message}`);
+			}
+		},
+	};
+
+	const closeIssue: MagiTool = {
+		name: "CloseIssue",
+		description:
+			"Close a GitHub Issue, optionally adding a closing comment first.",
+		parameters: Type.Object({
+			number: Type.Number({ description: "Issue number" }),
+			comment: Type.Optional(
+				Type.String({ description: "Closing comment to add before closing" }),
+			),
+		}),
+		async execute(_id, args) {
+			const number = args.number as number;
+			const comment = args.comment as string | undefined;
+			try {
+				if (comment) {
+					const cRes = await ghFetch(
+						`/repos/${GITHUB_REPO}/issues/${number}/comments`,
+						{ method: "POST", body: JSON.stringify({ body: comment }) },
+					);
+					if (!cRes.ok) return err(`Failed to add comment: ${cRes.status}`);
+				}
+				const res = await ghFetch(`/repos/${GITHUB_REPO}/issues/${number}`, {
+					method: "PATCH",
+					body: JSON.stringify({ state: "closed" }),
+				});
+				if (!res.ok) return err(`GitHub API returned ${res.status}`);
+				return ok(`Closed #${number}`);
+			} catch (e) {
+				return err(`GitHub API error: ${(e as Error).message}`);
+			}
+		},
+	};
+
+	const addIssueComment: MagiTool = {
+		name: "AddIssueComment",
+		description: "Add a comment to an existing GitHub Issue.",
+		parameters: Type.Object({
+			number: Type.Number({ description: "Issue number" }),
+			body: Type.String({ description: "Comment text (markdown supported)" }),
+		}),
+		async execute(_id, args) {
+			const number = args.number as number;
+			const body = args.body as string;
+			try {
+				const res = await ghFetch(
+					`/repos/${GITHUB_REPO}/issues/${number}/comments`,
+					{ method: "POST", body: JSON.stringify({ body }) },
+				);
+				if (!res.ok) return err(`GitHub API returned ${res.status}`);
+				const comment = (await res.json()) as { html_url: string };
+				return ok(`Comment added: ${comment.html_url}`);
+			} catch (e) {
+				return err(`GitHub API error: ${(e as Error).message}`);
+			}
+		},
+	};
+
 	return [
 		listMissions,
 		getMissionStatus,
@@ -429,5 +602,9 @@ export function createCopilotTools(
 		listTemplates,
 		getTemplate,
 		proposeAction,
+		listIssues,
+		createIssue,
+		closeIssue,
+		addIssueComment,
 	];
 }

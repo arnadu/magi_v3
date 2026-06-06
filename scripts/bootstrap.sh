@@ -186,6 +186,10 @@ declare -A CONTROL_SECRETS=(
   [FIREBASE_CLIENT_API_KEY]="${FIREBASE_CLIENT_API_KEY:-}"
   [FIREBASE_CLIENT_AUTH_DOMAIN]="${FIREBASE_CLIENT_AUTH_DOMAIN:-}"
   [FIREBASE_CLIENT_PROJECT_ID]="${FIREBASE_CLIENT_PROJECT_ID:-}"
+  # GitHub Issues integration — used by copilot's ListIssues/CreateIssue tools.
+  # Needs a GitHub personal access token (classic) with repo scope.
+  [GH_TOKEN]="${GH_TOKEN:-}"
+  [GITHUB_REPO]="${GITHUB_REPO:-arnadu/magi_v3}"
 )
 set_secrets_if_needed "$CONTROL_APP" CONTROL_SECRETS
 

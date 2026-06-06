@@ -115,12 +115,25 @@ export function startCopilotDaemon(
 // ---------------------------------------------------------------------------
 
 function provisionCopilotSkills(repoRoot: string): void {
-	const src = join(repoRoot, "config", "teams", "copilot", "skills");
 	const dest = join(COPILOT_WORKDIR, "skills", "_platform");
 	try {
 		mkdirSync(dest, { recursive: true });
-		if (existsSync(src)) {
-			cpSync(src, dest, { recursive: true });
+
+		// Team-specific copilot skills.
+		const teamSrc = join(repoRoot, "config", "teams", "copilot", "skills");
+		if (existsSync(teamSrc)) {
+			cpSync(teamSrc, dest, { recursive: true });
+		}
+
+		// Platform skills whose SKILL.md the copilot should see via discoverSkills().
+		// The copilot uses the built-in category-B tools for GitHub operations, but
+		// provisioning the SKILL.md ensures the description appears in the system prompt.
+		const platformSkillsToCopy = ["github-issues"];
+		for (const skill of platformSkillsToCopy) {
+			const skillSrc = join(repoRoot, "packages", "skills", skill);
+			if (existsSync(skillSrc)) {
+				cpSync(skillSrc, join(dest, skill), { recursive: true });
+			}
 		}
 	} catch (e) {
 		console.warn(
