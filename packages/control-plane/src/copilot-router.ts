@@ -81,19 +81,7 @@ export function createCopilotRouter(
 			db,
 			repoRoot,
 			modelId,
-			(type, data) => {
-				eventBus.push(userId, type, data);
-				// Persist copilot replies so history survives page reloads.
-				if (type === "copilot-msg") {
-					const msg = data as { body?: string };
-					void db.collection("copilotHistory").insertOne({
-						userId,
-						role: "assistant",
-						body: msg.body ?? "",
-						timestamp: new Date(),
-					});
-				}
-			},
+			(type, data) => eventBus.push(userId, type, data),
 			pending,
 			missionId,
 		);
@@ -124,28 +112,34 @@ export function createCopilotRouter(
 			body,
 		});
 
-		// Persist to history so it survives page reloads.
-		void db.collection("copilotHistory").insertOne({
-			userId: req.userId,
-			role: "user",
-			body,
-			subject: subject ?? "(no subject)",
-			timestamp: new Date(),
-		});
-
 		res.json({ ok: true, id: msg.id });
 	});
 
 	// ── GET /api/copilot/history ──────────────────────────────────────────────
+	// The mailbox already stores both sides of the conversation:
+	//   operator → copilot:  { from: "user",    to: ["copilot"] }
+	//   copilot  → operator: { from: "copilot", to: ["user"]    }
+	// No separate collection needed.
 
 	router.get("/history", async (req: Request, res: Response) => {
-		const entries = await db
-			.collection("copilotHistory")
-			.find({ userId: req.userId })
+		const missionId = `copilot-${req.userId}`;
+		const raw = await db
+			.collection("mailbox")
+			.find({
+				missionId,
+				$or: [{ from: "user" }, { to: "user" }],
+			})
 			.sort({ timestamp: -1 })
 			.limit(50)
 			.toArray();
-		res.json(entries.reverse());
+
+		const entries = raw.reverse().map((m) => ({
+			role: m.from === "user" ? "user" : "assistant",
+			body: m.body as string,
+			subject: m.subject as string,
+			timestamp: m.timestamp,
+		}));
+		res.json(entries);
 	});
 
 	// ── GET /api/copilot/events ───────────────────────────────────────────────
