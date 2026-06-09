@@ -81,7 +81,19 @@ export function createCopilotRouter(
 			db,
 			repoRoot,
 			modelId,
-			(type, data) => eventBus.push(userId, type, data),
+			(type, data) => {
+				eventBus.push(userId, type, data);
+				// Persist copilot replies so history survives page reloads.
+				if (type === "copilot-msg") {
+					const msg = data as { body?: string };
+					void db.collection("copilotHistory").insertOne({
+						userId,
+						role: "assistant",
+						body: msg.body ?? "",
+						timestamp: new Date(),
+					});
+				}
+			},
 			pending,
 			missionId,
 		);
@@ -111,7 +123,29 @@ export function createCopilotRouter(
 			subject: subject ?? "(no subject)",
 			body,
 		});
+
+		// Persist to history so it survives page reloads.
+		void db.collection("copilotHistory").insertOne({
+			userId: req.userId,
+			role: "user",
+			body,
+			subject: subject ?? "(no subject)",
+			timestamp: new Date(),
+		});
+
 		res.json({ ok: true, id: msg.id });
+	});
+
+	// ── GET /api/copilot/history ──────────────────────────────────────────────
+
+	router.get("/history", async (req: Request, res: Response) => {
+		const entries = await db
+			.collection("copilotHistory")
+			.find({ userId: req.userId })
+			.sort({ timestamp: -1 })
+			.limit(50)
+			.toArray();
+		res.json(entries.reverse());
 	});
 
 	// ── GET /api/copilot/events ───────────────────────────────────────────────

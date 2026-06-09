@@ -1603,6 +1603,18 @@
     if (copilotSse) { copilotSse.close(); copilotSse = null; }
     const token = await getToken();
     if (!token) return;
+
+    // Replay previous session messages before opening the live stream.
+    const histRes = await apiFetch('/api/copilot/history');
+    if (histRes?.ok) {
+      const history = await histRes.json().catch(() => []);
+      for (const entry of history) {
+        if (entry.role === 'user') addBubble(entry.body ?? '', 'from-user');
+        else if (entry.role === 'assistant') addBubble(entry.body ?? '', 'from-copilot');
+      }
+      if (history.length > 0) addSystemMsg('─── earlier messages above ───');
+    }
+
     copilotSse = new EventSource(`/api/copilot/events?token=${encodeURIComponent(token)}`);
 
     copilotSse.addEventListener('copilot-msg', e => {
