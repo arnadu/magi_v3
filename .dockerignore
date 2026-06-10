@@ -16,3 +16,8 @@ docs
 !packages/skills/**/*.md
 !config/**/*.md
 !packages/agent-runtime-worker/Dockerfile
+
+# Local dev mission workdirs — Playwright cache, agent output, logs.
+# These are never needed in any image layer.
+packages/agent-runtime-worker/missions/
+~/.magi/
