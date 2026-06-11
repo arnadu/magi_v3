@@ -20,4 +20,8 @@ docs
 # Local dev mission workdirs — Playwright cache, agent output, logs.
 # These are never needed in any image layer.
 packages/agent-runtime-worker/missions/
-~/.magi/
+packages/agent-runtime-worker/home/
+packages/agent-runtime-worker/daemon.log
+packages/agent-runtime-worker/*.log
+# Windows UNC-path garbage dirs that Playwright creates via WSL2 (names start with \).
+packages/agent-runtime-worker/\\*
