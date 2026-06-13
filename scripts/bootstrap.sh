@@ -3,6 +3,8 @@
 #
 # One-command setup: creates Fly.io apps, sets secrets, builds and pushes the
 # execution plane Docker image, and deploys the control plane.
+# Requires flyctl and git. Docker is optional — if absent, the execution plane
+# image is built on Fly remote builders instead.
 #
 # Usage:
 #   cp secrets.env.template secrets.env   # fill in API keys
@@ -15,7 +17,7 @@
 #   --suffix <name>        App name suffix (e.g. "prod" → magi-control-prod).
 #                          Prompted interactively if not provided.
 #   --secrets-file <path>  Path to secrets file (default: secrets.env at repo root).
-#   --skip-docker          Skip Docker build and push (use existing image).
+#   --skip-docker          Skip image build entirely (use existing :latest in registry).
 #   --skip-deploy          Skip control plane deploy (secrets + image only).
 #   --reset-secrets        Re-set all Fly secrets even if apps already exist.
 #   --help                 Show this message.
@@ -53,9 +55,11 @@ done
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 info "Checking prerequisites…"
-for cmd in flyctl docker git; do
+for cmd in flyctl git; do
   command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found. Install it and try again."
 done
+DOCKER_AVAILABLE=false
+command -v docker >/dev/null 2>&1 && DOCKER_AVAILABLE=true || warn "docker not found — execution plane image will be built on Fly remote builders."
 GH_AVAILABLE=false
 command -v gh >/dev/null 2>&1 && GH_AVAILABLE=true || warn "'gh' CLI not found — GitHub secret will not be set automatically."
 
@@ -208,22 +212,78 @@ set_secrets_if_needed "$MISSIONS_APP" MISSIONS_SECRETS
 
 # ── Build and push Docker image ────────────────────────────────────────────────
 IMAGE="registry.fly.io/${MISSIONS_APP}:latest"
+# FLY_MISSIONS_IMAGE_OVERRIDE is set below when the remote build path is used,
+# because fly deploy creates deployment-tagged images that do NOT update :latest.
+# The control plane reads FLY_MISSIONS_IMAGE at machine-provision time; pinning
+# it to the exact deployment tag ensures new missions use the freshly built image.
+FLY_MISSIONS_IMAGE_OVERRIDE=""
 
 if [[ "$SKIP_DOCKER" == false ]]; then
-  info "Authenticating with Fly Docker registry…"
-  flyctl auth docker
+  if [[ "$DOCKER_AVAILABLE" == true ]]; then
+    info "Authenticating with Fly Docker registry…"
+    flyctl auth docker
 
-  info "Building execution plane image → $IMAGE"
-  docker build \
-    -f packages/agent-runtime-worker/Dockerfile \
-    -t "$IMAGE" \
-    .
+    info "Building execution plane image (local) → $IMAGE"
+    docker build \
+      -f packages/agent-runtime-worker/Dockerfile \
+      -t "$IMAGE" \
+      .
 
-  info "Pushing image…"
-  docker push "$IMAGE"
-  success "Image pushed: $IMAGE"
+    info "Pushing image…"
+    docker push "$IMAGE"
+    success "Image pushed: $IMAGE"
+  else
+    # No local Docker — use Fly remote builders via fly deploy.
+    # IMPORTANT: fly deploy does NOT update :latest in the registry. It creates a
+    # deployment-tagged image (deployment-<hash>) and updates any existing launch
+    # machines to that tag. We must extract the exact deployment tag and pin it
+    # via FLY_MISSIONS_IMAGE on the control plane so new API-provisioned execution
+    # machines use the freshly built image rather than the stale :latest.
+    info "Building execution plane image (remote) — this may take several minutes…"
+
+    MISSIONS_TOML="fly.missions-${SUFFIX:-dev}.toml"
+    sed "s/^app = .*/app = \"${MISSIONS_APP}\"/" fly.missions-dev.toml > "$MISSIONS_TOML"
+
+    flyctl deploy --config "$MISSIONS_TOML" --app "$MISSIONS_APP" --remote-only
+
+    [[ "$MISSIONS_TOML" != "fly.missions-dev.toml" ]] && rm -f "$MISSIONS_TOML"
+
+    # Extract the deployment image tag from the latest release.
+    DEPLOY_IMAGE="$(flyctl releases --app "$MISSIONS_APP" --json 2>/dev/null \
+      | python3 -c "import json,sys; rs=json.load(sys.stdin); print(rs[0]['ImageRef'])" 2>/dev/null)"
+    if [[ -n "$DEPLOY_IMAGE" ]]; then
+      FLY_MISSIONS_IMAGE_OVERRIDE="$DEPLOY_IMAGE"
+      IMAGE="$DEPLOY_IMAGE"
+      success "Deployment image: $IMAGE"
+    else
+      warn "Could not determine deployment image tag — FLY_MISSIONS_IMAGE will not be updated."
+    fi
+
+    # Destroy any launch machines fly deploy created (we only want the registry image).
+    info "Cleaning up Fly launch machines for ${MISSIONS_APP}…"
+    flyctl machines list --app "$MISSIONS_APP" --json 2>/dev/null \
+      | python3 -c "import json,sys; [print(m['id']) for m in json.load(sys.stdin)]" \
+      | while read -r mid; do
+          flyctl machine destroy "$mid" --app "$MISSIONS_APP" --force >/dev/null 2>&1 \
+            && info "  Destroyed launch machine $mid"
+        done || true
+
+    success "Image built via remote builder: $IMAGE"
+  fi
 else
   warn "--skip-docker: using existing image in registry."
+fi
+
+# ── Pin execution plane image on control plane (remote-build path only) ───────
+# fly deploy uses deployment-tagged images, not :latest. Explicitly set
+# FLY_MISSIONS_IMAGE so the control plane provisions new machines with the
+# exact image that was just built. Staged here so the secret takes effect when
+# the control plane deploys in the next step (no intermediate restart).
+if [[ -n "$FLY_MISSIONS_IMAGE_OVERRIDE" ]]; then
+  info "Pinning FLY_MISSIONS_IMAGE → $FLY_MISSIONS_IMAGE_OVERRIDE"
+  flyctl secrets set FLY_MISSIONS_IMAGE="$FLY_MISSIONS_IMAGE_OVERRIDE" \
+    --app "$CONTROL_APP" --stage 2>&1 | grep -v "^$" || true
+  success "FLY_MISSIONS_IMAGE pinned on $CONTROL_APP."
 fi
 
 # ── Deploy control plane ───────────────────────────────────────────────────────

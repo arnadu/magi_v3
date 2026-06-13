@@ -1,7 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import {
+	cpSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { userInfo } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -121,6 +130,15 @@ export class WorkspaceManager {
 			this.platformSkillsPath,
 			this.teamSkillsPath,
 		);
+		// Copy non-skill teamFiles (playbooks, reference docs, etc.) to sharedDir so
+		// agent prompts that reference {{sharedDir}}/some-file.md find them at runtime.
+		if (this.teamSkillsPath) {
+			copyTeamFilesToSharedDir(
+				sharedDir,
+				dirname(this.teamSkillsPath),
+				linuxUsers,
+			);
+		}
 		for (const identity of identities.values()) {
 			mkdirSync(join(identity.workdir, "skills"), { recursive: true });
 		}
@@ -270,6 +288,84 @@ function provisionSkills(
 			stdio: "ignore",
 		});
 	}
+}
+
+/**
+ * Copy non-skill teamFiles from teamDir directly into sharedDir.
+ *
+ * The daemon writes all teamFiles to /missions/team/{path}. provisionSkills()
+ * copies the skills/ sub-tree to sharedDir/skills/_team/, but any other files
+ * (playbooks, reference docs, etc.) remain only at /missions/team/ — never
+ * reaching sharedDir. This function closes that gap so agent prompts that
+ * reference {{sharedDir}}/some-file.md find the file at the expected path.
+ *
+ * Files under teamDir/skills/ are skipped here — they are handled by
+ * provisionSkills() above.
+ */
+function copyTeamFilesToSharedDir(
+	sharedDir: string,
+	teamDir: string,
+	linuxUsers: string[],
+): void {
+	if (!existsSync(teamDir)) return;
+
+	function walk(dir: string): void {
+		let entries: string[];
+		try {
+			entries = readdirSync(dir);
+		} catch {
+			return;
+		}
+		for (const name of entries) {
+			const src = join(dir, name);
+			const rel = relative(teamDir, src);
+			// Skills are handled by provisionSkills() — skip.
+			if (
+				rel === "skills" ||
+				rel.startsWith("skills/") ||
+				rel.startsWith("skills\\")
+			)
+				continue;
+			let st: ReturnType<typeof statSync>;
+			try {
+				st = statSync(src);
+			} catch {
+				continue;
+			}
+			const dest = join(sharedDir, rel);
+			if (st.isDirectory()) {
+				mkdirSync(dest, { recursive: true });
+				walk(src);
+				// Grant all agent users rwx on new subdirs.
+				for (const user of linuxUsers) {
+					try {
+						execFileSync("setfacl", ["-m", `u:${user}:r-x`, dest], {
+							stdio: "ignore",
+						});
+					} catch {
+						/* best-effort */
+					}
+				}
+			} else {
+				mkdirSync(dirname(dest), { recursive: true });
+				try {
+					writeFileSync(dest, readFileSync(src));
+					for (const user of linuxUsers) {
+						try {
+							execFileSync("setfacl", ["-m", `u:${user}:r--`, dest], {
+								stdio: "ignore",
+							});
+						} catch {
+							/* best-effort */
+						}
+					}
+				} catch {
+					/* skip unreadable files */
+				}
+			}
+		}
+	}
+	walk(teamDir);
 }
 
 /**

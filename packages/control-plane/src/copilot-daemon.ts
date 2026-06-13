@@ -8,6 +8,7 @@
  * than through the sudo subprocess isolation used for Tier A tools.
  */
 
+import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { TeamConfig } from "@magi/agent-config";
@@ -115,6 +116,25 @@ export function startCopilotDaemon(
 // ---------------------------------------------------------------------------
 
 function provisionCopilotSkills(repoRoot: string): void {
+	// When a Fly persistent volume is mounted, the volume root is owned by the
+	// process user (magi-operator, uid 999) with mode 0755 — not magi-copilot.
+	// Set an ACL entry so the copilot agent subprocess (sudo -u magi-copilot) can
+	// create files inside its own workdir. The ACL is stored on the volume and
+	// survives restarts; the call is idempotent.
+	try {
+		execFileSync("setfacl", ["-m", `u:magi-copilot:rwx`, COPILOT_WORKDIR]);
+		execFileSync("setfacl", [
+			"-d",
+			"-m",
+			`u:magi-copilot:rwx`,
+			COPILOT_WORKDIR,
+		]);
+	} catch (e) {
+		console.warn(
+			`[copilot-daemon] setfacl on workdir: ${(e as Error).message}`,
+		);
+	}
+
 	const dest = join(COPILOT_WORKDIR, "skills", "_platform");
 	try {
 		mkdirSync(dest, { recursive: true });
@@ -277,6 +297,26 @@ async function runWatchLoop(
 				console.error(`[copilot-daemon] Turn error: ${errorMessage}`);
 				pushEvent("copilot-error", { errorMessage });
 			}
+		} finally {
+			// Push updated usage totals so the UI cost indicator stays current.
+			const [agg] = await db
+				.collection("llmCallLog")
+				.aggregate([
+					{ $match: { missionId } },
+					{
+						$group: {
+							_id: null,
+							calls: { $sum: 1 },
+							inputTokens: { $sum: "$usage.inputTokens" },
+							outputTokens: { $sum: "$usage.outputTokens" },
+							cacheReadTokens: { $sum: "$usage.cacheReadTokens" },
+							costUsd: { $sum: "$usage.cost.totalCostUsd" },
+						},
+					},
+				])
+				.toArray()
+				.catch(() => []);
+			if (agg) pushEvent("copilot-usage", agg);
 		}
 	}
 }

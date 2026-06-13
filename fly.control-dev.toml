@@ -23,3 +23,7 @@ primary_region = "iad"
   cpu_kind = "shared"
   cpus = 1
   memory = "512mb"
+
+[[mounts]]
+  source = "copilot_workdir"
+  destination = "/home/magi-copilot/workdir"

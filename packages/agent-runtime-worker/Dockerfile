@@ -58,6 +58,12 @@ RUN useradd -m -u 999 -s /bin/bash magi-operator
 RUN git config --system safe.directory /missions && \
     git config --system safe.directory /app
 
+# magi-create-user: root helper invoked via sudo by magi-operator to create
+# per-agent OS users at daemon startup. Validates the username format to
+# prevent unexpected input; idempotent (skips if user already exists).
+RUN printf '#!/bin/bash\nset -e\nif [[ ! "$1" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then\n  echo "magi-create-user: invalid username" >&2; exit 1\nfi\nif id "$1" >/dev/null 2>&1; then exit 0; fi\nuseradd -m -s /bin/bash -G magi-shared "$1"\necho "$1 ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi\necho "$1 ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi\n' \
+    > /usr/local/bin/magi-create-user && chmod +x /usr/local/bin/magi-create-user
+
 # sudoers: magi-operator and pool users may run magi-node and magi-job without
 # a password. The wrappers point to fixed paths — changing Node versions does
 # not require updating sudoers rules.
@@ -66,6 +72,7 @@ RUN git config --system safe.directory /missions && \
 # adapters (FRED, FMP, NewsAPI). Must match DATA_KEY_NAMES in daemon.ts.
 RUN echo "Defaults:%magi-shared !authenticate" > /etc/sudoers.d/magi && \
     echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API_KEY\"" >> /etc/sudoers.d/magi && \
+    echo "magi-operator ALL=(root) NOPASSWD: /usr/local/bin/magi-create-user" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
     for i in 1 2 3 4 5; do \

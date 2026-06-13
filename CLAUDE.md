@@ -54,6 +54,7 @@ npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 - `MONITOR_SIGNING_KEY` (control plane only; HMAC key for per-mission MonitorServer tokens — generate with `openssl rand -hex 32`; never forwarded to execution plane machines)
 - `GH_TOKEN` (control plane only; GitHub personal access token with `repo` scope — used by copilot's `ListIssues`/`CreateIssue`/`CloseIssue`/`AddIssueComment` tools; optional but required for issue tracking)
 - `GITHUB_REPO` (control plane only; GitHub repo in `owner/repo` format; default `arnadu/magi_v3`)
+- `FLY_MISSIONS_IMAGE` (control plane only; overrides the default `registry.fly.io/<missions-app>:latest` image used when provisioning execution plane machines — set to a specific deployment tag when `:latest` hasn't been updated yet)
 
 **Data API keys** (forwarded to background jobs only — never to agent tool subprocesses):
 Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
@@ -108,7 +109,7 @@ Full history: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md)
 |--------|--------|-------|
 | 21 | ✅ Done | Context management (in-session): `pruneEphemeralResults`, thinking-block stripping, mid-session prune at 160k tokens, `AnalyzeMemories` tool, extended thinking on `CLAUDE_SONNET` |
 | 22 | ✅ Done | Copilot unification + config-driven tool library: copilot calls `runAgent` via `additionalTools`; `disabledTools` per-agent YAML; Tier A/B tool library documented in SPEC |
-| 23 | ✅ Done | Auth + multi-user: Firebase Auth (Google OAuth), `userId` on missions, per-user scoping, one copilot per user (`copilot-{uid}`), `/api/usage`, `magi_session` cookie for dashboard tabs, `MONITOR_TOKEN` HMAC auth on MonitorServer, fix F-008/F-009/F-016/F-019/F-020 |
+| 23 | ✅ Done | Auth + multi-user: Firebase Auth (Google OAuth), `userId` on missions, per-user scoping, one copilot per user (`copilot-{uid}`), `/api/usage`, `magi_session` cookie for dashboard tabs, `MONITOR_TOKEN` HMAC auth on MonitorServer, fix F-008/F-009/F-016/F-019/F-020; copilot token display + reflection threshold fix; timing-safe API key comparison; `executeAction` ownership fixes; deferred: #6 #7 |
 | 24 | ⬜ Planned | Budget hardening + resilience: hard per-mission spend cap, copilot budget tools, G-2/G-3 |
 | 25 | ⬜ Planned | File I/O: upload to sharedDir, download artifacts, G-4 disk monitoring |
 | 26 | ⬜ Planned | Unified UX + rich artifacts: in-app mission drill-down (iframe panel), shared nav, Mermaid/KaTeX/image rendering |

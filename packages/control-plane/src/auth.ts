@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import type { Db } from "mongodb";
 import { verifyFirebaseToken } from "./firebase.js";
@@ -30,7 +31,7 @@ export function createAuthMiddleware(db: Db) {
 
 		// 1. CONTROL_API_KEY → admin (CI, headless scripts, bootstrap.sh)
 		const apiKey = process.env.CONTROL_API_KEY;
-		if (apiKey && provided === apiKey) {
+		if (apiKey && provided && safeEqual(provided, apiKey)) {
 			req.userId = "admin";
 			req.isAdmin = true;
 			next();
@@ -57,6 +58,13 @@ export function createAuthMiddleware(db: Db) {
 
 		res.status(401).json({ error: "Unauthorized" });
 	};
+}
+
+function safeEqual(a: string, b: string): boolean {
+	// Pad both to the same length before comparison to avoid length leak.
+	const ha = createHmac("sha256", "cmp").update(a).digest();
+	const hb = createHmac("sha256", "cmp").update(b).digest();
+	return timingSafeEqual(ha, hb);
 }
 
 function extractBearer(header: string | undefined): string | undefined {

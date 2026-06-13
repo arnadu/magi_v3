@@ -177,15 +177,21 @@ export async function runAgent(
 	);
 	const sessionMessages = nonSummaryHistory.map((sm) => sm.message as Message);
 
-	// Peak input tokens across all LLM calls in the previous session.
-	// Using max (not just the last call) because some models produce shorter
-	// final calls after long intermediate tool-result contexts.
+	// Peak total context tokens across all LLM calls in the previous session.
+	// Must include cacheRead and cacheWrite alongside fresh input tokens — when
+	// the Anthropic prompt cache is warm (as it is for the frequently-running
+	// copilot), fresh `input` is ≈ 1 token while the full context lives in
+	// `cacheRead`. Counting only `input` prevents reflection from ever firing.
 	const peakInputTokens = sessionMessages
 		.filter((m): m is AssistantMessage => m.role === "assistant")
-		.reduce(
-			(max, m) => Math.max(max, (m.usage as { input?: number })?.input ?? 0),
-			0,
-		);
+		.reduce((max, m) => {
+			const u = m.usage as
+				| { input?: number; cacheRead?: number; cacheWrite?: number }
+				| undefined;
+			const total =
+				(u?.input ?? 0) + (u?.cacheRead ?? 0) + (u?.cacheWrite ?? 0);
+			return Math.max(max, total);
+		}, 0);
 
 	/**
 	 * Build the onLlmCall handler for a given turnNumber and isReflection flag.
@@ -478,7 +484,18 @@ export async function runAgent(
 		// posted back to them, auto-post a brief status message so the operator
 		// always sees an acknowledgment.
 		if (supervisorTriggered && !postedToSupervisor && !signal?.aborted) {
-			const fallbackBody = lastAssistantText || "Task completed.";
+			// Prefer the last LLM text response. If that's empty (e.g. the very
+			// first LLM call errored out), surface the error message instead of
+			// the misleading "Task completed." placeholder.
+			const loopError = result.messages
+				.filter((m): m is AssistantMessage => m.role === "assistant")
+				.map((m) => m.errorMessage)
+				.find((e) => !!e);
+			const fallbackBody =
+				lastAssistantText ||
+				(loopError
+					? `I encountered an error and could not complete the task.\n\nError: ${loopError}`
+					: "Task completed.");
 			const incomingSubject = messages[0]?.subject ?? "";
 			const autoSubject = incomingSubject
 				? `Re: ${incomingSubject}`
@@ -486,13 +503,19 @@ export async function runAgent(
 			console.warn(
 				`[runAgent] ${agentId}: no PostMessage to supervisor "${supervisorId}" — sending auto-reply`,
 			);
-			await ctx.mailboxRepo.post({
+			const autoReply = await ctx.mailboxRepo.post({
 				missionId,
 				from: agentId,
 				to: [supervisorId],
 				subject: autoSubject,
 				body: fallbackBody,
 			});
+			// Fire the callback so SSE-based frontends (copilot chat) receive the
+			// auto-reply immediately. Without this the message lands in MongoDB but
+			// is never pushed to the browser.
+			if (supervisorId === "user") {
+				ctx.onUserMessage?.(autoReply);
+			}
 		}
 	} finally {
 		// Close the browser session regardless of success or failure.

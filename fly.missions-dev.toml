@@ -1,0 +1,9 @@
+app = "magi-missions-dev"
+primary_region = "iad"
+
+[build]
+  dockerfile = "packages/agent-runtime-worker/Dockerfile"
+
+# No http_service or vm section — this app is only used as a Docker image
+# registry for API-provisioned execution plane machines; it has no persistent
+# "launch" machines of its own.

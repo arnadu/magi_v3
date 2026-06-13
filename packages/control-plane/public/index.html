@@ -196,8 +196,9 @@
 
     /* ── Copilot panel ───────────────────────────────────────────────────────── */
     #copilot-panel { width: 420px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #cbd5e1; display: flex; flex-direction: column; overflow: hidden; }
-    #copilot-header { padding: 14px 20px; border-bottom: 1px solid #cbd5e1; flex-shrink: 0; }
+    #copilot-header { padding: 14px 20px; border-bottom: 1px solid #cbd5e1; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; }
     #copilot-header h3 { font-size: 15px; font-weight: 600; color: #7c3aed; }
+    #copilot-cost { font-size: 11px; color: #94a3b8; font-variant-numeric: tabular-nums; }
     #copilot-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
     .cop-bubble { max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
     .cop-bubble.from-copilot { background: #f1f5f9; color: #1e293b; align-self: flex-start; border-bottom-left-radius: 4px; }
@@ -338,10 +339,11 @@
     <div class="detail-empty">Select a template or mission from the sidebar.</div>
   </div>
 
-  <!-- Copilot pane (unchanged) -->
+  <!-- Copilot pane -->
   <div id="copilot-panel">
     <div id="copilot-header">
       <h3>MAGI Copilot</h3>
+      <span id="copilot-cost"></span>
     </div>
     <div id="copilot-messages">
       <div class="cop-bubble system-msg">Copilot is ready. Ask a question or describe a task.</div>
@@ -1525,8 +1527,20 @@
   const copilotMessages = document.getElementById('copilot-messages');
   const copilotThinking = document.getElementById('copilot-thinking');
   const copilotInput    = document.getElementById('copilot-input');
+  const copilotCostEl   = document.getElementById('copilot-cost');
   let copilotSse = null;
   let copilotRunning = false;
+
+  function updateCopilotCost(u) {
+    if (!copilotCostEl) return;
+    const calls = u.calls ?? 0;
+    const tok = u.inputTokens ?? 0;
+    const cost = u.costUsd ?? 0;
+    const tokStr = tok >= 1000 ? `${Math.round(tok / 1000)}k tok` : `${tok} tok`;
+    copilotCostEl.textContent = calls > 0
+      ? `${calls} calls · ${tokStr} · $${cost.toFixed(4)}`
+      : '';
+  }
 
   function copilotScrollBottom() { copilotMessages.scrollTop = copilotMessages.scrollHeight; }
 
@@ -1604,8 +1618,11 @@
     const token = await getToken();
     if (!token) return;
 
-    // Replay previous session messages before opening the live stream.
-    const histRes = await apiFetch('/api/copilot/history');
+    // Replay previous session messages and load initial usage before opening the live stream.
+    const [histRes, usageRes] = await Promise.all([
+      apiFetch('/api/copilot/history'),
+      apiFetch('/api/copilot/usage'),
+    ]);
     if (histRes?.ok) {
       const history = await histRes.json().catch(() => []);
       for (const entry of history) {
@@ -1613,6 +1630,10 @@
         else if (entry.role === 'assistant') addBubble(entry.body ?? '', 'from-copilot');
       }
       if (history.length > 0) addSystemMsg('─── earlier messages above ───');
+    }
+    if (usageRes?.ok) {
+      const u = await usageRes.json().catch(() => null);
+      if (u) updateCopilotCost(u);
     }
 
     copilotSse = new EventSource(`/api/copilot/events?token=${encodeURIComponent(token)}`);
@@ -1653,6 +1674,10 @@
       copilotRunning = false;
       copilotThinking.classList.remove('active');
       copilotScrollBottom();
+    });
+
+    copilotSse.addEventListener('copilot-usage', e => {
+      updateCopilotCost(JSON.parse(e.data));
     });
 
     copilotSse.addEventListener('copilot-loop-msg', e => {

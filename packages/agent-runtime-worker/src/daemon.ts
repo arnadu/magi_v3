@@ -28,7 +28,6 @@
 
 import { execSync, spawn } from "node:child_process";
 import {
-	appendFileSync,
 	createWriteStream,
 	mkdirSync,
 	readdirSync,
@@ -516,20 +515,17 @@ function ensureAgentUsers(
 			execSync(`id ${linuxUser}`, { stdio: "ignore" });
 		} catch {
 			// User does not exist — create it.
+			// In Docker (production) we use sudo magi-create-user which runs as root
+			// and also writes the sudoers rule. In local dev environments without the
+			// helper the pool users already exist, so this path is rarely reached.
 			try {
-				execSync(`useradd -m -s /bin/bash -G magi-shared ${linuxUser}`, {
+				execSync(`sudo /usr/local/bin/magi-create-user ${linuxUser}`, {
 					stdio: "inherit",
 				});
-				// Append a NOPASSWD sudo rule for the magi-node and magi-job wrappers.
-				appendFileSync(
-					"/etc/sudoers.d/magi",
-					`${linuxUser} ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node\n` +
-						`${linuxUser} ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job\n`,
-				);
 				console.log(`[daemon] Created OS user: ${linuxUser}`);
 			} catch (e) {
-				// Non-fatal: in non-root dev environments, useradd requires root.
-				// The pool users already exist so this path is only hit in Docker.
+				// Non-fatal in local dev: pool users cover the common dev agents.
+				// Fatal in Docker because setfacl will fail on the missing user.
 				console.warn(
 					`[daemon] Could not create OS user ${linuxUser}: ${(e as Error).message}`,
 				);

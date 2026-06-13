@@ -26,6 +26,7 @@ import {
 	resumeMission,
 	suspendMission,
 } from "./fly-machines.js";
+import { deriveMonitorToken } from "./monitor-token.js";
 import { getTemplate } from "./templates.js";
 
 // ---------------------------------------------------------------------------
@@ -113,6 +114,37 @@ export function createCopilotRouter(
 		});
 
 		res.json({ ok: true, id: msg.id });
+	});
+
+	// ── GET /api/copilot/usage ───────────────────────────────────────────────
+
+	router.get("/usage", async (req: Request, res: Response) => {
+		const missionId = `copilot-${req.userId}`;
+		const [agg] = await db
+			.collection("llmCallLog")
+			.aggregate([
+				{ $match: { missionId } },
+				{
+					$group: {
+						_id: null,
+						calls: { $sum: 1 },
+						inputTokens: { $sum: "$usage.inputTokens" },
+						outputTokens: { $sum: "$usage.outputTokens" },
+						cacheReadTokens: { $sum: "$usage.cacheReadTokens" },
+						costUsd: { $sum: "$usage.cost.totalCostUsd" },
+					},
+				},
+			])
+			.toArray();
+		res.json(
+			agg ?? {
+				calls: 0,
+				inputTokens: 0,
+				outputTokens: 0,
+				cacheReadTokens: 0,
+				costUsd: 0,
+			},
+		);
 	});
 
 	// ── GET /api/copilot/history ──────────────────────────────────────────────
@@ -291,7 +323,7 @@ async function executeAction(
 
 		case "suspend_mission": {
 			const missionId = payload.missionId as string;
-			const mission = await missions.findOne({ missionId });
+			const mission = await missions.findOne({ missionId, userId });
 			if (!mission?.machineId)
 				throw new Error(`Mission "${missionId}" has no machine`);
 			await suspendMission(mission.machineId);
@@ -304,7 +336,7 @@ async function executeAction(
 
 		case "resume_mission": {
 			const missionId = payload.missionId as string;
-			const mission = await missions.findOne({ missionId });
+			const mission = await missions.findOne({ missionId, userId });
 			if (!mission?.machineId)
 				throw new Error(`Mission "${missionId}" has no machine`);
 			await resumeMission(mission.machineId);
@@ -321,7 +353,7 @@ async function executeAction(
 			const content = payload.content as string;
 			const agentId = payload.agentId as string | undefined;
 
-			const mission = await missions.findOne({ missionId });
+			const mission = await missions.findOne({ missionId, userId });
 			if (!mission?.privateIp)
 				throw new Error(`Mission "${missionId}" has no private IP`);
 
@@ -329,9 +361,13 @@ async function executeAction(
 				? `/files/workdir/${encodeURIComponent(agentId)}/write`
 				: "/files/shared/write";
 
+			const monitorToken = deriveMonitorToken(missionId);
 			const res = await fetch(`http://[${mission.privateIp}]:4000${endpoint}`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					"Content-Type": "application/json",
+					...(monitorToken ? { "x-monitor-token": monitorToken } : {}),
+				},
 				body: JSON.stringify({ path, content }),
 				signal: AbortSignal.timeout(15_000),
 			});
@@ -343,13 +379,46 @@ async function executeAction(
 			const id = (payload.id as string | undefined) ?? randomUUID().slice(0, 8);
 			const name = payload.name as string;
 			const teamConfigYaml = payload.teamConfigYaml as string;
-			const teamFiles =
-				(payload.teamFiles as
-					| Array<{
-							path: string;
-							content: string;
-					  }>
-					| undefined) ?? [];
+			const fromMissionId = payload.fromMissionId as string | undefined;
+			let teamFiles: TeamFile[] =
+				(payload.teamFiles as TeamFile[] | undefined) ?? [];
+
+			// If fromMissionId is given, snapshot the running mission's sharedDir and
+			// merge the files into teamFiles (inline payload takes precedence).
+			if (fromMissionId) {
+				const srcMission = await db
+					.collection<MissionDoc>("missions")
+					.findOne({ missionId: fromMissionId, userId });
+				if (!srcMission?.privateIp) {
+					return `save_template: mission "${fromMissionId}" not found, not owned by you, or has no running machine (must be in "running" state to snapshot files)`;
+				}
+				const snapped = await snapshotSharedDir(
+					srcMission.privateIp,
+					fromMissionId,
+				);
+				const existing = new Set(teamFiles.map((f) => f.path));
+				// Payload files take precedence; snapshot fills in everything else.
+				teamFiles = [
+					...teamFiles,
+					...snapped.filter((f) => !existing.has(f.path)),
+				];
+			}
+
+			// Warn if the YAML references {{sharedDir}}/ paths but no teamFiles are
+			// attached — agents will fail at runtime looking for those paths.
+			const refsSharedDir = teamConfigYaml.includes("{{sharedDir}}/");
+			if (refsSharedDir && teamFiles.length === 0) {
+				// Still save, but surface the warning so the operator can act.
+				await db.collection<{ _id: string }>("templates").updateOne(
+					{ _id: id },
+					{
+						$set: { name, teamConfigYaml, teamFiles, updatedAt: now },
+						$setOnInsert: { createdAt: now },
+					},
+					{ upsert: true },
+				);
+				return `WARNING: Template "${id}" saved, but it references {{sharedDir}}/ paths and has no teamFiles attached. Agents will not find those files at runtime. To fix: re-save with fromMissionId pointing to a running mission that has those files in its sharedDir, or pass teamFiles explicitly.`;
+			}
 
 			await db.collection<{ _id: string }>("templates").updateOne(
 				{ _id: id },
@@ -359,7 +428,7 @@ async function executeAction(
 				},
 				{ upsert: true },
 			);
-			return `Template "${id}" saved`;
+			return `Template "${id}" saved (${teamFiles.length} teamFiles attached)`;
 		}
 
 		case "save_session_config": {
@@ -378,7 +447,7 @@ async function executeAction(
 			}
 			const scMission = await db
 				.collection("missions")
-				.findOne({ missionId: scMissionId });
+				.findOne({ missionId: scMissionId, userId });
 			if (!scMission) return `Mission ${scMissionId} not found`;
 			if (scMission.status !== "suspended") {
 				return `Mission ${scMissionId} must be suspended before editing config (current: ${scMission.status as string})`;
@@ -456,4 +525,93 @@ async function executeAction(
 		default:
 			throw new Error(`Unknown action type "${action.type}"`);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+type TeamFile = { path: string; content: string };
+
+/**
+ * Recursively read a mission's sharedDir via the monitor server and return a
+ * teamFiles-compatible array.
+ *
+ * Path translation:
+ *   sharedDir/skills/_team/foo  → skills/foo   (re-deployed to _team/ by WorkspaceManager)
+ *   sharedDir/GUIDE.md          → GUIDE.md     (copied to sharedDir root by WorkspaceManager)
+ *
+ * Skipped:
+ *   skills/_platform/   — baked into the Docker image; never needs embedding
+ *   skills/mission/     — agent-created during runtime; not template material
+ *   .git/               — version control metadata
+ *   logs/               — runtime output
+ */
+async function snapshotSharedDir(
+	privateIp: string,
+	missionId: string,
+): Promise<TeamFile[]> {
+	const token = deriveMonitorToken(missionId);
+	const headers: Record<string, string> = token
+		? { "x-monitor-token": token }
+		: {};
+	const base = `http://[${privateIp}]:4000`;
+
+	const files: TeamFile[] = [];
+
+	type MonitorFileResponse = {
+		type: "dir" | "file";
+		entries?: Array<{ name: string; type: "dir" | "file" }>;
+		encoding?: "text" | "base64";
+		content?: string;
+	};
+
+	async function monitorGet(
+		path: string,
+	): Promise<MonitorFileResponse | undefined> {
+		try {
+			const r = await fetch(
+				`${base}/files/shared?path=${encodeURIComponent(path)}`,
+				{ headers, signal: AbortSignal.timeout(10_000) },
+			);
+			if (!r.ok) return undefined;
+			return (await r.json()) as MonitorFileResponse;
+		} catch {
+			return undefined;
+		}
+	}
+
+	async function walk(urlPath: string): Promise<void> {
+		const data = await monitorGet(urlPath);
+		if (!data) return;
+
+		if (data.type === "dir") {
+			for (const entry of data.entries ?? []) {
+				if (entry.name === ".git" || entry.name === "logs") continue;
+				const child =
+					urlPath === "/" ? `/${entry.name}` : `${urlPath}/${entry.name}`;
+				if (urlPath === "/" && entry.name === "skills") {
+					// Only descend into _team/ — skip _platform/ and mission/.
+					await walk("/skills/_team");
+					continue;
+				}
+				await walk(child);
+			}
+		} else if (
+			data.type === "file" &&
+			data.encoding === "text" &&
+			data.content !== undefined
+		) {
+			// Convert sharedDir-relative path to teamFiles path.
+			// skills/_team/foo → skills/foo  (WorkspaceManager re-deploys to _team/)
+			const rel = urlPath
+				.replace(/^\/skills\/_team\//, "skills/")
+				.replace(/^\//, "");
+			files.push({ path: rel, content: data.content });
+		}
+		// Binary files are skipped — not useful in templates.
+	}
+
+	await walk("/");
+	return files;
 }
