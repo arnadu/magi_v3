@@ -643,37 +643,9 @@ async function main(): Promise<void> {
 		);
 	}
 
-	// Write team files (skills, playbook.json, etc.) from TEAM_FILES_PAYLOAD to the
-	// team directory on every boot. Always overwrites so control-plane edits take effect.
-	const teamFilesPayload = process.env.TEAM_FILES_PAYLOAD;
-	const teamConfigYamlTarget = process.env.TEAM_CONFIG;
-	if (teamFilesPayload && teamConfigYamlTarget) {
-		const teamDir = join(
-			dirname(teamConfigYamlTarget),
-			basename(teamConfigYamlTarget, ".yaml"),
-		);
-		try {
-			const files = JSON.parse(
-				Buffer.from(teamFilesPayload, "base64").toString("utf-8"),
-			) as Array<{ path: string; content: string }>;
-			let written = 0;
-			for (const { path: relPath, content } of files) {
-				const dest = join(teamDir, relPath);
-				mkdirSync(dirname(dest), { recursive: true });
-				writeFileSync(dest, content);
-				written++;
-			}
-			if (written > 0) {
-				process.stdout.write(
-					`[daemon] Wrote ${written} team files to ${teamDir}\n`,
-				);
-			}
-		} catch (e) {
-			process.stderr.write(
-				`[daemon] Failed to write team files: ${(e as Error).message}\n`,
-			);
-		}
-	}
+	// Team files are fetched from MongoDB after connection (see below) — the
+	// previous TEAM_FILES_PAYLOAD env var approach exceeded Fly's machine config
+	// size limit for team configs with many skill files.
 
 	const teamConfigPath = process.env.TEAM_CONFIG;
 	const mongoUri = process.env.MONGODB_URI;
@@ -725,6 +697,42 @@ async function main(): Promise<void> {
 	process.stdout.write("[daemon] Connecting to MongoDB…\n");
 	const { client, db } = await connectMongo(mongoUri);
 	process.stdout.write("[daemon] MongoDB connected.\n");
+
+	// Fetch team files from the mission document and write to /missions/team/ on
+	// every boot. Stored in MongoDB before machine provisioning so they survive
+	// restarts without requiring a TEAM_FILES_PAYLOAD env var (which would exceed
+	// Fly's machine config size limit for large team configs).
+	const teamFilesConfigTarget = process.env.TEAM_CONFIG;
+	if (teamFilesConfigTarget) {
+		try {
+			const missionDoc = await db
+				.collection("missions")
+				.findOne({ missionId }, { projection: { teamFiles: 1 } });
+			const dbFiles = missionDoc?.teamFiles as
+				| Array<{ path: string; content: string }>
+				| undefined;
+			if (dbFiles && dbFiles.length > 0) {
+				const teamDir = join(
+					dirname(teamFilesConfigTarget),
+					basename(teamFilesConfigTarget, ".yaml"),
+				);
+				let written = 0;
+				for (const { path: relPath, content } of dbFiles) {
+					const dest = join(teamDir, relPath);
+					mkdirSync(dirname(dest), { recursive: true });
+					writeFileSync(dest, content);
+					written++;
+				}
+				process.stdout.write(
+					`[daemon] Wrote ${written} team files from MongoDB to ${teamDir}\n`,
+				);
+			}
+		} catch (e) {
+			process.stderr.write(
+				`[daemon] Failed to write team files from MongoDB: ${(e as Error).message}\n`,
+			);
+		}
+	}
 
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
 	const conversationRepo = createMongoConversationRepository(db);

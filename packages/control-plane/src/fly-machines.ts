@@ -137,20 +137,15 @@ export async function provisionMission(
 	// teamDir is derived from TEAM_CONFIG path: dirname + basename without .yaml,
 	// so /missions/team.yaml → teamDir = /missions/team — playbook.json, skills/
 	// all resolve correctly without any extra path overrides.
+	// teamFiles are stored in MongoDB before provisioning and fetched by the
+	// daemon at startup — no TEAM_FILES_PAYLOAD env var needed (would exceed
+	// Fly's machine config size limit for large team configs).
 	const teamConfigEnv = opts.teamConfigYaml
 		? {
 				TEAM_CONFIG: "/missions/team.yaml",
 				TEAM_CONFIG_YAML: Buffer.from(opts.teamConfigYaml, "utf-8").toString(
 					"base64",
 				),
-				...(opts.teamFiles && opts.teamFiles.length > 0
-					? {
-							TEAM_FILES_PAYLOAD: Buffer.from(
-								JSON.stringify(opts.teamFiles),
-								"utf-8",
-							).toString("base64"),
-						}
-					: {}),
 			}
 		: {
 				TEAM_CONFIG: `/app/config/teams/${teamConfigName}.yaml`,

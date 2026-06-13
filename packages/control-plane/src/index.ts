@@ -113,13 +113,18 @@ async function main(): Promise<void> {
 	app.use(requireAuth);
 
 	// Mission templates — list available team configs.
-	app.use("/api/templates", express.json(), createTemplatesRouter(db));
+	// 4 MB limit: template payloads include teamFiles (skills, scripts) which can exceed 100 KB.
+	app.use(
+		"/api/templates",
+		express.json({ limit: "4mb" }),
+		createTemplatesRouter(db),
+	);
 
 	// Copilot chat API + SSE (per-user daemon started lazily on first message).
 	const pendingActions = new PendingActionsStore();
 	app.use(
 		"/api/copilot",
-		express.json(),
+		express.json({ limit: "4mb" }),
 		rateLimit({
 			windowMs: 60_000,
 			max: 30,
@@ -130,9 +135,14 @@ async function main(): Promise<void> {
 	);
 
 	// Mission CRUD + lifecycle.
+	// 4 MB limit: mission creation and config-edit endpoints accept teamFiles (skills, scripts).
 	// express.json() is scoped here — proxy routes below must NOT consume the
 	// request body or http-proxy-middleware cannot forward it to the daemon.
-	app.use("/api/missions", express.json(), createMissionsRouter(db));
+	app.use(
+		"/api/missions",
+		express.json({ limit: "4mb" }),
+		createMissionsRouter(db),
+	);
 
 	// Per-user LLM usage summary (admin sees all missions).
 	app.get("/api/usage", async (req, res) => {

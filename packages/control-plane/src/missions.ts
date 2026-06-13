@@ -331,11 +331,35 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 
+		// Resolve YAML + teamFiles BEFORE inserting the mission doc so the daemon
+		// can fetch teamFiles from MongoDB at startup instead of reading a large
+		// TEAM_FILES_PAYLOAD env var (which would exceed Fly's machine config limit
+		// for team configs with many skill files).
+		let resolvedYaml: string | undefined;
+		let resolvedFiles: Array<{ path: string; content: string }> = [];
+
+		if (inlineYaml) {
+			resolvedYaml = patchMissionId(inlineYaml, missionId);
+			resolvedFiles = inlineFiles ?? [];
+		} else {
+			const template = await getTemplate(db, teamConfig);
+			if (template) {
+				resolvedYaml = patchMissionId(template.teamConfigYaml, missionId);
+				resolvedFiles = template.teamFiles ?? [];
+			} else {
+				console.warn(
+					`[missions] No template found for "${teamConfig}" — falling back to baked-in image path`,
+				);
+			}
+		}
+
 		const doc: MissionDoc = {
 			missionId,
 			userId: req.userId,
 			name,
 			teamConfig,
+			teamConfigYaml: resolvedYaml,
+			teamFiles: resolvedFiles,
 			status: "provisioning",
 			createdAt: new Date(),
 			updatedAt: new Date(),
@@ -343,27 +367,8 @@ export function createMissionsRouter(db: Db): Router {
 		await col.insertOne(doc);
 
 		try {
-			// Caller-supplied YAML takes precedence over template lookup.
-			// This allows the UI to launch a customised session without saving
-			// a separate template record.
-			let resolvedYaml: string | undefined;
-			let resolvedFiles: Array<{ path: string; content: string }> = [];
-
-			if (inlineYaml) {
-				resolvedYaml = patchMissionId(inlineYaml, missionId);
-				resolvedFiles = inlineFiles ?? [];
-			} else {
-				const template = await getTemplate(db, teamConfig);
-				if (template) {
-					resolvedYaml = patchMissionId(template.teamConfigYaml, missionId);
-					resolvedFiles = template.teamFiles ?? [];
-				} else {
-					console.warn(
-						`[missions] No template found for "${teamConfig}" — falling back to baked-in image path`,
-					);
-				}
-			}
-
+			// Cloud: omit teamFiles from the machine env — daemon fetches from MongoDB.
+			// Local: write to disk since the developer's daemon reads from the local path.
 			const handle = isLocalExecution()
 				? provisionLocal(missionId, {
 						teamConfigYaml: resolvedYaml,
@@ -371,7 +376,6 @@ export function createMissionsRouter(db: Db): Router {
 					})
 				: await provisionMission(missionId, teamConfig, {
 						teamConfigYaml: resolvedYaml,
-						teamFiles: resolvedFiles,
 					});
 			await col.updateOne(
 				{ missionId },
@@ -380,8 +384,6 @@ export function createMissionsRouter(db: Db): Router {
 						machineId: handle.machineId,
 						privateIp: handle.privateIp,
 						volumeId: handle.volumeId,
-						teamConfigYaml: resolvedYaml,
-						teamFiles: resolvedFiles,
 						status: "running",
 						updatedAt: new Date(),
 					},
@@ -474,7 +476,7 @@ export function createMissionsRouter(db: Db): Router {
 				const handle = await provisionMission(missionId, mission.teamConfig, {
 					existingVolumeId: mission.volumeId,
 					teamConfigYaml: mission.teamConfigYaml,
-					teamFiles: mission.teamFiles ?? [],
+					// teamFiles omitted: daemon fetches from missions collection at startup
 				});
 				await col.updateOne(
 					{ missionId },
