@@ -596,22 +596,29 @@ history, mental maps, and the LLM call log remain queryable at any time.
 
 ### Update the worker image
 
-Push to `main`. The `build-execution-image.yml` workflow rebuilds and pushes the image,
-then clears the `FLY_MISSIONS_IMAGE` pin on the dev control plane.
+Always use the deploy script — never bare `flyctl deploy`:
 
-The next mission you provision will use the new image. Existing running missions continue
-on their current machine image — they are unaffected until you suspend + resume them
-(resume creates a new machine from the latest image on the same Volume).
-
-To pin a specific image version:
 ```bash
-flyctl secrets set -a magi-control-dev \
-  FLY_MISSIONS_IMAGE="registry.fly.io/magi-missions-dev:abc1234"
+bash scripts/deploy-missions.sh          # dev (default)
+bash scripts/deploy-missions.sh --suffix prod
 ```
 
-To return to latest:
+The script builds the image, extracts the deployment tag (`deployment-<hash>`), and
+pins `FLY_MISSIONS_IMAGE` on the control plane in one atomic step.
+
+**Why the script is required:** `flyctl deploy` creates a deployment-tagged image but does
+NOT update `:latest` in the Fly registry. API-provisioned machines must specify an explicit
+image ref. If you run bare `flyctl deploy` without updating `FLY_MISSIONS_IMAGE`, new
+missions will spin up on whatever `:latest` pointed to before — potentially weeks old.
+
+The next mission you provision after the script finishes will use the new image. Existing
+running missions continue on their current machine image until you suspend + resume them
+(resume deletes the old machine and provisions a new one on the same Volume with the
+latest `FLY_MISSIONS_IMAGE`).
+
+To inspect the current pin:
 ```bash
-flyctl secrets unset -a magi-control-dev FLY_MISSIONS_IMAGE
+flyctl secrets list --app magi-control-dev | grep FLY_MISSIONS_IMAGE
 ```
 
 ### Update the control plane

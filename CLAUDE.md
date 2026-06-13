@@ -22,6 +22,14 @@ npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY and
 npm run lint              # Biome check (lint + format)
 npm run lint:fix          # Biome auto-fix
 
+# Cloud deployment
+bash scripts/bootstrap.sh             # full initial setup (creates apps, sets secrets, builds + deploys)
+bash scripts/deploy-missions.sh       # ALWAYS use this to deploy the execution plane — builds image,
+                                      # then pins FLY_MISSIONS_IMAGE on the control plane so new
+                                      # missions use the fresh image (not a stale :latest tag).
+                                      # Never use bare `flyctl deploy` for the missions app alone.
+flyctl deploy --config fly.control-dev.toml  # deploy control plane only
+
 # CLI — run the orchestration loop with a team config
 cd packages/agent-runtime-worker && npm run build   # build first
 TEAM_CONFIG=config/teams/test/word-count.yaml npm run cli -- "count the words"
