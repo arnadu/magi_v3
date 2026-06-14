@@ -1,35 +1,39 @@
 /**
- * Mission templates — MongoDB-backed collection seeded from config/teams/ on disk.
+ * Mission templates — versioned, MongoDB-backed collection seeded from config/teams/ on disk.
  *
- * Templates are the operator-visible set of team configs available for launch.
+ * Each save creates a new version document. "Latest" is always the highest version number.
+ * Missions record which version they launched from for a permanent audit trail.
+ *
+ * Schema: { _id: ObjectId, templateId, version, name, teamConfigYaml, teamFiles, createdAt, createdBy }
+ * Unique index: { templateId, version }
+ *
  * Configs under config/teams/test/ are excluded (dev/CI only).
- *
- * Seeding is idempotent: existing documents are never overwritten by the seed
- * so operator edits made via a future PUT /api/templates/:id are preserved.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { parseTeamConfig } from "@magi/agent-config";
 import { Router } from "express";
-import type { Db } from "mongodb";
+import type { Db, ObjectId } from "mongodb";
 
 export interface TeamFile {
-	path: string; // relative to team dir, e.g. "skills/data-factory/SKILL.md"
+	path: string; // relative to team dir, e.g. "skills/dpo-forms/SKILL.md"
 	content: string; // UTF-8 text
 }
 
 export interface MissionTemplate {
-	_id: string; // template ID, e.g. "gold-digest"
-	name: string; // display name, e.g. "Gold Macro Digest"
-	teamConfigYaml: string; // full YAML content
-	teamFiles: TeamFile[]; // all files under config/teams/{id}/
+	_id: ObjectId;
+	templateId: string; // e.g. "dpo-team"
+	version: number; // 1, 2, 3… monotonically increasing per templateId
+	name: string; // display name
+	teamConfigYaml: string;
+	teamFiles: TeamFile[];
 	createdAt: Date;
-	updatedAt: Date;
+	createdBy: string; // userId, or "seed" for disk-seeded versions
 }
 
 // ---------------------------------------------------------------------------
-// Seed
+// Internal helpers
 // ---------------------------------------------------------------------------
 
 /**
@@ -63,13 +67,35 @@ function collectFiles(dir: string, rootDir: string): TeamFile[] {
 	return results;
 }
 
+/** Return the next version number for a templateId (1 if no versions exist). */
+export async function getNextTemplateVersion(
+	db: Db,
+	templateId: string,
+): Promise<number> {
+	const latest = await db
+		.collection<MissionTemplate>("templates")
+		.findOne(
+			{ templateId },
+			{ sort: { version: -1 }, projection: { version: 1 } },
+		);
+	return (latest?.version ?? 0) + 1;
+}
+
+// ---------------------------------------------------------------------------
+// Seed
+// ---------------------------------------------------------------------------
+
 /**
- * Read all *.yaml files from config/teams/ (excluding config/teams/test/) and
- * insert them into the templates collection if they do not already exist.
- * Backfills teamFiles on documents that were seeded before this field existed.
+ * Read all *.yaml files from config/teams/ (excluding test/) and insert a v1
+ * document for each that has no versions yet. Existing operator-edited templates
+ * are never touched — seeding only initialises missing ones.
  * Called once at control plane startup.
  */
 export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
+	const col = db.collection<MissionTemplate>("templates");
+	// Ensure the compound unique index exists.
+	await col.createIndex({ templateId: 1, version: 1 }, { unique: true });
+
 	const teamsDir = join(repoRoot, "config", "teams");
 	let files: string[];
 	try {
@@ -83,10 +109,10 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 		return;
 	}
 
-	const col = db.collection<MissionTemplate>("templates");
-
 	for (const file of files) {
-		const id = basename(file, ".yaml");
+		const templateId = basename(file, ".yaml");
+		// Skip test configs.
+		if (templateId.startsWith("test/") || file.includes("/test/")) continue;
 
 		let yaml: string;
 		try {
@@ -98,41 +124,44 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 			continue;
 		}
 
-		const teamDir = join(teamsDir, id);
+		const existing = await col.findOne({ templateId });
+		if (existing) continue; // operator has versions already — never overwrite
+
+		const teamDir = join(teamsDir, templateId);
 		const teamFiles = collectFiles(teamDir, teamDir);
 
-		const existing = await col.findOne({ _id: id });
-		if (existing) {
-			// Backfill teamFiles if missing (templates seeded before this field existed).
-			if (!existing.teamFiles || existing.teamFiles.length === 0) {
-				await col.updateOne(
-					{ _id: id },
-					{ $set: { teamFiles, updatedAt: new Date() } },
-				);
-				console.log(
-					`[templates] Backfilled ${teamFiles.length} files for template: ${id}`,
-				);
-			}
-			continue;
-		}
-
-		// Extract the display name from the YAML (name: "...") without a full parse.
 		const nameMatch = yaml.match(/^\s*name:\s*["']?([^"'\n]+)["']?/m);
-		const name = nameMatch ? nameMatch[1].trim() : id;
+		const name = nameMatch ? nameMatch[1].trim() : templateId;
 
-		const now = new Date();
 		await col.insertOne({
-			_id: id,
+			templateId,
+			version: 1,
 			name,
 			teamConfigYaml: yaml,
 			teamFiles,
-			createdAt: now,
-			updatedAt: now,
-		});
+			createdAt: new Date(),
+			createdBy: "seed",
+		} as unknown as MissionTemplate);
 		console.log(
-			`[templates] Seeded template: ${id} ("${name}") with ${teamFiles.length} files`,
+			`[templates] Seeded template: ${templateId} ("${name}") v1 with ${teamFiles.length} files`,
 		);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Lookup (used by missions.ts at provision time)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the latest version of a template, or null if none exists.
+ */
+export async function getTemplate(
+	db: Db,
+	templateId: string,
+): Promise<MissionTemplate | null> {
+	return db
+		.collection<MissionTemplate>("templates")
+		.findOne({ templateId }, { sort: { version: -1 } });
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +172,43 @@ export function createTemplatesRouter(db: Db): Router {
 	const router = Router();
 	const col = db.collection<MissionTemplate>("templates");
 
-	/** Create a new template. */
+	/** List all templates — one row per templateId at the latest version. */
+	router.get("/", async (_req, res) => {
+		const latest = await col
+			.aggregate<{ _id: string; name: string; version: number }>([
+				{ $sort: { version: -1 } },
+				{
+					$group: {
+						_id: "$templateId",
+						name: { $first: "$name" },
+						version: { $first: "$version" },
+					},
+				},
+				{ $sort: { _id: 1 } },
+			])
+			.toArray();
+		res.json(
+			latest.map((t) => ({ id: t._id, name: t.name, version: t.version })),
+		);
+	});
+
+	/** Get the latest version of a template. */
+	router.get("/:id", async (req, res) => {
+		const template = await getTemplate(db, req.params.id);
+		if (!template) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		res.json({
+			id: template.templateId,
+			version: template.version,
+			name: template.name,
+			teamConfigYaml: template.teamConfigYaml,
+			teamFiles: template.teamFiles,
+		});
+	});
+
+	/** Create a template (v1). Fails if any version already exists for this templateId. */
 	router.post("/", async (req, res) => {
 		const { id, name, teamConfigYaml, teamFiles } = req.body as {
 			id?: string;
@@ -165,49 +230,24 @@ export function createTemplatesRouter(db: Db): Router {
 				.json({ error: `Invalid team config: ${(e as Error).message}` });
 			return;
 		}
-		const existing = await col.findOne({ _id: id });
+		const existing = await col.findOne({ templateId: id });
 		if (existing) {
 			res.status(409).json({ error: "Template already exists" });
 			return;
 		}
-		const now = new Date();
 		await col.insertOne({
-			_id: id,
+			templateId: id,
+			version: 1,
 			name,
 			teamConfigYaml,
 			teamFiles: teamFiles ?? [],
-			createdAt: now,
-			updatedAt: now,
-		});
-		res.status(201).json({ ok: true, id });
+			createdAt: new Date(),
+			createdBy: (req as { userId?: string }).userId ?? "api",
+		} as unknown as MissionTemplate);
+		res.status(201).json({ ok: true, id, version: 1 });
 	});
 
-	/** List all templates — returns [{id, name}] sorted by id. */
-	router.get("/", async (_req, res) => {
-		const templates = await db
-			.collection<MissionTemplate>("templates")
-			.find({}, { projection: { _id: 1, name: 1 } })
-			.sort({ _id: 1 })
-			.toArray();
-		res.json(templates.map((t) => ({ id: t._id, name: t.name })));
-	});
-
-	/** Get full template detail — returns {id, name, teamConfigYaml, teamFiles}. */
-	router.get("/:id", async (req, res) => {
-		const template = await getTemplate(db, req.params.id);
-		if (!template) {
-			res.status(404).json({ error: "Not found" });
-			return;
-		}
-		res.json({
-			id: template._id,
-			name: template.name,
-			teamConfigYaml: template.teamConfigYaml,
-			teamFiles: template.teamFiles,
-		});
-	});
-
-	/** Update a template's YAML and files. */
+	/** Update a template — inserts a new version, preserves history. */
 	router.put("/:id", async (req, res) => {
 		const { teamConfigYaml, teamFiles } = req.body as {
 			teamConfigYaml?: string;
@@ -225,35 +265,25 @@ export function createTemplatesRouter(db: Db): Router {
 				.json({ error: `Invalid team config: ${(e as Error).message}` });
 			return;
 		}
-		const result = await db.collection<MissionTemplate>("templates").updateOne(
-			{ _id: req.params.id },
-			{
-				$set: {
-					teamConfigYaml,
-					teamFiles: teamFiles ?? [],
-					updatedAt: new Date(),
-				},
-			},
-		);
-		if (result.matchedCount === 0) {
+		const latest = await getTemplate(db, req.params.id);
+		if (!latest) {
 			res.status(404).json({ error: "Template not found" });
 			return;
 		}
-		res.json({ ok: true });
+		const nextVersion = latest.version + 1;
+		await col.insertOne({
+			templateId: req.params.id,
+			version: nextVersion,
+			name: latest.name,
+			teamConfigYaml,
+			teamFiles: teamFiles ?? latest.teamFiles,
+			createdAt: new Date(),
+			createdBy: (req as { userId?: string }).userId ?? "api",
+		} as unknown as MissionTemplate);
+		res.json({ ok: true, version: nextVersion });
 	});
 
 	return router;
-}
-
-// ---------------------------------------------------------------------------
-// Lookup (used by missions.ts at provision time)
-// ---------------------------------------------------------------------------
-
-export async function getTemplate(
-	db: Db,
-	id: string,
-): Promise<MissionTemplate | null> {
-	return db.collection<MissionTemplate>("templates").findOne({ _id: id });
 }
 
 // ---------------------------------------------------------------------------
@@ -266,8 +296,6 @@ export async function getTemplate(
  * block — agent `id:` fields (which are list items) are untouched.
  */
 export function patchMissionId(yaml: string, missionId: string): string {
-	// Match the mission: block header, then lazily consume indented lines until
-	// we find `  id: <value>` and replace only that value.
 	return yaml.replace(
 		/^(mission:\r?\n(?:[ \t]+[^\n]*\r?\n)*?)([ \t]+id:[ \t]*)\S[^\n]*/m,
 		`$1$2${missionId}`,

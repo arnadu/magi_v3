@@ -301,17 +301,28 @@ export function createCopilotTools(
 
 	const listTemplates: MagiTool = {
 		name: "ListTemplates",
-		description: "List available mission team config templates.",
+		description:
+			"List available mission team config templates (latest version of each).",
 		parameters: Type.Object({}),
 		async execute() {
-			// Template _id is a user-defined string, not ObjectId.
-			const templates = await db
-				.collection<{ _id: string; name: string }>("templates")
-				.find({}, { projection: { _id: 1, name: 1 } })
-				.sort({ _id: 1 })
+			const latest = await db
+				.collection("templates")
+				.aggregate<{ _id: string; name: string; version: number }>([
+					{ $sort: { version: -1 } },
+					{
+						$group: {
+							_id: "$templateId",
+							name: { $first: "$name" },
+							version: { $first: "$version" },
+						},
+					},
+					{ $sort: { _id: 1 } },
+				])
 				.toArray();
-			if (templates.length === 0) return ok("(no templates)");
-			const rows = templates.map((t) => `${t._id} | ${t.name}`).join("\n");
+			if (latest.length === 0) return ok("(no templates)");
+			const rows = latest
+				.map((t) => `${t._id} | v${t.version} | ${t.name}`)
+				.join("\n");
 			return ok(rows);
 		},
 	};
@@ -319,7 +330,7 @@ export function createCopilotTools(
 	const getTemplate: MagiTool = {
 		name: "GetTemplate",
 		description:
-			"Get the full YAML and associated files for a team config template.",
+			"Get the full YAML and associated files for a team config template (latest version).",
 		parameters: Type.Object({
 			id: Type.String({ description: "Template ID" }),
 		}),
@@ -327,7 +338,7 @@ export function createCopilotTools(
 			const templateId = args.id as string;
 			const template = await db
 				.collection<MissionTemplate>("templates")
-				.findOne({ _id: templateId });
+				.findOne({ templateId }, { sort: { version: -1 } });
 			if (!template) return err(`Template "${templateId}" not found`);
 
 			const fileList = Array.isArray(template.teamFiles)
@@ -337,7 +348,7 @@ export function createCopilotTools(
 				: "(none)";
 
 			const text = [
-				`=== Template: ${template._id} (${template.name}) ===`,
+				`=== Template: ${template.templateId} v${template.version} (${template.name}) ===`,
 				"",
 				template.teamConfigYaml as string,
 				"",
@@ -351,30 +362,24 @@ export function createCopilotTools(
 	const listTemplateVersions: MagiTool = {
 		name: "ListTemplateVersions",
 		description:
-			"List the saved version history for a template. " +
-			"Each save_template action archives the previous state. " +
-			"Use restore_template_version (via ProposeAction) to roll back.",
+			"List the full version history for a template. " +
+			"Every save_template is a new version — nothing is ever deleted. " +
+			"Use restore_template_version (via ProposeAction) to make an old version current again.",
 		parameters: Type.Object({
 			id: Type.String({ description: "Template ID" }),
 		}),
 		async execute(_id, args) {
 			const templateId = args.id as string;
 			const versions = await db
-				.collection<{
-					version: number;
-					name: string;
-					savedAt: Date;
-					savedBy: string;
-					teamFiles?: Array<{ path: string }>;
-				}>("template_versions")
+				.collection<MissionTemplate>("templates")
 				.find(
 					{ templateId },
 					{
 						projection: {
 							version: 1,
 							name: 1,
-							savedAt: 1,
-							savedBy: 1,
+							createdAt: 1,
+							createdBy: 1,
 							teamFiles: 1,
 						},
 					},
@@ -382,10 +387,10 @@ export function createCopilotTools(
 				.sort({ version: -1 })
 				.toArray();
 			if (versions.length === 0)
-				return ok(`No archived versions for template "${templateId}"`);
+				return ok(`No versions found for template "${templateId}"`);
 			const rows = versions.map(
 				(v) =>
-					`v${v.version} | ${v.savedAt.toISOString()} | ${v.savedBy} | ${(v.teamFiles ?? []).length} files | ${v.name}`,
+					`v${v.version} | ${v.createdAt.toISOString()} | ${v.createdBy} | ${(v.teamFiles ?? []).length} files | ${v.name}`,
 			);
 			return ok(rows.join("\n"));
 		},

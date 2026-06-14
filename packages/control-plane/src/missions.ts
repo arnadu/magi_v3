@@ -38,6 +38,8 @@ interface MissionDoc {
 	teamConfigYaml?: string;
 	/** Team files (skills, etc.) stored at provision time; updated on config edit. */
 	teamFiles?: Array<{ path: string; content: string }>;
+	/** Template version used when the mission was launched (audit trail). */
+	templateVersion?: number;
 	machineId?: string;
 	privateIp?: string;
 	volumeId?: string;
@@ -337,6 +339,7 @@ export function createMissionsRouter(db: Db): Router {
 		// for team configs with many skill files).
 		let resolvedYaml: string | undefined;
 		let resolvedFiles: Array<{ path: string; content: string }> = [];
+		let resolvedTemplateVersion: number | undefined;
 
 		if (inlineYaml) {
 			resolvedYaml = patchMissionId(inlineYaml, missionId);
@@ -346,6 +349,7 @@ export function createMissionsRouter(db: Db): Router {
 			if (template) {
 				resolvedYaml = patchMissionId(template.teamConfigYaml, missionId);
 				resolvedFiles = template.teamFiles ?? [];
+				resolvedTemplateVersion = template.version;
 			} else {
 				console.warn(
 					`[missions] No template found for "${teamConfig}" — falling back to baked-in image path`,
@@ -360,6 +364,7 @@ export function createMissionsRouter(db: Db): Router {
 			teamConfig,
 			teamConfigYaml: resolvedYaml,
 			teamFiles: resolvedFiles,
+			templateVersion: resolvedTemplateVersion,
 			status: "provisioning",
 			createdAt: new Date(),
 			updatedAt: new Date(),

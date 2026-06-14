@@ -27,7 +27,11 @@ import {
 	suspendMission,
 } from "./fly-machines.js";
 import { deriveMonitorToken } from "./monitor-token.js";
-import { getTemplate, type MissionTemplate } from "./templates.js";
+import {
+	getNextTemplateVersion,
+	getTemplate,
+	type MissionTemplate,
+} from "./templates.js";
 
 // ---------------------------------------------------------------------------
 // Per-user SSE event bus
@@ -382,20 +386,18 @@ async function executeAction(
 			const fromMissionId = payload.fromMissionId as string | undefined;
 			const inlineFiles = payload.teamFiles as TeamFile[] | undefined;
 
+			// Resolve teamFiles from one of three sources:
+			// 1. Inline payload (explicit replace, including [] to clear)
+			// 2. Mission snapshot via fromMissionId
+			// 3. Latest version in the templates collection (preserve on YAML-only edits)
 			let teamFiles: TeamFile[];
 			if (inlineFiles !== undefined) {
-				// Caller explicitly provided teamFiles (empty array is valid — it clears files).
 				teamFiles = inlineFiles;
 			} else if (fromMissionId) {
-				// Will be populated from mission snapshot below.
 				teamFiles = [];
 			} else {
-				// teamFiles omitted and no fromMissionId: preserve whatever the template already has.
-				// Prevents YAML-only edits (e.g. fixing prompts or mental maps) from silently wiping files.
-				const existing = await db
-					.collection<{ _id: string; teamFiles?: TeamFile[] }>("templates")
-					.findOne({ _id: id }, { projection: { teamFiles: 1 } });
-				teamFiles = existing?.teamFiles ?? [];
+				const latest = await getTemplate(db, id);
+				teamFiles = latest?.teamFiles ?? [];
 			}
 
 			// If fromMissionId is given, snapshot the running mission's sharedDir and
@@ -411,61 +413,34 @@ async function executeAction(
 					srcMission.privateIp,
 					fromMissionId,
 				);
-				const existing = new Set(teamFiles.map((f) => f.path));
+				const existingPaths = new Set(teamFiles.map((f) => f.path));
 				// Payload files take precedence; snapshot fills in everything else.
 				teamFiles = [
 					...teamFiles,
-					...snapped.filter((f) => !existing.has(f.path)),
+					...snapped.filter((f) => !existingPaths.has(f.path)),
 				];
 			}
 
-			// Snapshot the current version before overwriting (version history).
-			const currentTemplate = await db
-				.collection<MissionTemplate>("templates")
-				.findOne({ _id: id });
-			if (currentTemplate) {
-				const lastVersion = await db
-					.collection<{ version: number }>("template_versions")
-					.findOne(
-						{ templateId: id },
-						{ sort: { version: -1 }, projection: { version: 1 } },
-					);
-				await db.collection("template_versions").insertOne({
-					templateId: id,
-					version: (lastVersion?.version ?? 0) + 1,
-					name: currentTemplate.name,
-					teamConfigYaml: currentTemplate.teamConfigYaml,
-					teamFiles: currentTemplate.teamFiles ?? [],
-					savedAt: now,
-					savedBy: userId,
-				});
-			}
+			// Versioning: each save is an insertOne. Version history is free.
+			const nextVersion = await getNextTemplateVersion(db, id);
 
 			// Warn if the YAML references {{sharedDir}}/ paths but no teamFiles are
 			// attached — agents will fail at runtime looking for those paths.
 			const refsSharedDir = teamConfigYaml.includes("{{sharedDir}}/");
-			if (refsSharedDir && teamFiles.length === 0) {
-				// Still save, but surface the warning so the operator can act.
-				await db.collection<{ _id: string }>("templates").updateOne(
-					{ _id: id },
-					{
-						$set: { name, teamConfigYaml, teamFiles, updatedAt: now },
-						$setOnInsert: { createdAt: now },
-					},
-					{ upsert: true },
-				);
-				return `WARNING: Template "${id}" saved (version archived), but it references {{sharedDir}}/ paths and has no teamFiles attached. Agents will not find those files at runtime. To fix: re-save with fromMissionId pointing to a running mission that has those files in its sharedDir, or pass teamFiles explicitly.`;
-			}
+			await db.collection("templates").insertOne({
+				templateId: id,
+				version: nextVersion,
+				name,
+				teamConfigYaml,
+				teamFiles,
+				createdAt: now,
+				createdBy: userId,
+			});
 
-			await db.collection<{ _id: string }>("templates").updateOne(
-				{ _id: id },
-				{
-					$set: { name, teamConfigYaml, teamFiles, updatedAt: now },
-					$setOnInsert: { createdAt: now },
-				},
-				{ upsert: true },
-			);
-			return `Template "${id}" saved (${teamFiles.length} teamFiles attached; previous version archived)`;
+			if (refsSharedDir && teamFiles.length === 0) {
+				return `WARNING: Template "${id}" saved as v${nextVersion}, but it references {{sharedDir}}/ paths and has no teamFiles attached. Agents will not find those files at runtime. To fix: re-save with fromMissionId pointing to a running mission that has those files in its sharedDir, or pass teamFiles explicitly.`;
+			}
+			return `Template "${id}" saved as v${nextVersion} (${teamFiles.length} teamFiles attached)`;
 		}
 
 		case "save_session_config": {
@@ -529,48 +504,26 @@ async function executeAction(
 		case "restore_template_version": {
 			const restoreId = payload.templateId as string;
 			const restoreVersion = payload.version as number;
-			const versionDoc = await db.collection("template_versions").findOne({
-				templateId: restoreId,
-				version: restoreVersion,
-			});
+			const versionDoc = await db
+				.collection<MissionTemplate>("templates")
+				.findOne({ templateId: restoreId, version: restoreVersion });
 			if (!versionDoc) {
 				return `restore_template_version: version ${restoreVersion} of template "${restoreId}" not found`;
 			}
-			// Archive current state before restoring.
-			const currentForRestore = await db
-				.collection<MissionTemplate>("templates")
-				.findOne({ _id: restoreId });
-			if (currentForRestore) {
-				const lastV = await db
-					.collection<{ version: number }>("template_versions")
-					.findOne(
-						{ templateId: restoreId },
-						{ sort: { version: -1 }, projection: { version: 1 } },
-					);
-				await db.collection("template_versions").insertOne({
-					templateId: restoreId,
-					version: (lastV?.version ?? 0) + 1,
-					name: currentForRestore.name,
-					teamConfigYaml: currentForRestore.teamConfigYaml,
-					teamFiles: currentForRestore.teamFiles ?? [],
-					savedAt: now,
-					savedBy: userId,
-				});
-			}
-			await db.collection<{ _id: string }>("templates").updateOne(
-				{ _id: restoreId },
-				{
-					$set: {
-						name: versionDoc.name as string,
-						teamConfigYaml: versionDoc.teamConfigYaml as string,
-						teamFiles: versionDoc.teamFiles,
-						updatedAt: now,
-					},
-				},
-				{ upsert: true },
-			);
+			// Restore = insert a new version copying content from the old one.
+			// The old version and all history remain in the collection unchanged.
+			const nextVersion = await getNextTemplateVersion(db, restoreId);
+			await db.collection("templates").insertOne({
+				templateId: restoreId,
+				version: nextVersion,
+				name: versionDoc.name,
+				teamConfigYaml: versionDoc.teamConfigYaml,
+				teamFiles: versionDoc.teamFiles,
+				createdAt: now,
+				createdBy: userId,
+			});
 			const tf = (versionDoc.teamFiles as TeamFile[]).length;
-			return `Template "${restoreId}" restored to version ${restoreVersion} (${tf} teamFiles; current state archived)`;
+			return `Template "${restoreId}" restored from v${restoreVersion} → new v${nextVersion} (${tf} teamFiles)`;
 		}
 
 		case "cancel_schedule": {
