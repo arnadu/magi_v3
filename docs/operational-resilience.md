@@ -151,6 +151,21 @@ On daemon startup, if any `scheduled_messages` entry has a `scheduledFor` timest
 
 ---
 
+## Layer 9 — Log retention (control-plane daily pruner)
+
+The control-plane scheduler (`scheduler.ts`) runs a daily cron at 02:00 UTC that strips `input`
+and `output` from `llmCallLog` entries older than 7 days, keeping usage/cost metadata indefinitely.
+The pruner also runs once on control-plane startup to catch any entries missed during downtime.
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| Control plane down at 02:00 UTC | Pruning skipped for that day; log grows slightly larger | 🟡 | Startup catch-up run fires when control plane restarts | None — catch-up covers missed days |
+| Atlas write-blocked (quota exceeded) | `$unset` fails; log cannot be pruned; Atlas blocks writes elsewhere | 🔴 | Must delete documents to free space (Atlas allows deletes when over quota); then fix root cause | Monitor Atlas storage; M2 tier gives 2 GB headroom |
+| Pruner crashes mid-run | Partial prune; some old entries retain `input`/`output` | 🟡 | Non-fatal; next scheduled run picks up remaining entries (`$exists` check is idempotent) | None |
+| Pruning removes `input`/`output` needed for active debugging | Cannot reconstruct exact LLM call context for old entries | 🟡 | 7-day window covers most debugging scenarios; `usage` metadata always retained | Extend `LOG_RETENTION_DAYS` if a longer window is needed |
+
+---
+
 ## Gap summary
 
 | ID | Gap | Severity if triggered | Fix complexity |

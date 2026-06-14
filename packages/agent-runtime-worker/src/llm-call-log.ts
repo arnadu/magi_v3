@@ -12,7 +12,11 @@
  *     from large FetchUrl / BrowseWeb / Bash outputs.
  *   - System prompts are stored in full (5–15 kB each; they include the current
  *     Mental Map HTML which changes between sessions).
- *   - All documents are retained indefinitely; no compaction.
+ *   - Retention policy: full entries (input + output + usage) are kept for 7 days.
+ *     After 7 days the control-plane pruner runs $unset on `input` and `output`,
+ *     keeping usage/cost metadata indefinitely for billing reconciliation.
+ *     Pruned entries still carry missionId, agentId, turnNumber, model, savedAt,
+ *     isReflection, and usage — enough for cost accounting and audit.
  *
  * Collection: `llmCallLog`
  */
@@ -60,6 +64,9 @@ export interface LlmCallUsage {
  * `input.messages` is the full context array sent to the model (with tool
  * result bodies truncated). Combined with `input.systemPrompt` this
  * reconstructs exactly what the model was shown at this call.
+ *
+ * `input` and `output` are absent on entries older than 7 days (pruned by the
+ * control-plane daily cron). `usage` and all metadata fields are always present.
  */
 export interface LlmCallLogEntry {
 	missionId: string;
@@ -71,14 +78,16 @@ export interface LlmCallLogEntry {
 	savedAt: Date;
 	/** Model id (e.g. "claude-sonnet-4-6"). */
 	model: string;
-	input: {
+	/** Full call input — absent after the 7-day retention window. */
+	input?: {
 		systemPrompt: string;
 		/** Full message context sent to the model (tool bodies truncated). */
 		messages: LoggedMessage[];
 		/** Names of tools made available on this call. */
 		toolNames: string[];
 	};
-	output: {
+	/** Full model response — absent after the 7-day retention window. */
+	output?: {
 		/** Full AssistantMessage returned by the model. */
 		message: AssistantMessage;
 		stopReason: string;

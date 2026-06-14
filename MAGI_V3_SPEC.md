@@ -593,6 +593,11 @@ Do not write tests for prompt wording, LLM tool selection choices, or report con
 counts (input, output, cache read, cache write), cost, agentId, missionId, turnNumber, and whether
 it was a reflection call. Query with `npm run cli:usage`.
 
+Retention policy: full entries (system prompt, message array, model response) are kept for 7 days.
+After 7 days the control-plane daily cron at 02:00 UTC runs `$unset` on `input` and `output`,
+preserving usage/cost metadata indefinitely for billing reconciliation. The `input` and `output`
+fields on `LlmCallLogEntry` are typed `optional` in TypeScript to reflect this post-pruning state.
+
 **SSE dashboard** (monitor server, port 4000): real-time mission state streamed to the browser.
 Sections: mission feed (all mailbox messages), agent tabs (sessions tree, mental map iframe, LLM
 call detail), queue strip (current running agent), budget pause banner, usage bar with spending cap.

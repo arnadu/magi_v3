@@ -1,15 +1,16 @@
 /**
- * Scheduled message delivery heartbeat (Sprint 14).
+ * Control-plane scheduled tasks.
  *
- * Replaces daemon.ts's node-cron scheduler. Runs in the always-on control
- * plane so execution plane machines can be fully suspended between sessions.
+ * 1. Scheduled message delivery — every minute:
+ *      Find scheduled_messages where deliverAt <= now && status == "pending".
+ *      For each: look up the mission's machineId, resume the machine if stopped,
+ *      insert the message into mailbox, mark delivered, re-arm cron entries.
  *
- * Every minute:
- *   1. Find scheduled_messages where deliverAt <= now && status == "pending".
- *   2. For each: look up the mission's machineId in the missions collection.
- *   3. If the machine is stopped: resume it, wait for started.
- *   4. Insert the message into the mailbox collection.
- *   5. Set status = "delivered" and re-arm for the next cron occurrence.
+ * 2. Log retention pruning — daily at 02:00 UTC:
+ *      Strip `input` and `output` from llmCallLog entries older than 7 days.
+ *      Usage/cost metadata is preserved indefinitely for billing reconciliation.
+ *      This keeps storage manageable on the M0/M2 Atlas tier while retaining
+ *      full context for active debugging windows.
  */
 
 import cronParser from "cron-parser";
@@ -113,14 +114,60 @@ async function deliver(db: Db): Promise<void> {
 	}
 }
 
-/** Start the scheduled delivery heartbeat. Returns a stop function. */
+// ---------------------------------------------------------------------------
+// Log retention pruning
+// ---------------------------------------------------------------------------
+
+const LOG_RETENTION_DAYS = 7;
+
+/**
+ * Strip `input` and `output` from llmCallLog entries older than LOG_RETENTION_DAYS.
+ * Runs on startup (to catch anything missed while the control plane was down) and
+ * then daily at 02:00 UTC.
+ */
+async function pruneOldLogEntries(db: Db): Promise<void> {
+	const cutoff = new Date(
+		Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+	);
+	const result = await db.collection("llmCallLog").updateMany(
+		{
+			savedAt: { $lt: cutoff },
+			$or: [{ input: { $exists: true } }, { output: { $exists: true } }],
+		},
+		{ $unset: { input: "", output: "" } },
+	);
+	if (result.modifiedCount > 0) {
+		console.log(
+			`[scheduler] Log pruning: stripped input/output from ${result.modifiedCount} entries older than ${LOG_RETENTION_DAYS} days`,
+		);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Startup
+// ---------------------------------------------------------------------------
+
+/** Start the scheduled delivery heartbeat and log pruner. Returns a stop function. */
 export function startScheduler(db: Db): () => void {
 	const tick = () =>
-		deliver(db).catch((e) => console.error("[scheduler] Error:", e));
+		deliver(db).catch((e) => console.error("[scheduler] Delivery error:", e));
+
+	const prune = () =>
+		pruneOldLogEntries(db).catch((e) =>
+			console.error("[scheduler] Pruning error:", e),
+		);
 
 	// Deliver any overdue messages immediately on startup.
 	tick();
+	// Prune any stale log entries immediately on startup (catches missed days).
+	prune();
 
-	const task = schedule("* * * * *", tick);
-	return () => task.stop();
+	const deliveryTask = schedule("* * * * *", tick);
+	// Daily at 02:00 UTC.
+	const pruneTask = schedule("0 2 * * *", prune);
+
+	return () => {
+		deliveryTask.stop();
+		pruneTask.stop();
+	};
 }

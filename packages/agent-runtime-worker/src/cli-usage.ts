@@ -167,7 +167,7 @@ function printDetail(entries: LlmCallLogEntry[]): void {
 				rpad(fmtK(e.usage.cacheWriteTokens), 8) +
 				rpad(fmtCost(cost), 10) +
 				"  " +
-				e.output.stopReason,
+				(e.output?.stopReason ?? "—"),
 		);
 	}
 	console.log(sep);
