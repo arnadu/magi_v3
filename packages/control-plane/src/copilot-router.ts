@@ -380,8 +380,23 @@ async function executeAction(
 			const name = payload.name as string;
 			const teamConfigYaml = payload.teamConfigYaml as string;
 			const fromMissionId = payload.fromMissionId as string | undefined;
-			let teamFiles: TeamFile[] =
-				(payload.teamFiles as TeamFile[] | undefined) ?? [];
+			const inlineFiles = payload.teamFiles as TeamFile[] | undefined;
+
+			let teamFiles: TeamFile[];
+			if (inlineFiles !== undefined) {
+				// Caller explicitly provided teamFiles (empty array is valid — it clears files).
+				teamFiles = inlineFiles;
+			} else if (fromMissionId) {
+				// Will be populated from mission snapshot below.
+				teamFiles = [];
+			} else {
+				// teamFiles omitted and no fromMissionId: preserve whatever the template already has.
+				// Prevents YAML-only edits (e.g. fixing prompts or mental maps) from silently wiping files.
+				const existing = await db
+					.collection<{ _id: string; teamFiles?: TeamFile[] }>("templates")
+					.findOne({ _id: id }, { projection: { teamFiles: 1 } });
+				teamFiles = existing?.teamFiles ?? [];
+			}
 
 			// If fromMissionId is given, snapshot the running mission's sharedDir and
 			// merge the files into teamFiles (inline payload takes precedence).
