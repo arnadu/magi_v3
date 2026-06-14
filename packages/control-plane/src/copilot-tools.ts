@@ -348,6 +348,49 @@ export function createCopilotTools(
 		},
 	};
 
+	const listTemplateVersions: MagiTool = {
+		name: "ListTemplateVersions",
+		description:
+			"List the saved version history for a template. " +
+			"Each save_template action archives the previous state. " +
+			"Use restore_template_version (via ProposeAction) to roll back.",
+		parameters: Type.Object({
+			id: Type.String({ description: "Template ID" }),
+		}),
+		async execute(_id, args) {
+			const templateId = args.id as string;
+			const versions = await db
+				.collection<{
+					version: number;
+					name: string;
+					savedAt: Date;
+					savedBy: string;
+					teamFiles?: Array<{ path: string }>;
+				}>("template_versions")
+				.find(
+					{ templateId },
+					{
+						projection: {
+							version: 1,
+							name: 1,
+							savedAt: 1,
+							savedBy: 1,
+							teamFiles: 1,
+						},
+					},
+				)
+				.sort({ version: -1 })
+				.toArray();
+			if (versions.length === 0)
+				return ok(`No archived versions for template "${templateId}"`);
+			const rows = versions.map(
+				(v) =>
+					`v${v.version} | ${v.savedAt.toISOString()} | ${v.savedBy} | ${(v.teamFiles ?? []).length} files | ${v.name}`,
+			);
+			return ok(rows.join("\n"));
+		},
+	};
+
 	// ─── B2: mutating via ProposeAction ───────────────────────────────────────
 
 	const proposeAction: MagiTool = {
@@ -361,7 +404,12 @@ export function createCopilotTools(
 			"- suspend_mission: { missionId }\n" +
 			"- resume_mission: { missionId }\n" +
 			"- write_mission_file: { missionId, path, content, agentId? }\n" +
-			"- save_template: { id, name, teamConfigYaml, teamFiles?: [{path, content}] }\n" +
+			"- save_template: { id, name, teamConfigYaml, teamFiles?: [{path, content}], fromMissionId?: string }\n" +
+			"  teamFiles rules: omit teamFiles entirely to preserve whatever the template already has (safe for YAML-only edits);\n" +
+			"  pass teamFiles explicitly to replace them; use fromMissionId (a running mission id) to snapshot its sharedDir instead.\n" +
+			"  WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.\n" +
+			"  Each save archives the previous state — use ListTemplateVersions to see history and restore_template_version to roll back.\n" +
+			"- restore_template_version: { templateId, version } — roll back a template to an archived version (archives current state first)\n" +
 			"- save_session_config: { missionId, teamConfigYaml, teamFiles?: [{path, content}], mentalMaps?: {[agentId]: html} }\n" +
 			"- cancel_schedule: { id }\n" +
 			"- create_schedule: { missionId, to, subject, body, cron?, deliverAt?, label? }",
@@ -389,6 +437,7 @@ export function createCopilotTools(
 				"resume_mission",
 				"write_mission_file",
 				"save_template",
+				"restore_template_version",
 				"save_session_config",
 				"cancel_schedule",
 				"create_schedule",
@@ -601,6 +650,7 @@ export function createCopilotTools(
 		listSchedule,
 		listTemplates,
 		getTemplate,
+		listTemplateVersions,
 		proposeAction,
 		listIssues,
 		createIssue,
