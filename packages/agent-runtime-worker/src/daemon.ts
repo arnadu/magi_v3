@@ -89,6 +89,10 @@ import type {
 	Usage,
 } from "@mariozechner/pi-ai";
 import { ObjectId } from "mongodb";
+import {
+	createMongoAgentStatsRepository,
+	StatsCollector,
+} from "./agent-stats.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
@@ -737,6 +741,9 @@ async function main(): Promise<void> {
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
 	const conversationRepo = createMongoConversationRepository(db);
 	const llmCallLog = createMongoLlmCallLogRepository(db);
+	const statsCollector = new StatsCollector(
+		createMongoAgentStatsRepository(db),
+	);
 
 	const copilotMissionId = process.env.COPILOT_MISSION_ID;
 	const copilotMailboxRepo = copilotMissionId
@@ -993,6 +1000,7 @@ async function main(): Promise<void> {
 				mailboxRepo,
 				conversationRepo,
 				llmCallLog,
+				statsCollector,
 				model,
 				visionModel,
 				workdir,

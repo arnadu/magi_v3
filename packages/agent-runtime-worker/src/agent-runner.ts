@@ -1,5 +1,6 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
+import type { StatsCollector } from "./agent-stats.js";
 import type {
 	ConversationRepository,
 	SummaryMessage,
@@ -55,6 +56,12 @@ export interface AgentRunContext {
 	conversationRepo: ConversationRepository;
 	/** Optional LLM call audit log — written for every LLM call including reflection. */
 	llmCallLog?: LlmCallLogRepository;
+	/**
+	 * Optional per-turn / mission statistics collector. When present, the agent
+	 * loop feeds it each LLM call and tool result and brackets the turn with
+	 * startTurn/endTurn. Shared across agents; keyed internally by agentId.
+	 */
+	statsCollector?: StatsCollector;
 	/** Per-agent workspace identity providing private workdir and ACL. */
 	identity: AgentIdentity;
 	/** Called immediately when the agent posts a message to "user". */
@@ -195,54 +202,72 @@ export async function runAgent(
 
 	/**
 	 * Build the onLlmCall handler for a given turnNumber and isReflection flag.
-	 * Writes one entry to llmCallLog per LLM response if a log repo is configured.
+	 * Writes one entry to llmCallLog per LLM response (if configured) and feeds
+	 * the statistics collector (if configured). Returns undefined when neither is
+	 * configured so the loop skips the hook entirely.
+	 *
+	 * Reflection calls are excluded from the turn collector: reflection runs
+	 * before startTurn (no active turn accumulator exists yet) and is surfaced via
+	 * the turn's reflectionTriggered flag instead.
 	 */
-	const makeOnLlmCall = (turnNumber: number, isReflection: boolean) =>
-		ctx.llmCallLog
-			? async (event: {
-					systemPrompt: string;
-					messages: Message[];
-					toolNames: string[];
-					response: AssistantMessage;
-				}) => {
-					const usage = event.response.usage as {
-						input: number;
-						output: number;
-						cacheRead: number;
-						cacheWrite: number;
-					};
-					const modelCost = ctx.model.cost as {
-						input: number;
-						output: number;
-						cacheRead: number;
-						cacheWrite: number;
-					};
-					await ctx.llmCallLog?.append({
-						missionId,
-						agentId,
-						turnNumber,
-						isReflection,
-						savedAt: new Date(),
-						model: ctx.model.id,
-						input: {
-							systemPrompt: event.systemPrompt,
-							messages: truncateToolBodies(event.messages),
-							toolNames: event.toolNames,
-						},
-						output: {
-							message: event.response,
-							stopReason: event.response.stopReason,
-						},
-						usage: {
-							inputTokens: usage.input,
-							outputTokens: usage.output,
-							cacheReadTokens: usage.cacheRead,
-							cacheWriteTokens: usage.cacheWrite,
-							cost: computeCost(usage, modelCost),
-						},
-					});
-				}
-			: undefined;
+	const makeOnLlmCall = (turnNumber: number, isReflection: boolean) => {
+		if (!ctx.llmCallLog && !ctx.statsCollector) return undefined;
+		return async (event: {
+			systemPrompt: string;
+			messages: Message[];
+			toolNames: string[];
+			response: AssistantMessage;
+		}) => {
+			const usage = event.response.usage as {
+				input: number;
+				output: number;
+				cacheRead: number;
+				cacheWrite: number;
+			};
+			const modelCost = ctx.model.cost as {
+				input: number;
+				output: number;
+				cacheRead: number;
+				cacheWrite: number;
+			};
+			const cost = computeCost(usage, modelCost);
+			if (ctx.llmCallLog) {
+				await ctx.llmCallLog.append({
+					missionId,
+					agentId,
+					turnNumber,
+					isReflection,
+					savedAt: new Date(),
+					model: ctx.model.id,
+					input: {
+						systemPrompt: event.systemPrompt,
+						messages: truncateToolBodies(event.messages),
+						toolNames: event.toolNames,
+					},
+					output: {
+						message: event.response,
+						stopReason: event.response.stopReason,
+					},
+					usage: {
+						inputTokens: usage.input,
+						outputTokens: usage.output,
+						cacheReadTokens: usage.cacheRead,
+						cacheWriteTokens: usage.cacheWrite,
+						cost,
+					},
+				});
+			}
+			if (ctx.statsCollector && !isReflection) {
+				await ctx.statsCollector.recordLlmCall(agentId, {
+					inputTokens: usage.input,
+					outputTokens: usage.output,
+					cacheReadTokens: usage.cacheRead,
+					cacheWriteTokens: usage.cacheWrite,
+					costUsd: cost.totalCostUsd,
+				});
+			}
+		};
+	};
 
 	// Load mental map from the most recent AssistantMessage snapshot in conversationMessages.
 	// Falls back to initMentalMap if this is the first wakeup.
@@ -254,7 +279,9 @@ export async function runAgent(
 	const reflectionThreshold = process.env.REFLECTION_THRESHOLD
 		? Number.parseInt(process.env.REFLECTION_THRESHOLD, 10)
 		: REFLECTION_CTX_THRESHOLD;
-	if (sessionMessages.length > 0 && peakInputTokens >= reflectionThreshold) {
+	const reflectionTriggered =
+		sessionMessages.length > 0 && peakInputTokens >= reflectionThreshold;
+	if (reflectionTriggered) {
 		const lastTurnNumber = nonSummaryHistory.reduce(
 			(max, sm) => Math.max(max, sm.turnNumber),
 			-1,
@@ -427,6 +454,28 @@ export async function runAgent(
 	// Used to decide whether the auto-post safety net should fire.
 	const supervisorTriggered = messages.some((m) => m.from === supervisorId);
 
+	// Feed tool usage to the statistics collector (tool counts, errors, touched
+	// files, sent messages, visited URLs). Undefined when no collector is wired.
+	const onToolResultHandler = ctx.statsCollector
+		? async (event: {
+				toolName: string;
+				args: Record<string, unknown>;
+				isError: boolean;
+			}) => {
+				await ctx.statsCollector?.recordToolResult(agentId, event);
+			}
+		: undefined;
+
+	// Bracket the turn for the statistics collector. startTurn resets the in-memory
+	// accumulator and (on the first turn after a restart) reloads lifetime totals;
+	// endTurn finalizes the turn doc and increments missionStats exactly once.
+	await ctx.statsCollector?.startTurn(
+		missionId,
+		agentId,
+		activeTurnNumber,
+		reflectionTriggered,
+	);
+
 	try {
 		const result = await runInnerLoop({
 			model: ctx.model,
@@ -437,6 +486,7 @@ export async function runAgent(
 			previousMessages,
 			onMessage: onMessageHandler,
 			onLlmCall: makeOnLlmCall(activeTurnNumber, false),
+			onToolResult: onToolResultHandler,
 			reasoning: "medium",
 		});
 
@@ -476,6 +526,7 @@ export async function runAgent(
 				previousMessages: convertToLlm(cleanHistory),
 				onMessage: onMessageHandler,
 				onLlmCall: makeOnLlmCall(activeTurnNumber, false),
+				onToolResult: onToolResultHandler,
 				reasoning: "medium",
 			});
 		}
@@ -518,6 +569,12 @@ export async function runAgent(
 			}
 		}
 	} finally {
+		// Finalize turn statistics regardless of success, error, or abort. An
+		// aborted run still incurred cost, so its lifetime totals must be recorded.
+		await ctx.statsCollector?.endTurn(
+			agentId,
+			signal?.aborted ? "aborted" : "complete",
+		);
 		// Close the browser session regardless of success or failure.
 		await browseWebHandle?.close();
 	}

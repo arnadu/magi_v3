@@ -2,6 +2,15 @@ export type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 export type { AgentRunContext } from "./agent-runner.js";
 export { runAgent } from "./agent-runner.js";
 export type {
+	AgentStatsRepository,
+	AgentTurnStats,
+	MissionStats,
+} from "./agent-stats.js";
+export {
+	createMongoAgentStatsRepository,
+	StatsCollector,
+} from "./agent-stats.js";
+export type {
 	ConversationRepository,
 	StoredMessage,
 } from "./conversation-repository.js";

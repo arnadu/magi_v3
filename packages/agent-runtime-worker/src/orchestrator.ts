@@ -2,6 +2,7 @@ import * as readline from "node:readline";
 import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
+import type { StatsCollector } from "./agent-stats.js";
 import type { ConversationRepository } from "./conversation-repository.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
@@ -24,6 +25,12 @@ export interface OrchestratorConfig {
 	conversationRepo: ConversationRepository;
 	/** Optional LLM call audit log — written for every LLM call across all agents. */
 	llmCallLog?: LlmCallLogRepository;
+	/**
+	 * Optional per-turn / mission statistics collector. Shared across all agents
+	 * in the mission; keyed internally by agentId. Powers budget limits and the
+	 * trace viewer.
+	 */
+	statsCollector?: StatsCollector;
 	model: Model<string>;
 	/**
 	 * Secondary model used for vision-only tasks: FetchUrl image captioning,
@@ -222,6 +229,7 @@ export async function runOrchestrationLoop(
 		mailboxRepo,
 		conversationRepo,
 		llmCallLog,
+		statsCollector: config.statsCollector,
 		onMentalMapUpdate: config.onMentalMapUpdate,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();

@@ -91,6 +91,8 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 - `mailbox` — inter-agent and operator messages
 - `llmCallLog` — audit log of every LLM call with cost breakdown
 - `scheduled_messages` — cron-based agent wakeups
+- `agentTurnStats` — per-turn (per-wakeup) statistics, upserted incrementally during a turn (LLM call count, tokens, cost, peak context, tool counts/errors, files written, messages sent, URLs visited); one doc per `(missionId, agentId, turnNumber)`
+- `missionStats` — lifetime per-agent totals (cost, LLM calls, turn count, consecutive zero-output turns), `$inc`-updated once at turn end; one doc per `(missionId, agentId)`
 
 ### Data flow
 
@@ -118,9 +120,10 @@ Full history: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md)
 | 21 | ✅ Done | Context management (in-session): `pruneEphemeralResults`, thinking-block stripping, mid-session prune at 160k tokens, `AnalyzeMemories` tool, extended thinking on `CLAUDE_SONNET` |
 | 22 | ✅ Done | Copilot unification + config-driven tool library: copilot calls `runAgent` via `additionalTools`; `disabledTools` per-agent YAML; Tier A/B tool library documented in SPEC |
 | 23 | ✅ Done | Auth + multi-user: Firebase Auth (Google OAuth), `userId` on missions, per-user scoping, one copilot per user (`copilot-{uid}`), `/api/usage`, `magi_session` cookie for dashboard tabs, `MONITOR_TOKEN` HMAC auth on MonitorServer, fix F-008/F-009/F-016/F-019/F-020; copilot token display + reflection threshold fix; timing-safe API key comparison; `executeAction` ownership fixes; deferred: #6 #7 |
-| 24 | ⬜ Planned | Budget hardening + resilience: hard per-mission spend cap, copilot budget tools, G-2/G-3 |
-| 25 | ⬜ Planned | File I/O: upload to sharedDir, download artifacts, G-4 disk monitoring |
-| 26 | ⬜ Planned | Unified UX + rich artifacts: in-app mission drill-down (iframe panel), shared nav, Mermaid/KaTeX/image rendering |
+| 24 | ⬜ Planned | Budget hardening + alignment signals: `StatsCollector` (3 hooks, three-layer stats — `llmCallLog`/`agentTurnStats`/`missionStats`, incremental persistence), `LimitRule[]` framework (hard mechanical / soft → copilot), hard mission spend cap, copilot `PauseAgent`/`SetMissionBudget`/`NotifyUser` tools, G-2/G-3 |
+| 25 | ⬜ Planned | File I/O + tracking: git-commit-on-turn-end (hash in `agentTurnStats`), shared `document-processor.ts` (PDF/XLSX/DOCX/CSV/ZIP, no truncation, partial-processing markers), upload→process→mailbox pipeline, download artifacts, G-4 disk monitoring |
+| 26a | ⬜ Planned | Outcome cockpit (spine): `missionGoals`/`missionTasks` + goal/KPI model (template-authored, live-editable), `task-management` + `supervision` platform skills, copilot goal tools, `AskUser`/awaiting-input state, React/Next.js shell, Goals/Messages/Deliverables/Task-board panels |
+| 26b | ⬜ Planned | Monitoring + exploration: trace chart (live `agentTurnStats` + historical `llmCallLog` drill-down, from `experimental/dump-trace.mjs`), bidirectional per-agent chat (managerial↔conversational pivot), rich artifact rendering (Mermaid/KaTeX/Markdown), mode auto-selection |
 | 27 | ⬜ Planned | Launch hardening: G-5 alerting, onboarding flow, usage dashboard, security review |
 
 ## Code Quality

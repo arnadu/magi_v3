@@ -99,7 +99,7 @@ For local development setup and environment variables, see [USER_GUIDE.md](USER_
 | Language | TypeScript throughout |
 | Linter / formatter | Biome |
 | LLM provider | `@mariozechner/pi-ai` — `completeSimple()` wraps Anthropic API |
-| State store | MongoDB (conversations, mailbox, llmCallLog, scheduled_messages) |
+| State store | MongoDB (conversations, mailbox, llmCallLog, scheduled_messages, agentTurnStats, missionStats) |
 | Process supervision | pm2 (local dev); node-cron (scheduling) |
 | Browser automation | Playwright + Stagehand |
 | Cloud | Fly.io (control plane always-on; execution plane on-demand machines) |

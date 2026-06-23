@@ -44,10 +44,96 @@ sector reports, and event-driven alerts with full citation lineage.
 | 21 | ✅ Done | Context management (in-session): ephemeral tool-result pruning (`EPHEMERAL_TOOLS`, `pruneEphemeralResults`), thinking-block stripping, mid-session prune at 160k tokens, `AnalyzeMemories` tool, extended thinking enabled on `CLAUDE_SONNET` (`reasoning: "medium"`) |
 | 22 | ✅ Done | Copilot unification + config-driven tool library: copilot calls `runAgent` via `additionalTools` hook; `disabledTools` per-agent YAML; Tier A/B tool library; `LlmCallLogRepository` exported |
 | 23 | ✅ Done | **Auth + multi-user**: Firebase Auth (Google OAuth); `userId` on missions; per-user mission scoping; one copilot daemon per Firebase UID (`copilot-{uid}`); `/api/usage` per-user and admin; `magi_session` cookie for new-tab auth (dashboard); org-level `FLY_API_TOKEN_CI`; 512 MB control plane VM; structured error logging + `errorMessage` in MongoDB; `MONITOR_TOKEN` HMAC auth on MonitorServer (`MONITOR_SIGNING_KEY`); fix F-008/F-009/F-016/F-019/F-020 |
-| 24 | ⬜ Planned | **Budget hardening + resilience**: hard per-mission spend cap enforced at LLM call time; dashboard budget controls; copilot `GetBudget`/`SetBudget` tools; G-3 missed cron replay on daemon restart; G-2 two-phase inbox ack |
-| 25 | ⬜ Planned | **File I/O**: upload files to mission sharedDir (multipart endpoint + drag-drop in dashboard); download artifacts (serve from mission dir + download button in file browser); G-4 disk usage in stats tab |
-| 26 | ⬜ Planned | **Unified UX + rich artifacts**: in-app mission drill-down (execution plane iframe panel within control plane layout); shared nav bar with breadcrumbs; Mermaid diagram rendering; KaTeX equations; inline image preview; Markdown report viewer |
+| 24 | ⬜ Planned | **Budget hardening + alignment signals**: `StatsCollector` (per-agent stateful aggregator, three hooks: `onLlmCall`/`onToolResult`/`onTurnEnd`) writing a **three-layer** statistics model — per-call (`llmCallLog`, existing), **per-turn (`agentTurnStats`, upserted incrementally on each inner-loop iteration for fault-tolerance)**, mission-level (`missionStats`, `$inc` at turn end); configurable `LimitRule[]` framework (metric × window × threshold × action; hard limits enforced mechanically, soft limits routed to copilot); hard per-mission spend cap at LLM-call time; per-agent caps; copilot `GetBudget`/`SetMissionBudget`/`PauseAgent`/`ResumeAgent`/`NotifyUser` tools; soft-limit alerts → copilot mailbox; G-3 missed cron replay; G-2 two-phase inbox ack |
+| 25 | ⬜ Planned | **File I/O + artifact tracking**: **git-commit-on-sleep** — daemon commits shared workspace on each agent turn end (serialized via async mutex for concurrent agents), commit hash stored in `agentTurnStats.gitCommit`, `filesWritten` populated from `git diff`; volumes persist across suspend/resume (history lost only on `destroyMission`); shared `document-processor.ts` (refactored from `fetch-url.ts`) handling PDF/XLSX/DOCX/CSV/images/ZIP with **no text truncation** (vision auto-description capped, all content preserved) and first-class **partial-processing markers** (`processingStatus` + visible `content.md` status line); upload→process→mailbox pipeline (file bundled with operator message, auto-processed, **no agent-facing ProcessFile tool**); download artifacts; file content API (`git show $hash:$relPath`); G-4 disk monitoring |
+| 26a | ⬜ Planned | **Outcome-oriented cockpit (spine)**: pivot from chatbot paradigm to **state + exceptions** (Endsley SA + Management by Objectives/Exception + OODA); `missionGoals`/`missionTasks` collections — goal → sub-goal → task → KPI hierarchy (KPIs quantitative or qualitative; `source`: `auto-stat`/`task-rollup`/`copilot-assessment`/`manual`); goals **co-authored by user+copilot at template design time, editable live**; `task-management` (promoted from DPO) + `supervision` platform skills; copilot goal tools (`DefineGoal`/`DefineSubGoal`/`SetKPI`/`AssessKPI`/`ReviewProgress`); `AskUser` tool + `requiresResponse` flag + "awaiting user input" agent state (agent interviews the user via sleep/wake, never blocks); **React/Next.js shell** (SPA rewrite pulled forward); Goals/KPIs, Messages-to-user, Deliverables, Task-board panels |
+| 26b | ⬜ Planned | **Monitoring + exploration**: Trace chart panel — live (`agentTurnStats` Change Stream, O(turns)) + historical drill-down (`llmCallLog` per turn, on demand); built on the `experimental/dump-trace.mjs` prototype as functional spec; **bidirectional per-agent chat** (the managerial↔conversational pivot — one-click into any agent's thread, interview UX); rich artifact rendering (Mermaid/KaTeX/image/Markdown); cockpit-vs-chat mode auto-selection (chat default for simple/single-agent missions) |
 | 27 | ⬜ Planned | **Launch hardening**: G-5 out-of-band alerting (webhook/email on agent-error); onboarding flow (first-login wizard); usage dashboard (per-user spend history); full `/security-review` pass; deployment documentation update |
+
+---
+
+## Agent Alignment and Efficiency — Design Notes (Sprints 24–26)
+
+Sprints 24–26 share a unified goal: equip the copilot and operator with the instruments needed
+to keep agents aligned with mission intent — delivering what is required without wasting tokens.
+The full requirements analysis lives alongside this roadmap; this section is the durable summary.
+
+**The throughline**: Sprint 24 builds the *measurement* (StatsCollector), Sprint 25 builds the
+*outputs* (file tracking), Sprint 26 composes both into *outcome-oriented supervision* (the
+cockpit). Each sprint's data feeds the next, so 26 is mostly composition, not new instrumentation.
+
+### The feedback loop
+
+```
+Agent acts → StatsCollector persists (per call) → limits evaluated → copilot assesses/intervenes → operator supervises via cockpit
+```
+
+Hard limits fire mechanically in real time (mid-turn, via `onLlmCall`); soft limits and all
+copilot/operator supervision act at turn (wakeup) boundaries.
+
+### Three-layer statistics (Sprint 24)
+
+A stateful `StatsCollector` (one per agent) maintains the picture via three hooks —
+`onLlmCall`, `onToolResult` (new hook in `loop.ts`), `onTurnEnd` (sleep boundary). Persistence
+is **incremental on every inner-loop iteration**, not only at sleep, so a paused or crashed
+machine loses nothing and a running turn is visible live.
+
+- **Per call** — `llmCallLog` (existing): raw audit trail; trace drill-down only
+- **Per turn** — `agentTurnStats` (new): upserted with `$set` each iteration, finalized at turn
+  end. Fields: `llmCallCount`, `peakContextTokens`, `costUsd`, `toolCalls{}`, `toolErrors{}`,
+  `filesWritten[]`, `messagesSent[]`, `urlsVisited[]`, `reflectionTriggered`, `status`, `gitCommit?`
+- **Mission level** — `missionStats` (new): `$inc` at turn end only (avoids double-count on
+  restart-replay). Lifetime totals + cross-turn state (`consecutiveZeroOutputTurns`)
+
+The limits module reads the in-memory collector — **no DB query in the enforcement hot path**.
+On wakeup start, `missionStats` is reloaded so totals survive daemon restart.
+
+### Limits framework (Sprint 24)
+
+A configurable `LimitRule[]` table (metric × window × threshold × scope × action; `hard` flag)
+decouples *what is measured* from *what to do about it*. Candidate triggers: mission cost cap
+(hard, pause all), LLM-calls-per-turn ceiling (hard, abort turn) and warning (soft), turn cost,
+peak context, consecutive tool errors, BrowseWeb/FetchUrl loop, consecutive zero-output turns.
+**Hard = enforced mechanically; soft = routed to the copilot**, which reads context
+(`ReadMissionLog`) before acting — automated rules without assessment produce false positives.
+Interventions: `PostMessage` (exists), `PauseAgent`/`ResumeAgent`, `SetMissionBudget`, `NotifyUser`.
+
+### File content tracking (Sprint 25)
+
+Bash-written files are invisible to the tool-call interface, so file tracking is git-based:
+the daemon commits the shared workspace at each turn end (serialized via an async mutex for
+concurrent agents), stores the hash in `agentTurnStats.gitCommit`, and derives `filesWritten`
+from `git diff`. **Volumes persist across suspend/resume** — history is lost only on
+`destroyMission` (acceptable; extract-before-destroy deferred). No remote push needed.
+Uploads and all document formats flow through one shared `document-processor.ts` with no text
+truncation and first-class partial-processing markers.
+
+### Outcome-oriented cockpit (Sprint 26)
+
+The pivot from **transcript** to **state + exceptions**, grounded in Endsley Situation
+Awareness (Perception → Comprehension → Projection), Management by Objectives/Exception, and
+OODA. The new spine is a `missionGoals`/`missionTasks` hierarchy (the first representation of
+*intent and progress* in the system); KPIs unify the prior sprints' data via their `source`
+field (`auto-stat` ← StatsCollector, `task-rollup`, `copilot-assessment`, `manual`). Goals are
+co-authored by user+copilot at template design time and editable live. Six panels map to SA
+levels: Goals & KPIs, Messages-to-user, Deliverables, Task board, Trace chart, Chat/explore.
+
+**The managerial↔conversational pivot is essential**: agents interview the user (e.g. DPO
+privacy assessment) via `AskUser` — the agent posts a `requiresResponse` message and **sleeps**,
+waking on the reply (no blocking compute); an "awaiting user input" agent is a first-class
+exception surfaced in the cockpit. The user drops into a focused bidirectional chat with any
+agent in one click. Built in React/Next.js (SPA rewrite pulled forward); split 26a (spine) / 26b
+(trace + chat + rendering).
+
+### Live vs historical trace (Sprint 26b)
+
+Two modes, one viewer, built on the `experimental/dump-trace.mjs` prototype:
+- **Live** (ongoing): subscribe to `agentTurnStats` Change Stream — O(turns), renders each turn
+  as it completes; the `status: 'running'` doc shows the current turn updating in real time
+- **Historical** (drill-down): lazy-load `llmCallLog` for a selected turn — O(calls in turn), on
+  demand — for the within-turn context curve and tool sequence
+
+`agentTurnStats` is the primary rendering unit; `llmCallLog` is fetched only on drill-down.
 
 ### Operational resilience gaps (from `docs/operational-resilience.md`)
 
@@ -68,10 +154,14 @@ These are backlog candidates — pick them up in priority order as sprint capaci
 
 | Item | Notes |
 |------|-------|
-| React / Next.js frontend on Vercel | Full SPA rewrite; completes the control/execution plane unification started in Sprint 26; enables deep linking into agent threads |
+| ~~React / Next.js frontend~~ | **Promoted to Sprint 26a** — the cockpit is the forcing function for the SPA rewrite |
+| ~~Git-backed file versioning~~ | **Promoted to Sprint 25** — git-commit-on-turn-end, hash in `agentTurnStats.gitCommit` |
 | Multi-tenant + billing | Per-user API key (BYOK); usage-based billing; tenant isolation beyond shared system key |
 | Evaluation harness | Golden scenarios for structural/policy outcomes; CI regression suite |
 | Mission builder UI | Guided copilot flow + form-based config; `DestroyMission` tool |
+| `ProcessMore(artifactId)` tool | Resume document processing past the automatic limit (PDF pages beyond vision cap, nested ZIPs, chart-only sheets) — uses the `unprocessed` marker as resume point |
+| RAG facility | MongoDB Atlas Vector Search (`$vectorSearch`); `missionDocuments` collection + `SearchMemory` tool; deferred until a mission demonstrably exhausts context on its own collected data (V2 had an implementation to draw on) |
+| Extract-before-destroy | Push git history to remote or extract to MongoDB before `destroyMission` deletes the volume, if audit requirements arise |
 
 ---
 

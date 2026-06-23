@@ -36,6 +36,10 @@ import type {
 	Message,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
+import {
+	createMongoAgentStatsRepository,
+	StatsCollector,
+} from "./agent-stats.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
 import { resolveModel } from "./models.js";
@@ -156,6 +160,9 @@ async function main(): Promise<void> {
 	const { client, db } = await connectMongo(mongoUri);
 	const mailboxRepo = createMongoMailboxRepository(db, teamConfig.mission.id);
 	const conversationRepo = createMongoConversationRepository(db);
+	const statsCollector = new StatsCollector(
+		createMongoAgentStatsRepository(db),
+	);
 
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config has no agents");
@@ -191,6 +198,7 @@ async function main(): Promise<void> {
 				teamConfig,
 				mailboxRepo,
 				conversationRepo,
+				statsCollector,
 				model,
 				visionModel,
 				workdir,

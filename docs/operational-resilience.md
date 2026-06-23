@@ -123,6 +123,8 @@ On daemon startup, if any `scheduled_messages` entry has a `scheduledFor` timest
 | Context window overflow (>200 k tokens) | Session compaction + reflection runs at session boundary | 🟡 | Sprint 9 reflection system; amber context bar in dashboard; **Sprint 21 mid-session pruning stubs ephemeral tool results + old thinking blocks when context exceeds 160k tokens (80% of window)** | If pruning is insufficient (e.g. a single giant tool result), the next LLM call fails; agent can use `AnalyzeMemories` to recover stubbed content |
 | Reflection LLM call fails | Next session starts without updated mental map summary; context grows faster | 🟡 | Non-fatal; session proceeds | Operator sees no indication |
 | Conversation write fails mid-session | Partial session in DB; possible replay gap | 🟠 | Atlas HA makes this unlikely | No retry on write failure |
+| Statistics write fails (`agentTurnStats` / `missionStats`) | A turn's stats may be stale or missing | 🟡 | `StatsCollector` persist/$inc failures are caught and logged, never thrown into the agent loop — statistics must not break a mission; `llmCallLog` remains the billing source of truth | No retry; affected turn shows degraded stats |
+| Daemon hard-killed mid-turn (SIGKILL / OOM) | `agentTurnStats` doc left `status:'running'`; `missionStats` not incremented for that turn | 🟡 | `agentTurnStats` is upserted incrementally (keyed by missionId/agentId/turnNumber, idempotent); `missionStats` is `$inc`-updated only at turn end, so an incomplete turn never contributes → no double-count on the next run. `runAgent`'s `finally` finalizes stats on normal error/abort (status `aborted`) | Orphaned `running` docs are not reconciled on restart (cosmetic; cost truth is in `llmCallLog`) |
 
 ---
 
