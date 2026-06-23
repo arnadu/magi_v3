@@ -349,6 +349,35 @@ agents:
 Tool names must match the table above exactly (case-sensitive). Omitting `disabledTools`
 gives the agent the full Tier A set (minus tools blocked by missing env/Chromium).
 
+### Per-agent limits (Sprint 24)
+
+Agents carry an optional `limits` block evaluated against the `StatsCollector`'s in-memory
+turn/lifetime accumulators (no DB query in the hot path). Two severities:
+
+- **Hard** (`max*`) — **opt-in, no default**. A breach throws out of the inner-loop hook and
+  aborts the turn immediately (recorded as `status: 'aborted'`); useful work already done in
+  the turn is preserved. Never applied unless explicitly configured, so an existing mission's
+  legitimate long turn is never cut off by surprise.
+- **Soft** (`warn*`) — **advisory, defaulted**. A breach routes a `limit-alert` to the copilot
+  mailbox and the monitor dashboard (deduped per rule per turn) without interrupting the turn.
+  Conservative built-in defaults (`warnLlmCallsPerTurn: 40`, `warnPeakContextTokens: 160000`,
+  `warnToolErrorsPerTurn: 8`, `warnConsecutiveZeroOutputTurns: 3`) fire only on genuinely
+  anomalous turns; set a field to `0` to disable that default.
+
+```yaml
+agents:
+  - id: records-officer
+    limits:
+      maxLlmCallsPerTurn: 60       # hard: abort a runaway turn
+      maxCostPerTurnUsd: 0.80      # hard: per-turn cost cap
+      maxLifetimeCostUsd: 25       # hard: per-agent lifetime cost cap (trips mid-turn)
+      warnLlmCallsPerTurn: 25      # soft: override the default (40) warning threshold
+```
+
+Hard limits complement the existing between-turn mission cost cap (`MAX_COST_USD` →
+`waitForBudget`): the per-turn caps catch a single runaway *during* the turn, the mission cap
+gates the next dispatch. The copilot assesses soft alerts and decides whether to intervene.
+
 ### Tier B elevated tools (copilot only)
 
 Tier B tools require infrastructure only available in the control plane (MongoDB `db` handle,

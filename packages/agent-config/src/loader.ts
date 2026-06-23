@@ -6,12 +6,33 @@ import { ZodError, z } from "zod";
 // Schemas — single source of truth for both validation and TypeScript types
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-agent limit thresholds (Sprint 24). All optional.
+ *
+ * Hard fields (max*) abort the current turn when exceeded — opt-in, no default,
+ * so existing missions are never aborted by a surprise cap. Soft fields (warn*)
+ * route an advisory alert to the copilot without interrupting the turn; they
+ * carry conservative built-in defaults when omitted (set to 0 to disable).
+ */
+const LimitsSchema = z
+	.object({
+		maxLlmCallsPerTurn: z.number().int().positive().optional(),
+		maxCostPerTurnUsd: z.number().positive().optional(),
+		maxLifetimeCostUsd: z.number().positive().optional(),
+		warnLlmCallsPerTurn: z.number().int().nonnegative().optional(),
+		warnPeakContextTokens: z.number().int().nonnegative().optional(),
+		warnToolErrorsPerTurn: z.number().int().nonnegative().optional(),
+		warnConsecutiveZeroOutputTurns: z.number().int().nonnegative().optional(),
+	})
+	.strict();
+
 const AgentSchema = z
 	.object({
 		id: z.string().trim().min(1),
 		supervisor: z.string().trim().min(1),
 		systemPrompt: z.string().trim().min(1),
 		initialMentalMap: z.string().trim().min(1),
+		limits: LimitsSchema.optional(),
 		/**
 		 * The Linux OS user this agent runs as.
 		 * In dev/test: set to a pool user provisioned by setup-dev.sh (e.g. "magi-w1").

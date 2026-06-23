@@ -15,6 +15,19 @@ export type {
 	StoredMessage,
 } from "./conversation-repository.js";
 export { createMongoConversationRepository } from "./conversation-repository.js";
+export type {
+	LimitAlert,
+	LimitBreach,
+	LimitConfig,
+	LimitMetric,
+	LimitRule,
+} from "./limits.js";
+export {
+	buildRules,
+	DEFAULT_SOFT_LIMITS,
+	evaluateLimits,
+	LimitExceededError,
+} from "./limits.js";
 export type { LlmCallLogRepository } from "./llm-call-log.js";
 export { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 export type { CompleteFn, InnerLoopConfig, LoopResult } from "./loop.js";

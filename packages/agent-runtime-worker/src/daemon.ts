@@ -1009,6 +1009,43 @@ async function main(): Promise<void> {
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
+				onLimitAlert: (alert) => {
+					const { agentId, turnNumber, breach } = alert;
+					const { rule, value } = breach;
+					// Surface on the dashboard immediately.
+					monitor.push("limit-alert", {
+						agentId,
+						turnNumber,
+						severity: rule.severity,
+						ruleId: rule.id,
+						metric: rule.metric,
+						value,
+						threshold: rule.threshold,
+						label: rule.label,
+					});
+					console.warn(
+						`[daemon] limit ${rule.severity} ${rule.id}: ${agentId} turn ${turnNumber} — ${rule.metric}=${value} > ${rule.threshold} (${rule.label})`,
+					);
+					// Route to the copilot so it can assess and intervene (between turns).
+					copilotMailboxRepo
+						?.post({
+							missionId: "copilot",
+							from: "system",
+							to: ["copilot"],
+							subject: `Limit ${rule.severity}: ${agentId} (${rule.metric})`,
+							body:
+								`Agent "${agentId}" in mission "${missionId}" breached a ${rule.severity} limit on ` +
+								`turn ${turnNumber}: ${rule.metric}=${value} exceeded threshold ${rule.threshold} (${rule.label}).` +
+								(rule.severity === "hard"
+									? " The turn was aborted."
+									: " The turn continued; assess whether intervention is warranted."),
+						})
+						.catch((e: Error) =>
+							console.error(
+								`[daemon] failed to post limit alert to copilot: ${e.message}`,
+							),
+						);
+				},
 				onAgentError: (agentId, errorMessage) =>
 					monitor.push("agent-error", {
 						agentId,
