@@ -100,6 +100,21 @@ export interface InnerLoopConfig {
 		response: AssistantMessage;
 	}) => Promise<void>;
 	/**
+	 * Called immediately after each tool result is produced (and persisted via
+	 * onMessage). Receives the tool name, the original tool-call arguments, and
+	 * whether the result was an error. Used by the statistics collector to count
+	 * tool usage and extract touched files / sent messages / visited URLs.
+	 *
+	 * Fires once per tool call, including for unknown tools and timeouts (which
+	 * are reported as errors). Runs in the daemon before the next LLM call, so it
+	 * is outside the tool-executor subprocess sandbox.
+	 */
+	onToolResult?: (event: {
+		toolName: string;
+		args: Record<string, unknown>;
+		isError: boolean;
+	}) => Promise<void>;
+	/**
 	 * Extended thinking level to request on each LLM call.
 	 * Only applied when model.reasoning === true; silently ignored otherwise.
 	 */
@@ -135,6 +150,7 @@ export async function runInnerLoop(
 		signal,
 		onMessage,
 		onLlmCall,
+		onToolResult,
 		toolTimeoutMs = 120_000,
 		maxTurns,
 		reasoning,
@@ -267,6 +283,14 @@ export async function runInnerLoop(
 			}
 
 			await pushAndNotify(toolResult);
+
+			if (onToolResult) {
+				await onToolResult({
+					toolName: block.name,
+					args: (block.arguments ?? {}) as Record<string, unknown>,
+					isError: toolResult.isError ?? false,
+				});
+			}
 		}
 	}
 

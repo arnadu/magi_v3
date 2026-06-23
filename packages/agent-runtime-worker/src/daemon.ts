@@ -89,6 +89,10 @@ import type {
 	Usage,
 } from "@mariozechner/pi-ai";
 import { ObjectId } from "mongodb";
+import {
+	createMongoAgentStatsRepository,
+	StatsCollector,
+} from "./agent-stats.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
@@ -96,6 +100,7 @@ import { createMongoMailboxRepository } from "./mailbox.js";
 import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer } from "./monitor-server.js";
+import { enrichModelPricing } from "./openrouter-pricing.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
@@ -737,6 +742,9 @@ async function main(): Promise<void> {
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
 	const conversationRepo = createMongoConversationRepository(db);
 	const llmCallLog = createMongoLlmCallLogRepository(db);
+	const statsCollector = new StatsCollector(
+		createMongoAgentStatsRepository(db),
+	);
 
 	const copilotMissionId = process.env.COPILOT_MISSION_ID;
 	const copilotMailboxRepo = copilotMissionId
@@ -752,6 +760,13 @@ async function main(): Promise<void> {
 		process.env.VISION_MODEL ??
 		"claude-haiku-4-5-20251001";
 	const visionModel = resolveModel(visionModelId);
+
+	// Overwrite OpenRouter models' static cost with live list pricing (no-op for
+	// first-party Anthropic models, whose cost is already exact). See issue #10.
+	await Promise.all([
+		enrichModelPricing(model),
+		enrichModelPricing(visionModel),
+	]);
 
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 	// TEAM_SKILLS_PATH is set by the control plane when the YAML is injected from MongoDB
@@ -993,6 +1008,7 @@ async function main(): Promise<void> {
 				mailboxRepo,
 				conversationRepo,
 				llmCallLog,
+				statsCollector,
 				model,
 				visionModel,
 				workdir,
@@ -1001,6 +1017,43 @@ async function main(): Promise<void> {
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
+				onLimitAlert: (alert) => {
+					const { agentId, turnNumber, breach } = alert;
+					const { rule, value } = breach;
+					// Surface on the dashboard immediately.
+					monitor.push("limit-alert", {
+						agentId,
+						turnNumber,
+						severity: rule.severity,
+						ruleId: rule.id,
+						metric: rule.metric,
+						value,
+						threshold: rule.threshold,
+						label: rule.label,
+					});
+					console.warn(
+						`[daemon] limit ${rule.severity} ${rule.id}: ${agentId} turn ${turnNumber} — ${rule.metric}=${value} > ${rule.threshold} (${rule.label})`,
+					);
+					// Route to the copilot so it can assess and intervene (between turns).
+					copilotMailboxRepo
+						?.post({
+							missionId: "copilot",
+							from: "system",
+							to: ["copilot"],
+							subject: `Limit ${rule.severity}: ${agentId} (${rule.metric})`,
+							body:
+								`Agent "${agentId}" in mission "${missionId}" breached a ${rule.severity} limit on ` +
+								`turn ${turnNumber}: ${rule.metric}=${value} exceeded threshold ${rule.threshold} (${rule.label}).` +
+								(rule.severity === "hard"
+									? " The turn was aborted."
+									: " The turn continued; assess whether intervention is warranted."),
+						})
+						.catch((e: Error) =>
+							console.error(
+								`[daemon] failed to post limit alert to copilot: ${e.message}`,
+							),
+						);
+				},
 				onAgentError: (agentId, errorMessage) =>
 					monitor.push("agent-error", {
 						agentId,

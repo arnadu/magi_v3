@@ -1,9 +1,12 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
+import type { StatsCollector } from "./agent-stats.js";
 import type {
 	ConversationRepository,
 	SummaryMessage,
 } from "./conversation-repository.js";
+import type { LimitAlert } from "./limits.js";
+import { buildRules, evaluateLimits, LimitExceededError } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import { computeCost, truncateToolBodies } from "./llm-call-log.js";
 import { runInnerLoop } from "./loop.js";
@@ -55,6 +58,19 @@ export interface AgentRunContext {
 	conversationRepo: ConversationRepository;
 	/** Optional LLM call audit log — written for every LLM call including reflection. */
 	llmCallLog?: LlmCallLogRepository;
+	/**
+	 * Optional per-turn / mission statistics collector. When present, the agent
+	 * loop feeds it each LLM call and tool result and brackets the turn with
+	 * startTurn/endTurn. Shared across agents; keyed internally by agentId.
+	 */
+	statsCollector?: StatsCollector;
+	/**
+	 * Called when a configured limit (see agent `limits`) is breached — soft
+	 * limits fire an advisory alert (deduped per rule per turn); a hard limit
+	 * fires an alert and then aborts the turn. The daemon routes these to the
+	 * copilot mailbox and the monitor dashboard. Requires `statsCollector`.
+	 */
+	onLimitAlert?: (alert: LimitAlert) => void;
 	/** Per-agent workspace identity providing private workdir and ACL. */
 	identity: AgentIdentity;
 	/** Called immediately when the agent posts a message to "user". */
@@ -195,54 +211,75 @@ export async function runAgent(
 
 	/**
 	 * Build the onLlmCall handler for a given turnNumber and isReflection flag.
-	 * Writes one entry to llmCallLog per LLM response if a log repo is configured.
+	 * Writes one entry to llmCallLog per LLM response (if configured) and feeds
+	 * the statistics collector (if configured). Returns undefined when neither is
+	 * configured so the loop skips the hook entirely.
+	 *
+	 * Reflection calls are excluded from the turn collector: reflection runs
+	 * before startTurn (no active turn accumulator exists yet) and is surfaced via
+	 * the turn's reflectionTriggered flag instead.
 	 */
-	const makeOnLlmCall = (turnNumber: number, isReflection: boolean) =>
-		ctx.llmCallLog
-			? async (event: {
-					systemPrompt: string;
-					messages: Message[];
-					toolNames: string[];
-					response: AssistantMessage;
-				}) => {
-					const usage = event.response.usage as {
-						input: number;
-						output: number;
-						cacheRead: number;
-						cacheWrite: number;
-					};
-					const modelCost = ctx.model.cost as {
-						input: number;
-						output: number;
-						cacheRead: number;
-						cacheWrite: number;
-					};
-					await ctx.llmCallLog?.append({
-						missionId,
-						agentId,
-						turnNumber,
-						isReflection,
-						savedAt: new Date(),
-						model: ctx.model.id,
-						input: {
-							systemPrompt: event.systemPrompt,
-							messages: truncateToolBodies(event.messages),
-							toolNames: event.toolNames,
-						},
-						output: {
-							message: event.response,
-							stopReason: event.response.stopReason,
-						},
-						usage: {
-							inputTokens: usage.input,
-							outputTokens: usage.output,
-							cacheReadTokens: usage.cacheRead,
-							cacheWriteTokens: usage.cacheWrite,
-							cost: computeCost(usage, modelCost),
-						},
-					});
-				}
-			: undefined;
+	const makeOnLlmCall = (turnNumber: number, isReflection: boolean) => {
+		if (!ctx.llmCallLog && !ctx.statsCollector) return undefined;
+		return async (event: {
+			systemPrompt: string;
+			messages: Message[];
+			toolNames: string[];
+			response: AssistantMessage;
+		}) => {
+			const usage = event.response.usage as {
+				input: number;
+				output: number;
+				cacheRead: number;
+				cacheWrite: number;
+			};
+			const modelCost = ctx.model.cost as {
+				input: number;
+				output: number;
+				cacheRead: number;
+				cacheWrite: number;
+			};
+			const cost = computeCost(usage, modelCost);
+			if (ctx.llmCallLog) {
+				await ctx.llmCallLog.append({
+					missionId,
+					agentId,
+					turnNumber,
+					isReflection,
+					savedAt: new Date(),
+					model: ctx.model.id,
+					// Anthropic list prices are exact; other providers (OpenRouter) are
+					// estimated from list pricing (see issue #10).
+					costEstimated: ctx.model.provider !== "anthropic",
+					input: {
+						systemPrompt: event.systemPrompt,
+						messages: truncateToolBodies(event.messages),
+						toolNames: event.toolNames,
+					},
+					output: {
+						message: event.response,
+						stopReason: event.response.stopReason,
+					},
+					usage: {
+						inputTokens: usage.input,
+						outputTokens: usage.output,
+						cacheReadTokens: usage.cacheRead,
+						cacheWriteTokens: usage.cacheWrite,
+						cost,
+					},
+				});
+			}
+			if (ctx.statsCollector && !isReflection) {
+				await ctx.statsCollector.recordLlmCall(agentId, {
+					inputTokens: usage.input,
+					outputTokens: usage.output,
+					cacheReadTokens: usage.cacheRead,
+					cacheWriteTokens: usage.cacheWrite,
+					costUsd: cost.totalCostUsd,
+				});
+			}
+		};
+	};
 
 	// Load mental map from the most recent AssistantMessage snapshot in conversationMessages.
 	// Falls back to initMentalMap if this is the first wakeup.
@@ -254,7 +291,9 @@ export async function runAgent(
 	const reflectionThreshold = process.env.REFLECTION_THRESHOLD
 		? Number.parseInt(process.env.REFLECTION_THRESHOLD, 10)
 		: REFLECTION_CTX_THRESHOLD;
-	if (sessionMessages.length > 0 && peakInputTokens >= reflectionThreshold) {
+	const reflectionTriggered =
+		sessionMessages.length > 0 && peakInputTokens >= reflectionThreshold;
+	if (reflectionTriggered) {
 		const lastTurnNumber = nonSummaryHistory.reduce(
 			(max, sm) => Math.max(max, sm.turnNumber),
 			-1,
@@ -427,6 +466,89 @@ export async function runAgent(
 	// Used to decide whether the auto-post safety net should fire.
 	const supervisorTriggered = messages.some((m) => m.from === supervisorId);
 
+	// Limit enforcement (Sprint 24). Rules are built from the agent's `limits`
+	// config layered over conservative soft defaults; enforcement is a no-op
+	// without a stats collector (the rules read its in-memory accumulators).
+	const limitRules = ctx.statsCollector ? buildRules(agent.limits) : [];
+	// Soft alerts are fired at most once per rule per turn.
+	const firedSoftLimits = new Set<string>();
+	const enforceLimits =
+		ctx.statsCollector && limitRules.length > 0
+			? () => {
+					const turn = ctx.statsCollector?.getTurn(agentId);
+					if (!turn) return;
+					const lifetime = ctx.statsCollector?.getLifetime(agentId);
+					const breaches = evaluateLimits(turn, lifetime, limitRules);
+					for (const b of breaches) {
+						if (b.rule.severity === "soft" && !firedSoftLimits.has(b.rule.id)) {
+							firedSoftLimits.add(b.rule.id);
+							ctx.onLimitAlert?.({
+								agentId,
+								turnNumber: activeTurnNumber,
+								breach: b,
+							});
+						}
+					}
+					// A hard breach aborts the turn: alert first, then throw so the inner
+					// loop stops before the next LLM call / tool round.
+					const hard = breaches.find((b) => b.rule.severity === "hard");
+					if (hard) {
+						ctx.onLimitAlert?.({
+							agentId,
+							turnNumber: activeTurnNumber,
+							breach: hard,
+						});
+						throw new LimitExceededError(hard);
+					}
+				}
+			: undefined;
+
+	// Feed tool usage to the statistics collector (tool counts, errors, touched
+	// files, sent messages, visited URLs), then re-check limits. Undefined when
+	// neither a collector nor enforcement is wired.
+	const onToolResultHandler =
+		ctx.statsCollector || enforceLimits
+			? async (event: {
+					toolName: string;
+					args: Record<string, unknown>;
+					isError: boolean;
+				}) => {
+					await ctx.statsCollector?.recordToolResult(agentId, event);
+					enforceLimits?.();
+				}
+			: undefined;
+
+	// Compose the onLlmCall hook for a turn: audit log + stats (makeOnLlmCall)
+	// followed by a limit re-check. enforceLimits reads activeTurnNumber live so
+	// the conversation-recovery retry path reports the correct turn.
+	const makeOnLlmCallWithLimits = (turnNumber: number) => {
+		const base = makeOnLlmCall(turnNumber, false);
+		if (!base && !enforceLimits) return undefined;
+		return async (event: {
+			systemPrompt: string;
+			messages: Message[];
+			toolNames: string[];
+			response: AssistantMessage;
+		}) => {
+			if (base) await base(event);
+			enforceLimits?.();
+		};
+	};
+
+	// Bracket the turn for the statistics collector. startTurn resets the in-memory
+	// accumulator and (on the first turn after a restart) reloads lifetime totals;
+	// endTurn finalizes the turn doc and increments missionStats exactly once.
+	await ctx.statsCollector?.startTurn(
+		missionId,
+		agentId,
+		activeTurnNumber,
+		reflectionTriggered,
+	);
+
+	// Set when a hard limit aborts the turn — distinguishes a deliberate limit
+	// stop (recorded as 'aborted', not re-thrown as a crash) from a real error.
+	let limitAborted = false;
+
 	try {
 		const result = await runInnerLoop({
 			model: ctx.model,
@@ -436,7 +558,8 @@ export async function runAgent(
 			signal,
 			previousMessages,
 			onMessage: onMessageHandler,
-			onLlmCall: makeOnLlmCall(activeTurnNumber, false),
+			onLlmCall: makeOnLlmCallWithLimits(activeTurnNumber),
+			onToolResult: onToolResultHandler,
 			reasoning: "medium",
 		});
 
@@ -475,7 +598,8 @@ export async function runAgent(
 				signal,
 				previousMessages: convertToLlm(cleanHistory),
 				onMessage: onMessageHandler,
-				onLlmCall: makeOnLlmCall(activeTurnNumber, false),
+				onLlmCall: makeOnLlmCallWithLimits(activeTurnNumber),
+				onToolResult: onToolResultHandler,
 				reasoning: "medium",
 			});
 		}
@@ -517,7 +641,25 @@ export async function runAgent(
 				ctx.onUserMessage?.(autoReply);
 			}
 		}
+	} catch (e) {
+		// A hard-limit breach is a deliberate stop, not a crash: log and let the
+		// turn finalize as 'aborted'. The alert was already routed by enforceLimits.
+		// Any other error propagates to the orchestrator's crash handler.
+		if (e instanceof LimitExceededError) {
+			limitAborted = true;
+			console.warn(
+				`[runAgent] ${agentId}: turn ${activeTurnNumber} aborted by hard limit — ${e.message}`,
+			);
+		} else {
+			throw e;
+		}
 	} finally {
+		// Finalize turn statistics regardless of success, error, or abort. An
+		// aborted run still incurred cost, so its lifetime totals must be recorded.
+		await ctx.statsCollector?.endTurn(
+			agentId,
+			limitAborted || signal?.aborted ? "aborted" : "complete",
+		);
 		// Close the browser session regardless of success or failure.
 		await browseWebHandle?.close();
 	}

@@ -2,7 +2,9 @@ import * as readline from "node:readline";
 import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
+import type { StatsCollector } from "./agent-stats.js";
 import type { ConversationRepository } from "./conversation-repository.js";
+import type { LimitAlert } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { verifyIsolation } from "./tools.js";
@@ -24,6 +26,18 @@ export interface OrchestratorConfig {
 	conversationRepo: ConversationRepository;
 	/** Optional LLM call audit log — written for every LLM call across all agents. */
 	llmCallLog?: LlmCallLogRepository;
+	/**
+	 * Optional per-turn / mission statistics collector. Shared across all agents
+	 * in the mission; keyed internally by agentId. Powers budget limits and the
+	 * trace viewer.
+	 */
+	statsCollector?: StatsCollector;
+	/**
+	 * Called when a configured agent limit is breached (soft = advisory, hard =
+	 * turn aborted). The daemon routes these to the copilot mailbox and the
+	 * monitor dashboard. Forwarded to each agent run; requires `statsCollector`.
+	 */
+	onLimitAlert?: (alert: LimitAlert) => void;
 	model: Model<string>;
 	/**
 	 * Secondary model used for vision-only tasks: FetchUrl image captioning,
@@ -222,6 +236,8 @@ export async function runOrchestrationLoop(
 		mailboxRepo,
 		conversationRepo,
 		llmCallLog,
+		statsCollector: config.statsCollector,
+		onLimitAlert: config.onLimitAlert,
 		onMentalMapUpdate: config.onMentalMapUpdate,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();

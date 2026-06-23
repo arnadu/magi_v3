@@ -204,3 +204,53 @@ Goal: prevent context from growing unboundedly within a single session by stubbi
 **`src/agent-runner.ts`:** `createAnalyzeMemoriesTool` added to the tool list (after `createResearchTool`). `reasoning: "medium"` passed to both `runInnerLoop` calls (main dispatch and retry). `"medium"` gives meaningful reasoning depth without the extreme cost of `"high"`.
 
 **`tests/context-pruning.unit.test.ts` (new):** 9 unit tests covering tool classification, stub behavior for old rounds, durable-tool preservation, idempotency, thinking-block stripping, thinking retention in the last round, finished-conversation behavior (all thinking stripped when last message is a no-tool assistant response), not-enough-rounds no-op, and empty array.
+
+## Sprint 24 (Phase 1) — Statistics collector (alignment-signal foundation)
+
+Goal: build the three-layer statistics foundation that later Sprint 24 work (budget limits, copilot anomaly alerts) and Sprints 25–26 (file tracking, trace viewer) consume. This phase is **instrumentation only** — it collects and persists, it does not yet enforce limits. One `runAgent` call == one turn == one wakeup.
+
+**`src/agent-stats.ts` (new):** Three layers — per-call `llmCallLog` (existing), per-turn `agentTurnStats` (new), mission-level `missionStats` (new). `AgentTurnStats` carries LLM aggregates (call count, tokens, cost, `peakContextTokens` = max of `input+cacheRead+cacheWrite` across calls), tool aggregates (`toolCalls`/`toolErrors` by name), and output signals (`filesWritten`, `messagesSent`, `urlsVisited`, `reflectionTriggered`, `status`). `MissionStats` carries lifetime totals + `consecutiveZeroOutputTurns`. `createMongoAgentStatsRepository(db)` — `agentTurnStats` upserted by `(missionId, agentId, turnNumber)` (unique index), `missionStats` `$inc` via `findOneAndUpdate` keyed by `(missionId, agentId)`. `StatsCollector` — stateful per-daemon class keyed internally by `agentId` (concurrent agents do not contend); lifecycle `startTurn → recordLlmCall/recordToolResult (repeated) → endTurn`. Persistence is **incremental** (upsert on every iteration → fault-tolerant, live trace data); `missionStats` `$inc` happens **once at turn end** so a replayed incomplete turn never double-counts. Persist/$inc failures are caught and logged, never thrown into the agent loop. Lifetime totals reload from `missionStats` on the first turn after a daemon restart (caps survive restart).
+
+**`src/loop.ts`:** `InnerLoopConfig` gains `onToolResult?({ toolName, args, isError })`, fired after each tool result is pushed (in the daemon, outside the tool-executor sandbox). Existing single `onLlmCall` hook unchanged.
+
+**`src/agent-runner.ts`:** `AgentRunContext` gains optional `statsCollector?`. `makeOnLlmCall` refactored to compute usage/cost once and feed both `llmCallLog` (if present) and the collector (non-reflection calls only — reflection runs before `startTurn`, surfaced via the `reflectionTriggered` flag). `startTurn` brackets the loop; `endTurn` runs in `finally` with status `aborted` when the signal aborted, else `complete`. `onToolResult` handler feeds `recordToolResult`.
+
+**`src/orchestrator.ts`, `src/daemon.ts`, `src/cli.ts`:** `statsCollector?` threaded through `OrchestratorConfig` → `agentCtx`; instantiated in both daemon and CLI from `createMongoAgentStatsRepository(db)`. Exported from `src/index.ts` for downstream (control plane, Sprint 26).
+
+**`tests/agent-stats.unit.test.ts` (new):** 7 unit tests against an in-memory fake repo — running-doc on startTurn, LLM aggregation + peak context, tool/error counting and file/message/URL extraction, once-only lifetime increment, zero-output-streak tracking + reset, lifetime reload after restart, concurrent-agent isolation.
+
+**`tests/agent-stats.integration.test.ts` (new):** runs a real `hello-world` agent turn with both `llmCallLog` and the collector wired, then cross-checks the two independent data paths agree per turn (call count, exact token sums, cost to 8 dp, peak context) and that `missionStats` lifetime totals equal the sum across turns, plus PostMessage / message-to-user capture.
+
+**Backward compatibility:** no team-YAML schema change; `agentTurnStats`/`missionStats` are new and created lazily; `statsCollector` and `onToolResult` are optional everywhere. Existing missions resumed under the new code start accumulating stats from their next turn (lifetime begins at 0); existing templates validate unchanged. No new env vars, secrets, or deployment steps.
+
+## Sprint 24 (Phase 2) — Limits framework + enforcement
+
+Goal: turn the statistics foundation into enforcement. Decouples *what is measured* (StatsCollector) from *what to do about it* (a configurable rule table).
+
+**`src/limits.ts` (new):** Pure module — no I/O, fully unit-testable. `LimitRule` (id, metric, threshold, severity, label); metrics read either the turn window (`llmCallCount`, `costUsd`, `peakContextTokens`, `toolErrors`) or the lifetime window (`lifetimeCostUsd` = persisted lifetime + current turn so a per-agent cap trips mid-turn; `consecutiveZeroOutputTurns`). `buildRules(LimitConfig)` layers conservative soft defaults (`DEFAULT_SOFT_LIMITS`: warn at 40 calls / 160k ctx / 8 tool errors / 3 zero-output turns) under explicit overrides; hard rules (`maxLlmCallsPerTurn`, `maxCostPerTurnUsd`, `maxLifetimeCostUsd`) appear only when configured (opt-in). `evaluateLimits(turn, lifetime, rules)` returns every breach (value strictly > threshold). `LimitExceededError` carries the breached `LimitBreach`. `LimitAlert` contextualizes a breach with agentId + turnNumber for routing.
+
+**`packages/agent-config/src/loader.ts`:** `AgentSchema` gains an optional `limits` block (`LimitsSchema`, `.strict()`) — `max*` (hard, positive) and `warn*` (soft, non-negative; 0 disables) fields, all optional. Declared key, exempt from the `.catchall(z.string())`.
+
+**`src/agent-runner.ts`:** `AgentRunContext` gains `onLimitAlert?`. Builds `limitRules = buildRules(agent.limits)` when a collector is present. `enforceLimits()` reads the collector's in-memory `getTurn`/`getLifetime`, fires soft alerts (deduped via a per-turn `Set<ruleId>`), and on a hard breach fires an alert then throws `LimitExceededError`. `makeOnLlmCallWithLimits(turnNumber)` composes the existing audit-log/stats hook with a post-call limit check; `onToolResultHandler` re-checks after each tool result. The main loop is wrapped to catch `LimitExceededError` (sets `limitAborted`, logs, does not re-throw — it is a deliberate stop, not a crash); `endTurn` records `aborted` when `limitAborted || signal.aborted`.
+
+**`src/orchestrator.ts`, `src/daemon.ts`:** `onLimitAlert?` threaded through `OrchestratorConfig` → `agentCtx`. The daemon implements it: pushes a `limit-alert` SSE event to the monitor dashboard and posts a structured alert to the copilot mailbox (when wired) so the copilot can assess and intervene between turns. New `MonitorEventType` value `limit-alert`. Exported from `src/index.ts`.
+
+**Enforcement semantics:** hard limits complement (do not replace) the existing between-turn mission cost cap (`MAX_COST_USD` → `waitForBudget`): per-turn caps catch a single runaway *during* the turn; the mission cap gates the next dispatch. Soft limits never change behaviour — they only route an alert.
+
+**Tests:** `tests/limits.unit.test.ts` (11) — `buildRules` defaults/opt-in/override/disable, `evaluateLimits` breach detection, toolErrors summing, mid-turn lifetime-cost tripping, zero-output streak, turn-vs-lifetime metric classification. `tests/limits.integration.test.ts` (1) — real hello-world run with `maxLlmCallsPerTurn: 1` proves the end-to-end path: breach on call 2 throws out of the hook, the turn finalizes `aborted` (useful PostMessage reply already sent on call 1), and a hard `onLimitAlert` fires.
+
+**Backward compatibility:** hard limits are opt-in (no default → no existing turn is aborted); soft defaults only route advisory alerts (zero behaviour change). The `limits` YAML field is optional; existing templates validate unchanged. No new env vars, secrets, or deployment steps. Copilot control-plane tools (`PauseAgent`/`SetMissionBudget`/`NotifyUser`) that act on these alerts are the next slice.
+
+## Sprint 24 (Phase 3) — OpenRouter cost accuracy (GitHub #10, Track 1)
+
+Goal: make the cost figure underneath budget limits trustworthy for OpenRouter. Investigation found pi-ai 0.52.12 recomputes cost from a static table and never reads the provider-reported cost, surfaces no generation id, and offers no extra-body hook — so exact per-call OpenRouter cost is unreachable without changing pi-ai (tracked as #10 Track 2). Track 1 improves the estimate without a fork.
+
+**`src/openrouter-pricing.ts` (new):** `fetchOpenRouterPricing()` fetches the public `GET /api/v1/models` once (in-process cache; concurrent callers share one in-flight request; failures non-fatal → empty map, keep pi-ai's estimate). `pricingFromModelsResponse(json)` (pure) converts per-token price strings → per-million numbers, skips unpriced models, and defaults cacheRead/cacheWrite to the input price (never 0) when OpenRouter doesn't report them. `applyPricingToModel(model, map)` (pure) overwrites an OpenRouter `Model`'s `cost` block in place; no-op for non-OpenRouter providers or unknown slugs. `enrichModelPricing(model)` ties them together. Constant URL (no SSRF surface), no API key, daemon-startup only.
+
+**`src/daemon.ts`, `src/cli.ts`:** after `resolveModel`, `await enrichModelPricing(model/visionModel)`. Because the single downstream `computeCost` path reads `model.cost`, fixing it once at startup makes llmCallLog AND agentTurnStats/missionStats/limits all use the accurate rate.
+
+**`src/llm-call-log.ts`, `src/agent-runner.ts`:** new optional `costEstimated?: boolean` on the call-log entry — `false` for first-party Anthropic (exact list price), `true` for OpenRouter (estimated; `model.provider !== "anthropic"`). Honest precision labelling for the trace viewer / billing.
+
+**Tests:** `tests/openrouter-pricing.unit.test.ts` (8) — conversion, cache defaulting, skip-unpriced, apply-only-to-OpenRouter, no-op for unknown slug.
+
+**Still an estimate:** Track 1 uses OpenRouter list price, not the exact amount charged for the upstream that served each request. Exact cost = #10 Track 2 (upstream pi-ai). Backward compatible: enrichment only touches OpenRouter models (Anthropic default unchanged); `costEstimated` is additive; no new env vars, secrets, or deployment steps.

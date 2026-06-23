@@ -78,6 +78,14 @@ export interface LlmCallLogEntry {
 	savedAt: Date;
 	/** Model id (e.g. "claude-sonnet-4-6"). */
 	model: string;
+	/**
+	 * True when `usage.cost` is an estimate rather than an authoritative figure.
+	 * First-party Anthropic list prices are exact (false); OpenRouter costs are
+	 * estimated from list pricing — the amount actually charged for the upstream
+	 * that served the request is not surfaced by pi-ai (see GitHub issue #10).
+	 * Absent on entries written before this field existed (treat as unknown).
+	 */
+	costEstimated?: boolean;
 	/** Full call input — absent after the 7-day retention window. */
 	input?: {
 		systemPrompt: string;
