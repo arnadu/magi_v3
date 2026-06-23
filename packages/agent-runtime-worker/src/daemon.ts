@@ -100,6 +100,7 @@ import { createMongoMailboxRepository } from "./mailbox.js";
 import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer } from "./monitor-server.js";
+import { enrichModelPricing } from "./openrouter-pricing.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
@@ -759,6 +760,13 @@ async function main(): Promise<void> {
 		process.env.VISION_MODEL ??
 		"claude-haiku-4-5-20251001";
 	const visionModel = resolveModel(visionModelId);
+
+	// Overwrite OpenRouter models' static cost with live list pricing (no-op for
+	// first-party Anthropic models, whose cost is already exact). See issue #10.
+	await Promise.all([
+		enrichModelPricing(model),
+		enrichModelPricing(visionModel),
+	]);
 
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 	// TEAM_SKILLS_PATH is set by the control plane when the YAML is injected from MongoDB

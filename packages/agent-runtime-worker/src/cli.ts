@@ -44,6 +44,7 @@ import { createMongoConversationRepository } from "./conversation-repository.js"
 import { createMongoMailboxRepository } from "./mailbox.js";
 import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
+import { enrichModelPricing } from "./openrouter-pricing.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { expandAtPaths } from "./user-input.js";
 import { WorkspaceManager } from "./workspace-manager.js";
@@ -141,6 +142,12 @@ async function main(): Promise<void> {
 
 	const teamConfig = loadTeamConfig(teamConfigPath);
 	const { modelId, model, visionModel } = getModel(teamConfig);
+	// Overwrite OpenRouter models' static cost with live list pricing (no-op for
+	// first-party Anthropic models). See issue #10.
+	await Promise.all([
+		enrichModelPricing(model),
+		enrichModelPricing(visionModel),
+	]);
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
 	// Team skills live beside the YAML: config/teams/<name>/skills/

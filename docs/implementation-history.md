@@ -240,3 +240,17 @@ Goal: turn the statistics foundation into enforcement. Decouples *what is measur
 **Tests:** `tests/limits.unit.test.ts` (11) — `buildRules` defaults/opt-in/override/disable, `evaluateLimits` breach detection, toolErrors summing, mid-turn lifetime-cost tripping, zero-output streak, turn-vs-lifetime metric classification. `tests/limits.integration.test.ts` (1) — real hello-world run with `maxLlmCallsPerTurn: 1` proves the end-to-end path: breach on call 2 throws out of the hook, the turn finalizes `aborted` (useful PostMessage reply already sent on call 1), and a hard `onLimitAlert` fires.
 
 **Backward compatibility:** hard limits are opt-in (no default → no existing turn is aborted); soft defaults only route advisory alerts (zero behaviour change). The `limits` YAML field is optional; existing templates validate unchanged. No new env vars, secrets, or deployment steps. Copilot control-plane tools (`PauseAgent`/`SetMissionBudget`/`NotifyUser`) that act on these alerts are the next slice.
+
+## Sprint 24 (Phase 3) — OpenRouter cost accuracy (GitHub #10, Track 1)
+
+Goal: make the cost figure underneath budget limits trustworthy for OpenRouter. Investigation found pi-ai 0.52.12 recomputes cost from a static table and never reads the provider-reported cost, surfaces no generation id, and offers no extra-body hook — so exact per-call OpenRouter cost is unreachable without changing pi-ai (tracked as #10 Track 2). Track 1 improves the estimate without a fork.
+
+**`src/openrouter-pricing.ts` (new):** `fetchOpenRouterPricing()` fetches the public `GET /api/v1/models` once (in-process cache; concurrent callers share one in-flight request; failures non-fatal → empty map, keep pi-ai's estimate). `pricingFromModelsResponse(json)` (pure) converts per-token price strings → per-million numbers, skips unpriced models, and defaults cacheRead/cacheWrite to the input price (never 0) when OpenRouter doesn't report them. `applyPricingToModel(model, map)` (pure) overwrites an OpenRouter `Model`'s `cost` block in place; no-op for non-OpenRouter providers or unknown slugs. `enrichModelPricing(model)` ties them together. Constant URL (no SSRF surface), no API key, daemon-startup only.
+
+**`src/daemon.ts`, `src/cli.ts`:** after `resolveModel`, `await enrichModelPricing(model/visionModel)`. Because the single downstream `computeCost` path reads `model.cost`, fixing it once at startup makes llmCallLog AND agentTurnStats/missionStats/limits all use the accurate rate.
+
+**`src/llm-call-log.ts`, `src/agent-runner.ts`:** new optional `costEstimated?: boolean` on the call-log entry — `false` for first-party Anthropic (exact list price), `true` for OpenRouter (estimated; `model.provider !== "anthropic"`). Honest precision labelling for the trace viewer / billing.
+
+**Tests:** `tests/openrouter-pricing.unit.test.ts` (8) — conversion, cache defaulting, skip-unpriced, apply-only-to-OpenRouter, no-op for unknown slug.
+
+**Still an estimate:** Track 1 uses OpenRouter list price, not the exact amount charged for the upstream that served each request. Exact cost = #10 Track 2 (upstream pi-ai). Backward compatible: enrichment only touches OpenRouter models (Anthropic default unchanged); `costEstimated` is additive; no new env vars, secrets, or deployment steps.

@@ -248,6 +248,9 @@ export async function runAgent(
 					isReflection,
 					savedAt: new Date(),
 					model: ctx.model.id,
+					// Anthropic list prices are exact; other providers (OpenRouter) are
+					// estimated from list pricing (see issue #10).
+					costEstimated: ctx.model.provider !== "anthropic",
 					input: {
 						systemPrompt: event.systemPrompt,
 						messages: truncateToolBodies(event.messages),
