@@ -1017,6 +1017,7 @@ async function main(): Promise<void> {
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
+				isAgentPaused: (agentId) => monitor.isAgentPaused(agentId),
 				onLimitAlert: (alert) => {
 					const { agentId, turnNumber, breach } = alert;
 					const { rule, value } = breach;

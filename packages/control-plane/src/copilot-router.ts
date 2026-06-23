@@ -15,7 +15,7 @@ import { parseTeamConfig } from "@magi/agent-config";
 import { createMongoMailboxRepository } from "@magi/agent-runtime-worker";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
-import { type Db, ObjectId } from "mongodb";
+import { type Collection, type Db, ObjectId } from "mongodb";
 import {
 	type CopilotDaemonHandle,
 	startCopilotDaemon,
@@ -559,6 +559,31 @@ async function executeAction(
 			return `Scheduled message created for mission "${missionId}"`;
 		}
 
+		case "pause_agent":
+		case "resume_agent": {
+			const missionId = payload.missionId as string;
+			const agentId = payload.agentId as string;
+			const endpoint =
+				action.type === "pause_agent" ? "/pause-agent" : "/resume-agent";
+			await postToMissionMonitor(missions, userId, missionId, endpoint, {
+				agentId,
+			});
+			const verb = action.type === "pause_agent" ? "paused" : "resumed";
+			return `Agent "${agentId}" ${verb} in mission "${missionId}"`;
+		}
+
+		case "set_mission_budget": {
+			const missionId = payload.missionId as string;
+			const capUsd = payload.capUsd as number;
+			if (typeof capUsd !== "number" || capUsd <= 0) {
+				throw new Error("set_mission_budget requires a positive capUsd");
+			}
+			await postToMissionMonitor(missions, userId, missionId, "/set-budget", {
+				capUsd,
+			});
+			return `Mission "${missionId}" spending cap set to $${capUsd.toFixed(2)}`;
+		}
+
 		default:
 			throw new Error(`Unknown action type "${action.type}"`);
 	}
@@ -569,6 +594,40 @@ async function executeAction(
 // ---------------------------------------------------------------------------
 
 type TeamFile = { path: string; content: string };
+
+/**
+ * POST a JSON body to a mutating endpoint on a mission's execution-plane monitor
+ * server (port 4000), scoped to the requesting user and authenticated with the
+ * per-mission monitor token. Throws if the mission is unknown to the user, has
+ * no private IP (not running), or the monitor returns non-2xx.
+ */
+async function postToMissionMonitor(
+	missions: Collection<MissionDoc>,
+	userId: string,
+	missionId: string,
+	endpoint: string,
+	body: unknown,
+): Promise<void> {
+	const mission = await missions.findOne({ missionId, userId });
+	if (!mission?.privateIp) {
+		throw new Error(
+			`Mission "${missionId}" is not running (no private IP) — cannot ${endpoint}`,
+		);
+	}
+	const token = deriveMonitorToken(missionId);
+	const res = await fetch(`http://[${mission.privateIp}]:4000${endpoint}`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			...(token ? { "x-monitor-token": token } : {}),
+		},
+		body: JSON.stringify(body),
+		signal: AbortSignal.timeout(15_000),
+	});
+	if (!res.ok) {
+		throw new Error(`Monitor ${endpoint} failed: HTTP ${res.status}`);
+	}
+}
 
 /**
  * Recursively read a mission's sharedDir via the monitor server and return a

@@ -254,3 +254,19 @@ Goal: make the cost figure underneath budget limits trustworthy for OpenRouter. 
 **Tests:** `tests/openrouter-pricing.unit.test.ts` (8) — conversion, cache defaulting, skip-unpriced, apply-only-to-OpenRouter, no-op for unknown slug.
 
 **Still an estimate:** Track 1 uses OpenRouter list price, not the exact amount charged for the upstream that served each request. Exact cost = #10 Track 2 (upstream pi-ai). Backward compatible: enrichment only touches OpenRouter models (Anthropic default unchanged); `costEstimated` is additive; no new env vars, secrets, or deployment steps.
+
+## Sprint 24 (Phase 4) — Copilot intervention tools (OODA "Act")
+
+Goal: let the copilot/operator act on the `limit-alert`s from phase 2 — pause a runaway agent, resume it, or adjust the mission budget — and surface alerts in the dashboard.
+
+**`src/monitor-server.ts`:** new per-agent pause gate — `pausedAgents: Set<string>` + public `isAgentPaused(agentId)`. Three new token-checked POST routes (mirroring `/extend-budget`): `/pause-agent` and `/resume-agent` (validate `agentId` against the team via `readAgentId`, returning 400/404 on bad input), and `/set-budget` (absolute cap, vs `/extend-budget` which adds; lifts the budget pause when the new cap exceeds spend). `pausedAgents` added to the status payload; new SSE event types `agent-paused`/`agent-resumed`/`limit-alert`.
+
+**`src/daemon.ts`:** wired the previously-stubbed `isAgentPaused: (agentId) => monitor.isAgentPaused(agentId)` into the orchestration config — the orchestrator already skips paused agents at dispatch (covered by orchestrator unit test TC-7).
+
+**`packages/control-plane/src/copilot-tools.ts`, `copilot-router.ts`:** `ProposeAction` gains three action types — `pause_agent`, `resume_agent`, `set_mission_budget` — so interventions go through the established operator-confirmation flow (no silent automated action). `executeAction` handles them via a new `postToMissionMonitor` helper that resolves the mission by `{missionId, userId}`, derives the per-mission monitor token, and POSTs to the execution-plane endpoint — the same authenticated path as `write_mission_file`. `NotifyUser` was intentionally dropped (the copilot's chat already reaches the operator and the daemon already emits `limit-alert`).
+
+**`public/index.html`, `public/app.js`:** dashboard surfaces `limit-alert` as a toast (soft = amber, auto-dismiss 12s; hard = red, sticky) with metric/threshold/label.
+
+**Tests:** pause enforcement is covered by orchestrator TC-7 (paused agent skipped); endpoints mirror the tested `/extend-budget` pattern; both packages type-check and the full unit suite (66) passes. A live MonitorServer needs MongoDB, so the new routes are exercised via the existing dashboard integration harness rather than a new unit test.
+
+**Backward compatibility:** all additions are new routes / action types / optional state — nothing existing changes. No new env vars, secrets, or deployment steps. Closes the Sprint 24 OODA loop: phase 1 measures, phase 2 detects + alerts, phase 4 acts.

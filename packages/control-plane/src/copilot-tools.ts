@@ -417,7 +417,10 @@ export function createCopilotTools(
 			"- restore_template_version: { templateId, version } — roll back a template to an archived version (archives current state first)\n" +
 			"- save_session_config: { missionId, teamConfigYaml, teamFiles?: [{path, content}], mentalMaps?: {[agentId]: html} }\n" +
 			"- cancel_schedule: { id }\n" +
-			"- create_schedule: { missionId, to, subject, body, cron?, deliverAt?, label? }",
+			"- create_schedule: { missionId, to, subject, body, cron?, deliverAt?, label? }\n" +
+			"- pause_agent: { missionId, agentId } — halt one agent at its next dispatch boundary (e.g. a runaway flagged by a limit alert)\n" +
+			"- resume_agent: { missionId, agentId } — lift a previous pause\n" +
+			"- set_mission_budget: { missionId, capUsd } — set the mission's absolute spending cap in USD",
 		parameters: Type.Object({
 			type: Type.String({ description: "Action type (see description)" }),
 			label: Type.String({
@@ -446,6 +449,9 @@ export function createCopilotTools(
 				"save_session_config",
 				"cancel_schedule",
 				"create_schedule",
+				"pause_agent",
+				"resume_agent",
+				"set_mission_budget",
 			]);
 			if (!VALID_TYPES.has(type)) {
 				return err(

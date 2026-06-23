@@ -213,6 +213,11 @@ function connectSSE() {
 		maxCostUsd = d.newCapUsd ?? maxCostUsd;
 	});
 
+	es.addEventListener("limit-alert", (e) => {
+		const d = JSON.parse(e.data);
+		showLimitToast(d);
+	});
+
 	es.addEventListener("shutdown", () => {
 		document.getElementById("dot").classList.add("dead");
 		const btn = document.getElementById("kill-btn");
@@ -349,6 +354,39 @@ function showAgentErrorBanner(agentId, errorMessage, transient) {
 
 function hideAgentErrorBanner() {
 	document.getElementById("agent-error-banner")?.classList.add("hidden");
+}
+
+// ── Limit-alert toasts ───────────────────────────────────────────────────────
+// Soft limits (advisory) and hard limits (turn aborted) emitted by the daemon.
+// Hard alerts are sticky until dismissed; soft alerts auto-dismiss after 12s.
+function showLimitToast(d) {
+	const container = document.getElementById("limit-toasts");
+	if (!container) return;
+	const hard = d.severity === "hard";
+	const toast = document.createElement("div");
+	toast.style.cssText = [
+		"margin:6px",
+		"padding:10px 14px",
+		"border-radius:6px",
+		"font-size:13px",
+		"max-width:420px",
+		"box-shadow:0 2px 8px rgba(0,0,0,0.3)",
+		`background:${hard ? "#7f1d1d" : "#78350f"}`,
+		"color:#fff",
+		`border-left:4px solid ${hard ? "#ef4444" : "#f59e0b"}`,
+	].join(";");
+	const verb = hard ? "aborted turn" : "warning";
+	toast.textContent =
+		`${hard ? "⛔" : "⚠"} Limit ${verb}: ${d.agentId} — ` +
+		`${d.metric} = ${d.value} (> ${d.threshold}). ${d.label}`;
+	const close = document.createElement("button");
+	close.textContent = "×";
+	close.style.cssText =
+		"margin-left:10px;background:none;border:none;color:#fff;cursor:pointer;font-size:16px";
+	close.onclick = () => toast.remove();
+	toast.appendChild(close);
+	container.appendChild(toast);
+	if (!hard) setTimeout(() => toast.remove(), 12_000);
 }
 
 async function resumeAgentAfterError(agentId) {
