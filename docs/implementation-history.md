@@ -270,3 +270,21 @@ Goal: let the copilot/operator act on the `limit-alert`s from phase 2 — pause 
 **Tests:** pause enforcement is covered by orchestrator TC-7 (paused agent skipped); endpoints mirror the tested `/extend-budget` pattern; both packages type-check and the full unit suite (66) passes. A live MonitorServer needs MongoDB, so the new routes are exercised via the existing dashboard integration harness rather than a new unit test.
 
 **Backward compatibility:** all additions are new routes / action types / optional state — nothing existing changes. No new env vars, secrets, or deployment steps. Closes the Sprint 24 OODA loop: phase 1 measures, phase 2 detects + alerts, phase 4 acts.
+
+## Sprint 25 (Phase 1) — git-commit-on-sleep
+
+Goal: checkpoint the shared mission workspace at the end of every turn so every work product — including files written by Bash/skill scripts that the tool-call interface can't see — gets a provenance trail and is retrievable by version. Foundation for the file-content API and the Sprint 26 trace viewer's file drill-down.
+
+**`src/workspace-git.ts` (new):** `WorkspaceGit` — one instance per mission, serializes all git operations through a single promise chain so concurrent agents finishing turns never collide on `.git/index.lock`. `commit(message)` runs `git add -A`, skips when nothing is staged (no empty-commit bloat), commits with the `magi`/`magi@magi` identity (matching `WorkspaceManager`'s init), and returns `{ commit, changedFiles }` where `changedFiles` is `diff-tree --name-status` (status letter + path). Failures are logged and return null — git tracking never breaks a mission.
+
+**`src/agent-stats.ts`:** `AgentTurnStats` gains `gitCommit?` + `gitChangedFiles?` (status+path; captures Bash-written files that `filesWritten` from WriteFile/EditFile can't). `StatsCollector.endTurn(agentId, status, git?)` stores them on the turn doc.
+
+**`src/agent-runner.ts`:** new `commitWorkspace?` hook on `AgentRunContext`; called in the `finally` (so an aborted turn's partial work is still checkpointed) before `endTurn`, with the result threaded into the turn stats. Best-effort — a null result just means no changes.
+
+**`src/orchestrator.ts`:** constructs one `WorkspaceGit(firstIdentity.sharedDir)` after provision (all agents share the mission git repo) and injects `commitWorkspace` into `agentCtx`. Owned by the orchestrator because that's where `sharedDir` is resolved.
+
+**`packages/skills/git-provenance/SKILL.md`:** rewritten — work is auto-committed at turn end; agents must NOT run `git init`/`add`/`commit` (manual commits race the automatic checkpoint and collide on the lock). The `record-work.sh` script is retained for backward compatibility but no longer referenced.
+
+**Tests:** `tests/workspace-git.unit.test.ts` (6, real throwaway git repo) — commit new+modified with status letters and `git show <hash>:path` retrieval, null on nothing-to-commit, Bash-written file capture, serialized concurrent commits (no lock collision, linear history), graceful null on a non-repo dir.
+
+**Backward compatibility:** new collection fields are additive; `commitWorkspace` is optional; existing missions' sharedDir is already a git repo (provision git-inits it). No new env vars, secrets, or deployment steps. **Next:** shared `document-processor.ts` + upload→process→mailbox pipeline + file-content API (`git show`).

@@ -71,6 +71,16 @@ export interface AgentRunContext {
 	 * copilot mailbox and the monitor dashboard. Requires `statsCollector`.
 	 */
 	onLimitAlert?: (alert: LimitAlert) => void;
+	/**
+	 * Commit the shared workspace at turn end (git-commit-on-sleep, Sprint 25).
+	 * Returns the commit SHA + changed files, or null when nothing changed.
+	 * Serialized across concurrent agents by the caller. The result is recorded
+	 * on the turn stats (`gitCommit`/`gitChangedFiles`).
+	 */
+	commitWorkspace?: (message: string) => Promise<{
+		commit: string;
+		changedFiles: { path: string; status: string }[];
+	} | null>;
 	/** Per-agent workspace identity providing private workdir and ACL. */
 	identity: AgentIdentity;
 	/** Called immediately when the agent posts a message to "user". */
@@ -654,11 +664,18 @@ export async function runAgent(
 			throw e;
 		}
 	} finally {
+		// Checkpoint the shared workspace (git-commit-on-sleep). Captures files
+		// written by any tool, including Bash/skills. Runs regardless of outcome
+		// so an aborted turn's partial work is still preserved. Best-effort.
+		const git =
+			(await ctx.commitWorkspace?.(`turn: ${agentId}/${activeTurnNumber}`)) ??
+			undefined;
 		// Finalize turn statistics regardless of success, error, or abort. An
 		// aborted run still incurred cost, so its lifetime totals must be recorded.
 		await ctx.statsCollector?.endTurn(
 			agentId,
 			limitAborted || signal?.aborted ? "aborted" : "complete",
+			git ?? undefined,
 		);
 		// Close the browser session regardless of success or failure.
 		await browseWebHandle?.close();

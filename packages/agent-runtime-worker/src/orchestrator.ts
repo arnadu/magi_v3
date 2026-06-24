@@ -9,6 +9,7 @@ import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
+import { WorkspaceGit } from "./workspace-git.js";
 import type { WorkspaceManager } from "./workspace-manager.js";
 
 // Per-dispatch wall-clock timeout: abort a hung agent run after this many
@@ -211,6 +212,11 @@ export async function runOrchestrationLoop(
 		"[orchestrator] Isolation verified — child env does not contain secrets",
 	);
 
+	// git-commit-on-sleep: one WorkspaceGit per mission (serializes commits across
+	// concurrent agents). All agents share the same sharedDir / git repo, which
+	// WorkspaceManager.provision() has already initialised.
+	const workspaceGit = new WorkspaceGit(firstIdentity.sharedDir);
+
 	// Buffer for user input typed during agent runs.
 	const inputBuffer: string[] = [];
 	let rl: readline.Interface | null = null;
@@ -238,6 +244,7 @@ export async function runOrchestrationLoop(
 		llmCallLog,
 		statsCollector: config.statsCollector,
 		onLimitAlert: config.onLimitAlert,
+		commitWorkspace: (message: string) => workspaceGit.commit(message),
 		onMentalMapUpdate: config.onMentalMapUpdate,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();

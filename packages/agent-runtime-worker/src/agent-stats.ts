@@ -81,6 +81,17 @@ export interface AgentTurnStats {
 	urlsVisited: string[];
 	/** True when reflection ran at the start of this wakeup. */
 	reflectionTriggered: boolean;
+
+	// Git checkpoint (Sprint 25) — set at turn end when the workspace changed.
+	/** Commit SHA of the workspace checkpoint taken at this turn's end. */
+	gitCommit?: string;
+	/**
+	 * Files changed in `gitCommit` (status letter + path). Captures Bash-/skill-
+	 * written files that `filesWritten` (WriteFile/EditFile only) cannot see.
+	 * This is the workspace delta since the previous commit, so it may include
+	 * changes from other agents whose turns overlapped.
+	 */
+	gitChangedFiles?: { path: string; status: string }[];
 }
 
 /**
@@ -367,6 +378,7 @@ export class StatsCollector {
 	async endTurn(
 		agentId: string,
 		status: "complete" | "aborted" = "complete",
+		git?: { commit: string; changedFiles: { path: string; status: string }[] },
 	): Promise<void> {
 		const turn = this.turns.get(this.key(agentId));
 		if (!turn) return;
@@ -376,6 +388,10 @@ export class StatsCollector {
 			(turn.completedAt.getTime() - turn.startedAt.getTime()) / 1000,
 		);
 		turn.status = status;
+		if (git) {
+			turn.gitCommit = git.commit;
+			turn.gitChangedFiles = git.changedFiles;
+		}
 		await this.persist(agentId);
 
 		const producedOutput =
