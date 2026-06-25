@@ -20,12 +20,17 @@
  * The vision call is injected as `describeImage` so this module has no LLM
  * dependency and is fully unit-testable; production wires it to the vision model.
  *
- * This slice handles: plain text / Markdown, CSV, single images, and PDF.
- * XLSX / DOCX / ZIP and the dimension-based filter for embedded images land in
- * the next slice (they need exceljs / mammoth / jszip / image-size).
+ * Formats: plain text / Markdown, CSV, single images, PDF (mupdf), XLSX (exceljs →
+ * one CSV per sheet), DOCX (mammoth → markdown + embedded-image policy), and ZIP
+ * (jszip → each contained file processed into its own artifact, nested zips left
+ * un-expanded). Embedded-image dimensions come from `image-size`.
  */
 
 import { join } from "node:path";
+import ExcelJS from "exceljs";
+import { imageSize } from "image-size";
+import JSZip from "jszip";
+import mammoth from "mammoth";
 import * as mupdf from "mupdf";
 import {
 	type ArtifactMeta,
@@ -78,6 +83,8 @@ export interface ProcessLimits {
 	maxRenderPages: number;
 	/** Rows shown in the content.md preview for CSV/sheets (full data saved separately). */
 	previewRows: number;
+	/** Process at most this many files inside a ZIP; the rest are listed as unprocessed. */
+	maxZipFiles: number;
 }
 
 export const DEFAULT_LIMITS: ProcessLimits = {
@@ -86,6 +93,7 @@ export const DEFAULT_LIMITS: ProcessLimits = {
 	maxAutoDescribe: 10,
 	maxRenderPages: 50,
 	previewRows: 5,
+	maxZipFiles: 20,
 };
 
 /** Injected vision call. Returns a short description, or undefined on failure / no capability. */
@@ -452,7 +460,266 @@ async function processPdf(
 	};
 }
 
-function processUnsupported(bytes: Buffer, filename: string): Handled {
+/** CSV-escape a cell value (quote if it contains comma, quote, or newline). */
+function csvCell(v: unknown): string {
+	if (v === null || v === undefined) return "";
+	const s =
+		typeof v === "object" &&
+		v !== null &&
+		"text" in (v as Record<string, unknown>)
+			? String((v as { text: unknown }).text) // exceljs rich text / hyperlink
+			: String(v);
+	return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+async function processXlsx(
+	bytes: Buffer,
+	filename: string,
+	limits: ProcessLimits,
+): Promise<Handled> {
+	const wb = new ExcelJS.Workbook();
+	try {
+		await wb.xlsx.load(bytes as unknown as ArrayBuffer);
+	} catch (e) {
+		return processUnsupported(
+			bytes,
+			filename,
+			`Could not open workbook — ${(e as Error).message}.`,
+		);
+	}
+
+	const files: FileEntry[] = [];
+	const overview: string[] = [];
+	for (const ws of wb.worksheets) {
+		// getSheetValues() is 1-indexed with a leading null row and a leading null cell.
+		const rows = (ws.getSheetValues() as unknown[][])
+			.slice(1)
+			.map((row) => (row ? row.slice(1).map(csvCell).join(",") : ""));
+		const dataRows = Math.max(0, rows.length - 1);
+		const safeName = `sheet-${ws.name.replace(/[^a-z0-9_-]+/gi, "_")}`;
+		files.push({ name: `${safeName}.csv`, content: rows.join("\n") });
+		overview.push(
+			`### ${ws.name}\n` +
+				`- ${dataRows} data rows × ${ws.columnCount} cols → \`${safeName}.csv\` (full data; Bash-slice it)\n` +
+				`- header: \`${rows[0] ?? ""}\`\n` +
+				"```\n" +
+				rows.slice(0, limits.previewRows + 1).join("\n") +
+				"\n```",
+		);
+	}
+
+	const content = [
+		statusLine("complete"),
+		"",
+		`# ${filename} (${wb.worksheets.length} sheet${wb.worksheets.length === 1 ? "" : "s"})`,
+		"",
+		overview.join("\n\n"),
+	].join("\n");
+	files.unshift({ name: "content.md", content });
+	return {
+		format: "xlsx",
+		status: "complete",
+		files,
+		summary: `XLSX (${wb.worksheets.length} sheets)`,
+	};
+}
+
+async function processDocx(
+	bytes: Buffer,
+	filename: string,
+	limits: ProcessLimits,
+	describeImage: DescribeImageFn | undefined,
+): Promise<Handled> {
+	// Collect embedded images during conversion; describe/defer them afterward
+	// using the same policy as PDF/HTML.
+	const collected: { name: string; bytes: Buffer; mime: string }[] = [];
+	const convertImage = mammoth.images.imgElement(async (image) => {
+		const buf = await image.read();
+		const mime = image.contentType || "image/png";
+		const ext = MIME_TO_EXT[mime] ?? "png";
+		const name = `image-${collected.length + 1}.${ext}`;
+		collected.push({ name, bytes: Buffer.from(buf), mime });
+		return { src: name };
+	});
+
+	let markdown: string;
+	try {
+		// mammoth ships convertToMarkdown at runtime but omits it from its types;
+		// it has the same signature as convertToHtml.
+		const convertToMarkdown = (
+			mammoth as unknown as {
+				convertToMarkdown: typeof mammoth.convertToHtml;
+			}
+		).convertToMarkdown;
+		const result = await convertToMarkdown({ buffer: bytes }, { convertImage });
+		markdown = result.value;
+	} catch (e) {
+		return processUnsupported(
+			bytes,
+			filename,
+			`Could not read DOCX — ${(e as Error).message}.`,
+		);
+	}
+
+	const files: FileEntry[] = collected.map((c) => ({
+		name: c.name,
+		content: c.bytes,
+	}));
+
+	// Apply the describe-now/defer policy to embedded images.
+	const ranked: RankableImage[] = collected.map((c, i) => {
+		const dims = imageDims(c.bytes);
+		return { index: i, width: dims?.width, height: dims?.height };
+	});
+	const selection = selectImages(ranked, limits);
+	const describeSet = new Set(selection.describe);
+	const imageNotes: string[] = [];
+	const unprocessed: { item: string; reason: string }[] = [];
+	for (let i = 0; i < collected.length; i++) {
+		const c = collected[i];
+		if (selection.decorative.includes(i)) {
+			unprocessed.push({ item: c.name, reason: "decorative" });
+			continue;
+		}
+		if (describeSet.has(i) && describeImage) {
+			const desc = await describeImage(c.bytes, c.mime);
+			imageNotes.push(
+				`- \`${c.name}\`: ${desc ?? `(InspectImage("artifacts/<id>/${c.name}") to analyze)`}`,
+			);
+		} else {
+			imageNotes.push(
+				`- \`${c.name}\`: not auto-described — InspectImage("artifacts/<id>/${c.name}", "your question") to analyze`,
+			);
+			unprocessed.push({ item: c.name, reason: "over-budget" });
+		}
+	}
+
+	const decorativeCount = selection.decorative.length;
+	const status: ProcessingStatus =
+		selection.deferred.length > 0 || decorativeCount > 0
+			? "partial"
+			: "complete";
+	const parts = [
+		statusLine(
+			status,
+			status === "partial"
+				? `Full text included. ${selection.deferred.length} image(s) await InspectImage; ${decorativeCount} decorative image(s) omitted.`
+				: undefined,
+		),
+		"",
+		`# ${filename}`,
+		"",
+		markdown.trim() || "(No text extracted.)",
+	];
+	if (imageNotes.length > 0) {
+		parts.push("", "## Images", "", imageNotes.join("\n"));
+	}
+	if (decorativeCount > 0) {
+		parts.push(
+			"",
+			`*(${decorativeCount} smaller/decorative image(s) omitted from inline view — saved under the artifact, InspectImage if needed.)*`,
+		);
+	}
+	files.unshift({ name: "content.md", content: parts.join("\n") });
+	return {
+		format: "docx",
+		status,
+		files,
+		unprocessed: unprocessed.length > 0 ? unprocessed : undefined,
+		summary: `DOCX${collected.length > 0 ? ` (${collected.length} images)` : ""}`,
+	};
+}
+
+async function processZip(
+	bytes: Buffer,
+	filename: string,
+	opts: ProcessOptions,
+	limits: ProcessLimits,
+): Promise<Handled> {
+	let zip: JSZip;
+	try {
+		zip = await JSZip.loadAsync(bytes);
+	} catch (e) {
+		return processUnsupported(
+			bytes,
+			filename,
+			`Could not open ZIP — ${(e as Error).message}.`,
+		);
+	}
+
+	const entries = Object.values(zip.files).filter((f) => !f.dir);
+	const lines: string[] = [];
+	const unprocessed: { item: string; reason: string }[] = [];
+	let processed = 0;
+
+	for (const entry of entries) {
+		if (entry.name.toLowerCase().endsWith(".zip")) {
+			lines.push(`- \`${entry.name}\` — nested ZIP, not expanded`);
+			unprocessed.push({ item: entry.name, reason: "nested-zip" });
+			continue;
+		}
+		if (processed >= limits.maxZipFiles) {
+			lines.push(`- \`${entry.name}\` — not processed (file limit reached)`);
+			unprocessed.push({ item: entry.name, reason: "over-file-limit" });
+			continue;
+		}
+		const entryBytes = Buffer.from(await entry.async("nodebuffer"));
+		// Recurse via the public entry point — each contained file becomes its own
+		// artifact; ZIPs are skipped above so this never recurses into another ZIP.
+		const sub = await processBuffer(entryBytes, {
+			...opts,
+			filename: entry.name.split("/").pop() ?? entry.name,
+		});
+		processed++;
+		lines.push(
+			`- \`${entry.name}\` → artifact \`${sub.artifactId}\` (${sub.format}, ${sub.summary}) — \`cat artifacts/${sub.artifactId}/content.md\``,
+		);
+	}
+
+	const status: ProcessingStatus =
+		unprocessed.length > 0 ? "partial" : "complete";
+	const content = [
+		statusLine(
+			status,
+			status === "partial"
+				? `${processed} of ${entries.length} files processed into their own artifacts.`
+				: undefined,
+		),
+		"",
+		`# ${filename} (${entries.length} files)`,
+		"",
+		lines.join("\n") || "(empty archive)",
+	].join("\n");
+
+	return {
+		format: "zip",
+		status,
+		files: [{ name: "content.md", content }],
+		unprocessed: unprocessed.length > 0 ? unprocessed : undefined,
+		summary: `ZIP (${processed}/${entries.length} files)`,
+	};
+}
+
+/** Read image dimensions from a buffer, or undefined if unparseable. */
+function imageDims(
+	bytes: Buffer,
+): { width: number; height: number } | undefined {
+	try {
+		const d = imageSize(bytes);
+		if (typeof d.width === "number" && typeof d.height === "number") {
+			return { width: d.width, height: d.height };
+		}
+	} catch {
+		// unparseable — treat as dimensionless (substantive)
+	}
+	return undefined;
+}
+
+function processUnsupported(
+	bytes: Buffer,
+	filename: string,
+	detail?: string,
+): Handled {
 	return {
 		format: "unknown",
 		status: "unsupported",
@@ -461,7 +728,8 @@ function processUnsupported(bytes: Buffer, filename: string): Handled {
 				name: "content.md",
 				content: statusLine(
 					"unsupported",
-					`Unrecognized format for "${filename}". Raw file saved alongside — open it with Bash if it is text-like.`,
+					detail ??
+						`Unrecognized format for "${filename}". Raw file saved alongside — open it with Bash if it is text-like.`,
 				),
 			},
 			{ name: filename, content: bytes },
@@ -511,9 +779,21 @@ export async function processBuffer(
 				opts.signal,
 			);
 			break;
+		case "xlsx":
+			handled = await processXlsx(bytes, opts.filename, limits);
+			break;
+		case "docx":
+			handled = await processDocx(
+				bytes,
+				opts.filename,
+				limits,
+				opts.describeImage,
+			);
+			break;
+		case "zip":
+			handled = await processZip(bytes, opts.filename, opts, limits);
+			break;
 		default:
-			// xlsx / docx / zip land in the next slice; until then they fall through
-			// to the raw-file handler so nothing is lost.
 			handled = processUnsupported(bytes, opts.filename);
 	}
 
