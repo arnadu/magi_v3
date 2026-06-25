@@ -46,7 +46,7 @@ sector reports, and event-driven alerts with full citation lineage.
 | 23 | ✅ Done | **Auth + multi-user**: Firebase Auth (Google OAuth); `userId` on missions; per-user mission scoping; one copilot daemon per Firebase UID (`copilot-{uid}`); `/api/usage` per-user and admin; `magi_session` cookie for new-tab auth (dashboard); org-level `FLY_API_TOKEN_CI`; 512 MB control plane VM; structured error logging + `errorMessage` in MongoDB; `MONITOR_TOKEN` HMAC auth on MonitorServer (`MONITOR_SIGNING_KEY`); fix F-008/F-009/F-016/F-019/F-020 |
 | 24 | ✅ Done | **Budget hardening + alignment signals**: `StatsCollector` three-layer stats (`llmCallLog`/`agentTurnStats` upserted incrementally/`missionStats` `$inc` at turn end), three hooks `onLlmCall`/`onToolResult`/`onTurnEnd`; `LimitRule[]` framework (hard limits opt-in → abort turn; soft limits defaulted → copilot mailbox + dashboard `limit-alert` toasts); per-turn + per-agent-lifetime cost caps; OpenRouter live pricing + `costEstimated` flag (#10 Track 1); copilot `PauseAgent`/`ResumeAgent`/`SetMissionBudget` via operator-confirmed `ProposeAction` (wired `isAgentPaused`). **Deferred:** G-2 two-phase inbox ack, G-3 missed-cron replay, #10 Track 2 (exact OpenRouter cost), `NotifyUser` (dropped — copilot chat + `limit-alert` already cover it) |
 | 25 | ✅ Done | **File I/O + artifact tracking**: git-commit-on-sleep (per-turn workspace checkpoint, serialized async mutex, hash in `agentTurnStats.gitCommit`, `filesWritten`/`gitChangedFiles` from `git diff`); shared `document-processor.ts` (text/CSV/image/PDF/XLSX/DOCX/ZIP, **no text truncation**, describe-now/defer image policy riding the existing `InspectImage`, first-class partial-processing markers) with **`FetchUrl` deduped onto it**; upload→process→mailbox pipeline (monitor `POST /upload`, file auto-processed + bundled with operator message, **no agent-facing ProcessFile tool**); download backend (monitor `GET /download` — single file or folder-as-zip). **Deferred:** file-content-by-commit API (`git show`) + rich download UX → Sprint 26 (trace-viewer / cockpit consumers); G-4 disk monitoring → backlog |
-| 26a | ⬜ Planned | **Outcome-oriented cockpit (spine)**: pivot from chatbot paradigm to **state + exceptions** (Endsley SA + Management by Objectives/Exception + OODA); `missionGoals`/`missionTasks` collections — goal → sub-goal → task → KPI hierarchy (KPIs quantitative or qualitative; `source`: `auto-stat`/`task-rollup`/`copilot-assessment`/`manual`); goals **co-authored by user+copilot at template design time, editable live**; `task-management` (promoted from DPO) + `supervision` platform skills; copilot goal tools (`DefineGoal`/`DefineSubGoal`/`SetKPI`/`AssessKPI`/`ReviewProgress`); `AskUser` tool + `requiresResponse` flag + "awaiting user input" agent state (agent interviews the user via sleep/wake, never blocks); **React/Next.js shell** (SPA rewrite pulled forward); Goals/KPIs, Messages-to-user, Deliverables, Task-board panels |
+| 26a | ⬜ Planned | **Outcome-oriented cockpit (spine)**: pivot to **state + exceptions** (Endsley SA + MBO/Exception + OODA). **`objectives` platform skill** (promoted from DPO `dpo-tasks`): file-based git-versioned `sharedDir/objectives/` store — objective tree (nestable, supervisor-owned) → tasks (worker-assigned, status) → KPIs (owner + `source`: auto-stat/task-rollup/agent-reported/copilot-assessment/manual) + **budget** (`budgetUsd`/`costUsd` per node). **Automatic cost attribution** at `StatsCollector.endTurn` (split turn cost across tasks updated that turn via `--effort` weights; carry-over; `allocate` timesheet fallback; supervisor overhead → owned objective). Daemon mirrors owned tasks/KPIs/budget into a managed `#my-objectives` **mental-map section** each turn (the bridge); agents write via skill scripts (drop DPO `autoCommit`). `objectives-kpi` copilot skill (auto KPIs into the store) + copilot authoring tools. `AskUser`/`requiresResponse`/awaiting-input state. **React/Next.js shell** reading the store: **Objectives (KPI+task merged tree)**, Messages-to-user, Deliverables panels. Goals/budget template-authored, editable live. **No MongoDB goal/task collections** — the file store is the single source of truth |
 | 26b | ⬜ Planned | **Monitoring + exploration**: Trace chart panel — live (`agentTurnStats` Change Stream, O(turns)) + historical drill-down (`llmCallLog` per turn, on demand); built on the `experimental/dump-trace.mjs` prototype as functional spec; **bidirectional per-agent chat** (the managerial↔conversational pivot — one-click into any agent's thread, interview UX); rich artifact rendering (Mermaid/KaTeX/image/Markdown); cockpit-vs-chat mode auto-selection (chat default for simple/single-agent missions) |
 | 27 | ⬜ Planned | **Launch hardening**: G-5 out-of-band alerting (webhook/email on agent-error); onboarding flow (first-login wizard); usage dashboard (per-user spend history); full `/security-review` pass; deployment documentation update |
 
@@ -112,11 +112,25 @@ truncation and first-class partial-processing markers.
 
 The pivot from **transcript** to **state + exceptions**, grounded in Endsley Situation
 Awareness (Perception → Comprehension → Projection), Management by Objectives/Exception, and
-OODA. The new spine is a `missionGoals`/`missionTasks` hierarchy (the first representation of
-*intent and progress* in the system); KPIs unify the prior sprints' data via their `source`
-field (`auto-stat` ← StatsCollector, `task-rollup`, `copilot-assessment`, `manual`). Goals are
-co-authored by user+copilot at template design time and editable live. Six panels map to SA
-levels: Goals & KPIs, Messages-to-user, Deliverables, Task board, Trace chart, Chat/explore.
+OODA. The new spine is the **`objectives` platform skill** (promoted from the DPO `dpo-tasks`
+skill) — a file-based, git-versioned store at `sharedDir/objectives/` holding an **objective
+tree → tasks + KPIs + budget**: objectives nest via `parent` and are owned by a supervisor
+agent; tasks are leaves assigned to a worker with a status; KPIs hang off objectives with an
+`owner` + `source` (`auto-stat` ← StatsCollector, `task-rollup`, `agent-reported`,
+`copilot-assessment`, `manual`). **Budget**: `budgetUsd`/`costUsd` on every node; cost is
+**attributed automatically** at the `StatsCollector.endTurn` hook — the turn's cost is split
+across the tasks the agent updated this turn (relative `--effort` weights, default even), with
+carry-over when no task is updated, a staleness-triggered `allocate` timesheet fallback, and
+supervisor overhead landing on owned objectives. Delivered as a **skill** (SKILL.md discipline +
+Bash scripts writing the store, mirroring git-provenance) — **no MongoDB collections**; the
+store is the single source of truth, and the daemon mirrors each agent's owned tasks/KPIs/budget
+into a managed `#my-objectives` **mental-map section** every turn (the bridge — agents read in
+working memory, write via scripts). The copilot runs an `objectives-kpi` skill computing
+cross-cutting auto KPIs into the same store. The **UI is a pure reader** of this store. KPIs and
+tasks are **facets of one objective tree** — the primary panel is that tree (KPI/budget status
++ tasks per node); the by-agent kanban is a secondary lens. Goals/KPIs/budget are co-authored by
+user+copilot at template design time and editable live. Panels map to SA levels: Objectives
+(KPI+task), Messages-to-user, Deliverables, Trace chart, Chat/explore.
 
 **The managerial↔conversational pivot is essential**: agents interview the user (e.g. DPO
 privacy assessment) via `AskUser` — the agent posts a `requiresResponse` message and **sleeps**,
