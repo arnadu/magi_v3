@@ -27,6 +27,11 @@
  */
 
 import { join } from "node:path";
+import {
+	completeSimple,
+	type Model,
+	type UserMessage,
+} from "@mariozechner/pi-ai";
 import ExcelJS from "exceljs";
 import { imageSize } from "image-size";
 import JSZip from "jszip";
@@ -38,7 +43,7 @@ import {
 	generateArtifactId,
 	saveArtifact,
 } from "./artifacts.js";
-import { MIME_TO_EXT } from "./mime-types.js";
+import { MIME_TO_EXT, VISION_MIMES } from "./mime-types.js";
 
 // ---------------------------------------------------------------------------
 // Types + limits
@@ -102,6 +107,61 @@ export type DescribeImageFn = (
 	mimeType: string,
 ) => Promise<string | undefined>;
 
+/**
+ * Prompt for the brief auto-description embedded in content.md. Kept short so the
+ * vision model returns a 2–4 sentence summary; agents use InspectImage for depth.
+ */
+const AUTO_DESCRIBE_PROMPT =
+	"Briefly describe what this image shows. " +
+	"Focus on key information, visible text, charts, diagrams, or notable visual elements. " +
+	"Two to four sentences.";
+
+/**
+ * Build the production `describeImage` from a vision-capable model — the single
+ * captioner shared by the document processor (uploads) and FetchUrl (web). Returns
+ * undefined when the model lacks image input or the MIME type is unsupported, so
+ * callers degrade gracefully to InspectImage pointers.
+ */
+export function createDescribeImage(
+	model: Model<string>,
+	signal?: AbortSignal,
+): DescribeImageFn {
+	return async (bytes, mimeType) => {
+		const mime = mimeType.split(";")[0].trim();
+		if (!model.input.includes("image")) return undefined;
+		if (!VISION_MIMES.has(mime)) return undefined;
+		try {
+			const msg: UserMessage = {
+				role: "user",
+				timestamp: Date.now(),
+				content: [
+					{ type: "text", text: AUTO_DESCRIBE_PROMPT },
+					{ type: "image", data: bytes.toString("base64"), mimeType: mime },
+				],
+			};
+			const response = await completeSimple(
+				model,
+				{ messages: [msg] },
+				{ signal },
+			);
+			if (
+				response.stopReason === "error" ||
+				response.stopReason === "aborted"
+			) {
+				return undefined;
+			}
+			const text = response.content
+				.filter((b) => b.type === "text")
+				.map((b) => (b as { type: "text"; text: string }).text)
+				.join("\n")
+				.trim();
+			return text || undefined;
+		} catch {
+			return undefined;
+		}
+	};
+}
+
 export interface ProcessOptions {
 	filename: string;
 	mimeType?: string;
@@ -110,6 +170,11 @@ export interface ProcessOptions {
 	describeImage?: DescribeImageFn;
 	limits?: Partial<ProcessLimits>;
 	signal?: AbortSignal;
+	/**
+	 * Source URL when the bytes came from the web (FetchUrl). Recorded as
+	 * `meta.url` and used for the artifact-id slug, preserving provenance.
+	 */
+	sourceUrl?: string;
 }
 
 export interface ProcessResult {
@@ -797,7 +862,7 @@ export async function processBuffer(
 			handled = processUnsupported(bytes, opts.filename);
 	}
 
-	const artifactId = generateArtifactId(opts.filename);
+	const artifactId = generateArtifactId(opts.sourceUrl ?? opts.filename);
 	const meta: ArtifactMeta = {
 		"@type": "DigitalDocument",
 		id: artifactId,
@@ -805,6 +870,7 @@ export async function processBuffer(
 		dateCreated: new Date().toISOString(),
 		encodingFormat: mime,
 		processingStatus: handled.status,
+		...(opts.sourceUrl ? { url: opts.sourceUrl } : {}),
 		...(handled.unprocessed ? { unprocessed: handled.unprocessed } : {}),
 	};
 

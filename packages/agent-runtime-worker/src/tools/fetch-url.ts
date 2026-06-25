@@ -1,17 +1,20 @@
 import { join } from "node:path";
-import type { Model, UserMessage } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
+import type { Model } from "@mariozechner/pi-ai";
 import { Readability } from "@mozilla/readability";
 import { Type } from "@sinclair/typebox";
 import { JSDOM } from "jsdom";
-import * as mupdf from "mupdf";
 import {
 	type ArtifactMeta,
 	type FileEntry,
 	generateArtifactId,
 	saveArtifact,
 } from "../artifacts.js";
-import { MIME_TO_EXT, VISION_MIMES } from "../mime-types.js";
+import {
+	createDescribeImage,
+	type ProcessResult,
+	processBuffer,
+} from "../document-processor.js";
+import { MIME_TO_EXT } from "../mime-types.js";
 import { isPrivateHost } from "../ssrf.js";
 import type { MagiTool, ToolResult } from "../tools.js";
 
@@ -24,18 +27,27 @@ const DEFAULT_MAX_PDF_PAGES = 5;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB per image
 /** Maximum bytes for the primary fetched resource (HTML, PDF, plain text). */
 const MAX_RESPONSE_BYTES = 50 * 1024 * 1024; // 50 MB
-/** Scale factor when rendering PDF pages to PNG. 1.5 ≈ 108 DPI — good for vision. */
-const PDF_RENDER_SCALE = 1.5;
 
 /**
- * Prompt used when automatically describing images during a FetchUrl call.
- * Kept brief so the LLM returns a compact 2-4 sentence summary rather than
- * an exhaustive description. Agents can use InspectImage for detailed queries.
+ * Render the FetchUrl result text from a document-processor outcome. PDF and
+ * image fetches now go through the shared processor; this preserves FetchUrl's
+ * "here is the artifact — cat it / InspectImage it" output contract.
  */
-const AUTO_DESCRIBE_PROMPT =
-	"Briefly describe what this image shows. " +
-	"Focus on key information, visible text, charts, diagrams, or notable visual elements. " +
-	"Two to four sentences.";
+function fetchSummary(
+	rawUrl: string,
+	res: ProcessResult,
+	artifactsDir: string,
+): string {
+	const artifactPath = join(artifactsDir, "artifacts", res.artifactId);
+	return [
+		`Fetched: ${rawUrl}`,
+		`Artifact id: ${res.artifactId} (${res.format}, ${res.processingStatus})`,
+		`  ${res.contentPath}`,
+		"",
+		`Use Bash: cat "${artifactPath}/content.md"  to read the extracted content.`,
+		`Use InspectImage on any saved image/page under ${artifactPath}/ for a focused look.`,
+	].join("\n");
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -118,234 +130,6 @@ async function fetchImage(
 	} catch {
 		return null;
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Vision auto-description
-// ---------------------------------------------------------------------------
-
-/**
- * Call the vision LLM for a brief auto-description of an image.
- *
- * Non-fatal: returns undefined if the model lacks image capability, the MIME
- * type is not accepted by the vision API, or the call fails for any reason.
- * Callers continue without a description rather than failing.
- */
-async function autoDescribeImage(
-	bytes: Buffer,
-	mimeType: string,
-	model: Model<string>,
-	signal?: AbortSignal,
-): Promise<string | undefined> {
-	if (!model.input.includes("image")) return undefined;
-	if (!VISION_MIMES.has(mimeType)) return undefined;
-
-	try {
-		const msg: UserMessage = {
-			role: "user",
-			timestamp: Date.now(),
-			content: [
-				{ type: "text", text: AUTO_DESCRIBE_PROMPT },
-				{ type: "image", data: bytes.toString("base64"), mimeType },
-			],
-		};
-		const response = await completeSimple(
-			model,
-			{ messages: [msg] },
-			{ signal },
-		);
-		if (response.stopReason === "error" || response.stopReason === "aborted") {
-			return undefined;
-		}
-		const text = response.content
-			.filter((b) => b.type === "text")
-			.map((b) => (b as { type: "text"; text: string }).text)
-			.join("\n")
-			.trim();
-		return text || undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Direct image processing
-// ---------------------------------------------------------------------------
-
-/**
- * Handle FetchUrl called on a direct image URL (mimeType starts with "image/").
- * Saves the image and its auto-description as an artifact.
- */
-async function processDirectImage(
-	bytes: Buffer,
-	mimeType: string,
-	artifactBase: string,
-	rawUrl: string,
-	model: Model<string>,
-	signal?: AbortSignal,
-): Promise<ToolResult> {
-	const cleanMime = mimeType.split(";")[0].trim();
-	const ext = MIME_TO_EXT[cleanMime] ?? extFromPath(new URL(rawUrl).pathname);
-	const filename = `image.${ext}`;
-
-	const description = await autoDescribeImage(bytes, cleanMime, model, signal);
-	const contentText = description
-		? `# Image\n\n${description}`
-		: `# Image\n\n(Visual description unavailable — use InspectImage for analysis.)`;
-
-	const artifactId = generateArtifactId(rawUrl);
-	const meta: ArtifactMeta = {
-		"@type": "ImageObject",
-		id: artifactId,
-		name: filename,
-		url: rawUrl,
-		dateCreated: new Date().toISOString(),
-		encodingFormat: cleanMime,
-		images: [filename],
-	};
-
-	try {
-		await saveArtifact(
-			artifactBase,
-			artifactId,
-			[
-				{ name: "content.md", content: contentText },
-				{ name: filename, content: bytes },
-			],
-			meta,
-		);
-	} catch (e) {
-		return toolErr(
-			`FetchUrl: failed to save image artifact — ${(e as Error).message}`,
-		);
-	}
-
-	const artifactPath = join(artifactBase, "artifacts", artifactId);
-	const lines = [
-		`Fetched image: ${rawUrl}`,
-		`Artifact id: ${artifactId}`,
-		`  ${artifactPath}/${filename}`,
-		`  ${artifactPath}/content.md`,
-		"",
-		`Use Bash: cat "${artifactPath}/content.md"  to read the auto-description.`,
-		`Use InspectImage with path "${artifactPath}/${filename}" for a focused analysis.`,
-	];
-	return ok(lines.join("\n"));
-}
-
-// ---------------------------------------------------------------------------
-// PDF processing
-// ---------------------------------------------------------------------------
-
-/**
- * Extract text and render pages from a PDF using mupdf.
- * Each page's rendered PNG is auto-described and the description is embedded
- * directly after the page's extracted text in content.md.
- */
-async function processPdf(
-	bytes: Buffer,
-	artifactBase: string,
-	rawUrl: string,
-	model: Model<string>,
-	maxPages: number,
-	signal?: AbortSignal,
-): Promise<ToolResult> {
-	let doc: mupdf.Document;
-	try {
-		doc = mupdf.Document.openDocument(bytes, "application/pdf");
-	} catch (e) {
-		return toolErr(`FetchUrl: could not open PDF — ${(e as Error).message}`);
-	}
-
-	const pageCount = doc.countPages();
-	const pagesToProcess = Math.min(pageCount, maxPages);
-	const textParts: string[] = [];
-	const imageFiles: FileEntry[] = [];
-	const imageRelPaths: string[] = [];
-
-	// Mupdf transform matrix for scaling: [sx, 0, 0, sy, 0, 0]
-	const matrix: [number, number, number, number, number, number] = [
-		PDF_RENDER_SCALE,
-		0,
-		0,
-		PDF_RENDER_SCALE,
-		0,
-		0,
-	];
-
-	for (let i = 0; i < pagesToProcess; i++) {
-		const page = doc.loadPage(i);
-
-		// Text extraction
-		const pageText = page.toStructuredText().asText().trim();
-		let pageSection = `## Page ${i + 1}`;
-		if (pageText) pageSection += `\n\n${pageText}`;
-
-		// Page render → PNG + auto-description embedded inline
-		try {
-			const pixmap = page.toPixmap(matrix, mupdf.ColorSpace.DeviceRGB, false);
-			const pngBytes = Buffer.from(pixmap.asPNG());
-			const filename = `page-${i + 1}.png`;
-			imageFiles.push({ name: filename, content: pngBytes });
-			imageRelPaths.push(filename);
-
-			const description = await autoDescribeImage(
-				pngBytes,
-				"image/png",
-				model,
-				signal,
-			);
-			if (description) {
-				pageSection += `\n\n**Page visual:** ${description}`;
-			} else {
-				pageSection += `\n\n*(Page ${i + 1} visual: use InspectImage for analysis.)*`;
-			}
-		} catch {
-			pageSection += `\n\n*(Page ${i + 1} visual render failed — text only.)*`;
-		}
-
-		textParts.push(pageSection);
-	}
-
-	const contentText =
-		textParts.join("\n\n---\n\n") || "(No content extracted from PDF)";
-
-	const artifactId = generateArtifactId(rawUrl);
-	const meta: ArtifactMeta = {
-		"@type": "DigitalDocument",
-		id: artifactId,
-		name: `PDF (${pageCount} page${pageCount !== 1 ? "s" : ""})`,
-		url: rawUrl,
-		dateCreated: new Date().toISOString(),
-		encodingFormat: "application/pdf",
-		...(imageRelPaths.length > 0 ? { images: imageRelPaths } : {}),
-	};
-
-	const files: FileEntry[] = [
-		{ name: "content.md", content: contentText },
-		...imageFiles,
-	];
-
-	try {
-		await saveArtifact(artifactBase, artifactId, files, meta);
-	} catch (e) {
-		return toolErr(
-			`FetchUrl: failed to save PDF artifact — ${(e as Error).message}`,
-		);
-	}
-
-	const artifactPath = join(artifactBase, "artifacts", artifactId);
-	const lines = [
-		`Fetched PDF: ${rawUrl}`,
-		`Artifact id: ${artifactId}`,
-		`  ${artifactPath}/content.md  (${contentText.length} chars, ${pageCount} pages, visual descriptions included)`,
-		...imageRelPaths.map((p) => `  ${artifactPath}/${p}`),
-		"",
-		`Use Bash: cat "${artifactPath}/content.md"  to read extracted text and page descriptions.`,
-		`Use InspectImage with path "${artifactPath}/<page>.png" for a focused follow-up question.`,
-	];
-
-	return ok(lines.join("\n"));
 }
 
 // ---------------------------------------------------------------------------
@@ -459,20 +243,37 @@ export function createFetchUrlTool(
 
 			const mimeType = contentType.split(";")[0].trim().toLowerCase();
 
+			// Single captioner shared with the document processor (and uploads).
+			const describeImage = createDescribeImage(model, signal);
+
 			// --- Route by content type -----------------------------------------
+			// PDF and direct images go through the shared document processor so
+			// fetched and uploaded files get identical treatment (the describe-now/
+			// defer image policy, partial-processing markers, etc.).
 			if (mimeType === "application/pdf") {
-				return processPdf(bytes, artifactsDir, rawUrl, model, maxPages, signal);
+				const res = await processBuffer(bytes, {
+					filename: parsedUrl.pathname.split("/").pop() || "document.pdf",
+					mimeType,
+					artifactsDir,
+					describeImage,
+					sourceUrl: rawUrl,
+					// Mirror the old FetchUrl knob: render + describe up to max_pages.
+					limits: { maxRenderPages: maxPages, maxAutoDescribe: maxPages },
+					signal,
+				});
+				return ok(fetchSummary(rawUrl, res, artifactsDir));
 			}
 
 			if (mimeType.startsWith("image/")) {
-				return processDirectImage(
-					bytes,
+				const res = await processBuffer(bytes, {
+					filename: parsedUrl.pathname.split("/").pop() || "image",
 					mimeType,
 					artifactsDir,
-					rawUrl,
-					model,
+					describeImage,
+					sourceUrl: rawUrl,
 					signal,
-				);
+				});
+				return ok(fetchSummary(rawUrl, res, artifactsDir));
 			}
 
 			if (
@@ -539,12 +340,7 @@ export function createFetchUrlTool(
 					const filename = `image-${idx}.${result.ext}`;
 					imageFiles.push({ name: filename, content: result.bytes });
 					const description =
-						(await autoDescribeImage(
-							result.bytes,
-							result.mimeType,
-							model,
-							signal,
-						)) ?? null;
+						(await describeImage(result.bytes, result.mimeType)) ?? null;
 					imageEntries.push({ filename, description });
 					idx++;
 				}
