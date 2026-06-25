@@ -83,7 +83,9 @@ export type MonitorEventType =
 	| "status"
 	| "started"
 	| "agent-error"
-	| "limit-alert";
+	| "limit-alert"
+	| "agent-paused"
+	| "agent-resumed";
 
 export interface AgentInfo {
 	id: string;
@@ -141,8 +143,17 @@ export class MonitorServer {
 	private budgetPaused = false;
 	private budgetResolve: (() => void) | null = null;
 	private currentCapUsd: number | null;
-	/** Callback so daemon.ts can update its local maxCostUsd when the cap is raised. */
+	/** Callback so daemon.ts can update its local maxCostUsd when the cap is changed. */
 	onBudgetExtended?: (newCapUsd: number) => void;
+
+	// Per-agent pause gate (copilot/operator intervention). Agents in this set are
+	// skipped by the orchestrator at the next dispatch boundary until resumed.
+	private readonly pausedAgents = new Set<string>();
+
+	/** Read by the orchestrator's isAgentPaused hook before dispatching an agent. */
+	isAgentPaused(agentId: string): boolean {
+		return this.pausedAgents.has(agentId);
+	}
 
 	// Agent workdir map (populated by daemon after workspace provision)
 	private agentWorkdirs = new Map<string, string>();
@@ -773,6 +784,67 @@ export class MonitorServer {
 			return;
 		}
 
+		// ── POST /set-budget — set an absolute spending cap (cf. /extend-budget which adds)
+		if (url === "/set-budget" && req.method === "POST") {
+			const body = await readBody(req);
+			let capUsd: number | null = null;
+			try {
+				const parsed = JSON.parse(body) as Record<string, unknown>;
+				if (typeof parsed.capUsd === "number" && parsed.capUsd > 0) {
+					capUsd = parsed.capUsd;
+				}
+			} catch {
+				// fall through to validation error below
+			}
+			if (capUsd === null) {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ ok: false, error: "capUsd must be > 0" }));
+				return;
+			}
+			this.currentCapUsd = capUsd;
+			this.onBudgetExtended?.(capUsd);
+			// Lift the pause if the new cap is above what has been spent.
+			if (this.budgetPaused && capUsd > this.accumulator.totalCostUsd()) {
+				this.budgetPaused = false;
+				if (this.budgetResolve) {
+					this.budgetResolve();
+					this.budgetResolve = null;
+				}
+				this.push("cost-resumed", { newCapUsd: capUsd, budgetPaused: false });
+			}
+			console.log(`[monitor] Budget cap set to $${capUsd.toFixed(2)}`);
+			this.push("status", this.statusPayload());
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true, newCapUsd: capUsd }));
+			return;
+		}
+
+		// ── POST /pause-agent — halt one agent at the next dispatch boundary
+		if (url === "/pause-agent" && req.method === "POST") {
+			const agentId = await this.readAgentId(req, res);
+			if (agentId === null) return;
+			this.pausedAgents.add(agentId);
+			console.log(`[monitor] Agent "${agentId}" paused`);
+			this.push("agent-paused", { agentId });
+			this.push("status", this.statusPayload());
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true, paused: [...this.pausedAgents] }));
+			return;
+		}
+
+		// ── POST /resume-agent — lift a per-agent pause
+		if (url === "/resume-agent" && req.method === "POST") {
+			const agentId = await this.readAgentId(req, res);
+			if (agentId === null) return;
+			this.pausedAgents.delete(agentId);
+			console.log(`[monitor] Agent "${agentId}" resumed`);
+			this.push("agent-resumed", { agentId });
+			this.push("status", this.statusPayload());
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true, paused: [...this.pausedAgents] }));
+			return;
+		}
+
 		// ── POST /stop
 		if (url === "/stop" && req.method === "POST") {
 			res.writeHead(200, { "Content-Type": "application/json" });
@@ -912,6 +984,41 @@ export class MonitorServer {
 
 	// ── Change stream watchers ────────────────────────────────────────────────
 
+	/**
+	 * Parse and validate an `agentId` from a POST body for the pause/resume
+	 * endpoints. Writes a 400 response and returns null when the body is malformed
+	 * or names an agent not in this mission's team — so a stray id can never
+	 * silently create a phantom pause entry.
+	 */
+	private async readAgentId(
+		req: IncomingMessage,
+		res: ServerResponse,
+	): Promise<string | null> {
+		const body = await readBody(req);
+		let agentId: string | null = null;
+		try {
+			const parsed = JSON.parse(body) as Record<string, unknown>;
+			if (typeof parsed.agentId === "string" && parsed.agentId.trim()) {
+				agentId = parsed.agentId.trim();
+			}
+		} catch {
+			// fall through to 400 below
+		}
+		if (agentId === null) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: false, error: "agentId required" }));
+			return null;
+		}
+		if (!this.agents.some((a) => a.id === agentId)) {
+			res.writeHead(404, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({ ok: false, error: `unknown agent "${agentId}"` }),
+			);
+			return null;
+		}
+		return agentId;
+	}
+
 	private async watchMailbox(): Promise<void> {
 		let backoffMs = 1_000;
 		while (true) {
@@ -1030,6 +1137,7 @@ export class MonitorServer {
 			started: this.started,
 			stepEnabled: this.stepEnabled,
 			running: [...this.runningAgents],
+			pausedAgents: [...this.pausedAgents],
 			missionTotalUsd: this.accumulator.totalCostUsd(),
 			maxCostUsd: this.currentCapUsd,
 			budgetPaused: this.budgetPaused,
