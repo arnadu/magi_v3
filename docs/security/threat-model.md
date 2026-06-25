@@ -272,7 +272,8 @@ graph TB
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| Unauthenticated `POST /stop`, `/send-message`, `/extend-budget`, `/set-budget`, `/pause-agent`, `/resume-agent` | S / E | ⚠️ F-008 | Binds to `127.0.0.1:4000` (localhost only); no auth on mutating routes in dev. In production all are token-checked via `tokenOk()` (TB-11) and reached only through the control plane's `{missionId, userId}`-scoped `postToMissionMonitor` |
+| Unauthenticated `POST /stop`, `/send-message`, `/extend-budget`, `/set-budget`, `/pause-agent`, `/resume-agent`, `/upload` | S / E | ⚠️ F-008 | Binds to `127.0.0.1:4000` (localhost only); no auth on mutating routes in dev. In production all are token-checked via `tokenOk()` (TB-11) and reached only through the `{missionId, userId}`-scoped control-plane proxy. `/upload` writes operator files into `sharedDir` (path-sanitised via `basename`) and processes them with the document processor |
+| `GET /download?path=` streams files / a folder zip from `sharedDir` | I | ~ | Path resolved + checked within `sharedDir` (no traversal — `400` otherwise); same posture as `GET /files/shared` (GET reads are not token-checked but reach the monitor only via the authenticated, user-scoped proxy; `.git` excluded from zips) |
 | SSE stream exposes all mission data on localhost | I | ⚠️ F-009 | Any process on the machine can subscribe to the full agent activity stream |
 | `GET /log` exposes daemon stdout/stderr (may include agent message excerpts, internal paths) | I | ~ | In local dev: localhost-only (same as F-009). In production: behind TB-9 `X-API-Key` via proxy; only authenticated operators can reach it |
 

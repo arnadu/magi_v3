@@ -288,3 +288,21 @@ Goal: checkpoint the shared mission workspace at the end of every turn so every 
 **Tests:** `tests/workspace-git.unit.test.ts` (6, real throwaway git repo) — commit new+modified with status letters and `git show <hash>:path` retrieval, null on nothing-to-commit, Bash-written file capture, serialized concurrent commits (no lock collision, linear history), graceful null on a non-repo dir.
 
 **Backward compatibility:** new collection fields are additive; `commitWorkspace` is optional; existing missions' sharedDir is already a git repo (provision git-inits it). No new env vars, secrets, or deployment steps. **Next:** shared `document-processor.ts` + upload→process→mailbox pipeline + file-content API (`git show`).
+
+## Sprint 25 (Phase 2) — Shared document processor + upload/download pipeline
+
+Goal: turn uploaded files into LLM-readable artifacts, get them to agents, and let the operator download results — built on one shared processor.
+
+**`src/document-processor.ts` (new):** `processBuffer(bytes, opts)` → artifact dir (`content.md` + extracted assets + `meta.json`). `detectFormat` (extension → magic-byte sniff → MIME). **No text truncation** — only the vision step is budgeted. `selectImages` (pure) implements the agreed describe-now/defer policy: drop decorative (both dims < 200px or aspect > 8:1), auto-describe the largest `maxAutoDescribe` (10), defer the rest with `InspectImage` pointers (dimensionless page renders are always substantive). Handlers: text/markdown, CSV (preview + full `data.csv`), image, PDF (all text; render ≤ `maxRenderPages` 50; describe ≤ 10), XLSX (exceljs → one CSV per sheet, full rows), DOCX (mammoth → markdown + embedded-image policy), ZIP (jszip → each file processed into its own artifact, nested zips listed not expanded, capped at 20). Vision call injected (`createDescribeImage(model)`) → unit-testable offline. Deps: `exceljs`, `mammoth`, `jszip`, `image-size`.
+
+**Dedup (phase 2c):** `FetchUrl`'s PDF/image/caption logic removed (~150 lines) and routed through `processBuffer` (with `sourceUrl` for provenance); one PDF processor, one captioner, one image policy shared by fetched + uploaded files. Validated by an offline `fetch-url.unit.test.ts` that stubs `fetch` + mocks `isPrivateHost` (no whitelist in source; production SSRF unchanged).
+
+**Upload pipeline (Slice C):** the control-plane proxy already forwards `/missions/:id/*` to the monitor with auth + token + `{missionId, userId}` scoping, so no new control-plane routes. New monitor `POST /upload` (JSON `{filename, mimeType?, agentId, subject?, body?, contentBase64}`): saves the pristine file under `uploads/<date>/`, runs `processBuffer` (vision via `monitor.visionModel`, set by the daemon) into `artifacts/`, and posts a mailbox message from `"user"` to the agent pointing at `content.md`. `readBody` parameterized with a 30 MB cap for uploads.
+
+**Download backend (Slice D):** monitor `GET /download?path=[&format=zip]` — streams a single file (`Content-Disposition: attachment`) or zips a folder subtree (jszip, `.git` excluded); path checked within `sharedDir`. Rich download UX (multi-select, Deliverables-panel buttons) is deferred to the Sprint 26 cockpit, which consumes this endpoint.
+
+**Deferred:** the file-content-by-commit API (`git show <hash>:<path>` for *historical* versions) is deferred to Sprint 26 with its only consumer, the trace viewer — `/download` already serves the current working tree.
+
+**Tests:** `document-processor.unit.test.ts` (11) + `document-processor-office.unit.test.ts` (4, in-test xlsx/zip/docx fixtures) + `fetch-url.unit.test.ts` (3, offline wiring) + `monitor-files.integration.test.ts` (5: upload→artifact+mailbox, unknown-agent reject, single-file download, folder zip, path-traversal reject).
+
+**Backward compatibility:** new module + monitor endpoints only; `visionModel` is an optional monitor field; no team-YAML change. No new env vars/secrets. New npm deps (exceljs/mammoth/jszip/image-size) are bundled into the execution image.

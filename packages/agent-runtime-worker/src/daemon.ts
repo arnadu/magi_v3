@@ -894,6 +894,8 @@ async function main(): Promise<void> {
 				.deleteOne({ _id: new ObjectId(id) });
 		},
 	);
+	// Vision model for the upload pipeline's image captioning (Sprint 25).
+	monitor.visionModel = visionModel;
 	await monitor.start(monitorPort);
 	process.stdout.write(
 		`[daemon] Monitor server listening on port ${monitorPort}\n`,

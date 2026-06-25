@@ -1,4 +1,5 @@
 import {
+	createReadStream,
 	existsSync,
 	mkdirSync,
 	readdirSync,
@@ -11,11 +12,17 @@ import {
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Model } from "@mariozechner/pi-ai";
+import JSZip from "jszip";
 import type { Db } from "mongodb";
+import { createDescribeImage, processBuffer } from "./document-processor.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { UsageAccumulator } from "./usage.js";
+
+/** Body cap for file uploads (base64-encoded). ~22 MB raw file. */
+const UPLOAD_MAX_BODY_BYTES = 30 * 1024 * 1024;
 
 // Default public/ dir: next to the compiled JS (dist/public/).
 // Tests running from src/ via Vitest pass an explicit publicDir to the constructor.
@@ -121,6 +128,8 @@ export interface AgentInfo {
  *   POST   /step                          advance one step
  *   POST   /toggle-step                   enable / disable step mode
  *   POST   /extend-budget                 add USD to spending cap
+ *   POST   /upload                        process an operator file → artifact + mailbox
+ *   GET    /download?path=[&format=zip]   stream a file, or a folder subtree as a zip
  *   POST   /start                         unblock waitForStart
  *   POST   /stop                          graceful daemon shutdown
  */
@@ -145,6 +154,13 @@ export class MonitorServer {
 	private currentCapUsd: number | null;
 	/** Callback so daemon.ts can update its local maxCostUsd when the cap is changed. */
 	onBudgetExtended?: (newCapUsd: number) => void;
+
+	/**
+	 * Vision model for the upload pipeline's image captioning. Set by the daemon
+	 * after construction (like onBudgetExtended). When absent, uploaded-document
+	 * images are not auto-described — they fall back to InspectImage pointers.
+	 */
+	visionModel?: Model<string>;
 
 	// Per-agent pause gate (copilot/operator intervention). Agents in this set are
 	// skipped by the orchestrator at the next dispatch boundary until resumed.
@@ -855,7 +871,169 @@ export class MonitorServer {
 			return;
 		}
 
+		// ── POST /upload — operator uploads a file; it is processed and a mailbox
+		//     message is posted to the target agent. (Sprint 25 Slice C.)
+		if (url === "/upload" && req.method === "POST") {
+			await this.handleUpload(req, res);
+			return;
+		}
+
+		// ── GET /download — stream a file, or a folder subtree as a zip.
+		if (url === "/download" && req.method === "GET") {
+			this.handleDownload(rawUrl, res);
+			return;
+		}
+
 		res.writeHead(404).end();
+	}
+
+	/**
+	 * Process an operator upload: save the pristine file under uploads/<date>/,
+	 * run the shared document processor into artifacts/, and post a mailbox
+	 * message to the target agent pointing at the processed content.md.
+	 */
+	private async handleUpload(
+		req: IncomingMessage,
+		res: ServerResponse,
+	): Promise<void> {
+		let raw: string;
+		try {
+			raw = await readBody(req, UPLOAD_MAX_BODY_BYTES);
+		} catch (e) {
+			res.writeHead(413, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: (e as Error).message }));
+			return;
+		}
+		let p: Record<string, unknown>;
+		try {
+			p = JSON.parse(raw) as Record<string, unknown>;
+		} catch {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Invalid JSON" }));
+			return;
+		}
+		const filename = typeof p.filename === "string" ? p.filename : "";
+		const agentId = typeof p.agentId === "string" ? p.agentId : "";
+		const contentBase64 =
+			typeof p.contentBase64 === "string" ? p.contentBase64 : "";
+		const mimeType = typeof p.mimeType === "string" ? p.mimeType : undefined;
+		const subject = typeof p.subject === "string" ? p.subject : "";
+		const message = typeof p.body === "string" ? p.body : "";
+		if (!filename || !contentBase64) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({ error: "filename and contentBase64 are required" }),
+			);
+			return;
+		}
+		if (!this.agents.some((a) => a.id === agentId)) {
+			res.writeHead(404, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: `unknown agent "${agentId}"` }));
+			return;
+		}
+
+		const bytes = Buffer.from(contentBase64, "base64");
+
+		// Save the pristine original under uploads/<date>/ for provenance.
+		const safeName = basename(filename);
+		const dateDir = new Date().toISOString().slice(0, 10);
+		const uploadDir = join(this.sharedDir, "uploads", dateDir);
+		try {
+			mkdirSync(uploadDir, { recursive: true });
+			writeFileSync(join(uploadDir, safeName), bytes);
+		} catch (e) {
+			console.error(`[monitor] upload save failed: ${(e as Error).message}`);
+		}
+
+		try {
+			const describeImage = this.visionModel
+				? createDescribeImage(this.visionModel)
+				: undefined;
+			const result = await processBuffer(bytes, {
+				filename: safeName,
+				mimeType,
+				artifactsDir: this.sharedDir,
+				describeImage,
+			});
+
+			const body = [
+				message.trim(),
+				"",
+				`📎 Uploaded file: ${safeName}`,
+				`Processed → \`artifacts/${result.artifactId}/content.md\` (${result.summary}, ${result.processingStatus}).`,
+				`Read it with: \`cat artifacts/${result.artifactId}/content.md\``,
+			]
+				.join("\n")
+				.trim();
+			await this.mailboxRepo.post({
+				missionId: this.missionId,
+				from: "user",
+				to: [agentId],
+				subject: subject || `Uploaded: ${safeName}`,
+				body,
+			});
+
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					ok: true,
+					artifactId: result.artifactId,
+					format: result.format,
+					processingStatus: result.processingStatus,
+				}),
+			);
+		} catch (e) {
+			console.error(
+				`[monitor] upload processing failed: ${(e as Error).message}`,
+			);
+			res.writeHead(500, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: (e as Error).message }));
+		}
+	}
+
+	/** Stream a file (attachment) or a folder subtree as a zip from sharedDir. */
+	private handleDownload(rawUrl: string, res: ServerResponse): void {
+		const params = new URL(rawUrl, "http://x").searchParams;
+		const userPath = params.get("path") ?? "";
+		const asZip = params.get("format") === "zip";
+
+		const abs = resolve(this.sharedDir, userPath);
+		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Path outside root" }));
+			return;
+		}
+		if (!existsSync(abs)) {
+			res.writeHead(404, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Not found" }));
+			return;
+		}
+
+		const stat = statSync(abs);
+		if (stat.isDirectory() || asZip) {
+			const zip = new JSZip();
+			addToZip(zip, abs, abs);
+			zip
+				.generateAsync({ type: "nodebuffer" })
+				.then((buf) => {
+					res.writeHead(200, {
+						"Content-Type": "application/zip",
+						"Content-Disposition": `attachment; filename="${basename(abs) || "download"}.zip"`,
+					});
+					res.end(buf);
+				})
+				.catch((e: Error) => {
+					res.writeHead(500, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ error: e.message }));
+				});
+			return;
+		}
+
+		res.writeHead(200, {
+			"Content-Type": "application/octet-stream",
+			"Content-Disposition": `attachment; filename="${basename(abs)}"`,
+		});
+		createReadStream(abs).pipe(res);
 	}
 
 	// ── File browser ──────────────────────────────────────────────────────────
@@ -1157,13 +1335,31 @@ export class MonitorServer {
 
 const MAX_BODY_BYTES = MAILBOX_MAX_BODY_BYTES;
 
-function readBody(req: IncomingMessage): Promise<string> {
+/** Recursively add a file or directory subtree to a zip, paths relative to `base`. */
+function addToZip(zip: JSZip, abs: string, base: string): void {
+	const stat = statSync(abs);
+	if (stat.isDirectory()) {
+		for (const name of readdirSync(abs)) {
+			// Skip the git metadata dir — it bloats the archive and isn't a deliverable.
+			if (name === ".git") continue;
+			addToZip(zip, join(abs, name), base);
+		}
+	} else {
+		const rel = relative(base, abs) || basename(abs);
+		zip.file(rel, readFileSync(abs));
+	}
+}
+
+function readBody(
+	req: IncomingMessage,
+	maxBytes: number = MAX_BODY_BYTES,
+): Promise<string> {
 	return new Promise((resolve, reject) => {
 		let data = "";
 		let bytes = 0;
 		req.on("data", (chunk: Buffer) => {
 			bytes += chunk.length;
-			if (bytes > MAX_BODY_BYTES) {
+			if (bytes > maxBytes) {
 				req.destroy();
 				reject(new Error("Request body too large"));
 				return;
