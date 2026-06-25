@@ -110,12 +110,13 @@ async function fetchResource(
 async function fetchImage(
 	imgUrl: string,
 	signal?: AbortSignal,
+	allowedHosts: string[] = [],
 ): Promise<{ bytes: Buffer; ext: string; mimeType: string } | null> {
 	try {
 		const parsed = new URL(imgUrl);
 		// Only http/https images are fetched — file:// is not permitted.
 		if (!["http:", "https:"].includes(parsed.protocol)) return null;
-		if (await isPrivateHost(parsed.hostname)) return null;
+		if (await isPrivateHost(parsed.hostname, allowedHosts)) return null;
 
 		const res = await fetch(imgUrl, { signal });
 		if (!res.ok) return null;
@@ -164,6 +165,10 @@ async function fetchImage(
 export function createFetchUrlTool(
 	model: Model<string>,
 	artifactsDir: string,
+	// Hosts exempt from the SSRF guard — TEST INFRASTRUCTURE ONLY. Production
+	// constructs this tool with no allowedHosts (→ []), so SSRF stays fully
+	// enforced. Mirrors tryCreateBrowseWebTool's parameter.
+	allowedHosts: string[] = [],
 ): MagiTool {
 	return {
 		name: "FetchUrl",
@@ -226,7 +231,7 @@ export function createFetchUrlTool(
 					`FetchUrl: unsupported protocol "${parsedUrl.protocol}". Use http or https.`,
 				);
 			}
-			if (await isPrivateHost(parsedUrl.hostname)) {
+			if (await isPrivateHost(parsedUrl.hostname, allowedHosts)) {
 				return toolErr(
 					`FetchUrl: requests to private/internal addresses are not permitted ("${rawUrl}")`,
 				);
@@ -331,7 +336,7 @@ export function createFetchUrlTool(
 						continue;
 					}
 
-					const result = await fetchImage(imgUrl, signal);
+					const result = await fetchImage(imgUrl, signal, allowedHosts);
 					if (!result) {
 						imagesFailed++;
 						continue;

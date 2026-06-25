@@ -96,6 +96,12 @@ export interface AgentRunContext {
 	 * These are never filtered by agent.disabledTools.
 	 */
 	additionalTools?: MagiTool[];
+	/**
+	 * Hosts exempt from the SSRF guard for FetchUrl/BrowseWeb — TEST
+	 * INFRASTRUCTURE ONLY (so an integration test can reach its local fixture
+	 * server). Never set by the daemon/CLI → SSRF stays fully enforced in prod.
+	 */
+	allowedHosts?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +380,11 @@ export async function runAgent(
 	const searchWebTool = tryCreateSearchWebTool();
 	// BrowseWebHandle is created here (once per agent turn) so all execute() calls
 	// within the same runInnerLoop share one browser session (cookies, auth, history).
-	const browseWebHandle = tryCreateBrowseWebTool(visionModel, sharedDir);
+	const browseWebHandle = tryCreateBrowseWebTool(
+		visionModel,
+		sharedDir,
+		ctx.allowedHosts ?? [],
+	);
 
 	// Research sub-loop Bash is restricted to sharedDir only (no workdir).
 	// This lets it read existing artifacts and the research index without
@@ -416,7 +426,7 @@ export async function runAgent(
 				ctx.onMentalMapUpdate?.(agentId, html);
 			},
 		),
-		createFetchUrlTool(visionModel, sharedDir),
+		createFetchUrlTool(visionModel, sharedDir, ctx.allowedHosts ?? []),
 		createInspectImageTool(workdir, visionModel, [sharedDir]),
 		createResearchTool(ctx.model, sharedDir, researchAcl, {
 			visionModel,

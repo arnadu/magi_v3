@@ -143,6 +143,12 @@ export interface OrchestratorConfig {
 	 * shows a red banner for whole-turn crashes as well.
 	 */
 	onAgentError?: (agentId: string, errorMessage: string) => void;
+	/**
+	 * Hosts exempt from the SSRF guard for FetchUrl/BrowseWeb — TEST
+	 * INFRASTRUCTURE ONLY. Forwarded to each agent run. Never set by the
+	 * daemon/CLI → SSRF stays fully enforced in production.
+	 */
+	allowedHosts?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +251,7 @@ export async function runOrchestrationLoop(
 		statsCollector: config.statsCollector,
 		onLimitAlert: config.onLimitAlert,
 		commitWorkspace: (message: string) => workspaceGit.commit(message),
+		allowedHosts: config.allowedHosts,
 		onMentalMapUpdate: config.onMentalMapUpdate,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();

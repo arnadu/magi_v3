@@ -151,7 +151,8 @@ describe("integration: FetchUrl + InspectImage", () => {
 						permittedPaths: [workdir],
 						linuxUser: POOL_USER,
 					}),
-					createFetchUrlTool(visionModel, workdir),
+					// Allow the local fixture server (test-only SSRF exemption).
+					createFetchUrlTool(visionModel, workdir, ["127.0.0.1"]),
 					createInspectImageTool(workdir, visionModel),
 				],
 			});

@@ -161,6 +161,8 @@ describe("integration: cross-agent PDF fetch and inspect", () => {
 					workdir: tmpDir,
 					workspaceManager,
 					maxCycles: 30,
+					// Allow the local fixture server (test-only SSRF exemption).
+					allowedHosts: ["127.0.0.1"],
 					onUserMessage: (msg) => {
 						userMessages.push(msg);
 						console.log(`\n[→ USER from ${msg.from}] ${msg.subject}`);
