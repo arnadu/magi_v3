@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAGI Cockpit — mock (DPO Team)</title>
+<style>
+  :root{
+    --bg:#0b0d1a; --panel:#12162a; --panel2:#171c33; --line:#222a47;
+    --txt:#dbe2f5; --mut:#8a93b8; --dim:#5b6488;
+    --ok:#3fb27f; --warn:#e3a44b; --bad:#e05566; --info:#5aa0e6;
+    --a0:#6ea8fe; --a1:#c08bff; --a2:#46c6a0; --a3:#e8a13a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:13px/1.45 ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+  button{font:inherit;cursor:pointer}
+  .mut{color:var(--mut)} .dim{color:var(--dim)}
+  /* ── top bar ─────────────────────────────────────────── */
+  header{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{font-size:14px;margin:0;font-weight:600}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:6px;box-shadow:0 0 8px var(--ok)}
+  .spend{display:flex;align-items:center;gap:8px;font-size:12px}
+  .bar{width:120px;height:8px;background:#0a0c18;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--ok),var(--warn))}
+  .grow{flex:1}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:6px 11px;border-radius:7px}
+  .btn:hover{border-color:#39456f}
+  .btn.cop{background:linear-gradient(90deg,#3a2b6e,#5a3a8e);border-color:#6a4aa0}
+  /* ── layout ──────────────────────────────────────────── */
+  .tabs{display:flex;gap:4px;padding:8px 16px 0;background:var(--panel);border-bottom:1px solid var(--line)}
+  .tab{background:none;border:none;color:var(--mut);padding:8px 14px;border-radius:7px 7px 0 0;border-bottom:2px solid transparent}
+  .tab.active{color:var(--txt);background:var(--bg);border-bottom-color:var(--a0)}
+  main{display:flex;height:calc(100vh - 96px)}
+  .center{flex:1;overflow:auto;padding:14px 16px}
+  .rail{width:340px;border-left:1px solid var(--line);overflow:auto;padding:14px 14px;background:var(--panel)}
+  .hidden{display:none!important}
+  h2.sec{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:2px 0 10px}
+  /* ── objectives tree ─────────────────────────────────── */
+  .obj{margin:0 0 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);overflow:hidden}
+  .obj.sub{margin:8px 0 8px 22px;background:var(--panel2)}
+  .obj-head{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer}
+  .obj-head:hover{background:#161b30}
+  .caret{color:var(--dim);width:12px;display:inline-block;transition:transform .12s}
+  .caret.closed{transform:rotate(-90deg)}
+  .obj-title{font-weight:600}
+  .owner{font-size:11px;color:var(--mut);background:#0c1022;border:1px solid var(--line);padding:1px 7px;border-radius:20px}
+  .status{font-size:11px;padding:1px 7px;border-radius:20px;border:1px solid var(--line)}
+  .st-active{color:var(--ok)} .st-open{color:var(--mut)} .st-blocked{color:var(--bad)} .st-done{color:var(--info)}
+  .budget{margin-left:auto;font-size:11.5px;color:var(--mut);white-space:nowrap}
+  .budget b{color:var(--txt)}
+  .minibar{width:60px;height:6px;background:#0a0c18;border-radius:4px;overflow:hidden;border:1px solid var(--line);display:inline-block;vertical-align:middle;margin-left:6px}
+  .minibar>i{display:block;height:100%}
+  .obj-body{padding:2px 12px 10px}
+  .kpis{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 9px;align-items:center}
+  .kpilbl{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);margin-right:2px}
+  .kpi{font-size:11px;border:1px solid #2a3358;border-radius:7px;padding:3px 4px 3px 0;background:#0c1022;display:flex;gap:7px;align-items:center}
+  .kpi .ksrc{color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:.04em;border-right:1px solid var(--line);padding:0 7px;align-self:stretch;display:flex;align-items:center}
+  .kpi b{font-weight:600}
+  .kpi .kval{font-weight:700;font-variant-numeric:tabular-nums}
+  .kpi .ktgt{color:var(--dim);font-weight:400}
+  .kpi .kown{color:var(--mut);font-size:9.5px;background:#0a0c18;border:1px solid var(--line);border-radius:10px;padding:0 6px}
+  .pill-ok{color:var(--ok)} .pill-warn{color:var(--warn)} .pill-bad{color:var(--bad)} .pill-part{color:var(--warn)} .pill-pend{color:var(--mut)}
+  .task{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:6px}
+  .task:hover{background:var(--panel2)}
+  .task .tid{color:var(--dim);font-variant-numeric:tabular-nums}
+  .task .ttl{flex:1}
+  .task .ass{font-size:11px;color:var(--mut);cursor:pointer;text-decoration:underline dotted}
+  .task .cost{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+  .s-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .s-inprog{background:var(--info)} .s-open{background:var(--dim)} .s-blocked{background:var(--bad)} .s-completed{background:var(--ok)} .s-deferred{background:var(--warn)}
+  /* ── rail items ──────────────────────────────────────── */
+  .att{border:1px solid var(--line);border-left:3px solid var(--mut);border-radius:8px;padding:9px 11px;margin-bottom:9px;background:var(--panel2)}
+  .att.await{border-left-color:var(--bad)} .att.soft{border-left-color:var(--warn)} .att.msg{border-left-color:var(--info)}
+  .att .h{display:flex;align-items:center;gap:7px;font-weight:600;margin-bottom:3px}
+  .att .q{color:var(--txt);margin:3px 0 7px}
+  .att .who{cursor:pointer;text-decoration:underline dotted}
+  .att .act{background:#0c1022;border:1px solid var(--line);color:var(--txt);padding:4px 10px;border-radius:6px;font-size:12px}
+  .att .act:hover{border-color:#39456f}
+  .deliv{display:flex;align-items:center;gap:9px;padding:6px 4px;border-bottom:1px solid var(--line)}
+  .deliv .ic{font-size:15px}
+  .deliv .meta{font-size:11px;color:var(--mut)}
+  .deliv .dl{margin-left:auto;color:var(--info);cursor:pointer;font-size:12px}
+  /* ── agent-eye ───────────────────────────────────────── */
+  .eye{background:#0c1022;border:1px dashed #33407a;border-radius:9px;padding:14px 16px;white-space:pre-wrap;font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe0ff}
+  .eye .mk{color:var(--warn)}
+  /* ── trace ───────────────────────────────────────────── */
+  .legend{display:flex;gap:16px;margin:6px 0 10px;font-size:12px}
+  .legend i{width:18px;height:3px;display:inline-block;vertical-align:middle;margin-right:6px;border-radius:2px}
+  /* ── kanban ──────────────────────────────────────────── */
+  .kan{display:flex;gap:12px}
+  .kcol{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px;min-height:200px}
+  .kcol h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:2px 4px 8px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--a0);border-radius:7px;padding:7px 9px;margin-bottom:7px;font-size:12px}
+  .card .cm{font-size:11px;color:var(--mut);margin-top:3px;display:flex;gap:8px}
+  /* ── files ───────────────────────────────────────────── */
+  .files{display:flex;gap:0;height:100%}
+  .ftree{width:300px;min-width:240px;overflow:auto;border:1px solid var(--line);border-radius:9px 0 0 9px;background:var(--panel);padding:8px 6px}
+  .ftree h2.sec{padding:2px 6px}
+  .frow{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .frow:hover{background:var(--panel2)}
+  .frow.sel{background:#23306a}
+  .frow .fi{width:15px;text-align:center;color:var(--dim)}
+  .frow .fmeta{margin-left:auto;font-size:10.5px;color:var(--dim)}
+  .fdir{color:var(--txt)}
+  .fviewer{flex:1;overflow:auto;border:1px solid var(--line);border-left:none;border-radius:0 9px 9px 0;background:var(--panel);display:flex;flex-direction:column}
+  .fhead{padding:11px 14px;border-bottom:1px solid var(--line)}
+  .fhead .fp{font:12px ui-monospace,Menlo,monospace;color:var(--mut)}
+  .prov{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+  .prov .av{width:9px;height:9px;border-radius:50%}
+  .prov b{color:var(--txt)}
+  .commit{font:11px ui-monospace,Menlo,monospace;background:#0c1022;border:1px solid var(--line);color:var(--info);padding:1px 7px;border-radius:5px}
+  .why{color:var(--txt);font-style:italic}
+  .fdl{margin-left:auto;color:var(--info);cursor:pointer;border:1px solid var(--line);background:#0c1022;padding:5px 11px;border-radius:7px}
+  .fbody{flex:1;overflow:auto;padding:14px 16px}
+  .fbody pre{margin:0;white-space:pre-wrap;font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe0ff}
+  .fhist{border-top:1px solid var(--line);padding:10px 14px;background:var(--panel2)}
+  .fhist h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:0 0 8px;cursor:pointer}
+  .hrow{display:flex;align-items:center;gap:9px;padding:4px 0;font-size:12px;border-bottom:1px solid var(--line)}
+  .hrow:last-child{border-bottom:none}
+  .hrow .ht{margin-left:auto;color:var(--dim);font-size:11px}
+  .hrow .hv{color:var(--info);cursor:pointer;text-decoration:underline dotted;font-size:11px}
+  .binph{color:var(--mut);padding:30px;text-align:center;border:1px dashed var(--line);border-radius:9px;margin:10px}
+  /* ── drawers ─────────────────────────────────────────── */
+  .scrim{position:fixed;inset:0;background:#0007;backdrop-filter:blur(1px);z-index:30}
+  .drawer{position:fixed;top:0;right:0;width:420px;max-width:92vw;height:100vh;background:var(--panel);border-left:1px solid var(--line);z-index:31;display:flex;flex-direction:column;box-shadow:-12px 0 40px #0008}
+  .drawer .dh{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .drawer .dh .x{margin-left:auto;background:none;border:none;color:var(--mut);font-size:18px}
+  .conv{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+  .bub{max-width:80%;padding:8px 11px;border-radius:11px;font-size:12.5px}
+  .bub.them{background:var(--panel2);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:3px}
+  .bub.me{background:#23306a;align-self:flex-end;border-bottom-right-radius:3px}
+  .bub .nm{font-size:10.5px;color:var(--mut);margin-bottom:3px}
+  .compose{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+  .compose input{flex:1;background:#0a0c18;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 10px}
+  .cop-action{border:1px solid #6a4aa0;background:#1c1733;border-radius:9px;padding:10px;margin:2px 0 8px}
+  .cop-action .row{display:flex;gap:8px;margin-top:7px}
+  .cop-action .yes{background:#2c6e4b;border:none;color:#fff;border-radius:6px;padding:4px 12px}
+  .cop-action .no{background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:4px 12px}
+  .hint{font-size:11px;color:var(--dim);padding:6px 14px;border-bottom:1px solid var(--line)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{background:none;border:none;color:var(--mut);padding:6px 12px}
+  .seg button.on{background:var(--panel2);color:var(--txt)}
+  select{background:#0a0c18;color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:4px 8px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="dot"></span>DPO Team — Q2 Compliance &amp; Incident Response</h1>
+  <div class="spend mut">spend
+    <b style="color:var(--txt)" id="m-spend">$9.95</b> / $18.00
+    <span class="bar"><i id="m-bar" style="width:55%"></i></span>
+  </div>
+  <span class="mut">· 4h&nbsp;06m · 4 agents</span>
+  <div class="grow"></div>
+  <div class="seg" id="view-seg">
+    <button class="on" data-view="operator">Operator</button>
+    <button data-view="agent">Agent-eye</button>
+  </div>
+  <button class="btn cop" onclick="openCopilot()">🤖 Copilot <span id="cop-badge" class="mut" style="font-size:11px">·2</span></button>
+</header>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-tab="objectives">Objectives</button>
+  <button class="tab" data-tab="files">Files</button>
+  <button class="tab" data-tab="trace">Trace</button>
+  <button class="tab" data-tab="kanban">By-agent</button>
+</div>
+
+<main>
+  <div class="center" id="center"></div>
+  <aside class="rail" id="rail"></aside>
+</main>
+
+<script>
+// ===========================================================================
+// SAMPLE OBJECTIVES STORE  (DPO Team)
+// This block IS the store format the `objectives` skill writes as files:
+//   goals.json  = OBJECTIVES (the tree + KPI definitions)
+//   tasks.jsonl = TASKS      (one object per line)
+//   kpis/cost   = folded into kpi.value / node.costUsd here for the mock
+// ===========================================================================
+const AGENTS = {
+  'dpo-lead':        {name:'DPO Lead',        color:'var(--a1)', role:'lead'},
+  'records-officer': {name:'Records Officer', color:'var(--a0)', role:'worker'},
+  'assessor':        {name:'Assessor',        color:'var(--a2)', role:'worker'},
+  'legal':           {name:'Legal Reviewer',  color:'var(--a3)', role:'worker'},
+};
+
+// OBJECTIVES (goals.json) — objectives nest via parent; KPIs hang off objectives
+const OBJECTIVES = [
+  { id:'OBJ-1', parent:null, title:'Q2 data-protection compliance', owner:'dpo-lead',
+    status:'active', budgetUsd:12.00, costUsd:7.85,
+    kpis:[
+      {id:'K1', label:'ROPA completeness', owner:'dpo-lead', kind:'qualitative', source:'copilot-assessment', value:'partial'},
+      {id:'K2', label:'mandatory tasks',  owner:'dpo-lead', kind:'quantitative', source:'task-rollup', value:'4 / 6'},
+      {id:'K3', label:'cost',             owner:'dpo-lead', kind:'quantitative', source:'auto-stat', value:'$7.85', target:12, unit:'USD'},
+    ]},
+  { id:'OBJ-1.1', parent:'OBJ-1', title:'Update ROPA register', owner:'records-officer',
+    status:'active', budgetUsd:4.00, costUsd:2.90,
+    kpis:[ {id:'K4', label:'records reconciled', owner:'records-officer', kind:'quantitative', source:'agent-reported', value:'38', target:50, stale:true} ]},
+  { id:'OBJ-1.2', parent:'OBJ-1', title:'DPIA for new CRM', owner:'assessor',
+    status:'active', budgetUsd:5.00, costUsd:3.20,
+    kpis:[ {id:'K5', label:'risk register', owner:'assessor', kind:'qualitative', source:'copilot-assessment', value:'pending'} ]},
+  { id:'OBJ-2', parent:null, title:'Incident INC-2026-014 response', owner:'dpo-lead',
+    status:'active', budgetUsd:6.00, costUsd:2.10,
+    kpis:[
+      {id:'K6', label:'notify deadline', owner:'dpo-lead', kind:'quantitative', source:'manual', value:'41h left'},
+      {id:'K7', label:'scope confirmed', owner:'records-officer', kind:'qualitative', source:'agent-reported', value:'pending'},
+    ]},
+  { id:'OBJ-2.1', parent:'OBJ-2', title:'Establish breach scope', owner:'records-officer',
+    status:'active', budgetUsd:3.00, costUsd:1.30, kpis:[] },
+];
+
+// TASKS (tasks.jsonl) — leaves, assigned to one agent, with attributed costUsd
+const TASKS = [
+  {id:'TASK-001', objective:'OBJ-1.1', title:'Inventory new processing activities', assignee:'records-officer', status:'in-progress', costUsd:1.40, budgetUsd:1.50},
+  {id:'TASK-002', objective:'OBJ-1.1', title:'Reconcile vendor / processor list',  assignee:'records-officer', status:'completed',  costUsd:1.10, budgetUsd:1.00},
+  {id:'TASK-003', objective:'OBJ-1.1', title:'Confirm retention periods',           assignee:'records-officer', status:'blocked',     costUsd:0.40, budgetUsd:1.00, blockedNote:'awaiting Legal sign-off'},
+  {id:'TASK-010', objective:'OBJ-1.2', title:'Map CRM data flows',                  assignee:'assessor',        status:'completed',  costUsd:1.60, budgetUsd:1.50},
+  {id:'TASK-011', objective:'OBJ-1.2', title:'Risk scoring',                        assignee:'assessor',        status:'in-progress', costUsd:1.60, budgetUsd:2.00},
+  {id:'TASK-012', objective:'OBJ-1.2', title:'Mitigation plan',                     assignee:'assessor',        status:'open',       costUsd:0.00, budgetUsd:1.50},
+  {id:'TASK-020', objective:'OBJ-2.1', title:'Interview incident reporter',         assignee:'records-officer', status:'blocked',     costUsd:0.00, budgetUsd:0.80, awaitUser:'When was the breach (INC-2026-014) first detected?'},
+  {id:'TASK-021', objective:'OBJ-2.1', title:'Pull & review access logs',           assignee:'records-officer', status:'in-progress', costUsd:1.30, budgetUsd:1.50},
+];
+
+// NEEDS-YOU feed (mailbox to:user + limit alerts + awaiting-input)
+const NEEDS = [
+  {kind:'await', who:'records-officer', text:'When was the breach (INC-2026-014) first detected?', task:'TASK-020', act:'Answer'},
+  {kind:'soft',  who:'assessor', text:'peak context 165k this turn (soft limit — approaching window)', act:'Look'},
+  {kind:'msg',   who:'dpo-lead', text:'ROPA draft is ready for your review.', act:'Open'},
+  {kind:'msg',   who:'records-officer', text:'Need your confirmation on the retention policy for marketing data.', act:'Reply'},
+];
+const DELIVERABLES = [
+  {ic:'📊', name:'ROPA-register-v3.xlsx', who:'records-officer', age:'18m'},
+  {ic:'📄', name:'DPIA-CRM-draft.md', who:'assessor', age:'1h'},
+  {ic:'📄', name:'incident-INC-2026-014-timeline.md', who:'records-officer', age:'25m'},
+];
+
+// FILES — the shared workspace tree. Provenance (who/when/why per change) comes from
+// git-commit-on-sleep (Sprint 25): each turn-end commit records the agent + turn + changed
+// files, so `history` is just `git log --follow` over a path, annotated with the turn's work.
+const FILES = {
+  tree:[
+    {name:'objectives', dir:true, children:[
+      {name:'goals.json'}, {name:'tasks.jsonl'}, {name:'kpis.jsonl'}, {name:'cost.jsonl'} ]},
+    {name:'artifacts', dir:true, children:[
+      {name:'upload-q2-policy-20260625', dir:true, children:[ {name:'content.md'}, {name:'meta.json'} ]} ]},
+    {name:'research', dir:true, children:[ {name:'access-log-analysis.md'} ]},
+    {name:'DPIA-CRM-draft.md'},
+    {name:'ROPA-register-v3.xlsx', binary:true},
+    {name:'incident-INC-2026-014-timeline.md'},
+    {name:'ledger.jsonl'},
+  ],
+  // content keyed by full path; history is newest-first
+  content:{
+    'research/access-log-analysis.md':
+`# Access-log analysis — INC-2026-014
+
+Reviewed auth gateway logs 2026-06-18 → 06-24.
+
+## Findings
+- 412 anomalous reads of the CRM \`contacts\` table from service account svc-mktg.
+- First anomalous read: 2026-06-19 02:14 UTC (pending confirmation from operator).
+- No exfiltration to external IPs observed in the window.
+
+## Open
+- Need operator confirmation of first-detected timestamp (TASK-020, blocked).`,
+    'DPIA-CRM-draft.md':
+`# DPIA — New CRM rollout
+
+## 1. Processing description
+The CRM ingests contact, billing, and support-history data for ~50k data subjects.
+
+## 2. Necessity & proportionality
+Lawful basis: legitimate interest (Art. 6(1)(f)). Balancing test attached.
+
+## 3. Risk scoring  (TASK-011, in progress)
+| Risk | Likelihood | Impact | Score |
+|------|-----------|--------|-------|
+| Unauthorized internal access | Medium | High | 6 |
+| Vendor sub-processor breach   | Low    | High | 4 |
+
+## 4. Mitigations  (TASK-012, open)
+_To be completed._`,
+    'incident-INC-2026-014-timeline.md':
+`# INC-2026-014 — timeline
+
+- 2026-06-24 09:02 — incident raised by SOC.
+- 2026-06-24 09:40 — DPO team engaged; scope investigation opened (OBJ-2.1).
+- 2026-06-24 11:15 — access logs pulled (TASK-021).
+- 2026-06-24 ?? — first-detected timestamp PENDING operator input (TASK-020).`,
+    'objectives/goals.json':
+`{
+  "objectives": [
+    { "id":"OBJ-1", "parent":null, "title":"Q2 data-protection compliance",
+      "owner":"dpo-lead", "status":"active", "budgetUsd":12.00,
+      "kpis":[ {"id":"K1","label":"ROPA completeness","source":"copilot-assessment","value":"partial"} ] },
+    { "id":"OBJ-1.1", "parent":"OBJ-1", "title":"Update ROPA register",
+      "owner":"records-officer", "status":"active", "budgetUsd":4.00 }
+  ]
+}`,
+    'objectives/tasks.jsonl':
+`{"id":"TASK-001","objective":"OBJ-1.1","title":"Inventory new processing activities","assignee":"records-officer","status":"in-progress","effort":3}
+{"id":"TASK-002","objective":"OBJ-1.1","title":"Reconcile vendor / processor list","assignee":"records-officer","status":"completed","effort":2}
+{"id":"TASK-020","objective":"OBJ-2.1","title":"Interview incident reporter","assignee":"records-officer","status":"blocked"}`,
+    'objectives/kpis.jsonl':
+`{"kpi":"K1","objective":"OBJ-1","value":"partial","by":"copilot","at":"2026-06-25T08:10Z"}
+{"kpi":"K4","objective":"OBJ-1.1","value":"38/50","by":"records-officer","at":"2026-06-25T09:55Z"}`,
+    'objectives/cost.jsonl':
+`{"turn":11,"agent":"records-officer","costUsd":0.42,"alloc":{"TASK-001":0.75,"TASK-021":0.25}}
+{"turn":12,"agent":"assessor","costUsd":0.38,"alloc":{"TASK-011":1.0}}`,
+    'artifacts/upload-q2-policy-20260625/content.md':
+`✓ Fully processed — retention-policy-q2.pdf (3 pages, 0 images)
+
+# Data Retention Policy (Q2 revision)
+Marketing contact data: retained 24 months after last engagement…
+(full text extracted, all pages)`,
+    'artifacts/upload-q2-policy-20260625/meta.json':
+`{ "processingStatus":"complete", "source":"retention-policy-q2.pdf",
+  "pages":3, "images":0, "uploadedBy":"user", "at":"2026-06-25T07:30Z" }`,
+    'ledger.jsonl':
+`{"commit":"a3f91c2","agent":"assessor","turn":11,"files":["DPIA-CRM-draft.md"]}
+{"commit":"b7c20de","agent":"records-officer","turn":12,"files":["incident-INC-2026-014-timeline.md","research/access-log-analysis.md"]}`,
+  },
+  history:{
+    'research/access-log-analysis.md':[
+      {agent:'records-officer', when:'25m ago', turn:12, commit:'b7c20de', why:'added findings from auth-gateway logs (TASK-021)'},
+      {agent:'records-officer', when:'1h ago',  turn:9,  commit:'4e8a1f0', why:'created file, stubbed sections (TASK-021 started)'},
+    ],
+    'DPIA-CRM-draft.md':[
+      {agent:'assessor', when:'1h ago',  turn:11, commit:'a3f91c2', why:'added risk-scoring table (TASK-011)'},
+      {agent:'assessor', when:'3h ago',  turn:6,  commit:'2db4c90', why:'mapped CRM data flows, drafted necessity section (TASK-010)'},
+      {agent:'assessor', when:'4h ago',  turn:3,  commit:'9a1e7b3', why:'created DPIA skeleton from template'},
+    ],
+    'incident-INC-2026-014-timeline.md':[
+      {agent:'records-officer', when:'25m ago', turn:12, commit:'b7c20de', why:'logged access-log pull; flagged first-detected as pending (TASK-020 blocked)'},
+      {agent:'records-officer', when:'2h ago',  turn:8,  commit:'7f0c2aa', why:'opened timeline on incident engagement (OBJ-2.1)'},
+    ],
+    'objectives/goals.json':[
+      {agent:'dpo-lead', when:'3h ago', turn:5, commit:'c1d9e44', why:'set OBJ-1 budget to $12, added ROPA-completeness KPI'},
+      {agent:'user',     when:'4h ago', turn:0, commit:'0000000', why:'instantiated objective tree from template at mission launch'},
+    ],
+    'objectives/tasks.jsonl':[
+      {agent:'records-officer', when:'12m ago', turn:12, commit:'b7c20de', why:'TASK-001 → in-progress, --effort 3'},
+      {agent:'dpo-lead',        when:'3h ago',  turn:5,  commit:'c1d9e44', why:'created TASK-001/002/020 under OBJ-1.1 / OBJ-2.1'},
+    ],
+    'objectives/kpis.jsonl':[ {agent:'records-officer', when:'30m ago', turn:11, commit:'a3f91c2', why:'record-kpi K4 = 38/50 records reconciled'} ],
+    'objectives/cost.jsonl':[ {agent:'daemon', when:'12m ago', turn:12, commit:'b7c20de', why:'attributed turn-11 cost via --effort weights (auto)'} ],
+    'artifacts/upload-q2-policy-20260625/content.md':[ {agent:'system', when:'3h ago', turn:0, commit:'e5a0c71', why:'document-processor ran on operator upload (retention-policy-q2.pdf)'} ],
+    'artifacts/upload-q2-policy-20260625/meta.json':[ {agent:'system', when:'3h ago', turn:0, commit:'e5a0c71', why:'document-processor metadata'} ],
+    'ledger.jsonl':[ {agent:'records-officer', when:'25m ago', turn:12, commit:'b7c20de', why:'git-provenance ledger append'} ],
+    'ROPA-register-v3.xlsx':[
+      {agent:'records-officer', when:'18m ago', turn:12, commit:'b7c20de', why:'reconciled vendor list, +12 processing activities (TASK-002 done)'},
+      {agent:'records-officer', when:'2h ago',  turn:7,  commit:'5b3f8c1', why:'created register v3 from v2 baseline'},
+    ],
+  }
+};
+
+// TRACE — per-agent per-turn cost (cumulative drawn in the chart)
+const TRACE = {
+  turns:[1,2,3,4,5,6,7,8,9,10,11,12],
+  cost:{
+    'dpo-lead':        [.4,.3,.2,.5,.3,.2,.4,.3,.2,.3,.2,.3],
+    'records-officer': [.6,.7,.5,.8,.6,.9,.5,.7,.4,.6,.5,.7],
+    'assessor':        [.5,.6,.7,.4,.8,.5,.6,.7,.5,.4,0,0],
+    'legal':           [0,0,.3,0,.4,0,0,.5,0,0,.3,0],
+  }
+};
+
+// Per-agent fake conversations for the chat pivot
+const CHATS = {
+  'records-officer':[
+    {who:'records-officer', text:"I'm reconstructing the breach timeline but I'm blocked on TASK-020 — I need the first-detected timestamp from you."},
+    {who:'user', text:"Good question — let me check the SIEM."},
+    {who:'records-officer', text:"Thanks. While I wait I've pulled the access logs (TASK-021, in-progress)."},
+  ],
+  'dpo-lead':[
+    {who:'dpo-lead', text:"The Q2 ROPA draft is ready. Coverage KPI is 'partial' — vendor list reconciled, retention periods pending Legal."},
+    {who:'user', text:"Looks good. Push Legal on the retention sign-off."},
+  ],
+  'assessor':[
+    {who:'assessor', text:"DPIA risk scoring is underway (TASK-011). My context hit 165k this turn — I'll reflect before continuing."},
+  ],
+  'legal':[ {who:'legal', text:"Reviewing retention periods for marketing data; will sign off TASK-003 shortly."} ],
+};
+const COP_CHAT = [
+  {who:'copilot', text:"Mission is on track (spend $9.95/$18, 82% to mission cap). One agent is awaiting your input and one tripped a soft context limit."},
+];
+const COP_ACTIONS = [
+  {id:'a1', label:'Pause `assessor` — 165k context, approaching the window. Reflect first?', },
+  {id:'a2', label:'Remind `records-officer`\'s supervisor that TASK-020 has been awaiting input for 2 turns.'},
+];
+
+// ===========================================================================
+// RENDER
+// ===========================================================================
+const $ = (s,r=document)=>r.querySelector(s);
+const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = n => '$'+n.toFixed(2);
+const children = id => OBJECTIVES.filter(o=>o.parent===id);
+const tasksOf = id => TASKS.filter(t=>t.objective===id);
+let openObj = new Set(OBJECTIVES.map(o=>o.id));   // all expanded
+let tab='objectives', view='operator', eyeAgent='records-officer';
+let selTurn=null;   // {agent,turn,commit} — set when deep-linking a file → its last turn
+
+function kpiPill(k){
+  const v = String(k.value);
+  const cls = /pending|unmet/.test(v) ? 'pill-bad'
+            : /partial|left/.test(v)   ? 'pill-part'
+            : 'pill-ok';
+  const needs = /pending|unmet|stale/.test(v) || k.stale;
+  const tgt = (k.kind==='quantitative' && k.target!=null)
+    ? `<span class="ktgt">/ ${k.target}${k.unit?(' '+k.unit):''}</span>` : '';
+  const own = k.owner ? `<span class="kown" title="KPI owner — reminded to keep it current">${AGENTS[k.owner]?AGENTS[k.owner].name.split(' ')[0]:k.owner}</span>` : '';
+  return `<span class="kpi" title="source: ${k.source}${needs?' · needs update':''}">
+    <span class="ksrc">${k.source.replace('-',' ')}</span>
+    <b>${esc(k.label)}</b>
+    <span class="kval ${cls}">${esc(v)}</span>${tgt}${needs?' <span class="pill-warn">⚠</span>':''}
+    ${own}</span>`;
+}
+function budgetCell(o){
+  const pct = Math.min(100, Math.round(100*o.costUsd/o.budgetUsd));
+  const col = pct>=90?'var(--bad)':pct>=70?'var(--warn)':'var(--ok)';
+  return `<span class="budget">$${o.budgetUsd.toFixed(2)} · spent <b>≈${fmt(o.costUsd)}</b>
+    <span class="minibar"><i style="width:${pct}%;background:${col}"></i></span></span>`;
+}
+function taskRow(t){
+  const blocked = t.status==='blocked';
+  const note = t.awaitUser?` <span class="pill-bad">⛔ awaiting user</span>`
+             : t.blockedNote?` <span class="pill-warn">— ${esc(t.blockedNote)}</span>`:'';
+  return `<div class="task">
+     <span class="s-dot s-${t.status}"></span>
+     <span class="tid">${t.id}</span>
+     <span class="ttl">${esc(t.title)}${note}</span>
+     <span class="cost">${t.costUsd?('≈'+fmt(t.costUsd)):'—'}</span>
+     <span class="ass" onclick="openChat('${t.assignee}')">${AGENTS[t.assignee].name}</span>
+   </div>`;
+}
+function objNode(o){
+  const kids = children(o.id), ts = tasksOf(o.id), isOpen=openObj.has(o.id);
+  const sCls = {active:'st-active',open:'st-open',blocked:'st-blocked',achieved:'st-done'}[o.status]||'st-open';
+  return `<div class="obj ${o.parent?'sub':''}">
+    <div class="obj-head" onclick="toggleObj('${o.id}')">
+      <span class="caret ${isOpen?'':'closed'}">▾</span>
+      <span class="status ${sCls}">●</span>
+      <span class="obj-title">${esc(o.title)}</span>
+      <span class="owner" onclick="event.stopPropagation();openChat('${o.owner}')">owner: ${AGENTS[o.owner].name}</span>
+      ${budgetCell(o)}
+    </div>
+    ${isOpen?`<div class="obj-body">
+      ${o.kpis.length?`<div class="kpis"><span class="kpilbl">KPIs</span>${o.kpis.map(kpiPill).join('')}</div>`:''}
+      ${ts.map(taskRow).join('')}
+      ${kids.map(objNode).join('')}
+    </div>`:''}
+  </div>`;
+}
+
+function renderObjectives(){
+  $('#center').innerHTML = children(null).map(objNode).join('');
+}
+
+function renderRail(){
+  const needs = NEEDS.map(n=>{
+    const ic = n.kind==='await'?'⛔':n.kind==='soft'?'⚠':'💬';
+    return `<div class="att ${n.kind}">
+      <div class="h">${ic} <span class="who" onclick="openChat('${n.who}')">${AGENTS[n.who].name}</span>
+        ${n.kind==='await'?'<span class="pill-bad">AWAITING INPUT</span>':''}</div>
+      <div class="q">${esc(n.text)}</div>
+      <button class="act" onclick="openChat('${n.who}')">${n.act} →</button>
+    </div>`;
+  }).join('');
+  const deliv = DELIVERABLES.map(d=>`<div class="deliv" style="cursor:pointer" onclick="openFile('${d.name}')">
+      <span class="ic">${d.ic}</span>
+      <span><div>${esc(d.name)}</div><div class="meta">${AGENTS[d.who].name} · ${d.age}</div></span>
+      <span class="dl" onclick="event.stopPropagation()">⬇ download</span></div>`).join('');
+  $('#rail').innerHTML = `<h2 class="sec">Needs you</h2>${needs}
+     <h2 class="sec" style="margin-top:16px">Deliverables</h2>${deliv}
+     <div style="margin-top:10px"><button class="dl" style="background:none;border:1px solid var(--line);color:var(--info);padding:6px 11px;border-radius:7px">⬇ download all shared/ as .zip</button></div>`;
+}
+
+// ── agent-eye view (the #my-objectives mental-map section) ────────────────
+function renderAgentEye(){
+  const a = eyeAgent;
+  const owned = OBJECTIVES.filter(o=>o.owner===a);
+  const myTasks = TASKS.filter(t=>t.assignee===a);
+  // KPIs this agent OWNS — independent of which objective they hang off
+  const myKpis = OBJECTIVES.flatMap(o=>o.kpis.filter(k=>k.owner===a).map(k=>({...k, obj:o.id})));
+  const lines = [];
+  lines.push(`<section id="my-objectives">   (read-only — synced from the objectives store each turn)`);
+  owned.forEach(o=>{
+    lines.push(`You own objective ${o.id} "${esc(o.title)}" — budget $${o.budgetUsd.toFixed(2)}, spent ≈$${o.costUsd.toFixed(2)}.`);
+  });
+  myKpis.forEach(k=>{
+    const needs = /pending|unmet|partial/.test(String(k.value)) || k.stale;
+    lines.push(`  ${needs?'<span class="mk">⚠ ':'• '}KPI ${k.id} "${esc(k.label)}" [${k.obj}] = ${esc(String(k.value))}${k.target?(' / '+k.target):''}${needs?' — run record-kpi --kpi '+k.id+' --value …</span>':''}`);
+  });
+  myTasks.forEach(t=>{
+    const tag = t.awaitUser?` ⛔ awaiting user: "${esc(t.awaitUser)}"`:'';
+    lines.push(`  • ${t.id} ${esc(t.title)} — ${t.status}  [${t.objective}]${tag}   (task-update --effort N)`);
+  });
+  lines.push(`<span class="mk">$0.30 of work is unattributed over 1 turn — add --effort on your next task-update.</span>`);
+  lines.push(`</section>`);
+  const sel = Object.keys(AGENTS).map(id=>`<option value="${id}" ${id===a?'selected':''}>${AGENTS[id].name}</option>`).join('');
+  $('#center').innerHTML = `
+    <div style="margin-bottom:12px" class="mut">This is exactly what the daemon injects into the agent's mental map — one rendering of the same store the operator tree reads.
+      &nbsp; Agent: <select onchange="eyeAgent=this.value;renderAgentEye()">${sel}</select></div>
+    <div class="eye">${lines.join('\n')}</div>`;
+}
+
+// ── trace view ────────────────────────────────────────────────────────────
+function renderTrace(){
+  const W=820,H=300,pad=40, T=TRACE.turns, n=T.length;
+  const series=Object.entries(TRACE.cost).map(([a,arr])=>{
+    let c=0; return {a, pts:arr.map((v,i)=>({x:i,y:(c+=v)}))};
+  });
+  const maxY=Math.max(...series.flatMap(s=>s.pts.map(p=>p.y)));
+  const sx=i=>pad+(i/(n-1))*(W-2*pad), sy=y=>H-pad-(y/maxY)*(H-2*pad);
+  const colOf=a=>getComputedStyle(document.documentElement).getPropertyValue(AGENTS[a].color.match(/--\w+/)[0]);
+  const lines=series.map(s=>{
+    const d=s.pts.map((p,i)=>(i?'L':'M')+sx(p.x)+' '+sy(p.y)).join(' ');
+    return `<path d="${d}" fill="none" stroke="${colOf(s.a)}" stroke-width="2"/>`;
+  }).join('');
+  const gx=T.map((t,i)=>`<text x="${sx(i)}" y="${H-pad+16}" fill="#5b6488" font-size="10" text-anchor="middle">${t}</text>`).join('');
+  const leg=series.map(s=>`<span><i style="background:${colOf(s.a)}"></i>${AGENTS[s.a].name}</span>`).join('');
+  // mark: records-officer awaiting input at turn 9
+  const mark=`<line x1="${sx(8)}" x2="${sx(8)}" y1="${pad}" y2="${H-pad}" stroke="var(--bad)" stroke-dasharray="4 3" opacity=".6"/>
+              <text x="${sx(8)+4}" y="${pad+12}" fill="var(--bad)" font-size="10">records-officer → awaiting input</text>`;
+  // highlight the deep-linked turn (file → "inspect turn N")
+  const selMark = selTurn ? `<line x1="${sx(selTurn.turn-1)}" x2="${sx(selTurn.turn-1)}" y1="${pad}" y2="${H-pad}" stroke="var(--a0)" stroke-width="2" opacity=".7"/>` : '';
+  $('#center').innerHTML = `<h2 class="sec">Cumulative cost per agent (live turns)</h2>
+    <div class="legend">${leg}</div>
+    <svg width="${W}" height="${H}" style="max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:9px">
+      <line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="#222a47"/>
+      <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#222a47"/>
+      ${mark}${selMark}${lines}${gx}
+      <text x="${pad}" y="${pad-12}" fill="#8a93b8" font-size="11">$ (max ≈ ${maxY.toFixed(1)})</text>
+    </svg>
+    ${selTurn ? turnDetail(selTurn) : `<p class="mut" style="margin-top:10px">Click a turn (in the real viewer) — or "inspect turn N →" from any file in the Files tab — to drill into that turn's <code>llmCallLog</code>: context curve, tool sequence, per-call cost. Live mode streams new turns from <code>agentTurnStats</code>; historical lazy-loads <code>llmCallLog</code>.</p>`}`;
+}
+
+// Files which a given commit touched (the turn's outputs) — folded from FILES.history
+function filesForCommit(commit){
+  return Object.entries(FILES.history).filter(([,h])=>h.some(e=>e.commit===commit)).map(([p])=>p);
+}
+// Turn drill-down: what an agentTurnStats row + its llmCallLog window would render.
+function turnDetail(st){
+  const a=AGENTS[st.agent];
+  const cost=(TRACE.cost[st.agent] && TRACE.cost[st.agent][st.turn-1]!=null)?TRACE.cost[st.agent][st.turn-1]:0.4;
+  const files=filesForCommit(st.commit);
+  const col=getComputedStyle(document.documentElement).getPropertyValue(a.color.match(/--\w+/)[0]);
+  // mock llmCallLog for this turn: a small rising context curve + tool sequence
+  const ctx=[18,34,52,71,69,88].map(k=>k*1000);
+  const calls=ctx.length;
+  const seq=[
+    'Read('+(files[0]||'…').split('/').pop()+')',
+    'Bash(grep -n … access.log)',
+    'task-update --id TASK-021 --status in-progress --effort 2',
+    ...files.slice(0,2).map(f=>'WriteFile('+f.split('/').pop()+')'),
+    'PostMessage(to: dpo-lead)',
+  ];
+  // context sparkline
+  const w=260,h=44,mx=Math.max(...ctx);
+  const pts=ctx.map((v,i)=>`${(i/(calls-1))*w},${h-(v/mx)*h}`).join(' ');
+  return `<div class="fhist" style="margin-top:14px;border:1px solid var(--line);border-radius:9px">
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px">
+      <span class="av" style="width:10px;height:10px;border-radius:50%;background:${col};display:inline-block"></span>
+      <b>${a.name}</b> · turn ${st.turn} · <span class="commit">${st.commit}</span>
+      <span class="mut">${calls} LLM calls · ≈${fmt(cost)} · peak ctx ${(mx/1000).toFixed(0)}k</span>
+      <span class="hv" style="margin-left:auto" onclick="selTurn=null;render()">✕ close drill-down</span>
+    </div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap">
+      <div>
+        <div class="sec" style="margin-bottom:4px">Context growth (this turn)</div>
+        <svg width="${w}" height="${h}" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px">
+          <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2"/></svg>
+      </div>
+      <div style="flex:1;min-width:240px">
+        <div class="sec" style="margin-bottom:4px">Tool sequence</div>
+        ${seq.map(s=>`<div style="font:12px ui-monospace,Menlo,monospace;color:#cfe0ff;padding:1px 0">→ ${esc(s)}</div>`).join('')}
+      </div>
+      <div style="min-width:200px">
+        <div class="sec" style="margin-bottom:4px">Files written this turn</div>
+        ${files.map(f=>`<div class="hv" style="display:block;padding:2px 0" onclick="openFile('${f}')">📄 ${esc(f)}</div>`).join('')||'<span class="mut">—</span>'}
+      </div>
+    </div>
+    <p class="mut" style="margin:10px 0 2px">In production: <code>agentTurnStats</code> gives the summary row; this drill-down lazy-loads <code>llmCallLog</code> for <code>savedAt ∈ [turn.startedAt, turn.completedAt]</code>. The round-trip closes here — each file links back to the turn that wrote it, and back again.</p>
+  </div>`;
+}
+
+// ── kanban (by-agent lens — same tasks, pivoted) ──────────────────────────
+function renderKanban(){
+  const cols=[['open','Open'],['in-progress','In progress'],['blocked','Blocked'],['completed','Done']];
+  const html=cols.map(([st,lbl])=>{
+    const cards=TASKS.filter(t=>t.status===st).map(t=>`
+      <div class="card" style="border-left-color:${getComputedStyle(document.documentElement).getPropertyValue(AGENTS[t.assignee].color.match(/--\w+/)[0])}">
+        <div>${t.id} ${esc(t.title)}</div>
+        <div class="cm"><span class="who" style="cursor:pointer" onclick="openChat('${t.assignee}')">${AGENTS[t.assignee].name}</span>
+          <span>${t.objective}</span><span>${t.costUsd?('≈'+fmt(t.costUsd)):''}</span></div>
+      </div>`).join('');
+    return `<div class="kcol"><h3>${lbl} (${TASKS.filter(t=>t.status===st).length})</h3>${cards}</div>`;
+  }).join('');
+  $('#center').innerHTML = `<div class="kan">${html}</div>
+    <p class="mut" style="margin-top:10px">Same task records as the Objectives tree — just pivoted by agent/status. One dataset, two views.</p>`;
+}
+
+// ── files (directory tree + content + provenance) ─────────────────────────
+let selFile = 'DPIA-CRM-draft.md';
+let histOpen = false;
+function fileTreeHtml(nodes, prefix){
+  return nodes.map(n=>{
+    const path = prefix ? prefix+'/'+n.name : n.name;
+    if(n.dir){
+      return `<div class="frow fdir"><span class="fi">▾</span>${esc(n.name)}/</div>
+        <div style="margin-left:14px">${fileTreeHtml(n.children, path)}</div>`;
+    }
+    const h = (FILES.history[path]||[])[0];
+    const ic = n.binary?'▦':'≡';
+    return `<div class="frow ${path===selFile?'sel':''}" onclick="selFile='${path}';renderFiles()">
+       <span class="fi">${ic}</span>${esc(n.name)}
+       ${h?`<span class="fmeta">${AGENTS[h.agent]?AGENTS[h.agent].name.split(' ')[0]:h.agent} · ${h.when}</span>`:''}</div>`;
+  }).join('');
+}
+function findBinary(path){
+  // walk tree to learn if the selected path is binary
+  let found=false;
+  (function w(ns,p){ ns.forEach(n=>{const fp=p?p+'/'+n.name:n.name;
+    if(n.dir) w(n.children,fp); else if(fp===path) found=!!n.binary; }); })(FILES.tree,'');
+  return found;
+}
+function renderFiles(){
+  const hist = FILES.history[selFile] || [];
+  const head = hist[0];
+  const col = head && AGENTS[head.agent] ? getComputedStyle(document.documentElement).getPropertyValue(AGENTS[head.agent].color.match(/--\w+/)[0]) : 'var(--dim)';
+  const whoName = head ? (AGENTS[head.agent]?AGENTS[head.agent].name:head.agent) : '—';
+  const bin = findBinary(selFile);
+  const body = bin
+    ? `<div class="binph">▦ ${esc(selFile.split('/').pop())}<br><span class="mut">binary file — preview not shown.</span><br><br><button class="fdl">⬇ download</button></div>`
+    : `<pre>${esc(FILES.content[selFile] || '(no content in mock)')}</pre>`;
+  const turnLink = (h, label) => AGENTS[h.agent]
+    ? `<span class="hv" onclick="openTurn('${h.agent}',${h.turn},'${h.commit}')">${label} →</span>`
+    : `<span class="mut">${label}</span>`;
+  const histRows = hist.map(h=>`<div class="hrow">
+      <span class="av" style="background:${AGENTS[h.agent]?getComputedStyle(document.documentElement).getPropertyValue(AGENTS[h.agent].color.match(/--\w+/)[0]):'var(--dim)'}"></span>
+      <b>${AGENTS[h.agent]?AGENTS[h.agent].name:h.agent}</b>
+      <span class="why">${esc(h.why)}</span>
+      <span class="commit">${h.commit}</span>
+      <span class="ht">${turnLink(h, 'turn '+h.turn)} · ${h.when}</span>
+      <span class="hv" onclick="alert('git show ${h.commit}:${selFile}\\n\\n(opens this historical version)')">view version</span>
+    </div>`).join('');
+  $('#center').innerHTML = `<div class="files">
+    <div class="ftree"><h2 class="sec">shared/</h2>${fileTreeHtml(FILES.tree,'')}</div>
+    <div class="fviewer">
+      <div class="fhead">
+        <div class="fp">shared/${esc(selFile)}</div>
+        <div class="prov">
+          <span class="av" style="background:${col}"></span>
+          last updated by <b>${esc(whoName)}</b>
+          ${head?`· <span class="mut">${head.when}</span> · <span class="commit">${head.commit}</span> · <span class="why">${esc(head.why)}</span>`:''}
+          ${head && AGENTS[head.agent]?`<span class="hv" style="font-size:12px" onclick="openTurn('${head.agent}',${head.turn},'${head.commit}')">inspect turn ${head.turn} →</span>`:''}
+          <button class="fdl">⬇ download</button>
+        </div>
+      </div>
+      <div class="fbody">${body}</div>
+      <div class="fhist">
+        <h3 onclick="histOpen=!histOpen;renderFiles()">${histOpen?'▾':'▸'} change history — ${hist.length} commit${hist.length===1?'':'s'} (from git-commit-on-sleep)</h3>
+        ${histOpen?histRows:''}
+      </div>
+    </div></div>`;
+}
+
+// ── routing ───────────────────────────────────────────────────────────────
+function render(){
+  // rail only on objectives + operator
+  $('#rail').classList.toggle('hidden', !(tab==='objectives' && view==='operator'));
+  if(view==='agent'){ renderAgentEye(); return; }
+  if(tab==='objectives') renderObjectives();
+  else if(tab==='files') renderFiles();
+  else if(tab==='trace') renderTrace();
+  else if(tab==='kanban') renderKanban();
+  if(tab==='objectives' && view==='operator') renderRail();
+}
+function toggleObj(id){ openObj.has(id)?openObj.delete(id):openObj.add(id); renderObjectives(); }
+function goTab(name){ tab=name; document.querySelectorAll('#tabs .tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===name)); render(); }
+function openFile(path){ selFile=path; histOpen=false; view='operator'; document.querySelectorAll('#view-seg button').forEach(x=>x.classList.toggle('on',x.dataset.view==='operator')); goTab('files'); }
+function openTurn(agent,turn,commit){ selTurn={agent,turn,commit}; goTab('trace'); }
+
+document.querySelectorAll('#tabs .tab').forEach(b=>b.onclick=()=>{ selTurn=null; goTab(b.dataset.tab); });
+document.querySelectorAll('#view-seg button').forEach(b=>b.onclick=()=>{
+  view=b.dataset.view; document.querySelectorAll('#view-seg button').forEach(x=>x.classList.toggle('on',x===b)); render();
+});
+
+// ── chat pivot drawer ──────────────────────────────────────────────────────
+function drawer(html){
+  closeDrawer();
+  const s=document.createElement('div'); s.className='scrim'; s.onclick=closeDrawer; s.id='scrim';
+  const d=document.createElement('div'); d.className='drawer'; d.id='drawer'; d.innerHTML=html;
+  document.body.append(s,d);
+}
+function closeDrawer(){ ['scrim','drawer'].forEach(id=>{const e=document.getElementById(id); if(e)e.remove();}); }
+function bubbles(msgs){
+  return msgs.map(m=>{
+    const me=m.who==='user';
+    return `<div class="bub ${me?'me':'them'}">${me?'':`<div class="nm">${AGENTS[m.who]?AGENTS[m.who].name:'Copilot'}</div>`}${esc(m.text)}</div>`;
+  }).join('');
+}
+function openChat(agentId){
+  const a=AGENTS[agentId]; const msgs=CHATS[agentId]||[];
+  drawer(`<div class="dh"><span class="dot" style="background:${getComputedStyle(document.documentElement).getPropertyValue(a.color.match(/--\w+/)[0])}"></span>
+      <b>${a.name}</b><span class="mut">· ${a.role}</span><button class="x" onclick="closeDrawer()">×</button></div>
+    <div class="hint">Managerial ↔ conversational pivot — you're now talking directly to this agent. Replies wake it (sleep/wake), no blocking.</div>
+    <div class="conv">${bubbles(msgs)}</div>
+    <div class="compose"><input placeholder="Message ${a.name}…"><button class="btn" onclick="closeDrawer()">Send</button></div>`);
+}
+function openCopilot(){
+  const actions=COP_ACTIONS.map(a=>`<div class="cop-action">${esc(a.label)}
+     <div class="row"><button class="yes" onclick="closeDrawer()">Confirm</button><button class="no" onclick="closeDrawer()">Dismiss</button></div></div>`).join('');
+  drawer(`<div class="dh">🤖 <b>MAGI Copilot</b><span class="mut">· your mission manager</span><button class="x" onclick="closeDrawer()">×</button></div>
+    <div class="hint">Always one click away. The copilot watches stats/limits, proposes actions (you confirm), and you can ask it anything.</div>
+    <div class="conv">${bubbles(COP_CHAT)}
+      <div style="align-self:stretch">${actions}</div></div>
+    <div class="compose"><input placeholder="Ask the copilot… (e.g. 'why is OBJ-1 over budget?')"><button class="btn" onclick="closeDrawer()">Send</button></div>`);
+}
+
+render();
+</script>
+</body>
+</html>
