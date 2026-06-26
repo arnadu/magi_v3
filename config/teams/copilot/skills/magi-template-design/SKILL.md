@@ -73,8 +73,58 @@ it scannable; the operator sees it in the dashboard.
 | `references/{name}.md` | Reference documents agents may consult |
 | `playbook.json` | Structured data the agent reads at start |
 
-Never put platform skill files (`run-background`, `schedule-task`, etc.) in teamFiles —
-they are always present regardless.
+Never put platform skill *files* (`run-background`, `schedule-task`, `objectives`, etc.) in
+teamFiles — the skills themselves are always present regardless. (The objectives **data** files
+below are the one exception: they configure the always-present objectives skill.)
+
+## Objectives, tasks & KPIs (the outcome spine)
+
+Every mission has the **`objectives` platform skill** available automatically. A template opts a
+mission into it by shipping an objectives **data** file as a teamFile — you do not ship the skill.
+
+To make a mission outcome-driven:
+
+1. **Ship `objectives/goals.json`** (a teamFile) — the objective tree + KPI definitions + budgets.
+   Objectives nest via `parent`; each has an `owner` (the supervisor agent accountable for it).
+   KPIs hang off objectives; each has an `owner` + a `source`:
+   `auto-stat` (computed from stats, e.g. `metricKey: "objectiveCostUsd"`), `task-rollup`
+   (computed from task completion), `agent-reported` (an agent publishes it), `copilot-assessment`
+   (the copilot judges a rubric), or `manual`.
+
+   ```json
+   {
+     "objectives": [
+       { "id": "OBJ-1", "parent": null, "title": "Publish the daily brief",
+         "owner": "lead-analyst", "status": "active", "budgetUsd": 5.0,
+         "kpis": [
+           { "id": "K-cov", "label": "coverage", "owner": "lead-analyst",
+             "kind": "qualitative", "source": "copilot-assessment" },
+           { "id": "K-cost", "label": "cost", "owner": "lead-analyst",
+             "kind": "quantitative", "source": "auto-stat",
+             "metricKey": "objectiveCostUsd", "target": 5, "unit": "USD" }
+         ] },
+       { "id": "OBJ-1.1", "parent": "OBJ-1", "title": "Gather data",
+         "owner": "data-scientist", "status": "active", "budgetUsd": 2.0, "kpis": [] }
+     ]
+   }
+   ```
+
+2. **Optionally ship `objectives/tasks.jsonl`** — one initial task per line, assigned to agents:
+   ```
+   {"id":"TASK-1","at":"2026-01-01T00:00:00.000Z","by":"user","title":"Pull prices","objective":"OBJ-1.1","assignee":"data-scientist","status":"open"}
+   ```
+   (Or let a lead agent create tasks at runtime with `task-add`.)
+
+3. **Prompt the agents to use it.** Each agent is shown its owned objectives, owned KPIs, and open
+   tasks in a synced **"Your objectives"** section of its mental map (do not author that section —
+   it is injected). Tell agents to keep it current via the objectives skill scripts:
+   - `bash $SHARED_DIR/skills/_platform/objectives/scripts/task-update.sh --id <id> --status <s> --effort <n>`
+   - `bash $SHARED_DIR/skills/_platform/objectives/scripts/record-kpi.sh --kpi <id> --value <v>`
+   Read `$SHARED_DIR/skills/_platform/objectives/SKILL.md` for the full command reference.
+
+Status values: `open | in-progress | blocked | completed | deferred | cancelled`. The operator
+watches all of this in the Mission Cockpit, and cost is attributed to tasks/objectives
+automatically — so set realistic `budgetUsd` and assign clear owners.
 
 ## Creating a new template
 
