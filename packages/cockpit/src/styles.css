@@ -59,6 +59,21 @@ main {
 .panel {
 	max-width: 1000px;
 }
+a {
+	color: var(--info);
+}
+.missions {
+	list-style: none;
+	padding: 0;
+	max-width: 520px;
+}
+.missions li {
+	padding: 8px 10px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	margin-bottom: 7px;
+	background: var(--panel);
+}
 h2.sec {
 	font-size: 11px;
 	letter-spacing: 0.08em;
