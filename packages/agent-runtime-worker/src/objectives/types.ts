@@ -131,6 +131,19 @@ export const CostEventSchema = z.object({
 });
 export type CostEvent = z.infer<typeof CostEventSchema>;
 
+/**
+ * One allocation-intent event (alloc.jsonl), written by the `allocate` skill
+ * script. It expresses how the agent wants its *unattributed* cost split — as
+ * relative weights per target (a task id, an objective id, or "overhead"). The
+ * daemon turns the latest in-window intent into a `cost.jsonl` event at turn end.
+ */
+export const AllocEventSchema = z.object({
+	by: z.string(),
+	at: z.string(),
+	key: z.record(z.string(), z.number()),
+});
+export type AllocEvent = z.infer<typeof AllocEventSchema>;
+
 // ---------------------------------------------------------------------------
 // Folded (current-state) output
 // ---------------------------------------------------------------------------
@@ -183,4 +196,5 @@ export const STORE_FILES = {
 	tasks: "tasks.jsonl",
 	kpis: "kpis.jsonl",
 	cost: "cost.jsonl",
+	alloc: "alloc.jsonl",
 } as const;

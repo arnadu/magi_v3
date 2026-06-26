@@ -11,6 +11,8 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
+	type AllocEvent,
+	AllocEventSchema,
 	type CostEvent,
 	CostEventSchema,
 	type FoldedKpi,
@@ -366,8 +368,8 @@ export async function loadObjectivesStore(
 /** Append one validated event to a store log (the only writer helper). */
 export async function appendEvent(
 	sharedDir: string,
-	file: "tasks" | "kpis" | "cost",
-	event: TaskEvent | KpiEvent | CostEvent,
+	file: "tasks" | "kpis" | "cost" | "alloc",
+	event: TaskEvent | KpiEvent | CostEvent | AllocEvent,
 ): Promise<void> {
 	const path = join(objectivesDir(sharedDir), STORE_FILES[file]);
 	await mkdir(dirname(path), { recursive: true });
@@ -386,6 +388,33 @@ export async function loadCostEvents(sharedDir: string): Promise<CostEvent[]> {
 	return readJsonl(join(objectivesDir(sharedDir), STORE_FILES.cost), (o) =>
 		CostEventSchema.parse(o),
 	);
+}
+
+/** Raw allocation-intent events (no fold) — for the `allocate` timesheet fallback. */
+export async function loadAllocEvents(
+	sharedDir: string,
+): Promise<AllocEvent[]> {
+	return readJsonl(join(objectivesDir(sharedDir), STORE_FILES.alloc), (o) =>
+		AllocEventSchema.parse(o),
+	);
+}
+
+/** The authored objective tree + KPI definitions (or empty when absent). */
+export async function loadGoals(sharedDir: string): Promise<GoalsFile> {
+	try {
+		return GoalsFileSchema.parse(
+			JSON.parse(
+				await readFile(
+					join(objectivesDir(sharedDir), STORE_FILES.goals),
+					"utf8",
+				),
+			),
+		);
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT")
+			return { objectives: [] };
+		throw e;
+	}
 }
 
 export { OVERHEAD_BUCKET };

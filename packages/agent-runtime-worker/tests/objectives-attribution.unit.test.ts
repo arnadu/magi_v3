@@ -10,9 +10,14 @@ import {
 	attributeTurnCost,
 	splitByWeight,
 	tasksUpdatedInWindow,
+	turnsSinceLastAttribution,
 } from "../src/objectives/attribution.js";
 import { appendEvent, loadObjectivesStore } from "../src/objectives/store.js";
-import type { GoalsFile, TaskEvent } from "../src/objectives/types.js";
+import type {
+	CostEvent,
+	GoalsFile,
+	TaskEvent,
+} from "../src/objectives/types.js";
 
 const T = (h: number, m = 0) =>
 	`2026-06-25T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00.000Z`;
@@ -32,6 +37,19 @@ describe("tasksUpdatedInWindow", () => {
 			["A", 3], // max(3, bare→1)
 			["B", 1],
 		]);
+	});
+});
+
+describe("turnsSinceLastAttribution", () => {
+	const events: CostEvent[] = [
+		{ turn: 2, agent: "alice", at: T(1), alloc: { T1: 0.5 } },
+		{ turn: 4, agent: "bob", at: T(2), alloc: { T2: 0.3 } },
+	];
+	it("counts turns since the agent's last cost event", () => {
+		expect(turnsSinceLastAttribution(events, "alice", 5)).toBe(3);
+	});
+	it("returns currentTurn+1 when the agent never attributed", () => {
+		expect(turnsSinceLastAttribution(events, "carol", 3)).toBe(4);
 	});
 });
 
@@ -172,6 +190,55 @@ describe("attributeTurnCost — carry-over + flush", () => {
 			lifetimeCostUsd: 1.0,
 		});
 		expect(ev).toBeNull();
+	});
+
+	it("uses an explicit allocate intent over task updates (the timesheet fallback)", async () => {
+		// Agent updated a task, but also ran allocate → the intent wins.
+		await appendEvent(shared, "tasks", {
+			id: "T1",
+			at: T(1),
+			by: "alice",
+			objective: "OBJ-1",
+			status: "in-progress",
+		});
+		await appendEvent(shared, "alloc", {
+			by: "alice",
+			at: T(1, 30),
+			key: { "OBJ-1": 70, overhead: 30 },
+		});
+		const ev = await attributeTurnCost(shared, {
+			agentId: "alice",
+			turnNumber: 1,
+			windowStart: new Date(T(0)),
+			windowEnd: new Date(T(2)),
+			lifetimeCostUsd: 1.0,
+		});
+		expect(ev?.alloc["OBJ-1"]).toBeCloseTo(0.7);
+		expect(ev?.alloc.overhead).toBeCloseTo(0.3);
+		expect(ev?.alloc.T1).toBeUndefined(); // task split overridden
+	});
+
+	it("attributes a stale supervisor's balance to its owned objective", async () => {
+		// alice owns OBJ-1, updates no task. Before STALE_TURNS it carries…
+		const early = await attributeTurnCost(shared, {
+			agentId: "alice",
+			turnNumber: 1,
+			windowStart: new Date(T(0)),
+			windowEnd: new Date(T(2)),
+			lifetimeCostUsd: 0.2,
+		});
+		expect(early).toBeNull();
+		// …by turn 3 (>= STALE_TURNS) it lands on OBJ-1.
+		const ev = await attributeTurnCost(shared, {
+			agentId: "alice",
+			turnNumber: 3,
+			windowStart: new Date(T(2)),
+			windowEnd: new Date(T(4)),
+			lifetimeCostUsd: 0.6,
+		});
+		expect(ev?.alloc["OBJ-1"]).toBeCloseTo(0.6);
+		const tree = await loadObjectivesStore(shared);
+		expect(tree.objectives[0].costUsd).toBeCloseTo(0.6); // supervisor overhead on the objective
 	});
 
 	it("does not double-attribute across turns", async () => {

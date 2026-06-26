@@ -21,8 +21,12 @@ import {
 	MY_OBJECTIVES_KEY,
 	renderMyObjectives,
 } from "./objectives/agent-view.js";
-import { attributeTurnCost } from "./objectives/attribution.js";
-import { loadObjectivesStore } from "./objectives/store.js";
+import {
+	attributeTurnCost,
+	STALE_TURNS,
+	turnsSinceLastAttribution,
+} from "./objectives/attribution.js";
+import { loadCostEvents, loadObjectivesStore } from "./objectives/store.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
 import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
@@ -344,13 +348,26 @@ export async function runAgent(
 		history = await ctx.conversationRepo.load(agentId, missionId);
 	}
 
+	let activeTurnNumber =
+		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
+
 	// Sync the daemon-managed #my-objectives mental-map section from the
 	// objectives store (Sprint 26a, B1). The agent reads its owned tasks/KPIs
-	// here and acts via the objectives skill scripts. Store load must never
-	// break the turn — on any error, leave the mental map untouched.
+	// here and acts via the objectives skill scripts. The staleness nudge (B2b)
+	// is shown when the agent has cost unattributed for several turns. Store
+	// load must never break the turn — on any error, leave the mental map alone.
 	try {
 		const tree = await loadObjectivesStore(sharedDir);
-		const section = renderMyObjectives(tree, agentId);
+		const costEvents = await loadCostEvents(sharedDir);
+		const staleAttributionTurns = turnsSinceLastAttribution(
+			costEvents,
+			agentId,
+			activeTurnNumber,
+		);
+		const section = renderMyObjectives(tree, agentId, {
+			staleAttributionTurns,
+			staleThreshold: STALE_TURNS,
+		});
 		if (section !== null) {
 			currentMentalMapHtml = upsertManagedRegion(
 				currentMentalMapHtml,
@@ -367,8 +384,6 @@ export async function runAgent(
 		});
 	}
 
-	let activeTurnNumber =
-		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
 	const previousMessages = convertToLlm(history);
 
 	// Track which LLM call within this session we're on.

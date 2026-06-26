@@ -147,6 +147,20 @@ describe("objectives skill scripts", () => {
 		expect(kpis.find((k) => k.id === "K-txt")?.stale).toBe(false);
 	});
 
+	it("allocate appends an allocation intent the attribution reads", async () => {
+		const out = run("allocate.sh", ["--key", "TASK-1:60,overhead:40"]);
+		expect(out).toContain("recorded");
+		const { loadAllocEvents } = await import("../src/objectives/store.js");
+		const events = await loadAllocEvents(shared);
+		expect(events).toHaveLength(1);
+		expect(events[0].by).toBe(AGENT);
+		expect(events[0].key).toEqual({ "TASK-1": 60, overhead: 40 });
+	});
+
+	it("allocate rejects a malformed key", () => {
+		expect(() => run("allocate.sh", ["--key", "bogus"])).toThrow();
+	});
+
 	it("makes no git calls (no .git is created)", () => {
 		run("task-add.sh", ["--title", "x"]);
 		run("record-kpi.sh", ["--kpi", "K1", "--value", "1"]);

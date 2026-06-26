@@ -70,6 +70,16 @@ A numeric `--value` is stored as a number; otherwise as text (e.g. `met`,
 `partial`, `unmet`). If your mental map flags an owned KPI as needing an update,
 run `record-kpi` for it.
 
+**Allocate unattributed cost (only when prompted).** Cost is normally attributed
+to your tasks automatically from your `task-update` calls. If — and only if —
+your mental map flags **unattributed cost**, run `allocate` to say where it
+should go (relative weights; targets are task ids, objective ids, or `overhead`):
+
+```bash
+bash $SHARED_DIR/skills/_platform/objectives/scripts/allocate.sh \
+  --key "TASK-1:60,overhead:40"
+```
+
 ## Rules
 
 - **Do not commit anything.** The daemon checkpoints the shared folder every turn

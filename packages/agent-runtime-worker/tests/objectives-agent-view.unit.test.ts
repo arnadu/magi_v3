@@ -134,6 +134,27 @@ describe("renderMyObjectives", () => {
 		expect(s).toContain("K1");
 		expect(s).not.toContain("record-kpi --kpi K1");
 	});
+
+	it("shows the unattributed-cost nudge when attribution is stale (B2b)", () => {
+		const tree = foldStore({
+			goals,
+			taskEvents,
+			kpiEvents: [],
+			costEvents: [],
+		});
+		const stale = renderMyObjectives(tree, "records-officer", {
+			staleAttributionTurns: 4,
+			staleThreshold: 3,
+		}) as string;
+		expect(stale).toContain("unattributed cost");
+		expect(stale).toContain("allocate");
+		// Fresh (below threshold) → no nudge.
+		const fresh = renderMyObjectives(tree, "records-officer", {
+			staleAttributionTurns: 1,
+			staleThreshold: 3,
+		}) as string;
+		expect(fresh).not.toContain("unattributed cost");
+	});
 });
 
 describe("upsertManagedRegion + agent protection", () => {

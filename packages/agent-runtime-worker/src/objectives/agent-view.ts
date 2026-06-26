@@ -42,9 +42,20 @@ const OPEN_TASK = (s: string) => s !== "completed" && s !== "cancelled";
  * the mission has no objectives store at all (so the section is not injected for
  * missions that don't use the objectives system).
  */
+export interface MyObjectivesOpts {
+	/**
+	 * Turns since the agent last had cost attributed. When at/over the staleness
+	 * threshold, a nudge to run `allocate` is shown (B2b).
+	 */
+	staleAttributionTurns?: number;
+	/** The staleness threshold (defaults match the attribution module). */
+	staleThreshold?: number;
+}
+
 export function renderMyObjectives(
 	tree: FoldedTree,
 	agentId: string,
+	opts: MyObjectivesOpts = {},
 ): string | null {
 	if (tree.objectives.length === 0 && tree.tasks.length === 0) return null;
 
@@ -100,6 +111,13 @@ export function renderMyObjectives(
 		);
 	} else {
 		parts.push("<p>No open tasks are assigned to you.</p>");
+	}
+
+	const threshold = opts.staleThreshold ?? 3;
+	if ((opts.staleAttributionTurns ?? 0) >= threshold) {
+		parts.push(
+			`<p>⚠ You have unattributed cost over ${opts.staleAttributionTurns} turns. Attribute it by updating a task with <code>task-update --effort N</code>, or run <code>allocate --key "TASK-x:60,overhead:40"</code>.</p>`,
+		);
 	}
 
 	return parts.join("\n");
