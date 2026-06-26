@@ -12,6 +12,11 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/agent-config/package.json ./packages/agent-config/
 COPY packages/control-plane/package.json ./packages/control-plane/
 COPY packages/agent-runtime-worker/package.json ./packages/agent-runtime-worker/
+# Cockpit is a workspace member: npm ci needs its package.json to resolve the
+# lockfile. It is not built into this image yet (the cockpit UI is dev-only —
+# its build output under public/cockpit is gitignored); wire its Vite build into
+# this stage when the cockpit ships.
+COPY packages/cockpit/package.json ./packages/cockpit/
 
 RUN npm ci --ignore-scripts
 COPY packages/agent-config ./packages/agent-config

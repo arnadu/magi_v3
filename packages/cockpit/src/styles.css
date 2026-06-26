@@ -1,0 +1,265 @@
+:root {
+	--bg: #0b0d1a;
+	--panel: #12162a;
+	--panel2: #171c33;
+	--line: #222a47;
+	--txt: #dbe2f5;
+	--mut: #8a93b8;
+	--dim: #5b6488;
+	--ok: #3fb27f;
+	--warn: #e3a44b;
+	--bad: #e05566;
+	--info: #5aa0e6;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+	font:
+		13px / 1.45 ui-sans-serif,
+		system-ui,
+		"Segoe UI",
+		Roboto,
+		sans-serif;
+	background: var(--bg);
+	color: var(--txt);
+}
+.mut {
+	color: var(--mut);
+}
+.grow {
+	flex: 1;
+}
+header {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 10px 16px;
+	background: var(--panel);
+	border-bottom: 1px solid var(--line);
+}
+header h1 {
+	font-size: 14px;
+	margin: 0;
+	font-weight: 600;
+}
+.dot {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	background: var(--ok);
+	display: inline-block;
+	margin-right: 6px;
+	box-shadow: 0 0 8px var(--ok);
+}
+main {
+	padding: 14px 16px;
+}
+.panel {
+	max-width: 1000px;
+}
+h2.sec {
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--dim);
+	margin: 2px 0 10px;
+}
+
+.obj {
+	margin: 0 0 10px;
+	border: 1px solid var(--line);
+	border-radius: 9px;
+	background: var(--panel);
+	overflow: hidden;
+}
+.obj.sub {
+	margin: 8px 0 8px 22px;
+	background: var(--panel2);
+}
+.obj-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 9px 12px;
+	cursor: pointer;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: none;
+	color: inherit;
+	font: inherit;
+}
+.obj-head:hover {
+	background: #161b30;
+}
+.caret {
+	color: var(--dim);
+	width: 12px;
+	display: inline-block;
+	transition: transform 0.12s;
+}
+.caret.closed {
+	transform: rotate(-90deg);
+}
+.status {
+	color: var(--ok);
+	font-size: 11px;
+}
+.obj-title {
+	font-weight: 600;
+}
+.owner {
+	font-size: 11px;
+	color: var(--mut);
+	background: #0c1022;
+	border: 1px solid var(--line);
+	padding: 1px 7px;
+	border-radius: 20px;
+}
+.budget {
+	margin-left: auto;
+	font-size: 11.5px;
+	color: var(--mut);
+	white-space: nowrap;
+}
+.budget b {
+	color: var(--txt);
+}
+.minibar {
+	width: 60px;
+	height: 6px;
+	background: #0a0c18;
+	border-radius: 4px;
+	overflow: hidden;
+	border: 1px solid var(--line);
+	display: inline-block;
+	vertical-align: middle;
+	margin-left: 6px;
+}
+.minibar > i {
+	display: block;
+	height: 100%;
+}
+.obj-body {
+	padding: 2px 12px 10px;
+}
+
+.kpis {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 4px 0 9px;
+	align-items: center;
+}
+.kpilbl {
+	font-size: 9.5px;
+	letter-spacing: 0.07em;
+	text-transform: uppercase;
+	color: var(--dim);
+	margin-right: 2px;
+}
+.kpi {
+	font-size: 11px;
+	border: 1px solid #2a3358;
+	border-radius: 7px;
+	padding: 3px 4px 3px 0;
+	background: #0c1022;
+	display: flex;
+	gap: 7px;
+	align-items: center;
+}
+.kpi .ksrc {
+	color: var(--dim);
+	font-size: 9px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	border-right: 1px solid var(--line);
+	padding: 0 7px;
+	align-self: stretch;
+	display: flex;
+	align-items: center;
+}
+.kpi b {
+	font-weight: 600;
+}
+.kpi .kval {
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+.kpi .ktgt {
+	color: var(--dim);
+}
+.kpi .kown {
+	color: var(--mut);
+	font-size: 9.5px;
+	background: #0a0c18;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 0 6px;
+}
+.pill-ok {
+	color: var(--ok);
+}
+.pill-warn {
+	color: var(--warn);
+}
+.pill-bad {
+	color: var(--bad);
+}
+.pill-part {
+	color: var(--warn);
+}
+
+.task {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 5px 6px;
+	border-radius: 6px;
+}
+.task:hover {
+	background: var(--panel2);
+}
+.task .tid {
+	color: var(--dim);
+	font-variant-numeric: tabular-nums;
+}
+.task .ttl {
+	flex: 1;
+}
+.task .ass {
+	font-size: 11px;
+	color: var(--mut);
+}
+.task .cost {
+	font-size: 11px;
+	color: var(--mut);
+	font-variant-numeric: tabular-nums;
+}
+.s-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	display: inline-block;
+}
+.s-inprog,
+.s-in-progress {
+	background: var(--info);
+}
+.s-open {
+	background: var(--dim);
+}
+.s-blocked {
+	background: var(--bad);
+}
+.s-completed {
+	background: var(--ok);
+}
+.s-deferred {
+	background: var(--warn);
+}
+.s-cancelled {
+	background: var(--dim);
+}
