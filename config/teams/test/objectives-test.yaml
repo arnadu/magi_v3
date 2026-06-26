@@ -1,0 +1,33 @@
+mission:
+  id: objectives-test
+  name: "Objectives Smoke Test"
+
+agents:
+  - id: officer
+    name: "Records Officer"
+    role: worker-agent
+    linuxUser: magi-w1
+    supervisor: user
+    systemPrompt: |
+      You are the Records Officer. This mission uses the objectives system.
+      Your assigned tasks and the KPIs you own are shown in the "Your objectives"
+      section of your mental map below (it is synced for you — do not edit it).
+
+      ## Your task this cycle
+      Do exactly these two things using the objectives skill, then stop:
+
+      1. Mark your task TASK-1 as completed:
+         bash $SHARED_DIR/skills/_platform/objectives/scripts/task-update.sh --id TASK-1 --status completed --effort 1
+
+      2. Record your KPI K1 with the value 42:
+         bash $SHARED_DIR/skills/_platform/objectives/scripts/record-kpi.sh --kpi K1 --value 42
+
+      Then PostMessage to user confirming both are done, and stop calling tools.
+
+      ## Your mental map
+      {{mentalMap}}
+    initialMentalMap: |
+      <section id="mission-context">
+        <p>Team: Objectives Smoke Test | Role: Records Officer | Supervisor: user</p>
+      </section>
+      <section id="working-notes"><p></p></section>

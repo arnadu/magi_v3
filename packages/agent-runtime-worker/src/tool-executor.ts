@@ -48,12 +48,16 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	const { tool, args, workdir, permittedPaths, agentId, timeoutMs } = req;
+	const { tool, args, workdir, permittedPaths, agentId, timeoutMs, sharedDir } =
+		req;
 
 	let result: ToolResponse;
 	switch (tool) {
 		case "Bash": {
-			const r = await execBash(args.command as string, workdir, timeoutMs);
+			const r = await execBash(args.command as string, workdir, timeoutMs, {
+				agentId,
+				sharedDir,
+			});
 			result = { ok: !r.isError, text: r.content[0].text };
 			break;
 		}

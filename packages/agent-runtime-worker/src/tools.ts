@@ -180,7 +180,19 @@ export async function execBash(
 	command: string,
 	cwd: string,
 	timeoutMs: number,
+	ctx?: { agentId?: string; sharedDir?: string },
 ): Promise<ToolResult> {
+	// sudo's env_reset strips the env passed to the sudo process, so skill scripts
+	// (e.g. the objectives task-update / record-kpi) cannot see AGENT_ID/SHARED_DIR
+	// unless we re-inject them here from the authoritative request fields. The
+	// inherited process.env is already secret-free (the sudo child only has PATH/
+	// HOME/USER), so spreading it is safe.
+	const env: NodeJS.ProcessEnv = {
+		...process.env,
+		WORKDIR: cwd,
+		...(ctx?.agentId ? { AGENT_ID: ctx.agentId } : {}),
+		...(ctx?.sharedDir ? { SHARED_DIR: ctx.sharedDir } : {}),
+	};
 	// detached: true creates a new process group so that a manual SIGKILL also
 	// kills any background children spawned with & (F-011).
 	const child = execa("bash", ["-c", command], {
@@ -188,6 +200,7 @@ export async function execBash(
 		encoding: "utf8",
 		maxBuffer: 10 * 1024 * 1024,
 		detached: true,
+		env,
 	});
 
 	let timedOut = false;
