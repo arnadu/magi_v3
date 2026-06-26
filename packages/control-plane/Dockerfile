@@ -13,9 +13,11 @@ COPY packages/agent-config/package.json ./packages/agent-config/
 COPY packages/control-plane/package.json ./packages/control-plane/
 COPY packages/agent-runtime-worker/package.json ./packages/agent-runtime-worker/
 # Cockpit is a workspace member: npm ci needs its package.json to resolve the
-# lockfile. It is not built into this image yet (the cockpit UI is dev-only —
-# its build output under public/cockpit is gitignored); wire its Vite build into
-# this stage when the cockpit ships.
+# lockfile. The cockpit's Vite build output is committed under
+# packages/control-plane/public/cockpit and shipped via the public/ copy below,
+# so it is NOT built in this image (avoids pulling Vite/esbuild into the build,
+# which also conflicts with --ignore-scripts). Rebuild + commit it with
+# `npm run build -w @magi/cockpit` when the cockpit changes.
 COPY packages/cockpit/package.json ./packages/cockpit/
 
 RUN npm ci --ignore-scripts

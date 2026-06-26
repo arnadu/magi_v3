@@ -10,5 +10,15 @@ export default defineConfig({
 	build: {
 		outDir: "../control-plane/public/cockpit",
 		emptyOutDir: true,
+		// Stable (un-hashed) filenames: the build output is committed and served
+		// with Cache-Control: no-store, so content-hash busting isn't needed and
+		// stable names keep the committed diff clean across rebuilds.
+		rollupOptions: {
+			output: {
+				entryFileNames: "assets/[name].js",
+				chunkFileNames: "assets/[name].js",
+				assetFileNames: "assets/[name][extname]",
+			},
+		},
 	},
 });

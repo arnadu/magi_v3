@@ -28,5 +28,3 @@ fly.control-*.toml
 !fly.control-dev.toml
 !fly.control-test-hello-world.toml
 
-# Cockpit build artifact (Vite output served by control plane); built on demand.
-packages/control-plane/public/cockpit/
