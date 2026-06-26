@@ -21,6 +21,7 @@ import {
 	MY_OBJECTIVES_KEY,
 	renderMyObjectives,
 } from "./objectives/agent-view.js";
+import { attributeTurnCost } from "./objectives/attribution.js";
 import { loadObjectivesStore } from "./objectives/store.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
@@ -712,6 +713,8 @@ export async function runAgent(
 		const git =
 			(await ctx.commitWorkspace?.(`turn: ${agentId}/${activeTurnNumber}`)) ??
 			undefined;
+		// Capture the turn window before endTurn() drops the accumulator (B2).
+		const turnSnapshot = ctx.statsCollector?.getTurn(agentId);
 		// Finalize turn statistics regardless of success, error, or abort. An
 		// aborted run still incurred cost, so its lifetime totals must be recorded.
 		await ctx.statsCollector?.endTurn(
@@ -719,6 +722,28 @@ export async function runAgent(
 			limitAborted || signal?.aborted ? "aborted" : "complete",
 			git ?? undefined,
 		);
+		// Attribute the turn's cost to the task(s) the agent updated this turn
+		// (Sprint 26a, B2). Runs after endTurn so lifetimeCostUsd includes this
+		// turn. Best-effort: a failure here must never break the turn.
+		if (ctx.statsCollector && turnSnapshot) {
+			try {
+				await attributeTurnCost(sharedDir, {
+					agentId,
+					turnNumber: turnSnapshot.turnNumber,
+					windowStart: turnSnapshot.startedAt,
+					windowEnd: new Date(),
+					lifetimeCostUsd:
+						ctx.statsCollector.getLifetime(agentId)?.lifetimeCostUsd ??
+						turnSnapshot.costUsd,
+				});
+			} catch (e) {
+				console.error("[agent-runner] cost attribution failed", {
+					missionId,
+					agentId,
+					error: (e as Error).message,
+				});
+			}
+		}
 		// Close the browser session regardless of success or failure.
 		await browseWebHandle?.close();
 	}

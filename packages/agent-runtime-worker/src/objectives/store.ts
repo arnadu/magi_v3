@@ -374,5 +374,19 @@ export async function appendEvent(
 	await appendFile(path, `${JSON.stringify(event)}\n`, "utf8");
 }
 
+/** Raw task events (no fold) — for cost attribution's turn-window scan. */
+export async function loadTaskEvents(sharedDir: string): Promise<TaskEvent[]> {
+	return readJsonl(join(objectivesDir(sharedDir), STORE_FILES.tasks), (o) =>
+		TaskEventSchema.parse(o),
+	);
+}
+
+/** Raw cost events (no fold) — for computing already-attributed totals. */
+export async function loadCostEvents(sharedDir: string): Promise<CostEvent[]> {
+	return readJsonl(join(objectivesDir(sharedDir), STORE_FILES.cost), (o) =>
+		CostEventSchema.parse(o),
+	);
+}
+
 export { OVERHEAD_BUCKET };
 export type { TaskStatus };
