@@ -19,6 +19,7 @@ import type { MagiTool, ToolResult } from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
 import { getMachineState } from "./fly-machines.js";
+import { deriveMonitorToken } from "./monitor-token.js";
 import type { MissionTemplate } from "./templates.js";
 
 // ---------------------------------------------------------------------------
@@ -114,6 +115,26 @@ export function createCopilotTools(
 		if (!res.ok)
 			throw new Error(`Monitor server ${privateIp} returned ${res.status}`);
 		return res.text();
+	}
+
+	/** Token-authed POST to a mission's monitor server (mutating endpoints). */
+	async function monitorPost(
+		privateIp: string,
+		missionId: string,
+		path: string,
+		body: unknown,
+	): Promise<void> {
+		const token = deriveMonitorToken(missionId);
+		const res = await fetch(`http://[${privateIp}]:4000${path}`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				...(token ? { "x-monitor-token": token } : {}),
+			},
+			body: JSON.stringify(body),
+			signal: AbortSignal.timeout(10_000),
+		});
+		if (!res.ok) throw new Error(`Monitor ${path} returned ${res.status}`);
 	}
 
 	// ─── B1: read-only ────────────────────────────────────────────────────────
@@ -652,12 +673,82 @@ export function createCopilotTools(
 		},
 	};
 
+	// ─── Objectives (Sprint 26a, C1) ──────────────────────────────────────────
+
+	const reviewObjectives: MagiTool = {
+		name: "ReviewObjectives",
+		description:
+			"Read a mission's objective tree with current task status, KPI values, " +
+			"and budget-vs-spend. Use this to assess progress and decide which KPIs to update.",
+		parameters: Type.Object({
+			missionId: Type.String({ description: "Mission ID" }),
+		}),
+		async execute(_id, args) {
+			const missionId = args.missionId as string;
+			const mission = await db
+				.collection<MissionDoc>("missions")
+				.findOne({ missionId, userId });
+			if (!mission?.privateIp)
+				return err(`Mission "${missionId}" not found or not running.`);
+			try {
+				const text = await monitorFetch(mission.privateIp, "/objectives");
+				return ok(text || "(empty objectives store)");
+			} catch (e) {
+				return err(`Failed to read objectives: ${(e as Error).message}`);
+			}
+		},
+	};
+
+	const assessKpi: MagiTool = {
+		name: "AssessKpi",
+		description:
+			"Record a value for a KPI you assess (a copilot-assessment KPI). The latest " +
+			"value wins. Use after ReviewObjectives to publish your judgement (e.g. " +
+			'a coverage rubric: "met" / "partial" / "unmet", or a computed number).',
+		parameters: Type.Object({
+			missionId: Type.String({ description: "Mission ID" }),
+			kpi: Type.String({ description: "KPI id (from goals.json), e.g. K1" }),
+			value: Type.Union([Type.String(), Type.Number()], {
+				description: "The value to record (string rubric or number)",
+			}),
+			note: Type.Optional(
+				Type.String({ description: "Optional rationale for the assessment" }),
+			),
+		}),
+		async execute(_id, args) {
+			const missionId = args.missionId as string;
+			const mission = await db
+				.collection<MissionDoc>("missions")
+				.findOne({ missionId, userId });
+			if (!mission?.privateIp)
+				return err(`Mission "${missionId}" not found or not running.`);
+			try {
+				await monitorPost(mission.privateIp, missionId, "/objectives/kpi", {
+					kpi: args.kpi,
+					value: args.value,
+					note: args.note,
+					by: "copilot",
+				});
+				pushEvent("copilot-kpi", {
+					missionId,
+					kpi: args.kpi,
+					value: args.value,
+				});
+				return ok(`Recorded ${args.kpi} = ${args.value}`);
+			} catch (e) {
+				return err(`Failed to record KPI: ${(e as Error).message}`);
+			}
+		},
+	};
+
 	return [
 		listMissions,
 		getMissionStatus,
 		readMissionMailbox,
 		readMissionLog,
 		readMissionFile,
+		reviewObjectives,
+		assessKpi,
 		listSchedule,
 		listTemplates,
 		getTemplate,

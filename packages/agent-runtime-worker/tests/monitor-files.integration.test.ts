@@ -8,7 +8,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -164,6 +170,70 @@ describe("monitor /upload + /download", () => {
 		const res = await fetch(
 			`${base}/download?path=${encodeURIComponent("../../etc/passwd")}`,
 		);
+		expect(res.status).toBe(400);
+	});
+});
+
+describe("monitor /objectives", () => {
+	beforeAll(() => {
+		// Author a goals.json with one objective + a reported KPI to receive a value.
+		mkdirSync(join(sharedDir, "objectives"), { recursive: true });
+		writeFileSync(
+			join(sharedDir, "objectives", "goals.json"),
+			JSON.stringify({
+				objectives: [
+					{
+						id: "OBJ-1",
+						parent: null,
+						title: "root",
+						owner: "echo",
+						status: "active",
+						kpis: [
+							{
+								id: "K1",
+								label: "coverage",
+								owner: "echo",
+								kind: "qualitative",
+								source: "copilot-assessment",
+							},
+						],
+					},
+				],
+			}),
+		);
+	});
+
+	it("records a KPI value via POST and reflects it in GET (folded)", async () => {
+		const post = await fetch(`${base}/objectives/kpi`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				kpi: "K1",
+				value: "partial",
+				note: "2 of 5 names",
+			}),
+		});
+		expect(post.ok).toBe(true);
+
+		const get = await fetch(`${base}/objectives`);
+		expect(get.ok).toBe(true);
+		const tree = (await get.json()) as {
+			objectives: {
+				id: string;
+				kpis: { id: string; value: unknown; updatedBy?: string }[];
+			}[];
+		};
+		const kpi = tree.objectives[0].kpis.find((k) => k.id === "K1");
+		expect(kpi?.value).toBe("partial");
+		expect(kpi?.updatedBy).toBe("copilot"); // default author
+	});
+
+	it("rejects a KPI event missing kpi/value with 400", async () => {
+		const res = await fetch(`${base}/objectives/kpi`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ value: "x" }),
+		});
 		expect(res.status).toBe(400);
 	});
 });
