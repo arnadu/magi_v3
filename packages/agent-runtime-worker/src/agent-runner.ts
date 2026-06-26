@@ -12,7 +12,16 @@ import { computeCost, truncateToolBodies } from "./llm-call-log.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
-import { createMentalMapTool, initMentalMap } from "./mental-map.js";
+import {
+	createMentalMapTool,
+	initMentalMap,
+	upsertManagedSection,
+} from "./mental-map.js";
+import {
+	MY_OBJECTIVES_ID,
+	renderMyObjectives,
+} from "./objectives/agent-view.js";
+import { loadObjectivesStore } from "./objectives/store.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
 import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
@@ -334,6 +343,29 @@ export async function runAgent(
 		history = await ctx.conversationRepo.load(agentId, missionId);
 	}
 
+	// Sync the daemon-managed #my-objectives mental-map section from the
+	// objectives store (Sprint 26a, B1). The agent reads its owned tasks/KPIs
+	// here and acts via the objectives skill scripts. Store load must never
+	// break the turn — on any error, leave the mental map untouched.
+	try {
+		const tree = await loadObjectivesStore(sharedDir);
+		const section = renderMyObjectives(tree, agentId);
+		if (section !== null) {
+			currentMentalMapHtml = upsertManagedSection(
+				currentMentalMapHtml,
+				MY_OBJECTIVES_ID,
+				section,
+			);
+			ctx.onMentalMapUpdate?.(agentId, currentMentalMapHtml);
+		}
+	} catch (e) {
+		console.error("[agent-runner] objectives sync failed", {
+			missionId,
+			agentId,
+			error: (e as Error).message,
+		});
+	}
+
 	let activeTurnNumber =
 		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
 	const previousMessages = convertToLlm(history);
@@ -425,6 +457,7 @@ export async function runAgent(
 				currentMentalMapHtml = html;
 				ctx.onMentalMapUpdate?.(agentId, html);
 			},
+			new Set([MY_OBJECTIVES_ID]),
 		),
 		createFetchUrlTool(visionModel, sharedDir, ctx.allowedHosts ?? []),
 		createInspectImageTool(workdir, visionModel, [sharedDir]),

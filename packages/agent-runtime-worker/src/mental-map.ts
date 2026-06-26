@@ -78,6 +78,31 @@ export function patchMentalMap(
 	return doc.body.innerHTML;
 }
 
+/**
+ * Insert-or-replace a daemon-managed section by id. Unlike `patchMentalMap`,
+ * this creates the section (at the top of the body) if it does not exist, so a
+ * managed section like `#my-objectives` can be synced into any agent's mental
+ * map without requiring every team template to declare it. The section is
+ * regenerated each turn and is protected from agent edits (see
+ * `createMentalMapTool`'s `protectedIds`).
+ */
+export function upsertManagedSection(
+	html: string,
+	elementId: string,
+	innerHtml: string,
+): string {
+	const dom = new JSDOM(html);
+	const doc = dom.window.document;
+	let el = doc.getElementById(elementId);
+	if (!el) {
+		el = doc.createElement("section");
+		el.id = elementId;
+		doc.body.insertBefore(el, doc.body.firstChild);
+	}
+	el.innerHTML = sanitizeHtml(innerHtml, doc);
+	return doc.body.innerHTML;
+}
+
 // ---------------------------------------------------------------------------
 // Tool factory
 // ---------------------------------------------------------------------------
@@ -95,6 +120,7 @@ export function patchMentalMap(
 export function createMentalMapTool(
 	getHtml: () => string | null,
 	setHtml: (html: string) => void,
+	protectedIds: ReadonlySet<string> = new Set(),
 ): MagiTool {
 	function ok(text: string): ToolResult {
 		return { content: [{ type: "text", text }] };
@@ -133,6 +159,14 @@ export function createMentalMapTool(
 			const operation = args.operation as "replace" | "append" | "remove";
 			const elementId = args.elementId as string;
 			const content = args.content as string | undefined;
+
+			if (protectedIds.has(elementId)) {
+				return Promise.resolve(
+					err(
+						`UpdateMentalMap: #${elementId} is system-managed (read-only) — it is synced for you each turn and cannot be edited`,
+					),
+				);
+			}
 
 			if (operation !== "remove" && !content) {
 				return Promise.resolve(
