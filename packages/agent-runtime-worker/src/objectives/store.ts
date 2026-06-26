@@ -319,7 +319,16 @@ async function readJsonl<T>(
 	for (const line of text.split("\n")) {
 		const trimmed = line.trim();
 		if (!trimmed) continue;
-		out.push(parse(JSON.parse(trimmed)));
+		// Append-only logs are written by agent skill scripts; one malformed or
+		// schema-invalid line must not make the whole store unreadable (it would
+		// break the mental-map sync for every agent). Skip and warn instead.
+		try {
+			out.push(parse(JSON.parse(trimmed)));
+		} catch (err) {
+			console.warn(
+				`[objectives] skipping malformed line in ${path}: ${(err as Error).message}`,
+			);
+		}
 	}
 	return out;
 }
