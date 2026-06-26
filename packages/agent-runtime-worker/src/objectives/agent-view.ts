@@ -11,8 +11,12 @@
 
 import type { FoldedObjective, FoldedTree } from "./types.js";
 
-/** The mental-map section id the daemon owns and the agent may not edit. */
-export const MY_OBJECTIVES_ID = "my-objectives";
+/**
+ * The `data-managed` key for the daemon-owned objectives region. It carries no
+ * `id`, so the agent's id-only mental-map tools cannot reach it — protected by
+ * the same rule as non-id'd structure.
+ */
+export const MY_OBJECTIVES_KEY = "my-objectives";
 
 function esc(s: string): string {
 	return s.replace(

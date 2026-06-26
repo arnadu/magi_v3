@@ -38,9 +38,12 @@ export {
 	createMongoMailboxRepository,
 } from "./mailbox.js";
 export {
-	createMentalMapTool,
+	addElement,
+	createMentalMapTools,
 	initMentalMap,
-	patchMentalMap,
+	removeElement,
+	updateElement,
+	upsertManagedRegion,
 } from "./mental-map.js";
 export { anthropicModel, CLAUDE_SONNET, resolveModel } from "./models.js";
 export type { OrchestratorConfig } from "./orchestrator.js";

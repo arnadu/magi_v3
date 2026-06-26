@@ -57,8 +57,12 @@ Design around what must survive across wakeups:
 - Key tracked data points or commitments
 - Active open questions
 
-Use `<section id="...">` elements — `UpdateMentalMap` patches by id. One section per
-logical domain. Keep it scannable; the operator sees it in the dashboard.
+Use id'd elements (e.g. `<section id="...">`) for anything the agent should maintain —
+the agent edits the map only through `mental_map_update` / `mental_map_add` /
+`mental_map_remove`, which address elements **by id**. One id'd section per logical
+domain. Anything **without** an id is permanent: put high-level structure, headings, and
+standing instructions in non-id'd elements so the agent cannot change or erase them. Keep
+it scannable; the operator sees it in the dashboard.
 
 ## teamFiles conventions
 

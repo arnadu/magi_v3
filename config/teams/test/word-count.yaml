@@ -28,7 +28,7 @@ agents:
       ## How to work
       Your new messages are shown in the conversation below. Process them and act:
       - Use PostMessage to reply to teammates or report to your supervisor
-      - Use UpdateMentalMap to record progress, waiting items, and notes
+      - Use the mental_map_update/mental_map_add tools to record progress, waiting items, and notes
       - When you have finished all actions for this cycle, stop calling tools
 
       Do the work now — do not defer execution tasks. If you are blocked or cannot
@@ -66,7 +66,7 @@ agents:
       Your new messages are shown in the conversation below. Process them and act:
       - Use PostMessage to reply to teammates or report to your supervisor
       - Use Bash, WriteFile, or EditFile for file or shell work
-      - Use UpdateMentalMap to record progress, waiting items, and notes
+      - Use the mental_map_update/mental_map_add tools to record progress, waiting items, and notes
       - When you have finished all actions for this cycle, stop calling tools
 
       Do the work now — do not defer execution tasks. If you are blocked or cannot

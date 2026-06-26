@@ -4,11 +4,11 @@
 
 import { describe, expect, it } from "vitest";
 import {
-	createMentalMapTool,
-	upsertManagedSection,
+	createMentalMapTools,
+	upsertManagedRegion,
 } from "../src/mental-map.js";
 import {
-	MY_OBJECTIVES_ID,
+	MY_OBJECTIVES_KEY,
 	renderMyObjectives,
 } from "../src/objectives/agent-view.js";
 import { foldStore } from "../src/objectives/store.js";
@@ -136,77 +136,53 @@ describe("renderMyObjectives", () => {
 	});
 });
 
-describe("upsertManagedSection", () => {
-	it("creates the section at the top when absent", () => {
-		const out = upsertManagedSection(
+describe("upsertManagedRegion + agent protection", () => {
+	it("creates a data-managed region (no id) at the top when absent", () => {
+		const out = upsertManagedRegion(
 			'<section id="working-notes"><p>hi</p></section>',
-			MY_OBJECTIVES_ID,
+			MY_OBJECTIVES_KEY,
 			"<p>owned</p>",
 		);
-		expect(out).toContain('id="my-objectives"');
-		expect(out.indexOf("my-objectives")).toBeLessThan(
+		expect(out).toContain('data-managed="my-objectives"');
+		expect(out).not.toContain('id="my-objectives"'); // no id → unreachable by agent tools
+		expect(out.indexOf("data-managed")).toBeLessThan(
 			out.indexOf("working-notes"),
 		);
 	});
 
-	it("replaces the section content when present (no duplication)", () => {
-		const first = upsertManagedSection(
+	it("replaces the region content when present (no duplication)", () => {
+		const first = upsertManagedRegion(
 			"<p></p>",
-			MY_OBJECTIVES_ID,
+			MY_OBJECTIVES_KEY,
 			"<p>v1</p>",
 		);
-		const second = upsertManagedSection(first, MY_OBJECTIVES_ID, "<p>v2</p>");
+		const second = upsertManagedRegion(first, MY_OBJECTIVES_KEY, "<p>v2</p>");
 		expect(second).toContain("v2");
 		expect(second).not.toContain("v1");
-		expect(second.match(/id="my-objectives"/g)?.length).toBe(1);
+		expect(second.match(/data-managed="my-objectives"/g)?.length).toBe(1);
 	});
 
-	it("strips scripts from injected content", () => {
-		const out = upsertManagedSection(
-			"<p></p>",
-			MY_OBJECTIVES_ID,
-			"<p>ok</p><script>alert(1)</script>",
+	it("the agent's id-only tools cannot reach the managed region", async () => {
+		let html = upsertManagedRegion(
+			'<section id="working-notes"></section>',
+			MY_OBJECTIVES_KEY,
+			"<p>managed</p>",
 		);
-		expect(out).not.toContain("<script>");
-		expect(out).toContain("ok");
-	});
-});
-
-describe("createMentalMapTool protected ids", () => {
-	it("rejects edits to a protected (managed) section", async () => {
-		let html =
-			'<section id="my-objectives"><p>managed</p></section><section id="working-notes"></section>';
-		const tool = createMentalMapTool(
+		const [update, , remove] = createMentalMapTools(
 			() => html,
 			(h) => {
 				html = h;
 			},
-			new Set([MY_OBJECTIVES_ID]),
 		);
-		const res = await tool.execute("1", {
-			operation: "replace",
-			elementId: "my-objectives",
+		// No id → mental_map_update by the key fails; content is untouched.
+		const u = await update.execute("1", {
+			target_id: MY_OBJECTIVES_KEY,
+			mode: "replace",
 			content: "<p>hacked</p>",
 		});
-		expect(res.isError).toBe(true);
-		expect(html).toContain("managed"); // unchanged
-	});
-
-	it("still allows edits to normal sections", async () => {
-		let html = '<section id="working-notes"></section>';
-		const tool = createMentalMapTool(
-			() => html,
-			(h) => {
-				html = h;
-			},
-			new Set([MY_OBJECTIVES_ID]),
-		);
-		const res = await tool.execute("1", {
-			operation: "replace",
-			elementId: "working-notes",
-			content: "<p>note</p>",
-		});
-		expect(res.isError).toBeUndefined();
-		expect(html).toContain("note");
+		expect(u.isError).toBe(true);
+		const r = await remove.execute("2", { target_id: MY_OBJECTIVES_KEY });
+		expect(r.isError).toBe(true);
+		expect(html).toContain("managed"); // region intact
 	});
 });

@@ -13,12 +13,12 @@ import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
 import {
-	createMentalMapTool,
+	createMentalMapTools,
 	initMentalMap,
-	upsertManagedSection,
+	upsertManagedRegion,
 } from "./mental-map.js";
 import {
-	MY_OBJECTIVES_ID,
+	MY_OBJECTIVES_KEY,
 	renderMyObjectives,
 } from "./objectives/agent-view.js";
 import { loadObjectivesStore } from "./objectives/store.js";
@@ -351,9 +351,9 @@ export async function runAgent(
 		const tree = await loadObjectivesStore(sharedDir);
 		const section = renderMyObjectives(tree, agentId);
 		if (section !== null) {
-			currentMentalMapHtml = upsertManagedSection(
+			currentMentalMapHtml = upsertManagedRegion(
 				currentMentalMapHtml,
-				MY_OBJECTIVES_ID,
+				MY_OBJECTIVES_KEY,
 				section,
 			);
 			ctx.onMentalMapUpdate?.(agentId, currentMentalMapHtml);
@@ -451,13 +451,12 @@ export async function runAgent(
 				if (msg.to.includes(supervisorId)) postedToSupervisor = true;
 			},
 		}),
-		createMentalMapTool(
+		...createMentalMapTools(
 			() => currentMentalMapHtml,
 			(html) => {
 				currentMentalMapHtml = html;
 				ctx.onMentalMapUpdate?.(agentId, html);
 			},
-			new Set([MY_OBJECTIVES_ID]),
 		),
 		createFetchUrlTool(visionModel, sharedDir, ctx.allowedHosts ?? []),
 		createInspectImageTool(workdir, visionModel, [sharedDir]),

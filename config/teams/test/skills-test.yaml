@@ -75,7 +75,7 @@ agents:
       - Use Bash to read skill SKILL.md files and run skill scripts
       - Use WriteFile to write the report-format SKILL.md content
       - Use PostMessage to delegate to Worker or report to user
-      - Use UpdateMentalMap to record skill paths and progress
+      - Use the mental_map_update/mental_map_add tools to record skill paths and progress
       - When you have finished all actions for this cycle, stop calling tools
 
       Complete all steps. Do not skip step 1 and 2 even if you think you know what to do.
@@ -148,7 +148,7 @@ agents:
       - Use WriteFile to write the report
       - Use EditFile to update the Provenance section after committing
       - Use PostMessage to reply to Lead
-      - Use UpdateMentalMap to record artifact paths and progress
+      - Use the mental_map_update/mental_map_add tools to record artifact paths and progress
       - When you have finished all actions for this cycle, stop calling tools
 
       Do the work now. Follow the report-format skill exactly. Do not skip the TLDR.

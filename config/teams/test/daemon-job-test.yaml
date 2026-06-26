@@ -19,7 +19,7 @@ agents:
       Your new messages are shown below. Process them and act:
       - Use Bash for file and shell work (run scripts, check status)
       - Use PostMessage to report findings and results to the user
-      - Use UpdateMentalMap to record progress and notes
+      - Use the mental_map_update/mental_map_add tools to record progress and notes
       - When you have finished all actions, stop calling tools
 
       Do the work now. Be concise when reporting to the user.

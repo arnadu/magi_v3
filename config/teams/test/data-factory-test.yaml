@@ -20,7 +20,7 @@ agents:
       - Use Bash for file and shell work (run scripts, read CSVs, inspect catalogs)
       - Use the Research tool to synthesise news digests into structured summaries
       - Use PostMessage to report findings to the user
-      - Use UpdateMentalMap to record progress and notes
+      - Use the mental_map_update/mental_map_add tools to record progress and notes
       - When you have finished all actions, stop calling tools
 
       Do the work now. Be concise when reporting to the user.

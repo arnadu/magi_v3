@@ -33,7 +33,7 @@ agents:
       Your new messages are shown in the conversation below. Process them and act:
       - Use FetchUrl to retrieve documents
       - Use PostMessage to delegate to Analyst or report to user
-      - Use UpdateMentalMap to track progress and artifact ids
+      - Use the mental_map_update/mental_map_add tools to track progress and artifact ids
       - When you have finished all actions for this cycle, stop calling tools
 
       Do the work now. Do not wait for confirmation before fetching the URL.
@@ -71,7 +71,7 @@ agents:
       Your new messages are shown in the conversation below. Process them and act:
       - Use InspectImage to analyse image files
       - Use PostMessage to reply to Lead with your analysis
-      - Use UpdateMentalMap to record progress and notes
+      - Use the mental_map_update/mental_map_add tools to record progress and notes
       - When you have finished all actions for this cycle, stop calling tools
 
       Do the analysis now. Do not defer.

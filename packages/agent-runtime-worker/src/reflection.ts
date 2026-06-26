@@ -17,7 +17,7 @@ import type {
 	SummaryMessage,
 } from "./conversation-repository.js";
 import { runInnerLoop } from "./loop.js";
-import { createMentalMapTool } from "./mental-map.js";
+import { createMentalMapTools } from "./mental-map.js";
 
 // ---------------------------------------------------------------------------
 // Tool-result scoping
@@ -189,12 +189,13 @@ You will be given:
 
 ═══ OUTPUT ══════════════════════════════════════════════════════════════════
 
-Step 1 — For each Mental Map section that changed during the session, call
-UpdateMentalMap with operation="replace" to update it. Only update sections
-that actually changed. Be specific: include numbers, units, file paths, source
-URLs, and dates.
+Step 1 — For each Mental Map element that changed during the session, call
+mental_map_update with mode="replace" to update it (addressed by its id). Use
+mental_map_add to record a new id'd note, mental_map_remove to drop a stale one.
+Only change what actually changed. Be specific: include numbers, units, file
+paths, source URLs, and dates.
 
-Step 2 — After all UpdateMentalMap calls are done, output a narrative summary
+Step 2 — After all mental-map edits are done, output a narrative summary
 of the session as your final text response:
 
   300–500 words. If prior session summaries are provided above, extend them —
@@ -248,10 +249,10 @@ export interface ReflectionContext {
  * 1. Builds the reflection prompt from ctx.previousSummaries (passed in by the
  *    caller to avoid a redundant DB round-trip), the current Mental Map, and the
  *    full session transcript.
- * 2. Runs a mini inner loop with only the UpdateMentalMap tool so the reflection
- *    LLM patches the Mental Map directly via the same tool the agent uses.
- *    Elements without an id attribute are inherently protected — UpdateMentalMap
- *    requires an id to address any element.
+ * 2. Runs a mini inner loop with only the mental-map tools so the reflection
+ *    LLM edits the Mental Map directly via the same tools the agent uses.
+ *    Elements without an id attribute are inherently protected — the tools
+ *    require an id to address any element.
  * 3. Extracts the narrative summary from the final assistant text response.
  * 4. Saves the summary at turnNumber+1 BEFORE compacting old turns (crash-safe:
  *    a crash between the two operations never loses the summary; no transactions
@@ -286,21 +287,24 @@ export async function runReflection(
 	//    the agent's prompt context but visible in MongoDB for debugging.
 	//
 	//    Partial-failure note: if the process crashes mid-loop (after some
-	//    UpdateMentalMap calls but before the summary is saved), the next wakeup
+	//    mental-map edits but before the summary is saved), the next wakeup
 	//    retries reflection on the same uncompacted session. The orphaned reflection
 	//    messages from the failed attempt stay in MongoDB but are harmless —
 	//    they are filtered out of load() and compact() never targets their
 	//    turnNumber (reflectionTurnNumber = ctx.turnNumber + 1 is above the
-	//    compact cutpoint). UpdateMentalMap uses replace semantics so the re-run
+	//    compact cutpoint). mental_map_update uses replace semantics so the re-run
 	//    is idempotent from the Mental Map's perspective.
 	const reflectionTurnNumber = ctx.turnNumber + 1;
-	const mentalMapTool = createMentalMapTool(ctx.getMentalMap, ctx.setMentalMap);
+	const mentalMapTools = createMentalMapTools(
+		ctx.getMentalMap,
+		ctx.setMentalMap,
+	);
 	const reflectionSystemPrompt = buildReflectionSystemPrompt();
 	const { messages: reflectionMessages } = await runInnerLoop({
 		model: ctx.model,
 		getSystemPrompt: () => reflectionSystemPrompt,
 		task: userPrompt,
-		tools: [mentalMapTool],
+		tools: mentalMapTools,
 		onMessage: async (msg) => {
 			await ctx.conversationRepo.append(agentId, missionId, [
 				{ turnNumber: reflectionTurnNumber, message: msg, isReflection: true },

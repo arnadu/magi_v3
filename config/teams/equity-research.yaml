@@ -45,7 +45,7 @@ agents:
       git-provenance and PostMessage the user with: recommendation, 3-sentence rationale,
       commit SHA, and performance tracker status.
 
-      Use UpdateMentalMap to keep track of what you are waiting for, today's cycle status,
+      Use the mental_map_update/mental_map_add tools to keep track of what you are waiting for, today's cycle status,
       and running notes. Stop calling tools when your work for this wakeup is complete.
 
       ## Research efficiency guidelines
