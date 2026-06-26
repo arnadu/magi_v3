@@ -112,6 +112,15 @@ async function main(): Promise<void> {
 	const requireAuth = createAuthMiddleware(db);
 	app.use(requireAuth);
 
+	// API responses must never be cached. Express sets an ETag but no
+	// Cache-Control, so browsers apply heuristic caching and a normal reload can
+	// serve a stale template/config/mission (the operator should not need a
+	// force-reload to see a just-saved edit).
+	app.use("/api", (_req, res, next) => {
+		res.setHeader("Cache-Control", "no-store");
+		next();
+	});
+
 	// Mission templates — list available team configs.
 	// 4 MB limit: template payloads include teamFiles (skills, scripts) which can exceed 100 KB.
 	app.use(
