@@ -142,6 +142,36 @@ export class WorkspaceManager {
 		for (const identity of identities.values()) {
 			mkdirSync(join(identity.workdir, "skills"), { recursive: true });
 		}
+
+		// The objectives store (Sprint 26) is writable mission state: agents append
+		// task/KPI events via skill scripts and the daemon appends cost. Ensure it
+		// exists and is agent-writable even when a template shipped goals.json —
+		// copyTeamFilesToSharedDir grants copied dirs read-only (r-x), which would
+		// block the skill scripts. Harmless for missions that don't use objectives
+		// (an empty dir folds to an empty tree).
+		const objectivesStore = join(sharedDir, "objectives");
+		mkdirSync(objectivesStore, { recursive: true });
+		for (const user of linuxUsers) {
+			try {
+				execFileSync(
+					"setfacl",
+					["-R", "-m", `u:${user}:rwx`, objectivesStore],
+					{
+						stdio: "ignore",
+					},
+				);
+				execFileSync(
+					"setfacl",
+					["-d", "-m", `u:${user}:rwx`, objectivesStore],
+					{
+						stdio: "ignore",
+					},
+				);
+			} catch {
+				// best-effort — ACLs may be unsupported in some local/test envs
+			}
+		}
+
 		if (!existsSync(join(sharedDir, ".git"))) {
 			initSharedGitRepo(sharedDir);
 		}

@@ -1,0 +1,32 @@
+{
+  "objectives": [
+    {
+      "id": "OBJ-1",
+      "parent": null,
+      "title": "Publish the Q2 data-protection brief",
+      "owner": "officer",
+      "status": "active",
+      "budgetUsd": 3.0,
+      "kpis": [
+        {
+          "id": "K-coverage",
+          "label": "topics covered",
+          "owner": "officer",
+          "kind": "quantitative",
+          "source": "agent-reported",
+          "target": 3
+        },
+        {
+          "id": "K-cost",
+          "label": "cost",
+          "owner": "officer",
+          "kind": "quantitative",
+          "source": "auto-stat",
+          "metricKey": "objectiveCostUsd",
+          "target": 3,
+          "unit": "USD"
+        }
+      ]
+    }
+  ]
+}

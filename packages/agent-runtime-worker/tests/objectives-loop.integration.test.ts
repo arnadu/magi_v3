@@ -1,25 +1,20 @@
 /**
- * Sprint 26a — end-to-end smoke test for the objectives spine.
- *
- * Seeds a goals.json + tasks.jsonl into a mission's shared store, runs the real
- * orchestration loop, and verifies the whole headless loop:
- *   - B1: the daemon injects the agent's #my-objectives mental-map region.
- *   - A2: the agent runs the objectives skill scripts (task-update, record-kpi)
- *         under sudo isolation, appending to the store.
- *   - A1: the store folds the updates (task completed, KPI value set).
- *   - B2: the daemon attributes the turn's cost to TASK-1 (cost.jsonl).
+ * Sprint 26 — end-to-end smoke test for the objectives spine, via the real
+ * template path. Uses the `objectives-demo` team (config/teams/objectives-demo)
+ * whose companion dir ships objectives/goals.json + tasks.jsonl. Provisioning
+ * copies them into the mission's shared store and makes it agent-writable; the
+ * orchestration loop then runs the mission. Verifies the whole headless loop:
+ *   - provisioning: template goals.json/tasks.jsonl land in a writable store
+ *   - B1: the daemon injects the agent's #my-objectives mental-map region
+ *   - A2: the agent runs the objectives skill scripts under sudo isolation
+ *   - A1: the store folds the updates (tasks completed, KPI value set)
+ *   - B2: the daemon attributes the turn's cost to the tasks (cost.jsonl)
  *
  * Requires ANTHROPIC_API_KEY + MONGODB_URI and pool user magi-w1 (setup-dev.sh).
  */
 
 import { randomUUID } from "node:crypto";
-import {
-	chmodSync,
-	mkdirSync,
-	mkdtempSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,37 +38,16 @@ import { WorkspaceManager } from "../src/workspace-manager.js";
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) throw new Error("MONGODB_URI required for integration tests");
 
-const TEAM_CONFIG_PATH = fileURLToPath(
-	new URL("../../../config/teams/test/objectives-test.yaml", import.meta.url),
+const DEMO_DIR = fileURLToPath(
+	new URL("../../../config/teams/objectives-demo", import.meta.url),
 );
+const TEAM_CONFIG_PATH = `${DEMO_DIR}.yaml`;
 
-const GOALS = {
-	objectives: [
-		{
-			id: "OBJ-1",
-			parent: null,
-			title: "Q2 compliance",
-			owner: "officer",
-			status: "active",
-			budgetUsd: 5,
-			kpis: [
-				{
-					id: "K1",
-					label: "records reconciled",
-					owner: "officer",
-					kind: "quantitative",
-					source: "agent-reported",
-				},
-			],
-		},
-	],
-};
-
-describe("integration: objectives spine end-to-end", () => {
-	it("agent reads #my-objectives, updates task + KPI via skill, daemon attributes cost", async () => {
+describe("integration: objectives spine end-to-end (template path)", () => {
+	it("provisions template objectives, agent works tasks + KPI, daemon attributes cost", async () => {
 		const tmpDir = mkdtempSync(join(tmpdir(), "magi-obj-loop-"));
 		chmodSync(tmpDir, 0o755); // pool user must traverse
-		const missionId = `objectives-test-${randomUUID()}`;
+		const missionId = `objectives-demo-${randomUUID()}`;
 		const sharedDir = join(tmpDir, "missions", missionId, "shared");
 
 		const { client, db } = await connectMongo(MONGODB_URI);
@@ -89,20 +63,22 @@ describe("integration: objectives spine end-to-end", () => {
 			const statsCollector = new StatsCollector(
 				createMongoAgentStatsRepository(db),
 			);
+			// teamSkillsPath points at the demo's skills/; its dirname is the team
+			// dir, so provisioning copies objectives/goals.json + tasks.jsonl.
 			const workspaceManager = new WorkspaceManager({
 				layout: {
 					homeBase: join(tmpDir, "home"),
 					missionsBase: join(tmpDir, "missions"),
 				},
+				teamSkillsPath: join(DEMO_DIR, "skills"),
 			});
 
-			// Seed the agent's inbox so it wakes and runs one turn.
 			await mailboxRepo.post({
 				missionId,
 				from: "user",
 				to: ["officer"],
-				subject: "Process your objectives",
-				body: "Complete the two steps in your system prompt, then report back.",
+				subject: "Work your objectives",
+				body: "Complete your assigned tasks and record your KPIs, then report back.",
 			});
 
 			const ac = new AbortController();
@@ -115,50 +91,31 @@ describe("integration: objectives spine end-to-end", () => {
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
 					workspaceManager,
-					maxCycles: 6,
-					// Seed the objectives store after provisioning (ACLs are set; the
-					// objectives/ dir inherits the shared default ACL so the pool user
-					// can append, and the daemon can read/write).
-					onWorkspaceReady: () => {
-						const objDir = join(sharedDir, "objectives");
-						mkdirSync(objDir, { recursive: true });
-						writeFileSync(join(objDir, "goals.json"), JSON.stringify(GOALS));
-						writeFileSync(
-							join(objDir, "tasks.jsonl"),
-							`${JSON.stringify({
-								id: "TASK-1",
-								at: "2026-06-25T00:00:00.000Z",
-								by: "user",
-								title: "Inventory processing activities",
-								objective: "OBJ-1",
-								assignee: "officer",
-								status: "open",
-							})}\n`,
-						);
-					},
+					maxCycles: 8,
 				},
 				ac.signal,
 			);
 
-			// A1 + A2: the store folded the agent's skill writes.
+			// Provisioning + A1 + A2: template tasks folded and completed by the agent.
 			const tree = await loadObjectivesStore(sharedDir);
-			const task = tree.tasks.find((t) => t.id === "TASK-1");
-			expect(task?.status, "TASK-1 should be completed by the agent").toBe(
+			const byId = Object.fromEntries(tree.tasks.map((t) => [t.id, t]));
+			expect(byId["TASK-1"]?.status, "TASK-1 should be completed").toBe(
 				"completed",
 			);
-			const kpi = tree.objectives[0].kpis.find((k) => k.id === "K1");
-			expect(kpi?.value, "K1 should be recorded as 42").toBe(42);
+			expect(byId["TASK-2"]?.status, "TASK-2 should be completed").toBe(
+				"completed",
+			);
 
-			// B2: the daemon attributed the turn's cost to TASK-1.
+			// KPI the agent owns was recorded.
+			const kpi = tree.objectives[0].kpis.find((k) => k.id === "K-coverage");
+			expect(kpi?.value, "K-coverage should be recorded").not.toBeNull();
+
+			// B2: cost attributed to the tasks.
 			const costEvents = await loadCostEvents(sharedDir);
-			const attributedToTask1 = costEvents
-				.flatMap((e) => Object.entries(e.alloc))
-				.filter(([id]) => id === "TASK-1")
-				.reduce((sum, [, usd]) => sum + usd, 0);
-			expect(
-				attributedToTask1,
-				"cost should be attributed to TASK-1",
-			).toBeGreaterThan(0);
+			const attributed = costEvents
+				.flatMap((e) => Object.values(e.alloc))
+				.reduce((a, b) => a + b, 0);
+			expect(attributed, "cost should be attributed").toBeGreaterThan(0);
 
 			// B1: the agent saw the daemon-managed #my-objectives region.
 			const snapshot = await conversationRepo.loadMostRecentMentalMap(
@@ -176,5 +133,5 @@ describe("integration: objectives spine end-to-end", () => {
 			await client.close();
 			rmSync(tmpDir, { recursive: true, force: true });
 		}
-	}, 300_000); // 5 min — real LLM + skill subprocess
+	}, 300_000);
 });
