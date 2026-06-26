@@ -148,7 +148,9 @@ function provisionCopilotSkills(repoRoot: string): void {
 		// Platform skills whose SKILL.md the copilot should see via discoverSkills().
 		// The copilot uses the built-in category-B tools for GitHub operations, but
 		// provisioning the SKILL.md ensures the description appears in the system prompt.
-		const platformSkillsToCopy = ["github-issues"];
+		// `objectives` lets the copilot read the task/KPI script reference so it can
+		// design objectives-driven templates (see magi-template-design).
+		const platformSkillsToCopy = ["github-issues", "objectives"];
 		for (const skill of platformSkillsToCopy) {
 			const skillSrc = join(repoRoot, "packages", "skills", skill);
 			if (existsSync(skillSrc)) {
