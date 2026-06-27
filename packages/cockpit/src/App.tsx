@@ -9,9 +9,18 @@ import { ObjectivesPanel } from "./ObjectivesPanel";
 import { SAMPLE_TREE } from "./sample";
 import type { FoldedTree } from "./types";
 
+/** How often the cockpit re-fetches a live mission's objectives. */
+const POLL_MS = 4000;
+
 type View =
 	| { kind: "loading" }
-	| { kind: "ready"; tree: FoldedTree; mission: string | null; demo: boolean }
+	| {
+			kind: "ready";
+			tree: FoldedTree;
+			mission: string | null;
+			demo: boolean;
+			updatedAt: number;
+	  }
 	| { kind: "picker"; missions: MissionSummary[] }
 	| { kind: "auth" }
 	| { kind: "error"; message: string };
@@ -23,27 +32,52 @@ function useView(): View {
 		const mission = new URLSearchParams(window.location.search).get("mission");
 		let cancelled = false;
 
-		(async () => {
-			if (mission) {
+		if (mission) {
+			// Live mission: load once, then poll. Transient poll failures keep the
+			// last good data (don't flip a working view to error); only the INITIAL
+			// load surfaces auth/error.
+			let succeeded = false;
+			const load = async () => {
 				try {
 					const tree = await fetchObjectives(mission);
+					succeeded = true;
 					if (!cancelled)
-						setView({ kind: "ready", tree, mission, demo: false });
+						setView({
+							kind: "ready",
+							tree,
+							mission,
+							demo: false,
+							updatedAt: Date.now(),
+						});
 				} catch (e) {
-					if (cancelled) return;
+					if (cancelled || succeeded) return;
 					if (e instanceof AuthError) setView({ kind: "auth" });
 					else setView({ kind: "error", message: (e as Error).message });
 				}
-				return;
-			}
-			// No mission selected — offer a picker, or fall back to demo data.
+			};
+			void load();
+			const timer = setInterval(load, POLL_MS);
+			return () => {
+				cancelled = true;
+				clearInterval(timer);
+			};
+		}
+
+		// No mission selected — offer a picker, or fall back to demo data.
+		(async () => {
 			try {
 				const missions = await fetchMissions();
 				if (cancelled) return;
 				setView(
 					missions.length > 0
 						? { kind: "picker", missions }
-						: { kind: "ready", tree: SAMPLE_TREE, mission: null, demo: true },
+						: {
+								kind: "ready",
+								tree: SAMPLE_TREE,
+								mission: null,
+								demo: true,
+								updatedAt: Date.now(),
+							},
 				);
 			} catch {
 				if (!cancelled)
@@ -52,6 +86,7 @@ function useView(): View {
 						tree: SAMPLE_TREE,
 						mission: null,
 						demo: true,
+						updatedAt: Date.now(),
 					});
 			}
 		})();
@@ -146,13 +181,14 @@ export function App() {
 		);
 	}
 
+	const updated = new Date(view.updatedAt).toLocaleTimeString();
 	return (
 		<div className="app">
 			<Header
 				subtitle={
 					view.demo
 						? "demo data — append ?mission=<id> for a live mission"
-						: (view.mission ?? "")
+						: `● live · updated ${updated}`
 				}
 				tree={view.tree}
 			/>
