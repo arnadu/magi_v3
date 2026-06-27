@@ -437,10 +437,17 @@ async function executeAction(
 				createdBy: userId,
 			});
 
+			// v1 means a brand-new templateId — surface it so an unintended fork
+			// (editing meant to version an existing template but the id was omitted
+			// or wrong) is immediately visible rather than silently creating a copy.
+			const savedAs =
+				nextVersion === 1
+					? `Template created as NEW template "${id}" (v1)`
+					: `Template "${id}" saved as v${nextVersion}`;
 			if (refsSharedDir && teamFiles.length === 0) {
-				return `WARNING: Template "${id}" saved as v${nextVersion}, but it references {{sharedDir}}/ paths and has no teamFiles attached. Agents will not find those files at runtime. To fix: re-save with fromMissionId pointing to a running mission that has those files in its sharedDir, or pass teamFiles explicitly.`;
+				return `WARNING: ${savedAs}, but it references {{sharedDir}}/ paths and has no teamFiles attached. Agents will not find those files at runtime. To fix: re-save with fromMissionId pointing to a running mission that has those files in its sharedDir, or pass teamFiles explicitly.`;
 			}
-			return `Template "${id}" saved as v${nextVersion} (${teamFiles.length} teamFiles attached)`;
+			return `${savedAs} (${teamFiles.length} teamFiles attached)`;
 		}
 
 		case "save_session_config": {

@@ -82,6 +82,12 @@ below are the one exception: they configure the always-present objectives skill.
 Every mission has the **`objectives` platform skill** available automatically. A template opts a
 mission into it by shipping an objectives **data** file as a teamFile — you do not ship the skill.
 
+**Do not tell the operator you "added the objectives/task skills" to the template — and do not put
+skill files in teamFiles.** The skill is always present at runtime; what you add to the template is
+the **data** (`objectives/goals.json`, optionally `objectives/tasks.jsonl`). So the operator will
+correctly see only those JSON files in teamFiles, never skill files. Describe it that way:
+"I added the objectives data; the objectives skill itself is always available to every mission."
+
 To make a mission outcome-driven:
 
 1. **Ship `objectives/goals.json`** (a teamFile) — the objective tree + KPI definitions + budgets.
@@ -129,8 +135,25 @@ automatically — so set realistic `budgetUsd` and assign clear owners.
 ## Creating a new template
 
 1. Draft YAML and any teamFiles content
-2. Propose `save_template` — operator confirms — template visible in the UI immediately
+2. Propose `save_template` (omit `id` to mint a new one) — operator confirms — template visible immediately
 3. The operator can open it in the config editor, adjust fields, and click "Start session ›"
+
+## Editing an EXISTING template (read this carefully)
+
+`save_template` **replaces** the whole template with a new version — it does not patch. Two rules
+prevent the most common failures:
+
+1. **Always pass the existing `id`.** Get it from `list_templates` and pass that exact `id` in the
+   `save_template` payload. **If you omit (or change) `id`, you create a brand-new template instead
+   of a new version of the one the operator is editing** — the operator's template will appear
+   unchanged. The result message tells you which happened: *"saved as v2"* = you versioned the
+   existing template (correct); *"created as NEW template"* = you forked a copy (wrong — re-do with
+   the right `id`).
+2. **Send the FULL, updated `teamConfigYaml`.** Apply your change to the *current* YAML (fetch it
+   with `get_template` first) and submit the complete file. If you submit a stale or partial YAML,
+   your change is lost even though the save "succeeds."
+
+For a YAML-only edit, omit `teamFiles` — the previous version's teamFiles are preserved.
 
 ## Editing a live session config
 

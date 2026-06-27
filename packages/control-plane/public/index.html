@@ -1663,7 +1663,14 @@
         info.className = `action-result${result.ok ? '' : ' error'}`;
         info.textContent = result.ok ? `✓ ${result.result}` : `✗ ${result.error}`;
         card.appendChild(info);
-        if (result.ok && result.result?.includes('Template')) loadTemplates();
+        if (result.ok && result.result?.includes('Template')) {
+          // The copilot saved a new template version. Invalidate the client-side
+          // template cache and re-render the open detail, otherwise the editor
+          // keeps showing the stale cached version until a full page reload.
+          state.templateCache.clear();
+          loadTemplates();
+          if (state.selected?.type === 'template') renderDetail();
+        }
         copilotScrollBottom();
       }
     });
