@@ -61,8 +61,14 @@ export function createAuthMiddleware(db: Db) {
 }
 
 function safeEqual(a: string, b: string): boolean {
-	// Pad both to the same length before comparison to avoid length leak.
+	// Constant-time comparison. HMAC both inputs to fixed-length 32-byte digests
+	// so timingSafeEqual never leaks length via an early return on differing
+	// lengths. The "cmp" key is NOT a secret — it is a fixed public salt used only
+	// to normalise lengths; the security comes from timingSafeEqual over equal-
+	// length buffers, not from the key. (semgrep flags any hardcoded HMAC key.)
+	// nosemgrep: javascript.lang.security.audit.hardcoded-hmac-key.hardcoded-hmac-key
 	const ha = createHmac("sha256", "cmp").update(a).digest();
+	// nosemgrep: javascript.lang.security.audit.hardcoded-hmac-key.hardcoded-hmac-key
 	const hb = createHmac("sha256", "cmp").update(b).digest();
 	return timingSafeEqual(ha, hb);
 }
