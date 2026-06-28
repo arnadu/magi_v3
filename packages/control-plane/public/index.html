@@ -565,7 +565,11 @@
 
   // Return list of skill names available for a config (platform + team skills from files).
   function availableSkills(teamFiles) {
-    const platform = ['git-provenance', 'skill-creator', 'inter-agent-comms', 'run-background', 'schedule-task'];
+    // NOTE: hardcoded — drifts from packages/skills/. Proper fix is a server
+    // endpoint that lists the provisioned platform skills (deferred; the React
+    // cockpit rewrite will own this). `objectives` is always provisioned to every
+    // agent at runtime; it was missing here so it didn't show in the editor.
+    const platform = ['git-provenance', 'skill-creator', 'inter-agent-comms', 'run-background', 'schedule-task', 'objectives'];
     const team = (teamFiles ?? [])
       .map(f => { const m = f.path.match(/^skills\/([^/]+)\/SKILL\.md$/); return m ? m[1] : null; })
       .filter(Boolean);
