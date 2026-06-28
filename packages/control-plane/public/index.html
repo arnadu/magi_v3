@@ -961,6 +961,9 @@
           </div>
           <div class="mission-actions-row" style="margin-top:10px">
             ${status === 'running' ? `
+              <a href="/cockpit?mission=${ei}" target="_blank" style="text-decoration:none">
+                <button type="button" class="btn-primary btn-sm">Cockpit ↗</button>
+              </a>
               <a href="/missions/${ei}/" target="_blank" style="text-decoration:none">
                 <button type="button" class="btn-ghost btn-sm">Dashboard ↗</button>
               </a>
