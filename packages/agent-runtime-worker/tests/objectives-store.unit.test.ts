@@ -3,7 +3,7 @@
  * Pure, no network, no MongoDB.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -379,5 +379,31 @@ describe("objectives store — I/O", () => {
 		);
 		expect(tree.objectives).toEqual([]);
 		expect(tree.tasks).toEqual([]);
+	});
+
+	it("degrades to empty (no throw) when goals.json is invalid", async () => {
+		const shared = mkdtempSync(join(tmpdir(), "obj-bad-goals-"));
+		try {
+			mkdirSync(join(shared, "objectives"), { recursive: true });
+			// A copilot-authored goals.json with the wrong KPI fields (title/type/
+			// assignee instead of label/kind/source/owner) — must not 500 the reader.
+			writeFileSync(
+				join(shared, "objectives", "goals.json"),
+				JSON.stringify({
+					objectives: [
+						{
+							id: "O1",
+							title: "x",
+							owner: "a",
+							kpis: [{ id: "K", title: "bad", type: "agent", assignee: "a" }],
+						},
+					],
+				}),
+			);
+			const tree = await loadObjectivesStore(shared);
+			expect(tree.objectives).toEqual([]);
+		} finally {
+			rmSync(shared, { recursive: true, force: true });
+		}
 	});
 });

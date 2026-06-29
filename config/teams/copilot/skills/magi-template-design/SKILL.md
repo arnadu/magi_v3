@@ -115,6 +115,18 @@ To make a mission outcome-driven:
    }
    ```
 
+   **Use these EXACT field names — do not improvise (an invalid `goals.json` fails to load and
+   the cockpit shows an error):**
+   - **Objective**: `id`, `title`, `owner` (required); `parent`, `status`, `budgetUsd`, `kpis`
+     (optional). Do NOT add a top-level `"mission"` key.
+   - **KPI**: `id`, `label`, `owner`, `kind`, `source` (ALL required); `target`, `unit`,
+     `metricKey`, `rubric` (optional).
+     - `label` — NOT `title`. `owner` — NOT `assignee`. `kind` is `"quantitative"` or
+       `"qualitative"` — NOT a `"type"` field. `source` is one of
+       `auto-stat | task-rollup | agent-reported | copilot-assessment | manual`.
+     - A rubric-judged KPI an agent reports → `"kind":"qualitative","source":"agent-reported"`,
+       plus an optional `"rubric"`. A copilot-judged one → `"source":"copilot-assessment"`.
+
 2. **Optionally ship `objectives/tasks.jsonl`** — one initial task per line, assigned to agents:
    ```
    {"id":"TASK-1","at":"2026-01-01T00:00:00.000Z","by":"user","title":"Pull prices","objective":"OBJ-1.1","assignee":"data-scientist","status":"open"}

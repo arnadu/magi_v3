@@ -342,16 +342,7 @@ export async function loadObjectivesStore(
 ): Promise<FoldedTree> {
 	const dir = objectivesDir(sharedDir);
 
-	let goals: GoalsFile;
-	try {
-		goals = GoalsFileSchema.parse(
-			JSON.parse(await readFile(join(dir, STORE_FILES.goals), "utf8")),
-		);
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === "ENOENT")
-			goals = { objectives: [] };
-		else throw e;
-	}
+	const goals = await loadGoals(sharedDir);
 
 	const [taskEvents, kpiEvents, costEvents] = await Promise.all([
 		readJsonl(join(dir, STORE_FILES.tasks), (o) => TaskEventSchema.parse(o)),
@@ -411,9 +402,16 @@ export async function loadGoals(sharedDir: string): Promise<GoalsFile> {
 			),
 		);
 	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === "ENOENT")
-			return { objectives: [] };
-		throw e;
+		// A missing store is normal. A malformed/invalid goals.json (e.g. an
+		// agent- or copilot-authored file that doesn't match the schema) must NOT
+		// take down the read path — degrade to "no objectives" and warn, so the
+		// monitor's GET /objectives and the mental-map sync keep working.
+		if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+			console.warn(
+				`[objectives] ignoring invalid goals.json (${(e as Error).message}); treating as no objectives`,
+			);
+		}
+		return { objectives: [] };
 	}
 }
 
