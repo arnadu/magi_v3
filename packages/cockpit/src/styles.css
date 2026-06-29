@@ -1,15 +1,19 @@
+/* Light theme (soft, near-white). The whole UI is driven by these variables, so
+   a dark theme is just an alternate :root (or a [data-theme] block) later. */
 :root {
-	--bg: #0b0d1a;
-	--panel: #12162a;
-	--panel2: #171c33;
-	--line: #222a47;
-	--txt: #dbe2f5;
-	--mut: #8a93b8;
-	--dim: #5b6488;
-	--ok: #3fb27f;
-	--warn: #e3a44b;
-	--bad: #e05566;
-	--info: #5aa0e6;
+	--bg: #f6f7f9;
+	--panel: #ffffff;
+	--panel2: #eef1f6;
+	--line: #e1e5ec;
+	--txt: #1e2430;
+	--mut: #5f6877;
+	--dim: #97a0ae;
+	--ok: #1f9d63;
+	--warn: #b87514;
+	--bad: #cf3b50;
+	--info: #2f6fd6;
+	--chip: #f1f4f9;
+	--hover: #eef1f6;
 }
 * {
 	box-sizing: border-box;
@@ -77,6 +81,28 @@ header h1 {
 }
 main {
 	padding: 14px 16px;
+}
+
+/* Objectives (main) + Messages/needs-you (rail), side by side. */
+.cols {
+	display: flex;
+	align-items: stretch;
+	height: calc(100vh - 41px);
+}
+.col-main {
+	flex: 1;
+	overflow: auto;
+}
+.col-rail {
+	width: 360px;
+	flex-shrink: 0;
+	overflow: auto;
+	border-left: 1px solid var(--line);
+	background: var(--panel);
+	padding: 14px 14px;
+}
+.col-rail .panel {
+	max-width: none;
 }
 
 .msg {
@@ -180,7 +206,7 @@ h2.sec {
 	font: inherit;
 }
 .obj-head:hover {
-	background: #161b30;
+	background: var(--hover);
 }
 .caret {
 	color: var(--dim);
@@ -201,7 +227,7 @@ h2.sec {
 .owner {
 	font-size: 11px;
 	color: var(--mut);
-	background: #0c1022;
+	background: var(--chip);
 	border: 1px solid var(--line);
 	padding: 1px 7px;
 	border-radius: 20px;
@@ -218,7 +244,7 @@ h2.sec {
 .minibar {
 	width: 60px;
 	height: 6px;
-	background: #0a0c18;
+	background: var(--chip);
 	border-radius: 4px;
 	overflow: hidden;
 	border: 1px solid var(--line);
@@ -250,10 +276,10 @@ h2.sec {
 }
 .kpi {
 	font-size: 11px;
-	border: 1px solid #2a3358;
+	border: 1px solid var(--line);
 	border-radius: 7px;
 	padding: 3px 4px 3px 0;
-	background: #0c1022;
+	background: var(--chip);
 	display: flex;
 	gap: 7px;
 	align-items: center;
@@ -282,7 +308,7 @@ h2.sec {
 .kpi .kown {
 	color: var(--mut);
 	font-size: 9.5px;
-	background: #0a0c18;
+	background: var(--chip);
 	border: 1px solid var(--line);
 	border-radius: 10px;
 	padding: 0 6px;
