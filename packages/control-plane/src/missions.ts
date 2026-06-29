@@ -181,6 +181,57 @@ export function createMissionsRouter(db: Db): Router {
 		res.json(mission);
 	});
 
+	// Messages addressed to the operator ("user") for the cockpit Messages panel.
+	// read/unread reuses the mailbox `readBy` array.
+	router.get("/:id/messages", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		const msgs = await db
+			.collection("mailbox")
+			.find({ missionId: req.params.id, to: "user" })
+			.sort({ timestamp: -1 })
+			.limit(200)
+			.toArray();
+		res.json(
+			msgs.map((m) => ({
+				id: m.id,
+				from: m.from,
+				subject: m.subject,
+				body: m.body,
+				timestamp: m.timestamp,
+				read: Array.isArray(m.readBy) && m.readBy.includes("user"),
+			})),
+		);
+	});
+
+	// Mark operator messages as read (body: { ids: string[] }).
+	router.post("/:id/messages/read", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		const ids = (req.body?.ids as string[] | undefined) ?? [];
+		if (ids.length > 0) {
+			await db
+				.collection("mailbox")
+				.updateMany(
+					{ missionId: req.params.id, to: "user", id: { $in: ids } },
+					{ $addToSet: { readBy: "user" } },
+				);
+		}
+		res.json({ ok: true });
+	});
+
 	// Get full config for editing — YAML + live mental maps per agent.
 	router.get("/:id/config", async (req, res) => {
 		const mission = await col.findOne({

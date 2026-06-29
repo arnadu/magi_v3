@@ -5,9 +5,12 @@ import {
 	fetchObjectives,
 	type MissionSummary,
 } from "./data";
+import { MessagesPanel } from "./MessagesPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { SAMPLE_TREE } from "./sample";
 import type { FoldedTree } from "./types";
+
+type Tab = "objectives" | "messages";
 
 /** How often the cockpit re-fetches a live mission's objectives. */
 const POLL_MS = 4000;
@@ -124,6 +127,7 @@ function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
 
 export function App() {
 	const view = useView();
+	const [tab, setTab] = useState<Tab>("objectives");
 
 	if (view.kind === "loading") {
 		return (
@@ -192,8 +196,28 @@ export function App() {
 				}
 				tree={view.tree}
 			/>
+			<nav className="tabs">
+				<button
+					type="button"
+					className={`tab ${tab === "objectives" ? "on" : ""}`}
+					onClick={() => setTab("objectives")}
+				>
+					Objectives
+				</button>
+				<button
+					type="button"
+					className={`tab ${tab === "messages" ? "on" : ""}`}
+					onClick={() => setTab("messages")}
+				>
+					Messages
+				</button>
+			</nav>
 			<main>
-				<ObjectivesPanel tree={view.tree} />
+				{tab === "objectives" ? (
+					<ObjectivesPanel tree={view.tree} />
+				) : (
+					<MessagesPanel missionId={view.mission} />
+				)}
 			</main>
 		</div>
 	);

@@ -33,3 +33,33 @@ export interface MissionSummary {
 export function fetchMissions(): Promise<MissionSummary[]> {
 	return api<MissionSummary[]>("/api/missions");
 }
+
+export interface UserMessage {
+	id: string;
+	from: string;
+	subject: string;
+	body: string;
+	timestamp: string;
+	read: boolean;
+}
+
+/** Messages addressed to the operator for a mission (newest first). */
+export function fetchMessages(missionId: string): Promise<UserMessage[]> {
+	return api<UserMessage[]>(
+		`/api/missions/${encodeURIComponent(missionId)}/messages`,
+	);
+}
+
+/** Mark operator messages read. */
+export async function markMessagesRead(
+	missionId: string,
+	ids: string[],
+): Promise<void> {
+	if (ids.length === 0) return;
+	await fetch(`/api/missions/${encodeURIComponent(missionId)}/messages/read`, {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ ids }),
+	});
+}
