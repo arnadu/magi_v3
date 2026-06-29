@@ -63,3 +63,35 @@ export async function markMessagesRead(
 		body: JSON.stringify({ ids }),
 	});
 }
+
+export interface ThreadMessage {
+	id: string;
+	from: string;
+	subject: string;
+	body: string;
+	timestamp: string;
+}
+
+/** The operator ↔ agent conversation (oldest first). */
+export function fetchThread(
+	missionId: string,
+	agentId: string,
+): Promise<ThreadMessage[]> {
+	return api<ThreadMessage[]>(
+		`/api/missions/${encodeURIComponent(missionId)}/thread?agent=${encodeURIComponent(agentId)}`,
+	);
+}
+
+/** Send a message from the operator to an agent (wakes it). */
+export async function sendToAgent(
+	missionId: string,
+	to: string,
+	body: string,
+): Promise<void> {
+	await fetch(`/api/missions/${encodeURIComponent(missionId)}/messages/send`, {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ to, body }),
+	});
+}

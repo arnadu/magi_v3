@@ -7,6 +7,7 @@ import type {
 } from "./types";
 
 const fmt = (n: number) => `$${n.toFixed(2)}`;
+type OnAgent = ((agentId: string) => void) | undefined;
 
 function budgetPct(o: FoldedObjective): { pct: number; color: string } {
 	const pct =
@@ -18,7 +19,33 @@ function budgetPct(o: FoldedObjective): { pct: number; color: string } {
 	return { pct, color };
 }
 
-function Kpi({ k }: { k: FoldedKpi }) {
+/** An agent id rendered as a button that opens the chat drawer (or plain text). */
+function Agent({
+	id,
+	prefix,
+	className,
+	onAgentClick,
+}: {
+	id: string;
+	prefix?: string;
+	className: string;
+	onAgentClick: OnAgent;
+}) {
+	const label = `${prefix ?? ""}${id}`;
+	if (!onAgentClick) return <span className={className}>{label}</span>;
+	return (
+		<button
+			type="button"
+			className={`${className} agent-link`}
+			onClick={() => onAgentClick(id)}
+			title={`Chat with ${id}`}
+		>
+			{label}
+		</button>
+	);
+}
+
+function Kpi({ k, onAgentClick }: { k: FoldedKpi; onAgentClick: OnAgent }) {
 	const v = String(k.value ?? "—");
 	const needs = k.stale || /pending|unmet|partial/i.test(v);
 	const cls = /pending|unmet/i.test(v)
@@ -38,59 +65,76 @@ function Kpi({ k }: { k: FoldedKpi }) {
 				</span>
 			)}
 			{needs && <span className="pill-warn">⚠</span>}
-			<span className="kown">{k.owner}</span>
+			<Agent id={k.owner} className="kown" onAgentClick={onAgentClick} />
 		</span>
 	);
 }
 
-function Task({ t }: { t: FoldedTask }) {
+function Task({ t, onAgentClick }: { t: FoldedTask; onAgentClick: OnAgent }) {
 	return (
 		<div className="task">
 			<span className={`s-dot s-${t.status}`} />
 			<span className="tid">{t.id}</span>
 			<span className="ttl">{t.title}</span>
 			<span className="cost">{t.costUsd ? `≈${fmt(t.costUsd)}` : "—"}</span>
-			<span className="ass">{t.assignee ?? "—"}</span>
+			{t.assignee ? (
+				<Agent id={t.assignee} className="ass" onAgentClick={onAgentClick} />
+			) : (
+				<span className="ass">—</span>
+			)}
 		</div>
 	);
 }
 
-function Objective({ o }: { o: FoldedObjective }) {
+function Objective({
+	o,
+	onAgentClick,
+}: {
+	o: FoldedObjective;
+	onAgentClick: OnAgent;
+}) {
 	const [open, setOpen] = useState(true);
 	const { pct, color } = budgetPct(o);
 	return (
 		<div className={`obj ${o.parent ? "sub" : ""}`}>
-			<button
-				type="button"
-				className="obj-head"
-				onClick={() => setOpen((v) => !v)}
-			>
-				<span className={`caret ${open ? "" : "closed"}`}>▾</span>
-				<span className="status">●</span>
-				<span className="obj-title">{o.title}</span>
-				<span className="owner">owner: {o.owner}</span>
+			<div className="obj-head">
+				<button
+					type="button"
+					className="obj-toggle"
+					onClick={() => setOpen((v) => !v)}
+				>
+					<span className={`caret ${open ? "" : "closed"}`}>▾</span>
+					<span className="status">●</span>
+					<span className="obj-title">{o.title}</span>
+				</button>
+				<Agent
+					id={o.owner}
+					prefix="owner: "
+					className="owner"
+					onAgentClick={onAgentClick}
+				/>
 				<span className="budget">
 					${o.budgetUsd.toFixed(2)} · spent <b>≈{fmt(o.costUsd)}</b>
 					<span className="minibar">
 						<i style={{ width: `${pct}%`, background: color }} />
 					</span>
 				</span>
-			</button>
+			</div>
 			{open && (
 				<div className="obj-body">
 					{o.kpis.length > 0 && (
 						<div className="kpis">
 							<span className="kpilbl">KPIs</span>
 							{o.kpis.map((k) => (
-								<Kpi key={k.id} k={k} />
+								<Kpi key={k.id} k={k} onAgentClick={onAgentClick} />
 							))}
 						</div>
 					)}
 					{o.tasks.map((t) => (
-						<Task key={t.id} t={t} />
+						<Task key={t.id} t={t} onAgentClick={onAgentClick} />
 					))}
 					{o.children.map((c) => (
-						<Objective key={c.id} o={c} />
+						<Objective key={c.id} o={c} onAgentClick={onAgentClick} />
 					))}
 				</div>
 			)}
@@ -98,13 +142,19 @@ function Objective({ o }: { o: FoldedObjective }) {
 	);
 }
 
-export function ObjectivesPanel({ tree }: { tree: FoldedTree }) {
+export function ObjectivesPanel({
+	tree,
+	onAgentClick,
+}: {
+	tree: FoldedTree;
+	onAgentClick?: (agentId: string) => void;
+}) {
 	const roots = tree.objectives.filter((o) => o.parent === null);
 	return (
 		<div className="panel">
 			<h2 className="sec">Objectives</h2>
 			{roots.map((o) => (
-				<Objective key={o.id} o={o} />
+				<Objective key={o.id} o={o} onAgentClick={onAgentClick} />
 			))}
 			{tree.overheadCostUsd > 0 && (
 				<p className="mut">

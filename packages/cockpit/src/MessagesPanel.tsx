@@ -12,7 +12,13 @@ function timeAgo(iso: string): string {
 	return new Date(iso).toLocaleString();
 }
 
-export function MessagesPanel({ missionId }: { missionId: string | null }) {
+export function MessagesPanel({
+	missionId,
+	onAgentClick,
+}: {
+	missionId: string | null;
+	onAgentClick?: (agentId: string) => void;
+}) {
 	const [messages, setMessages] = useState<UserMessage[]>([]);
 	const [loaded, setLoaded] = useState(false);
 
@@ -66,7 +72,11 @@ export function MessagesPanel({ missionId }: { missionId: string | null }) {
 					type="button"
 					key={m.id}
 					className={`msg ${m.read ? "" : "unread"}`}
-					onClick={() => !m.read && markRead(m.id)}
+					onClick={() => {
+						if (!m.read) markRead(m.id);
+						onAgentClick?.(m.from);
+					}}
+					title={`Open chat with ${m.from}`}
 				>
 					<div className="msg-head">
 						{!m.read && <span className="msg-dot" />}

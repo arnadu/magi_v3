@@ -117,7 +117,7 @@ main {
 	font: inherit;
 	padding: 9px 12px;
 	margin-bottom: 8px;
-	cursor: default;
+	cursor: pointer;
 	max-width: 760px;
 }
 .msg.unread {
@@ -197,16 +197,37 @@ h2.sec {
 	align-items: center;
 	gap: 10px;
 	padding: 9px 12px;
-	cursor: pointer;
-	width: 100%;
-	text-align: left;
+}
+.obj-head:hover {
+	background: var(--hover);
+}
+.obj-toggle {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
 	background: none;
 	border: none;
 	color: inherit;
 	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	padding: 0;
 }
-.obj-head:hover {
-	background: var(--hover);
+/* Clickable agent references (owner / assignee / KPI owner) → open the chat. */
+.agent-link {
+	font: inherit;
+	cursor: pointer;
+	border: 1px solid transparent;
+	background: none;
+	color: var(--mut);
+	padding: 1px 7px;
+	border-radius: 10px;
+}
+.agent-link:hover {
+	border-color: var(--info);
+	color: var(--info);
 }
 .caret {
 	color: var(--dim);
@@ -376,4 +397,110 @@ h2.sec {
 }
 .s-cancelled {
 	background: var(--dim);
+}
+
+/* Chat drawer (managerial ↔ conversational pivot). */
+.scrim {
+	position: fixed;
+	inset: 0;
+	background: #0000004d;
+	z-index: 30;
+}
+.drawer {
+	position: fixed;
+	top: 0;
+	right: 0;
+	width: 420px;
+	max-width: 92vw;
+	height: 100vh;
+	background: var(--panel);
+	border-left: 1px solid var(--line);
+	z-index: 31;
+	display: flex;
+	flex-direction: column;
+	box-shadow: -8px 0 24px #0000001a;
+}
+.drawer-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 14px;
+	border-bottom: 1px solid var(--line);
+}
+.drawer-title {
+	font-weight: 600;
+}
+.drawer-x {
+	margin-left: auto;
+	background: none;
+	border: none;
+	font-size: 18px;
+	color: var(--mut);
+	cursor: pointer;
+}
+.conv {
+	flex: 1;
+	overflow: auto;
+	padding: 12px 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.bub {
+	max-width: 82%;
+	padding: 8px 11px;
+	border-radius: 11px;
+	font-size: 12.5px;
+}
+.bub.them {
+	background: var(--panel2);
+	border: 1px solid var(--line);
+	align-self: flex-start;
+	border-bottom-left-radius: 3px;
+}
+.bub.me {
+	background: #dbe7fb;
+	align-self: flex-end;
+	border-bottom-right-radius: 3px;
+}
+.bub-from {
+	font-size: 10.5px;
+	color: var(--mut);
+	margin-bottom: 3px;
+}
+.bub-subj {
+	font-weight: 600;
+	margin-bottom: 2px;
+}
+.bub-body {
+	white-space: pre-wrap;
+}
+.compose {
+	display: flex;
+	gap: 8px;
+	padding: 10px 12px;
+	border-top: 1px solid var(--line);
+}
+.compose textarea {
+	flex: 1;
+	resize: none;
+	height: 54px;
+	background: var(--bg);
+	border: 1px solid var(--line);
+	color: var(--txt);
+	border-radius: 8px;
+	padding: 8px 10px;
+	font: inherit;
+}
+.send {
+	background: var(--info);
+	color: #fff;
+	border: none;
+	border-radius: 8px;
+	padding: 0 16px;
+	cursor: pointer;
+}
+.send:disabled {
+	opacity: 0.5;
+	cursor: default;
 }

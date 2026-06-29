@@ -11,6 +11,7 @@
  * DELETE /api/missions/:id          — destroy machine + volume (irreversible)
  */
 
+import { randomUUID } from "node:crypto";
 import { parseTeamConfig } from "@magi/agent-config";
 import type { Request, Router } from "express";
 import { Router as createRouter } from "express";
@@ -229,6 +230,75 @@ export function createMissionsRouter(db: Db): Router {
 					{ $addToSet: { readBy: "user" } },
 				);
 		}
+		res.json({ ok: true });
+	});
+
+	// The operator ↔ agent thread (both directions) for the cockpit chat drawer.
+	router.get("/:id/thread", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		const agent = req.query.agent as string | undefined;
+		if (!agent) {
+			res.status(400).json({ error: "agent query param required" });
+			return;
+		}
+		const msgs = await db
+			.collection("mailbox")
+			.find({
+				missionId: req.params.id,
+				$or: [
+					{ from: "user", to: agent },
+					{ from: agent, to: "user" },
+				],
+			})
+			.sort({ timestamp: 1 })
+			.limit(200)
+			.toArray();
+		res.json(
+			msgs.map((m) => ({
+				id: m.id,
+				from: m.from,
+				subject: m.subject,
+				body: m.body,
+				timestamp: m.timestamp,
+			})),
+		);
+	});
+
+	// Send a message from the operator to an agent (wakes it via the mailbox
+	// Change Stream, same as cli-post). Body: { to, body, subject? }.
+	router.post("/:id/messages/send", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		const to = req.body?.to as string | undefined;
+		const body = req.body?.body as string | undefined;
+		if (!to || !body) {
+			res.status(400).json({ error: "to and body are required" });
+			return;
+		}
+		await db.collection("mailbox").insertOne({
+			id: randomUUID(),
+			missionId: req.params.id,
+			from: "user",
+			to: [to],
+			subject:
+				(req.body?.subject as string | undefined) ?? "Message from operator",
+			body,
+			timestamp: new Date(),
+			readBy: [],
+		});
 		res.json({ ok: true });
 	});
 

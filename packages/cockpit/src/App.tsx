@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChatDrawer } from "./ChatDrawer";
 import {
 	AuthError,
 	fetchMissions,
@@ -125,6 +126,7 @@ function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
 
 export function App() {
 	const view = useView();
+	const [chatAgent, setChatAgent] = useState<string | null>(null);
 
 	if (view.kind === "loading") {
 		return (
@@ -195,12 +197,19 @@ export function App() {
 			/>
 			<div className="cols">
 				<main className="col-main">
-					<ObjectivesPanel tree={view.tree} />
+					<ObjectivesPanel tree={view.tree} onAgentClick={setChatAgent} />
 				</main>
 				<aside className="col-rail">
-					<MessagesPanel missionId={view.mission} />
+					<MessagesPanel missionId={view.mission} onAgentClick={setChatAgent} />
 				</aside>
 			</div>
+			{chatAgent && view.mission && (
+				<ChatDrawer
+					missionId={view.mission}
+					agentId={chatAgent}
+					onClose={() => setChatAgent(null)}
+				/>
+			)}
 		</div>
 	);
 }
