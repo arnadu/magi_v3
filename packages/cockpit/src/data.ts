@@ -103,13 +103,13 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Attach a file to a message to one agent. Routes through the mission monitor's
- * upload pipeline (proxied): the file is saved, processed into an artifact, and
- * a mailbox message to the agent points at the processed content.
+ * Attach a file to a message to one or more agents. Routes through the mission
+ * monitor's upload pipeline (proxied): the file is saved and processed into an
+ * artifact ONCE, and a single mailbox message to all recipients points at it.
  */
 export async function uploadAttachment(
 	missionId: string,
-	agentId: string,
+	to: string[],
 	file: File,
 	body: string,
 ): Promise<void> {
@@ -120,7 +120,7 @@ export async function uploadAttachment(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
 			filename: file.name,
-			agentId,
+			agentIds: to,
 			contentBase64,
 			mimeType: file.type || undefined,
 			subject: "Operator attachment",

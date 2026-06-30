@@ -917,8 +917,8 @@ export class MonitorServer {
 
 	/**
 	 * Process an operator upload: save the pristine file under uploads/<date>/,
-	 * run the shared document processor into artifacts/, and post a mailbox
-	 * message to the target agent pointing at the processed content.md.
+	 * run the shared document processor into artifacts/ ONCE, and post a single
+	 * mailbox message to all recipients pointing at the processed content.md.
 	 */
 	private async handleUpload(
 		req: IncomingMessage,
@@ -941,7 +941,14 @@ export class MonitorServer {
 			return;
 		}
 		const filename = typeof p.filename === "string" ? p.filename : "";
-		const agentId = typeof p.agentId === "string" ? p.agentId : "";
+		// One or more recipients: `agentIds` (string[]) preferred; `agentId`
+		// (string) accepted for back-compat. The file is processed once and a
+		// single mailbox message goes to all recipients (no duplicate work).
+		const agentIds = Array.isArray(p.agentIds)
+			? p.agentIds.filter((a): a is string => typeof a === "string")
+			: typeof p.agentId === "string"
+				? [p.agentId]
+				: [];
 		const contentBase64 =
 			typeof p.contentBase64 === "string" ? p.contentBase64 : "";
 		const mimeType = typeof p.mimeType === "string" ? p.mimeType : undefined;
@@ -954,9 +961,21 @@ export class MonitorServer {
 			);
 			return;
 		}
-		if (!this.agents.some((a) => a.id === agentId)) {
-			res.writeHead(404, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: `unknown agent "${agentId}"` }));
+		const unknown = agentIds.filter(
+			(id) => !this.agents.some((a) => a.id === id),
+		);
+		if (agentIds.length === 0 || unknown.length > 0) {
+			res.writeHead(agentIds.length === 0 ? 400 : 404, {
+				"Content-Type": "application/json",
+			});
+			res.end(
+				JSON.stringify({
+					error:
+						agentIds.length === 0
+							? "at least one recipient (agentIds) is required"
+							: `unknown agent(s): ${unknown.join(", ")}`,
+				}),
+			);
 			return;
 		}
 
@@ -996,7 +1015,7 @@ export class MonitorServer {
 			await this.mailboxRepo.post({
 				missionId: this.missionId,
 				from: "user",
-				to: [agentId],
+				to: agentIds,
 				subject: subject || `Uploaded: ${safeName}`,
 				body,
 			});

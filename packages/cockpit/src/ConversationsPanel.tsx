@@ -178,8 +178,7 @@ export function ConversationsPanel({
 		setSending(true);
 		try {
 			if (file) {
-				for (const agentId of to)
-					await uploadAttachment(missionId, agentId, file, body);
+				await uploadAttachment(missionId, to, file, body);
 			} else {
 				await sendMessage(missionId, to, body);
 			}
