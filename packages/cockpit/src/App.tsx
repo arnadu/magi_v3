@@ -195,14 +195,14 @@ export function App() {
 				tree={view.tree}
 			/>
 			<div className="cols">
-				<main className="col-main">
-					<ObjectivesPanel tree={view.tree} onAgentClick={setOpenAgent} />
-				</main>
 				<ConversationsPanel
 					missionId={view.mission}
 					openAgent={openAgent}
 					onOpened={() => setOpenAgent(null)}
 				/>
+				<main className="col-main">
+					<ObjectivesPanel tree={view.tree} onAgentClick={setOpenAgent} />
+				</main>
 			</div>
 		</div>
 	);

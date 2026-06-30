@@ -75,6 +75,39 @@ export async function markMessagesRead(
 	});
 }
 
+/** The user's copilot — a cross-mission assistant, addressable from any cockpit. */
+export const COPILOT_ID = "copilot";
+
+/**
+ * The copilot conversation (its own mailbox at missionId `copilot-{uid}`), mapped
+ * into the same thread shape as mission messages. read is always true — the
+ * /history endpoint does not expose readBy.
+ */
+export async function fetchCopilotHistory(): Promise<ConvMessage[]> {
+	const raw = await api<
+		{ role: string; body: string; subject: string; timestamp: string }[]
+	>("/api/copilot/history");
+	return raw.map((m, i) => ({
+		id: `cp-${i}-${m.timestamp}`,
+		from: m.role === "user" ? "user" : COPILOT_ID,
+		to: m.role === "user" ? [COPILOT_ID] : ["user"],
+		subject: m.subject ?? "",
+		body: m.body,
+		timestamp: m.timestamp,
+		read: true,
+	}));
+}
+
+/** Send a message to the copilot (starts its daemon if idle). */
+export async function sendToCopilot(body: string): Promise<void> {
+	await fetch("/api/copilot/message", {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ body }),
+	});
+}
+
 /** Send an operator message to one or more agents (wakes them). */
 export async function sendMessage(
 	missionId: string,

@@ -12,6 +12,8 @@
 	--warn: #b87514;
 	--bad: #cf3b50;
 	--info: #2f6fd6;
+	--copilot: #8b5cf6;
+	--copilot-soft: #efe9fc;
 	--chip: #f1f4f9;
 	--hover: #eef1f6;
 }
@@ -96,7 +98,7 @@ main {
 .col-rail {
 	flex-shrink: 0;
 	overflow: hidden;
-	border-left: 1px solid var(--line);
+	border-right: 1px solid var(--line);
 	background: var(--panel);
 	position: relative;
 	display: flex;
@@ -105,7 +107,7 @@ main {
 }
 .rail-resize {
 	position: absolute;
-	left: -3px;
+	right: -3px;
 	top: 0;
 	bottom: 0;
 	width: 7px;
@@ -616,4 +618,25 @@ h2.sec {
 .send:disabled {
 	opacity: 0.5;
 	cursor: default;
+}
+
+/* Copilot — the cross-mission assistant, visually distinct (violet). */
+.chip.copilot {
+	border-color: var(--copilot);
+	color: var(--copilot);
+}
+.chip.copilot.on {
+	background: var(--copilot);
+	border-color: var(--copilot);
+	color: #fff;
+}
+.bub.copilot {
+	background: var(--copilot-soft);
+	border-color: var(--copilot);
+}
+.bub.copilot .bub-from {
+	color: var(--copilot);
+}
+.thread-row.copilot .tr-who {
+	color: var(--copilot);
 }
