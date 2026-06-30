@@ -182,9 +182,10 @@ export function createMissionsRouter(db: Db): Router {
 		res.json(mission);
 	});
 
-	// Messages addressed to the operator ("user") for the cockpit Messages panel.
-	// read/unread reuses the mailbox `readBy` array.
-	router.get("/:id/messages", async (req, res) => {
+	// All mailbox messages the operator participates in (sender or recipient), for
+	// the cockpit Conversations panel. The client folds these into threads by
+	// participant set. read/unread reuses the mailbox `readBy` array.
+	router.get("/:id/conversations", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -195,20 +196,45 @@ export function createMissionsRouter(db: Db): Router {
 		}
 		const msgs = await db
 			.collection("mailbox")
-			.find({ missionId: req.params.id, to: "user" })
-			.sort({ timestamp: -1 })
-			.limit(200)
+			.find({
+				missionId: req.params.id,
+				$or: [{ from: "user" }, { to: "user" }],
+			})
+			.sort({ timestamp: 1 })
+			.limit(500)
 			.toArray();
 		res.json(
 			msgs.map((m) => ({
 				id: m.id,
 				from: m.from,
+				to: Array.isArray(m.to) ? m.to : [m.to],
 				subject: m.subject,
 				body: m.body,
 				timestamp: m.timestamp,
-				read: Array.isArray(m.readBy) && m.readBy.includes("user"),
+				read:
+					m.from === "user" ||
+					(Array.isArray(m.readBy) && m.readBy.includes("user")),
 			})),
 		);
+	});
+
+	// The mission's agent roster, for the compose recipient chips.
+	router.get("/:id/agents", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		try {
+			const cfg = parseTeamConfig(mission.teamConfigYaml ?? "");
+			res.json(cfg.agents.map((a) => ({ id: a.id, name: a.name ?? a.id })));
+		} catch {
+			// Malformed/absent YAML — degrade to an empty roster rather than 500.
+			res.json([]);
+		}
 	});
 
 	// Mark operator messages as read (body: { ids: string[] }).
@@ -233,46 +259,8 @@ export function createMissionsRouter(db: Db): Router {
 		res.json({ ok: true });
 	});
 
-	// The operator ↔ agent thread (both directions) for the cockpit chat drawer.
-	router.get("/:id/thread", async (req, res) => {
-		const mission = await col.findOne({
-			missionId: req.params.id,
-			...userFilter(req),
-		});
-		if (!mission) {
-			res.status(404).json({ error: "Not found" });
-			return;
-		}
-		const agent = req.query.agent as string | undefined;
-		if (!agent) {
-			res.status(400).json({ error: "agent query param required" });
-			return;
-		}
-		const msgs = await db
-			.collection("mailbox")
-			.find({
-				missionId: req.params.id,
-				$or: [
-					{ from: "user", to: agent },
-					{ from: agent, to: "user" },
-				],
-			})
-			.sort({ timestamp: 1 })
-			.limit(200)
-			.toArray();
-		res.json(
-			msgs.map((m) => ({
-				id: m.id,
-				from: m.from,
-				subject: m.subject,
-				body: m.body,
-				timestamp: m.timestamp,
-			})),
-		);
-	});
-
-	// Send a message from the operator to an agent (wakes it via the mailbox
-	// Change Stream, same as cli-post). Body: { to, body, subject? }.
+	// Send an operator message to one or more agents (wakes them via the mailbox
+	// Change Stream, same as cli-post). Body: { to: string | string[], body, subject? }.
 	router.post("/:id/messages/send", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
@@ -282,17 +270,22 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
-		const to = req.body?.to as string | undefined;
+		const rawTo = req.body?.to;
+		const to = (Array.isArray(rawTo) ? rawTo : [rawTo]).filter(
+			(t): t is string => typeof t === "string" && t.length > 0,
+		);
 		const body = req.body?.body as string | undefined;
-		if (!to || !body) {
-			res.status(400).json({ error: "to and body are required" });
+		if (to.length === 0 || !body) {
+			res
+				.status(400)
+				.json({ error: "to (string | string[]) and body are required" });
 			return;
 		}
 		await db.collection("mailbox").insertOne({
 			id: randomUUID(),
 			missionId: req.params.id,
 			from: "user",
-			to: [to],
+			to,
 			subject:
 				(req.body?.subject as string | undefined) ?? "Message from operator",
 			body,

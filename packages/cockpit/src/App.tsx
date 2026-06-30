@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { ChatDrawer } from "./ChatDrawer";
+import { ConversationsPanel } from "./ConversationsPanel";
 import {
 	AuthError,
 	fetchMissions,
 	fetchObjectives,
 	type MissionSummary,
 } from "./data";
-import { MessagesPanel } from "./MessagesPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { SAMPLE_TREE } from "./sample";
 import type { FoldedTree } from "./types";
@@ -126,7 +125,7 @@ function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
 
 export function App() {
 	const view = useView();
-	const [chatAgent, setChatAgent] = useState<string | null>(null);
+	const [openAgent, setOpenAgent] = useState<string | null>(null);
 
 	if (view.kind === "loading") {
 		return (
@@ -197,19 +196,14 @@ export function App() {
 			/>
 			<div className="cols">
 				<main className="col-main">
-					<ObjectivesPanel tree={view.tree} onAgentClick={setChatAgent} />
+					<ObjectivesPanel tree={view.tree} onAgentClick={setOpenAgent} />
 				</main>
-				<aside className="col-rail">
-					<MessagesPanel missionId={view.mission} onAgentClick={setChatAgent} />
-				</aside>
-			</div>
-			{chatAgent && view.mission && (
-				<ChatDrawer
+				<ConversationsPanel
 					missionId={view.mission}
-					agentId={chatAgent}
-					onClose={() => setChatAgent(null)}
+					openAgent={openAgent}
+					onOpened={() => setOpenAgent(null)}
 				/>
-			)}
+			</div>
 		</div>
 	);
 }

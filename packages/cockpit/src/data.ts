@@ -34,23 +34,34 @@ export function fetchMissions(): Promise<MissionSummary[]> {
 	return api<MissionSummary[]>("/api/missions");
 }
 
-export interface UserMessage {
+export interface ConvMessage {
 	id: string;
 	from: string;
+	to: string[];
 	subject: string;
 	body: string;
 	timestamp: string;
 	read: boolean;
 }
 
-/** Messages addressed to the operator for a mission (newest first). */
-export function fetchMessages(missionId: string): Promise<UserMessage[]> {
-	return api<UserMessage[]>(
-		`/api/missions/${encodeURIComponent(missionId)}/messages`,
+/** Every mailbox message the operator is part of (sender or recipient). */
+export function fetchConversations(missionId: string): Promise<ConvMessage[]> {
+	return api<ConvMessage[]>(
+		`/api/missions/${encodeURIComponent(missionId)}/conversations`,
 	);
 }
 
-/** Mark operator messages read. */
+export interface Agent {
+	id: string;
+	name: string;
+}
+
+/** The mission's agent roster (for the compose recipient chips). */
+export function fetchAgents(missionId: string): Promise<Agent[]> {
+	return api<Agent[]>(`/api/missions/${encodeURIComponent(missionId)}/agents`);
+}
+
+/** Mark operator-addressed messages read. */
 export async function markMessagesRead(
 	missionId: string,
 	ids: string[],
@@ -64,34 +75,56 @@ export async function markMessagesRead(
 	});
 }
 
-export interface ThreadMessage {
-	id: string;
-	from: string;
-	subject: string;
-	body: string;
-	timestamp: string;
-}
-
-/** The operator ↔ agent conversation (oldest first). */
-export function fetchThread(
+/** Send an operator message to one or more agents (wakes them). */
+export async function sendMessage(
 	missionId: string,
-	agentId: string,
-): Promise<ThreadMessage[]> {
-	return api<ThreadMessage[]>(
-		`/api/missions/${encodeURIComponent(missionId)}/thread?agent=${encodeURIComponent(agentId)}`,
-	);
-}
-
-/** Send a message from the operator to an agent (wakes it). */
-export async function sendToAgent(
-	missionId: string,
-	to: string,
+	to: string[],
 	body: string,
+	subject?: string,
 ): Promise<void> {
 	await fetch(`/api/missions/${encodeURIComponent(missionId)}/messages/send`, {
 		method: "POST",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ to, body }),
+		body: JSON.stringify({ to, body, subject }),
+	});
+}
+
+function fileToBase64(file: File): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const result = reader.result as string;
+			resolve(result.slice(result.indexOf(",") + 1)); // strip the data: prefix
+		};
+		reader.onerror = () => reject(reader.error);
+		reader.readAsDataURL(file);
+	});
+}
+
+/**
+ * Attach a file to a message to one agent. Routes through the mission monitor's
+ * upload pipeline (proxied): the file is saved, processed into an artifact, and
+ * a mailbox message to the agent points at the processed content.
+ */
+export async function uploadAttachment(
+	missionId: string,
+	agentId: string,
+	file: File,
+	body: string,
+): Promise<void> {
+	const contentBase64 = await fileToBase64(file);
+	await fetch(`/missions/${encodeURIComponent(missionId)}/upload`, {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			filename: file.name,
+			agentId,
+			contentBase64,
+			mimeType: file.type || undefined,
+			subject: "Operator attachment",
+			body,
+		}),
 	});
 }
