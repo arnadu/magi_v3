@@ -975,3 +975,21 @@ h2.sec {
 	font-size: 12px;
 	padding: 1px 0;
 }
+
+/* Inline LLM call under an assistant message (Input/Output JSON trees). */
+.llmcall {
+	margin: 0 0 2px 18px;
+	border: 1px solid var(--line);
+	border-left: 3px solid var(--info);
+	border-radius: 8px;
+	background: var(--panel2);
+}
+.llmcall > summary {
+	cursor: pointer;
+	padding: 5px 10px;
+	font-size: 11.5px;
+	color: var(--info);
+}
+.llmcall-body {
+	padding: 4px 10px 8px;
+}

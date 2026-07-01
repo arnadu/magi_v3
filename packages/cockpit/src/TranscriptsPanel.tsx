@@ -183,6 +183,57 @@ function TurnRow({
 
 type CallDetailState = LlmCallDetail | "loading" | null;
 
+// Inline, collapsible LLM call under an assistant message: expands to Input and
+// Output, each a nested JSON tree. Lazy-loads the full body on first open.
+function LlmCallView({
+	summary,
+	detail,
+	onOpen,
+}: {
+	summary: LlmCallSummary;
+	detail: CallDetailState;
+	onOpen: () => void;
+}) {
+	return (
+		<details
+			className="llmcall"
+			onToggle={(e) => {
+				if (e.currentTarget.open) onOpen();
+			}}
+		>
+			<summary className="llmcall-sum">
+				⚙ LLM call · {summary.model}
+				{summary.isReflection ? " · refl" : ""} · {fmtTok(summary.usage?.input)}
+				→{fmtTok(summary.usage?.output)} · {fmtUsd(summary.cost?.totalUsd)}
+				{summary.costEstimated ? "~" : ""}
+				{summary.stopReason ? ` · ${summary.stopReason}` : ""}
+			</summary>
+			<div className="llmcall-body">
+				{detail === undefined || detail === "loading" ? (
+					<p className="mut">Loading…</p>
+				) : detail === null ? (
+					<p className="mut">Failed to load.</p>
+				) : (
+					<>
+						{detail.input ? (
+							<JsonNode k="Input" v={detail.input} />
+						) : (
+							<p className="mut">Input not retained (past the 7-day window).</p>
+						)}
+						{detail.output ? (
+							<JsonNode k="Output" v={detail.output.response} />
+						) : (
+							<p className="mut">
+								Output not retained (past the 7-day window).
+							</p>
+						)}
+					</>
+				)}
+			</div>
+		</details>
+	);
+}
+
 export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 	const [agents, setAgents] = useState<Agent[]>([]);
 	const [agent, setAgent] = useState<string | null>(null);
@@ -191,7 +242,6 @@ export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 	const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
 	const [calls, setCalls] = useState<LlmCallSummary[]>([]);
 	const [detail, setDetail] = useState<Record<number, CallDetailState>>({});
-	const [tab, setTab] = useState<"conversation" | "llm">("conversation");
 
 	useEffect(() => {
 		if (missionId) fetchAgents(missionId).then(setAgents, () => setAgents([]));
@@ -239,6 +289,14 @@ export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 	}
 	const topLevel = transcript.filter((e) => !e.parentToolUseId);
 
+	// Each top-level assistant message IS the output of one LLM call. Map them
+	// 1:1 in chronological order (both the transcript and llmCallLog are ordered),
+	// so the k-th assistant message links to the k-th logged call.
+	let asstSeq = -1;
+	const callIndexFor = topLevel.map((e) =>
+		e.message.role === "assistant" ? ++asstSeq : -1,
+	);
+
 	return (
 		<div className="tx">
 			<div className="tx-agents">
@@ -277,120 +335,49 @@ export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 						{turn == null ? (
 							<p className="mut">Pick a turn.</p>
 						) : (
-							<>
-								<nav className="tx-subtabs">
-									<button
-										type="button"
-										className={`tab ${tab === "conversation" ? "on" : ""}`}
-										onClick={() => setTab("conversation")}
-									>
-										Conversation
-									</button>
-									<button
-										type="button"
-										className={`tab ${tab === "llm" ? "on" : ""}`}
-										onClick={() => setTab("llm")}
-									>
-										LLM calls ({calls.length})
-									</button>
-								</nav>
-
-								{tab === "conversation" ? (
-									<div className="transcript">
-										{transcript.length === 0 && (
-											<p className="mut">No messages in this turn.</p>
-										)}
-										{topLevel.map((e, idx) => {
-											const tcs = toolCallsIn(e.message);
-											return (
-												// biome-ignore lint/suspicious/noArrayIndexKey: entries are positional
-												<div key={idx} className="tx-entry">
-													<MessageView m={e.message} />
-													{tcs.map((tc) => {
-														const steps = subByParent.get(tc.id);
-														if (!steps || steps.length === 0) return null;
-														return (
-															<details key={tc.id} className="subloop">
-																<summary>
-																	🔬 {tc.name} sub-loop · {steps.length} steps
-																</summary>
-																<div className="subloop-body">
-																	{steps.map((se, i) => (
-																		<MessageView
-																			// biome-ignore lint/suspicious/noArrayIndexKey: positional
-																			key={i}
-																			m={se.message}
-																			sub
-																		/>
-																	))}
-																</div>
-															</details>
-														);
-													})}
-												</div>
-											);
-										})}
-									</div>
-								) : (
-									<div className="calls-list">
-										{calls.length === 0 && (
-											<p className="mut">No LLM calls logged for this turn.</p>
-										)}
-										{calls.map((c) => {
-											const d = detail[c.index];
-											return (
-												<details
-													key={c.index}
-													className="call-x"
-													onToggle={(e) => {
-														if (e.currentTarget.open) ensureDetail(c.index);
-													}}
-												>
-													<summary className="call-sum">
-														<span className="call-i">#{c.index}</span>
-														<span className="call-model">{c.model}</span>
-														{c.isReflection && (
-															<span className="tag">refl</span>
-														)}
-														<span className="mut">
-															{fmtTok(c.usage?.input)}→{fmtTok(c.usage?.output)}
-														</span>
-														<span className="call-cost">
-															{fmtUsd(c.cost?.totalUsd)}
-															{c.costEstimated ? "~" : ""}
-														</span>
-														<span className="mut">{c.stopReason ?? ""}</span>
-													</summary>
-													<div className="call-x-body">
-														{d === undefined || d === "loading" ? (
-															<p className="mut">Loading…</p>
-														) : d === null ? (
-															<p className="mut">Failed to load.</p>
-														) : (
-															<>
-																{d.input ? (
-																	<JsonNode k="Input" v={d.input} />
-																) : (
-																	<p className="mut">
-																		Input not retained (past the 7-day window).
-																	</p>
-																)}
-																{d.output ? (
-																	<JsonNode k="Output" v={d.output.response} />
-																) : (
-																	<p className="mut">
-																		Output not retained (past the 7-day window).
-																	</p>
-																)}
-															</>
-														)}
-													</div>
-												</details>
-											);
-										})}
-									</div>
+							<div className="transcript">
+								{transcript.length === 0 && (
+									<p className="mut">No messages in this turn.</p>
 								)}
-							</>
+								{topLevel.map((e, idx) => {
+									const tcs = toolCallsIn(e.message);
+									const ci = callIndexFor[idx];
+									return (
+										// biome-ignore lint/suspicious/noArrayIndexKey: entries are positional
+										<div key={idx} className="tx-entry">
+											<MessageView m={e.message} />
+											{ci >= 0 && ci < calls.length && (
+												<LlmCallView
+													summary={calls[ci]}
+													detail={detail[ci]}
+													onOpen={() => ensureDetail(ci)}
+												/>
+											)}
+											{tcs.map((tc) => {
+												const steps = subByParent.get(tc.id);
+												if (!steps || steps.length === 0) return null;
+												return (
+													<details key={tc.id} className="subloop">
+														<summary>
+															🔬 {tc.name} sub-loop · {steps.length} steps
+														</summary>
+														<div className="subloop-body">
+															{steps.map((se, i) => (
+																<MessageView
+																	// biome-ignore lint/suspicious/noArrayIndexKey: positional
+																	key={i}
+																	m={se.message}
+																	sub
+																/>
+															))}
+														</div>
+													</details>
+												);
+											})}
+										</div>
+									);
+								})}
+							</div>
 						)}
 					</div>
 				</div>
