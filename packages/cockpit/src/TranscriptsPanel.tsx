@@ -18,7 +18,7 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString();
 const fmtTok = (n: number | undefined) =>
 	n ? `${(n / 1000).toFixed(1)}k` : "0";
 
-// ── Message rendering (shared by transcript + LLM-call drill-down) ───────────
+// ── Semantic message rendering (the transcript) ──────────────────────────────
 
 function Block({ b }: { b: Record<string, unknown> }) {
 	const t = b?.type as string | undefined;
@@ -86,6 +86,63 @@ function MessageView({ m, sub }: { m: RawMessage; sub?: boolean }) {
 	);
 }
 
+function toolCallsIn(m: RawMessage): { id: string; name: string }[] {
+	if (!Array.isArray(m.content)) return [];
+	return (m.content as Record<string, unknown>[])
+		.filter((b) => b?.type === "toolCall")
+		.map((b) => ({ id: String(b.id ?? ""), name: String(b.name ?? "tool") }));
+}
+
+// ── Recursive JSON tree (the LLM-log drill-down) ─────────────────────────────
+// Children render only when open, so a large input (long message array) doesn't
+// build a huge hidden DOM tree.
+
+function JsonNode({ k, v }: { k: string; v: unknown }) {
+	const [open, setOpen] = useState(false);
+	const isObj = v !== null && typeof v === "object";
+	const longStr = typeof v === "string" && v.length > 120;
+
+	if (!isObj && !longStr) {
+		const text =
+			v === null ? "null" : typeof v === "string" ? `"${v}"` : String(v);
+		return (
+			<div className="jn-leaf">
+				<span className="jn-key">{k}</span>{" "}
+				<span className="jn-val">{text}</span>
+			</div>
+		);
+	}
+
+	const entries: [string, unknown][] = isObj
+		? Array.isArray(v)
+			? (v as unknown[]).map((x, i) => [String(i), x])
+			: Object.entries(v as Record<string, unknown>)
+		: [];
+	const preview = longStr
+		? `"${(v as string).slice(0, 60)}…" (${(v as string).length} chars)`
+		: Array.isArray(v)
+			? `[${entries.length}]`
+			: `{${entries.length}}`;
+
+	return (
+		<details className="jn" onToggle={(e) => setOpen(e.currentTarget.open)}>
+			<summary>
+				<span className="jn-key">{k}</span>{" "}
+				<span className="jn-preview">{preview}</span>
+			</summary>
+			{open && (
+				<div className="jn-children">
+					{longStr ? (
+						<pre className="mv-json">{v as string}</pre>
+					) : (
+						entries.map(([ck, cv]) => <JsonNode key={ck} k={ck} v={cv} />)
+					)}
+				</div>
+			)}
+		</details>
+	);
+}
+
 // ── Turn timeline row ────────────────────────────────────────────────────────
 
 function TurnRow({
@@ -122,59 +179,9 @@ function TurnRow({
 	);
 }
 
-// ── LLM-call drill-down ──────────────────────────────────────────────────────
-
-function LlmCallDetailView({ c }: { c: LlmCallDetail }) {
-	return (
-		<div className="call-detail">
-			<div className="call-hd">
-				<b>{c.model}</b>
-				{c.isReflection && <span className="tag">reflection</span>}
-				<span className="mut">{fmtTime(c.savedAt)}</span>
-				<span className="mut">
-					in {fmtTok(c.usage?.input)} · out {fmtTok(c.usage?.output)} · cache{" "}
-					{fmtTok(c.usage?.cacheRead)}
-				</span>
-				<span className="call-cost">
-					{fmtUsd(c.cost?.totalUsd)}
-					{c.costEstimated ? "~" : ""}
-				</span>
-			</div>
-			{c.input ? (
-				<>
-					<details className="call-sect" open>
-						<summary>System prompt</summary>
-						<pre className="mv-json sysprompt">{c.input.systemPrompt}</pre>
-					</details>
-					<details className="call-sect">
-						<summary>
-							Input — {c.input.messages.length} messages · tools:{" "}
-							{c.input.toolNames.join(", ") || "none"}
-						</summary>
-						<div className="call-msgs">
-							{c.input.messages.map((m, i) => (
-								// biome-ignore lint/suspicious/noArrayIndexKey: messages are positional
-								<MessageView key={i} m={m} />
-							))}
-						</div>
-					</details>
-				</>
-			) : (
-				<p className="mut">Input not retained (past the 7-day window).</p>
-			)}
-			<div className="call-sect-open">
-				<div className="call-sect-title">Output</div>
-				{c.output ? (
-					<MessageView m={c.output.response} />
-				) : (
-					<p className="mut">Output not retained (past the 7-day window).</p>
-				)}
-			</div>
-		</div>
-	);
-}
-
 // ── Panel ────────────────────────────────────────────────────────────────────
+
+type CallDetailState = LlmCallDetail | "loading" | null;
 
 export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 	const [agents, setAgents] = useState<Agent[]>([]);
@@ -183,7 +190,7 @@ export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 	const [turn, setTurn] = useState<number | null>(null);
 	const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
 	const [calls, setCalls] = useState<LlmCallSummary[]>([]);
-	const [openCall, setOpenCall] = useState<LlmCallDetail | null>(null);
+	const [detail, setDetail] = useState<Record<number, CallDetailState>>({});
 	const [tab, setTab] = useState<"conversation" | "llm">("conversation");
 
 	useEffect(() => {
@@ -198,7 +205,7 @@ export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 	}, [missionId, agent]);
 
 	useEffect(() => {
-		setOpenCall(null);
+		setDetail({});
 		if (missionId && agent && turn != null) {
 			fetchTranscript(missionId, agent, turn).then(setTranscript, () =>
 				setTranscript([]),
@@ -213,10 +220,24 @@ export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 	if (!missionId)
 		return <p className="mut">Select a live mission to inspect its agents.</p>;
 
-	const openCallDetail = (i: number) => {
-		if (missionId && agent && turn != null)
-			fetchLlmCall(missionId, agent, turn, i).then(setOpenCall, () => {});
+	const ensureDetail = (i: number) => {
+		if (detail[i] !== undefined || !agent || turn == null) return;
+		setDetail((d) => ({ ...d, [i]: "loading" }));
+		fetchLlmCall(missionId, agent, turn, i).then(
+			(full) => setDetail((d) => ({ ...d, [i]: full })),
+			() => setDetail((d) => ({ ...d, [i]: null })),
+		);
 	};
+
+	// Group Research sub-loop messages under their parent tool call.
+	const subByParent = new Map<string, TranscriptEntry[]>();
+	for (const e of transcript) {
+		if (!e.parentToolUseId) continue;
+		const arr = subByParent.get(e.parentToolUseId) ?? [];
+		arr.push(e);
+		subByParent.set(e.parentToolUseId, arr);
+	}
+	const topLevel = transcript.filter((e) => !e.parentToolUseId);
 
 	return (
 		<div className="tx">
@@ -279,51 +300,94 @@ export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 										{transcript.length === 0 && (
 											<p className="mut">No messages in this turn.</p>
 										)}
-										{transcript.map((e) => (
-											<MessageView
-												key={`${e.callSeq}-${e.parentToolUseId ?? "top"}`}
-												m={e.message}
-												sub={Boolean(e.parentToolUseId)}
-											/>
-										))}
-									</div>
-								) : openCall ? (
-									<div>
-										<button
-											type="button"
-											className="rail-btn"
-											onClick={() => setOpenCall(null)}
-										>
-											← calls
-										</button>
-										<LlmCallDetailView c={openCall} />
+										{topLevel.map((e, idx) => {
+											const tcs = toolCallsIn(e.message);
+											return (
+												// biome-ignore lint/suspicious/noArrayIndexKey: entries are positional
+												<div key={idx} className="tx-entry">
+													<MessageView m={e.message} />
+													{tcs.map((tc) => {
+														const steps = subByParent.get(tc.id);
+														if (!steps || steps.length === 0) return null;
+														return (
+															<details key={tc.id} className="subloop">
+																<summary>
+																	🔬 {tc.name} sub-loop · {steps.length} steps
+																</summary>
+																<div className="subloop-body">
+																	{steps.map((se, i) => (
+																		<MessageView
+																			// biome-ignore lint/suspicious/noArrayIndexKey: positional
+																			key={i}
+																			m={se.message}
+																			sub
+																		/>
+																	))}
+																</div>
+															</details>
+														);
+													})}
+												</div>
+											);
+										})}
 									</div>
 								) : (
 									<div className="calls-list">
 										{calls.length === 0 && (
 											<p className="mut">No LLM calls logged for this turn.</p>
 										)}
-										{calls.map((c) => (
-											<button
-												type="button"
-												key={c.index}
-												className="call-row"
-												onClick={() => openCallDetail(c.index)}
-											>
-												<span className="call-i">#{c.index}</span>
-												<span className="call-model">{c.model}</span>
-												{c.isReflection && <span className="tag">refl</span>}
-												<span className="mut">
-													{fmtTok(c.usage?.input)}→{fmtTok(c.usage?.output)}
-												</span>
-												<span className="call-cost">
-													{fmtUsd(c.cost?.totalUsd)}
-													{c.costEstimated ? "~" : ""}
-												</span>
-												<span className="mut">{c.stopReason ?? ""}</span>
-												{!c.hasBody && <span className="mut">(pruned)</span>}
-											</button>
-										))}
+										{calls.map((c) => {
+											const d = detail[c.index];
+											return (
+												<details
+													key={c.index}
+													className="call-x"
+													onToggle={(e) => {
+														if (e.currentTarget.open) ensureDetail(c.index);
+													}}
+												>
+													<summary className="call-sum">
+														<span className="call-i">#{c.index}</span>
+														<span className="call-model">{c.model}</span>
+														{c.isReflection && (
+															<span className="tag">refl</span>
+														)}
+														<span className="mut">
+															{fmtTok(c.usage?.input)}→{fmtTok(c.usage?.output)}
+														</span>
+														<span className="call-cost">
+															{fmtUsd(c.cost?.totalUsd)}
+															{c.costEstimated ? "~" : ""}
+														</span>
+														<span className="mut">{c.stopReason ?? ""}</span>
+													</summary>
+													<div className="call-x-body">
+														{d === undefined || d === "loading" ? (
+															<p className="mut">Loading…</p>
+														) : d === null ? (
+															<p className="mut">Failed to load.</p>
+														) : (
+															<>
+																{d.input ? (
+																	<JsonNode k="Input" v={d.input} />
+																) : (
+																	<p className="mut">
+																		Input not retained (past the 7-day window).
+																	</p>
+																)}
+																{d.output ? (
+																	<JsonNode k="Output" v={d.output.response} />
+																) : (
+																	<p className="mut">
+																		Output not retained (past the 7-day window).
+																	</p>
+																)}
+															</>
+														)}
+													</div>
+												</details>
+											);
+										})}
 									</div>
 								)}
 							</>

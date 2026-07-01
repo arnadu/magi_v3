@@ -899,3 +899,79 @@ h2.sec {
 	color: var(--dim);
 	margin-bottom: 6px;
 }
+
+/* Sub-loop collapsible box (Research etc.) in the transcript. */
+.tx-entry {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.subloop {
+	margin: 0 0 2px 18px;
+	border: 1px solid var(--line);
+	border-left: 3px solid var(--copilot);
+	border-radius: 8px;
+	background: var(--panel2);
+}
+.subloop > summary {
+	cursor: pointer;
+	padding: 6px 10px;
+	font-size: 12px;
+	color: var(--copilot);
+	font-weight: 600;
+}
+.subloop-body {
+	padding: 6px 10px 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+/* LLM call → Input / Output as nested JSON collapsibles. */
+.call-x {
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--panel);
+	margin-bottom: 6px;
+}
+.call-x > summary {
+	cursor: pointer;
+	padding: 7px 10px;
+	list-style-position: inside;
+}
+.call-sum {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 12px;
+}
+.call-x-body {
+	padding: 4px 12px 10px;
+}
+.jn {
+	margin: 1px 0;
+}
+.jn > summary {
+	cursor: pointer;
+	font-size: 12px;
+}
+.jn-children {
+	padding-left: 12px;
+	border-left: 1px solid var(--line);
+	margin-left: 4px;
+}
+.jn-key {
+	color: var(--info);
+}
+.jn-preview {
+	color: var(--dim);
+}
+.jn-val {
+	color: var(--txt);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.jn-leaf {
+	font-size: 12px;
+	padding: 1px 0;
+}
