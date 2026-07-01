@@ -8,7 +8,10 @@ import {
 } from "./data";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { SAMPLE_TREE } from "./sample";
+import { TranscriptsPanel } from "./TranscriptsPanel";
 import type { FoldedTree } from "./types";
+
+type MainTab = "objectives" | "transcripts";
 
 /** How often the cockpit re-fetches a live mission's objectives. */
 const POLL_MS = 4000;
@@ -126,6 +129,7 @@ function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
 export function App() {
 	const view = useView();
 	const [openAgent, setOpenAgent] = useState<string | null>(null);
+	const [mainTab, setMainTab] = useState<MainTab>("objectives");
 
 	if (view.kind === "loading") {
 		return (
@@ -201,7 +205,29 @@ export function App() {
 					onOpened={() => setOpenAgent(null)}
 				/>
 				<main className="col-main">
-					<ObjectivesPanel tree={view.tree} onAgentClick={setOpenAgent} />
+					<nav className="tabs">
+						<button
+							type="button"
+							className={`tab ${mainTab === "objectives" ? "on" : ""}`}
+							onClick={() => setMainTab("objectives")}
+						>
+							Objectives
+						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "transcripts" ? "on" : ""}`}
+							onClick={() => setMainTab("transcripts")}
+						>
+							Transcripts
+						</button>
+					</nav>
+					<div className="tab-body">
+						{mainTab === "objectives" ? (
+							<ObjectivesPanel tree={view.tree} onAgentClick={setOpenAgent} />
+						) : (
+							<TranscriptsPanel missionId={view.mission} />
+						)}
+					</div>
 				</main>
 			</div>
 		</div>

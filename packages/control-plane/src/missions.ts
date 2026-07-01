@@ -295,6 +295,160 @@ export function createMissionsRouter(db: Db): Router {
 		res.json({ ok: true });
 	});
 
+	// ── Transcript + LLM-log explorer (the cockpit Transcripts tab) ────────────
+
+	// Turn timeline for one agent (from agentTurnStats).
+	router.get("/:id/turns", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		const agent = req.query.agent as string | undefined;
+		if (!agent) {
+			res.status(400).json({ error: "agent query param required" });
+			return;
+		}
+		const turns = await db
+			.collection("agentTurnStats")
+			.find({ missionId: req.params.id, agentId: agent })
+			.sort({ turnNumber: 1 })
+			.toArray();
+		res.json(
+			turns.map((t) => ({
+				turnNumber: t.turnNumber,
+				startedAt: t.startedAt,
+				completedAt: t.completedAt ?? null,
+				status: t.status,
+				llmCallCount: t.llmCallCount ?? 0,
+				costUsd: t.costUsd ?? 0,
+				peakContextTokens: t.peakContextTokens ?? 0,
+				toolCalls: t.toolCalls ?? {},
+				toolErrors: t.toolErrors ?? {},
+			})),
+		);
+	});
+
+	// Detailed transcript for one agent+turn (conversationMessages, including
+	// Research sub-loop messages tagged with parentToolUseId).
+	router.get("/:id/transcript", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		const agent = req.query.agent as string | undefined;
+		const turn = Number(req.query.turn);
+		if (!agent || Number.isNaN(turn)) {
+			res.status(400).json({ error: "agent and turn query params required" });
+			return;
+		}
+		const docs = await db
+			.collection("conversationMessages")
+			.find({ missionId: req.params.id, agentId: agent, turnNumber: turn })
+			.sort({ callSeq: 1, _id: 1 })
+			.toArray();
+		res.json(
+			docs.map((d) => ({
+				callSeq: d.callSeq ?? 0,
+				parentToolUseId: d.parentToolUseId ?? null,
+				message: d.message,
+			})),
+		);
+	});
+
+	// LLM calls for one agent+turn — summaries (the drill-down list).
+	router.get("/:id/llm-calls", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		const agent = req.query.agent as string | undefined;
+		const turn = Number(req.query.turn);
+		if (!agent || Number.isNaN(turn)) {
+			res.status(400).json({ error: "agent and turn query params required" });
+			return;
+		}
+		const calls = await db
+			.collection("llmCallLog")
+			.find({ missionId: req.params.id, agentId: agent, turnNumber: turn })
+			.sort({ savedAt: 1 })
+			.toArray();
+		res.json(
+			calls.map((c, i) => ({
+				index: i,
+				savedAt: c.savedAt,
+				model: c.model,
+				isReflection: c.isReflection ?? false,
+				costEstimated: c.costEstimated ?? false,
+				stopReason: c.output?.response?.stopReason ?? null,
+				usage: c.usage ?? null,
+				cost: c.cost ?? null,
+				toolNames: c.input?.toolNames ?? [],
+				messageCount: Array.isArray(c.input?.messages)
+					? c.input.messages.length
+					: 0,
+				hasBody: Boolean(c.output),
+			})),
+		);
+	});
+
+	// One full LLM call (the drill-down detail: exact input + output). `output`
+	// is absent after the 7-day retention window (usage/cost still present).
+	router.get("/:id/llm-call", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		const agent = req.query.agent as string | undefined;
+		const turn = Number(req.query.turn);
+		const i = Number(req.query.i);
+		if (!agent || Number.isNaN(turn) || Number.isNaN(i)) {
+			res
+				.status(400)
+				.json({ error: "agent, turn and i query params required" });
+			return;
+		}
+		const c = (
+			await db
+				.collection("llmCallLog")
+				.find({ missionId: req.params.id, agentId: agent, turnNumber: turn })
+				.sort({ savedAt: 1 })
+				.skip(i)
+				.limit(1)
+				.toArray()
+		)[0];
+		if (!c) {
+			res.status(404).json({ error: "call not found" });
+			return;
+		}
+		res.json({
+			index: i,
+			savedAt: c.savedAt,
+			model: c.model,
+			isReflection: c.isReflection ?? false,
+			costEstimated: c.costEstimated ?? false,
+			usage: c.usage ?? null,
+			cost: c.cost ?? null,
+			input: c.input ?? null,
+			output: c.output ?? null,
+		});
+	});
+
 	// Get full config for editing — YAML + live mental maps per agent.
 	router.get("/:id/config", async (req, res) => {
 		const mission = await col.findOne({

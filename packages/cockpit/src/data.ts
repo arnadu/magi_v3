@@ -123,6 +123,116 @@ export async function sendMessage(
 	});
 }
 
+// ── Transcript + LLM-log explorer ───────────────────────────────────────────
+
+export interface TurnSummary {
+	turnNumber: number;
+	startedAt: string;
+	completedAt: string | null;
+	status: string;
+	llmCallCount: number;
+	costUsd: number;
+	peakContextTokens: number;
+	toolCalls: Record<string, number>;
+	toolErrors: Record<string, number>;
+}
+
+/** A pi-ai message, rendered defensively (shape varies by role/provider). */
+export interface RawMessage {
+	role: string;
+	content?: unknown;
+	toolName?: string;
+	toolCallId?: string;
+	isError?: boolean;
+	stopReason?: string;
+	[k: string]: unknown;
+}
+
+export interface TranscriptEntry {
+	callSeq: number;
+	parentToolUseId: string | null;
+	message: RawMessage;
+}
+
+export interface Usage {
+	input?: number;
+	output?: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+}
+
+export interface LlmCallSummary {
+	index: number;
+	savedAt: string;
+	model: string;
+	isReflection: boolean;
+	costEstimated: boolean;
+	stopReason: string | null;
+	usage: Usage | null;
+	cost: { totalUsd?: number } | null;
+	toolNames: string[];
+	messageCount: number;
+	hasBody: boolean;
+}
+
+export interface LlmCallDetail {
+	index: number;
+	savedAt: string;
+	model: string;
+	isReflection: boolean;
+	costEstimated: boolean;
+	usage: Usage | null;
+	cost: { totalUsd?: number } | null;
+	input: {
+		systemPrompt: string;
+		messages: RawMessage[];
+		toolNames: string[];
+	} | null;
+	output: { response: RawMessage } | null;
+}
+
+const mp = (id: string) => encodeURIComponent(id);
+
+export function fetchTurns(
+	missionId: string,
+	agentId: string,
+): Promise<TurnSummary[]> {
+	return api<TurnSummary[]>(
+		`/api/missions/${mp(missionId)}/turns?agent=${mp(agentId)}`,
+	);
+}
+
+export function fetchTranscript(
+	missionId: string,
+	agentId: string,
+	turn: number,
+): Promise<TranscriptEntry[]> {
+	return api<TranscriptEntry[]>(
+		`/api/missions/${mp(missionId)}/transcript?agent=${mp(agentId)}&turn=${turn}`,
+	);
+}
+
+export function fetchLlmCalls(
+	missionId: string,
+	agentId: string,
+	turn: number,
+): Promise<LlmCallSummary[]> {
+	return api<LlmCallSummary[]>(
+		`/api/missions/${mp(missionId)}/llm-calls?agent=${mp(agentId)}&turn=${turn}`,
+	);
+}
+
+export function fetchLlmCall(
+	missionId: string,
+	agentId: string,
+	turn: number,
+	i: number,
+): Promise<LlmCallDetail> {
+	return api<LlmCallDetail>(
+		`/api/missions/${mp(missionId)}/llm-call?agent=${mp(agentId)}&turn=${turn}&i=${i}`,
+	);
+}
+
 function fileToBase64(file: File): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const reader = new FileReader();

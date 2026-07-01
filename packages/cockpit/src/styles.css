@@ -93,7 +93,17 @@ main {
 }
 .col-main {
 	flex: 1;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	padding: 0;
+}
+.tab-body {
+	flex: 1;
 	overflow: auto;
+	padding: 14px 16px;
+	min-height: 0;
 }
 .col-rail {
 	flex-shrink: 0;
@@ -639,4 +649,253 @@ h2.sec {
 }
 .thread-row.copilot .tr-who {
 	color: var(--copilot);
+}
+
+/* Transcripts / LLM-log explorer. */
+.tx {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+.tx-agents {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	align-items: center;
+	margin-bottom: 10px;
+}
+.tx-body {
+	display: flex;
+	gap: 12px;
+	flex: 1;
+	min-height: 0;
+}
+.tx-turns {
+	width: 232px;
+	flex-shrink: 0;
+	overflow-y: auto;
+	border-right: 1px solid var(--line);
+	padding-right: 8px;
+}
+.turn-row {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 7px 9px;
+	margin-bottom: 6px;
+	cursor: pointer;
+	font: inherit;
+	color: inherit;
+}
+.turn-row:hover {
+	background: var(--hover);
+}
+.turn-row.on {
+	border-color: var(--info);
+	background: var(--panel2);
+}
+.turn-row.live {
+	border-left: 3px solid var(--ok);
+}
+.turn-hd {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.turn-n {
+	font-weight: 700;
+}
+.turn-st {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.st-running {
+	color: var(--ok);
+}
+.st-complete {
+	color: var(--mut);
+}
+.st-aborted {
+	color: var(--bad);
+}
+.turn-cost {
+	margin-left: auto;
+	font-variant-numeric: tabular-nums;
+	color: var(--mut);
+	font-size: 11px;
+}
+.turn-meta {
+	font-size: 11px;
+	color: var(--mut);
+	margin-top: 2px;
+}
+.turn-tools {
+	font-size: 10.5px;
+	color: var(--dim);
+	margin-top: 2px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.tx-detail {
+	flex: 1;
+	min-width: 0;
+	overflow-y: auto;
+}
+.tx-subtabs {
+	display: flex;
+	gap: 4px;
+	margin-bottom: 10px;
+	border-bottom: 1px solid var(--line);
+}
+
+.transcript {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.mv {
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 7px 10px;
+	background: var(--panel);
+}
+.mv-sub {
+	margin-left: 20px;
+	border-left: 3px solid var(--copilot);
+	background: var(--panel2);
+}
+.mv-assistant {
+	border-left: 3px solid var(--info);
+}
+.mv-user {
+	border-left: 3px solid var(--ok);
+}
+.mv-toolResult {
+	background: var(--panel2);
+}
+.mv-role {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--dim);
+	display: block;
+	margin-bottom: 4px;
+}
+.mv-text {
+	white-space: pre-wrap;
+	font-size: 12.5px;
+}
+.mv-think {
+	color: var(--mut);
+	font-size: 12px;
+	margin: 3px 0;
+}
+.mv-tool {
+	font-size: 12px;
+	margin: 3px 0;
+}
+.mv-toolname {
+	font-weight: 600;
+}
+.mv-json {
+	background: var(--chip);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 6px 8px;
+	font-size: 11px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	margin: 3px 0;
+}
+.mv-result {
+	max-height: 260px;
+	overflow: auto;
+}
+
+.calls-list {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+.call-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	text-align: left;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 7px;
+	padding: 6px 10px;
+	cursor: pointer;
+	font: inherit;
+	color: inherit;
+	font-size: 12px;
+}
+.call-row:hover {
+	background: var(--hover);
+}
+.call-i {
+	color: var(--dim);
+	font-variant-numeric: tabular-nums;
+}
+.call-model {
+	font-weight: 600;
+}
+.call-cost {
+	margin-left: auto;
+	font-variant-numeric: tabular-nums;
+	color: var(--mut);
+}
+.tag {
+	font-size: 9.5px;
+	text-transform: uppercase;
+	background: var(--copilot-soft);
+	color: var(--copilot);
+	border-radius: 8px;
+	padding: 0 6px;
+}
+.call-hd {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 0;
+	border-bottom: 1px solid var(--line);
+	margin-bottom: 8px;
+	font-size: 12px;
+}
+.call-sect {
+	margin: 8px 0;
+}
+.call-sect > summary {
+	cursor: pointer;
+	font-size: 12px;
+	color: var(--mut);
+}
+.call-msgs {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 6px;
+}
+.sysprompt {
+	max-height: 320px;
+	overflow: auto;
+}
+.call-sect-open {
+	margin-top: 10px;
+}
+.call-sect-title {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--dim);
+	margin-bottom: 6px;
 }
