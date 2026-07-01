@@ -7,6 +7,7 @@ on:
       - 'packages/control-plane/**'
       - 'packages/agent-config/**'
       - 'packages/agent-runtime-worker/**'
+      - 'packages/cockpit/**'
       - 'tsconfig.base.json'
       - 'fly.control-dev.toml'
 
@@ -18,6 +19,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # The cockpit (Vite/React) is built here, not in the Dockerfile: its build
+      # output is gitignored, not committed, so the image must always get a
+      # fresh bundle from current source. Building it in-image would need a
+      # normal `npm install` (esbuild's postinstall needs scripts), which
+      # conflicts with the Dockerfile's `npm ci --ignore-scripts` used for the
+      # backend packages — doing it here in CI sidesteps that entirely.
+      - name: Build cockpit
+        run: |
+          npm ci
+          npm run build -w @magi/cockpit
 
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
