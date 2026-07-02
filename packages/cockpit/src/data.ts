@@ -323,3 +323,34 @@ export function fetchFileHistory(
 export function fileDownloadUrl(missionId: string, path: string): string {
 	return `/missions/${encodeURIComponent(missionId)}/download?path=${encodeURIComponent(path)}`;
 }
+
+// ── Trace panel (mission-wide cost + interaction overview) ─────────────────
+
+export interface AgentMissionStats {
+	agentId: string;
+	lifetimeCostUsd: number;
+	lifetimeLlmCallCount: number;
+	lifetimeTurnCount: number;
+}
+
+/** Lifetime cost/calls/turns per agent for the whole mission. */
+export function fetchMissionStats(
+	missionId: string,
+): Promise<AgentMissionStats[]> {
+	return api<AgentMissionStats[]>(
+		`/missions/${encodeURIComponent(missionId)}/mission-stats`,
+	);
+}
+
+export interface Interaction {
+	from: string;
+	to: string;
+	count: number;
+}
+
+/** Message counts between every pair of senders/recipients in the mailbox. */
+export function fetchInteractions(missionId: string): Promise<Interaction[]> {
+	return api<Interaction[]>(
+		`/missions/${encodeURIComponent(missionId)}/interactions`,
+	);
+}

@@ -9,10 +9,11 @@ import {
 import { FilesPanel } from "./FilesPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { SAMPLE_TREE } from "./sample";
+import { TracePanel } from "./TracePanel";
 import { TranscriptsPanel } from "./TranscriptsPanel";
 import type { FoldedTree } from "./types";
 
-type MainTab = "objectives" | "files" | "transcripts";
+type MainTab = "objectives" | "files" | "transcripts" | "trace";
 
 /** A "inspect turn →" deep link from Files into Transcripts. */
 interface TurnJump {
@@ -240,6 +241,13 @@ export function App() {
 						>
 							Transcripts
 						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "trace" ? "on" : ""}`}
+							onClick={() => setMainTab("trace")}
+						>
+							Trace
+						</button>
 					</nav>
 					<div className="tab-body">
 						{mainTab === "objectives" && (
@@ -258,6 +266,7 @@ export function App() {
 								onJumped={() => setTurnJump(null)}
 							/>
 						)}
+						{mainTab === "trace" && <TracePanel missionId={view.mission} />}
 					</div>
 				</main>
 			</div>

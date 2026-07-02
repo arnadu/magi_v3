@@ -129,6 +129,8 @@ export interface AgentInfo {
  *   GET    /files/shared?path=            browse / read sharedDir
  *   GET    /files/history?path=           git provenance for a sharedDir file (agent/turn per commit)
  *   GET    /files/workdir/:id?path=       browse / read agent workdir
+ *   GET    /mission-stats                 Trace: lifetime cost/calls/turns per agent (missionStats)
+ *   GET    /interactions                  Trace: message counts between agent pairs (mailbox)
  *   POST   /files/shared/write            write a file to sharedDir (copilot)
  *   POST   /files/workdir/:id/write       write a file to agent workdir (copilot)
  *   DELETE /schedule/:id                  cancel a scheduled message
@@ -657,6 +659,51 @@ export class MonitorServer {
 			const userPath =
 				new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
 			await this.serveFileHistory(userPath, res);
+			return;
+		}
+
+		// ── GET /mission-stats  (Trace: lifetime cost/calls/turns per agent)
+		if (url === "/mission-stats" && req.method === "GET") {
+			const docs = await this.db
+				.collection("missionStats")
+				.find(
+					{ missionId: this.missionId },
+					{
+						projection: {
+							agentId: 1,
+							lifetimeCostUsd: 1,
+							lifetimeLlmCallCount: 1,
+							lifetimeTurnCount: 1,
+							_id: 0,
+						},
+					},
+				)
+				.toArray();
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(docs));
+			return;
+		}
+
+		// ── GET /interactions  (Trace: message counts between agent pairs)
+		if (url === "/interactions" && req.method === "GET") {
+			const docs = await this.db
+				.collection("mailbox")
+				.aggregate([
+					{ $match: { missionId: this.missionId } },
+					{ $unwind: "$to" },
+					{ $group: { _id: { from: "$from", to: "$to" }, count: { $sum: 1 } } },
+				])
+				.toArray();
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify(
+					docs.map((d) => ({
+						from: (d._id as { from: string; to: string }).from,
+						to: (d._id as { from: string; to: string }).to,
+						count: d.count as number,
+					})),
+				),
+			);
 			return;
 		}
 
