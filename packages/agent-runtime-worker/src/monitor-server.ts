@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import {
 	createReadStream,
 	existsSync,
@@ -14,6 +15,7 @@ import {
 } from "node:http";
 import { basename, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import type { Model } from "@mariozechner/pi-ai";
 import JSZip from "jszip";
 import type { Db } from "mongodb";
@@ -62,6 +64,8 @@ const TEXT_EXTENSIONS = new Set([
 	".sql",
 	".r",
 ]);
+
+const pexec = promisify(execFile);
 
 const IMAGE_MIME: Record<string, string> = {
 	".png": "image/png",
@@ -123,6 +127,7 @@ export interface AgentInfo {
  *   GET    /agents/:id/sessions/:turn     session detail (one turn)
  *   GET    /agents/:id/usage              llmCallLog entries for agent
  *   GET    /files/shared?path=            browse / read sharedDir
+ *   GET    /files/history?path=           git provenance for a sharedDir file (agent/turn per commit)
  *   GET    /files/workdir/:id?path=       browse / read agent workdir
  *   POST   /files/shared/write            write a file to sharedDir (copilot)
  *   POST   /files/workdir/:id/write       write a file to agent workdir (copilot)
@@ -647,6 +652,14 @@ export class MonitorServer {
 			return;
 		}
 
+		// ── GET /files/history?path=  (provenance: who last touched this file)
+		if (url === "/files/history" && req.method === "GET") {
+			const userPath =
+				new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
+			await this.serveFileHistory(userPath, res);
+			return;
+		}
+
 		// ── GET /files/workdir/:agentId
 		const workdirFileMatch = url.match(/^\/files\/workdir\/([^/]+)$/);
 		if (workdirFileMatch && req.method === "GET") {
@@ -1164,6 +1177,91 @@ export class MonitorServer {
 		}
 		res.end(
 			JSON.stringify({ type: "file", name: basename(abs), encoding: "binary" }),
+		);
+	}
+
+	/**
+	 * Provenance for a file: its git history (via `git log --follow`), each
+	 * commit joined against `agentTurnStats.gitCommit` to name the agent/turn
+	 * that produced it (git-commit-on-sleep, Sprint 25). Commits with no match
+	 * (e.g. template provisioning, or a future operator edit) are still
+	 * returned with agentId/turnNumber null — the file viewer degrades to
+	 * showing just the commit rather than hiding history.
+	 */
+	private async serveFileHistory(
+		userPath: string,
+		res: ServerResponse,
+	): Promise<void> {
+		const abs = resolve(this.sharedDir, userPath);
+		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Path outside root" }));
+			return;
+		}
+		const relPath = relative(this.sharedDir, abs);
+
+		let commits: { commit: string; timestamp: string }[] = [];
+		try {
+			const { stdout } = await pexec("git", [
+				"-C",
+				this.sharedDir,
+				"log",
+				"--follow",
+				"--format=%H|%cI",
+				"-n",
+				"20",
+				"--",
+				relPath,
+			]);
+			commits = stdout
+				.split("\n")
+				.map((l) => l.trim())
+				.filter(Boolean)
+				.map((l) => {
+					const [commit, timestamp] = l.split("|");
+					return { commit, timestamp };
+				});
+		} catch (e) {
+			// Not a git repo, file never committed, or git unavailable — no
+			// history is a normal, renderable state, not an error.
+			console.warn(
+				`[monitor] git history lookup failed for ${relPath}: ${(e as Error).message}`,
+			);
+		}
+
+		if (commits.length === 0) {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify([]));
+			return;
+		}
+
+		const turns = await this.db
+			.collection("agentTurnStats")
+			.find(
+				{
+					missionId: this.missionId,
+					gitCommit: { $in: commits.map((c) => c.commit) },
+				},
+				{ projection: { agentId: 1, turnNumber: 1, gitCommit: 1, _id: 0 } },
+			)
+			.toArray();
+		const turnByCommit = new Map(
+			turns.map((t) => [
+				t.gitCommit as string,
+				{ agentId: t.agentId as string, turnNumber: t.turnNumber as number },
+			]),
+		);
+
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(
+			JSON.stringify(
+				commits.map((c) => ({
+					commit: c.commit,
+					timestamp: c.timestamp,
+					agentId: turnByCommit.get(c.commit)?.agentId ?? null,
+					turnNumber: turnByCommit.get(c.commit)?.turnNumber ?? null,
+				})),
+			),
 		);
 	}
 

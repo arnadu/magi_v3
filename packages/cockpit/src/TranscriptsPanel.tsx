@@ -12,6 +12,7 @@ import {
 	type TranscriptEntry,
 	type TurnSummary,
 } from "./data";
+import { JsonNode } from "./JsonTree";
 
 const fmtUsd = (n: number | undefined) => `$${(n ?? 0).toFixed(4)}`;
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString();
@@ -91,56 +92,6 @@ function toolCallsIn(m: RawMessage): { id: string; name: string }[] {
 	return (m.content as Record<string, unknown>[])
 		.filter((b) => b?.type === "toolCall")
 		.map((b) => ({ id: String(b.id ?? ""), name: String(b.name ?? "tool") }));
-}
-
-// ── Recursive JSON tree (the LLM-log drill-down) ─────────────────────────────
-// Children render only when open, so a large input (long message array) doesn't
-// build a huge hidden DOM tree.
-
-function JsonNode({ k, v }: { k: string; v: unknown }) {
-	const [open, setOpen] = useState(false);
-	const isObj = v !== null && typeof v === "object";
-	const longStr = typeof v === "string" && v.length > 120;
-
-	if (!isObj && !longStr) {
-		const text =
-			v === null ? "null" : typeof v === "string" ? `"${v}"` : String(v);
-		return (
-			<div className="jn-leaf">
-				<span className="jn-key">{k}</span>{" "}
-				<span className="jn-val">{text}</span>
-			</div>
-		);
-	}
-
-	const entries: [string, unknown][] = isObj
-		? Array.isArray(v)
-			? (v as unknown[]).map((x, i) => [String(i), x])
-			: Object.entries(v as Record<string, unknown>)
-		: [];
-	const preview = longStr
-		? `"${(v as string).slice(0, 60)}…" (${(v as string).length} chars)`
-		: Array.isArray(v)
-			? `[${entries.length}]`
-			: `{${entries.length}}`;
-
-	return (
-		<details className="jn" onToggle={(e) => setOpen(e.currentTarget.open)}>
-			<summary>
-				<span className="jn-key">{k}</span>{" "}
-				<span className="jn-preview">{preview}</span>
-			</summary>
-			{open && (
-				<div className="jn-children">
-					{longStr ? (
-						<pre className="mv-json">{v as string}</pre>
-					) : (
-						entries.map(([ck, cv]) => <JsonNode key={ck} k={ck} v={cv} />)
-					)}
-				</div>
-			)}
-		</details>
-	);
 }
 
 // ── Turn timeline row ────────────────────────────────────────────────────────
@@ -234,7 +185,21 @@ function LlmCallView({
 	);
 }
 
-export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
+export interface TurnJump {
+	agent: string;
+	turn: number;
+}
+
+export function TranscriptsPanel({
+	missionId,
+	jumpTo,
+	onJumped,
+}: {
+	missionId: string | null;
+	/** A "inspect turn →" deep link from the Files panel's provenance header. */
+	jumpTo?: TurnJump | null;
+	onJumped?: () => void;
+}) {
 	const [agents, setAgents] = useState<Agent[]>([]);
 	const [agent, setAgent] = useState<string | null>(null);
 	const [turns, setTurns] = useState<TurnSummary[]>([]);
@@ -253,6 +218,24 @@ export function TranscriptsPanel({ missionId }: { missionId: string | null }) {
 		else setTurns([]);
 		setTurn(null);
 	}, [missionId, agent]);
+
+	// Deep link from Files: jump straight to an agent + turn. Fetches its own
+	// turn list and sets the turn directly (a harmless duplicate of the effect
+	// above when the agent also changes — that effect's setTurn(null) always
+	// fires synchronously first, so the turn set here always wins).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: fires only when jumpTo changes
+	useEffect(() => {
+		if (!missionId || !jumpTo) return;
+		setAgent(jumpTo.agent);
+		fetchTurns(missionId, jumpTo.agent).then(
+			(ts) => {
+				setTurns(ts);
+				setTurn(jumpTo.turn);
+			},
+			() => {},
+		);
+		onJumped?.();
+	}, [jumpTo]);
 
 	useEffect(() => {
 		setDetail({});

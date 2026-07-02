@@ -993,3 +993,164 @@ h2.sec {
 .llmcall-body {
 	padding: 4px 10px 8px;
 }
+
+/* Files panel — directory tree + type-driven content viewer. */
+.files {
+	display: flex;
+	gap: 12px;
+	height: 100%;
+}
+.files-tree {
+	width: 260px;
+	flex-shrink: 0;
+	overflow-y: auto;
+	border-right: 1px solid var(--line);
+	padding-right: 6px;
+}
+.fn-row {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: none;
+	padding: 4px 8px;
+	cursor: pointer;
+	font: inherit;
+	font-size: 12.5px;
+	color: var(--txt);
+	border-radius: 5px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.fn-row:hover {
+	background: var(--hover);
+}
+.fn-file.on {
+	background: var(--panel2);
+	color: var(--info);
+	font-weight: 600;
+}
+.fn-loading {
+	font-size: 11px;
+	padding: 2px 0;
+}
+.files-view {
+	flex: 1;
+	min-width: 0;
+	overflow-y: auto;
+}
+.fv-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 6px;
+}
+.fv-name {
+	font-weight: 600;
+	font-size: 13px;
+}
+.provenance {
+	font-size: 12px;
+	padding: 6px 0 10px;
+	border-bottom: 1px solid var(--line);
+	margin-bottom: 10px;
+}
+.prov-inspect {
+	margin-left: 8px;
+}
+.prov-history {
+	margin-top: 6px;
+}
+.prov-history summary {
+	cursor: pointer;
+	color: var(--mut);
+	font-size: 11.5px;
+}
+.prov-history ul {
+	list-style: none;
+	padding: 0;
+	margin: 6px 0 0;
+}
+.prov-history li {
+	padding: 2px 0;
+	font-size: 11.5px;
+}
+.prov-hist-link {
+	background: none;
+	border: none;
+	color: var(--info);
+	cursor: pointer;
+	padding: 0;
+	font: inherit;
+	font-size: inherit;
+}
+.fv-body {
+	font-size: 13px;
+}
+.fv-pre {
+	max-height: none;
+	white-space: pre-wrap;
+}
+.fv-image {
+	max-width: 100%;
+	border-radius: 6px;
+	border: 1px solid var(--line);
+}
+.fv-markdown h1,
+.fv-markdown h2,
+.fv-markdown h3 {
+	margin: 0.8em 0 0.4em;
+}
+.fv-markdown p {
+	margin: 0.5em 0;
+	line-height: 1.5;
+}
+.fv-markdown ul {
+	margin: 0.4em 0;
+	padding-left: 1.4em;
+}
+.fv-markdown code {
+	background: var(--chip);
+	border-radius: 4px;
+	padding: 1px 5px;
+	font-size: 0.92em;
+}
+.fv-markdown pre {
+	background: var(--chip);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 8px 10px;
+	overflow-x: auto;
+}
+.fv-markdown pre code {
+	background: none;
+	padding: 0;
+}
+.csv-wrap {
+	overflow: auto;
+	max-height: 70vh;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+.csv-table {
+	border-collapse: collapse;
+	font-size: 12px;
+	white-space: nowrap;
+}
+.csv-table th,
+.csv-table td {
+	padding: 4px 10px;
+	border-bottom: 1px solid var(--line);
+	text-align: left;
+}
+.csv-table th {
+	position: sticky;
+	top: 0;
+	background: var(--panel2);
+	color: var(--mut);
+	font-weight: 600;
+}
+.csv-table tr:hover td {
+	background: var(--hover);
+}

@@ -271,3 +271,55 @@ export async function uploadAttachment(
 		}),
 	});
 }
+
+// ── Files panel (workspace browser) ─────────────────────────────────────────
+
+export interface DirEntry {
+	name: string;
+	type: "dir" | "file";
+	size?: number;
+	modified?: string;
+}
+
+export type FileNode =
+	| { type: "dir"; path: string; entries: DirEntry[] }
+	| {
+			type: "file";
+			name: string;
+			encoding: "text" | "base64" | "binary";
+			mimeType?: string;
+			content?: string;
+			truncated?: boolean;
+	  };
+
+/** Browse a directory or read a file from the mission's shared workspace. */
+export function fetchFileNode(
+	missionId: string,
+	path: string,
+): Promise<FileNode> {
+	return api<FileNode>(
+		`/missions/${encodeURIComponent(missionId)}/files/shared?path=${encodeURIComponent(path)}`,
+	);
+}
+
+export interface FileHistoryEntry {
+	commit: string;
+	timestamp: string;
+	agentId: string | null;
+	turnNumber: number | null;
+}
+
+/** Git provenance for a file — most recent commit first. */
+export function fetchFileHistory(
+	missionId: string,
+	path: string,
+): Promise<FileHistoryEntry[]> {
+	return api<FileHistoryEntry[]>(
+		`/missions/${encodeURIComponent(missionId)}/files/history?path=${encodeURIComponent(path)}`,
+	);
+}
+
+/** Direct-download URL (file, or a folder as a zip) — for a plain <a href>. */
+export function fileDownloadUrl(missionId: string, path: string): string {
+	return `/missions/${encodeURIComponent(missionId)}/download?path=${encodeURIComponent(path)}`;
+}

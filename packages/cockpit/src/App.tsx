@@ -6,12 +6,19 @@ import {
 	fetchObjectives,
 	type MissionSummary,
 } from "./data";
+import { FilesPanel } from "./FilesPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { SAMPLE_TREE } from "./sample";
 import { TranscriptsPanel } from "./TranscriptsPanel";
 import type { FoldedTree } from "./types";
 
-type MainTab = "objectives" | "transcripts";
+type MainTab = "objectives" | "files" | "transcripts";
+
+/** A "inspect turn →" deep link from Files into Transcripts. */
+interface TurnJump {
+	agent: string;
+	turn: number;
+}
 
 /** How often the cockpit re-fetches a live mission's objectives. */
 const POLL_MS = 4000;
@@ -130,6 +137,12 @@ export function App() {
 	const view = useView();
 	const [openAgent, setOpenAgent] = useState<string | null>(null);
 	const [mainTab, setMainTab] = useState<MainTab>("objectives");
+	const [turnJump, setTurnJump] = useState<TurnJump | null>(null);
+
+	const inspectTurn = (agent: string, turn: number) => {
+		setMainTab("transcripts");
+		setTurnJump({ agent, turn });
+	};
 
 	if (view.kind === "loading") {
 		return (
@@ -215,6 +228,13 @@ export function App() {
 						</button>
 						<button
 							type="button"
+							className={`tab ${mainTab === "files" ? "on" : ""}`}
+							onClick={() => setMainTab("files")}
+						>
+							Files
+						</button>
+						<button
+							type="button"
 							className={`tab ${mainTab === "transcripts" ? "on" : ""}`}
 							onClick={() => setMainTab("transcripts")}
 						>
@@ -222,10 +242,21 @@ export function App() {
 						</button>
 					</nav>
 					<div className="tab-body">
-						{mainTab === "objectives" ? (
+						{mainTab === "objectives" && (
 							<ObjectivesPanel tree={view.tree} onAgentClick={setOpenAgent} />
-						) : (
-							<TranscriptsPanel missionId={view.mission} />
+						)}
+						{mainTab === "files" && (
+							<FilesPanel
+								missionId={view.mission}
+								onInspectTurn={inspectTurn}
+							/>
+						)}
+						{mainTab === "transcripts" && (
+							<TranscriptsPanel
+								missionId={view.mission}
+								jumpTo={turnJump}
+								onJumped={() => setTurnJump(null)}
+							/>
 						)}
 					</div>
 				</main>
