@@ -149,6 +149,35 @@ Two modes, one viewer, built on the `experimental/dump-trace.mjs` prototype:
 
 `agentTurnStats` is the primary rendering unit; `llmCallLog` is fetched only on drill-down.
 
+### Interactive HTML preview in Files (deferred, post-26b)
+
+An agent may decide an interactive page — a dashboard, a chart built with a JS library — is the
+best way to present something, not a static Markdown/CSV artifact. The Files panel (built in
+26b, read-only) can support this with the same sandboxed-iframe pattern CodePen/JSFiddle/
+CodeSandbox use for untrusted live previews:
+
+- **Mechanism**: `<iframe sandbox="allow-scripts">` — deliberately **no** `allow-same-origin`.
+  That combination forces the iframe into a unique, opaque origin regardless of where the HTML
+  came from: no cookies, no control-plane session, no parent DOM access — but full JS execution,
+  so a CDN-loaded charting library (Chart.js/D3/Plotly via absolute `https://` URLs) still works.
+  No `allow-popups`/`allow-top-navigation`/`allow-forms` unless a concrete need appears.
+- **Serving**: `srcdoc`, not a new endpoint — reuse the Files panel's existing text-content fetch
+  (`/files/shared`) and pass it straight into `srcdoc`. `srcdoc` content has no real URL, so
+  relative-path asset loading (`<script src="app.js">`) does **not** resolve — scope is therefore
+  **self-contained single HTML files** (inline `<style>`/`<script>` + absolute CDN URLs), not
+  multi-file mini-apps.
+- **UX**: `.html`/`.htm` in the Files panel gets a **Preview / Source** toggle (Preview = the
+  sandboxed iframe, default; Source = the existing text view, for debugging).
+- **Residual risk (accepted, same as any "run untrusted HTML" tool)**: sandboxed script can still
+  make outbound `fetch()` calls to third parties — it just can't reach the control plane with
+  credentials or read the operator's session.
+- **Natural follow-up, if multi-file apps are ever needed**: a `GET /files/shared/raw?path=`
+  endpoint serving real bytes with correct `Content-Type` (reusing the existing path-validation
+  pattern from `/files/shared`/`/download`), with the iframe's `src=` pointing at it directly
+  instead of `srcdoc` — lets relative asset paths resolve against a real URL. Bigger lift
+  (content-type sniffing, more SSRF/path-traversal surface to review); only build if single-file
+  HTML genuinely isn't enough.
+
 ### Operational resilience gaps (from `docs/operational-resilience.md`)
 
 These are backlog candidates — pick them up in priority order as sprint capacity allows.
@@ -176,6 +205,7 @@ These are backlog candidates — pick them up in priority order as sprint capaci
 | `ProcessMore(artifactId)` tool | Resume document processing past the automatic limit (PDF pages beyond vision cap, nested ZIPs, chart-only sheets) — uses the `unprocessed` marker as resume point |
 | RAG facility | MongoDB Atlas Vector Search (`$vectorSearch`); `missionDocuments` collection + `SearchMemory` tool; deferred until a mission demonstrably exhausts context on its own collected data (V2 had an implementation to draw on) |
 | Extract-before-destroy | Push git history to remote or extract to MongoDB before `destroyMission` deletes the volume, if audit requirements arise |
+| Interactive HTML preview in Files | Sandboxed `<iframe srcdoc sandbox="allow-scripts">` (no `allow-same-origin`) for agent-authored self-contained HTML/JS dashboards — see design notes under Sprint 26b |
 
 ---
 
