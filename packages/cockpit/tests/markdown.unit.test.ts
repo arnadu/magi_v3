@@ -38,6 +38,37 @@ describe("renderMarkdown", () => {
 		const html = renderMarkdown("[x](data:text/html,evil)");
 		expect(html).not.toContain("<a ");
 	});
+
+	it("emits a katex placeholder div for $$...$$ block math, not <p>-wrapped", () => {
+		const html = renderMarkdown("$$x^2 + y^2 = z^2$$");
+		expect(html).toContain(
+			'<div class="katex-pending" data-katex-src="x^2 + y^2 = z^2">',
+		);
+		expect(html).not.toContain("<p><div");
+		expect(html).not.toContain("BLOCK");
+	});
+
+	it("does not treat dollar amounts as math", () => {
+		const html = renderMarkdown("Price: $5.00 and $10.00 target.");
+		expect(html).not.toContain("katex");
+		expect(html).toContain("$5.00 and $10.00 target");
+	});
+
+	it("emits a mermaid placeholder div with the escaped source, not <p>-wrapped", () => {
+		const md = "```mermaid\ngraph TD; A-->B;\n```";
+		const html = renderMarkdown(md);
+		expect(html).toContain(
+			'<div class="mermaid" data-mermaid-src="graph TD; A--&gt;B;">',
+		);
+		expect(html).not.toContain("<p><div");
+		expect(html).not.toContain("BLOCK");
+	});
+
+	it("does not confuse a mermaid block with a plain fenced code block", () => {
+		const html = renderMarkdown("```js\nconst x = 1;\n```");
+		expect(html).toContain("<pre><code>const x = 1;</code></pre>");
+		expect(html).not.toContain("mermaid");
+	});
 });
 
 describe("parseCsv", () => {

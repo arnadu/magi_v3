@@ -1169,3 +1169,25 @@ h2.sec {
 .csv-table tr:hover td {
 	background: var(--hover);
 }
+
+/* Mermaid diagrams (Markdown component, client-side rendered). */
+.md .mermaid {
+	margin: 0.6em 0;
+	padding: 8px;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	overflow-x: auto;
+	color: var(--mut);
+	font-size: 12px;
+	text-align: center;
+}
+.md .mermaid svg {
+	max-width: 100%;
+}
+/* KaTeX block math: center it and let it scroll horizontally if very wide. */
+.md .katex-display {
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding: 2px 0;
+}
