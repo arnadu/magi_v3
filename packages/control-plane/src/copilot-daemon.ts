@@ -37,6 +37,16 @@ export const COPILOT_MISSION_ID = "copilot";
 
 const COPILOT_WORKDIR = "/home/magi-copilot/workdir";
 
+/**
+ * Upper bound on how long the watch loop waits on a single Change Stream
+ * subscription before falling back to re-checking for unread mail directly.
+ * A Change Stream can miss the one insert it's meant to catch (e.g. a message
+ * posted in the narrow window before the stream is fully open server-side) —
+ * without this, a missed event leaves the daemon waiting forever on an event
+ * that already happened, i.e. silently unresponsive. See runWatchLoop.
+ */
+const POLL_FALLBACK_MS = 15_000;
+
 const COPILOT_IDENTITY: AgentIdentity = {
 	workdir: COPILOT_WORKDIR,
 	sharedDir: COPILOT_WORKDIR,
@@ -231,8 +241,22 @@ async function runWatchLoop(
 						console.log("[copilot-daemon] stream open, signaling ready");
 						onReady();
 					};
+			// Bound the wait: derive a per-iteration signal that aborts on either
+			// real shutdown or the poll-fallback timer. waitForMailboxInsert
+			// resolves (not rejects) on abort either way, closing its stream; the
+			// listUnread() call below then re-checks for real, catching anything
+			// the stream missed.
+			const iterAc = new AbortController();
+			const forwardAbort = () => iterAc.abort();
+			signal.addEventListener("abort", forwardAbort, { once: true });
+			const pollTimer = setTimeout(() => iterAc.abort(), POLL_FALLBACK_MS);
 			try {
-				await waitForMailboxInsert(mailboxCol, missionId, signal, notifyOnce);
+				await waitForMailboxInsert(
+					mailboxCol,
+					missionId,
+					iterAc.signal,
+					notifyOnce,
+				);
 			} catch (e) {
 				if (signal.aborted) break;
 				const backoffMs = 2_000;
@@ -241,6 +265,9 @@ async function runWatchLoop(
 				);
 				await sleepMs(backoffMs, signal);
 				continue;
+			} finally {
+				clearTimeout(pollTimer);
+				signal.removeEventListener("abort", forwardAbort);
 			}
 		}
 

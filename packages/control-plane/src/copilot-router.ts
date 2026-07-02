@@ -105,8 +105,14 @@ export function createCopilotRouter(
 			return;
 		}
 
-		ensureCopilotRunning(req.userId);
-
+		// Post BEFORE starting the daemon (not after): on a cold start,
+		// startCopilotDaemon's watch loop checks for unread mail before it opens
+		// its Change Stream, so a message that already exists in the mailbox is
+		// always seen — no dependency on exactly when the stream becomes live.
+		// Reversed, a message inserted right after the daemon starts could race
+		// ahead of the stream actually being open and be silently missed (the
+		// daemon is otherwise event-only, so a missed wake-up looks like the
+		// copilot never responding).
 		const missionId = `copilot-${req.userId}`;
 		const mailboxRepo = createMongoMailboxRepository(db, missionId);
 		const msg = await mailboxRepo.post({
@@ -116,6 +122,8 @@ export function createCopilotRouter(
 			subject: subject ?? "(no subject)",
 			body,
 		});
+
+		ensureCopilotRunning(req.userId);
 
 		res.json({ ok: true, id: msg.id });
 	});
