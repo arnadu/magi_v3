@@ -11,6 +11,7 @@ import {
 	sendToCopilot,
 	uploadAttachment,
 } from "./data";
+import { Markdown } from "./Markdown";
 
 const POLL_MS = 5000;
 const MIN_W = 300;
@@ -327,7 +328,7 @@ export function ConversationsPanel({
 								{m.subject && m.subject !== "Message from operator" && (
 									<div className="bub-subj">{m.subject}</div>
 								)}
-								<div className="bub-body">{m.body}</div>
+								<Markdown text={m.body} className="bub-body" />
 							</div>
 						))}
 						<div ref={bottomRef} />

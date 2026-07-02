@@ -13,6 +13,7 @@ import {
 	type TurnSummary,
 } from "./data";
 import { JsonNode } from "./JsonTree";
+import { Markdown } from "./Markdown";
 
 const fmtUsd = (n: number | undefined) => `$${(n ?? 0).toFixed(4)}`;
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString();
@@ -24,12 +25,15 @@ const fmtTok = (n: number | undefined) =>
 function Block({ b }: { b: Record<string, unknown> }) {
 	const t = b?.type as string | undefined;
 	if (t === "text")
-		return <div className="mv-text">{String(b.text ?? "")}</div>;
+		return <Markdown text={String(b.text ?? "")} className="mv-text" />;
 	if (t === "thinking" || t === "reasoning")
 		return (
 			<details className="mv-think">
 				<summary>thinking</summary>
-				<div className="mv-text">{String(b.thinking ?? b.text ?? "")}</div>
+				<Markdown
+					text={String(b.thinking ?? b.text ?? "")}
+					className="mv-text"
+				/>
 			</details>
 		);
 	if (t === "toolCall")
@@ -58,7 +62,7 @@ function Block({ b }: { b: Record<string, unknown> }) {
 function Content({ content }: { content: unknown }) {
 	if (content == null) return null;
 	if (typeof content === "string")
-		return <div className="mv-text">{content}</div>;
+		return <Markdown text={content} className="mv-text" />;
 	if (Array.isArray(content))
 		return (
 			<>

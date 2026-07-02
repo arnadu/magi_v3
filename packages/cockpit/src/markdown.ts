@@ -3,8 +3,10 @@
  * (packages/agent-runtime-worker/public/app.js). HTML is escaped FIRST, then a
  * fixed whitelist of tags (h1-3, strong, em, code, pre, ul/li, a) is
  * reintroduced from the escaped text — so raw HTML/script in the source can
- * never re-open a tag. No external markdown dependency in this codebase; kept
- * in sync with the dashboard's renderer rather than diverging.
+ * never re-open a tag. Link hrefs are scheme-checked (http/https/mailto only)
+ * so a markdown link can't become a `javascript:`/`data:` URI. No external
+ * markdown dependency in this codebase; kept in sync with the dashboard's
+ * renderer rather than diverging.
  */
 export function renderMarkdown(text: string): string {
 	if (!text) return "";
@@ -26,9 +28,12 @@ export function renderMarkdown(text: string): string {
 	s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 	s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
 
-	s = s.replace(
-		/\[([^\]]+)\]\(([^)]+)\)/g,
-		'<a href="$2" target="_blank" rel="noopener">$1</a>',
+	// Only http(s)/mailto links become <a> — anything else (javascript:, data:,
+	// etc.) is left as plain escaped text so a link can't execute script.
+	s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (whole, label, url) =>
+		/^(https?:|mailto:)/i.test(url)
+			? `<a href="${url}" target="_blank" rel="noopener">${label}</a>`
+			: whole,
 	);
 
 	s = s.replace(/((?:^[ \t]*[-*] .+(?:\n|$))+)/gm, (block) => {

@@ -8,7 +8,8 @@ import {
 	fileDownloadUrl,
 } from "./data";
 import { JsonNode } from "./JsonTree";
-import { parseCsv, renderMarkdown } from "./markdown";
+import { Markdown } from "./Markdown";
+import { parseCsv } from "./markdown";
 
 const joinPath = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 const extOf = (name: string) => {
@@ -235,13 +236,7 @@ function FileViewer({
 						to view.
 					</p>
 				) : ext === ".md" || ext === ".markdown" ? (
-					<div
-						className="fv-markdown"
-						// biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown HTML-escapes first, then reintroduces a fixed tag whitelist — see markdown.ts
-						dangerouslySetInnerHTML={{
-							__html: renderMarkdown(node.content ?? ""),
-						}}
-					/>
+					<Markdown text={node.content ?? ""} />
 				) : ext === ".csv" ? (
 					<CsvTable text={node.content ?? ""} />
 				) : ext === ".json" && !node.truncated ? (

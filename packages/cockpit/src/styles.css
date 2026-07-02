@@ -548,7 +548,7 @@ h2.sec {
 	margin-bottom: 2px;
 }
 .bub-body {
-	white-space: pre-wrap;
+	font-size: 12.5px;
 }
 .compose {
 	display: flex;
@@ -787,7 +787,6 @@ h2.sec {
 	margin-bottom: 4px;
 }
 .mv-text {
-	white-space: pre-wrap;
 	font-size: 12.5px;
 }
 .mv-think {
@@ -1097,33 +1096,33 @@ h2.sec {
 	border-radius: 6px;
 	border: 1px solid var(--line);
 }
-.fv-markdown h1,
-.fv-markdown h2,
-.fv-markdown h3 {
+.md h1,
+.md h2,
+.md h3 {
 	margin: 0.8em 0 0.4em;
 }
-.fv-markdown p {
+.md p {
 	margin: 0.5em 0;
 	line-height: 1.5;
 }
-.fv-markdown ul {
+.md ul {
 	margin: 0.4em 0;
 	padding-left: 1.4em;
 }
-.fv-markdown code {
+.md code {
 	background: var(--chip);
 	border-radius: 4px;
 	padding: 1px 5px;
 	font-size: 0.92em;
 }
-.fv-markdown pre {
+.md pre {
 	background: var(--chip);
 	border: 1px solid var(--line);
 	border-radius: 6px;
 	padding: 8px 10px;
 	overflow-x: auto;
 }
-.fv-markdown pre code {
+.md pre code {
 	background: none;
 	padding: 0;
 }
