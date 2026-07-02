@@ -179,10 +179,25 @@ export function createMailboxTools(
 			body: Type.String({ description: "Message body" }),
 		}),
 		async execute(_id, args) {
-			const to = args.to as string[];
+			// The schema declares to: string[] for LLM-driven tool calls (always
+			// schema-conformant), but this tool is also reachable via the raw HTTP
+			// tool-api-server path (background job scripts), which sends whatever
+			// JSON shape the caller built — no schema validation applied. A single
+			// recipient string is common there (e.g. magi_tool.py's post_message(to:
+			// str, ...)); coerce it rather than let `.filter` below throw a raw
+			// TypeError that surfaces as an unhandled 500.
+			const rawTo = args.to;
+			const to = Array.isArray(rawTo)
+				? (rawTo as string[])
+				: typeof rawTo === "string"
+					? [rawTo]
+					: null;
 			const subject = args.subject as string;
 			const body = args.body as string;
 
+			if (to === null) {
+				return err('PostMessage: "to" must be a string or an array of strings');
+			}
 			if (to.length === 0) return err("PostMessage: to[] must not be empty");
 
 			const unknown = to.filter((id) => !validRecipients.has(id));
