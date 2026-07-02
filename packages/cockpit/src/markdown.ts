@@ -45,18 +45,102 @@ export function renderMarkdown(text: string): string {
 		return `<ul>${items}</ul>`;
 	});
 
+	s = convertTables(s);
+
 	s = s
 		.split(/\n\n+/)
 		.map((para) => {
 			const trimmed = para.trim();
 			if (!trimmed) return "";
-			if (/^<(?:h[123]|pre|ul|ol|li)/.test(trimmed)) return trimmed;
+			if (/^<(?:h[123]|pre|ul|ol|li|table)/.test(trimmed)) return trimmed;
 			return `<p>${trimmed.replace(/\n/g, "<br>")}</p>`;
 		})
 		.filter(Boolean)
 		.join("");
 
 	return s;
+}
+
+const SEPARATOR_ROW = /^\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?$/;
+
+function isTableRow(line: string): boolean {
+	return line.includes("|") && line.trim().length > 0;
+}
+
+function splitTableRow(line: string): string[] {
+	let t = line.trim();
+	if (t.startsWith("|")) t = t.slice(1);
+	if (t.endsWith("|")) t = t.slice(0, -1);
+	return t.split("|").map((c) => c.trim());
+}
+
+/** left/center/right/none per column, from a GFM separator row (e.g. `:--|:-:|--:`). */
+function parseAligns(sepLine: string): (string | null)[] {
+	return splitTableRow(sepLine).map((cell) => {
+		const left = cell.startsWith(":");
+		const right = cell.endsWith(":");
+		if (left && right) return "center";
+		if (right) return "right";
+		if (left) return "left";
+		return null;
+	});
+}
+
+/**
+ * GFM-style tables: a header row, a `---|:--|--:` separator row, then data
+ * rows — all lines containing `|`. Runs after inline formatting (bold/italic/
+ * links) so cell content already carries its markup.
+ */
+function convertTables(s: string): string {
+	const lines = s.split("\n");
+	const out: string[] = [];
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i];
+		const sep = lines[i + 1];
+		if (
+			line !== undefined &&
+			sep !== undefined &&
+			isTableRow(line) &&
+			SEPARATOR_ROW.test(sep.trim())
+		) {
+			const headerCells = splitTableRow(line);
+			const aligns = parseAligns(sep);
+			const bodyRows: string[][] = [];
+			let j = i + 2;
+			while (j < lines.length && isTableRow(lines[j])) {
+				bodyRows.push(splitTableRow(lines[j]));
+				j++;
+			}
+			const th = headerCells
+				.map((c, ci) => {
+					const align = aligns[ci];
+					const style = align ? ` style="text-align:${align}"` : "";
+					return `<th${style}>${c}</th>`;
+				})
+				.join("");
+			const rows = bodyRows
+				.map((r) => {
+					const tds = r
+						.map((c, ci) => {
+							const align = aligns[ci];
+							const style = align ? ` style="text-align:${align}"` : "";
+							return `<td${style}>${c ?? ""}</td>`;
+						})
+						.join("");
+					return `<tr>${tds}</tr>`;
+				})
+				.join("");
+			out.push(
+				`<table><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table>`,
+			);
+			i = j;
+		} else {
+			out.push(line);
+			i++;
+		}
+	}
+	return out.join("\n");
 }
 
 /** Small, dependency-free CSV parser (handles quoted fields with commas/escaped quotes). */
