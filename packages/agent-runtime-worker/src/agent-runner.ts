@@ -616,6 +616,12 @@ export async function runAgent(
 	// Set when a hard limit aborts the turn — distinguishes a deliberate limit
 	// stop (recorded as 'aborted', not re-thrown as a crash) from a real error.
 	let limitAborted = false;
+	// Set when the loop's last LLM call was cut short by runInnerLoop's own
+	// per-call deadline (loop.ts's llmCallTimeoutMs) rather than this turn's
+	// outer `signal` — that call used a signal DERIVED from (not identical to)
+	// `signal`, so `signal?.aborted` alone would miss it and the turn would be
+	// finalized as 'complete' even though it was forcibly cut off mid-call.
+	let lastCallAborted = false;
 
 	try {
 		const result = await runInnerLoop({
@@ -630,6 +636,9 @@ export async function runAgent(
 			onToolResult: onToolResultHandler,
 			reasoning: "medium",
 		});
+		const lastMsg = result.messages.at(-1);
+		lastCallAborted =
+			lastMsg?.role === "assistant" && lastMsg.stopReason === "aborted";
 
 		// Detect a conversation structure error on the very first LLM call.
 		// turnCount === 1 means no tools ran — the error came from the history,
@@ -734,7 +743,9 @@ export async function runAgent(
 		// aborted run still incurred cost, so its lifetime totals must be recorded.
 		await ctx.statsCollector?.endTurn(
 			agentId,
-			limitAborted || signal?.aborted ? "aborted" : "complete",
+			limitAborted || signal?.aborted || lastCallAborted
+				? "aborted"
+				: "complete",
 			git ?? undefined,
 		);
 		// Attribute the turn's cost to the task(s) the agent updated this turn

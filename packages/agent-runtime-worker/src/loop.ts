@@ -34,6 +34,32 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
+/**
+ * A child AbortSignal that aborts when `parent` aborts OR after `ms` — real
+ * cancellation (not a Promise.race that leaves the original call running), so
+ * an LLM call that respects its signal (pi-ai's providers thread it into the
+ * underlying fetch) actually gets torn down instead of hanging until the
+ * caller's own, much longer wall-clock limit (or never, if that abort doesn't
+ * unwind a stalled connection either). Always call `cleanup()` once the
+ * guarded operation settles, or the timer/listener outlive it.
+ */
+function deriveDeadline(
+	ms: number,
+	parent?: AbortSignal,
+): { signal: AbortSignal; cleanup: () => void } {
+	const ac = new AbortController();
+	const timer = setTimeout(() => ac.abort(), ms);
+	const forward = () => ac.abort();
+	parent?.addEventListener("abort", forward, { once: true });
+	return {
+		signal: ac.signal,
+		cleanup: () => {
+			clearTimeout(timer);
+			parent?.removeEventListener("abort", forward);
+		},
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -81,6 +107,18 @@ export interface InnerLoopConfig {
 	 * timeout error and continuing the loop. Default: 120_000 (2 minutes).
 	 */
 	toolTimeoutMs?: number;
+	/**
+	 * Maximum milliseconds to wait for a single LLM completion call before
+	 * aborting it. Default: 480_000 (8 minutes) — generous for legitimate large/
+	 * thinking responses, but bounded (unlike the prior state: only the 4-hour
+	 * MAX_AGENT_RUN_SECONDS wall-clock guarded this, and a stalled streaming
+	 * connection is not guaranteed to unwind promptly from that abort — see
+	 * GitHub issue #17, a Research sub-loop's first LLM call hanging for days
+	 * with no recovery). Applies to every runInnerLoop call, so a nested
+	 * sub-loop (e.g. Research) is covered by the same guard as the main loop —
+	 * no separate wiring needed there.
+	 */
+	llmCallTimeoutMs?: number;
 	/**
 	 * Maximum number of LLM calls before the loop exits regardless of whether
 	 * the LLM requested further tool calls. Used by agentic tools (e.g. Research)
@@ -152,6 +190,7 @@ export async function runInnerLoop(
 		onLlmCall,
 		onToolResult,
 		toolTimeoutMs = 120_000,
+		llmCallTimeoutMs = 480_000,
 		maxTurns,
 		reasoning,
 	} = config;
@@ -193,13 +232,25 @@ export async function runInnerLoop(
 		// Cap max output tokens: some OpenRouter model entries set maxTokens == contextWindow
 		// (no room for input). Mirror the 32k cap that the Anthropic provider uses.
 		const maxOutputTokens = Math.min(model.maxTokens, 32_000);
-		const callOpts: SimpleStreamOptions = {
-			signal,
-			maxTokens: maxOutputTokens,
-			// Enable extended thinking only when the model declares reasoning support.
-			...(reasoning && model.reasoning ? { reasoning } : {}),
-		};
-		let assistantMessage = await completeFn(model, context, callOpts);
+		// Each attempt gets its own bounded signal (derived from the outer one)
+		// so a stalled call is actually torn down within llmCallTimeoutMs rather
+		// than only by the caller's much longer wall-clock limit — see
+		// deriveDeadline's doc comment.
+		async function callWithDeadline(): Promise<AssistantMessage> {
+			const deadline = deriveDeadline(llmCallTimeoutMs, signal);
+			const callOpts: SimpleStreamOptions = {
+				signal: deadline.signal,
+				maxTokens: maxOutputTokens,
+				// Enable extended thinking only when the model declares reasoning support.
+				...(reasoning && model.reasoning ? { reasoning } : {}),
+			};
+			try {
+				return await completeFn(model, context, callOpts);
+			} finally {
+				deadline.cleanup();
+			}
+		}
+		let assistantMessage = await callWithDeadline();
 		// Retry on 429 (upstream rate-limit) with exponential backoff.
 		for (let attempt = 1; attempt <= 3 && is429(assistantMessage); attempt++) {
 			const delayMs = 5_000 * 2 ** (attempt - 1); // 5s, 10s, 20s
@@ -208,7 +259,7 @@ export async function runInnerLoop(
 			);
 			await sleep(delayMs, signal);
 			if (signal?.aborted) break;
-			assistantMessage = await completeFn(model, context, callOpts);
+			assistantMessage = await callWithDeadline();
 		}
 		if (onLlmCall) {
 			await onLlmCall({

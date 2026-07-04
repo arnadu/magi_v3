@@ -153,6 +153,19 @@ export interface AgentStatsRepository {
 		missionId: string;
 		agentId?: string;
 	}): Promise<AgentTurnStats[]>;
+	/**
+	 * Mark any OTHER turn for this agent still stuck at status:'running' as
+	 * 'aborted'. Called at the start of a new turn — the orchestrator's `active`
+	 * map guarantees only one turn per agent is ever genuinely in flight, so a
+	 * new turn starting is proof any earlier 'running' doc is stale (its process
+	 * died, crashed, or hung past every timeout without the normal endTurn
+	 * finalize path ever running). Returns the count reconciled.
+	 */
+	reconcileStaleRunning(
+		missionId: string,
+		agentId: string,
+		currentTurnNumber: number,
+	): Promise<number>;
 }
 
 export function createMongoAgentStatsRepository(db: Db): AgentStatsRepository {
@@ -236,6 +249,19 @@ export function createMongoAgentStatsRepository(db: Db): AgentStatsRepository {
 			const docs = await turns.find(q).sort({ turnNumber: 1 }).toArray();
 			return docs.map(({ _id: _discarded, ...rest }) => rest as AgentTurnStats);
 		},
+
+		async reconcileStaleRunning(missionId, agentId, currentTurnNumber) {
+			const result = await turns.updateMany(
+				{
+					missionId,
+					agentId,
+					status: "running",
+					turnNumber: { $ne: currentTurnNumber },
+				},
+				{ $set: { status: "aborted", completedAt: new Date() } },
+			);
+			return result.modifiedCount;
+		},
 	};
 }
 
@@ -309,6 +335,26 @@ export class StatsCollector {
 	): Promise<void> {
 		const turn = freshTurn(missionId, agentId, turnNumber, reflectionTriggered);
 		this.turns.set(this.key(agentId), turn);
+
+		// Best-effort: reconcile any earlier turn for this agent still stuck at
+		// 'running' — a new turn starting proves it's stale (see
+		// reconcileStaleRunning's doc comment). Must never block/break this turn.
+		try {
+			const reconciled = await this.repo.reconcileStaleRunning(
+				missionId,
+				agentId,
+				turnNumber,
+			);
+			if (reconciled > 0) {
+				console.warn(
+					`[agent-stats] reconciled ${reconciled} stale 'running' turn(s) for ${agentId} in ${missionId}`,
+				);
+			}
+		} catch (e) {
+			console.error(
+				`[agent-stats] reconcileStaleRunning failed { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
+			);
+		}
 
 		if (!this.lifetimes.has(this.key(agentId))) {
 			try {

@@ -74,6 +74,27 @@ class FakeStatsRepository implements AgentStatsRepository {
 			)
 			.sort((a, b) => a.turnNumber - b.turnNumber);
 	}
+
+	async reconcileStaleRunning(
+		missionId: string,
+		agentId: string,
+		currentTurnNumber: number,
+	): Promise<number> {
+		let count = 0;
+		for (const t of this.turns.values()) {
+			if (
+				t.missionId === missionId &&
+				t.agentId === agentId &&
+				t.status === "running" &&
+				t.turnNumber !== currentTurnNumber
+			) {
+				t.status = "aborted";
+				t.completedAt = new Date();
+				count++;
+			}
+		}
+		return count;
+	}
 }
 
 const MISSION = "m1";
@@ -98,6 +119,30 @@ describe("StatsCollector", () => {
 		expect(doc?.status).toBe("running");
 		expect(doc?.llmCallCount).toBe(0);
 		expect(doc?.reflectionTriggered).toBe(false);
+	});
+
+	it("reconciles a stale 'running' turn left over from a crash/hang when the next turn starts", async () => {
+		// Turn 0 starts and never finalizes (simulating a crash or an
+		// unrecovered hang — no endTurn call).
+		await collector.startTurn(MISSION, AGENT, 0, false);
+		expect(turnDoc(0)?.status).toBe("running");
+
+		// Turn 1 starting is proof turn 0 is no longer really running.
+		await collector.startTurn(MISSION, AGENT, 1, false);
+		expect(turnDoc(0)?.status).toBe("aborted");
+		expect(turnDoc(0)?.completedAt).toBeInstanceOf(Date);
+		// The NEW turn itself must not be touched by its own reconciliation pass.
+		expect(turnDoc(1)?.status).toBe("running");
+	});
+
+	it("does not reconcile a turn that already finalized normally", async () => {
+		await collector.startTurn(MISSION, AGENT, 0, false);
+		await collector.endTurn(AGENT, "complete");
+		expect(turnDoc(0)?.status).toBe("complete");
+
+		await collector.startTurn(MISSION, AGENT, 1, false);
+		// Still 'complete', not overwritten to 'aborted'.
+		expect(turnDoc(0)?.status).toBe("complete");
 	});
 
 	it("aggregates LLM calls and tracks peak context", async () => {
