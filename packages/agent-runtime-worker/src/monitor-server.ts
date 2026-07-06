@@ -130,6 +130,7 @@ export interface AgentInfo {
  *   GET    /files/history?path=           git provenance for a sharedDir file (agent/turn per commit)
  *   GET    /files/workdir/:id?path=       browse / read agent workdir
  *   GET    /mission-stats                 Trace: lifetime cost/calls/turns per agent (missionStats)
+ *   GET    /cost-series                   Trace: per-agent per-turn cost, for cumulative cost-over-time
  *   GET    /interactions                  Trace: message counts between agent pairs (mailbox)
  *   POST   /files/shared/write            write a file to sharedDir (copilot)
  *   POST   /files/workdir/:id/write       write a file to agent workdir (copilot)
@@ -678,6 +679,30 @@ export class MonitorServer {
 						},
 					},
 				)
+				.toArray();
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(docs));
+			return;
+		}
+
+		// ── GET /cost-series  (Trace: per-agent per-turn cost, for a cumulative
+		// cost-over-time chart — only finalized turns have a settled cost).
+		if (url === "/cost-series" && req.method === "GET") {
+			const docs = await this.db
+				.collection("agentTurnStats")
+				.find(
+					{ missionId: this.missionId, completedAt: { $exists: true } },
+					{
+						projection: {
+							agentId: 1,
+							turnNumber: 1,
+							completedAt: 1,
+							costUsd: 1,
+							_id: 0,
+						},
+					},
+				)
+				.sort({ completedAt: 1 })
 				.toArray();
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify(docs));

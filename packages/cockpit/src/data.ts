@@ -342,6 +342,20 @@ export function fetchMissionStats(
 	);
 }
 
+export interface TurnCost {
+	agentId: string;
+	turnNumber: number;
+	completedAt: string;
+	costUsd: number;
+}
+
+/** Per-agent per-turn cost, for the cumulative cost-over-time chart. */
+export function fetchCostSeries(missionId: string): Promise<TurnCost[]> {
+	return api<TurnCost[]>(
+		`/missions/${encodeURIComponent(missionId)}/cost-series`,
+	);
+}
+
 export interface Interaction {
 	from: string;
 	to: string;
