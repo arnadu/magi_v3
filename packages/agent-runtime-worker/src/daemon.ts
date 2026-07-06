@@ -94,6 +94,7 @@ import {
 	StatsCollector,
 } from "./agent-stats.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
+import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
@@ -111,36 +112,9 @@ import { WorkspaceManager } from "./workspace-manager.js";
 // ---------------------------------------------------------------------------
 // Background jobs
 // ---------------------------------------------------------------------------
-
-/**
- * A background job to run via sudo as the agent's linux user.
- * Written to sharedDir/jobs/pending/<id>.json by schedule files (jobSpec field)
- * or directly by submit-job.sh / the agent.
- *
- * NOTE: linuxUser is intentionally absent. The daemon derives it from agentId
- * via the team config at execution time, preventing a compromised agent from
- * escalating privileges by writing an arbitrary linuxUser into the spec file.
- */
-interface JobSpec {
-	/** Unique job id (UUID). */
-	id: string;
-	/** Agent whose linuxUser and ACL the job runs under. */
-	agentId: string;
-	/** Absolute path to the script (shebang selects interpreter). */
-	scriptPath: string;
-	/** Positional arguments passed after scriptPath. */
-	args: string[];
-	/** If set, post a mailbox message to this agent on completion. */
-	notifyAgentId?: string;
-	/** Subject for the completion notification. */
-	notifySubject?: string;
-	/**
-	 * Wall-clock timeout in milliseconds (F-006).
-	 * The job process (and its entire process group) is killed after this delay.
-	 * Default: 30 minutes.
-	 */
-	timeoutMs?: number;
-}
+// JobSpec and recoverOrphanedJobs live in job-recovery.ts (kept out of this
+// script's module scope so they're importable in unit tests without
+// triggering daemon.ts's unconditional main() at module load).
 
 /** Default job wall-clock timeout: 30 minutes (F-006). */
 const DEFAULT_JOB_TIMEOUT_MS = 30 * 60_000;
@@ -194,37 +168,6 @@ function readShebangInterpreter(scriptPath: string): string[] {
  *   4. Pipe stdout+stderr to logs/bg-<id>.log.
  *   5. On exit: revoke token, write jobs/status/<id>.json, optionally notify.
  */
-/**
- * F-010: On daemon startup, jobs left in jobs/running/ from a previous run have
- * no live token — their magi-tool calls will fail with 401. Move them back to
- * pending/ so they are retried with a fresh token on the next heartbeat.
- */
-function recoverOrphanedJobs(sharedDir: string): void {
-	const runningDir = join(sharedDir, "jobs", "running");
-	const pendingDir = join(sharedDir, "jobs", "pending");
-	let files: string[];
-	try {
-		files = readdirSync(runningDir).filter((f) => f.endsWith(".json"));
-	} catch {
-		return; // running dir does not exist yet — nothing to recover
-	}
-	if (files.length === 0) return;
-	mkdirSync(pendingDir, { recursive: true });
-	for (const file of files) {
-		const src = join(runningDir, file);
-		const dst = join(pendingDir, file);
-		try {
-			writeFileSync(dst, readFileSync(src));
-			unlinkSync(src);
-			console.log(`[daemon:jobs] Recovered orphaned job: ${file}`);
-		} catch (e) {
-			console.error(
-				`[daemon:jobs] Failed to recover ${file}: ${(e as Error).message}`,
-			);
-		}
-	}
-}
-
 async function runPendingJobs(
 	sharedDir: string,
 	workdir: string,
@@ -913,8 +856,10 @@ async function main(): Promise<void> {
 
 	// F-010: Recover jobs that were left in running/ by a prior daemon run.
 	// They have no live token, so their magi-tool calls would fail with 401.
-	// Moving them back to pending/ allows the next heartbeat to retry them.
-	recoverOrphanedJobs(sharedDir);
+	// Moving them back to pending/ allows the next heartbeat to retry them —
+	// unless a job has already caused too many crashes, in which case it is
+	// failed out permanently instead (see recoverOrphanedJobs' doc comment).
+	await recoverOrphanedJobs(sharedDir, missionId, mailboxRepo);
 	// Scheduled message delivery has moved to the control plane (Sprint 14).
 	// The daemon only runs background job files written to jobs/pending/.
 	const stopJobRunner = startJobRunner(
