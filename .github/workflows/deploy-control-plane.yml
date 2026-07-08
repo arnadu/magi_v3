@@ -10,6 +10,7 @@ on:
       - 'packages/cockpit/**'
       - 'tsconfig.base.json'
       - 'fly.control-dev.toml'
+  workflow_dispatch: {}
 
 jobs:
   deploy-dev:
