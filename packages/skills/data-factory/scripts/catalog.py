@@ -84,6 +84,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -93,6 +94,15 @@ CATALOG_FILE = "catalog.json"
 # Default daily call budget for FMP (free tier = 250; we guard at 200 to leave
 # headroom for ad-hoc agent calls).
 DEFAULT_FMP_BUDGET = 200
+
+# Default cap on concurrent non-FMP adapter subprocesses. Each is a separate
+# Python process (pandas/yfinance/requests imports + its own working set);
+# spawning one unbounded thread per source (the prior behaviour) meant a
+# sources.json with dozens of entries launched dozens of subprocesses at once
+# — this OOM-killed a 1GB mission machine in production. Adapters are I/O-bound
+# (the docstring's own reasoning for running them concurrently at all), so a
+# modest cap costs little wall-clock time while bounding peak memory.
+DEFAULT_MAX_WORKERS = 5
 
 
 # ---------------------------------------------------------------------------
@@ -231,16 +241,20 @@ def cmd_refresh(
     fmp_budget_file: str | None,
     fmp_budget: int,
     log_file: str | None,
+    max_workers: int = DEFAULT_MAX_WORKERS,
 ) -> None:
     """
     Run all adapters listed in sources.json and update catalog.json.
 
     Execution strategy:
-    - Non-FMP adapters are run in parallel threads (they are I/O-bound and
-      have no shared API quota), with one exception: if an adapter declares
+    - Non-FMP adapters are run across a bounded pool of at most max_workers
+      concurrent subprocesses (they are I/O-bound and have no shared API
+      quota, but each is a real subprocess with its own memory footprint —
+      see DEFAULT_MAX_WORKERS), with one exception: if an adapter declares
       ``rate_limit_seconds`` in its ``--discover`` output, all calls to that
       adapter are serialized with a minimum inter-call delay of that many
-      seconds.  Calls to *different* adapters still run in parallel.
+      seconds.  Calls to *different* adapters still run concurrently, up to
+      the pool size.
     - FMP adapters are run sequentially after the parallel group finishes.
       Each call first checks the daily counter file; if the budget is already
       exhausted the entry is marked "skipped" and the adapter is not called.
@@ -333,12 +347,13 @@ def cmd_refresh(
         with results_lock:
             results[source["id"]] = entry
 
-    threads = [threading.Thread(target=run_source, args=(s,), daemon=True)
-               for s in other_sources]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    # Bounded pool: at most max_workers adapter subprocesses run at once,
+    # regardless of how many sources are configured (was one unbounded thread
+    # per source — see DEFAULT_MAX_WORKERS).
+    with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
+        futures = [pool.submit(run_source, s) for s in other_sources]
+        for f in futures:
+            f.result()  # propagate exceptions; run_source itself shouldn't raise
 
     # --- Sequential phase: FMP adapters with budget guard ---
     for source in fmp_sources:
@@ -562,6 +577,9 @@ def main() -> None:
                            help=f"Max FMP calls per day (default: {DEFAULT_FMP_BUDGET})")
     p_refresh.add_argument("--log", default=None,
                            help="Override refresh log path (default: $FACTORY/refresh.log)")
+    p_refresh.add_argument("--max-workers", type=int, default=DEFAULT_MAX_WORKERS,
+                           help="Max concurrent adapter subprocesses "
+                                f"(default: {DEFAULT_MAX_WORKERS})")
 
     args = parser.parse_args()
 
@@ -576,6 +594,7 @@ def main() -> None:
             args.fmp_budget_file,
             args.fmp_budget,
             args.log,
+            args.max_workers,
         )
 
 

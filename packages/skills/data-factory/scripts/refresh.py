@@ -209,12 +209,16 @@ def run_adapters(factory: Path, sources_path: Path, schedule_path: Path,
     """
     Invoke catalog.cmd_refresh to run all configured adapters.
 
-    Reads fmp_daily_budget from schedule.json (default 200) and passes it to
-    cmd_refresh so the FMP budget guard uses the operator-configured limit
-    rather than the hardcoded default.
+    Reads fmp_daily_budget and max_parallel_adapters from schedule.json
+    (defaults 200 and catalog.DEFAULT_MAX_WORKERS respectively) and passes
+    them to cmd_refresh so both the FMP budget guard and the concurrency cap
+    use the operator-configured limits rather than the hardcoded defaults.
 
     The FMP counter file is $FACTORY/.fmp_usage_YYYY-MM-DD (one per day).
-    catalog.cmd_refresh handles the parallel/sequential split internally.
+    catalog.cmd_refresh handles the parallel/sequential split internally,
+    bounded to max_parallel_adapters concurrent subprocesses — an unbounded
+    thread-per-source refresh OOM-killed a 1GB mission machine in production
+    when sources.json had dozens of entries.
     """
     # Import here (not at module top) so the rest of refresh.py can run even
     # if catalog.py has a syntax error — failure is isolated to this step.
@@ -228,17 +232,20 @@ def run_adapters(factory: Path, sources_path: Path, schedule_path: Path,
             log("[refresh] WARNING: schedule.json is malformed, using defaults")
 
     fmp_budget = int(schedule.get("fmp_daily_budget", 200))
+    max_workers = int(schedule.get("max_parallel_adapters", catalog.DEFAULT_MAX_WORKERS))
     from datetime import date
     fmp_budget_file = str(factory / f".fmp_usage_{date.today().isoformat()}")
     log_path = str(factory / "refresh.log")
 
-    log(f"[refresh] Running adapters (FMP budget: {fmp_budget}/day) ...")
+    log(f"[refresh] Running adapters (FMP budget: {fmp_budget}/day, "
+        f"max {max_workers} concurrent) ...")
     catalog.cmd_refresh(
         factory_dir=str(factory),
         sources_file=str(sources_path),
         fmp_budget_file=fmp_budget_file,
         fmp_budget=fmp_budget,
         log_file=log_path,
+        max_workers=max_workers,
     )
     log("[refresh] Adapter refresh complete.")
 

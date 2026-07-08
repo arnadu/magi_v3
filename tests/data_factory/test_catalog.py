@@ -252,3 +252,89 @@ def test_path_traversal_in_news_output_dir_is_rejected():
 
         assert not sentinel.exists(), \
             "Path traversal allowed: raw.json written outside factory dir"
+
+
+# ── concurrency cap ────────────────────────────────────────────────────────────
+
+def test_refresh_bounds_concurrent_adapter_subprocesses():
+    """
+    cmd_refresh must never run more than max_workers adapters at once.
+
+    Regression test: refresh used to spawn one unbounded thread per source —
+    a sources.json with dozens of entries launched dozens of concurrent
+    subprocesses and OOM-killed a 1GB mission machine in production.
+    """
+    import sys
+    import threading
+    import time
+    from unittest.mock import patch
+
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import catalog
+
+    MAX_WORKERS = 3
+    N_SOURCES = 10
+
+    concurrent_count = 0
+    peak_concurrent = 0
+    lock = threading.Lock()
+
+    def fake_run_adapter(factory, script_dir, source, log_path, existing_entries=None):
+        nonlocal concurrent_count, peak_concurrent
+        with lock:
+            concurrent_count += 1
+            peak_concurrent = max(peak_concurrent, concurrent_count)
+        time.sleep(0.05)  # hold the "slot" long enough for overlap to show up
+        with lock:
+            concurrent_count -= 1
+        return catalog._make_entry(source, "ok", rows=1)
+
+    with tempfile.TemporaryDirectory() as factory_str:
+        factory = Path(factory_str)
+        sources = {
+            "series": [
+                {
+                    "id": f"yfinance/SYM{i}",
+                    "adapter": "yfinance",
+                    "params": {"ticker": f"SYM{i}"},
+                    "schedule": "daily",
+                    "output": f"series/yfinance/SYM{i}.csv",
+                }
+                for i in range(N_SOURCES)
+            ],
+            "news": [],
+            "documents": [],
+        }
+        sources_path = factory / "sources.json"
+        sources_path.write_text(json.dumps(sources))
+
+        with patch.object(catalog, "_run_adapter", side_effect=fake_run_adapter):
+            catalog.cmd_refresh(
+                factory_dir=str(factory),
+                sources_file=str(sources_path),
+                fmp_budget_file=None,
+                fmp_budget=200,
+                log_file=None,
+                max_workers=MAX_WORKERS,
+            )
+
+    assert peak_concurrent <= MAX_WORKERS, (
+        f"expected at most {MAX_WORKERS} concurrent adapters, "
+        f"observed {peak_concurrent}"
+    )
+    assert peak_concurrent > 1, "test is meaningless if nothing ran concurrently"
+
+
+def test_refresh_max_workers_cli_flag():
+    """--max-workers is accepted and does not change refresh's success/output shape."""
+    with tempfile.TemporaryDirectory() as factory:
+        sources_path = Path(factory) / "sources.json"
+        sources_path.write_text(json.dumps(minimal_sources(factory, "yfinance")))
+
+        result = run_catalog(
+            "refresh", factory, str(sources_path), "--max-workers", "2",
+        )
+        if "Error" in result.stdout and "network" in result.stderr.lower():
+            pytest.skip("network unavailable")
+        assert result.returncode == 0, result.stderr
+        assert (Path(factory) / "catalog.json").exists()

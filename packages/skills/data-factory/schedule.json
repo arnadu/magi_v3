@@ -1,5 +1,6 @@
 {
 	"refresh_cron": "30 5 * * *",
 	"fmp_daily_budget": 200,
+	"max_parallel_adapters": 5,
 	"news_max_articles_fetch": 5
 }

@@ -561,6 +561,48 @@ class TestSynthesiseBriefs(unittest.TestCase):
             self.assertIn("7", question)
 
 
+class TestRunAdapters(unittest.TestCase):
+    """
+    run_adapters reads fmp_daily_budget and max_parallel_adapters from
+    schedule.json and passes them to catalog.cmd_refresh. We mock cmd_refresh
+    itself (it does real subprocess/network work) and assert on the kwargs it
+    was called with.
+    """
+
+    def _run(self, tmp: str, schedule: dict) -> MagicMock:
+        factory = Path(tmp)
+        sources_path = factory / "sources.json"
+        sources_path.write_text(json.dumps({"series": [], "news": [], "documents": []}))
+        schedule_path = factory / "schedule.json"
+        schedule_path.write_text(json.dumps(schedule))
+        log = _CapturingLog()
+        with patch("catalog.cmd_refresh") as mock_refresh:
+            refresh.run_adapters(factory, sources_path, schedule_path, log)
+        return mock_refresh
+
+    def test_passes_max_parallel_adapters_from_schedule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mock_refresh = self._run(tmp, {"max_parallel_adapters": 3})
+            self.assertEqual(mock_refresh.call_args.kwargs["max_workers"], 3)
+
+    def test_defaults_max_workers_when_schedule_key_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            import catalog
+            mock_refresh = self._run(tmp, {})  # no max_parallel_adapters key
+            self.assertEqual(
+                mock_refresh.call_args.kwargs["max_workers"],
+                catalog.DEFAULT_MAX_WORKERS,
+            )
+
+    def test_still_passes_fmp_budget(self):
+        """Existing fmp_daily_budget wiring is unaffected by the new kwarg."""
+        with tempfile.TemporaryDirectory() as tmp:
+            mock_refresh = self._run(
+                tmp, {"fmp_daily_budget": 42, "max_parallel_adapters": 3},
+            )
+            self.assertEqual(mock_refresh.call_args.kwargs["fmp_budget"], 42)
+
+
 # =============================================================================
 # Helpers
 # =============================================================================
