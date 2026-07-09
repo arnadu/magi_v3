@@ -130,8 +130,10 @@ export interface AgentInfo {
  *   GET    /files/history?path=           git provenance for a sharedDir file (agent/turn per commit)
  *   GET    /files/workdir/:id?path=       browse / read agent workdir
  *   GET    /mission-stats                 Trace: lifetime cost/calls/turns per agent (missionStats)
- *   GET    /cost-series                   Trace: per-agent per-turn cost, for cumulative cost-over-time
+ *   GET    /cost-series                   Trace: per-agent per-turn stats, for the cost-over-time chart
+ *                                          and its turn/file/anomaly markers (agentTurnStats)
  *   GET    /interactions                  Trace: message counts between agent pairs (mailbox)
+ *   GET    /message-events                Trace: per-message timestamps, for the message/wakeup markers
  *   POST   /files/shared/write            write a file to sharedDir (copilot)
  *   POST   /files/workdir/:id/write       write a file to agent workdir (copilot)
  *   DELETE /schedule/:id                  cancel a scheduled message
@@ -685,8 +687,9 @@ export class MonitorServer {
 			return;
 		}
 
-		// ── GET /cost-series  (Trace: per-agent per-turn cost, for a cumulative
-		// cost-over-time chart — only finalized turns have a settled cost).
+		// ── GET /cost-series  (Trace: per-agent per-turn stats, for the
+		// cost-over-time chart and its turn/file/anomaly markers — only
+		// finalized turns have a settled cost and duration).
 		if (url === "/cost-series" && req.method === "GET") {
 			const docs = await this.db
 				.collection("agentTurnStats")
@@ -696,8 +699,13 @@ export class MonitorServer {
 						projection: {
 							agentId: 1,
 							turnNumber: 1,
+							startedAt: 1,
 							completedAt: 1,
 							costUsd: 1,
+							llmCallCount: 1,
+							peakContextTokens: 1,
+							status: 1,
+							gitChangedFiles: 1,
 							_id: 0,
 						},
 					},
@@ -729,6 +737,34 @@ export class MonitorServer {
 					})),
 				),
 			);
+			return;
+		}
+
+		// ── GET /message-events  (Trace: per-message timestamps, for the
+		// message/scheduled-wakeup markers on the timeline. Scheduler-delivered
+		// messages are written with `createdAt` instead of `timestamp` — see
+		// scheduler.ts — so both are folded here rather than fixed at the
+		// write site, to avoid touching the read-status semantics of the
+		// existing mailbox/scheduler code for an unrelated visualization.)
+		if (url === "/message-events" && req.method === "GET") {
+			const docs = await this.db
+				.collection("mailbox")
+				.aggregate([
+					{ $match: { missionId: this.missionId } },
+					{
+						$project: {
+							_id: 0,
+							from: 1,
+							to: 1,
+							subject: 1,
+							timestamp: { $ifNull: ["$timestamp", "$createdAt"] },
+						},
+					},
+					{ $sort: { timestamp: 1 } },
+				])
+				.toArray();
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(docs));
 			return;
 		}
 

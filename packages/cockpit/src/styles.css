@@ -1320,6 +1320,11 @@ h2.sec {
 	border-radius: 50%;
 	display: inline-block;
 }
+.chart-lane-label {
+	font-size: 9px;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
 
 /* Ranked horizontal bar chart. */
 .tr-bars {

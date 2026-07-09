@@ -345,11 +345,20 @@ export function fetchMissionStats(
 export interface TurnCost {
 	agentId: string;
 	turnNumber: number;
+	startedAt: string;
 	completedAt: string;
 	costUsd: number;
+	llmCallCount: number;
+	peakContextTokens: number;
+	status: "running" | "complete" | "aborted";
+	gitChangedFiles?: { path: string; status: string }[];
 }
 
-/** Per-agent per-turn cost, for the cumulative cost-over-time chart. */
+/**
+ * Per-agent per-turn stats, for the cost-over-time chart and its turn/file/
+ * anomaly markers. Only finalized turns (with a settled cost + duration) are
+ * returned.
+ */
 export function fetchCostSeries(missionId: string): Promise<TurnCost[]> {
 	return api<TurnCost[]>(
 		`/missions/${encodeURIComponent(missionId)}/cost-series`,
@@ -366,5 +375,19 @@ export interface Interaction {
 export function fetchInteractions(missionId: string): Promise<Interaction[]> {
 	return api<Interaction[]>(
 		`/missions/${encodeURIComponent(missionId)}/interactions`,
+	);
+}
+
+export interface MessageEvent {
+	from: string;
+	to: string[];
+	subject: string;
+	timestamp: string;
+}
+
+/** Every mailbox message in the mission, timestamped, for the Trace markers. */
+export function fetchMessageEvents(missionId: string): Promise<MessageEvent[]> {
+	return api<MessageEvent[]>(
+		`/missions/${encodeURIComponent(missionId)}/message-events`,
 	);
 }
