@@ -307,4 +307,179 @@ Goal: turn uploaded files into LLM-readable artifacts, get them to agents, and l
 
 **Backward compatibility:** new module + monitor endpoints only; `visionModel` is an optional monitor field; no team-YAML change. No new env vars/secrets. New npm deps (exceljs/mammoth/jszip/image-size) are bundled into the execution image.
 
+## Sprint 26b — Bug fixes ahead of the cockpit (markdown, mailbox, copilot wake-up)
+
+Small fixes found while starting on the cockpit, landed before the panel work below.
+
+- **`b8b28a5` — GFM markdown tables render.** `packages/cockpit/src/markdown.ts` had no table
+  support; header/separator/data rows fell through as raw pipe-delimited text. Added
+  `convertTables` (header/separator detection, `:---`/`:-:`/`---:` alignment).
+- **`c95d0e7` — `PostMessage` 500 when `to` is a string.** `magi_tool.py`'s
+  `post_message(to: str, ...)` sends a bare string over the tool-api-server's unvalidated raw
+  HTTP path; `mailbox.ts`'s `PostMessage.execute` called `.filter()` on it directly. Now coerces
+  `args.to` (string or array) to an array before use.
+- **`33b5f53` — copilot wake-up messages could be silently missed.** Diagnosed from the copilot's
+  own mailbox: two operator messages got no reply while others in between were answered
+  promptly — an intermittent race, not a dead process. Two stacked causes, both fixed
+  (belt-and-suspenders): (1) `copilot-router.ts` posted the wake-up mailbox message *after*
+  calling `ensureCopilotRunning()` — on a cold start the async daemon setup (config load, skill
+  provisioning, DB round-trips) could outlast the message insert, so the daemon's first
+  `hasUnread()` check would sometimes race the write. Now posts before starting the daemon, so
+  `hasUnread()` always finds it. (2) Even a warm daemon's Change Stream `watch()` call resolves
+  "ready" before the `'change'` listener is truly attached server-side — a message posted in
+  that narrow window is missed and the watch loop then waits forever on an event that already
+  happened. `copilot-daemon.ts`'s `runWatchLoop` now bounds each wait to `POLL_FALLBACK_MS`
+  (15 s) via a derived `AbortController`; on timeout it re-checks `listUnread()` directly instead
+  of trusting the stream. Turns "a missed event hangs forever" into "self-heals within 15s."
+
+## Sprint 26b — Turn-timeout, orphaned-job crash-loop, and data-factory concurrency fixes
+
+Three production incidents, diagnosed and fixed live against the running `magi-control-dev` /
+`magi-missions-dev` apps (Fly Machines API access unlocked mid-investigation by extracting
+`access_token` from `~/.fly/config.yml`, since `flyctl auth whoami` wasn't auto-detecting it).
+
+**Incident 1 — a turn stuck at `status:'running'` forever.** Reported as "the analyst seems
+hung"; a second, older turn was also flagged `running`, which was the real tell: the system had
+no way to distinguish "genuinely still working" from "the process silently stopped and nobody
+told the stats layer." Root cause: only tool calls were timeout-guarded, via a `withTimeout` in
+`loop.ts` that races a promise against a timer but never cancels the underlying promise. LLM
+completion calls had **no** timeout at all — a provider stall left the call outstanding
+indefinitely, and the turn's `agentTurnStats` doc never got a `completedAt`.
+
+Fix, three parts:
+- **`loop.ts`:** `deriveDeadline(ms, parent?)` creates a child `AbortController` that aborts on
+  either the parent signal or a real timer (default `llmCallTimeoutMs = 480_000`, 8 min) — a
+  genuine cancelling deadline, not `withTimeout`'s race-without-cancel. Wraps every
+  `completeFn` call site (initial + 429-retry), and — because it derives from whatever signal was
+  passed in — the deadline is inherited automatically by nested sub-loops (e.g. the Research
+  tool's own inner loop) without each call site needing to know about it.
+- **`agent-runner.ts`:** a derived-signal abort doesn't set the *outer* `signal.aborted`, so the
+  existing `limitAborted || signal?.aborted` check in the turn-ending `finally` block missed this
+  case. Added `lastCallAborted`, read from the last assistant message's `stopReason === "aborted"`,
+  folded into the same status computation.
+- **`agent-stats.ts`:** `reconcileStaleRunning(missionId, agentId, currentTurnNumber)` — defense
+  in depth, called at the top of every `StatsCollector.startTurn()`. The orchestrator guarantees
+  only one in-flight dispatch per agent (one `AbortController` in the `active` map, cleared in a
+  `.finally()`), so if a NEW turn is starting, any OTHER `status:'running'` doc for that agent can
+  only be a crash leftover — mark it `aborted`. Catches whatever the first two fixes don't (e.g.
+  a daemon-level SIGKILL mid-call, not just a stalled provider).
+
+**Incident 2 — OOM crash-loop on `magi-missions-dev`.** The Gold Digest v2 machine crashed
+repeatedly; `fly logs` showed `oom_killed=true` and `"Recovered orphaned job"` firing on *every*
+restart — the daemon's own OOM-recovery path was itself what kept crashing the machine.
+`recoverOrphanedJobs()` (then in `daemon.ts`) had no attempt cap: a job whose own execution OOMs
+the machine gets swept from `jobs/running/` back to `jobs/pending/` on the next boot, re-run,
+OOMs again, swept again — forever. Fixed by extracting the function to a new
+`job-recovery.ts` (needed for testability — `daemon.ts` calls `main()` unconditionally at module
+load, so it can't be imported cleanly in a unit test) and adding `MAX_JOB_RECOVERY_ATTEMPTS = 2`:
+past that, the job moves to `jobs/failed/`, a status file records the error, and a mailbox
+message notifies the job's `notifyAgentId` (or `"user"` if unset) instead of silently requeueing.
+`tests/job-recovery.unit.test.ts` (5): no-op with no `running/` dir, first-time-orphan requeue
+with `recoveryAttempts:1`, permanent-fail past the cap, notify-`"user"` fallback, malformed job
+file left in place rather than deleted or requeued.
+
+**Incident 3 — the actual OOM root cause.** The crashing job was `refresh.py` (data-factory
+skill), which fanned out one adapter subprocess per configured data source with no concurrency
+limit — a mission with many sources launched dozens of subprocesses simultaneously, exceeding the
+1 GB execution machine. Fixed in `catalog.py`: `cmd_refresh()` now runs the non-FMP adapter
+fan-out through a `ThreadPoolExecutor(max_workers=max(1, max_workers))`, default
+`DEFAULT_MAX_WORKERS = 5`, instead of an unbounded list of `threading.Thread`s. `refresh.py`
+reads an optional `max_parallel_adapters` from `schedule.json` (same pattern as the existing
+`fmp_daily_budget`) and threads it through; `schedule.json`'s default template gained the new
+key. `--max-workers` CLI flag added to `catalog.py`'s `refresh` subcommand for manual runs.
+`tests/data_factory/test_catalog.py::test_refresh_bounds_concurrent_adapter_subprocesses` proves
+the bound with a fake `_run_adapter` that tracks peak concurrency under a lock;
+`tests/data_factory/test_refresh.py::TestRunAdapters` (3) cover the `schedule.json` plumbing.
+
+**Backward compatibility:** all additive — `MAX_JOB_RECOVERY_ATTEMPTS` and
+`DEFAULT_MAX_WORKERS`/`max_parallel_adapters` have baked-in defaults, no new env vars or secrets,
+no team-YAML change. `git-provenance`/mailbox/`agentTurnStats` schemas unchanged (only new
+optional read paths).
+
+## Sprint 26b — Control-plane deploy pipeline hardening
+
+While chasing why the Trace chart (below) wasn't appearing live, found that the control-plane
+machine was running an image one commit behind what CI had most recently, successfully deployed
+— `flyctl machine status`'s Event Logs showed a `launch`/`user`-attributed event, not a crash,
+that had silently reverted it. Root cause: `scripts/bootstrap.sh`'s control-plane deploy step runs
+bare `flyctl deploy --config ... --app "$CONTROL_APP"` with no explicit `--image` and no cockpit
+rebuild step first — unlike `deploy-control-plane.yml`, which always rebuilds the cockpit fresh
+and deploys an explicit `:${{ github.sha }}` tag. A bare deploy run against a stale local
+checkout silently ships whatever (possibly absent or outdated) cockpit build happens to be on
+disk, with no error at deploy time.
+
+Fix: added `workflow_dispatch: {}` to `deploy-control-plane.yml` (`87cacdc`) so a correct,
+CI-built redeploy can always be forced on demand — `gh workflow run "Deploy control plane"` —
+without depending on a path-filtered push. `docs/deployment.md` §3/§9 rewritten to warn against
+bare `flyctl deploy` for the control plane (mirroring the pre-existing warning for the missions
+app) and to document the diagnosis path (compare the machine's actual image sha, via
+`flyctl machine status`, against `git log -1` — not the `flyctl status` summary line, which can
+lag). See `docs/operational-resilience.md`'s "Recently fixed" table for the same fix from the
+reliability-gap angle.
+
+**Backward compatibility:** `workflow_dispatch` is additive to the existing `push` trigger; no
+other behavior changes.
+
+## Sprint 26b — Trace panel
+
+Three iterations, each shipped and deployed independently, converging on the panel mocked in
+`experimental/cockpit-mock.html`.
+
+**v1 — mission-wide cost + interaction overview (`61c8c7e`).** First cut, scoped down from the
+original live-trace design after explicit direction to prioritize snapshot-mode overview over
+live updates ("the trace to be used more in a snapshot mode... I would prioritize a live update
+of the Transcripts before than a live update of the Trace"). New monitor routes `GET
+/mission-stats` (lifetime cost/calls/turns per agent, from `missionStats`), `GET /cost-series`
+(per-agent per-turn cost, from `agentTurnStats`), `GET /interactions` (message counts between
+agent pairs, aggregated from `mailbox`). `TracePanel.tsx`: `CostBars` (ranked horizontal bar,
+sequential-blue magnitude comparison) + `InteractionHeatmap` (agent×agent grid, sequential-blue
+with luminance-correct label text). Categorical (`--cat-1`..`--cat-8`) and sequential
+(`--seq-100`..`--seq-700`) palette CSS vars added per the dataviz skill.
+
+**v2 — cumulative cost-over-time chart (`53145eb`).** v1's `CostBars`/`InteractionHeatmap` were
+magnitude comparisons (correctly sequential-blue per the dataviz skill), but the mock's actual
+Trace chart is a multi-line "distinct series over time" chart — a different job the skill maps to
+categorical color, not sequential. Corrected after the user flagged the mismatch directly against
+the mock. New `CostTimeline`: per-agent step-after cumulative cost lines (cost lands in discrete
+jumps at turn completion, not continuously — step-after, not interpolated), real wall-clock time
+on the X axis (deviating from the mock's simplified turn-index axis, since real agents' turns
+aren't chronologically aligned across agents and can be days apart), categorical per-agent color,
+turn markers with tooltips, table-view toggle.
+
+**v3 — turn bounding boxes + file/message/wakeup/anomaly marker lanes (`4c5f895`).** User
+feedback after v2 shipped: "not as sophisticated as the one we mocked up" — specifically wanting
+to see file writes, copilot wake-ups, scheduled-job wake-ups, anomalies, and agent messages on
+the timeline, plus the mock's per-turn "bounding box" treatment. A data-source survey (via the
+Explore agent) found solid existing data for three of five requested signals — file writes
+(`agentTurnStats.gitChangedFiles`, from git-commit-on-sleep), agent messages (`mailbox`), and
+scheduled wakeups (mailbox messages with `from:"scheduler"`) — but two real gaps: copilot
+wake-ups aren't attributable to a specific mission (the copilot's `AgentRunContext` has no
+`StatsCollector`, and its own activity is logged under `missionId:"copilot"`), and limit-rule
+breaches aren't persisted anywhere queryable (only fired over SSE and mailed as free text to the
+copilot). Per explicit direction ("let's not add to the backend for now, ship what you can with
+available data"), shipped only the three with existing data, using `agentTurnStats.status ===
+'aborted'` as a rough anomaly proxy instead of a real breach-reason log.
+
+`monitor-server.ts`: extended `/cost-series`'s projection with `startedAt`, `llmCallCount`,
+`peakContextTokens`, `status`, `gitChangedFiles` (all fields `agentTurnStats` already carried —
+no new instrumentation); new `GET /message-events` folds the scheduler's `createdAt` field
+against the mailbox's normal `timestamp` field (`$ifNull`) into one sorted per-message list,
+rather than fixing that schema inconsistency at the write site (out of scope — would touch
+existing read-status semantics for an unrelated visualization).
+
+`TracePanel.tsx`: each turn now draws as a `<rect>` spanning `[startedAt, completedAt]` at the
+pre-jump cost level, height scaled by `llmCallCount` (min 6px, max 22px) — a lightweight stand-in
+for the mock's per-call `llmCallLog` drill-down, using only turn-level aggregates. Below the cost
+plot, four marker lanes on the same time axis: Files (from `gitChangedFiles`), Messages
+(non-scheduler mailbox), Wakeups (`from:"scheduler"`), Anomalies (`status:"aborted"`).
+
+**Backward compatibility:** all additive routes/fields; existing `/cost-series` consumers
+unaffected by the new projection fields. No new env vars, secrets, or deployment steps.
+
+**Known gaps, explicitly deferred:** copilot wake-ups and real anomaly persistence would need new
+backend instrumentation (see the survey above); click-to-drill-down into a turn's actual
+`llmCallLog` (context-growth curve, tool sequence, files written — the mock's `turnDetail()`) is
+the original Sprint 26b "historical drill-down" design and remains unbuilt — the v3 bounding
+boxes approximate its visual signal (busy vs. quiet turns) without the query.
+
 **Fetch integration tests de-flaked:** the `fetch-*.integration` tests served fixtures from `127.0.0.1`, which the SSRF guard blocked — so the agent improvised with `curl` (nondeterministic). Fixed the secure way, mirroring `BrowseWeb`: `createFetchUrlTool` gains an `allowedHosts` parameter (default `[]`), threaded test-only through `OrchestratorConfig` → `AgentRunContext`. Production (daemon/CLI) never sets it, so SSRF stays fully enforced; only the integration tests pass `["127.0.0.1"]` to reach their local fixture server. Both tests now exercise the real `FetchUrl → processBuffer` path deterministically.

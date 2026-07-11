@@ -196,12 +196,18 @@ Running missions are unaffected — they continue on their existing machine imag
 ### Workflow 2: `deploy-control-plane.yml`
 
 Triggers on changes to: `packages/control-plane/**`, `packages/agent-config/**`,
-`packages/agent-runtime-worker/**`, `tsconfig.base.json`, `fly.control-dev.toml`
+`packages/agent-runtime-worker/**`, `packages/cockpit/**`, `tsconfig.base.json`,
+`fly.control-dev.toml` — and can also be triggered manually (`workflow_dispatch`), e.g. via
+`gh workflow run "Deploy control plane"`, without needing a matching file change.
 
 What it does:
-1. Builds the control plane Docker image
-2. Pushes to `registry.fly.io/magi-control-dev`
-3. `flyctl deploy` rolling-restarts the control plane machine
+1. **Builds the cockpit** (`npm run build -w @magi/cockpit`) — its Vite output is gitignored,
+   not committed, so this step is what puts a fresh bundle into the image. The Dockerfile itself
+   deliberately does not build the cockpit (see the comment in `packages/control-plane/Dockerfile`).
+2. Builds the control plane Docker image, tagged both `:latest` and `:${{ github.sha }}`
+3. Pushes both tags to `registry.fly.io/magi-control-dev`
+4. `flyctl deploy --image registry.fly.io/magi-control-dev:${{ github.sha }}` — deploys the
+   **explicit commit-sha tag**, not `:latest`, so the machine is always pinned to a known build
 
 Control plane deploys take about 60 seconds. The dashboard is briefly unavailable during restart.
 Running missions are unaffected — they operate independently of the control plane.
@@ -623,12 +629,36 @@ flyctl secrets list --app magi-control-dev | grep FLY_MISSIONS_IMAGE
 
 ### Update the control plane
 
-Push to `main`. The `deploy-control-plane.yml` workflow rebuilds and rolling-deploys the
-control plane. The machine restarts in place; the dashboard is briefly unavailable.
+Always deploy via CI — never bare `flyctl deploy`:
 
-To deploy manually (e.g. after changing Fly secrets):
 ```bash
-flyctl deploy --config fly.control-dev.toml
+# Normal path: push to main and let deploy-control-plane.yml build + deploy.
+git push
+
+# Force a redeploy without a matching file change (e.g. to recover a machine
+# that somehow ended up on a stale image — see Troubleshooting below):
+gh workflow run "Deploy control plane" --ref main
+```
+
+**Why bare `flyctl deploy` is dangerous here:** the cockpit's Vite build output is gitignored,
+not committed — it only exists because the CI workflow runs `npm run build -w @magi/cockpit`
+*before* `docker build` (the Dockerfile itself does not build it — see the comment there). A
+local `flyctl deploy --config fly.control-dev.toml` skips that step entirely: if you have a
+stale or absent local `packages/control-plane/public/cockpit/` build, that stale bundle (or
+whatever `flyctl`'s own remote build produces) gets deployed instead, and — because bare
+`flyctl deploy` doesn't pin an explicit `--image` tag the way the CI workflow does — a later
+restart of the same machine is not guaranteed to still be running what you think you just
+deployed. This caused a real incident: the cockpit's Trace chart was invisible in production
+for two days because a bare local deploy had silently reverted the machine to a build from
+several commits earlier, with no error at deploy time.
+
+If you must deploy outside CI (e.g. iterating on a Fly secret with no code change), rebuild the
+cockpit and pin an explicit image tag the same way CI does:
+```bash
+npm ci && npm run build -w @magi/cockpit
+docker build -f packages/control-plane/Dockerfile -t registry.fly.io/magi-control-dev:$(git rev-parse HEAD) .
+docker push registry.fly.io/magi-control-dev:$(git rev-parse HEAD)
+flyctl deploy --config fly.control-dev.toml --image registry.fly.io/magi-control-dev:$(git rev-parse HEAD)
 ```
 
 ### Adding or updating a secret
@@ -770,6 +800,29 @@ sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
 
 See the Known Pitfalls section in [CLAUDE.md](../CLAUDE.md) for the full list of local dev
 setup issues.
+
+### Control plane / cockpit shows stale content despite a successful-looking deploy
+
+Symptom: you pushed a change, `gh run list` shows "Deploy control plane" succeeded, but the
+live site (e.g. `magi-control-dev.fly.dev/cockpit`) still behaves like the old code.
+
+Diagnose which image the machine is actually running — this is the ground truth, not the
+`flyctl status` "Image:" summary line, which can lag:
+```bash
+flyctl machine status <machine-id> -a magi-control-dev | grep -i image
+```
+Compare the sha shown against `git log -1 --format=%H` for the commit you expect to be live.
+If it's an older sha, something deployed that image *after* your CI run — check for:
+- A bare local `flyctl deploy` run against a stale checkout (see "Update the control plane"
+  above — this is the most likely cause; there is no audit trail for who ran it, only the
+  Fly machine event log: `flyctl machine status <id> -a magi-control-dev` includes an
+  Event Logs section showing `launch`/`start` events and whether they were triggered by
+  `user` or `flyd`)
+- A different workflow run that happened to also match the path filter
+
+Fix: force a fresh CI deploy — `gh workflow run "Deploy control plane" --ref main` — then
+re-check the machine's image sha matches. For the cockpit specifically, also verify the
+bundle size changed: `curl -s https://magi-control-dev.fly.dev/cockpit/assets/index.js -o /tmp/x.js -w '%{size_download}\n'`.
 
 ### Mission dashboard returns 401 after `MONITOR_SIGNING_KEY` rotation
 
