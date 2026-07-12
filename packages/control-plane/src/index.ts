@@ -16,6 +16,12 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	CLAUDE_HAIKU,
+	CLAUDE_SONNET,
+	fetchOpenRouterCatalog,
+	type OpenRouterModelInfo,
+} from "@magi/agent-runtime-worker";
 import { config as dotenvConfig } from "dotenv";
 import express from "express";
 import rateLimit from "express-rate-limit";
@@ -183,6 +189,48 @@ async function main(): Promise<void> {
 				usage: costMap[m.missionId as string] ?? { totalCostUsd: 0, calls: 0 },
 			})),
 		);
+	});
+
+	// Model catalog for the model picker (mission/agent config editor + copilot
+	// settings) — first-party Anthropic (hardcoded: no public unauthenticated
+	// discovery endpoint) + OpenRouter's live catalog (cached process-wide by
+	// fetchOpenRouterCatalog itself, so this route is cheap after the first call).
+	const ANTHROPIC_MODELS: OpenRouterModelInfo[] = [
+		{
+			id: "claude-opus-4-8",
+			name: "Claude Opus 4.8",
+			contextLength: 1_000_000,
+			supportsVision: true,
+			pricing: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+		},
+		{
+			id: CLAUDE_SONNET.id,
+			name: "Claude Sonnet 4.6",
+			contextLength: CLAUDE_SONNET.contextWindow,
+			supportsVision: true,
+			pricing: {
+				input: CLAUDE_SONNET.cost.input,
+				output: CLAUDE_SONNET.cost.output,
+				cacheRead: CLAUDE_SONNET.cost.cacheRead,
+				cacheWrite: CLAUDE_SONNET.cost.cacheWrite,
+			},
+		},
+		{
+			id: CLAUDE_HAIKU.id,
+			name: "Claude Haiku 4.5",
+			contextLength: CLAUDE_HAIKU.contextWindow,
+			supportsVision: true,
+			pricing: {
+				input: CLAUDE_HAIKU.cost.input,
+				output: CLAUDE_HAIKU.cost.output,
+				cacheRead: CLAUDE_HAIKU.cost.cacheRead,
+				cacheWrite: CLAUDE_HAIKU.cost.cacheWrite,
+			},
+		},
+	];
+	app.get("/api/models", async (_req, res) => {
+		const openrouter = await fetchOpenRouterCatalog();
+		res.json({ anthropic: ANTHROPIC_MODELS, openrouter });
 	});
 
 	// Reverse proxy to execution plane machines.

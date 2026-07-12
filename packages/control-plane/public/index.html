@@ -198,7 +198,12 @@
     #copilot-panel { width: 420px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #cbd5e1; display: flex; flex-direction: column; overflow: hidden; }
     #copilot-header { padding: 14px 20px; border-bottom: 1px solid #cbd5e1; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; }
     #copilot-header h3 { font-size: 15px; font-weight: 600; color: #7c3aed; }
+    #copilot-header-right { display: flex; align-items: center; gap: 10px; }
     #copilot-cost { font-size: 11px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+    #copilot-model-btn { font-size: 11px; color: #7c3aed; background: none; border: 1px solid #ddd6fe; border-radius: 5px; padding: 2px 8px; cursor: pointer; font-family: monospace; }
+    #copilot-model-btn:hover { background: #faf5ff; }
+    #copilot-model-picker { padding: 10px 20px; border-bottom: 1px solid #cbd5e1; background: #faf5ff; display: none; flex-shrink: 0; gap: 8px; align-items: center; }
+    #copilot-model-picker input { flex: 1; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: monospace; }
     #copilot-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
     .cop-bubble { max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; }
     .cop-bubble.from-copilot { background: #f1f5f9; color: #1e293b; align-self: flex-start; border-bottom-left-radius: 4px; }
@@ -237,6 +242,8 @@
     .field-sp { min-height: 160px; }
     .field-section { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 8px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
     .field-src { font-size: 11px; color: #94a3b8; margin-bottom: 6px; display: block; }
+    .field-hint { font-size: 11px; margin-top: 4px; display: block; min-height: 14px; }
+    .field-hint.field-warn { color: #b45309; }
     .agent-id-badge { font-family: monospace; font-size: 11px; color: #94a3b8; margin-bottom: 12px; }
     .cm-wrap { border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
     .cm-disabled .CodeMirror { opacity: 0.45; }
@@ -343,7 +350,16 @@
   <div id="copilot-panel">
     <div id="copilot-header">
       <h3>MAGI Copilot</h3>
-      <span id="copilot-cost"></span>
+      <div id="copilot-header-right">
+        <span id="copilot-cost"></span>
+        <button type="button" id="copilot-model-btn" onclick="toggleCopilotModelPicker()" title="Change the copilot's model"></button>
+      </div>
+    </div>
+    <div id="copilot-model-picker">
+      <input type="text" id="copilot-model-input" list="copilot-model-list" placeholder="Model ID — blank for default">
+      <datalist id="copilot-model-list"></datalist>
+      <button type="button" class="btn-primary btn-xs" onclick="saveCopilotModel()">Save</button>
+      <button type="button" class="btn-xs" onclick="toggleCopilotModelPicker()">Cancel</button>
     </div>
     <div id="copilot-messages">
       <div class="cop-bubble system-msg">Copilot is ready. Ask a question or describe a task.</div>
@@ -465,7 +481,58 @@
     sessionStats: {},         // { [missionId]: { unread, spendLastHour, spendToday, spendTotal, lastActivity, snippet } }
     selected: null,           // {type: 'template'|'mission', id} | null
     sidebarCollapsed: false,
+    modelCatalog: null,       // [{id, name, contextLength, supportsVision, pricing}] | null — see fetchModelCatalog()
   };
+
+  // ── Model catalog (GitHub #18) ──────────────────────────────────────────────
+  // Fixed fallback so the picker still works before the catalog loads (or if
+  // the fetch fails) — same 10 entries the datalist used to be hardcoded to.
+  const FALLBACK_MODEL_IDS = [
+    'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
+    'anthropic/claude-sonnet-4-6', 'anthropic/claude-opus-4-8',
+    'deepseek/deepseek-chat',
+    'google/gemini-2.5-flash', 'google/gemini-flash-1.5-8b',
+    'openai/gpt-4o', 'openai/o3-mini',
+  ];
+
+  /** Fetch the live model catalog once and cache it; refresh open datalists in place. */
+  async function fetchModelCatalog() {
+    try {
+      const res = await apiFetch('/api/models');
+      if (!res?.ok) return;
+      const { anthropic, openrouter } = await res.json();
+      state.modelCatalog = [...(anthropic || []), ...(openrouter || [])];
+      refreshModelDatalists();
+    } catch (e) {
+      console.warn('fetchModelCatalog failed — model picker keeps its fallback suggestions', e);
+    }
+  }
+
+  function modelOptionsHtml(visionOnly) {
+    if (!state.modelCatalog) {
+      return FALLBACK_MODEL_IDS.map(m => `<option value="${esc(m)}">`).join('');
+    }
+    const list = visionOnly ? state.modelCatalog.filter(m => m.supportsVision) : state.modelCatalog;
+    return list.map(m => `<option value="${esc(m.id)}" label="${esc(m.name)}">`).join('');
+  }
+
+  /** Re-populate every open config form's datalists in place once the catalog arrives. */
+  function refreshModelDatalists() {
+    document.querySelectorAll('datalist[id^="model-list-"]').forEach(el => {
+      el.innerHTML = modelOptionsHtml(false);
+    });
+    document.querySelectorAll('datalist[id^="vmodel-list-"]').forEach(el => {
+      el.innerHTML = modelOptionsHtml(true);
+    });
+  }
+
+  /** Soft validation (GitHub #18): non-blocking hint if a typed model ID isn't in the catalog. */
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline oninput
+  function checkModelKnown(inputEl, hintEl) {
+    if (!state.modelCatalog || !inputEl.value.trim()) { hintEl.textContent = ''; return; }
+    const known = state.modelCatalog.some(m => m.id === inputEl.value.trim());
+    hintEl.textContent = known ? '' : 'Not found in the current model catalog — may fail at call time.';
+  }
 
   // ── YAML utilities ────────────────────────────────────────────────────────
 
@@ -860,7 +927,9 @@
           <div class="field-group"><label class="field-label">Supervisor</label>
             <input class="field-input" type="text" id="fn-supervisor-${ei}-${esc(a.id)}" value="${esc(a.supervisor)}" list="agent-list-${ei}" ${dis}></div>
           <div class="field-group"><label class="field-label">Model</label>
-            <input class="field-input" type="text" id="fn-model-${ei}-${esc(a.id)}" value="${esc(a.model)}" list="model-list-${ei}" ${dis}></div>
+            <input class="field-input" type="text" id="fn-model-${ei}-${esc(a.id)}" value="${esc(a.model)}" list="model-list-${ei}"
+              oninput="checkModelKnown(this, document.getElementById('fn-model-hint-${ei}-${esc(a.id)}'))" ${dis}>
+            <small class="field-hint field-warn" id="fn-model-hint-${ei}-${esc(a.id)}"></small></div>
           <div class="field-section">System Prompt</div>
           <div class="field-group">
             <textarea class="field-input field-textarea field-sp" id="fn-sp-${ei}-${esc(a.id)}" ${dis}>${esc(a.systemPrompt)}</textarea>
@@ -901,15 +970,8 @@
     // Store parsed agents in state so add/remove can mutate them
     state.configAgents.set(ctxKey, parsedAgents);
 
-    const modelSuggestions = [
-      // Anthropic direct
-      'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
-      // OpenRouter — prefix with provider/model (no "openrouter/" prefix)
-      'anthropic/claude-sonnet-4-6', 'anthropic/claude-opus-4-8',
-      'deepseek/deepseek-chat',
-      'google/gemini-2.5-flash', 'google/gemini-flash-1.5-8b',
-      'openai/gpt-4o', 'openai/o3-mini',
-    ].map(m => `<option value="${esc(m)}">`).join('');
+    const modelSuggestions = modelOptionsHtml(false);
+    const visionModelSuggestions = modelOptionsHtml(true);
 
     const agentIdOptions = `${parsedAgents.map(a => `<option value="${esc(a.id)}">`).join('')}<option value="user">`;
 
@@ -928,14 +990,19 @@
           <div class="field-group"><label class="field-label">Name</label>
             <input class="field-input" type="text" id="fn-name-${ei}" value="${esc(mf.name)}" ${dis}></div>
           <div class="field-group"><label class="field-label">Model</label>
-            <input class="field-input" type="text" id="fn-model-${ei}" value="${esc(mf.model)}" list="model-list-${ei}" ${dis}></div>
+            <input class="field-input" type="text" id="fn-model-${ei}" value="${esc(mf.model)}" list="model-list-${ei}"
+              oninput="checkModelKnown(this, document.getElementById('fn-model-hint-${ei}'))" ${dis}>
+            <small class="field-hint field-warn" id="fn-model-hint-${ei}"></small></div>
           <div class="field-group"><label class="field-label">Vision Model</label>
-            <input class="field-input" type="text" id="fn-vmodel-${ei}" value="${esc(mf.visionModel)}" list="model-list-${ei}" ${dis}></div>
+            <input class="field-input" type="text" id="fn-vmodel-${ei}" value="${esc(mf.visionModel)}" list="vmodel-list-${ei}"
+              oninput="checkModelKnown(this, document.getElementById('fn-vmodel-hint-${ei}'))" ${dis}>
+            <small class="field-hint field-warn" id="fn-vmodel-hint-${ei}"></small></div>
           <div class="field-section">Advanced</div>
           <div class="field-group">
             <textarea class="field-input field-textarea field-adv" id="fn-adv-${ei}" ${dis}>${esc(mf.advanced)}</textarea>
           </div>
           <datalist id="model-list-${ei}">${modelSuggestions}</datalist>
+          <datalist id="vmodel-list-${ei}">${visionModelSuggestions}</datalist>
           <datalist id="agent-list-${ei}">${agentIdOptions}</datalist>
         </div>
       </div>`;
@@ -1620,6 +1687,45 @@
     if (card) card.classList.add('resolved');
   }
 
+  // ── Copilot model setting (GitHub #18) ──────────────────────────────────────
+
+  async function loadCopilotModelSetting() {
+    const res = await apiFetch('/api/copilot/settings');
+    if (!res?.ok) return;
+    const { model, isDefault } = await res.json();
+    const btn = document.getElementById('copilot-model-btn');
+    if (btn) btn.textContent = isDefault ? `model: ${model} (default)` : `model: ${model}`;
+    const input = document.getElementById('copilot-model-input');
+    if (input) input.value = isDefault ? '' : model;
+  }
+
+  function toggleCopilotModelPicker() {
+    const el = document.getElementById('copilot-model-picker');
+    if (!el) return;
+    const showing = el.style.display === 'flex';
+    el.style.display = showing ? 'none' : 'flex';
+    if (!showing) {
+      document.getElementById('copilot-model-list').innerHTML = modelOptionsHtml(false);
+    }
+  }
+
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick
+  async function saveCopilotModel() {
+    const input = document.getElementById('copilot-model-input');
+    const model = input?.value.trim() || null;
+    const res = await apiFetch('/api/copilot/settings', {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    });
+    if (res?.ok) {
+      showToast('Copilot model updated — takes effect on your next message.');
+      toggleCopilotModelPicker();
+      loadCopilotModelSetting();
+    } else {
+      showToast('Failed to update the copilot model.', true);
+    }
+  }
+
   async function connectCopilotSse() {
     if (copilotSse) { copilotSse.close(); copilotSse = null; }
     const token = await getToken();
@@ -1774,6 +1880,8 @@
     hideSignIn();
     loadTemplates();
     loadMissions();
+    fetchModelCatalog();
+    loadCopilotModelSetting();
     connectCopilotSse();
   }
 

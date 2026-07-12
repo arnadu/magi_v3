@@ -2,6 +2,7 @@ import type { Model } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import {
 	applyPricingToModel,
+	catalogFromModelsResponse,
 	pricingFromModelsResponse,
 } from "../src/openrouter-pricing.js";
 
@@ -68,6 +69,74 @@ describe("pricingFromModelsResponse", () => {
 
 	it("tolerates a missing data array", () => {
 		expect(pricingFromModelsResponse({}).size).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// catalogFromModelsResponse — full model list for a picker UI (GitHub #18)
+// ---------------------------------------------------------------------------
+
+describe("catalogFromModelsResponse", () => {
+	it("keeps id, name, context length, and pricing", () => {
+		const catalog = catalogFromModelsResponse({
+			data: [
+				{
+					id: "z-ai/glm-5.2",
+					name: "GLM 5.2",
+					context_length: 128_000,
+					pricing: { prompt: "0.0000006", completion: "0.0000022" },
+				},
+			],
+		});
+		expect(catalog).toEqual([
+			{
+				id: "z-ai/glm-5.2",
+				name: "GLM 5.2",
+				contextLength: 128_000,
+				supportsVision: false,
+				pricing: { input: 0.6, output: 2.2, cacheRead: 0.6, cacheWrite: 0.6 },
+			},
+		]);
+	});
+
+	it("falls back to id as name when name is absent", () => {
+		const [m] = catalogFromModelsResponse({ data: [{ id: "x/y" }] });
+		expect(m.name).toBe("x/y");
+	});
+
+	it("detects vision support from architecture.input_modalities", () => {
+		const [vision] = catalogFromModelsResponse({
+			data: [
+				{
+					id: "a/b",
+					architecture: { input_modalities: ["text", "image"] },
+				},
+			],
+		});
+		expect(vision.supportsVision).toBe(true);
+
+		const [textOnly] = catalogFromModelsResponse({
+			data: [{ id: "c/d", architecture: { input_modalities: ["text"] } }],
+		});
+		expect(textOnly.supportsVision).toBe(false);
+	});
+
+	it("keeps a model with no usable pricing, with pricing left undefined", () => {
+		const [m] = catalogFromModelsResponse({
+			data: [{ id: "no-price", pricing: { prompt: "abc" } }],
+		});
+		expect(m.id).toBe("no-price");
+		expect(m.pricing).toBeUndefined();
+	});
+
+	it("skips entries with no id", () => {
+		expect(catalogFromModelsResponse({ data: [{ name: "no id" }] })).toEqual(
+			[],
+		);
+	});
+
+	it("tolerates a missing data array", () => {
+		expect(catalogFromModelsResponse({})).toEqual([]);
 	});
 });
 

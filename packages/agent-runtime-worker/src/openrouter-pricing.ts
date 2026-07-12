@@ -36,6 +36,9 @@ export interface OpenRouterPrice {
 interface OpenRouterModelsResponse {
 	data?: Array<{
 		id?: string;
+		name?: string;
+		context_length?: number;
+		architecture?: { input_modalities?: string[] };
 		pricing?: {
 			prompt?: string;
 			completion?: string;
@@ -43,6 +46,20 @@ interface OpenRouterModelsResponse {
 			input_cache_write?: string;
 		};
 	}>;
+}
+
+/**
+ * One entry of OpenRouter's model catalog, for a model picker UI — a superset
+ * of what pricing math needs (see `OpenRouterPrice`). `pricing` is omitted for
+ * models OpenRouter doesn't report a usable price for (same skip rule as
+ * `pricingFromModelsResponse`).
+ */
+export interface OpenRouterModelInfo {
+	id: string;
+	name: string;
+	contextLength?: number;
+	supportsVision: boolean;
+	pricing?: OpenRouterPrice;
 }
 
 /** Parse a per-token price string (e.g. "0.00000025") to a per-million number. */
@@ -79,6 +96,43 @@ export function pricingFromModelsResponse(
 }
 
 /**
+ * Build the full model catalog from a parsed `/api/v1/models` response. Pure —
+ * same shape of function as `pricingFromModelsResponse`, but keeps `name`,
+ * `context_length`, and vision support instead of discarding them. Models
+ * without an `id` are skipped; everything else is kept even without usable
+ * pricing (an unpriced model is still selectable, just shows no cost).
+ */
+export function catalogFromModelsResponse(
+	json: OpenRouterModelsResponse,
+): OpenRouterModelInfo[] {
+	const catalog: OpenRouterModelInfo[] = [];
+	for (const m of json.data ?? []) {
+		if (!m.id) continue;
+		const input = perMillion(m.pricing?.prompt);
+		const output = perMillion(m.pricing?.completion);
+		const pricing =
+			input !== undefined && output !== undefined
+				? {
+						input,
+						output,
+						cacheRead: perMillion(m.pricing?.input_cache_read) ?? input,
+						cacheWrite: perMillion(m.pricing?.input_cache_write) ?? input,
+					}
+				: undefined;
+		catalog.push({
+			id: m.id,
+			name: m.name ?? m.id,
+			contextLength: m.context_length,
+			supportsVision: (m.architecture?.input_modalities ?? []).includes(
+				"image",
+			),
+			pricing,
+		});
+	}
+	return catalog;
+}
+
+/**
  * Overwrite an OpenRouter model's cost block from a pricing map, in place.
  * No-op for non-OpenRouter models or slugs absent from the map. Returns true
  * when pricing was applied. Pure aside from the in-place mutation.
@@ -103,21 +157,23 @@ export function applyPricingToModel(
 // Fetch + in-process cache
 // ---------------------------------------------------------------------------
 
-let cache: Map<string, OpenRouterPrice> | null = null;
-let inFlight: Promise<Map<string, OpenRouterPrice>> | null = null;
+// Both fetchOpenRouterPricing() and fetchOpenRouterCatalog() derive from this
+// one cached raw response, so a process that uses both (e.g. the control
+// plane serving the model picker while a daemon prices calls) only fetches
+// OpenRouter's model list once.
+let rawCache: OpenRouterModelsResponse | null = null;
+let rawInFlight: Promise<OpenRouterModelsResponse> | null = null;
 
 /**
- * Fetch (and cache for the process lifetime) OpenRouter's published pricing.
- * Concurrent callers share one in-flight request. On any failure returns an
- * empty map and leaves the cache unset so a later call can retry.
+ * Fetch (and cache for the process lifetime) OpenRouter's raw `/api/v1/models`
+ * response. Concurrent callers share one in-flight request. On any failure
+ * returns an empty response and leaves the cache unset so a later call retries.
  */
-export async function fetchOpenRouterPricing(): Promise<
-	Map<string, OpenRouterPrice>
-> {
-	if (cache) return cache;
-	if (inFlight) return inFlight;
+async function fetchRaw(): Promise<OpenRouterModelsResponse> {
+	if (rawCache) return rawCache;
+	if (rawInFlight) return rawInFlight;
 
-	inFlight = (async () => {
+	rawInFlight = (async () => {
 		try {
 			const res = await fetch(OPENROUTER_MODELS_URL, {
 				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -126,19 +182,38 @@ export async function fetchOpenRouterPricing(): Promise<
 				throw new Error(`HTTP ${res.status} ${res.statusText}`);
 			}
 			const json = (await res.json()) as OpenRouterModelsResponse;
-			const map = pricingFromModelsResponse(json);
-			cache = map;
-			return map;
+			rawCache = json;
+			return json;
 		} catch (e) {
 			console.warn(
-				`[openrouter-pricing] failed to fetch live pricing — keeping pi-ai's static estimate: ${(e as Error).message}`,
+				`[openrouter-pricing] failed to fetch OpenRouter's model list: ${(e as Error).message}`,
 			);
-			return new Map<string, OpenRouterPrice>();
+			return {};
 		} finally {
-			inFlight = null;
+			rawInFlight = null;
 		}
 	})();
-	return inFlight;
+	return rawInFlight;
+}
+
+/**
+ * Fetch (and cache for the process lifetime) OpenRouter's published pricing.
+ * On fetch failure returns an empty map, keeping pi-ai's static estimate.
+ */
+export async function fetchOpenRouterPricing(): Promise<
+	Map<string, OpenRouterPrice>
+> {
+	return pricingFromModelsResponse(await fetchRaw());
+}
+
+/**
+ * Fetch (and cache for the process lifetime) OpenRouter's full model catalog
+ * — for a model picker UI, not cost math (see `fetchOpenRouterPricing`).
+ * On fetch failure returns an empty array.
+ */
+export async function fetchOpenRouterCatalog(): Promise<OpenRouterModelInfo[]> {
+	const json = await fetchRaw();
+	return catalogFromModelsResponse(json);
 }
 
 /**
@@ -163,6 +238,6 @@ export async function enrichModelPricing(model: Model<string>): Promise<void> {
 
 /** Test-only: reset the in-process cache so a fresh fetch is performed. */
 export function __resetOpenRouterPricingCache(): void {
-	cache = null;
-	inFlight = null;
+	rawCache = null;
+	rawInFlight = null;
 }

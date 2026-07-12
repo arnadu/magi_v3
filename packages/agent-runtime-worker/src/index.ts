@@ -45,7 +45,14 @@ export {
 	updateElement,
 	upsertManagedRegion,
 } from "./mental-map.js";
-export { anthropicModel, CLAUDE_SONNET, resolveModel } from "./models.js";
+export {
+	anthropicModel,
+	CLAUDE_HAIKU,
+	CLAUDE_SONNET,
+	resolveModel,
+} from "./models.js";
+export type { OpenRouterModelInfo } from "./openrouter-pricing.js";
+export { fetchOpenRouterCatalog } from "./openrouter-pricing.js";
 export type { OrchestratorConfig } from "./orchestrator.js";
 export { runOrchestrationLoop } from "./orchestrator.js";
 export { buildSystemPrompt, formatMessages } from "./prompt.js";

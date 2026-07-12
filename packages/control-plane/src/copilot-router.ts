@@ -32,6 +32,7 @@ import {
 	getTemplate,
 	type MissionTemplate,
 } from "./templates.js";
+import { getCopilotModel, setCopilotModel } from "./users.js";
 
 // ---------------------------------------------------------------------------
 // Per-user SSE event bus
@@ -74,14 +75,18 @@ export function createCopilotRouter(
 ): Router {
 	const router = createRouter();
 	const eventBus = new CopilotEventBus();
-	const modelId = process.env.MODEL ?? "claude-sonnet-4-6";
+	const defaultModelId = process.env.MODEL ?? "claude-sonnet-4-6";
 
 	// userId → running daemon handle (lazy-started on first message)
 	const runningDaemons = new Map<string, CopilotDaemonHandle>();
 
-	function ensureCopilotRunning(userId: string): void {
+	// Resolution order: user's own copilotModel setting -> MODEL env var ->
+	// hardcoded fallback. Only read at daemon start (see the /settings routes
+	// below for how a change takes effect on an already-running daemon).
+	async function ensureCopilotRunning(userId: string): Promise<void> {
 		if (runningDaemons.has(userId)) return;
 		const missionId = `copilot-${userId}`;
+		const modelId = (await getCopilotModel(db, userId)) ?? defaultModelId;
 		const handle = startCopilotDaemon(
 			db,
 			repoRoot,
@@ -123,9 +128,42 @@ export function createCopilotRouter(
 			body,
 		});
 
-		ensureCopilotRunning(req.userId);
+		await ensureCopilotRunning(req.userId);
 
 		res.json({ ok: true, id: msg.id });
+	});
+
+	// ── GET/POST /api/copilot/settings ────────────────────────────────────────
+	// The copilot's model is per-user today. When per-mission copilots land
+	// (deferred — see GitHub #14), this resolution order extends naturally:
+	// mission-level copilot model override -> this user-level setting -> the
+	// MODEL env var fallback. No rework needed here for that later.
+
+	router.get("/settings", async (req: Request, res: Response) => {
+		const model = await getCopilotModel(db, req.userId);
+		res.json({
+			model: model ?? defaultModelId,
+			isDefault: model === undefined,
+		});
+	});
+
+	router.post("/settings", async (req: Request, res: Response) => {
+		const { model } = req.body as { model?: string | null };
+		if (model !== null && model !== undefined && typeof model !== "string") {
+			res.status(400).json({ error: "model must be a string or null" });
+			return;
+		}
+		await setCopilotModel(db, req.userId, model ?? undefined);
+
+		// The running daemon (if any) captured the old model at startup and
+		// won't pick up the change on its own — stop it so the next message
+		// triggers a fresh ensureCopilotRunning() with the new model. Mid-turn
+		// work in flight for this user is aborted cleanly (AbortController),
+		// same as any other daemon stop.
+		runningDaemons.get(req.userId)?.stop();
+		runningDaemons.delete(req.userId);
+
+		res.json({ ok: true, model: model ?? defaultModelId });
 	});
 
 	// ── GET /api/copilot/usage ───────────────────────────────────────────────
