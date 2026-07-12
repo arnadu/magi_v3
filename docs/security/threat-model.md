@@ -1,6 +1,7 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 23 — Firebase Auth + multi-user + security hardening: TB-12/13/14 added; F-008 (MonitorServer HMAC token), F-019 (proxy IDOR), F-020 (pending-action ownership), F-009, F-016 all closed (2026-06-03)
+**Last updated:** Sprint 26b — `/threat-model --full` audit: TB-15/16 added (copilot tool-executor sudo boundary; copilot ↔ GitHub API); F-021 (copilot GitHub write tools bypass ProposeAction confirmation), F-022 (AnalyzeMemories search has no length cap) opened (2026-07-12)
+**Previously:** Sprint 23 — Firebase Auth + multi-user + security hardening: TB-12/13/14 added; F-008 (MonitorServer HMAC token), F-019 (proxy IDOR), F-020 (pending-action ownership), F-009, F-016 all closed (2026-06-03)
 **Update cadence:** Update whenever a new trust boundary, external service, or privilege level is added.
 
 ---
@@ -17,6 +18,8 @@
 | Other agents in mission | **Agent-trust** | Write to sharedDir; post mailbox messages; write mission skills |
 | Fly.io Machines API | **External service** | Creates, starts, stops, destroys execution plane machines; does not access MongoDB or agent data |
 | Firebase Auth service | **External identity provider** | Issues and validates Google OAuth JWTs; controls token lifetime (~1 h); MAGI V3 reuses existing V2 Firebase projects |
+| GitHub API (`api.github.com`) | **External service** | Copilot creates/closes issues and adds comments in the project repo using a `repo`-scoped `GH_TOKEN`; requests are hardcoded to the issues/comments endpoints of one fixed repo (`GITHUB_REPO`), never agent-influenced |
+| Copilot agent (`linuxUser: magi-copilot`) | **Agent-trust, control-plane-hosted** | Runs the same `AclPolicy`/tool-executor code path as mission agents (TB-3/TB-6), but on the control-plane host under its own OS user; additionally has Category B "elevated" tools (Mongo + Fly API + GitHub — see TB-16) not available to mission agents |
 
 ---
 
@@ -110,7 +113,7 @@ graph TB
             CTRL_PROXY["HTTP reverse proxy\n/missions/:id/**\ntarget resolved from MongoDB only\n⚠️ no userId scope (F-019)"]
             CTRL_CRON["node-cron\nscheduled_messages heartbeat"]
             FLY_CLIENT["Fly Machines client\nfly-machines.ts"]
-            COPILOT["Copilot daemon (per user)\nmissionId = copilot-{uid}"]
+            COPILOT["Copilot daemon (per user)\nmissionId = copilot-{uid}\ntool exec: sudo -u magi-copilot · TB-15"]
         end
 
         subgraph EXEC ["Execution Plane — magi-missions-{suffix} · on-demand · 1 GB · one per mission"]
@@ -124,6 +127,7 @@ graph TB
         MONGO_ATLAS[("MongoDB Atlas\nmissions · users · mailbox\nconversations · llmCallLog")]
         LLM_API["Anthropic / OpenRouter APIs"]
         FIREBASE_AUTH["Firebase Auth\naccounts.google.com\n+ firestore JWT issuance · TB-12"]
+        GH_API["GitHub API\napi.github.com · TB-16"]
     end
 
     BROWSER2 -->|"HTTPS — GET /firebase-config.js · TB-14"| CTRL_STATIC
@@ -137,6 +141,8 @@ graph TB
     FLY_CLIENT -->|"HTTPS · FLY_API_TOKEN_MACHINES · TB-10"| FLY_API
     FLY_API -.->|"provisions / controls"| EXEC
     CTRL_PROXY -->|"HTTP · WireGuard fdaa::/8 · TB-11"| MONITOR_CLOUD
+    COPILOT -->|"HTTP · WireGuard fdaa::/8\nsame x-monitor-token mechanism · TB-11"| MONITOR_CLOUD
+    COPILOT -->|"HTTPS · Bearer GH_TOKEN · TB-16"| GH_API
     CTRL_API <-->|CRUD| MONGO_ATLAS
     CTRL_CRON <-->|"read / write"| MONGO_ATLAS
     COPILOT <-->|CRUD| MONGO_ATLAS
@@ -164,6 +170,8 @@ graph TB
 | **TB-12** | Browser ↔ Firebase Auth (Google OAuth) | Browser opens Google OAuth popup; Firebase client SDK receives JWT; control plane calls `getAuth().verifyIdToken()` over HTTPS to Firebase Admin API | Outbound: auth request; Inbound: signed JWT; server calls Firebase to verify |
 | **TB-13** | `magi_session` cookie → Control plane | Client-accessible cookie set by browser JS on sign-in; `SameSite=Strict`, `max-age=3600`, `path=/`; carries Firebase JWT or `CONTROL_API_KEY`; no `Secure` flag (Fly.io enforces HTTPS at load balancer) | Browser → server on every same-origin request |
 | **TB-14** | `/firebase-config.js` unauthenticated endpoint | Express `GET /firebase-config.js` serves `FIREBASE_CLIENT_API_KEY`, `FIREBASE_CLIENT_AUTH_DOMAIN`, `FIREBASE_CLIENT_PROJECT_ID` from env as a JS snippet; no auth; `Cache-Control: no-store` | Server → browser; public (client-side Firebase identifiers, not secrets) |
+| **TB-15** | Control plane (magi-operator) ↔ copilot tool-executor (magi-copilot) | Same mechanism as TB-3, on the control-plane host instead of the execution plane: `sudo -u magi-copilot` via the `magi-node` wrapper, sudoers `NOPASSWD` rule scoped to that exact binary; copilot's `AgentRunContext` uses `linuxUser: "magi-copilot"` and runs the identical `tools.ts`/`tool-executor.ts` code path as mission agents | Outbound: commands; Inbound: stdout/stderr |
+| **TB-16** | Copilot (control plane) → GitHub API | HTTPS to `api.github.com`; `Authorization: Bearer <GH_TOKEN>` (`repo`-scoped PAT, control-plane-only Fly secret); request paths are hardcoded (`/repos/{GITHUB_REPO}/issues...`), only the JSON body (title/body/labels/comment text) is LLM-generated | Outbound: issue create/close/comment; Inbound: issue metadata |
 
 ---
 
@@ -176,6 +184,7 @@ graph TB
 - `packages/agent-runtime-worker/src/tools/search-web.ts` — Brave Search API call
 - `packages/agent-runtime-worker/src/ssrf.ts` — `isPrivateHost()` regex + post-DNS-resolution check
 - `packages/agent-runtime-worker/src/models.ts` — `parseModel()`: routes `/`-delimited IDs to OpenRouter; bare IDs to Anthropic
+- `packages/agent-runtime-worker/src/openrouter-pricing.ts` — unauthenticated `GET https://openrouter.ai/api/v1/models` (Sprint 24, live cost pricing); no request body, no secrets sent; process-lifetime cache, single-flight
 - `packages/skills/data-factory/scripts/adapters/` — all 7 Python adapters (fmp, fred, yfinance, newsapi, gdelt, imf, worldbank)
 
 ### TB-2: MonitorServer (local dev — operator interface)
@@ -187,6 +196,7 @@ graph TB
 
 ### TB-4: magi-job subprocess (background jobs + token injection)
 - `packages/agent-runtime-worker/src/daemon.ts` — `runPendingJobs()`: token mint, `sudo` spawn, token revoke, spec validation
+- `packages/agent-runtime-worker/src/job-recovery.ts` — `recoverOrphanedJobs()`: startup sweep of `jobs/running/` (extracted from `daemon.ts` for testability, Sprint 26); `MAX_JOB_RECOVERY_ATTEMPTS` circuit breaker
 - `scripts/setup-dev.sh` — `magi-job` wrapper at `/usr/local/bin/magi-job`, sudoers NOPASSWD + `env_keep` rules
 
 ### TB-5: ToolApiServer — magi-job → daemon IPC
@@ -202,8 +212,11 @@ graph TB
 
 ### TB-7: sharedDir shared write surface
 - `packages/agent-runtime-worker/src/workspace-manager.ts` — `setfacl` provisioning, dir creation, git init
+- `packages/agent-runtime-worker/src/workspace-git.ts` — `WorkspaceGit`: git-commit-on-sleep (Sprint 25); runs as the mission's git identity, no `sudo` (already within the trusted daemon/sharedDir boundary); serializes all commits through one promise chain
 - `packages/agent-runtime-worker/src/skills.ts` — `discoverSkills()`: SKILL.md frontmatter parsing, scope precedence
 - `packages/agent-runtime-worker/src/daemon.ts` — scheduled message upsert (`spec.label` filter), job spec file reads
+- `packages/agent-runtime-worker/src/objectives/store.ts` — append-only fold of `sharedDir/objectives/*.jsonl` + `goals.json` (Sprint 26a); agent-writable via the `objectives` skill scripts below, same shared-write posture as any other sharedDir content
+- `packages/skills/objectives/scripts/` — `task-add`/`task-update`/`record-kpi`/`allocate` (append-only writes only; agent's own `linuxUser`, no elevated privilege)
 
 ### TB-8: Untrusted content → agent context (prompt injection)
 - `packages/agent-runtime-worker/src/tools/fetch-url.ts` — tool result (markdown) injected into LLM messages
@@ -240,6 +253,8 @@ graph TB
 - `packages/control-plane/src/monitor-token.ts` — `deriveMonitorToken(missionId)`: HMAC-SHA256 using `MONITOR_SIGNING_KEY` (control-plane-only Fly secret); returns empty string when key is absent (local dev)
 - `packages/agent-runtime-worker/src/monitor-server.ts` — reads `MONITOR_TOKEN` env var (set at provision); `tokenOk()` checks `x-monitor-token` header on all non-GET requests; skips check when env var absent (dev mode)
 - `packages/control-plane/src/fly-machines.ts` — derives and injects `MONITOR_TOKEN` into machine env at provision time; `MONITOR_SIGNING_KEY` never leaves the control plane
+- `packages/control-plane/src/copilot-router.ts` — a second caller of this same boundary: `executeAction`'s `write_mission_file`/`save_template` handlers call the mission's MonitorServer directly (`http://[privateIp]:4000${endpoint}`) rather than through the browser-facing proxy, using the same `deriveMonitorToken` + `x-monitor-token` mechanism, scoped by `{ missionId, userId }` on the preceding `missions.findOne`
+- `packages/control-plane/src/copilot-tools.ts` — `monitorFetch`/`monitorPost` helpers: same direct-call pattern, used by `GetMissionStatus`/`ReadMissionMailbox`/`ReadMissionLog`/`ReadMissionFile`/`ReviewObjectives`/`AssessKpi`; every caller resolves `privateIp` from a `{ missionId, userId }`-scoped `missions.findOne` first
 
 ### MongoDB `users` collection (new Sprint 23 surface)
 - `packages/control-plane/src/users.ts` — `syncFirebaseUser()` upserts on every authenticated request; stores `uid` (Firebase UID, used as `userId` throughout), `email`, `displayName`, `createdAt`, `lastLoginAt`; no secrets stored; `uid` is never derived from request body
@@ -248,6 +263,13 @@ graph TB
 ### Per-user copilot daemons (`copilot-{uid}`)
 - `packages/control-plane/src/copilot-router.ts` — `ensureCopilotRunning(userId)` lazily starts one daemon per authenticated user keyed by Firebase UID; `missionId = copilot-{userId}` isolates mailbox and conversation namespaces; SSE events routed per `userId` via `CopilotEventBus`
 - `packages/control-plane/src/copilot-tools.ts` — `PendingAction.userId` stamps the owning user on every proposed action; `confirm` and `dismiss` verify `action.userId === req.userId` before executing (F-020 fixed)
+
+### TB-15: Control plane ↔ copilot tool-executor (magi-copilot)
+- `packages/control-plane/src/copilot-daemon.ts` — `COPILOT_IDENTITY` sets `linuxUser: "magi-copilot"`, `workdir: COPILOT_WORKDIR`; reuses `runInnerLoop`/`tools.ts` unchanged from the mission-agent path; `execFileSync("setfacl", ...)` grants `magi-copilot` rwx on its own workdir at startup (same ACL-provisioning pattern as `workspace-manager.ts`, not a new mechanism)
+- `packages/control-plane/Dockerfile` — creates the `magi-copilot` OS user (uid 60010, group `magi-shared`) and the sudoers rule `magi-operator ALL=(magi-copilot) NOPASSWD: /usr/local/bin/magi-node`, scoped to the exact wrapper binary (mirrors the execution-plane pattern in `scripts/setup-dev.sh`)
+
+### TB-16: Copilot → GitHub API
+- `packages/control-plane/src/copilot-tools.ts` — `ghFetch()`: reads `GH_TOKEN`/`GITHUB_REPO` from env only (never request-supplied); `ListIssues` (read-only), `CreateIssue`/`CloseIssue`/`AddIssueComment` (write) — see F-021: unlike `PauseAgent`/`ResumeAgent`/`SetMissionBudget`/`write_mission_file`/`save_template`, these write tools call GitHub directly from `execute()` with no `ProposeAction` operator-confirmation step
 
 ---
 
@@ -267,6 +289,7 @@ graph TB
 | Full conversation context sent to OpenRouter third-party proxy | I | ~ | OpenRouter has separate data-retention policy; `OPENROUTER_API_KEY` is daemon-only, never forwarded to subprocesses |
 | `OPENROUTER_API_KEY` leaked into tool-executor child env | I | ✅ F-017 | Clean-env spawn is the primary control; `verifyIsolation()` now checks both `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY` |
 | Fly.io WireGuard range (`fdaa::/8`) reachable via FetchUrl/BrowseWeb from execution plane | I / E | ~ | `ssrf.ts` blocks ULA prefix `fd[0-9a-f]{2}:` which covers `fdaa::`; verify after any `ssrf.ts` change |
+| OpenRouter pricing fetch (`openrouter-pricing.ts`) is not SSRF-relevant (fixed public URL, no agent input) but still an outbound daemon call | I | ✅ | No request body, no auth header, no secrets in the request; response only affects internal cost display, never executed or interpreted as instructions |
 
 ### TB-2: Operator → MonitorServer (local dev)
 
@@ -366,6 +389,23 @@ graph TB
 | Endpoint used to enumerate Firebase project | I | A | `projectId` and `authDomain` are visible in any public Firebase web app; no additional surface exposed |
 | Missing `Cache-Control: no-store` → stale config after environment change | D | ✅ | Response sets `Cache-Control: no-store` |
 
+### TB-15: Control plane ↔ copilot tool-executor (magi-copilot)
+
+| Threat | Category | Status | Notes |
+|--------|----------|--------|-------|
+| Copilot LLM output escapes its `AclPolicy` the same way a mission agent's could | T / E | ✅ | Identical code path to TB-3/TB-6 (`tools.ts`, `checkPath()`, clean-env `sudo -u magi-copilot` spawn); no new mechanism, so no new class of threat beyond what TB-3/TB-6 already cover |
+| `magi-copilot` compromise reaches other users' data | I | ~ | `magi-copilot`'s workdir is per-process, not per-user (one copilot daemon per Firebase UID, but all share the `magi-copilot` OS user and `COPILOT_WORKDIR` path on the same control-plane host) — a Bash/WriteFile escape would have OS-level access to every user's copilot workdir on that host, not just the invoking user's. No incident to date; worth revisiting if copilot's Bash/file tools expand |
+| sudoers rule scope | E | ✅ | `NOPASSWD` bound to the exact `magi-node` wrapper path, mirroring the execution-plane pattern; cannot be used to run arbitrary commands as `magi-copilot` |
+
+### TB-16: Copilot → GitHub API
+
+| Threat | Category | Status | Notes |
+|--------|----------|--------|-------|
+| `GH_TOKEN` theft → unauthorized repo access | S | ~ | `repo`-scoped PAT, control-plane-only Fly secret, never forwarded to any subprocess or execution-plane machine |
+| Copilot creates/closes/comments on issues with no operator review | E | ⚠️ F-021 | `CreateIssue`/`CloseIssue`/`AddIssueComment` execute immediately from the LLM's tool call — unlike `PauseAgent`/`ResumeAgent`/`SetMissionBudget`/`write_mission_file`/`save_template`, which all route through `ProposeAction` → operator `confirm`. A prompt-injection payload reaching the copilot's context (e.g. via `ReadMissionLog`/`ReadMissionMailbox` surfacing content that originated from untrusted FetchUrl/BrowseWeb output, per TB-8) could cause the copilot to publish attacker-influenced content to the public issue tracker under the project's identity, with no human in the loop before it's live |
+| Request path/method injection via LLM-controlled input | T | ✅ | `ghFetch()`'s paths are hardcoded string templates (`/repos/${GITHUB_REPO}/issues...`); only the JSON body (title/body/labels/comment) is LLM-supplied, and GitHub's issue API does not interpret body content as anything other than opaque text/markdown |
+| Full repo-scope token used for an issues-only feature | I | A | `GH_TOKEN` is a personal access token scoped at GitHub's side to `repo` (no finer-grained issues-only scope was available at implementation time); blast radius is bounded in practice by `ghFetch()` only ever calling issue/comment endpoints, but a `GH_TOKEN` leak would grant more than this feature uses |
+
 ### TB-10: Control plane → Fly Machines API
 
 | Threat | Category | Status | Notes |
@@ -397,5 +437,5 @@ graph TB
 | **LLM02** | Insecure Output Handling | LLM output drives: Bash commands, WriteFile paths, JobSpec `scriptPath`, schedule labels, PostMessage recipients | ~ | AclPolicy constrains file paths. `scriptPath` validated against `permittedPaths`. Schedule label type guard added (F-005). PostMessage recipient validated against team roster. Bash unconstrained within `linuxUser` — OS ACLs are the backstop. |
 | **LLM06** | Sensitive Information Disclosure | System prompt contains role, mental map (may include financial observations), skills block. Full conversation transmitted to OpenRouter when non-Anthropic models are used. | ~ | No credentials in system prompt. **OpenRouter risk:** financial mission context sent to third-party proxy with separate data-retention policy when `MODEL` or `VISION_MODEL` contains `/`. |
 | **LLM07** | System Prompt Leakage | Injected instruction asks agent to include system prompt content in a FetchUrl URL, leaking role constraints and mental map. | ~ | PostMessage recipients restricted to team roster (no external exfiltration via mailbox). FetchUrl to attacker-controlled URL could exfiltrate if agent is tricked. No hard mitigation beyond prompt design. |
-| **LLM08** | Excessive Agency | Agents have broad capabilities: Bash (arbitrary shell), WriteFile, EditFile, PostMessage, Research, FetchUrl, BrowseWeb, scheduled jobs. Concurrent execution (Sprint 17) amplifies cost exposure. | ~ | OS ACLs limit blast radius to agent's workdir + sharedDir. `MAX_COST_USD` caps spending, but `waitForBudget()` gates each *dispatch* — with N agents running concurrently, overshoot can be N × (one LLM call cost) before the pause fires. No per-session job-submission count limit. `RESEARCH_MAX_TURNS=10` limits Research sub-loop depth. |
+| **LLM08** | Excessive Agency | Agents have broad capabilities: Bash (arbitrary shell), WriteFile, EditFile, PostMessage, Research, FetchUrl, BrowseWeb, scheduled jobs. Concurrent execution (Sprint 17) amplifies cost exposure. The copilot additionally has elevated cross-mission tools (Mongo reads, Fly API, GitHub API) — see TB-15/TB-16. | ~ | OS ACLs limit blast radius to agent's workdir + sharedDir. `MAX_COST_USD` caps spending, but `waitForBudget()` gates each *dispatch* — with N agents running concurrently, overshoot can be N × (one LLM call cost) before the pause fires. No per-session job-submission count limit. `RESEARCH_MAX_TURNS=10` limits Research sub-loop depth. Copilot write actions are inconsistently gated: `PauseAgent`/`ResumeAgent`/`SetMissionBudget`/`write_mission_file`/`save_template` require operator confirmation via `ProposeAction`; `CreateIssue`/`CloseIssue`/`AddIssueComment`/`AssessKpi` execute immediately with no confirmation (⚠️ F-021 for the GitHub tools specifically, given their public-facing blast radius). |
 | **LLM09** | Overreliance | Agents read data factory outputs without independently verifying freshness. Stale/corrupted data leads to incorrect recommendations. | ~ | `catalog.json` tracks `fetched_at` and `status`. Consumer SKILL.md instructs checking status before use. No enforcement — agents can ignore stale flags. |
