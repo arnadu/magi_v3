@@ -26,34 +26,45 @@ const LimitsSchema = z
 	})
 	.strict();
 
-const AgentSchema = z
-	.object({
-		id: z.string().trim().min(1),
-		supervisor: z.string().trim().min(1),
-		systemPrompt: z.string().trim().min(1),
-		initialMentalMap: z.string().trim().min(1),
-		limits: LimitsSchema.optional(),
-		/**
-		 * The Linux OS user this agent runs as.
-		 * In dev/test: set to a pool user provisioned by setup-dev.sh (e.g. "magi-w1").
-		 * In production Docker: omit — the daemon derives the username from agent.id
-		 * via ensureAgentUsers() at startup.
-		 * When present, must follow Linux username conventions: starts with a letter
-		 * or underscore, followed by letters, digits, hyphens, or underscores (max 32 chars).
-		 */
-		linuxUser: z
-			.string()
-			.trim()
-			.regex(
-				/^[a-z_][a-z0-9_-]{0,31}$/,
-				'must be a valid Linux username (e.g. "magi-w1")',
-			)
-			.optional(),
-		active: z.boolean().optional(),
-		disabledSkills: z.array(z.string()).optional(),
-		disabledTools: z.array(z.string()).optional(),
-	})
-	.catchall(z.string().trim());
+const AgentSchema = z.object({
+	id: z.string().trim().min(1),
+	/** Display name — falls back to id where omitted (dashboard, step-mode prompts). */
+	name: z.string().trim().optional(),
+	/** Free-text role label — falls back to id where omitted (MonitorServer's AgentInfo). */
+	role: z.string().trim().optional(),
+	supervisor: z.string().trim().min(1),
+	systemPrompt: z.string().trim().min(1),
+	initialMentalMap: z.string().trim().min(1),
+	limits: LimitsSchema.optional(),
+	/**
+	 * The Linux OS user this agent runs as.
+	 * In dev/test: set to a pool user provisioned by setup-dev.sh (e.g. "magi-w1").
+	 * In production Docker: omit — the daemon derives the username from agent.id
+	 * via ensureAgentUsers() at startup.
+	 * When present, must follow Linux username conventions: starts with a letter
+	 * or underscore, followed by letters, digits, hyphens, or underscores (max 32 chars).
+	 */
+	linuxUser: z
+		.string()
+		.trim()
+		.regex(
+			/^[a-z_][a-z0-9_-]{0,31}$/,
+			'must be a valid Linux username (e.g. "magi-w1")',
+		)
+		.optional(),
+	active: z.boolean().optional(),
+	disabledSkills: z.array(z.string()).optional(),
+	disabledTools: z.array(z.string()).optional(),
+});
+// No catchall/passthrough: `name`/`role` were previously tolerated only via
+// `.catchall(z.string())` even though every authored config sets them and
+// several call sites (daemon.ts, orchestrator.ts, missions.ts) read them —
+// they were real fields masquerading as informal extras. Promoted to the
+// explicit shape above; unknown keys now silently strip (zod's plain
+// z.object() default), the standard tolerant behavior with no downstream
+// typing cost. A catchall/passthrough type also structurally conflicts
+// with typed array fields like disabledTools — see git history if this
+// needs revisiting.
 
 const TeamConfigSchema = z.object({
 	mission: z.object({
@@ -107,12 +118,32 @@ function expandEnvInObject(obj: unknown): unknown {
 // Public API
 // ---------------------------------------------------------------------------
 
+export interface ParseTeamConfigOptions {
+	/**
+	 * Allow an authored agent with id "copilot". Reserved for the control-plane
+	 * copilot's own bootstrap load of config/teams/copilot.yaml (see
+	 * copilot-daemon.ts) — that file's agent really is named "copilot" as its
+	 * own identity, unrelated to the mission copilot reservation below.
+	 *
+	 * Deliberately NOT inferrable from yamlContent itself (e.g. by checking
+	 * mission.id): every caller of parseTeamConfig includes SaveMissionConfig,
+	 * which validates YAML a mission copilot writes at runtime — if the escape
+	 * hatch were content-based, a compromised copilot could set mission.id (or
+	 * any other field) to trigger it. Only a literal boolean at a specific,
+	 * non-attacker-reachable call site can grant the exemption.
+	 */
+	allowReservedCopilotId?: boolean;
+}
+
 /**
  * Parse a team config YAML string into a validated TeamConfig.
  * Throws with a descriptive message on validation failure.
  * Environment variables (${VAR}) in string fields are expanded before validation.
  */
-export function parseTeamConfig(yamlContent: string): TeamConfig {
+export function parseTeamConfig(
+	yamlContent: string,
+	opts?: ParseTeamConfigOptions,
+): TeamConfig {
 	let raw: unknown;
 	try {
 		raw = parse(yamlContent);
@@ -122,8 +153,9 @@ export function parseTeamConfig(yamlContent: string): TeamConfig {
 
 	raw = expandEnvInObject(raw);
 
+	let parsed: TeamConfig;
 	try {
-		return TeamConfigSchema.parse(raw);
+		parsed = TeamConfigSchema.parse(raw);
 	} catch (e) {
 		if (e instanceof ZodError) {
 			const issues = e.issues
@@ -135,12 +167,31 @@ export function parseTeamConfig(yamlContent: string): TeamConfig {
 		}
 		throw e;
 	}
+
+	// "copilot" is reserved for the daemon-injected mission copilot agent
+	// (see ADR-0016) — it is never parsed from authored mission YAML. This is
+	// defense in depth for the structural guarantee that elevated tools are
+	// granted only to the literal agent id "copilot": rejecting it here means
+	// an authored team config can never collide with or spoof that identity.
+	if (
+		!opts?.allowReservedCopilotId &&
+		parsed.agents.some((a) => a.id === "copilot")
+	) {
+		throw new Error(
+			'Team config validation failed:\n  agents: id "copilot" is reserved for the mission copilot (daemon-injected, see ADR-0016) and cannot be used in authored team config',
+		);
+	}
+
+	return parsed;
 }
 
 /**
  * Load and parse a team config from a YAML file path.
  */
-export function loadTeamConfig(filePath: string): TeamConfig {
+export function loadTeamConfig(
+	filePath: string,
+	opts?: ParseTeamConfigOptions,
+): TeamConfig {
 	const content = readFileSync(filePath, "utf-8");
-	return parseTeamConfig(content);
+	return parseTeamConfig(content, opts);
 }

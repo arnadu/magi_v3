@@ -196,8 +196,13 @@ async function runWatchLoop(
 
 	let teamConfig: TeamConfig;
 	try {
+		// allowReservedCopilotId: this file's own agent is legitimately named
+		// "copilot" (its own identity, distinct from the mission-copilot
+		// reservation in ADR-0016) — a hardcoded, non-attacker-reachable call
+		// site, never a mission's SaveMissionConfig payload.
 		teamConfig = loadTeamConfig(
 			join(repoRoot, "config", "teams", "copilot.yaml"),
+			{ allowReservedCopilotId: true },
 		);
 	} catch (e) {
 		console.error(
