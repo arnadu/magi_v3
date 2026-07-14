@@ -315,7 +315,7 @@ export async function runAgent(
 	// Falls back to initMentalMap if this is the first wakeup.
 	let currentMentalMapHtml: string =
 		(await ctx.conversationRepo.loadMostRecentMentalMap(agentId, missionId)) ??
-		initMentalMap(agent);
+		initMentalMap(agent, sharedDir, workdir);
 
 	// Read threshold lazily so REFLECTION_THRESHOLD env var set by tests is honoured.
 	const reflectionThreshold = process.env.REFLECTION_THRESHOLD

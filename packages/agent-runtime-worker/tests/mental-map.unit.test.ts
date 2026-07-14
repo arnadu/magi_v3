@@ -6,13 +6,46 @@
  * and data-managed regions are unreachable.
  */
 
+import type { AgentConfig } from "@magi/agent-config";
 import { describe, expect, it } from "vitest";
 import {
 	addElement,
 	createMentalMapTools,
+	initMentalMap,
 	removeElement,
 	updateElement,
 } from "../src/mental-map.js";
+
+describe("initMentalMap", () => {
+	const agent: AgentConfig = {
+		id: "worker",
+		supervisor: "lead",
+		systemPrompt: "You are a worker.",
+		initialMentalMap:
+			'<section id="tasks"><p>shared: {{sharedDir}}, mine: {{workdir}}</p></section>',
+	};
+
+	it("substitutes {{sharedDir}} and {{workdir}} placeholders", () => {
+		const html = initMentalMap(
+			agent,
+			"/missions/m1/shared",
+			"/home/w1/missions/m1",
+		);
+		expect(html).toBe(
+			'<section id="tasks"><p>shared: /missions/m1/shared, mine: /home/w1/missions/m1</p></section>',
+		);
+	});
+
+	it("leaves content with no placeholders unchanged", () => {
+		const plain: AgentConfig = {
+			...agent,
+			initialMentalMap: '<section id="tasks"></section>',
+		};
+		expect(initMentalMap(plain, "/shared", "/work")).toBe(
+			'<section id="tasks"></section>',
+		);
+	});
+});
 
 describe("updateElement", () => {
 	const html = '<section id="notes"><p>old</p></section>';

@@ -9,10 +9,20 @@ import type { MagiTool, ToolResult } from "./tools.js";
 
 /**
  * Return the initial mental map HTML for a new agent.
- * Reads agent.initialMentalMap from the team YAML.
+ * Reads agent.initialMentalMap from the team YAML and substitutes the same
+ * {{sharedDir}}/{{workdir}} placeholders buildSystemPrompt() substitutes into
+ * agent.systemPrompt — this mental map is stored verbatim after this one
+ * substitution (never re-rendered), so an un-substituted placeholder here
+ * would read as literal "{{sharedDir}}" text for the lifetime of the agent.
  */
-export function initMentalMap(agent: AgentConfig): string {
-	return agent.initialMentalMap;
+export function initMentalMap(
+	agent: AgentConfig,
+	sharedDir: string,
+	workdir: string,
+): string {
+	return agent.initialMentalMap
+		.replace(/\{\{sharedDir\}\}/g, sharedDir)
+		.replace(/\{\{workdir\}\}/g, workdir);
 }
 
 // ---------------------------------------------------------------------------
