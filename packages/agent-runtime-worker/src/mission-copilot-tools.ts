@@ -61,6 +61,12 @@ export interface MissionCopilotToolsConfig {
 	 * outside runPendingJobs's own closure).
 	 */
 	cancelBackgroundJob: (jobId: string) => boolean;
+	/**
+	 * Base URL of the control plane's GitHub proxy (Phase 5) — empty string
+	 * in local dev, where the proxy isn't reachable. Family G tools degrade
+	 * to a clear error rather than throwing when absent.
+	 */
+	controlPlaneUrl: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +115,7 @@ export function createMissionCopilotTools(
 		monitorToken,
 		teamAgentIds,
 		cancelBackgroundJob,
+		controlPlaneUrl,
 	} = config;
 
 	async function monitorGet(path: string): Promise<ToolResult> {
@@ -975,6 +982,73 @@ export function createMissionCopilotTools(
 		},
 	};
 
+	// ─── Family G — GitHub / Platform Bug Reporting ──────────────────────────
+	// GH_TOKEN never reaches the execution plane — every call here goes
+	// through the control-plane proxy (Phase 5), which re-derives and
+	// compares the mission's own MONITOR_TOKEN rather than trusting a
+	// missionId the request body claims.
+
+	async function controlPlaneFetch(
+		path: string,
+		init: RequestInit,
+	): Promise<ToolResult> {
+		if (!controlPlaneUrl) {
+			return err(
+				"GitHub reporting is unavailable — no control plane URL configured (expected in local dev).",
+			);
+		}
+		try {
+			const res = await fetch(`${controlPlaneUrl}${path}`, {
+				...init,
+				headers: { "x-monitor-token": monitorToken, ...init.headers },
+				signal: AbortSignal.timeout(15_000),
+			});
+			const body = await res.text();
+			if (!res.ok) return err(`GitHub proxy returned ${res.status}: ${body}`);
+			return ok(body);
+		} catch (e) {
+			return err(`Failed to reach control plane: ${(e as Error).message}`);
+		}
+	}
+
+	const listGithubIssues: MagiTool = {
+		name: "ListGithubIssues",
+		description:
+			"Search open issues in the MAGI_V3 repo — call before filing, to avoid duplicates.",
+		parameters: Type.Object({
+			query: Type.Optional(Type.String({ description: "Search text" })),
+		}),
+		async execute(_id, args) {
+			const query = args.query as string | undefined;
+			const qs = new URLSearchParams({ missionId });
+			if (query) qs.set("query", query);
+			return controlPlaneFetch(`/api/mission-copilot/github/issues?${qs}`, {
+				method: "GET",
+			});
+		},
+	};
+
+	const reportGithubIssue: MagiTool = {
+		name: "ReportGithubIssue",
+		description:
+			"File a new GitHub issue for a genuine platform bug (not a mission-content problem). Routed through the control-plane proxy — auto-labeled mission-copilot and tagged with this mission's id server-side.",
+		parameters: Type.Object({
+			title: Type.String(),
+			body: Type.String(),
+			labels: Type.Optional(Type.Array(Type.String())),
+		}),
+		async execute(_id, args) {
+			const title = args.title as string;
+			const body = args.body as string;
+			const labels = args.labels as string[] | undefined;
+			return controlPlaneFetch("/api/mission-copilot/github/issue", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ missionId, title, body, labels }),
+			});
+		},
+	};
+
 	return [
 		readMissionConfig,
 		saveMissionConfig,
@@ -1003,5 +1077,7 @@ export function createMissionCopilotTools(
 		readAgentWorkdirFile,
 		listBackgroundJobs,
 		listScheduledMessages,
+		listGithubIssues,
+		reportGithubIssue,
 	];
 }

@@ -24,6 +24,11 @@
  *   MONITOR_PORT       optional — dashboard HTTP port (default: 4000; must be 1–65535)
  *   TOOL_PORT          optional — Tool API server port for background jobs (default: 4001; must be 1–65535)
  *   MAX_COST_USD       optional — spending cap in USD; pauses when reached
+ *   MISSION_COPILOT_ENABLED  optional — "true" to inject the mission copilot (ADR-0016); default off
+ *   MONITOR_TOKEN      optional — per-mission auth token for MonitorServer mutating routes
+ *                                 (set by the control plane at machine creation; empty = no auth, local dev)
+ *   CONTROL_PLANE_URL  optional — base URL for the mission copilot's GitHub proxy (ADR-0016 Phase 5);
+ *                                 set by the control plane at machine creation; empty in local dev
  */
 
 import {
@@ -1086,6 +1091,7 @@ async function main(): Promise<void> {
 					monitorToken: process.env.MONITOR_TOKEN ?? "",
 					teamAgentIds: teamConfig.agents.map((a) => a.id),
 					cancelBackgroundJob,
+					controlPlaneUrl: process.env.CONTROL_PLANE_URL ?? "",
 				})
 			: undefined;
 

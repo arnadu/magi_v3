@@ -133,6 +133,7 @@ describe("mission-copilot-tools", () => {
 	function buildTools(
 		dbOverride?: ReturnType<typeof makeFakeDb>["db"],
 		cancelBackgroundJobImpl: (jobId: string) => boolean = () => false,
+		controlPlaneUrl = "",
 	) {
 		const fake = makeFakeDb();
 		const db = dbOverride ?? fake.db;
@@ -160,6 +161,7 @@ describe("mission-copilot-tools", () => {
 			monitorToken: "test-token",
 			teamAgentIds: ["lead", "worker", "copilot"],
 			cancelBackgroundJob: cancelBackgroundJobImpl,
+			controlPlaneUrl,
 		});
 		return { tools, fake };
 	}
@@ -587,6 +589,84 @@ describe("mission-copilot-tools", () => {
 			);
 			const parsed = JSON.parse(result.content[0].text);
 			expect(parsed).toEqual([{ turnNumber: 3 }, { turnNumber: 4 }]);
+		});
+	});
+
+	describe("ListGithubIssues / ReportGithubIssue", () => {
+		it("errors clearly (not a throw) when no control plane URL is configured", async () => {
+			const { tools } = buildTools(undefined, undefined, "");
+			const result = await get(tools, "ListGithubIssues").execute("t1", {});
+			expect(result.isError).toBe(true);
+			expect(result.content[0].text).toContain("unavailable");
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it("ListGithubIssues sends missionId and the monitor token to the proxy", async () => {
+			fetchMock.mockResolvedValue(
+				new Response(JSON.stringify([{ number: 1 }]), { status: 200 }),
+			);
+			const { tools } = buildTools(
+				undefined,
+				undefined,
+				"https://control.example",
+			);
+			await get(tools, "ListGithubIssues").execute("t1", { query: "bug" });
+			const [url, init] = fetchMock.mock.calls[0];
+			expect(String(url)).toContain(
+				"https://control.example/api/mission-copilot/github/issues?",
+			);
+			expect(String(url)).toContain("missionId=m1");
+			expect(String(url)).toContain("query=bug");
+			expect((init as RequestInit).headers).toMatchObject({
+				"x-monitor-token": "test-token",
+			});
+		});
+
+		it("ReportGithubIssue posts missionId/title/body/labels to the proxy", async () => {
+			fetchMock.mockResolvedValue(
+				new Response(
+					JSON.stringify({ ok: true, issueNumber: 42, url: "https://x" }),
+					{ status: 200 },
+				),
+			);
+			const { tools } = buildTools(
+				undefined,
+				undefined,
+				"https://control.example",
+			);
+			const result = await get(tools, "ReportGithubIssue").execute("t1", {
+				title: "Bug",
+				body: "Details",
+			});
+			expect(result.isError).toBeFalsy();
+			const [url, init] = fetchMock.mock.calls[0];
+			expect(url).toBe(
+				"https://control.example/api/mission-copilot/github/issue",
+			);
+			const sentBody = JSON.parse((init as RequestInit).body as string);
+			expect(sentBody).toEqual({
+				missionId: "m1",
+				title: "Bug",
+				body: "Details",
+				labels: undefined,
+			});
+		});
+
+		it("surfaces a non-OK proxy response as a tool error, not a throw", async () => {
+			fetchMock.mockResolvedValue(
+				new Response("Unauthorized", { status: 401 }),
+			);
+			const { tools } = buildTools(
+				undefined,
+				undefined,
+				"https://control.example",
+			);
+			const result = await get(tools, "ReportGithubIssue").execute("t1", {
+				title: "Bug",
+				body: "Details",
+			});
+			expect(result.isError).toBe(true);
+			expect(result.content[0].text).toContain("401");
 		});
 	});
 });

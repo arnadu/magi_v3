@@ -29,6 +29,7 @@ import { createAuthMiddleware } from "./auth.js";
 import { createCopilotRouter } from "./copilot-router.js";
 import { PendingActionsStore } from "./copilot-tools.js";
 import { initFirebase } from "./firebase.js";
+import { createMissionCopilotRouter } from "./mission-copilot-router.js";
 import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { createProxyRouter } from "./proxy.js";
@@ -112,6 +113,25 @@ async function main(): Promise<void> {
 			})};`,
 		);
 	});
+
+	// Mission-copilot GitHub proxy (ADR-0016) — machine-to-machine auth via
+	// per-mission MONITOR_TOKEN, not Firebase/CONTROL_API_KEY, so it must be
+	// mounted before requireAuth below. Rate-limited per-IP: each mission runs
+	// on its own stable WireGuard address, so this naturally isolates the
+	// limit per mission — one mission's copilot going haywire can't exhaust
+	// the quota for every other mission. That's a property of the *default*
+	// per-IP keying; re-check this comment if the keying is ever changed.
+	app.use(
+		"/api/mission-copilot",
+		express.json({ limit: "1mb" }),
+		rateLimit({
+			windowMs: 60_000,
+			max: 20,
+			standardHeaders: true,
+			legacyHeaders: false,
+		}),
+		createMissionCopilotRouter(db),
+	);
 
 	// ── Authenticated routes ──────────────────────────────────────────────────
 

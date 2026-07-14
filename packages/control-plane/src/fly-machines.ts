@@ -169,6 +169,14 @@ export async function provisionMission(
 					// Per-mission auth token for MonitorServer mutating routes.
 					// Derived from MONITOR_SIGNING_KEY (control plane only) — never stored in MongoDB.
 					MONITOR_TOKEN: deriveMonitorToken(missionId),
+					// Where the mission copilot's GitHub proxy tools reach the control
+					// plane (ADR-0016, Phase 5). FLY_APP_NAME is auto-injected by Fly
+					// into *this* (the control plane's own) machine — no bootstrap.sh
+					// change needed for the common case. Empty in local dev, where the
+					// GitHub proxy isn't reachable anyway (no deployed control plane).
+					CONTROL_PLANE_URL: process.env.FLY_APP_NAME
+						? `https://${process.env.FLY_APP_NAME}.fly.dev`
+						: "",
 					// Pass runtime secrets explicitly — Fly app-level secrets are NOT
 					// automatically injected into machines created via the Machines API.
 					ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
