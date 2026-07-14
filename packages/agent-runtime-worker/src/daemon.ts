@@ -447,6 +447,34 @@ async function runPendingJobs(
 						),
 					);
 			}
+
+			// Additively: a failed job is otherwise visible only in
+			// jobs/status/<id>.json — nothing wakes anyone up (GitHub #3).
+			// The mission copilot (ADR-0016), when present, is the one agent
+			// positioned to investigate and either fix or report it; notify it
+			// regardless of whether the submitting agent also asked to be
+			// notified via notifyAgentId.
+			if (
+				!success &&
+				process.env.MISSION_COPILOT_ENABLED === "true" &&
+				teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
+			) {
+				mailboxRepo
+					.post({
+						missionId,
+						from: "scheduler",
+						to: [MISSION_COPILOT_AGENT_ID],
+						subject: `Background job failed: ${spec.id}`,
+						body:
+							`Job "${spec.id}" (submitted by "${spec.agentId}") exited ` +
+							`${exitCode ?? "null"}.\nScript: ${spec.scriptPath}\nLog: ${logPath}`,
+					})
+					.catch((e: unknown) =>
+						console.error(
+							`[daemon:jobs] Failed to notify mission copilot of job failure: ${(e as Error).message}`,
+						),
+					);
+			}
 		});
 	}
 }
@@ -1152,6 +1180,31 @@ async function main(): Promise<void> {
 								`[daemon] failed to post limit alert to copilot: ${e.message}`,
 							),
 						);
+					// Additively: also wake this mission's own copilot, which has
+					// direct in-mission access to actually diagnose it (ADR-0016).
+					if (
+						process.env.MISSION_COPILOT_ENABLED === "true" &&
+						teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
+					) {
+						mailboxRepo
+							.post({
+								missionId,
+								from: "system",
+								to: [MISSION_COPILOT_AGENT_ID],
+								subject: `Limit ${rule.severity}: ${agentId} (${rule.metric})`,
+								body:
+									`Agent "${agentId}" breached a ${rule.severity} limit on turn ${turnNumber}: ` +
+									`${rule.metric}=${value} exceeded threshold ${rule.threshold} (${rule.label}).` +
+									(rule.severity === "hard"
+										? " The turn was aborted."
+										: " The turn continued; assess whether intervention is warranted."),
+							})
+							.catch((e: Error) =>
+								console.error(
+									`[daemon] failed to post limit alert to mission copilot: ${e.message}`,
+								),
+							);
+					}
 				},
 				onAgentError: (agentId, errorMessage) =>
 					monitor.push("agent-error", {

@@ -7,6 +7,7 @@ import type { ConversationRepository } from "./conversation-repository.js";
 import type { LimitAlert } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
+import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import type { MagiTool } from "./tools.js";
 import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
@@ -198,6 +199,13 @@ export async function runOrchestrationLoop(
 	} = config;
 	const maxRuns = config.maxRuns ?? 50;
 	const missionId = teamConfig.mission.id;
+	// Whether this mission has its own copilot in the roster (ADR-0016) —
+	// additively routes timeout/error/limit alerts to its mailbox alongside
+	// the existing control-plane-copilot routing, since it's the one with
+	// direct in-mission context to actually diagnose them.
+	const missionCopilotPresent = teamConfig.agents.some(
+		(a) => a.id === MISSION_COPILOT_AGENT_ID,
+	);
 
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config must have at least one agent");
@@ -406,6 +414,24 @@ export async function runOrchestrationLoop(
 								`[orchestrator] failed to post copilot alert: ${e.message}`,
 							),
 						);
+					if (missionCopilotPresent) {
+						mailboxRepo
+							.post({
+								missionId,
+								from: "system",
+								to: [MISSION_COPILOT_AGENT_ID],
+								subject: `Agent timeout: ${agentId}`,
+								body:
+									`Agent "${agentId}" exceeded the ${maxRunMs / 1000}s wall-clock ` +
+									`limit and was aborted. Investigate with ReadAgentSessionDetail ` +
+									`before concluding what happened.`,
+							})
+							.catch((e: Error) =>
+								console.error(
+									`[orchestrator] failed to post timeout alert to mission copilot: ${e.message}`,
+								),
+							);
+					}
 				}
 			}, maxRunMs);
 
@@ -453,6 +479,21 @@ export async function runOrchestrationLoop(
 									`[orchestrator] failed to post copilot alert: ${e.message}`,
 								),
 							);
+						if (missionCopilotPresent) {
+							mailboxRepo
+								.post({
+									missionId,
+									from: "system",
+									to: [MISSION_COPILOT_AGENT_ID],
+									subject: `Agent error: ${agentId}`,
+									body: `Agent "${agentId}" encountered an error: ${errMsg}`,
+								})
+								.catch((e: Error) =>
+									console.error(
+										`[orchestrator] failed to post error alert to mission copilot: ${e.message}`,
+									),
+								);
+						}
 					}
 				})
 				.finally(() => {

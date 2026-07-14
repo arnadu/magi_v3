@@ -558,3 +558,118 @@ describe("TC-8: getAdditionalTools", () => {
 		expect(impostorCtx?.additionalTools).toBeUndefined();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// TC-9: mission-copilot alert routing (ADR-0016 Phase 6)
+// ---------------------------------------------------------------------------
+
+describe("TC-9: mission-copilot alert routing", () => {
+	it("posts a timeout alert to the mission copilot's mailbox when one is in the roster", async () => {
+		const tc = makeTeamConfig(["worker", "copilot"]);
+		const { repo } = makeMockMailbox({
+			worker: ["task"],
+			copilot: ["task"],
+		});
+
+		// worker never resolves except on abort — forces the wall-clock timeout.
+		mockRunAgent.mockImplementation(
+			async (
+				agentId: string,
+				_msgs: unknown,
+				_ctx: unknown,
+				signal?: AbortSignal,
+			) => {
+				if (agentId !== "worker") return;
+				await new Promise<void>((_resolve, reject) => {
+					signal?.addEventListener(
+						"abort",
+						() => reject(new DOMException("Aborted", "AbortError")),
+						{ once: true },
+					);
+				});
+			},
+		);
+
+		await runOrchestrationLoop(
+			buildConfig(tc, repo, { maxAgentRunSeconds: 0.02 }),
+		);
+		// The timeout fires on its own setTimeout, independent of dispatch —
+		// give it room to land before asserting.
+		await new Promise<void>((r) => setTimeout(r, 100));
+
+		const copilotPost = repo.post.mock.calls.find(
+			(c) =>
+				(c[0] as { to: string[] }).to.includes("copilot") &&
+				(c[0] as { subject: string }).subject.startsWith("Agent timeout"),
+		);
+		expect(copilotPost).toBeDefined();
+	});
+
+	it("does not post a mission-copilot timeout alert when no copilot is in the roster", async () => {
+		const tc = makeTeamConfig(["worker"]);
+		const { repo } = makeMockMailbox({ worker: ["task"] });
+
+		mockRunAgent.mockImplementation(
+			async (
+				_agentId: string,
+				_msgs: unknown,
+				_ctx: unknown,
+				signal?: AbortSignal,
+			) => {
+				await new Promise<void>((_resolve, reject) => {
+					signal?.addEventListener(
+						"abort",
+						() => reject(new DOMException("Aborted", "AbortError")),
+						{ once: true },
+					);
+				});
+			},
+		);
+
+		await runOrchestrationLoop(
+			buildConfig(tc, repo, { maxAgentRunSeconds: 0.02 }),
+		);
+		await new Promise<void>((r) => setTimeout(r, 100));
+
+		const copilotPost = repo.post.mock.calls.find((c) =>
+			(c[0] as { subject: string }).subject.startsWith("Agent timeout"),
+		);
+		expect(copilotPost).toBeUndefined();
+	});
+
+	it("posts an error alert to the mission copilot's mailbox when one is in the roster", async () => {
+		const tc = makeTeamConfig(["worker", "copilot"]);
+		const { repo } = makeMockMailbox({
+			worker: ["task"],
+			copilot: ["task"],
+		});
+
+		mockRunAgent.mockImplementation(async (agentId: string) => {
+			if (agentId === "worker") throw new Error("boom");
+		});
+
+		await runOrchestrationLoop(buildConfig(tc, repo));
+
+		const copilotPost = repo.post.mock.calls.find(
+			(c) =>
+				(c[0] as { to: string[] }).to.includes("copilot") &&
+				(c[0] as { subject: string }).subject.startsWith("Agent error"),
+		);
+		expect(copilotPost).toBeDefined();
+		expect((copilotPost?.[0] as { body: string }).body).toContain("boom");
+	});
+
+	it("does not post a mission-copilot error alert when no copilot is in the roster", async () => {
+		const tc = makeTeamConfig(["worker"]);
+		const { repo } = makeMockMailbox({ worker: ["task"] });
+
+		mockRunAgent.mockRejectedValue(new Error("boom"));
+
+		await runOrchestrationLoop(buildConfig(tc, repo));
+
+		const copilotPost = repo.post.mock.calls.find((c) =>
+			(c[0] as { subject: string }).subject.startsWith("Agent error"),
+		);
+		expect(copilotPost).toBeUndefined();
+	});
+});
