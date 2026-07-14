@@ -19,6 +19,7 @@ import type { MagiTool, ToolResult } from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
 import { getMachineState } from "./fly-machines.js";
+import { GITHUB_REPO, ghFetch } from "./github.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import type { MissionTemplate } from "./templates.js";
 
@@ -59,6 +60,7 @@ export class PendingActionsStore {
 
 interface MissionDoc {
 	missionId: string;
+	userId: string;
 	name: string;
 	teamConfig: string;
 	machineId?: string;
@@ -146,7 +148,7 @@ export function createCopilotTools(
 		async execute() {
 			const missions = await db
 				.collection<MissionDoc>("missions")
-				.find({}, { sort: { createdAt: -1 } })
+				.find({ userId }, { sort: { createdAt: -1 } })
 				.toArray();
 			if (missions.length === 0) return ok("(no missions)");
 			const rows = missions
@@ -167,7 +169,7 @@ export function createCopilotTools(
 			const missionId = args.missionId as string;
 			const mission = await db
 				.collection<MissionDoc>("missions")
-				.findOne({ missionId });
+				.findOne({ missionId, userId });
 			if (!mission) return err(`Mission "${missionId}" not found`);
 
 			let machineState = "(no machine)";
@@ -205,6 +207,10 @@ export function createCopilotTools(
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
 			const limit = (args.limit as number | undefined) ?? 20;
+			const mission = await db
+				.collection<MissionDoc>("missions")
+				.findOne({ missionId, userId });
+			if (!mission) return err(`Mission "${missionId}" not found`);
 			const msgs = await db
 				.collection("mailbox")
 				.find({ missionId }, { sort: { timestamp: -1 }, limit })
@@ -238,7 +244,7 @@ export function createCopilotTools(
 			const lines = (args.lines as number | undefined) ?? 100;
 			const mission = await db
 				.collection<MissionDoc>("missions")
-				.findOne({ missionId });
+				.findOne({ missionId, userId });
 			if (!mission?.privateIp)
 				return err(`Mission "${missionId}" has no private IP — is it running?`);
 			try {
@@ -277,7 +283,7 @@ export function createCopilotTools(
 
 			const mission = await db
 				.collection<MissionDoc>("missions")
-				.findOne({ missionId });
+				.findOne({ missionId, userId });
 			if (!mission?.privateIp)
 				return err(`Mission "${missionId}" has no private IP — is it running?`);
 
@@ -304,6 +310,9 @@ export function createCopilotTools(
 		}),
 		async execute(_id, args) {
 			const missionId = args.missionId as string | undefined;
+			// TODO(F-024): not userId-scoped — omitting missionId returns every
+			// user's schedule. Same bug class as the five B1 tools fixed for #19,
+			// but out of #19's named scope; tracked separately in findings.md.
 			const filter = missionId ? { missionId } : {};
 			const docs = await db
 				.collection<ScheduledMessageDoc>("scheduled_messages")
@@ -505,28 +514,6 @@ export function createCopilotTools(
 	};
 
 	// ─── B3: GitHub Issues ───────────────────────────────────────────────────
-
-	const GITHUB_REPO = process.env.GITHUB_REPO ?? "arnadu/magi_v3";
-	const GH_TOKEN = process.env.GH_TOKEN;
-
-	async function ghFetch(
-		path: string,
-		options: RequestInit = {},
-	): Promise<Response> {
-		if (!GH_TOKEN)
-			throw new Error(
-				"GH_TOKEN is not set — cannot access GitHub API. Set it in bootstrap.sh.",
-			);
-		return fetch(`https://api.github.com${path}`, {
-			...options,
-			headers: {
-				Authorization: `Bearer ${GH_TOKEN}`,
-				Accept: "application/vnd.github.v3+json",
-				"Content-Type": "application/json",
-				...options.headers,
-			},
-		});
-	}
 
 	const listIssues: MagiTool = {
 		name: "ListIssues",
