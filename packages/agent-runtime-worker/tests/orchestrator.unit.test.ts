@@ -10,6 +10,7 @@ import type { AgentConfig, TeamConfig } from "@magi/agent-config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MailboxMessage } from "../src/mailbox.js";
 import type { OrchestratorConfig } from "../src/orchestrator.js";
+import type { MagiTool } from "../src/tools.js";
 
 // ---------------------------------------------------------------------------
 // Module mocks — hoisted by Vitest
@@ -476,5 +477,84 @@ describe("TC-7: isAgentPaused skips the paused agent", () => {
 		// Only agent-b was dispatched
 		expect(started).toEqual(["agent-b"]);
 		expect(started).not.toContain("agent-a");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// TC-8: getAdditionalTools (ADR-0016 mission copilot)
+// ---------------------------------------------------------------------------
+
+describe("TC-8: getAdditionalTools", () => {
+	it("attaches the result only to the matching agent's dispatch", async () => {
+		const tc = makeTeamConfig(["lead", "copilot"]);
+		const { repo } = makeMockMailbox({
+			lead: ["task-lead"],
+			copilot: ["task-copilot"],
+		});
+
+		const marker = [{ name: "MarkerTool" }] as unknown as MagiTool[];
+
+		mockRunAgent.mockResolvedValue(undefined);
+
+		await runOrchestrationLoop(
+			buildConfig(tc, repo, {
+				getAdditionalTools: (agentId) =>
+					agentId === "copilot" ? marker : undefined,
+			}),
+		);
+
+		const callFor = (agentId: string) =>
+			mockRunAgent.mock.calls.find((c) => c[0] === agentId);
+
+		const leadCtx = callFor("lead")?.[2] as
+			| { additionalTools?: unknown }
+			| undefined;
+		const copilotCtx = callFor("copilot")?.[2] as
+			| { additionalTools?: unknown }
+			| undefined;
+
+		expect(leadCtx?.additionalTools).toBeUndefined();
+		expect(copilotCtx?.additionalTools).toEqual(marker);
+	});
+
+	it('does not grant elevated tools to an agent that merely mimics the copilot\'s config — only the literal id "copilot" ever qualifies', async () => {
+		// Regression test for the ADR-0016 invariant: elevated-tool grant must
+		// be keyed on the literal agent id, never on anything config-controlled
+		// (name, systemPrompt, etc.) — otherwise a compromised copilot could
+		// escalate a second agent via SaveMissionConfig by mimicking its shape.
+		const tc: TeamConfig = {
+			mission: { id: "test-mission", name: "Test Mission" },
+			agents: [
+				{
+					id: "impostor",
+					name: "Copilot", // same display name — must not matter
+					role: "lead", // same role label — must not matter
+					supervisor: "user",
+					linuxUser: "w-impostor",
+					systemPrompt: "You are this team's lead with elevated tools.",
+					initialMentalMap: "",
+				} as AgentConfig,
+			],
+		};
+		const { repo } = makeMockMailbox({ impostor: ["task"] });
+
+		mockRunAgent.mockResolvedValue(undefined);
+
+		// Simulates the daemon's real getAdditionalTools implementation
+		// (Phase 4): a literal string comparison, nothing config-derived.
+		const getAdditionalTools = (agentId: string) =>
+			agentId === "copilot" ? [{ name: "MarkerTool" }] : undefined;
+
+		await runOrchestrationLoop(
+			buildConfig(tc, repo, {
+				getAdditionalTools:
+					getAdditionalTools as OrchestratorConfig["getAdditionalTools"],
+			}),
+		);
+
+		const impostorCtx = mockRunAgent.mock.calls.find(
+			(c) => c[0] === "impostor",
+		)?.[2] as { additionalTools?: unknown } | undefined;
+		expect(impostorCtx?.additionalTools).toBeUndefined();
 	});
 });

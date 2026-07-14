@@ -7,6 +7,7 @@ import type { ConversationRepository } from "./conversation-repository.js";
 import type { LimitAlert } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
+import type { MagiTool } from "./tools.js";
 import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
 import { WorkspaceGit } from "./workspace-git.js";
@@ -125,6 +126,17 @@ export interface OrchestratorConfig {
 	 * dispatch. Reserved for the Copilot sprint (PauseAgent capability).
 	 */
 	isAgentPaused?: (agentId: string) => boolean;
+	/**
+	 * Optional per-agent elevated tool set, appended to that agent's tool list
+	 * for this dispatch. Introduced for the mission copilot (ADR-0016): the
+	 * daemon implementation must key this purely on the literal agent id
+	 * "copilot" — never on anything from teamConfig — since elevated-tool
+	 * grant is the structural boundary that keeps a compromised agent from
+	 * escalating itself or another agent via a config edit (e.g.
+	 * SaveMissionConfig). Returns undefined for every agent that shouldn't
+	 * get elevated tools, including the common case of no copilot at all.
+	 */
+	getAdditionalTools?: (agentId: string) => MagiTool[] | undefined;
 	/**
 	 * Called once after workspace provisioning, with a map of agentId → workdir.
 	 * The daemon uses this to register workdirs with the monitor server for the
@@ -414,6 +426,7 @@ export async function runOrchestrationLoop(
 				{
 					...agentCtx,
 					identity,
+					additionalTools: config.getAdditionalTools?.(agentId),
 					onMessage: config.onAgentMessage
 						? async (msg: Message) => config.onAgentMessage?.(agentId, msg)
 						: undefined,
