@@ -580,8 +580,9 @@ const MISSION_COPILOT_SRC_PATH = "/opt/magi-src";
  * user, the same setfacl-per-agent pattern WorkspaceManager already uses for
  * sharedDir/workdir. That user (agent id "copilot") doesn't exist until
  * ensureAgentUsers() creates it, so this must run at daemon startup, not at
- * image build time — the Dockerfile only creates the directory itself,
- * owned by root with no group/world read bit.
+ * image build time — the Dockerfile only makes the directory readable by
+ * magi-operator itself (mode 750, owned by magi-operator's own dedicated
+ * group — confirmed via a real image build), not by any other user.
  *
  * Best-effort: /opt/magi-src/ only exists in the built execution-plane
  * image, never in local dev — skip silently when absent, matching every
