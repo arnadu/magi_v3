@@ -17,6 +17,7 @@ import {
 	initMentalMap,
 	upsertManagedRegion,
 } from "./mental-map.js";
+import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import {
 	MY_OBJECTIVES_KEY,
 	renderMyObjectives,
@@ -29,6 +30,11 @@ import {
 import { loadCostEvents, loadObjectivesStore } from "./objectives/store.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
+import {
+	readSupervisorNote,
+	renderSupervisorNote,
+	SUPERVISOR_NOTE_KEY,
+} from "./supervisor-note.js";
 import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
@@ -198,6 +204,15 @@ export async function runAgent(
 
 	const { workdir, sharedDir, linuxUser } = ctx.identity;
 	const permittedPaths = [workdir, sharedDir];
+	// ADR-0016: only the mission copilot gets read access to the bundled
+	// platform source + MAGI_V3_SPEC.md (see the execution-plane Dockerfile),
+	// for diagnosing platform bugs and checking the real tool/skill catalog
+	// before granting one — never widened for any other agent. The files
+	// themselves are also filesystem-read-only (owned by a different user),
+	// so this is defense in depth, not the only thing stopping a write.
+	if (agentId === MISSION_COPILOT_AGENT_ID) {
+		permittedPaths.push("/opt/magi-src");
+	}
 
 	// linuxUser comes from ctx.identity — the authoritative source provisioned by
 	// WorkspaceManager. Tool execution always runs as this OS user via sudo.
@@ -378,6 +393,29 @@ export async function runAgent(
 		}
 	} catch (e) {
 		console.error("[agent-runner] objectives sync failed", {
+			missionId,
+			agentId,
+			error: (e as Error).message,
+		});
+	}
+
+	// Sync the daemon-managed #supervisor-note mental-map section (ADR-0016) —
+	// the same lazy-render-at-turn-start pattern as #my-objectives above.
+	// Written by the mission copilot's EditAgentMentalMap tool; read fresh
+	// every turn rather than pushed, so there's no out-of-band write into this
+	// agent's own conversation history to get wrong.
+	try {
+		const entry = await readSupervisorNote(sharedDir, agentId);
+		if (entry !== null) {
+			currentMentalMapHtml = upsertManagedRegion(
+				currentMentalMapHtml,
+				SUPERVISOR_NOTE_KEY,
+				renderSupervisorNote(entry),
+			);
+			ctx.onMentalMapUpdate?.(agentId, currentMentalMapHtml);
+		}
+	} catch (e) {
+		console.error("[agent-runner] supervisor-note sync failed", {
 			missionId,
 			agentId,
 			error: (e as Error).message,

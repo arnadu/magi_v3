@@ -113,6 +113,26 @@ COPY config/ ./config/
 # packages/skills/ is not in the builder stage (not compiled TypeScript) — copy direct.
 COPY packages/skills/ ./packages/skills/
 
+# /opt/magi-src/ — read-only platform source + spec for the mission copilot
+# (ADR-0016) to diagnose platform bugs and check the real tool/skill catalog
+# before granting one. daemon.ts grants read access to the copilot's specific
+# OS user at startup via setfacl (that user doesn't exist yet at image-build
+# time) — this directory having no group/world read bit by default is what
+# makes every *other* agent's Bash tool unable to reach it, since Bash has no
+# software path check (A-002) and would otherwise bypass
+# AgentRunContext.permittedPaths entirely.
+#
+# Owned by magi-operator (the daemon's own runtime user), not root: setfacl
+# requires either superuser or file-owner privilege to modify a path's ACL,
+# and the daemon runs as magi-operator (USER below), not root — root-owned
+# would make every runtime setfacl call in daemon.ts fail with "Operation not
+# permitted".
+RUN mkdir -p /opt/magi-src && chown magi-operator:magi-operator /opt/magi-src
+COPY --from=builder --chown=magi-operator:magi-operator /app/packages/agent-runtime-worker/src/ /opt/magi-src/packages/agent-runtime-worker/src/
+COPY --from=builder --chown=magi-operator:magi-operator /app/packages/agent-config/src/ /opt/magi-src/packages/agent-config/src/
+COPY --chown=magi-operator:magi-operator MAGI_V3_SPEC.md /opt/magi-src/MAGI_V3_SPEC.md
+RUN chmod -R 750 /opt/magi-src
+
 # Install data factory Python dependencies into the shared venv.
 RUN /opt/magi/venv/bin/pip install --no-cache-dir \
     -r /app/packages/skills/data-factory/requirements.txt

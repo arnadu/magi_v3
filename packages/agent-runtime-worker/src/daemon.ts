@@ -26,9 +26,15 @@
  *   MAX_COST_USD       optional — spending cap in USD; pauses when reached
  */
 
-import { execSync, spawn } from "node:child_process";
+import {
+	type ChildProcess,
+	execFileSync,
+	execSync,
+	spawn,
+} from "node:child_process";
 import {
 	createWriteStream,
+	existsSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
@@ -98,6 +104,12 @@ import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
+import {
+	injectMissionCopilot,
+	MISSION_COPILOT_AGENT_ID,
+	seedMissionCopilotObjectives,
+} from "./mission-copilot.js";
+import { createMissionCopilotTools } from "./mission-copilot-tools.js";
 import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer } from "./monitor-server.js";
@@ -126,6 +138,33 @@ const DEFAULT_JOB_TIMEOUT_MS = 30 * 60_000;
 const MAX_CONCURRENT_JOBS = 3;
 /** Track running jobs so we enforce the concurrency limit. */
 let runningJobs = 0;
+
+/**
+ * jobId → live ChildProcess, populated on spawn and cleared on exit (ADR-0016
+ * — the mission copilot's CancelBackgroundJob). Before this, no registry
+ * existed at all: runningJobs above is a bare counter, and the PID the
+ * timeout handler kills is a closure-local variable inside runPendingJobs,
+ * unreachable from anywhere else. This is the only way to reach a running
+ * job's process from outside that closure.
+ */
+const runningJobProcesses = new Map<string, ChildProcess>();
+
+/**
+ * Kill a running background job's entire process group, the same
+ * SIGKILL-the-process-group pattern the wall-clock timeout already uses.
+ * Returns false if the job isn't currently running (already exited, or the
+ * id is unknown) — the caller should report that, not treat it as success.
+ */
+export function cancelBackgroundJob(jobId: string): boolean {
+	const child = runningJobProcesses.get(jobId);
+	if (!child || child.pid === undefined) return false;
+	try {
+		process.kill(-child.pid, "SIGKILL");
+	} catch {
+		return false;
+	}
+	return true;
+}
 
 /**
  * Read the shebang line from a script and return the interpreter argv prefix.
@@ -327,6 +366,7 @@ async function runPendingJobs(
 
 		child.stdout?.pipe(logStream);
 		child.stderr?.pipe(logStream);
+		runningJobProcesses.set(spec.id, child);
 
 		// F-006: Wall-clock timeout — kill the entire process group after timeoutMs.
 		const jobTimeoutMs = spec.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;
@@ -346,6 +386,7 @@ async function runPendingJobs(
 		child.on("close", (exitCode) => {
 			clearTimeout(timeoutHandle);
 			runningJobs--;
+			runningJobProcesses.delete(spec.id);
 			toolApiServer.revokeToken(token);
 			logStream.end();
 
@@ -354,11 +395,19 @@ async function runPendingJobs(
 				unlinkSync(runningPath);
 			} catch {}
 
-			// Write status file.
+			// Write status file. Carries the full original spec (not just
+			// scriptPath) so RestartBackgroundJob (ADR-0016) can resubmit an
+			// exact retry — agentId/args/notifyAgentId/timeoutMs are otherwise
+			// unrecoverable once jobs/running/<id>.json is cleaned up above.
 			const statusPath = join(statusDir, `${spec.id}.json`);
 			const status = {
 				id: spec.id,
+				agentId: spec.agentId,
 				scriptPath: spec.scriptPath,
+				args: spec.args,
+				notifyAgentId: spec.notifyAgentId,
+				notifySubject: spec.notifySubject,
+				timeoutMs: spec.timeoutMs,
 				exitCode: exitCode ?? -1,
 				completedAt: new Date().toISOString(),
 				logPath,
@@ -479,6 +528,47 @@ function ensureAgentUsers(
 				);
 			}
 		}
+	}
+}
+
+const MISSION_COPILOT_SRC_PATH = "/opt/magi-src";
+
+/**
+ * Grant the mission copilot's specific OS user read access to the bundled
+ * platform source (ADR-0016).
+ *
+ * Why this can't be a Dockerfile permission alone: Bash has no software
+ * checkPath — path enforcement for Bash is delegated entirely to OS Linux
+ * ACLs (accepted finding A-002). AgentRunContext.permittedPaths (extended
+ * for the copilot in agent-runner.ts) only gates WriteFile/EditFile. If
+ * /opt/magi-src/ were world-or-group readable at the OS level, *any* agent
+ * could read it via Bash regardless of permittedPaths — the actual
+ * restriction has to be an OS-level ACL grant scoped to one specific Linux
+ * user, the same setfacl-per-agent pattern WorkspaceManager already uses for
+ * sharedDir/workdir. That user (agent id "copilot") doesn't exist until
+ * ensureAgentUsers() creates it, so this must run at daemon startup, not at
+ * image build time — the Dockerfile only creates the directory itself,
+ * owned by root with no group/world read bit.
+ *
+ * Best-effort: /opt/magi-src/ only exists in the built execution-plane
+ * image, never in local dev — skip silently when absent, matching every
+ * other ACL call's tolerance for unsupported/missing environments.
+ */
+function grantMissionCopilotSourceAccess(linuxUser: string): void {
+	if (!existsSync(MISSION_COPILOT_SRC_PATH)) return;
+	try {
+		execFileSync(
+			"setfacl",
+			["-R", "-m", `u:${linuxUser}:rX`, MISSION_COPILOT_SRC_PATH],
+			{ stdio: "ignore" },
+		);
+		console.log(
+			`[daemon] Granted ${linuxUser} read access to ${MISSION_COPILOT_SRC_PATH}`,
+		);
+	} catch (e) {
+		console.error(
+			`[daemon] Failed to grant ${linuxUser} access to ${MISSION_COPILOT_SRC_PATH}: ${(e as Error).message}`,
+		);
 	}
 }
 
@@ -633,6 +723,18 @@ async function main(): Promise<void> {
 	if (process.env.MISSION_ID) {
 		teamConfig.mission.id = missionId;
 	}
+	// Mission copilot injection (ADR-0016) — in-memory only, must run before
+	// ensureAgentUsers so the copilot gets a real per-agent OS user and
+	// workspace ACL through the exact same path every other agent goes
+	// through. Defaults OFF: this repo deploys every push to main straight to
+	// production, and the copilot's full elevated tool surface doesn't exist
+	// until Track 2's later phases land — defaulting on here would give every
+	// real mission (in the window before those phases ship) a copilot whose
+	// system prompt claims capabilities it doesn't have yet.
+	if (process.env.MISSION_COPILOT_ENABLED === "true") {
+		injectMissionCopilot(teamConfig);
+	}
+
 	process.stdout.write(
 		`[daemon] Mission: ${missionId} (${teamConfig.agents.length} agents)\n`,
 	);
@@ -641,6 +743,19 @@ async function main(): Promise<void> {
 	// (dev/test); creates per-agent users in production Docker.
 	process.stdout.write("[daemon] Ensuring agent OS users…\n");
 	ensureAgentUsers(teamConfig.agents);
+
+	// Must run after ensureAgentUsers — the copilot's OS user needs to exist
+	// before it can be granted an ACL entry.
+	if (process.env.MISSION_COPILOT_ENABLED === "true") {
+		const copilotAgent = teamConfig.agents.find(
+			(a) => a.id === MISSION_COPILOT_AGENT_ID,
+		);
+		if (copilotAgent) {
+			grantMissionCopilotSourceAccess(
+				copilotAgent.linuxUser ?? copilotAgent.id,
+			);
+		}
+	}
 
 	process.stdout.write("[daemon] Connecting to MongoDB…\n");
 	const { client, db } = await connectMongo(mongoUri);
@@ -832,9 +947,13 @@ async function main(): Promise<void> {
 		workdir,
 		sharedDir,
 		async (id) => {
+			// missionId-scoped: without it, any valid ObjectId (guessed or
+			// leaked from another mission) could cancel a different mission's
+			// scheduled message — the same missing-scope bug class Track 1
+			// fixed for the control-plane copilot's B1 tools, found here too.
 			await db
 				.collection("scheduled_messages")
-				.deleteOne({ _id: new ObjectId(id) });
+				.deleteOne({ _id: new ObjectId(id), missionId });
 		},
 	);
 	// Vision model for the upload pipeline's image captioning (Sprint 25).
@@ -948,6 +1067,28 @@ async function main(): Promise<void> {
 
 	console.log("[daemon] Entering orchestration loop");
 
+	// Mission copilot elevated tools (ADR-0016). Built once (not per-dispatch)
+	// since everything it closes over — db, mailboxRepo, sharedDir, the
+	// monitor's own port/token, and the team roster — is stable for the
+	// lifetime of this process; config changes only take effect on next
+	// resume, so the roster snapshot here is correct for the whole run.
+	// getAdditionalTools is keyed on the literal agent id "copilot" — never
+	// on anything from teamConfig — so a compromised copilot cannot escalate
+	// a different agent to elevated status via SaveMissionConfig (Phase 3).
+	const missionCopilotTools =
+		process.env.MISSION_COPILOT_ENABLED === "true"
+			? createMissionCopilotTools({
+					db,
+					missionId,
+					sharedDir,
+					mailboxRepo,
+					monitorPort,
+					monitorToken: process.env.MONITOR_TOKEN ?? "",
+					teamAgentIds: teamConfig.agents.map((a) => a.id),
+					cancelBackgroundJob,
+				})
+			: undefined;
+
 	try {
 		await runOrchestrationLoop(
 			{
@@ -965,6 +1106,10 @@ async function main(): Promise<void> {
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
 				isAgentPaused: (agentId) => monitor.isAgentPaused(agentId),
+				getAdditionalTools: (agentId) =>
+					agentId === MISSION_COPILOT_AGENT_ID
+						? missionCopilotTools
+						: undefined,
 				onLimitAlert: (alert) => {
 					const { agentId, turnNumber, breach } = alert;
 					const { rule, value } = breach;
@@ -1009,7 +1154,23 @@ async function main(): Promise<void> {
 						transient: false,
 					}),
 				onAgentStart: (agentId) => monitor.notifyAgentStart(agentId),
-				onWorkspaceReady: (workdirs) => monitor.setAgentWorkdirs(workdirs),
+				onWorkspaceReady: (workdirs) => {
+					monitor.setAgentWorkdirs(workdirs);
+					// Seed after provisioning, not at injection time — provision()
+					// is what creates sharedDir/objectives/ on disk. Idempotent, so
+					// a resume_mission reprovision (which re-runs this whole path)
+					// never duplicates the seed.
+					if (
+						process.env.MISSION_COPILOT_ENABLED === "true" &&
+						workdirs.has(MISSION_COPILOT_AGENT_ID)
+					) {
+						seedMissionCopilotObjectives(sharedDir).catch((e: Error) =>
+							console.error(
+								`[daemon] failed to seed mission copilot objectives: ${e.message}`,
+							),
+						);
+					}
+				},
 				onAgentDone: (agentId) => monitor.notifyAgentDone(agentId),
 				onIdle: () => monitor.notifyIdle(),
 				onMentalMapUpdate: (agentId, html) =>

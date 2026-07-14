@@ -600,6 +600,13 @@ export class MonitorServer {
 						turnNumber: d.turnNumber ?? 0,
 						isReflection: d.isReflection ?? false,
 						savedAt: d.savedAt,
+						model: d.model ?? null,
+						// input is absent after the 7-day retention window — same
+						// window that governs d.output; toolNames degrades to
+						// undefined for older calls rather than an empty array, so
+						// callers can distinguish "no tools available" from "no
+						// longer known".
+						toolNames: d.input?.toolNames,
 						usage: d.usage ?? null,
 					})),
 				),

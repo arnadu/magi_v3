@@ -12,6 +12,14 @@ import type {
  * Tools whose results are large and transient — safe to stub out after the
  * agent has moved past them. Durable tools (WriteFile, PostMessage, …) are
  * never touched: their small confirmations are cheap and often referred back to.
+ *
+ * Mission-copilot tools (ADR-0016) that return large free-text content are
+ * included here for the same reason — the copilot's normal operation (e.g.
+ * one alignment-review pass touching every teammate) calls these far more
+ * densely per turn than a typical work agent calls Bash/FetchUrl. Its other
+ * tools return small, structured, or already-bounded data (session/usage
+ * summaries, cost series, config previews) and are deliberately left out,
+ * matching the rationale for WriteFile/PostMessage above.
  */
 export const EPHEMERAL_TOOLS = new Set([
 	"Bash",
@@ -20,6 +28,13 @@ export const EPHEMERAL_TOOLS = new Set([
 	"BrowseWeb",
 	"ReadFile",
 	"InspectImage",
+	"ReadAgentSessionDetail",
+	"ReadAgentLlmCall",
+	"ReadMissionMailboxAll",
+	"SearchMissionHistory",
+	"ReadSharedFile",
+	"ReadAgentWorkdirFile",
+	"ReadMissionLog",
 ]);
 
 export const PRUNED_STUB =
