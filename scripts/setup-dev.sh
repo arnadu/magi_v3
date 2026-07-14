@@ -6,8 +6,9 @@
 #
 # Creates:
 #   - magi-w1 .. magi-w6      (pool workers; uid 60001..60006)
-#   - magi-copilot            (copilot agent user; uid 60010)
-#   - magi-shared group       (gid 60100 — added to all pool users and copilot)
+#   - magi-copilot            (control-plane copilot agent user; uid 60010)
+#   - copilot                 (mission copilot agent user, ADR-0016; uid 60011)
+#   - magi-shared group       (gid 60100 — added to all pool users and both copilots)
 #   - /missions/              (shared mission folder root; setfacl default ACL)
 #   - /opt/magi/venv          (shared Python venv; readable by all pool users)
 #   - /usr/local/bin/magi-python3  (wrapper that exec's the venv Python)
@@ -179,6 +180,38 @@ chmod 770 "${COPILOT_WORKDIR}"
 echo "[setup-dev] Workdir: ${COPILOT_WORKDIR}"
 
 # ---------------------------------------------------------------------------
+# 2c. Create the mission copilot user 'copilot' (ADR-0016, MISSION_COPILOT_ENABLED)
+# ---------------------------------------------------------------------------
+# Distinct from magi-copilot above: that's the singleton control-plane copilot
+# with a fixed, persistent workdir. This is the per-mission mission copilot —
+# a normal team member injected into every mission's roster, provisioned by
+# WorkspaceManager.provision() exactly like the magi-wN pool workers (fresh
+# workdir per mission, no fixed home). Its AgentConfig sets no linuxUser
+# override, so ensureAgentUsers()/provision() derive the OS username directly
+# from agent.id — it must be literally "copilot", not "magi-copilot".
+# Without this user, provision()'s setfacl calls throw (setfacl requires a
+# resolvable OS user), which fails the whole mission's provisioning, not just
+# the copilot's — the same failure mode the magi-wN pool exists to avoid.
+MISSION_COPILOT_USER="copilot"
+MISSION_COPILOT_UID=60011
+
+if id "${MISSION_COPILOT_USER}" > /dev/null 2>&1; then
+    echo "[setup-dev] User '${MISSION_COPILOT_USER}' already exists — skipping"
+else
+    useradd \
+        --uid "${MISSION_COPILOT_UID}" \
+        --gid "${SHARED_GID}" \
+        --home-dir "${HOME_BASE}/${MISSION_COPILOT_USER}" \
+        --create-home \
+        --shell /usr/sbin/nologin \
+        --comment "MAGI V3 mission copilot (ADR-0016)" \
+        "${MISSION_COPILOT_USER}"
+    echo "[setup-dev] Created user '${MISSION_COPILOT_USER}' (uid ${MISSION_COPILOT_UID})"
+fi
+
+usermod -aG "${SHARED_GROUP}" "${MISSION_COPILOT_USER}" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
 # 3. Create /missions root with default ACL for the shared group
 # ---------------------------------------------------------------------------
 mkdir -p "${MISSIONS}"
@@ -282,8 +315,15 @@ DATA_KEYS="MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API
     # Allow the orchestrator user to run the node wrapper as the copilot user.
     # Used by the copilot's Bash/file tool subprocess (same isolation model as pool workers).
     printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${COPILOT_USER}" "${WRAPPER}"
+    # Allow the orchestrator user to run the node wrapper as the mission
+    # copilot user (ADR-0016) — same isolation model, distinct identity.
+    printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${MISSION_COPILOT_USER}" "${WRAPPER}"
     # Allow the orchestrator user to run background job scripts via magi-job.
     printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${POOL_LIST}" "${JOB_WRAPPER}"
+    # Mission copilot needs the same background-job rule (RestartBackgroundJob,
+    # Track 2 Phase 4 — the run-background skill it uses is the same one any
+    # agent uses, gated by the same sudoers rule as the pool workers).
+    printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${MISSION_COPILOT_USER}" "${JOB_WRAPPER}"
     # Preserve MAGI tool IPC env vars when running background jobs.
     # Without env_keep, sudo's env_reset strips these before exec.
     printf 'Defaults!%s env_keep += "%s"\n' "${JOB_WRAPPER}" "${DATA_KEYS}"
@@ -311,5 +351,5 @@ git config core.hooksPath .githooks
 echo "[setup-dev] Installed git hooks from .githooks/ (lint runs on pre-commit)."
 
 echo ""
-echo "[setup-dev] Done. Pool users: $(seq -s ', ' -f 'magi-w%.0f' 1 "${POOL_SIZE}"), ${COPILOT_USER}"
+echo "[setup-dev] Done. Pool users: $(seq -s ', ' -f 'magi-w%.0f' 1 "${POOL_SIZE}"), ${COPILOT_USER}, ${MISSION_COPILOT_USER}"
 echo "            Re-run at any time — it is idempotent."

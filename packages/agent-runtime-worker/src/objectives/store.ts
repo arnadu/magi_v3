@@ -8,7 +8,7 @@
  * (cost attribution, B2) and tests; agent skill scripts append directly in JS.
  */
 
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
 	type AllocEvent,
@@ -413,6 +413,28 @@ export async function loadGoals(sharedDir: string): Promise<GoalsFile> {
 		}
 		return { objectives: [] };
 	}
+}
+
+/**
+ * Overwrite goals.json with a validated objective tree. Unlike appendEvent's
+ * logs, goals.json is a low-churn authored file, not an append-only log — this
+ * is a plain overwrite, not a merge. Callers that need to add to an existing
+ * tree must loadGoals() first and pass the merged result. Used by daemon-side
+ * seeding (e.g. the mission copilot's initial objectives); agent skill scripts
+ * continue to write this file directly via WriteFile/EditFile, unaffected.
+ */
+export async function saveGoals(
+	sharedDir: string,
+	goals: GoalsFile,
+): Promise<void> {
+	const validated = GoalsFileSchema.parse(goals);
+	const dir = objectivesDir(sharedDir);
+	await mkdir(dir, { recursive: true });
+	await writeFile(
+		join(dir, STORE_FILES.goals),
+		`${JSON.stringify(validated, null, 2)}\n`,
+		"utf8",
+	);
 }
 
 export { OVERHEAD_BUCKET };
