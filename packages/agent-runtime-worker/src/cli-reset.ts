@@ -61,10 +61,11 @@ async function main(): Promise<void> {
 	const skipConfirm = args.includes("--yes");
 
 	const teamConfig = loadTeamConfig(teamConfigPath);
-	// Mirror daemon.ts's own injection gate — the mission copilot (ADR-0016)
-	// is never in the authored YAML, so without this its private workdir
+	// Mirror daemon.ts's own injection gate (default on, opt out with
+	// MISSION_COPILOT_ENABLED=false) — the mission copilot (ADR-0016) is
+	// never in the authored YAML, so without this its private workdir
 	// (home/copilot/missions/<id>) would be silently left behind on reset.
-	if (process.env.MISSION_COPILOT_ENABLED === "true") {
+	if (process.env.MISSION_COPILOT_ENABLED !== "false") {
 		injectMissionCopilot(teamConfig);
 	}
 	const missionId = teamConfig.mission.id;

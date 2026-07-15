@@ -24,7 +24,8 @@
  *   MONITOR_PORT       optional — dashboard HTTP port (default: 4000; must be 1–65535)
  *   TOOL_PORT          optional — Tool API server port for background jobs (default: 4001; must be 1–65535)
  *   MAX_COST_USD       optional — spending cap in USD; pauses when reached
- *   MISSION_COPILOT_ENABLED  optional — "true" to inject the mission copilot (ADR-0016); default off
+ *   MISSION_COPILOT_ENABLED  optional — "false" to opt a mission out of the mission copilot
+ *                                 (ADR-0016); default on
  *   MONITOR_TOKEN      optional — per-mission auth token for MonitorServer mutating routes
  *                                 (set by the control plane at machine creation; empty = no auth, local dev)
  *   CONTROL_PLANE_URL  optional — base URL for the mission copilot's GitHub proxy (ADR-0016 Phase 5);
@@ -125,6 +126,16 @@ import type { AclPolicy } from "./tools.js";
 import { UsageAccumulator } from "./usage.js";
 import type { AgentIdentity } from "./workspace-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
+
+/**
+ * Mission copilot (ADR-0016): default-on as of Sprint 26, validated end-to-end
+ * (real Docker build, live test mission, full integration suite) before this
+ * flip. Set MISSION_COPILOT_ENABLED=false to opt a mission out. Single source
+ * of truth for the default so every call site agrees — and so the flag can be
+ * deleted in one place (Sequencing step 12) once default-on has run in
+ * production without incident.
+ */
+const missionCopilotEnabled = process.env.MISSION_COPILOT_ENABLED !== "false";
 
 // ---------------------------------------------------------------------------
 // Background jobs
@@ -456,7 +467,7 @@ async function runPendingJobs(
 			// notified via notifyAgentId.
 			if (
 				!success &&
-				process.env.MISSION_COPILOT_ENABLED === "true" &&
+				missionCopilotEnabled &&
 				teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
 			) {
 				mailboxRepo
@@ -760,12 +771,8 @@ async function main(): Promise<void> {
 	// Mission copilot injection (ADR-0016) — in-memory only, must run before
 	// ensureAgentUsers so the copilot gets a real per-agent OS user and
 	// workspace ACL through the exact same path every other agent goes
-	// through. Defaults OFF: this repo deploys every push to main straight to
-	// production, and the copilot's full elevated tool surface doesn't exist
-	// until Track 2's later phases land — defaulting on here would give every
-	// real mission (in the window before those phases ship) a copilot whose
-	// system prompt claims capabilities it doesn't have yet.
-	if (process.env.MISSION_COPILOT_ENABLED === "true") {
+	// through.
+	if (missionCopilotEnabled) {
 		injectMissionCopilot(teamConfig);
 	}
 
@@ -780,7 +787,7 @@ async function main(): Promise<void> {
 
 	// Must run after ensureAgentUsers — the copilot's OS user needs to exist
 	// before it can be granted an ACL entry.
-	if (process.env.MISSION_COPILOT_ENABLED === "true") {
+	if (missionCopilotEnabled) {
 		const copilotAgent = teamConfig.agents.find(
 			(a) => a.id === MISSION_COPILOT_AGENT_ID,
 		);
@@ -1109,20 +1116,19 @@ async function main(): Promise<void> {
 	// getAdditionalTools is keyed on the literal agent id "copilot" — never
 	// on anything from teamConfig — so a compromised copilot cannot escalate
 	// a different agent to elevated status via SaveMissionConfig (Phase 3).
-	const missionCopilotTools =
-		process.env.MISSION_COPILOT_ENABLED === "true"
-			? createMissionCopilotTools({
-					db,
-					missionId,
-					sharedDir,
-					mailboxRepo,
-					monitorPort,
-					monitorToken: process.env.MONITOR_TOKEN ?? "",
-					teamAgentIds: teamConfig.agents.map((a) => a.id),
-					cancelBackgroundJob,
-					controlPlaneUrl: process.env.CONTROL_PLANE_URL ?? "",
-				})
-			: undefined;
+	const missionCopilotTools = missionCopilotEnabled
+		? createMissionCopilotTools({
+				db,
+				missionId,
+				sharedDir,
+				mailboxRepo,
+				monitorPort,
+				monitorToken: process.env.MONITOR_TOKEN ?? "",
+				teamAgentIds: teamConfig.agents.map((a) => a.id),
+				cancelBackgroundJob,
+				controlPlaneUrl: process.env.CONTROL_PLANE_URL ?? "",
+			})
+		: undefined;
 
 	try {
 		await runOrchestrationLoop(
@@ -1184,7 +1190,7 @@ async function main(): Promise<void> {
 					// Additively: also wake this mission's own copilot, which has
 					// direct in-mission access to actually diagnose it (ADR-0016).
 					if (
-						process.env.MISSION_COPILOT_ENABLED === "true" &&
+						missionCopilotEnabled &&
 						teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
 					) {
 						mailboxRepo
@@ -1220,10 +1226,7 @@ async function main(): Promise<void> {
 					// is what creates sharedDir/objectives/ on disk. Idempotent, so
 					// a resume_mission reprovision (which re-runs this whole path)
 					// never duplicates the seed.
-					if (
-						process.env.MISSION_COPILOT_ENABLED === "true" &&
-						workdirs.has(MISSION_COPILOT_AGENT_ID)
-					) {
+					if (missionCopilotEnabled && workdirs.has(MISSION_COPILOT_AGENT_ID)) {
 						seedMissionCopilotObjectives(sharedDir).catch((e: Error) =>
 							console.error(
 								`[daemon] failed to seed mission copilot objectives: ${e.message}`,
