@@ -32,6 +32,7 @@ dotenvConfig({
 	quiet: true,
 });
 
+import { injectMissionCopilot } from "./mission-copilot.js";
 import { connectMongo } from "./mongo.js";
 
 async function confirm(prompt: string): Promise<boolean> {
@@ -60,6 +61,12 @@ async function main(): Promise<void> {
 	const skipConfirm = args.includes("--yes");
 
 	const teamConfig = loadTeamConfig(teamConfigPath);
+	// Mirror daemon.ts's own injection gate — the mission copilot (ADR-0016)
+	// is never in the authored YAML, so without this its private workdir
+	// (home/copilot/missions/<id>) would be silently left behind on reset.
+	if (process.env.MISSION_COPILOT_ENABLED === "true") {
+		injectMissionCopilot(teamConfig);
+	}
 	const missionId = teamConfig.mission.id;
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
