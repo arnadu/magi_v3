@@ -1,6 +1,6 @@
 # ADR-0016 — Copilot Architecture: Mission-Scoped Supervision + Control-Plane Portfolio Assistant
 
-**Status**: Proposed
+**Status**: Accepted
 **Sprint**: 26
 **Date**: 2026-07
 

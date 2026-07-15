@@ -86,6 +86,13 @@ COPY packages/agent-config/src ./packages/agent-config/src
 COPY packages/agent-runtime-worker/src ./packages/agent-runtime-worker/src
 COPY packages/control-plane/src ./packages/control-plane/src
 
+# The platform spec — documents architecture and the tool catalog end to end
+# (ADR-0016 Track 3). Without this the copilot's only way to answer "what
+# tools does a mission agent get" was reverse-engineering intent from raw
+# source, the same gap the execution-plane copilot's /opt/magi-src/ bundling
+# (ADR-0016 Phase 2a) exists to avoid on the other side of the architecture.
+COPY MAGI_V3_SPEC.md ./MAGI_V3_SPEC.md
+
 # Skills for copilot's sharedDir (same mechanism as execution plane).
 COPY packages/skills ./packages/skills
 COPY config ./config
