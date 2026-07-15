@@ -589,7 +589,7 @@ const MISSION_COPILOT_SRC_PATH = "/opt/magi-src";
  * could read it via Bash regardless of permittedPaths — the actual
  * restriction has to be an OS-level ACL grant scoped to one specific Linux
  * user, the same setfacl-per-agent pattern WorkspaceManager already uses for
- * sharedDir/workdir. That user (agent id "copilot") doesn't exist until
+ * sharedDir/workdir. That user (agent id "mission-copilot") doesn't exist until
  * ensureAgentUsers() creates it, so this must run at daemon startup, not at
  * image build time — the Dockerfile only makes the directory readable by
  * magi-operator itself (mode 750, owned by magi-operator's own dedicated
@@ -1113,9 +1113,10 @@ async function main(): Promise<void> {
 	// monitor's own port/token, and the team roster — is stable for the
 	// lifetime of this process; config changes only take effect on next
 	// resume, so the roster snapshot here is correct for the whole run.
-	// getAdditionalTools is keyed on the literal agent id "copilot" — never
-	// on anything from teamConfig — so a compromised copilot cannot escalate
-	// a different agent to elevated status via SaveMissionConfig (Phase 3).
+	// getAdditionalTools is keyed on the literal agent id "mission-copilot" —
+	// never on anything from teamConfig — so a compromised copilot cannot
+	// escalate a different agent to elevated status via SaveMissionConfig
+	// (Phase 3).
 	const missionCopilotTools = missionCopilotEnabled
 		? createMissionCopilotTools({
 				db,

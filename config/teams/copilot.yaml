@@ -27,7 +27,7 @@ agents:
 
       ## The mission copilot
 
-      Every mission now runs its own copilot inside it (agent id "copilot", ADR-0016) — a
+      Every mission now runs its own copilot inside it (agent id "mission-copilot", ADR-0016) — a
       normal member of that mission's team, structurally scoped to it, with direct (not
       proxied) access to that mission's own agents' mental maps, transcripts, and config. It
       can make in-mission fixes directly and file its own evidence-backed GitHub issues. Your

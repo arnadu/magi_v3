@@ -209,9 +209,9 @@ export function createMissionCopilotTools(
 					| Array<{ path: string; content: string }>
 					| undefined) ?? [];
 			try {
-				// Default (strict) validation — rejects id "copilot" (Phase 1),
-				// so a compromised copilot cannot escalate a second agent by
-				// writing itself into the authored config a second time.
+				// Rejects id "mission-copilot" (Phase 1), so a compromised copilot
+				// cannot escalate a second agent by writing itself into the
+				// authored config a second time.
 				parseTeamConfig(teamConfigYaml);
 			} catch (e) {
 				return err(`Invalid team config: ${(e as Error).message}`);

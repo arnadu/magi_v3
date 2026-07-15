@@ -9,6 +9,7 @@
 import type { AgentConfig, TeamConfig } from "@magi/agent-config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MailboxMessage } from "../src/mailbox.js";
+import { MISSION_COPILOT_AGENT_ID } from "../src/mission-copilot.js";
 import type { OrchestratorConfig } from "../src/orchestrator.js";
 import type { MagiTool } from "../src/tools.js";
 
@@ -486,10 +487,10 @@ describe("TC-7: isAgentPaused skips the paused agent", () => {
 
 describe("TC-8: getAdditionalTools", () => {
 	it("attaches the result only to the matching agent's dispatch", async () => {
-		const tc = makeTeamConfig(["lead", "copilot"]);
+		const tc = makeTeamConfig(["lead", MISSION_COPILOT_AGENT_ID]);
 		const { repo } = makeMockMailbox({
 			lead: ["task-lead"],
-			copilot: ["task-copilot"],
+			[MISSION_COPILOT_AGENT_ID]: ["task-copilot"],
 		});
 
 		const marker = [{ name: "MarkerTool" }] as unknown as MagiTool[];
@@ -499,7 +500,7 @@ describe("TC-8: getAdditionalTools", () => {
 		await runOrchestrationLoop(
 			buildConfig(tc, repo, {
 				getAdditionalTools: (agentId) =>
-					agentId === "copilot" ? marker : undefined,
+					agentId === MISSION_COPILOT_AGENT_ID ? marker : undefined,
 			}),
 		);
 
@@ -509,7 +510,7 @@ describe("TC-8: getAdditionalTools", () => {
 		const leadCtx = callFor("lead")?.[2] as
 			| { additionalTools?: unknown }
 			| undefined;
-		const copilotCtx = callFor("copilot")?.[2] as
+		const copilotCtx = callFor(MISSION_COPILOT_AGENT_ID)?.[2] as
 			| { additionalTools?: unknown }
 			| undefined;
 
@@ -517,7 +518,7 @@ describe("TC-8: getAdditionalTools", () => {
 		expect(copilotCtx?.additionalTools).toEqual(marker);
 	});
 
-	it('does not grant elevated tools to an agent that merely mimics the copilot\'s config — only the literal id "copilot" ever qualifies', async () => {
+	it("does not grant elevated tools to an agent that merely mimics the copilot's config — only the literal reserved id ever qualifies", async () => {
 		// Regression test for the ADR-0016 invariant: elevated-tool grant must
 		// be keyed on the literal agent id, never on anything config-controlled
 		// (name, systemPrompt, etc.) — otherwise a compromised copilot could
@@ -543,7 +544,9 @@ describe("TC-8: getAdditionalTools", () => {
 		// Simulates the daemon's real getAdditionalTools implementation
 		// (Phase 4): a literal string comparison, nothing config-derived.
 		const getAdditionalTools = (agentId: string) =>
-			agentId === "copilot" ? [{ name: "MarkerTool" }] : undefined;
+			agentId === MISSION_COPILOT_AGENT_ID
+				? [{ name: "MarkerTool" }]
+				: undefined;
 
 		await runOrchestrationLoop(
 			buildConfig(tc, repo, {
@@ -565,10 +568,10 @@ describe("TC-8: getAdditionalTools", () => {
 
 describe("TC-9: mission-copilot alert routing", () => {
 	it("posts a timeout alert to the mission copilot's mailbox when one is in the roster", async () => {
-		const tc = makeTeamConfig(["worker", "copilot"]);
+		const tc = makeTeamConfig(["worker", MISSION_COPILOT_AGENT_ID]);
 		const { repo } = makeMockMailbox({
 			worker: ["task"],
-			copilot: ["task"],
+			[MISSION_COPILOT_AGENT_ID]: ["task"],
 		});
 
 		// worker never resolves except on abort — forces the wall-clock timeout.
@@ -599,7 +602,7 @@ describe("TC-9: mission-copilot alert routing", () => {
 
 		const copilotPost = repo.post.mock.calls.find(
 			(c) =>
-				(c[0] as { to: string[] }).to.includes("copilot") &&
+				(c[0] as { to: string[] }).to.includes(MISSION_COPILOT_AGENT_ID) &&
 				(c[0] as { subject: string }).subject.startsWith("Agent timeout"),
 		);
 		expect(copilotPost).toBeDefined();
@@ -638,10 +641,10 @@ describe("TC-9: mission-copilot alert routing", () => {
 	});
 
 	it("posts an error alert to the mission copilot's mailbox when one is in the roster", async () => {
-		const tc = makeTeamConfig(["worker", "copilot"]);
+		const tc = makeTeamConfig(["worker", MISSION_COPILOT_AGENT_ID]);
 		const { repo } = makeMockMailbox({
 			worker: ["task"],
-			copilot: ["task"],
+			[MISSION_COPILOT_AGENT_ID]: ["task"],
 		});
 
 		mockRunAgent.mockImplementation(async (agentId: string) => {
@@ -652,7 +655,7 @@ describe("TC-9: mission-copilot alert routing", () => {
 
 		const copilotPost = repo.post.mock.calls.find(
 			(c) =>
-				(c[0] as { to: string[] }).to.includes("copilot") &&
+				(c[0] as { to: string[] }).to.includes(MISSION_COPILOT_AGENT_ID) &&
 				(c[0] as { subject: string }).subject.startsWith("Agent error"),
 		);
 		expect(copilotPost).toBeDefined();

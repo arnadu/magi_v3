@@ -7,7 +7,7 @@
 # Creates:
 #   - magi-w1 .. magi-w6      (pool workers; uid 60001..60006)
 #   - magi-copilot            (control-plane copilot agent user; uid 60010)
-#   - copilot                 (mission copilot agent user, ADR-0016; uid 60011)
+#   - mission-copilot         (mission copilot agent user, ADR-0016; uid 60011)
 #   - magi-shared group       (gid 60100 — added to all pool users and both copilots)
 #   - /missions/              (shared mission folder root; setfacl default ACL)
 #   - /opt/magi/venv          (shared Python venv; readable by all pool users)
@@ -180,7 +180,7 @@ chmod 770 "${COPILOT_WORKDIR}"
 echo "[setup-dev] Workdir: ${COPILOT_WORKDIR}"
 
 # ---------------------------------------------------------------------------
-# 2c. Create the mission copilot user 'copilot' (ADR-0016, MISSION_COPILOT_ENABLED)
+# 2c. Create the mission copilot user 'mission-copilot' (ADR-0016, MISSION_COPILOT_ENABLED)
 # ---------------------------------------------------------------------------
 # Distinct from magi-copilot above: that's the singleton control-plane copilot
 # with a fixed, persistent workdir. This is the per-mission mission copilot —
@@ -188,11 +188,14 @@ echo "[setup-dev] Workdir: ${COPILOT_WORKDIR}"
 # WorkspaceManager.provision() exactly like the magi-wN pool workers (fresh
 # workdir per mission, no fixed home). Its AgentConfig sets no linuxUser
 # override, so ensureAgentUsers()/provision() derive the OS username directly
-# from agent.id — it must be literally "copilot", not "magi-copilot".
+# from agent.id — it must be literally "mission-copilot" (not "copilot": that
+# would collide with the cockpit frontend's own hardcoded pseudo-agent id for
+# the control-plane copilot, packages/cockpit/src/data.ts's COPILOT_ID — and
+# not "magi-copilot" either, which is the control-plane copilot's own user).
 # Without this user, provision()'s setfacl calls throw (setfacl requires a
 # resolvable OS user), which fails the whole mission's provisioning, not just
 # the copilot's — the same failure mode the magi-wN pool exists to avoid.
-MISSION_COPILOT_USER="copilot"
+MISSION_COPILOT_USER="mission-copilot"
 MISSION_COPILOT_UID=60011
 
 if id "${MISSION_COPILOT_USER}" > /dev/null 2>&1; then

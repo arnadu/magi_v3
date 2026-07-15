@@ -4,6 +4,22 @@
 **Sprint**: 26
 **Date**: 2026-07
 
+**Post-acceptance correction (2026-07-15)**: the mission copilot's reserved agent id was changed
+from `"copilot"` to `"mission-copilot"` shortly after rollout. The cockpit frontend
+(`packages/cockpit/src/data.ts`) already hardcodes `COPILOT_ID = "copilot"` as a synthetic,
+always-present pseudo-agent representing the cross-mission control-plane copilot on every
+mission's Conversations panel — a convention that predates this ADR. Once the first real mission
+was resumed with a live mission-copilot agent sharing that same literal id, the two collided: the
+cockpit has no way to distinguish them, so every "Copilot" interaction kept routing to the
+control-plane copilot and the mission-scoped agent was silently unreachable through the UI.
+Found live (Gold Digest v2, first resumed mission after default-on). Fixed by renaming the
+mission copilot's id rather than the cockpit's pre-existing convention — the rest of this
+document's `"copilot"` references to that agent's literal id (Mental map / Tool list sections
+below) are historical and should be read as `"mission-copilot"`; general prose referring to "the
+mission copilot" as a role is unaffected. Cockpit repointing (giving the mission copilot its own
+distinguishable chat surface, not just an unreachable-vs-reachable fix) remains explicitly
+deferred, per this ADR's own "Explicitly deferred" section.
+
 ## Context
 
 The copilot today is a single shared identity (`copilot-{userId}`) running on the control
@@ -122,7 +138,7 @@ here.
 ### Mission copilot — the new agent
 
 **What it is**: an execution-plane agent, daemon-injected into every mission's roster at a fixed
-id (`"copilot"`, reserved), given a superset of Tier-A tools plus a new elevated tool family
+id (`"mission-copilot"`, reserved — see correction note below), given a superset of Tier-A tools plus a new elevated tool family
 (Families A–G) that reads across every teammate in its own mission and writes into shared mission
 state (config, objectives, another agent's mental map).
 
@@ -178,7 +194,7 @@ unconditionally, the same way every mission already gets `ensureAgentUsers`/ACL 
 making it YAML-optional would mean some missions silently ship without the one agent responsible
 for noticing when the rest of the team has drifted, which defeats the purpose. Reserved-id
 validation prevents an authored team config from colliding with or spoofing it — and, together
-with the fact that elevated-tool grant is keyed on the literal agent id `"copilot"` in code
+with the fact that elevated-tool grant is keyed on the literal agent id `"mission-copilot"` in code
 (never on anything YAML-controlled), makes it structurally impossible for a compromised copilot
 to escalate a different agent to its own privilege level via `SaveMissionConfig`.
 

@@ -131,7 +131,7 @@ export interface OrchestratorConfig {
 	 * Optional per-agent elevated tool set, appended to that agent's tool list
 	 * for this dispatch. Introduced for the mission copilot (ADR-0016): the
 	 * daemon implementation must key this purely on the literal agent id
-	 * "copilot" — never on anything from teamConfig — since elevated-tool
+	 * "mission-copilot" — never on anything from teamConfig — since elevated-tool
 	 * grant is the structural boundary that keeps a compromised agent from
 	 * escalating itself or another agent via a config edit (e.g.
 	 * SaveMissionConfig). Returns undefined for every agent that shouldn't

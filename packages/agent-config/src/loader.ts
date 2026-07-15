@@ -118,32 +118,12 @@ function expandEnvInObject(obj: unknown): unknown {
 // Public API
 // ---------------------------------------------------------------------------
 
-export interface ParseTeamConfigOptions {
-	/**
-	 * Allow an authored agent with id "copilot". Reserved for the control-plane
-	 * copilot's own bootstrap load of config/teams/copilot.yaml (see
-	 * copilot-daemon.ts) — that file's agent really is named "copilot" as its
-	 * own identity, unrelated to the mission copilot reservation below.
-	 *
-	 * Deliberately NOT inferrable from yamlContent itself (e.g. by checking
-	 * mission.id): every caller of parseTeamConfig includes SaveMissionConfig,
-	 * which validates YAML a mission copilot writes at runtime — if the escape
-	 * hatch were content-based, a compromised copilot could set mission.id (or
-	 * any other field) to trigger it. Only a literal boolean at a specific,
-	 * non-attacker-reachable call site can grant the exemption.
-	 */
-	allowReservedCopilotId?: boolean;
-}
-
 /**
  * Parse a team config YAML string into a validated TeamConfig.
  * Throws with a descriptive message on validation failure.
  * Environment variables (${VAR}) in string fields are expanded before validation.
  */
-export function parseTeamConfig(
-	yamlContent: string,
-	opts?: ParseTeamConfigOptions,
-): TeamConfig {
+export function parseTeamConfig(yamlContent: string): TeamConfig {
 	let raw: unknown;
 	try {
 		raw = parse(yamlContent);
@@ -168,17 +148,17 @@ export function parseTeamConfig(
 		throw e;
 	}
 
-	// "copilot" is reserved for the daemon-injected mission copilot agent
-	// (see ADR-0016) — it is never parsed from authored mission YAML. This is
-	// defense in depth for the structural guarantee that elevated tools are
-	// granted only to the literal agent id "copilot": rejecting it here means
+	// "mission-copilot" is reserved for the daemon-injected mission copilot
+	// agent (see ADR-0016) — it is never parsed from authored mission YAML.
+	// This is defense in depth for the structural guarantee that elevated
+	// tools are granted only to that literal agent id: rejecting it here means
 	// an authored team config can never collide with or spoof that identity.
-	if (
-		!opts?.allowReservedCopilotId &&
-		parsed.agents.some((a) => a.id === "copilot")
-	) {
+	// (Not "copilot" — that id belongs to the control-plane copilot's own
+	// bootstrap config, config/teams/copilot.yaml, an unrelated identity this
+	// check has no reason to touch.)
+	if (parsed.agents.some((a) => a.id === "mission-copilot")) {
 		throw new Error(
-			'Team config validation failed:\n  agents: id "copilot" is reserved for the mission copilot (daemon-injected, see ADR-0016) and cannot be used in authored team config',
+			'Team config validation failed:\n  agents: id "mission-copilot" is reserved for the mission copilot (daemon-injected, see ADR-0016) and cannot be used in authored team config',
 		);
 	}
 
@@ -188,10 +168,7 @@ export function parseTeamConfig(
 /**
  * Load and parse a team config from a YAML file path.
  */
-export function loadTeamConfig(
-	filePath: string,
-	opts?: ParseTeamConfigOptions,
-): TeamConfig {
+export function loadTeamConfig(filePath: string): TeamConfig {
 	const content = readFileSync(filePath, "utf-8");
-	return parseTeamConfig(content, opts);
+	return parseTeamConfig(content);
 }

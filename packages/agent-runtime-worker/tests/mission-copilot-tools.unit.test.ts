@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ObjectId } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MISSION_COPILOT_AGENT_ID } from "../src/mission-copilot.js";
 import { createMissionCopilotTools } from "../src/mission-copilot-tools.js";
 import { readSupervisorNote } from "../src/supervisor-note.js";
 import type { MagiTool } from "../src/tools.js";
@@ -159,7 +160,7 @@ describe("mission-copilot-tools", () => {
 			mailboxRepo: mailboxRepo as any,
 			monitorPort: 4000,
 			monitorToken: "test-token",
-			teamAgentIds: ["lead", "worker", "copilot"],
+			teamAgentIds: ["lead", "worker", MISSION_COPILOT_AGENT_ID],
 			cancelBackgroundJob: cancelBackgroundJobImpl,
 			controlPlaneUrl,
 		});
@@ -212,7 +213,7 @@ describe("mission-copilot-tools", () => {
 			expect(fake.updateOneCalls).toHaveLength(0);
 		});
 
-		it("SaveMissionConfig rejects an authored agent with the reserved copilot id", async () => {
+		it("SaveMissionConfig rejects an authored agent with the reserved mission-copilot id", async () => {
 			const fake = makeFakeDb({ missions: [{ missionId: "m1" }] });
 			const { tools } = buildTools(fake.db);
 			const yaml = [
@@ -220,7 +221,7 @@ describe("mission-copilot-tools", () => {
 				"  id: m1",
 				"  name: Test",
 				"agents:",
-				"  - id: copilot",
+				`  - id: ${MISSION_COPILOT_AGENT_ID}`,
 				"    supervisor: user",
 				"    systemPrompt: x",
 				"    initialMentalMap: <section></section>",
@@ -262,7 +263,7 @@ describe("mission-copilot-tools", () => {
 		it("rejects targeting itself", async () => {
 			const { tools } = buildTools();
 			const result = await get(tools, "PauseAgent").execute("t1", {
-				agentId: "copilot",
+				agentId: MISSION_COPILOT_AGENT_ID,
 			});
 			expect(result.isError).toBe(true);
 			expect(fetchMock).not.toHaveBeenCalled();
@@ -312,7 +313,7 @@ describe("mission-copilot-tools", () => {
 			expect(result.isError).toBeFalsy();
 			const note = await readSupervisorNote(sharedDir, "worker");
 			expect(note?.note).toBe("You've drifted from OBJ-1 — please re-read it.");
-			expect(note?.by).toBe("copilot");
+			expect(note?.by).toBe(MISSION_COPILOT_AGENT_ID);
 			expect(mailboxPosts).toHaveLength(1);
 			expect(mailboxPosts[0].body).toContain(
 				"You've drifted from OBJ-1 — please re-read it.",

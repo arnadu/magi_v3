@@ -13,7 +13,15 @@ import type { AgentConfig, TeamConfig } from "@magi/agent-config";
 import { appendEvent, loadGoals, saveGoals } from "./objectives/store.js";
 import type { ObjectiveDef, TaskEvent } from "./objectives/types.js";
 
-export const MISSION_COPILOT_AGENT_ID = "copilot";
+// Deliberately not "copilot": the cockpit frontend (packages/cockpit/src/data.ts)
+// already hardcodes COPILOT_ID = "copilot" as a synthetic pseudo-agent for the
+// cross-mission control-plane copilot, present on every mission's Conversations
+// panel. A real per-mission agent sharing that literal id would collide with it —
+// the cockpit has no way to distinguish the two, and every message to "copilot"
+// would keep routing to the control-plane copilot, leaving this agent
+// unreachable through the UI. Found live on a resumed mission (Gold Digest v2)
+// shortly after this agent's default-on rollout.
+export const MISSION_COPILOT_AGENT_ID = "mission-copilot";
 
 // ---------------------------------------------------------------------------
 // System prompt

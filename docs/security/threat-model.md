@@ -19,7 +19,7 @@
 | Other agents in mission | **Agent-trust** | Write to sharedDir; post mailbox messages; write mission skills |
 | Fly.io Machines API | **External service** | Creates, starts, stops, destroys execution plane machines; does not access MongoDB or agent data |
 | Firebase Auth service | **External identity provider** | Issues and validates Google OAuth JWTs; controls token lifetime (~1 h); MAGI V3 reuses existing V2 Firebase projects |
-| Mission copilot agent (`agent.id = "copilot"`) | **Agent-trust, elevated within its own mission only** | A normal execution-plane agent, daemon-injected into every mission (ADR-0016); structurally scoped to its own mission (no tool takes a `missionId` parameter — closure-supplied only), but within that mission reads every teammate's mailbox/mental-map/transcripts and can write into a teammate's mental map and the whole mission's config — a larger blast radius than any other agent (amplifies TB-8, see TB-18). Cannot see or reach any other mission. |
+| Mission copilot agent (`agent.id = "mission-copilot"`) | **Agent-trust, elevated within its own mission only** | A normal execution-plane agent, daemon-injected into every mission (ADR-0016); structurally scoped to its own mission (no tool takes a `missionId` parameter — closure-supplied only), but within that mission reads every teammate's mailbox/mental-map/transcripts and can write into a teammate's mental map and the whole mission's config — a larger blast radius than any other agent (amplifies TB-8, see TB-18). Cannot see or reach any other mission. Not `"copilot"`: that id collides with the cockpit frontend's pre-existing hardcoded pseudo-agent for the cross-mission control-plane copilot (`packages/cockpit/src/data.ts`'s `COPILOT_ID`) — found live shortly after rollout and fixed by renaming this agent's id. |
 | GitHub API (`api.github.com`) | **External service** | Copilot creates/closes issues and adds comments in the project repo using a `repo`-scoped `GH_TOKEN`; requests are hardcoded to the issues/comments endpoints of one fixed repo (`GITHUB_REPO`), never agent-influenced |
 | Copilot agent (`linuxUser: magi-copilot`) | **Agent-trust, control-plane-hosted** | Runs the same `AclPolicy`/tool-executor code path as mission agents (TB-3/TB-6), but on the control-plane host under its own OS user; additionally has Category B "elevated" tools (Mongo + Fly API + GitHub — see TB-16) not available to mission agents |
 
@@ -278,7 +278,7 @@ graph TB
 
 ### TB-17: Daemon ↔ mission-copilot tool-executor
 - `packages/agent-runtime-worker/src/mission-copilot.ts` — `buildMissionCopilotAgentConfig()`: no `linuxUser` override, falls back to the same per-agent OS user derivation (`ensureAgentUsers`) as any other teammate; `injectMissionCopilot()` appends to `teamConfig.agents` in-memory only, never `unshift`s (orchestrator's "lead agent" convention preserved)
-- `packages/agent-config/src/loader.ts` — reserved-id check: rejects any authored agent with `id === "copilot"`, so no authored YAML can collide with or spoof the injected agent
+- `packages/agent-config/src/loader.ts` — reserved-id check: rejects any authored agent with `id === "mission-copilot"`, so no authored YAML can collide with or spoof the injected agent (`"copilot"` itself is unrestricted — that id belongs to the control-plane copilot's own bootstrap config, `config/teams/copilot.yaml`)
 - `packages/agent-runtime-worker/src/tools.ts` / `tool-executor.ts` — identical code path as TB-3, no new mechanism
 
 ### TB-18: Mission copilot → own mission's MonitorServer

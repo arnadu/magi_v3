@@ -32,23 +32,38 @@ describe("supervisor-note", () => {
 			shared,
 			"worker",
 			"Check your objective again.",
-			"copilot",
+			"mission-copilot",
 		);
 		const entry = await readSupervisorNote(shared, "worker");
 		expect(entry?.note).toBe("Check your objective again.");
-		expect(entry?.by).toBe("copilot");
+		expect(entry?.by).toBe("mission-copilot");
 		expect(entry?.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 	});
 
 	it("the latest write replaces the previous note (not appended)", async () => {
-		await writeSupervisorNote(shared, "worker", "first note", "copilot");
-		await writeSupervisorNote(shared, "worker", "second note", "copilot");
+		await writeSupervisorNote(
+			shared,
+			"worker",
+			"first note",
+			"mission-copilot",
+		);
+		await writeSupervisorNote(
+			shared,
+			"worker",
+			"second note",
+			"mission-copilot",
+		);
 		const entry = await readSupervisorNote(shared, "worker");
 		expect(entry?.note).toBe("second note");
 	});
 
 	it("notes are scoped per agent", async () => {
-		await writeSupervisorNote(shared, "worker-a", "note for a", "copilot");
+		await writeSupervisorNote(
+			shared,
+			"worker-a",
+			"note for a",
+			"mission-copilot",
+		);
 		expect(await readSupervisorNote(shared, "worker-b")).toBeNull();
 	});
 
@@ -66,7 +81,7 @@ describe("supervisor-note", () => {
 	it("renders HTML that escapes the note and author", () => {
 		const html = renderSupervisorNote({
 			note: "Check <script>alert(1)</script> & fix it",
-			by: "copilot",
+			by: "mission-copilot",
 			at: "2026-07-14T00:00:00.000Z",
 		});
 		expect(html).not.toContain("<script>");
