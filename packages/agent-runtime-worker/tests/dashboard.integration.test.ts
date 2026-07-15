@@ -164,8 +164,13 @@ describe("dashboard — message round-trip", () => {
 		const waitForMail = makeWaitForMail(db, missionId, abortCtrl.signal);
 
 		// Start orchestration loop in background; it runs until aborted.
+		// No monitor.waitForStart() gate — daemon.ts's real production path
+		// never calls it either (missions auto-start unconditionally); the
+		// dashboard's #start-btn / POST /start mechanism this used to gate on
+		// was removed from the frontend at some point, leaving this test's own
+		// artificial gate as the only remaining caller of a UI element that no
+		// longer exists.
 		const loopPromise = (async () => {
-			await monitor.waitForStart();
 			await runOrchestrationLoop(
 				{
 					teamConfig,
@@ -202,10 +207,6 @@ describe("dashboard — message round-trip", () => {
 
 		try {
 			await page.goto(`http://127.0.0.1:${port}`);
-
-			// Click ▶ Start to unblock the orchestration loop.
-			await page.waitForSelector("#start-btn");
-			await page.click("#start-btn");
 
 			// Select the echo agent chip in the compose bar.
 			await page.waitForSelector(".recipient-chip");
