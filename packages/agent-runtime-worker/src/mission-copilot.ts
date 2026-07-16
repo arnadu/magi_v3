@@ -291,7 +291,13 @@ export function buildMissionCopilotAgentConfig(
 	const roster = buildRosterText(teamConfig);
 	return {
 		id: MISSION_COPILOT_AGENT_ID,
-		name: "Copilot",
+		// Not "Copilot": the cockpit's cross-mission control-plane copilot
+		// already renders under that exact label on every mission's
+		// Conversations panel (packages/cockpit/src/data.ts's COPILOT_ID). A
+		// second, identically-labeled chip would be functionally reachable
+		// (the id collision is fixed) but visually indistinguishable — the
+		// same practical confusion this rename was meant to close.
+		name: "Mission Copilot",
 		role: "lead",
 		supervisor: "user",
 		systemPrompt: buildSystemPromptTemplate(mission.id, mission.name, roster),

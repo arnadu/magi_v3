@@ -228,6 +228,32 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
+		// Prefer the live daemon's actual roster over the stored YAML: the
+		// mission copilot (ADR-0016) is injected in-memory only at daemon
+		// startup, never written back to teamConfigYaml, so a static parse
+		// alone would never include it — the cockpit would never be able to
+		// show or address it, no matter what its id is.
+		if (mission.status === "running" && mission.privateIp) {
+			try {
+				const host = mission.privateIp.includes(":")
+					? `[${mission.privateIp}]`
+					: mission.privateIp;
+				const liveRes = await fetch(`http://${host}:4000/team`, {
+					signal: AbortSignal.timeout(5_000),
+				});
+				if (liveRes.ok) {
+					const live = (await liveRes.json()) as Array<{
+						id: string;
+						name: string;
+					}>;
+					res.json(live.map((a) => ({ id: a.id, name: a.name ?? a.id })));
+					return;
+				}
+			} catch {
+				// Machine unreachable (still booting, network hiccup) — fall
+				// through to the static parse below rather than 500.
+			}
+		}
 		try {
 			const cfg = parseTeamConfig(mission.teamConfigYaml ?? "");
 			res.json(cfg.agents.map((a) => ({ id: a.id, name: a.name ?? a.id })));
