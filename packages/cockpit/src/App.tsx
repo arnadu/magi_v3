@@ -45,9 +45,14 @@ function useView(): View {
 		let cancelled = false;
 
 		if (mission) {
-			// Live mission: load once, then poll. Transient poll failures keep the
-			// last good data (don't flip a working view to error); only the INITIAL
-			// load surfaces auth/error.
+			// Live mission: load once, then poll. Transient (network) poll
+			// failures keep the last good data (don't flip a working view to
+			// error) — but a session expiring mid-session is not transient: every
+			// subsequent poll will keep 401ing identically, so an AuthError always
+			// surfaces regardless of whether an earlier poll succeeded. Without
+			// this, the cockpit silently kept showing stale data forever past the
+			// session's ~1h lifetime, with no indication anything was wrong —
+			// the panels look like they've stopped receiving updates.
 			let succeeded = false;
 			const load = async () => {
 				try {
@@ -62,9 +67,13 @@ function useView(): View {
 							updatedAt: Date.now(),
 						});
 				} catch (e) {
-					if (cancelled || succeeded) return;
-					if (e instanceof AuthError) setView({ kind: "auth" });
-					else setView({ kind: "error", message: (e as Error).message });
+					if (cancelled) return;
+					if (e instanceof AuthError) {
+						setView({ kind: "auth" });
+						return;
+					}
+					if (succeeded) return;
+					setView({ kind: "error", message: (e as Error).message });
 				}
 			};
 			void load();
@@ -111,6 +120,42 @@ function useView(): View {
 	return view;
 }
 
+/**
+ * Which agents are currently dispatched, live — via the mission's own SSE
+ * stream (monitor-server.ts's `agent-status` event), proxied same-origin
+ * through the control plane at /missions/:id/events. This is the same
+ * stream and event the legacy dashboard (agent-runtime-worker/public/app.js)
+ * already consumes successfully through the identical proxy route — no new
+ * backend surface, just a consumer the cockpit never had.
+ */
+function useRunningAgents(missionId: string | null): Set<string> {
+	const [running, setRunning] = useState<Set<string>>(new Set());
+	useEffect(() => {
+		setRunning(new Set());
+		if (!missionId) return;
+		// withCredentials: the magi_session cookie carries auth, same as every
+		// fetch() call in data.ts — EventSource doesn't send cookies by default.
+		const es = new EventSource(
+			`/missions/${encodeURIComponent(missionId)}/events`,
+			{ withCredentials: true },
+		);
+		es.addEventListener("agent-status", (e) => {
+			try {
+				const d = JSON.parse((e as MessageEvent).data) as {
+					running?: string[];
+				};
+				setRunning(new Set(d.running ?? []));
+			} catch {
+				// Malformed event — ignore rather than crash the whole cockpit.
+			}
+		});
+		// No manual reconnect logic: the browser's native EventSource already
+		// retries automatically on a dropped connection.
+		return () => es.close();
+	}, [missionId]);
+	return running;
+}
+
 function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
 	const spent = tree ? tree.objectives.reduce((a, o) => a + o.costUsd, 0) : 0;
 	const budget = tree
@@ -136,6 +181,9 @@ function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
 
 export function App() {
 	const view = useView();
+	const runningAgents = useRunningAgents(
+		view.kind === "ready" ? view.mission : null,
+	);
 	const [openAgent, setOpenAgent] = useState<string | null>(null);
 	const [mainTab, setMainTab] = useState<MainTab>("objectives");
 	const [turnJump, setTurnJump] = useState<TurnJump | null>(null);
@@ -217,6 +265,7 @@ export function App() {
 					missionId={view.mission}
 					openAgent={openAgent}
 					onOpened={() => setOpenAgent(null)}
+					runningAgents={runningAgents}
 				/>
 				<main className="col-main">
 					<nav className="tabs">
@@ -264,6 +313,7 @@ export function App() {
 								missionId={view.mission}
 								jumpTo={turnJump}
 								onJumped={() => setTurnJump(null)}
+								runningAgents={runningAgents}
 							/>
 						)}
 						{mainTab === "trace" && <TracePanel missionId={view.mission} />}

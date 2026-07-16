@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	type Agent,
 	fetchAgents,
@@ -198,11 +198,14 @@ export function TranscriptsPanel({
 	missionId,
 	jumpTo,
 	onJumped,
+	runningAgents,
 }: {
 	missionId: string | null;
 	/** A "inspect turn →" deep link from the Files panel's provenance header. */
 	jumpTo?: TurnJump | null;
 	onJumped?: () => void;
+	/** Agent ids currently dispatched, live — for a busy indicator on chips. */
+	runningAgents?: Set<string>;
 }) {
 	const [agents, setAgents] = useState<Agent[]>([]);
 	const [agent, setAgent] = useState<string | null>(null);
@@ -222,6 +225,18 @@ export function TranscriptsPanel({
 		else setTurns([]);
 		setTurn(null);
 	}, [missionId, agent]);
+
+	// Re-fetch the turn list the moment the selected agent finishes its
+	// current turn (running → idle), instead of requiring a manual tab
+	// switch to see the newly-completed turn appear.
+	const wasRunningRef = useRef(false);
+	useEffect(() => {
+		const isRunning = !!agent && !!runningAgents?.has(agent);
+		if (wasRunningRef.current && !isRunning && missionId && agent) {
+			fetchTurns(missionId, agent).then(setTurns, () => {});
+		}
+		wasRunningRef.current = isRunning;
+	}, [missionId, agent, runningAgents]);
 
 	// Deep link from Files: jump straight to an agent + turn. Fetches its own
 	// turn list and sets the turn directly (a harmless duplicate of the effect
@@ -295,6 +310,9 @@ export function TranscriptsPanel({
 						className={`chip${agent === a.id ? " on" : ""}`}
 						onClick={() => setAgent(a.id)}
 					>
+						{runningAgents?.has(a.id) && (
+							<span className="busy-dot" title="Currently running" />
+						)}
 						{a.name}
 					</button>
 				))}

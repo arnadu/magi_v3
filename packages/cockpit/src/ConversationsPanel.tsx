@@ -29,8 +29,6 @@ function timeAgo(iso: string): string {
 
 const keyOf = (parts: string[]) => [...new Set(parts)].sort().join("|");
 const threadKeyOfMsg = (m: ConvMessage) => keyOf([m.from, ...m.to]);
-const threadKeyForRecipients = (recipients: string[]) =>
-	keyOf(["user", ...recipients]);
 
 interface Thread {
 	key: string;
@@ -77,10 +75,13 @@ export function ConversationsPanel({
 	missionId,
 	openAgent,
 	onOpened,
+	runningAgents,
 }: {
 	missionId: string | null;
 	openAgent: string | null;
 	onOpened: () => void;
+	/** Agent ids currently dispatched, live — for a busy indicator on chips. */
+	runningAgents: Set<string>;
 }) {
 	const [conversations, setConversations] = useState<ConvMessage[]>([]);
 	const [agents, setAgents] = useState<Agent[]>([]);
@@ -131,14 +132,29 @@ export function ConversationsPanel({
 	);
 
 	const threads = buildThreads(conversations);
-	const activeThread = active
-		? (threads.find((t) => t.key === threadKeyForRecipients(active)) ?? null)
-		: null;
+	// Every thread whose participants are fully contained in the current
+	// selection, merged and re-sorted chronologically. A reply from an agent
+	// only ever goes `to: ["user"]` — never back to the full multi-recipient
+	// set it was itself part of — so a message sent to [analyst,
+	// mission-copilot] and each agent's own 1:1 reply land in three
+	// *different* threads (an exact-key match against the original
+	// multi-recipient thread only ever showed the outgoing message, never
+	// either reply, until every recipient but one was deselected).
+	const activeThreads = active
+		? threads.filter(
+				(t) =>
+					t.participants.length > 0 &&
+					t.participants.every((p) => active.includes(p)),
+			)
+		: [];
+	const activeMessages = activeThreads
+		.flatMap((t) => t.messages)
+		.sort((a, b) => +new Date(a.timestamp) - +new Date(b.timestamp));
 
-	const markThreadRead = useCallback(
-		async (t: Thread) => {
+	const markMessagesReadLocal = useCallback(
+		async (msgs: ConvMessage[]) => {
 			if (!missionId) return;
-			const ids = t.messages
+			const ids = msgs
 				.filter((m) => !m.read && m.from !== "user")
 				.map((m) => m.id);
 			if (ids.length === 0) return;
@@ -150,13 +166,9 @@ export function ConversationsPanel({
 		[missionId],
 	);
 
-	const openThread = useCallback(
-		(t: Thread) => {
-			setActive(t.participants);
-			void markThreadRead(t);
-		},
-		[markThreadRead],
-	);
+	const openThread = useCallback((t: Thread) => {
+		setActive(t.participants);
+	}, []);
 
 	// An agent clicked elsewhere in the cockpit → open the 1:1 thread. Runs only
 	// when the openAgent signal changes; the other refs are intentionally excluded.
@@ -164,17 +176,30 @@ export function ConversationsPanel({
 	useEffect(() => {
 		if (!openAgent) return;
 		setActive([openAgent]);
-		const t = threads.find(
-			(x) => x.key === threadKeyForRecipients([openAgent]),
-		);
-		if (t) void markThreadRead(t);
 		onOpened();
 	}, [openAgent]);
+
+	// Mark whatever's now visible as read whenever the selection changes —
+	// covers every path that sets `active` (clicking a thread row, an
+	// elsewhere-in-the-cockpit open, or toggling recipient chips) uniformly,
+	// rather than each call site marking read individually.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-mark only when the selection itself changes, not on every conversations poll tick
+	useEffect(() => {
+		if (!active || active.length === 0) return;
+		const msgs = threads
+			.filter(
+				(t) =>
+					t.participants.length > 0 &&
+					t.participants.every((p) => active.includes(p)),
+			)
+			.flatMap((t) => t.messages);
+		void markMessagesReadLocal(msgs);
+	}, [active, markMessagesReadLocal]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll on new messages
 	useEffect(() => {
 		bottomRef.current?.scrollIntoView({ block: "end" });
-	}, [activeThread?.messages.length, active]);
+	}, [activeMessages.length, active]);
 
 	// The copilot is its own system (separate mailbox, no uploads), so it can't
 	// share a thread with mission agents — selecting it is mutually exclusive.
@@ -304,14 +329,14 @@ export function ConversationsPanel({
 			{missionId && active !== null && (
 				<>
 					<div className="conv">
-						{(activeThread?.messages.length ?? 0) === 0 && (
+						{activeMessages.length === 0 && (
 							<p className="mut">
 								{active.length
 									? "No messages yet — say hello."
 									: "Pick one or more recipients below."}
 							</p>
 						)}
-						{activeThread?.messages.map((m) => (
+						{activeMessages.map((m) => (
 							<div
 								key={m.id}
 								className={`bub ${
@@ -345,6 +370,9 @@ export function ConversationsPanel({
 									}`}
 									onClick={() => toggleRecipient(a.id)}
 								>
+									{runningAgents.has(a.id) && (
+										<span className="busy-dot" title="Currently running" />
+									)}
 									{a.name}
 								</button>
 							))}

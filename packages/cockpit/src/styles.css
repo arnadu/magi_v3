@@ -323,6 +323,23 @@ h2.sec {
 	background: var(--panel);
 	overflow: hidden;
 }
+/* Agent filter (Objectives tab): the objective is kept for context (its own
+   owner may differ from the filtered agent, e.g. a task or KPI under it
+   belongs to them) but visually de-emphasized when it's not the direct
+   match. Objectives with zero connection to the filtered agent are hidden
+   entirely, not dimmed — see objectiveMatches(). */
+.obj.dim > .obj-head,
+.task.dim,
+.kpi.dim {
+	opacity: 0.4;
+}
+.obj-filter {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+}
 .obj.sub {
 	margin: 8px 0 8px 22px;
 	background: var(--panel2);
@@ -594,6 +611,28 @@ h2.sec {
 	border-radius: 20px;
 	padding: 2px 9px;
 	cursor: pointer;
+}
+/* Live "currently dispatched" indicator — driven by monitor-server.ts's
+   agent-status SSE event, not a poll, so it tracks the actual run in
+   real time instead of requiring a manual tab refresh. */
+.busy-dot {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--warn);
+	margin-right: 5px;
+	vertical-align: middle;
+	animation: busy-pulse 1.2s ease-in-out infinite;
+}
+@keyframes busy-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.35;
+	}
 }
 .chip.on {
 	background: var(--info);
