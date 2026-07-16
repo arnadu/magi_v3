@@ -6,7 +6,9 @@ import {
 	type MailboxRepository,
 } from "../src/mailbox.js";
 
-function fakeRepo(): MailboxRepository & { posted: MailboxMessage[] } {
+function fakeRepo(
+	listResult: MailboxMessage[] = [],
+): MailboxRepository & { posted: MailboxMessage[] } {
 	const posted: MailboxMessage[] = [];
 	return {
 		posted,
@@ -28,7 +30,7 @@ function fakeRepo(): MailboxRepository & { posted: MailboxMessage[] } {
 			return false;
 		},
 		async list() {
-			return [];
+			return listResult;
 		},
 		async get() {
 			return null;
@@ -103,5 +105,26 @@ describe("PostMessage", () => {
 		});
 		expect(result.isError).toBe(true);
 		expect(repo.posted).toHaveLength(0);
+	});
+});
+
+describe("ListMessages", () => {
+	it("includes every recipient, not just the caller, so a co-addressed agent can see who else got the message", async () => {
+		const msg: MailboxMessage = {
+			id: "m1",
+			missionId: "test-mission",
+			from: "user",
+			to: ["analyst", "mission-copilot"],
+			subject: "Shared task",
+			body: "b",
+			timestamp: new Date("2026-07-16T11:33:00.000Z"),
+			readBy: [],
+		};
+		const repo = fakeRepo([msg]);
+		const tools = createMailboxTools(repo, teamConfig, "job-script");
+		const tool = tools.find((t) => t.name === "ListMessages");
+		if (!tool) throw new Error("ListMessages tool not registered");
+		const result = await tool.execute("id1", {});
+		expect(result.content[0].text).toContain("to=analyst,mission-copilot");
 	});
 });

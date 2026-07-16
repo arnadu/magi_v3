@@ -288,7 +288,7 @@ export function createMailboxTools(
 			if (messages.length === 0) return ok("No messages.");
 			const lines = messages.map(
 				(m) =>
-					`id=${m.id}  from=${m.from}  subject="${m.subject}"  time=${safeTimestamp(m)}`,
+					`id=${m.id}  from=${m.from}  to=${m.to.join(",")}  subject="${m.subject}"  time=${safeTimestamp(m)}`,
 			);
 			return ok(lines.join("\n"));
 		},

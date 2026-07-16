@@ -59,6 +59,17 @@ describe("formatMessages", () => {
 		expect(text).toContain("Test body");
 	});
 
+	it("includes every recipient, not just the reading agent, so a co-addressed agent knows who else got the message", () => {
+		// Regression test: found live — an operator message addressed to both
+		// the mission copilot and an agent produced two uncoordinated replies,
+		// because neither agent's rendered prompt ever showed the recipient
+		// list at all, only From/Subject/Time.
+		const text = formatMessages([
+			baseMessage({ to: ["analyst", "mission-copilot"] }),
+		]);
+		expect(text).toContain("To: analyst, mission-copilot");
+	});
+
 	it("does not throw and degrades gracefully when a message has no timestamp", () => {
 		const msg = baseMessage();
 		// biome-ignore lint/suspicious/noExplicitAny: simulating a malformed document read straight from Mongo

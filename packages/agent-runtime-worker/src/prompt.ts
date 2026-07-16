@@ -66,6 +66,14 @@ export function formatMessages(messages: MailboxMessage[]): string {
 		const header = [
 			`--- Message ${i + 1} ---`,
 			`From: ${m.from}`,
+			// Always shown, even for a single recipient (matches ReadMessage's
+			// convention) — without it, a multi-recipient message gives no
+			// agent any way to know who else received the same message, so
+			// two agents CC'd on one message reply as if in separate private
+			// threads instead of a shared one. Found live: an operator
+			// message to both the mission copilot and an agent got two
+			// uncoordinated replies.
+			`To: ${m.to.join(", ")}`,
 			`Subject: ${m.subject}`,
 			`Time: ${safeTimestamp(m)}`,
 			"",
