@@ -22,6 +22,19 @@ export interface MailboxMessage {
 	readBy: string[]; // agent ids that have called ReadMessage on this
 }
 
+/**
+ * ISO string for a message's timestamp, or "unknown" if it's missing/invalid.
+ * `timestamp` is typed as a required Date, but at least one write path
+ * (control-plane's scheduler.ts) has inserted mailbox documents directly,
+ * bypassing MailboxRepository.post(), without it — this must never throw,
+ * since prompt.ts calls it while building the receiving agent's entire turn.
+ */
+export function safeTimestamp(m: MailboxMessage): string {
+	return m.timestamp instanceof Date && !Number.isNaN(m.timestamp.valueOf())
+		? m.timestamp.toISOString()
+		: "unknown";
+}
+
 // ---------------------------------------------------------------------------
 // Repository interface
 // ---------------------------------------------------------------------------
@@ -275,7 +288,7 @@ export function createMailboxTools(
 			if (messages.length === 0) return ok("No messages.");
 			const lines = messages.map(
 				(m) =>
-					`id=${m.id}  from=${m.from}  subject="${m.subject}"  time=${m.timestamp.toISOString()}`,
+					`id=${m.id}  from=${m.from}  subject="${m.subject}"  time=${safeTimestamp(m)}`,
 			);
 			return ok(lines.join("\n"));
 		},
@@ -294,7 +307,7 @@ export function createMailboxTools(
 			if (!msg) return err(`Message ${args.id} not found`);
 			await repo.markRead([msg.id], fromAgentId);
 			return ok(
-				`From: ${msg.from}\nTo: ${msg.to.join(", ")}\nSubject: ${msg.subject}\nTime: ${msg.timestamp.toISOString()}\n\n${msg.body}`,
+				`From: ${msg.from}\nTo: ${msg.to.join(", ")}\nSubject: ${msg.subject}\nTime: ${safeTimestamp(msg)}\n\n${msg.body}`,
 			);
 		},
 	};

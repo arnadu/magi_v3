@@ -1,5 +1,5 @@
 import type { AgentConfig } from "@magi/agent-config";
-import type { MailboxMessage } from "./mailbox.js";
+import { type MailboxMessage, safeTimestamp } from "./mailbox.js";
 import { discoverSkills, formatSkillsBlock } from "./skills.js";
 
 /**
@@ -67,7 +67,7 @@ export function formatMessages(messages: MailboxMessage[]): string {
 			`--- Message ${i + 1} ---`,
 			`From: ${m.from}`,
 			`Subject: ${m.subject}`,
-			`Time: ${m.timestamp.toISOString()}`,
+			`Time: ${safeTimestamp(m)}`,
 			"",
 			m.body,
 			"-".repeat(18),

@@ -13,6 +13,7 @@
  *      full context for active debugging windows.
  */
 
+import { randomUUID } from "node:crypto";
 import cronParser from "cron-parser";
 import type { Db } from "mongodb";
 import { schedule } from "node-cron";
@@ -69,15 +70,25 @@ async function deliver(db: Db): Promise<void> {
 				}
 			}
 
-			// Deliver to mailbox.
+			// Deliver to mailbox. Fields must match MailboxMessage
+			// (agent-runtime-worker/src/mailbox.ts) exactly — this insert
+			// bypasses the shared repository, so nothing enforces that at the
+			// type level. A prior version used createdAt/read instead of
+			// timestamp/readBy: prompt.ts's formatMessages() calls
+			// m.timestamp.toISOString() unconditionally, so a message missing
+			// timestamp crashes the receiving agent's very next dispatch with
+			// "Cannot read properties of undefined (reading 'toISOString')" —
+			// found live when a mission copilot's CreateScheduledMessage first
+			// exercised this delivery path for a real mission.
 			await mailboxCol.insertOne({
+				id: randomUUID(),
 				missionId: doc.missionId,
 				from: "scheduler",
 				to: doc.to,
 				subject: doc.subject,
 				body: doc.body,
-				read: false,
-				createdAt: new Date(),
+				timestamp: new Date(),
+				readBy: [],
 			});
 			console.log(
 				`[scheduler] Delivered "${doc.subject}" to ${doc.to.join(", ")} (mission ${doc.missionId})`,
