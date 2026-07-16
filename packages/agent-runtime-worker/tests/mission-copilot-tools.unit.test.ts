@@ -345,6 +345,52 @@ describe("mission-copilot-tools", () => {
 			expect(mailboxPosts).toHaveLength(1);
 		});
 
+		it("a cron-only schedule's first deliverAt is the expression's own next occurrence, not now", async () => {
+			// Regression test: an earlier version defaulted deliverAt to `new
+			// Date()` whenever only `cron` was given, so a "next Monday 08:00"
+			// schedule fired within minutes of being created instead of
+			// waiting for its actual first occurrence — found live.
+			const fake = makeFakeDb();
+			const { tools } = buildTools(fake.db);
+			const before = Date.now();
+			const result = await get(tools, "CreateScheduledMessage").execute("t1", {
+				to: ["worker"],
+				subject: "Weekly check-in",
+				cron: "0 8 * * 1", // Monday 08:00
+			});
+			expect(result.isError).toBeFalsy();
+			const doc = fake.insertOneCalls[0].doc as Record<string, unknown>;
+			const deliverAt = doc.deliverAt as Date;
+			// The next Monday 08:00 is never less than a few hours away from
+			// "now" in any timezone-agnostic sense, and never more than 7 days.
+			const deltaMs = deliverAt.getTime() - before;
+			expect(deltaMs).toBeGreaterThan(60_000);
+			expect(deltaMs).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000);
+		});
+
+		it("rejects an invalid cron expression instead of silently defaulting deliverAt", async () => {
+			const fake = makeFakeDb();
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "CreateScheduledMessage").execute("t1", {
+				to: ["worker"],
+				subject: "Bad schedule",
+				cron: "not a cron expression",
+			});
+			expect(result.isError).toBe(true);
+			expect(fake.insertOneCalls).toHaveLength(0);
+		});
+
+		it("rejects when neither deliverAt nor cron is provided", async () => {
+			const fake = makeFakeDb();
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "CreateScheduledMessage").execute("t1", {
+				to: ["worker"],
+				subject: "No schedule given",
+			});
+			expect(result.isError).toBe(true);
+			expect(fake.insertOneCalls).toHaveLength(0);
+		});
+
 		it("ListScheduledMessages reads back what CreateScheduledMessage wrote", async () => {
 			const fake = makeFakeDb();
 			const { tools } = buildTools(fake.db);

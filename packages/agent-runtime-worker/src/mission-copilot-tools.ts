@@ -35,6 +35,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseTeamConfig } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
+import cronParser from "cron-parser";
 import { type Db, ObjectId } from "mongodb";
 import type { JobSpec } from "./job-recovery.js";
 import type { MailboxRepository } from "./mailbox.js";
@@ -42,6 +43,9 @@ import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { loadObjectivesStore } from "./objectives/store.js";
 import { writeSupervisorNote } from "./supervisor-note.js";
 import type { MagiTool, ToolResult } from "./tools.js";
+
+// Named import errors on Node 18/22 — see CLAUDE.md's Known Pitfalls.
+const { parseExpression } = cronParser;
 
 export interface MissionCopilotToolsConfig {
 	db: Db;
@@ -681,11 +685,27 @@ export function createMissionCopilotTools(
 			const to = args.to as string[];
 			const subject = args.subject as string;
 			const body = args.body as string;
-			const deliverAt = args.deliverAt
-				? new Date(args.deliverAt as string)
-				: new Date();
 			const cron = args.cron as string | undefined;
 			const label = args.label as string | undefined;
+			let deliverAt: Date;
+			if (args.deliverAt) {
+				deliverAt = new Date(args.deliverAt as string);
+			} else if (cron) {
+				// A cron-only schedule's first delivery must be the expression's
+				// own next occurrence — defaulting to "now" (a real bug found
+				// live: a "0 8 * * 1" weekly schedule fired within minutes of
+				// being created, not next Monday) fires it immediately instead
+				// of respecting the schedule the caller actually asked for.
+				try {
+					deliverAt = parseExpression(cron).next().toDate();
+				} catch (e) {
+					return err(
+						`Invalid cron expression "${cron}": ${(e as Error).message}`,
+					);
+				}
+			} else {
+				return err("Provide either deliverAt or cron.");
+			}
 			const result = await db.collection("scheduled_messages").insertOne({
 				missionId,
 				to,
