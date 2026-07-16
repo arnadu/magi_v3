@@ -45,7 +45,15 @@ function Agent({
 	);
 }
 
-function Kpi({ k, onAgentClick }: { k: FoldedKpi; onAgentClick: OnAgent }) {
+function Kpi({
+	k,
+	onAgentClick,
+	filterAgent,
+}: {
+	k: FoldedKpi;
+	onAgentClick: OnAgent;
+	filterAgent?: string | null;
+}) {
 	const v = String(k.value ?? "—");
 	const needs = k.stale || /pending|unmet|partial/i.test(v);
 	const cls = /pending|unmet/i.test(v)
@@ -53,8 +61,9 @@ function Kpi({ k, onAgentClick }: { k: FoldedKpi; onAgentClick: OnAgent }) {
 		: /partial|left/i.test(v)
 			? "pill-part"
 			: "pill-ok";
+	const dim = !!filterAgent && k.owner !== filterAgent;
 	return (
-		<span className="kpi" title={`source: ${k.source}`}>
+		<span className={`kpi${dim ? " dim" : ""}`} title={`source: ${k.source}`}>
 			<span className="ksrc">{k.source.replace("-", " ")}</span>
 			<b>{k.label}</b>
 			<span className={`kval ${cls}`}>{v}</span>
@@ -70,9 +79,18 @@ function Kpi({ k, onAgentClick }: { k: FoldedKpi; onAgentClick: OnAgent }) {
 	);
 }
 
-function Task({ t, onAgentClick }: { t: FoldedTask; onAgentClick: OnAgent }) {
+function Task({
+	t,
+	onAgentClick,
+	filterAgent,
+}: {
+	t: FoldedTask;
+	onAgentClick: OnAgent;
+	filterAgent?: string | null;
+}) {
+	const dim = !!filterAgent && t.assignee !== filterAgent;
 	return (
-		<div className="task">
+		<div className={`task${dim ? " dim" : ""}`}>
 			<span className={`s-dot s-${t.status}`} />
 			<span className="tid">{t.id}</span>
 			<span className="ttl">{t.title}</span>
@@ -86,17 +104,49 @@ function Task({ t, onAgentClick }: { t: FoldedTask; onAgentClick: OnAgent }) {
 	);
 }
 
+/** True if this objective, or any task/kpi/child objective under it, belongs to `agent`. */
+function objectiveMatches(o: FoldedObjective, agent: string): boolean {
+	return (
+		o.owner === agent ||
+		o.tasks.some((t) => t.assignee === agent) ||
+		o.kpis.some((k) => k.owner === agent) ||
+		o.children.some((c) => objectiveMatches(c, agent))
+	);
+}
+
+/** Every distinct owner/assignee id appearing anywhere in the tree, for the filter chips. */
+function collectAgents(objectives: FoldedObjective[]): string[] {
+	const ids = new Set<string>();
+	const walk = (o: FoldedObjective) => {
+		ids.add(o.owner);
+		for (const t of o.tasks) if (t.assignee) ids.add(t.assignee);
+		for (const k of o.kpis) ids.add(k.owner);
+		for (const c of o.children) walk(c);
+	};
+	for (const o of objectives) walk(o);
+	return [...ids].sort();
+}
+
 function Objective({
 	o,
 	onAgentClick,
+	filterAgent,
 }: {
 	o: FoldedObjective;
 	onAgentClick: OnAgent;
+	filterAgent?: string | null;
 }) {
 	const [open, setOpen] = useState(true);
 	const { pct, color } = budgetPct(o);
+	// Hide entirely rather than dim: an objective with zero connection to the
+	// selected agent (not its owner, no matching task/kpi, no matching
+	// descendant) is noise for "what does X own/work on" — dimming still-shown
+	// but irrelevant top-level objectives would bury the ones that matter in
+	// a mission with many objectives.
+	if (filterAgent && !objectiveMatches(o, filterAgent)) return null;
+	const dim = !!filterAgent && o.owner !== filterAgent;
 	return (
-		<div className={`obj ${o.parent ? "sub" : ""}`}>
+		<div className={`obj ${o.parent ? "sub" : ""}${dim ? " dim" : ""}`}>
 			<div className="obj-head">
 				<button
 					type="button"
@@ -126,15 +176,30 @@ function Objective({
 						<div className="kpis">
 							<span className="kpilbl">KPIs</span>
 							{o.kpis.map((k) => (
-								<Kpi key={k.id} k={k} onAgentClick={onAgentClick} />
+								<Kpi
+									key={k.id}
+									k={k}
+									onAgentClick={onAgentClick}
+									filterAgent={filterAgent}
+								/>
 							))}
 						</div>
 					)}
 					{o.tasks.map((t) => (
-						<Task key={t.id} t={t} onAgentClick={onAgentClick} />
+						<Task
+							key={t.id}
+							t={t}
+							onAgentClick={onAgentClick}
+							filterAgent={filterAgent}
+						/>
 					))}
 					{o.children.map((c) => (
-						<Objective key={c.id} o={c} onAgentClick={onAgentClick} />
+						<Objective
+							key={c.id}
+							o={c}
+							onAgentClick={onAgentClick}
+							filterAgent={filterAgent}
+						/>
 					))}
 				</div>
 			)}
@@ -150,12 +215,37 @@ export function ObjectivesPanel({
 	onAgentClick?: (agentId: string) => void;
 }) {
 	const roots = tree.objectives.filter((o) => o.parent === null);
+	const [filterAgent, setFilterAgent] = useState<string | null>(null);
+	const agentIds = collectAgents(tree.objectives);
 	return (
 		<div className="panel">
 			<h2 className="sec">Objectives</h2>
+			{agentIds.length > 1 && (
+				<div className="obj-filter">
+					<span className="kpilbl">Filter</span>
+					{agentIds.map((id) => (
+						<button
+							type="button"
+							key={id}
+							className={`chip${filterAgent === id ? " on" : ""}`}
+							onClick={() => setFilterAgent((cur) => (cur === id ? null : id))}
+						>
+							{id}
+						</button>
+					))}
+				</div>
+			)}
 			{roots.map((o) => (
-				<Objective key={o.id} o={o} onAgentClick={onAgentClick} />
+				<Objective
+					key={o.id}
+					o={o}
+					onAgentClick={onAgentClick}
+					filterAgent={filterAgent}
+				/>
 			))}
+			{filterAgent && roots.every((o) => !objectiveMatches(o, filterAgent)) && (
+				<p className="mut">No objectives, tasks, or KPIs for {filterAgent}.</p>
+			)}
 			{tree.overheadCostUsd > 0 && (
 				<p className="mut">
 					Unattributed / overhead: ≈{fmt(tree.overheadCostUsd)}
