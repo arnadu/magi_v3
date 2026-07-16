@@ -300,7 +300,11 @@ export function App() {
 					</nav>
 					<div className="tab-body">
 						{mainTab === "objectives" && (
-							<ObjectivesPanel tree={view.tree} onAgentClick={setOpenAgent} />
+							<ObjectivesPanel
+								tree={view.tree}
+								missionId={view.mission}
+								onAgentClick={setOpenAgent}
+							/>
 						)}
 						{mainTab === "files" && (
 							<FilesPanel

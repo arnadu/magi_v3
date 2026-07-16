@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchAgents } from "./data";
 import type {
 	FoldedKpi,
 	FoldedObjective,
@@ -209,14 +210,35 @@ function Objective({
 
 export function ObjectivesPanel({
 	tree,
+	missionId,
 	onAgentClick,
 }: {
 	tree: FoldedTree;
+	missionId?: string | null;
 	onAgentClick?: (agentId: string) => void;
 }) {
 	const roots = tree.objectives.filter((o) => o.parent === null);
 	const [filterAgent, setFilterAgent] = useState<string | null>(null);
-	const agentIds = collectAgents(tree.objectives);
+	const [rosterIds, setRosterIds] = useState<string[]>([]);
+	useEffect(() => {
+		if (missionId) {
+			fetchAgents(missionId).then(
+				(agents) => setRosterIds(agents.map((a) => a.id)),
+				() => setRosterIds([]),
+			);
+		} else {
+			setRosterIds([]);
+		}
+	}, [missionId]);
+	// Union of "agents with something in the tree" and "agents actually on
+	// the mission's roster" — an agent with zero objectives assigned yet
+	// (e.g. just added to the team) still gets a chip, showing the existing
+	// "No objectives, tasks, or KPIs for X" empty state instead of being
+	// invisible in the filter with no way to tell "has nothing" apart from
+	// "doesn't exist".
+	const agentIds = [
+		...new Set([...collectAgents(tree.objectives), ...rosterIds]),
+	].sort();
 	return (
 		<div className="panel">
 			<h2 className="sec">Objectives</h2>
