@@ -40,6 +40,12 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 
 ## Fixed Findings
 
+### Sprint 26
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-027 | MEDIUM | `packages/agent-runtime-worker/src/mission-copilot-tools.ts` (`SaveMissionConfig`) | **`SaveMissionConfig` silently wiped every attached team file (`goals.json`, `tasks.jsonl`, skills) on any YAML-only edit** — `teamFiles` defaulted to `[]` whenever the caller omitted it, which is the natural way to call this tool for a simple system-prompt tweak. No recovery path: this field isn't git-tracked (unlike `sharedDir`, which the mission's own git-commit-on-sleep protects) and has no version history the way templates do (`ListTemplateVersions`/`restore_template_version`). Found while discussing which mission-copilot write actions pose genuine, unrecoverable data-loss risk (as opposed to disruptive-but-reversible ones like `PauseAgent`). | Matches `save_template`'s existing "omit to preserve, explicit empty array to clear" contract: omitting `teamFiles` now leaves the field untouched in the `$set` update; passing `teamFiles: []` explicitly still clears it intentionally. Tool description and parameter description updated to state the rule. Two regression tests added. |
+
 ### Sprint 23
 
 | ID | Severity | Location | Description | Fix applied |

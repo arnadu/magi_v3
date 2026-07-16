@@ -193,7 +193,8 @@ export function createMissionCopilotTools(
 	const saveMissionConfig: MagiTool = {
 		name: "SaveMissionConfig",
 		description:
-			"Write a new team configuration. Validated before saving — an invalid config is rejected with the specific error and nothing is written. Takes effect the next time the mission is resumed, not immediately. Use to add/remove/deactivate an agent, change a system prompt, adjust a per-agent model or skill list, or any other config change — read current config first, change only what needs to change.",
+			"Write a new team configuration. Validated before saving — an invalid config is rejected with the specific error and nothing is written. Takes effect the next time the mission is resumed, not immediately. Use to add/remove/deactivate an agent, change a system prompt, adjust a per-agent model or skill list, or any other config change — read current config first, change only what needs to change.\n\n" +
+			"teamFiles rules: omit teamFiles entirely to preserve whatever the mission already has attached (safe for YAML-only edits, e.g. a system-prompt tweak); pass teamFiles explicitly to replace them. WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.",
 		parameters: Type.Object({
 			teamConfigYaml: Type.String({ description: "Full team config YAML" }),
 			teamFiles: Type.Optional(
@@ -202,16 +203,19 @@ export function createMissionCopilotTools(
 						path: Type.String(),
 						content: Type.String(),
 					}),
-					{ description: "Attached team files (skills, playbooks, etc.)" },
+					{
+						description:
+							"Attached team files (skills, playbooks, etc.). Omit to preserve the mission's current files — do not pass [] unless you intend to clear them all.",
+					},
 				),
 			),
 		}),
 		async execute(_id, args) {
 			const teamConfigYaml = args.teamConfigYaml as string;
-			const teamFiles =
-				(args.teamFiles as
-					| Array<{ path: string; content: string }>
-					| undefined) ?? [];
+			const teamFilesProvided = args.teamFiles !== undefined;
+			const teamFiles = args.teamFiles as
+				| Array<{ path: string; content: string }>
+				| undefined;
 			try {
 				// Rejects id "mission-copilot" (Phase 1), so a compromised copilot
 				// cannot escalate a second agent by writing itself into the
@@ -220,12 +224,19 @@ export function createMissionCopilotTools(
 			} catch (e) {
 				return err(`Invalid team config: ${(e as Error).message}`);
 			}
+			// Omitting teamFiles must preserve whatever the mission already has —
+			// defaulting to [] here silently wiped every attached team file
+			// (goals.json, tasks.jsonl, skills) on any YAML-only edit, e.g. a
+			// simple system-prompt tweak. Matches save_template's existing
+			// "omit to preserve" contract on the control-plane copilot.
+			const update: Record<string, unknown> = {
+				teamConfigYaml,
+				updatedAt: new Date(),
+			};
+			if (teamFilesProvided) update.teamFiles = teamFiles;
 			await db
 				.collection("missions")
-				.updateOne(
-					{ missionId },
-					{ $set: { teamConfigYaml, teamFiles, updatedAt: new Date() } },
-				);
+				.updateOne({ missionId }, { $set: update });
 			await auditPost(
 				"Mission config updated",
 				"I updated this mission's team configuration. The change takes effect the next time the mission is resumed, not immediately.",

@@ -255,6 +255,55 @@ describe("mission-copilot-tools", () => {
 			expect(mailboxPosts).toHaveLength(1);
 			expect(mailboxPosts[0].to).toEqual(["user"]);
 		});
+
+		it("omitting teamFiles does not touch the stored teamFiles field (regression: used to silently wipe it via ?? [])", async () => {
+			const fake = makeFakeDb({ missions: [{ missionId: "m1" }] });
+			const { tools } = buildTools(fake.db);
+			const yaml = [
+				"mission:",
+				"  id: m1",
+				"  name: Test",
+				"agents:",
+				"  - id: lead",
+				"    supervisor: user",
+				"    systemPrompt: x",
+				"    initialMentalMap: <section></section>",
+			].join("\n");
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				teamConfigYaml: yaml,
+				// teamFiles deliberately omitted — must preserve, not wipe.
+			});
+			expect(result.isError).toBeFalsy();
+			const update = fake.updateOneCalls[0].update as {
+				$set: Record<string, unknown>;
+			};
+			expect(update.$set).not.toHaveProperty("teamFiles");
+			expect(update.$set.teamConfigYaml).toBe(yaml);
+		});
+
+		it("passing teamFiles: [] explicitly does clear it (the intentional path)", async () => {
+			const fake = makeFakeDb({ missions: [{ missionId: "m1" }] });
+			const { tools } = buildTools(fake.db);
+			const yaml = [
+				"mission:",
+				"  id: m1",
+				"  name: Test",
+				"agents:",
+				"  - id: lead",
+				"    supervisor: user",
+				"    systemPrompt: x",
+				"    initialMentalMap: <section></section>",
+			].join("\n");
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				teamConfigYaml: yaml,
+				teamFiles: [],
+			});
+			expect(result.isError).toBeFalsy();
+			const update = fake.updateOneCalls[0].update as {
+				$set: Record<string, unknown>;
+			};
+			expect(update.$set.teamFiles).toEqual([]);
+		});
 	});
 
 	// ── Family E ─────────────────────────────────────────────────────────────
