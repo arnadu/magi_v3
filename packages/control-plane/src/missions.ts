@@ -238,8 +238,12 @@ export function createMissionsRouter(db: Db): Router {
 				const host = mission.privateIp.includes(":")
 					? `[${mission.privateIp}]`
 					: mission.privateIp;
+				// 10s, matching every other control-plane→execution-plane call
+				// (copilot-tools.ts's monitorFetch/monitorPost) — 5s was too
+				// tight for this cross-app WireGuard hop and caused silent,
+				// undiagnosable fallback to the stale static roster.
 				const liveRes = await fetch(`http://${host}:4000/team`, {
-					signal: AbortSignal.timeout(5_000),
+					signal: AbortSignal.timeout(10_000),
 				});
 				if (liveRes.ok) {
 					const live = (await liveRes.json()) as Array<{
@@ -249,9 +253,13 @@ export function createMissionsRouter(db: Db): Router {
 					res.json(live.map((a) => ({ id: a.id, name: a.name ?? a.id })));
 					return;
 				}
-			} catch {
-				// Machine unreachable (still booting, network hiccup) — fall
-				// through to the static parse below rather than 500.
+				console.error(
+					`[missions] live /team fetch returned ${liveRes.status} { missionId: "${req.params.id}", privateIp: "${mission.privateIp}" } — falling back to stored config`,
+				);
+			} catch (e) {
+				console.error(
+					`[missions] live /team fetch failed { missionId: "${req.params.id}", privateIp: "${mission.privateIp}", error: "${(e as Error).message}" } — falling back to stored config`,
+				);
 			}
 		}
 		try {
