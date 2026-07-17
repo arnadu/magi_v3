@@ -74,6 +74,31 @@ const TeamConfigSchema = z.object({
 		model: z.string().trim().min(1).optional(),
 		/** Vision model for FetchUrl, InspectImage, BrowseWeb. Overrides VISION_MODEL env var. */
 		visionModel: z.string().trim().min(1).optional(),
+		/**
+		 * IANA timezone (e.g. "America/New_York") used to add a local-time line to the
+		 * current-time block every agent sees in its system prompt (prompt.ts). Optional —
+		 * UTC/Unix/day-of-week are always shown regardless. Validated against the runtime's
+		 * own IANA database so a typo fails config validation instead of silently omitting
+		 * the local-time line.
+		 */
+		timezone: z
+			.string()
+			.trim()
+			.min(1)
+			.refine(
+				(tz) => {
+					try {
+						new Intl.DateTimeFormat("en-US", { timeZone: tz });
+						return true;
+					} catch {
+						return false;
+					}
+				},
+				{
+					message: "must be a valid IANA timezone name (e.g. America/New_York)",
+				},
+			)
+			.optional(),
 	}),
 	agents: z.array(AgentSchema).min(1),
 });

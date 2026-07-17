@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { safeTimestamp } from "../src/mailbox.js";
-import { formatMessages } from "../src/prompt.js";
+import { buildTimeBlock, formatMessages } from "../src/prompt.js";
 
 function baseMessage(overrides: Partial<MailboxMessage> = {}): MailboxMessage {
 	return {
@@ -78,5 +78,35 @@ describe("formatMessages", () => {
 		const text = formatMessages([msg]);
 		expect(text).toContain("Time: unknown");
 		expect(text).toContain("Test body");
+	});
+});
+
+describe("buildTimeBlock", () => {
+	it("includes UTC ISO time, day of week, and Unix epoch, with no local line when no timezone is given", () => {
+		const text = buildTimeBlock();
+		expect(text).toMatch(/UTC: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z \(\w+day\)/);
+		expect(text).toMatch(/Unix: \d{10}/);
+		expect(text).not.toContain("Local");
+	});
+
+	it("adds a local-time line for a configured IANA timezone", () => {
+		const text = buildTimeBlock("America/New_York");
+		expect(text).toContain("Local (America/New_York):");
+		expect(text).toMatch(
+			/Local \(America\/New_York\): \d{4}-\d{2}-\d{2} \d{2}:\d{2} (EST|EDT)/,
+		);
+	});
+
+	it("rounds to the nearest 5 minutes so consecutive calls within the same bucket produce an identical block (prompt-cache stability)", () => {
+		// Two calls milliseconds apart must be byte-identical, since the whole
+		// system prompt is cached as one block (pi-ai's Anthropic provider) and
+		// this is rebuilt fresh before every LLM call in a turn.
+		expect(buildTimeBlock()).toBe(buildTimeBlock());
+	});
+
+	it("Unix epoch is a multiple of 300 seconds (5-minute rounding applied consistently)", () => {
+		const match = buildTimeBlock().match(/Unix: (\d+)/);
+		expect(match).not.toBeNull();
+		expect(Number(match?.[1]) % 300).toBe(0);
 	});
 });

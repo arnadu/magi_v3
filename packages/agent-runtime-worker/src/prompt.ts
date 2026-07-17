@@ -25,18 +25,76 @@ const RENDERING_NOTE = [
 ].join("\n");
 
 /**
+ * Rounding granularity for the current-time block. The system prompt is cached
+ * as a single block (pi-ai's Anthropic provider applies one cache_control marker
+ * to the whole string) and rebuilt fresh before every LLM call in the inner loop
+ * (see agent-runner.ts's getSystemPrompt getter) — an unrounded, to-the-second
+ * timestamp would invalidate that cache on every single call, including
+ * consecutive tool-call rounds within the same turn seconds apart. Agents have
+ * no need for sub-5-minute precision, so rounding trades away nothing useful in
+ * exchange for keeping the cache warm across a turn's iterations.
+ */
+const TIME_ROUND_MS = 5 * 60 * 1000;
+
+function isoMinute(d: Date): string {
+	return `${d.toISOString().slice(0, 16)}Z`;
+}
+
+function formatLocal(d: Date, timezone: string): string {
+	const parts = new Intl.DateTimeFormat("en-CA", {
+		timeZone: timezone,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		hour12: false,
+		timeZoneName: "short",
+	}).formatToParts(d);
+	const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+	return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")} ${get("timeZoneName")}`;
+}
+
+/**
+ * Build the always-fresh current-time block injected into every system prompt.
+ * Exported for direct unit testing without the filesystem dependencies of
+ * buildSystemPrompt (discoverSkills reads sharedDir/workdir).
+ */
+export function buildTimeBlock(timezone?: string): string {
+	const rounded = new Date(
+		Math.floor(Date.now() / TIME_ROUND_MS) * TIME_ROUND_MS,
+	);
+	const weekday = new Intl.DateTimeFormat("en-US", {
+		weekday: "long",
+		timeZone: "UTC",
+	}).format(rounded);
+	const lines = [
+		"## Current Time",
+		"(Rounded to the nearest 5 minutes for prompt-cache efficiency — treat as approximate, not to-the-second.)",
+		`- UTC: ${isoMinute(rounded)} (${weekday})`,
+		`- Unix: ${Math.floor(rounded.getTime() / 1000)}`,
+	];
+	if (timezone) {
+		lines.push(`- Local (${timezone}): ${formatLocal(rounded, timezone)}`);
+	}
+	return lines.join("\n");
+}
+
+/**
  * Build the system prompt for an agent's unified loop.
  *
  * Reads agent.systemPrompt from the team YAML, substitutes the
  * {{mentalMap}} placeholder with the agent's current mental map HTML,
- * and appends a rendering-capability note plus a skills block listing all
- * discoverable skills across the platform, mission, and agent-private tiers.
+ * and appends a rendering-capability note, a current-time block, and a
+ * skills block listing all discoverable skills across the platform, mission,
+ * and agent-private tiers.
  */
 export function buildSystemPrompt(
 	agent: AgentConfig,
 	mentalMapHtml: string,
 	sharedDir: string,
 	workdir: string,
+	timezone?: string,
 ): string {
 	const base = agent.systemPrompt
 		.replace(/\{\{mentalMap\}\}/g, mentalMapHtml)
@@ -49,7 +107,7 @@ export function buildSystemPrompt(
 		skills: block.skills.filter((s) => !disabled.has(s.name)),
 	};
 	const skillsBlock = formatSkillsBlock(filtered);
-	return `${base}\n\n${RENDERING_NOTE}\n\n${skillsBlock}`;
+	return `${base}\n\n${buildTimeBlock(timezone)}\n\n${RENDERING_NOTE}\n\n${skillsBlock}`;
 }
 
 /**

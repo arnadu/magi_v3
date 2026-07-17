@@ -57,3 +57,28 @@ agents:
 		expect(() => parseTeamConfig(yaml)).toThrow(/reserved/i);
 	});
 });
+
+describe("parseTeamConfig — mission.timezone", () => {
+	it("accepts a valid IANA timezone", () => {
+		const config = parseTeamConfig(
+			baseYaml("lead").replace(
+				"name: Test Mission",
+				"name: Test Mission\n  timezone: America/New_York",
+			),
+		);
+		expect(config.mission.timezone).toBe("America/New_York");
+	});
+
+	it("is optional — omitting it leaves timezone undefined", () => {
+		const config = parseTeamConfig(baseYaml("lead"));
+		expect(config.mission.timezone).toBeUndefined();
+	});
+
+	it("rejects an invalid IANA timezone name with a clear error", () => {
+		const yaml = baseYaml("lead").replace(
+			"name: Test Mission",
+			"name: Test Mission\n  timezone: Not/A_Real_Zone",
+		);
+		expect(() => parseTeamConfig(yaml)).toThrow(/valid IANA timezone/i);
+	});
+});

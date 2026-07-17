@@ -428,9 +428,16 @@ export async function runAgent(
 	// -1 = task user message (before first LLM call); increments to 0, 1, 2… on each AssistantMessage.
 	let currentCallSeq = -1;
 
-	// Getter so the inner loop rebuilds the system prompt each iteration (picks up UpdateMentalMap changes).
+	// Getter so the inner loop rebuilds the system prompt each iteration (picks up
+	// UpdateMentalMap changes and refreshes the current-time block — see prompt.ts).
 	const getSystemPrompt = () =>
-		buildSystemPrompt(agent, currentMentalMapHtml, sharedDir, workdir);
+		buildSystemPrompt(
+			agent,
+			currentMentalMapHtml,
+			sharedDir,
+			workdir,
+			ctx.teamConfig.mission.timezone,
+		);
 
 	const task = formatMessages(messages);
 
