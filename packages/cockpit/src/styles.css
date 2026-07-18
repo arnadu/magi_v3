@@ -1364,6 +1364,29 @@ h2.sec {
 	text-transform: uppercase;
 	letter-spacing: 0.02em;
 }
+/* Clickable chart marks (turn boxes/dots, file/anomaly markers) — jump to
+   that turn's transcript. Message/wakeup markers stay hover-only (no single
+   turn to jump to). */
+.trace-mark {
+	cursor: pointer;
+}
+/* Overview strip below the main plot — always the mission's full time
+   range, brushed to pick the main plot's zoom window. */
+.trace-overview-bg {
+	fill: var(--panel2);
+	stroke: var(--line);
+}
+.trace-overview-hit {
+	fill: transparent;
+	cursor: crosshair;
+}
+.trace-brush {
+	fill: var(--info);
+	fill-opacity: 0.18;
+	stroke: var(--info);
+	stroke-width: 1;
+	pointer-events: none;
+}
 
 /* Ranked horizontal bar chart. */
 .tr-bars {

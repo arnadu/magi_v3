@@ -1,4 +1,10 @@
-import { useEffect, useState } from "react";
+import {
+	type KeyboardEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import {
 	type AgentMissionStats,
 	fetchAgents,
@@ -91,8 +97,30 @@ type LaneKey = (typeof LANE_DEFS)[number]["key"];
 const laneY = (key: LaneKey) =>
 	LANES_TOP + LANE_DEFS.findIndex((l) => l.key === key) * LANE_ROW;
 
-const AXIS_LABEL_H = 20;
-const CHART_H = LANES_TOP + LANE_DEFS.length * LANE_ROW - 6 + AXIS_LABEL_H;
+const LANES_BOTTOM = LANES_TOP + LANE_DEFS.length * LANE_ROW - 6;
+
+// Main plot's own x-axis tick labels — reflect the current zoom domain, not
+// the mission's full range (that's the overview strip's job, below).
+const AXIS_LABEL_H = 16;
+const MAIN_AXIS_Y = LANES_BOTTOM + AXIS_LABEL_H - 4;
+
+// Overview strip: always the mission's full time range, with a draggable
+// brush to pick the sub-range the main plot zooms to. Mirrors the
+// brush-to-zoom pattern in experimental/dump-trace.mjs (a separate, richer
+// trace-viewer prototype than cockpit-mock.html's static renderTrace, which
+// is what this component was originally ported from — the brush was lost in
+// that port, not something that was never designed).
+const OVERVIEW_GAP = 12;
+const OVERVIEW_H = 26;
+const OVERVIEW_TOP = LANES_BOTTOM + AXIS_LABEL_H + OVERVIEW_GAP;
+const OVERVIEW_BOTTOM = OVERVIEW_TOP + OVERVIEW_H;
+const OVERVIEW_AXIS_Y = OVERVIEW_BOTTOM + 12;
+
+const CHART_H = OVERVIEW_AXIS_Y + 4;
+
+// A drag shorter than this on the overview strip is treated as a click —
+// i.e. "reset zoom" — rather than a (near-zero-width, useless) brush.
+const DRAG_CLICK_THRESHOLD_PX = 4;
 
 /**
  * Cumulative cost per agent, over real wall-clock time (the mission's original
@@ -115,16 +143,106 @@ const CHART_H = LANES_TOP + LANE_DEFS.length * LANE_ROW - 6 + AXIS_LABEL_H;
  * drill-down asked for these signals; agentTurnStats/mailbox already carry
  * them, so no new backend instrumentation was needed to surface them here.
  */
+// Keyboard-activation counterpart to a chart mark's onClick — Enter/Space
+// fire the same jump, so a clickable SVG shape (role="button") is reachable
+// without a mouse, not just visually indicated as interactive.
+function inspectKeyHandler(
+	onInspectTurn: (agent: string, turn: number) => void,
+	agent: string,
+	turn: number,
+) {
+	return (e: KeyboardEvent) => {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			onInspectTurn(agent, turn);
+		}
+	};
+}
+
 function CostTimeline({
 	agents,
 	series,
 	messageEvents,
+	onInspectTurn,
 }: {
 	agents: string[];
 	series: TurnCost[];
 	messageEvents: MessageEvent[];
+	onInspectTurn: (agent: string, turn: number) => void;
 }) {
 	const [tableView, setTableView] = useState(false);
+	// null = showing the mission's full time range. Set by dragging a
+	// selection on the overview strip; cleared by "Reset zoom" or a plain
+	// click (a drag shorter than DRAG_CLICK_THRESHOLD_PX) on the strip.
+	const [zoomDomain, setZoomDomain] = useState<[number, number] | null>(null);
+	// Live drag in progress on the overview strip, in SVG x-coordinates.
+	const [drag, setDrag] = useState<{ startX: number; curX: number } | null>(
+		null,
+	);
+	const svgRef = useRef<SVGSVGElement>(null);
+
+	const clientXToSvg = useCallback((clientX: number): number => {
+		const el = svgRef.current;
+		if (!el) return 0;
+		const rect = el.getBoundingClientRect();
+		if (rect.width === 0) return 0;
+		return (clientX - rect.left) * (CHART_W / rect.width);
+	}, []);
+
+	// Domain bounds computed unconditionally (even before we know whether
+	// there's any data to chart) so the drag-listener effect below — which
+	// must itself be unconditional, before any early return — can depend on
+	// a stable invertOv. Degenerate (Infinity) when series/messageEvents are
+	// both empty is harmless: the overview strip that would trigger a drag
+	// never renders in that case (see the early return below).
+	const seriesTimes = series.flatMap((t) => [
+		new Date(t.startedAt).getTime(),
+		new Date(t.completedAt).getTime(),
+	]);
+	const eventTimes = messageEvents.map((m) => new Date(m.timestamp).getTime());
+	const fullMinT = Math.min(...seriesTimes, ...eventTimes);
+	const fullMaxT = Math.max(...seriesTimes, ...eventTimes, fullMinT + 1); // avoid a zero-width scale
+
+	const invertOv = useCallback(
+		(x: number): number => {
+			const t =
+				fullMinT +
+				((x - PAD_L) / (CHART_W - PAD_L - PAD_R)) * (fullMaxT - fullMinT);
+			return Math.min(fullMaxT, Math.max(fullMinT, t));
+		},
+		[fullMinT, fullMaxT],
+	);
+
+	// Window-level listeners while dragging — a drag routinely continues past
+	// the overview strip's own bounds, so per-element mouse handlers alone
+	// would lose track of the pointer.
+	useEffect(() => {
+		if (!drag) return;
+		const onMove = (e: MouseEvent) => {
+			const x = clientXToSvg(e.clientX);
+			setDrag((d) => (d ? { ...d, curX: x } : d));
+		};
+		const onUp = (e: MouseEvent) => {
+			const x = clientXToSvg(e.clientX);
+			setDrag((d) => {
+				if (!d) return null;
+				const x0 = Math.min(d.startX, x);
+				const x1 = Math.max(d.startX, x);
+				if (x1 - x0 < DRAG_CLICK_THRESHOLD_PX) {
+					setZoomDomain(null);
+				} else {
+					setZoomDomain([invertOv(x0), invertOv(x1)]);
+				}
+				return null;
+			});
+		};
+		window.addEventListener("mousemove", onMove);
+		window.addEventListener("mouseup", onUp);
+		return () => {
+			window.removeEventListener("mousemove", onMove);
+			window.removeEventListener("mouseup", onUp);
+		};
+	}, [drag, clientXToSvg, invertOv]);
 
 	if (series.length === 0) {
 		return (
@@ -140,13 +258,13 @@ function CostTimeline({
 		return CAT_COLORS[i >= 0 ? i % CAT_COLORS.length : 0];
 	};
 
-	const seriesTimes = series.flatMap((t) => [
-		new Date(t.startedAt).getTime(),
-		new Date(t.completedAt).getTime(),
-	]);
-	const eventTimes = messageEvents.map((m) => new Date(m.timestamp).getTime());
-	const minT = Math.min(...seriesTimes, ...eventTimes);
-	const maxT = Math.max(...seriesTimes, ...eventTimes, minT + 1); // avoid a zero-width scale
+	// The overview strip always spans the full range — its scale never
+	// changes, so it stays a stable "map" while the main plot zooms.
+	const sxOv = (t: number) =>
+		PAD_L +
+		((t - fullMinT) / (fullMaxT - fullMinT)) * (CHART_W - PAD_L - PAD_R);
+
+	const [minT, maxT] = zoomDomain ?? [fullMinT, fullMaxT];
 	const sx = (t: number) =>
 		PAD_L + ((t - minT) / (maxT - minT)) * (CHART_W - PAD_L - PAD_R);
 
@@ -163,7 +281,7 @@ function CostTimeline({
 					new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime(),
 			);
 		if (turns.length === 0) continue;
-		const pts: Pt[] = [{ t: minT, cum: 0 }];
+		const pts: Pt[] = [{ t: fullMinT, cum: 0 }];
 		let cum = 0;
 		for (const turn of turns) {
 			const tStart = new Date(turn.startedAt).getTime();
@@ -173,7 +291,7 @@ function CostTimeline({
 			cum += turn.costUsd;
 			pts.push({ t: tEnd, cum, turn }); // step up
 		}
-		pts.push({ t: maxT, cum }); // hold to the right edge
+		pts.push({ t: fullMaxT, cum }); // hold to the right edge
 		perAgentLine.set(agentId, pts);
 		maxCum = Math.max(maxCum, cum);
 	}
@@ -198,10 +316,38 @@ function CostTimeline({
 		(m) => m.from !== "scheduler",
 	);
 
+	// Overview density ticks — one per turn completion (the granularity
+	// costSeries actually gives us; per-LLM-call would need an llmCallLog
+	// fetch this panel doesn't otherwise make).
+	const overviewTicks = series.map((t) => ({
+		t: new Date(t.completedAt).getTime(),
+		color: colorOf(t.agentId),
+	}));
+
+	const brushX0 = drag
+		? Math.min(drag.startX, drag.curX)
+		: zoomDomain
+			? sxOv(zoomDomain[0])
+			: null;
+	const brushX1 = drag
+		? Math.max(drag.startX, drag.curX)
+		: zoomDomain
+			? sxOv(zoomDomain[1])
+			: null;
+
 	return (
 		<div className="trace-card">
 			<div className="trace-card-head">
 				<h3 className="trace-card-title">Cumulative cost over time</h3>
+				{!tableView && zoomDomain && (
+					<button
+						type="button"
+						className="rail-btn"
+						onClick={() => setZoomDomain(null)}
+					>
+						Reset zoom
+					</button>
+				)}
 				<button
 					type="button"
 					className="rail-btn"
@@ -248,11 +394,22 @@ function CostTimeline({
 						</div>
 					)}
 					<svg
+						ref={svgRef}
 						viewBox={`0 0 ${CHART_W} ${CHART_H}`}
 						className="trace-svg"
 						role="img"
-						aria-label="Cumulative cost per agent over time, with turn, file, message, wakeup and anomaly markers"
+						aria-label="Cumulative cost per agent over time, with turn, file, message, wakeup and anomaly markers. Drag on the strip at the bottom to zoom; click a turn to inspect it."
 					>
+						<defs>
+							<clipPath id="trace-plot-clip">
+								<rect
+									x={PAD_L}
+									y={PLOT_TOP}
+									width={CHART_W - PAD_L - PAD_R}
+									height={LANES_BOTTOM - PLOT_TOP}
+								/>
+							</clipPath>
+						</defs>
 						{yTicks.map((v) => (
 							<g key={v}>
 								<line
@@ -286,147 +443,258 @@ function CostTimeline({
 							y2={PLOT_BOTTOM}
 							className="chart-axis-line"
 						/>
-						{[...perAgentLine.entries()].map(([agentId, pts]) => (
-							<polyline
-								key={agentId}
-								fill="none"
-								stroke={colorOf(agentId)}
-								strokeWidth={2}
-								points={pts.map((p) => `${sx(p.t)},${sy(p.cum)}`).join(" ")}
-							/>
-						))}
-						{boxes.map((b) => {
-							const h = boxHeight(b.turn.llmCallCount);
-							const y = sy(b.cumBefore);
-							const aborted = b.turn.status === "aborted";
-							return (
-								<rect
-									key={`${b.turn.agentId}-${b.turn.turnNumber}`}
-									x={b.x1}
-									y={y - h / 2}
-									width={Math.max(2, b.x2 - b.x1)}
-									height={h}
-									rx={2}
-									fill={colorOf(b.turn.agentId)}
-									fillOpacity={0.25}
-									stroke={aborted ? "var(--bad)" : colorOf(b.turn.agentId)}
-									strokeWidth={aborted ? 1.5 : 1}
-									strokeDasharray={aborted ? "3 2" : undefined}
-								>
-									<title>
-										{`${b.turn.agentId} · turn ${b.turn.turnNumber} · ${b.turn.llmCallCount} LLM call${b.turn.llmCallCount === 1 ? "" : "s"} · peak ctx ${fmtCompact(b.turn.peakContextTokens)} · ${fmtUsd(b.turn.costUsd)}${aborted ? " · ABORTED" : ""}`}
-									</title>
-								</rect>
-							);
-						})}
-						{[...perAgentLine.entries()].flatMap(([agentId, pts]) =>
-							pts
-								.filter(
-									(p): p is Pt & { turn: TurnCost } => p.turn !== undefined,
-								)
-								.map((p) => (
-									<circle
-										key={`${agentId}-${p.turn.turnNumber}-dot`}
-										cx={sx(p.t)}
-										cy={sy(p.cum)}
-										r={3}
-										fill={colorOf(agentId)}
-										stroke="var(--panel)"
-										strokeWidth={1.5}
+						<g clipPath="url(#trace-plot-clip)">
+							{[...perAgentLine.entries()].map(([agentId, pts]) => (
+								<polyline
+									key={agentId}
+									fill="none"
+									stroke={colorOf(agentId)}
+									strokeWidth={2}
+									points={pts.map((p) => `${sx(p.t)},${sy(p.cum)}`).join(" ")}
+								/>
+							))}
+							{boxes.map((b) => {
+								const h = boxHeight(b.turn.llmCallCount);
+								const y = sy(b.cumBefore);
+								const aborted = b.turn.status === "aborted";
+								return (
+									// biome-ignore lint/a11y/useSemanticElements: SVG has no <button> equivalent for a shape; role="button" + tabIndex + onKeyDown is the WAI-ARIA-recommended pattern for a clickable non-form SVG element
+									<rect
+										key={`${b.turn.agentId}-${b.turn.turnNumber}`}
+										className="trace-mark"
+										x={b.x1}
+										y={y - h / 2}
+										width={Math.max(2, b.x2 - b.x1)}
+										height={h}
+										rx={2}
+										fill={colorOf(b.turn.agentId)}
+										fillOpacity={0.25}
+										stroke={aborted ? "var(--bad)" : colorOf(b.turn.agentId)}
+										strokeWidth={aborted ? 1.5 : 1}
+										strokeDasharray={aborted ? "3 2" : undefined}
+										role="button"
+										tabIndex={0}
+										onClick={() =>
+											onInspectTurn(b.turn.agentId, b.turn.turnNumber)
+										}
+										onKeyDown={inspectKeyHandler(
+											onInspectTurn,
+											b.turn.agentId,
+											b.turn.turnNumber,
+										)}
 									>
 										<title>
-											{`${agentId} · turn ${p.turn.turnNumber} · ${fmtUsd(p.turn.costUsd)} (cumulative ${fmtUsd(p.cum)}) · ${new Date(p.turn.completedAt).toLocaleString()}`}
+											{`${b.turn.agentId} · turn ${b.turn.turnNumber} · ${b.turn.llmCallCount} LLM call${b.turn.llmCallCount === 1 ? "" : "s"} · peak ctx ${fmtCompact(b.turn.peakContextTokens)} · ${fmtUsd(b.turn.costUsd)}${aborted ? " · ABORTED" : ""} — click to inspect`}
 										</title>
-									</circle>
-								)),
-						)}
+									</rect>
+								);
+							})}
+							{[...perAgentLine.entries()].flatMap(([agentId, pts]) =>
+								pts
+									.filter(
+										(p): p is Pt & { turn: TurnCost } => p.turn !== undefined,
+									)
+									.map((p) => (
+										// biome-ignore lint/a11y/useSemanticElements: SVG has no <button> equivalent for a shape; see the turn-box rect above
+										<circle
+											key={`${agentId}-${p.turn.turnNumber}-dot`}
+											className="trace-mark"
+											cx={sx(p.t)}
+											cy={sy(p.cum)}
+											r={3}
+											fill={colorOf(agentId)}
+											stroke="var(--panel)"
+											strokeWidth={1.5}
+											role="button"
+											tabIndex={0}
+											onClick={() => onInspectTurn(agentId, p.turn.turnNumber)}
+											onKeyDown={inspectKeyHandler(
+												onInspectTurn,
+												agentId,
+												p.turn.turnNumber,
+											)}
+										>
+											<title>
+												{`${agentId} · turn ${p.turn.turnNumber} · ${fmtUsd(p.turn.costUsd)} (cumulative ${fmtUsd(p.cum)}) · ${new Date(p.turn.completedAt).toLocaleString()} — click to inspect`}
+											</title>
+										</circle>
+									)),
+							)}
 
-						{LANE_DEFS.map((lane) => (
-							<g key={lane.key}>
-								<text
-									x={PAD_L - 8}
-									y={laneY(lane.key) + LANE_H / 2 + 3}
-									className="chart-axis chart-lane-label"
-									textAnchor="end"
+							{LANE_DEFS.map((lane) => (
+								<g key={lane.key}>
+									<text
+										x={PAD_L - 8}
+										y={laneY(lane.key) + LANE_H / 2 + 3}
+										className="chart-axis chart-lane-label"
+										textAnchor="end"
+									>
+										{lane.label}
+									</text>
+									<line
+										x1={PAD_L}
+										x2={CHART_W - PAD_R}
+										y1={laneY(lane.key) + LANE_H / 2}
+										y2={laneY(lane.key) + LANE_H / 2}
+										className="chart-grid"
+									/>
+								</g>
+							))}
+
+							{fileTurns.map((t) => (
+								// biome-ignore lint/a11y/useSemanticElements: SVG has no <button> equivalent for a shape; see the turn-box rect above
+								<circle
+									key={`file-${t.agentId}-${t.turnNumber}`}
+									className="trace-mark"
+									cx={sx(new Date(t.completedAt).getTime())}
+									cy={laneY("files") + LANE_H / 2}
+									r={3.5}
+									fill={colorOf(t.agentId)}
+									role="button"
+									tabIndex={0}
+									onClick={() => onInspectTurn(t.agentId, t.turnNumber)}
+									onKeyDown={inspectKeyHandler(
+										onInspectTurn,
+										t.agentId,
+										t.turnNumber,
+									)}
 								>
-									{lane.label}
-								</text>
-								<line
-									x1={PAD_L}
-									x2={CHART_W - PAD_R}
-									y1={laneY(lane.key) + LANE_H / 2}
-									y2={laneY(lane.key) + LANE_H / 2}
-									className="chart-grid"
-								/>
-							</g>
-						))}
-
-						{fileTurns.map((t) => (
-							<circle
-								key={`file-${t.agentId}-${t.turnNumber}`}
-								cx={sx(new Date(t.completedAt).getTime())}
-								cy={laneY("files") + LANE_H / 2}
-								r={3.5}
-								fill={colorOf(t.agentId)}
-							>
-								<title>
-									{`${t.agentId} · turn ${t.turnNumber} wrote ${t.gitChangedFiles?.length} file${t.gitChangedFiles?.length === 1 ? "" : "s"}: ${t.gitChangedFiles?.map((f) => f.path).join(", ")}`}
-								</title>
-							</circle>
-						))}
-						{agentMessageEvents.map((m, i) => (
-							<circle
-								// biome-ignore lint/suspicious/noArrayIndexKey: messages have no stable id from the API
-								key={`msg-${i}`}
-								cx={sx(new Date(m.timestamp).getTime())}
-								cy={laneY("messages") + LANE_H / 2}
-								r={3.5}
-								fill={agents.includes(m.from) ? colorOf(m.from) : "var(--dim)"}
-							>
-								<title>
-									{`${m.from} → ${m.to.join(", ")}: ${m.subject || "(no subject)"} · ${new Date(m.timestamp).toLocaleString()}`}
-								</title>
-							</circle>
-						))}
-						{wakeupEvents.map((m, i) => (
-							<circle
-								// biome-ignore lint/suspicious/noArrayIndexKey: messages have no stable id from the API
-								key={`wake-${i}`}
-								cx={sx(new Date(m.timestamp).getTime())}
-								cy={laneY("wakeups") + LANE_H / 2}
-								r={3.5}
-								fill="var(--info)"
-							>
-								<title>
-									{`Scheduled wakeup → ${m.to.join(", ")}: ${m.subject || "(no subject)"} · ${new Date(m.timestamp).toLocaleString()}`}
-								</title>
-							</circle>
-						))}
-						{anomalyTurns.map((t) => (
-							<circle
-								key={`anomaly-${t.agentId}-${t.turnNumber}`}
-								cx={sx(new Date(t.completedAt).getTime())}
-								cy={laneY("anomalies") + LANE_H / 2}
-								r={3.5}
-								fill="var(--bad)"
-							>
-								<title>
-									{`${t.agentId} · turn ${t.turnNumber} aborted · ${new Date(t.completedAt).toLocaleString()}`}
-								</title>
-							</circle>
-						))}
+									<title>
+										{`${t.agentId} · turn ${t.turnNumber} wrote ${t.gitChangedFiles?.length} file${t.gitChangedFiles?.length === 1 ? "" : "s"}: ${t.gitChangedFiles?.map((f) => f.path).join(", ")} — click to inspect`}
+									</title>
+								</circle>
+							))}
+							{agentMessageEvents.map((m, i) => (
+								<circle
+									// biome-ignore lint/suspicious/noArrayIndexKey: messages have no stable id from the API
+									key={`msg-${i}`}
+									cx={sx(new Date(m.timestamp).getTime())}
+									cy={laneY("messages") + LANE_H / 2}
+									r={3.5}
+									fill={
+										agents.includes(m.from) ? colorOf(m.from) : "var(--dim)"
+									}
+								>
+									<title>
+										{`${m.from} → ${m.to.join(", ")}: ${m.subject || "(no subject)"} · ${new Date(m.timestamp).toLocaleString()}`}
+									</title>
+								</circle>
+							))}
+							{wakeupEvents.map((m, i) => (
+								<circle
+									// biome-ignore lint/suspicious/noArrayIndexKey: messages have no stable id from the API
+									key={`wake-${i}`}
+									cx={sx(new Date(m.timestamp).getTime())}
+									cy={laneY("wakeups") + LANE_H / 2}
+									r={3.5}
+									fill="var(--info)"
+								>
+									<title>
+										{`Scheduled wakeup → ${m.to.join(", ")}: ${m.subject || "(no subject)"} · ${new Date(m.timestamp).toLocaleString()}`}
+									</title>
+								</circle>
+							))}
+							{anomalyTurns.map((t) => (
+								// biome-ignore lint/a11y/useSemanticElements: SVG has no <button> equivalent for a shape; see the turn-box rect above
+								<circle
+									key={`anomaly-${t.agentId}-${t.turnNumber}`}
+									className="trace-mark"
+									cx={sx(new Date(t.completedAt).getTime())}
+									cy={laneY("anomalies") + LANE_H / 2}
+									r={3.5}
+									fill="var(--bad)"
+									role="button"
+									tabIndex={0}
+									onClick={() => onInspectTurn(t.agentId, t.turnNumber)}
+									onKeyDown={inspectKeyHandler(
+										onInspectTurn,
+										t.agentId,
+										t.turnNumber,
+									)}
+								>
+									<title>
+										{`${t.agentId} · turn ${t.turnNumber} aborted · ${new Date(t.completedAt).toLocaleString()} — click to inspect`}
+									</title>
+								</circle>
+							))}
+						</g>
 
 						{xTicks.map((t) => (
 							<text
 								key={t}
 								x={sx(t)}
-								y={CHART_H - 4}
+								y={MAIN_AXIS_Y}
 								className="chart-axis"
 								textAnchor="middle"
 							>
 								{fmtTick(t)}
 							</text>
 						))}
+
+						{/* Overview strip — full-range density ticks + draggable brush. */}
+						<rect
+							x={PAD_L}
+							y={OVERVIEW_TOP}
+							width={CHART_W - PAD_L - PAD_R}
+							height={OVERVIEW_H}
+							className="trace-overview-bg"
+						/>
+						{overviewTicks.map((tk, i) => (
+							<line
+								// biome-ignore lint/suspicious/noArrayIndexKey: ticks have no stable id
+								key={i}
+								x1={sxOv(tk.t)}
+								x2={sxOv(tk.t)}
+								y1={OVERVIEW_TOP + 2}
+								y2={OVERVIEW_BOTTOM - 2}
+								stroke={tk.color}
+								strokeWidth={1.5}
+								opacity={0.65}
+							/>
+						))}
+						{brushX0 !== null && brushX1 !== null && (
+							<rect
+								x={brushX0}
+								y={OVERVIEW_TOP}
+								width={Math.max(1, brushX1 - brushX0)}
+								height={OVERVIEW_H}
+								className="trace-brush"
+							/>
+						)}
+						{/* Mouse-only drag-to-zoom surface — not the sole path to
+						    anything: every mark above is itself a role="button" jump
+						    target, and "Reset zoom" already undoes zoom state from the
+						    keyboard. Not tabIndex'd, so it never enters the tab order. */}
+						{/* biome-ignore lint/a11y/noStaticElementInteractions: mouse-only drag gesture with no keyboard equivalent to offer or role that fits (it's a drag surface, not a button) */}
+						<rect
+							x={PAD_L}
+							y={OVERVIEW_TOP}
+							width={CHART_W - PAD_L - PAD_R}
+							height={OVERVIEW_H}
+							className="trace-overview-hit"
+							onMouseDown={(e) => {
+								const x = clientXToSvg(e.clientX);
+								setDrag({ startX: x, curX: x });
+							}}
+						>
+							<title>Drag to zoom · click to reset</title>
+						</rect>
+						<text
+							x={PAD_L}
+							y={OVERVIEW_AXIS_Y}
+							className="chart-axis"
+							textAnchor="start"
+						>
+							{fmtTick(fullMinT)}
+						</text>
+						<text
+							x={CHART_W - PAD_R}
+							y={OVERVIEW_AXIS_Y}
+							className="chart-axis"
+							textAnchor="end"
+						>
+							{fmtTick(fullMaxT)}
+						</text>
 					</svg>
 				</>
 			)}
@@ -561,7 +829,14 @@ function InteractionHeatmap({
 	);
 }
 
-export function TracePanel({ missionId }: { missionId: string | null }) {
+export function TracePanel({
+	missionId,
+	onInspectTurn,
+}: {
+	missionId: string | null;
+	/** Jump to a turn's full transcript (Transcripts tab) — same deep link the Files panel uses. */
+	onInspectTurn: (agent: string, turn: number) => void;
+}) {
 	const [agents, setAgents] = useState<string[]>([]);
 	const [stats, setStats] = useState<AgentMissionStats[] | null>(null);
 	const [interactions, setInteractions] = useState<Interaction[] | null>(null);
@@ -618,6 +893,7 @@ export function TracePanel({ missionId }: { missionId: string | null }) {
 				agents={agents}
 				series={costSeries}
 				messageEvents={messageEvents}
+				onInspectTurn={onInspectTurn}
 			/>
 			<CostBars stats={stats} />
 			<InteractionHeatmap agents={agents} interactions={agentInteractions} />

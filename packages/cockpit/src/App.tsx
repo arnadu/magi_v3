@@ -320,7 +320,12 @@ export function App() {
 								runningAgents={runningAgents}
 							/>
 						)}
-						{mainTab === "trace" && <TracePanel missionId={view.mission} />}
+						{mainTab === "trace" && (
+							<TracePanel
+								missionId={view.mission}
+								onInspectTurn={inspectTurn}
+							/>
+						)}
 					</div>
 				</main>
 			</div>
