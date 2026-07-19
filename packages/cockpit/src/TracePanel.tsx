@@ -122,6 +122,17 @@ const CHART_H = OVERVIEW_AXIS_Y + 4;
 // i.e. "reset zoom" — rather than a (near-zero-width, useless) brush.
 const DRAG_CLICK_THRESHOLD_PX = 4;
 
+// A turn box's natural width is its real [startedAt, completedAt] span at the
+// current zoom — for most turns (minutes) against a chart spanning days or
+// weeks, that's under 2px, i.e. entirely smaller than the 6px-diameter cost
+// dot that sits at the box's right edge (the turn's end — same x as the dot,
+// see the dots' `sx(p.t)` below). Below this floor the box was rendering
+// completely hidden under its own dot, not merely thin — every turn except
+// the rare one whose real duration happened to exceed a few pixels was
+// invisible. Padded symmetrically around the box's true midpoint (not just
+// widened rightward) so the visible part isn't always pinned to one side.
+const MIN_BOX_WIDTH_PX = 12;
+
 /**
  * Cumulative cost per agent, over real wall-clock time (the mission's original
  * mocked Trace chart — experimental/cockpit-mock.html's renderTrace). Multiple
@@ -457,14 +468,17 @@ function CostTimeline({
 								const h = boxHeight(b.turn.llmCallCount);
 								const y = sy(b.cumBefore);
 								const aborted = b.turn.status === "aborted";
+								const natW = b.x2 - b.x1;
+								const w = Math.max(MIN_BOX_WIDTH_PX, natW);
+								const x = (b.x1 + b.x2) / 2 - w / 2;
 								return (
 									// biome-ignore lint/a11y/useSemanticElements: SVG has no <button> equivalent for a shape; role="button" + tabIndex + onKeyDown is the WAI-ARIA-recommended pattern for a clickable non-form SVG element
 									<rect
 										key={`${b.turn.agentId}-${b.turn.turnNumber}`}
 										className="trace-mark"
-										x={b.x1}
+										x={x}
 										y={y - h / 2}
-										width={Math.max(2, b.x2 - b.x1)}
+										width={w}
 										height={h}
 										rx={2}
 										fill={colorOf(b.turn.agentId)}
