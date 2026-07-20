@@ -1,7 +1,8 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 26 — ADR-0016 mission-copilot architecture: TB-17/18/19 added (mission-copilot tool-executor sudo boundary; mission-copilot → own MonitorServer, amplifies TB-8; execution plane → control-plane GitHub proxy); F-023 (mission-copilot GitHub write has no confirmation gate), F-024 (ListSchedule missing userId scope), F-025 (mission copilot can raise its own spend cap unconfirmed), F-026 (Family D/E tools other than SaveMissionConfig have no resume-delay grace period) opened (2026-07-14)
-**Previously:** Sprint 26b — `/threat-model --full` audit: TB-15/16 added (copilot tool-executor sudo boundary; copilot ↔ GitHub API); F-021 (copilot GitHub write tools bypass ProposeAction confirmation), F-022 (AnalyzeMemories search has no length cap) opened (2026-07-12)
+**Last updated:** Sprint 26b — Limits panel: two new mutating routes under existing TB-9 (`PATCH /api/missions/:id/limits/mission`, `PATCH /api/missions/:id/limits/agent/:agentId`) — same `userFilter` scoping as every other `missions.ts` route, no new trust boundary; validated via `LimitsSchema` + `parseTeamConfig` double-validation (2026-07-20)
+**Previously:** Sprint 26 — ADR-0016 mission-copilot architecture: TB-17/18/19 added (mission-copilot tool-executor sudo boundary; mission-copilot → own MonitorServer, amplifies TB-8; execution plane → control-plane GitHub proxy); F-023 (mission-copilot GitHub write has no confirmation gate), F-024 (ListSchedule missing userId scope), F-025 (mission copilot can raise its own spend cap unconfirmed), F-026 (Family D/E tools other than SaveMissionConfig have no resume-delay grace period) opened (2026-07-14)
+**Earlier:** Sprint 26b — `/threat-model --full` audit: TB-15/16 added (copilot tool-executor sudo boundary; copilot ↔ GitHub API); F-021 (copilot GitHub write tools bypass ProposeAction confirmation), F-022 (AnalyzeMemories search has no length cap) opened (2026-07-12)
 **Earlier:** Sprint 23 — Firebase Auth + multi-user + security hardening: TB-12/13/14 added; F-008 (MonitorServer HMAC token), F-019 (proxy IDOR), F-020 (pending-action ownership), F-009, F-016 all closed (2026-06-03)
 **Update cadence:** Update whenever a new trust boundary, external service, or privilege level is added.
 
@@ -387,6 +388,8 @@ graph TB
 | API key intercepted in transit | I | ✅ | Fly.io enforces HTTPS on all `*.fly.dev` domains; HTTP redirects to HTTPS |
 | Authenticated user accesses another user's mission via proxy route | S / I | ⚠️ F-019 | `proxy.ts` resolves target from `{ missionId }` — no `userId` filter applied; authenticated user who guesses or learns another user's `missionId` can proxy into that mission's MonitorServer |
 | CONTROL_API_KEY stored in `magi_session` cookie exposes admin credential | I | ~ | Cookie is `SameSite=Strict` (blocks CSRF); no `HttpOnly` (JS-accessible by design for cross-tab); admin key in cookie has same lifetime as session tab |
+| Cross-user edit of another user's mission limits (`PATCH /:id/limits/mission`, `PATCH /:id/limits/agent/:agentId`) | T / S | ✅ | Same `userFilter(req)` scoping as every other `missions.ts` route (`col.findOne({missionId, ...userFilter(req)})` before any write); no new auth mechanism |
+| Operator-supplied `limits` object used to inject arbitrary YAML structure | T | ✅ | `LimitsSchema.safeParse()` pre-validates the body (`.strict()`, numeric fields only) before it ever reaches `patchAgentLimits()`; the patched document is re-validated end-to-end via `parseTeamConfig()` before persisting — same double-validation `SaveMissionConfig` already relies on |
 
 ### TB-12: Browser ↔ Firebase Auth (Google OAuth)
 

@@ -391,3 +391,98 @@ export function fetchMessageEvents(missionId: string): Promise<MessageEvent[]> {
 		`/missions/${encodeURIComponent(missionId)}/message-events`,
 	);
 }
+
+// ── Limits panel (budget/limits vs. current consumption) ────────────────────
+// Control-plane-native routes (/api/missions/:id/...), not monitor-proxied —
+// these read/write teamConfigYaml directly via MongoDB, so they work
+// regardless of whether the mission is currently running.
+
+export interface AgentLimits {
+	maxLlmCallsPerTurn?: number;
+	maxCostPerTurnUsd?: number;
+	maxLifetimeCostUsd?: number;
+	warnLlmCallsPerTurn?: number;
+	warnPeakContextTokens?: number;
+	warnToolErrorsPerTurn?: number;
+	warnConsecutiveZeroOutputTurns?: number;
+}
+
+export interface AgentLimitsRow {
+	agentId: string;
+	limits: AgentLimits;
+	/** Configured value, else the built-in soft default — always populated. */
+	effectiveSoft: Required<
+		Pick<
+			AgentLimits,
+			| "warnLlmCallsPerTurn"
+			| "warnPeakContextTokens"
+			| "warnToolErrorsPerTurn"
+			| "warnConsecutiveZeroOutputTurns"
+		>
+	>;
+	live: {
+		lifetimeCostUsd: number | null;
+		lifetimeLlmCallCount: number | null;
+		consecutiveZeroOutputTurns: number | null;
+		/** Turn-scoped hard/soft limits can only be compared against the most
+		 * recently completed turn — no route exposes a genuinely in-progress one. */
+		mostRecentTurn: {
+			turnNumber: number;
+			llmCallCount: number;
+			costUsd: number;
+			peakContextTokens: number;
+			toolErrorsTotal: number;
+		} | null;
+	};
+}
+
+export interface LimitsData {
+	mission: {
+		maxCostUsd: number | null;
+		missionTotalUsd: number | null;
+		budgetPaused: boolean | null;
+	};
+	agents: AgentLimitsRow[];
+	/** False when suspended/provisioning/etc — live numbers are unavailable then. */
+	missionRunning: boolean;
+}
+
+export function fetchLimits(missionId: string): Promise<LimitsData> {
+	return api<LimitsData>(`/api/missions/${mp(missionId)}/limits`);
+}
+
+/** Returns whether the mission's own live cap was also updated immediately
+ * (only possible while running) — the persisted write always succeeds
+ * regardless, and is what survives a future resume either way. */
+export async function saveMissionCap(
+	missionId: string,
+	maxCostUsd: number,
+): Promise<{ liveUpdateApplied: boolean }> {
+	const res = await fetch(`/api/missions/${mp(missionId)}/limits/mission`, {
+		method: "PATCH",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ maxCostUsd }),
+	});
+	if (!res.ok) throw new Error(`HTTP ${res.status} saving mission cap`);
+	return (await res.json()) as { liveUpdateApplied: boolean };
+}
+
+/** `limits: null` clears every configured limit for that agent. Takes effect
+ * the next time the mission is resumed, not immediately. */
+export async function saveAgentLimits(
+	missionId: string,
+	agentId: string,
+	limits: AgentLimits | null,
+): Promise<void> {
+	const res = await fetch(
+		`/api/missions/${mp(missionId)}/limits/agent/${mp(agentId)}`,
+		{
+			method: "PATCH",
+			credentials: "include",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ limits }),
+		},
+	);
+	if (!res.ok) throw new Error(`HTTP ${res.status} saving agent limits`);
+}

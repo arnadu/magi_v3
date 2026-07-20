@@ -7,13 +7,14 @@ import {
 	type MissionSummary,
 } from "./data";
 import { FilesPanel } from "./FilesPanel";
+import { LimitsPanel } from "./LimitsPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { SAMPLE_TREE } from "./sample";
 import { TracePanel } from "./TracePanel";
 import { TranscriptsPanel } from "./TranscriptsPanel";
 import type { FoldedTree } from "./types";
 
-type MainTab = "objectives" | "files" | "transcripts" | "trace";
+type MainTab = "objectives" | "files" | "transcripts" | "trace" | "limits";
 
 /** A "inspect turn →" deep link from Files into Transcripts. */
 interface TurnJump {
@@ -120,18 +121,30 @@ function useView(): View {
 	return view;
 }
 
+interface MissionStatus {
+	running: Set<string>;
+	budgetPaused: boolean;
+}
+
 /**
- * Which agents are currently dispatched, live — via the mission's own SSE
- * stream (monitor-server.ts's `agent-status` event), proxied same-origin
- * through the control plane at /missions/:id/events. This is the same
- * stream and event the legacy dashboard (agent-runtime-worker/public/app.js)
- * already consumes successfully through the identical proxy route — no new
- * backend surface, just a consumer the cockpit never had.
+ * Which agents are currently dispatched, live, plus the mission's
+ * budget-paused state — via the mission's own SSE stream (monitor-server.ts's
+ * `agent-status` and `status` events), proxied same-origin through the
+ * control plane at /missions/:id/events. `agent-status` is the same stream
+ * and event the legacy dashboard (agent-runtime-worker/public/app.js) already
+ * consumes through the identical proxy route — no new backend surface, just
+ * a consumer the cockpit never had. `status` is pushed on connect and on
+ * every budget-cap/pause change (monitor-server.ts), which is reliable for
+ * "did the mission just get paused" but does NOT update on ordinary cost
+ * accrual (no per-LLM-call SSE push exists) — this is not a live spend
+ * ticker, that's what the Limits panel's own fetch is for.
  */
-function useRunningAgents(missionId: string | null): Set<string> {
+function useMissionStatus(missionId: string | null): MissionStatus {
 	const [running, setRunning] = useState<Set<string>>(new Set());
+	const [budgetPaused, setBudgetPaused] = useState(false);
 	useEffect(() => {
 		setRunning(new Set());
+		setBudgetPaused(false);
 		if (!missionId) return;
 		// withCredentials: the magi_session cookie carries auth, same as every
 		// fetch() call in data.ts — EventSource doesn't send cookies by default.
@@ -149,14 +162,32 @@ function useRunningAgents(missionId: string | null): Set<string> {
 				// Malformed event — ignore rather than crash the whole cockpit.
 			}
 		});
+		es.addEventListener("status", (e) => {
+			try {
+				const d = JSON.parse((e as MessageEvent).data) as {
+					budgetPaused?: boolean;
+				};
+				setBudgetPaused(!!d.budgetPaused);
+			} catch {
+				// Malformed event — ignore rather than crash the whole cockpit.
+			}
+		});
 		// No manual reconnect logic: the browser's native EventSource already
 		// retries automatically on a dropped connection.
 		return () => es.close();
 	}, [missionId]);
-	return running;
+	return { running, budgetPaused };
 }
 
-function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
+function Header({
+	subtitle,
+	tree,
+	budgetPaused,
+}: {
+	subtitle: string;
+	tree?: FoldedTree;
+	budgetPaused?: boolean;
+}) {
 	const spent = tree ? tree.objectives.reduce((a, o) => a + o.costUsd, 0) : 0;
 	const budget = tree
 		? tree.objectives.reduce((a, o) => a + o.budgetUsd, 0)
@@ -171,6 +202,11 @@ function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
 					spend <b>{`$${spent.toFixed(2)}`}</b> / ${budget.toFixed(2)}
 				</span>
 			)}
+			{budgetPaused && (
+				<span className="badge badge-bad" title="See the Limits tab">
+					⏸ budget paused
+				</span>
+			)}
 			<span className="grow" />
 			<span className="mut" style={{ fontSize: 11 }}>
 				{subtitle}
@@ -181,7 +217,7 @@ function Header({ subtitle, tree }: { subtitle: string; tree?: FoldedTree }) {
 
 export function App() {
 	const view = useView();
-	const runningAgents = useRunningAgents(
+	const { running: runningAgents, budgetPaused } = useMissionStatus(
 		view.kind === "ready" ? view.mission : null,
 	);
 	const [openAgent, setOpenAgent] = useState<string | null>(null);
@@ -259,6 +295,7 @@ export function App() {
 						: `● live · updated ${updated}`
 				}
 				tree={view.tree}
+				budgetPaused={view.demo ? false : budgetPaused}
 			/>
 			<div className="cols">
 				<ConversationsPanel
@@ -297,6 +334,13 @@ export function App() {
 						>
 							Trace
 						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "limits" ? "on" : ""}`}
+							onClick={() => setMainTab("limits")}
+						>
+							Limits
+						</button>
 					</nav>
 					<div className="tab-body">
 						{mainTab === "objectives" && (
@@ -326,6 +370,7 @@ export function App() {
 								onInspectTurn={inspectTurn}
 							/>
 						)}
+						{mainTab === "limits" && <LimitsPanel missionId={view.mission} />}
 					</div>
 				</main>
 			</div>

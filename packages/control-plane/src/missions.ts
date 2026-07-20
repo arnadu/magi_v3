@@ -12,10 +12,17 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { parseTeamConfig } from "@magi/agent-config";
+import {
+	type Limits,
+	LimitsSchema,
+	parseTeamConfig,
+	patchAgentLimits,
+	patchMissionCap as patchMissionCapYaml,
+} from "@magi/agent-config";
+import { DEFAULT_SOFT_LIMITS } from "@magi/agent-runtime-worker";
 import type { Request, Router } from "express";
 import { Router as createRouter } from "express";
-import type { Db } from "mongodb";
+import type { Collection, Db } from "mongodb";
 import {
 	deleteMachine,
 	destroyLocal,
@@ -27,6 +34,7 @@ import {
 	suspendMission,
 	updateLocalMissionConfig,
 } from "./fly-machines.js";
+import { deriveMonitorToken } from "./monitor-token.js";
 import { getTemplate, patchMissionId } from "./templates.js";
 
 interface MissionDoc {
@@ -54,6 +62,345 @@ interface MissionDoc {
 /** Admin sees all missions; regular users see only their own. */
 function userFilter(req: Request): Partial<MissionDoc> {
 	return req.isAdmin ? {} : { userId: req.userId };
+}
+
+// ---------------------------------------------------------------------------
+// Limits (cockpit Limits panel) — GET/PATCH read+write current & configured
+// budget/limit state. Every limit (mission-wide cap, per-agent, mission
+// copilot's own) lives inside teamConfigYaml — see yaml-patch.ts. Exported as
+// plain functions, separate from the Express handlers that wrap them, so
+// tests can call them directly against real Mongo (this repo has no
+// supertest-equivalent HTTP-route test pattern — see copilot-tools.integration.test.ts
+// for the precedent this follows).
+// ---------------------------------------------------------------------------
+
+export interface AgentLimitsRow {
+	agentId: string;
+	limits: Partial<Limits>;
+	effectiveSoft: {
+		warnLlmCallsPerTurn: number;
+		warnPeakContextTokens: number;
+		warnToolErrorsPerTurn: number;
+		warnConsecutiveZeroOutputTurns: number;
+	};
+	live: {
+		lifetimeCostUsd: number | null;
+		lifetimeLlmCallCount: number | null;
+		consecutiveZeroOutputTurns: number | null;
+		mostRecentTurn: {
+			turnNumber: number;
+			llmCallCount: number;
+			costUsd: number;
+			peakContextTokens: number;
+			toolErrorsTotal: number;
+		} | null;
+	};
+}
+
+export interface LimitsData {
+	mission: {
+		maxCostUsd: number | null;
+		missionTotalUsd: number | null;
+		budgetPaused: boolean | null;
+	};
+	agents: AgentLimitsRow[];
+	missionRunning: boolean;
+}
+
+interface RouteResult {
+	status: number;
+	body: unknown;
+}
+
+function effectiveSoftOf(
+	limits: Partial<Limits>,
+): AgentLimitsRow["effectiveSoft"] {
+	return {
+		warnLlmCallsPerTurn:
+			limits.warnLlmCallsPerTurn ?? DEFAULT_SOFT_LIMITS.warnLlmCallsPerTurn,
+		warnPeakContextTokens:
+			limits.warnPeakContextTokens ?? DEFAULT_SOFT_LIMITS.warnPeakContextTokens,
+		warnToolErrorsPerTurn:
+			limits.warnToolErrorsPerTurn ?? DEFAULT_SOFT_LIMITS.warnToolErrorsPerTurn,
+		warnConsecutiveZeroOutputTurns:
+			limits.warnConsecutiveZeroOutputTurns ??
+			DEFAULT_SOFT_LIMITS.warnConsecutiveZeroOutputTurns,
+	};
+}
+
+/** Audit-trail mailbox post for every Limits-panel edit — operator-initiated
+ * (the panel, not an agent tool), so `from`/`to` mirror the existing
+ * `/messages/send` route's human-to-agent convention, not SaveMissionConfig's
+ * agent-to-human one (that's the opposite direction: an agent informing the
+ * operator of its own action). Gives the mission copilot situational
+ * awareness of externally-changed limits, relevant to its resource-oversight
+ * role. */
+async function postLimitsAudit(
+	db: Db,
+	missionId: string,
+	subject: string,
+	body: string,
+): Promise<void> {
+	await db.collection("mailbox").insertOne({
+		id: randomUUID(),
+		missionId,
+		from: "user",
+		to: ["mission-copilot"],
+		subject,
+		body,
+		timestamp: new Date(),
+		readBy: [],
+	});
+}
+
+export async function readLimits(
+	col: Collection<MissionDoc>,
+	db: Db,
+	missionId: string,
+	filter: Partial<MissionDoc>,
+): Promise<RouteResult> {
+	const mission = await col.findOne({ missionId, ...filter });
+	if (!mission) return { status: 404, body: { error: "Not found" } };
+	if (!mission.teamConfigYaml) {
+		return {
+			status: 404,
+			body: { error: "No config stored for this mission" },
+		};
+	}
+
+	let teamConfig: ReturnType<typeof parseTeamConfig>;
+	try {
+		teamConfig = parseTeamConfig(mission.teamConfigYaml);
+	} catch (e) {
+		return {
+			status: 500,
+			body: { error: `Stored config is invalid: ${(e as Error).message}` },
+		};
+	}
+
+	const missionRunning = mission.status === "running";
+
+	// Lifetime numbers — own query, not the existing GET /mission-stats route
+	// (its projection excludes consecutiveZeroOutputTurns, and that route is
+	// monitor-proxied so it's unreachable while suspended anyway).
+	const statsDocs = await db
+		.collection("missionStats")
+		.find(
+			{ missionId },
+			{
+				projection: {
+					agentId: 1,
+					lifetimeCostUsd: 1,
+					lifetimeLlmCallCount: 1,
+					consecutiveZeroOutputTurns: 1,
+					_id: 0,
+				},
+			},
+		)
+		.toArray();
+	const statsByAgent = new Map(statsDocs.map((d) => [d.agentId as string, d]));
+
+	// Authored roster + the synthesized mission-copilot row (daemon-injected,
+	// never in agents[] — its limits live in the top-level missionCopilotLimits
+	// field instead, see yaml-patch.ts).
+	const roster: Array<{ agentId: string; limits: Partial<Limits> }> = [
+		...teamConfig.agents.map((a) => ({
+			agentId: a.id,
+			limits: a.limits ?? {},
+		})),
+		{
+			agentId: "mission-copilot",
+			limits: teamConfig.missionCopilotLimits ?? {},
+		},
+	];
+
+	const agents: AgentLimitsRow[] = [];
+	for (const { agentId, limits } of roster) {
+		const mostRecentDocs = await db
+			.collection("agentTurnStats")
+			.find({ missionId, agentId, completedAt: { $exists: true } })
+			.sort({ turnNumber: -1 })
+			.limit(1)
+			.toArray();
+		const mrt = mostRecentDocs[0];
+		const stats = statsByAgent.get(agentId);
+		agents.push({
+			agentId,
+			limits,
+			effectiveSoft: effectiveSoftOf(limits),
+			live: {
+				lifetimeCostUsd: (stats?.lifetimeCostUsd as number) ?? null,
+				lifetimeLlmCallCount: (stats?.lifetimeLlmCallCount as number) ?? null,
+				consecutiveZeroOutputTurns:
+					(stats?.consecutiveZeroOutputTurns as number) ?? null,
+				mostRecentTurn: mrt
+					? {
+							turnNumber: mrt.turnNumber as number,
+							llmCallCount: (mrt.llmCallCount as number) ?? 0,
+							costUsd: (mrt.costUsd as number) ?? 0,
+							peakContextTokens: (mrt.peakContextTokens as number) ?? 0,
+							toolErrorsTotal: Object.values(
+								(mrt.toolErrors ?? {}) as Record<string, number>,
+							).reduce((a, b) => a + b, 0),
+						}
+					: null,
+			},
+		});
+	}
+
+	// Best-effort — the mission's own live state, only reachable while running.
+	let missionTotalUsd: number | null = null;
+	let budgetPaused: boolean | null = null;
+	if (missionRunning && mission.privateIp) {
+		try {
+			const res = await fetch(`http://[${mission.privateIp}]:4000/status`, {
+				signal: AbortSignal.timeout(5_000),
+			});
+			if (res.ok) {
+				const s = (await res.json()) as {
+					missionTotalUsd?: number;
+					budgetPaused?: boolean;
+				};
+				missionTotalUsd = s.missionTotalUsd ?? null;
+				budgetPaused = s.budgetPaused ?? null;
+			}
+		} catch {
+			// Monitor unreachable — leave both null rather than fail the route.
+		}
+	}
+
+	const data: LimitsData = {
+		mission: {
+			maxCostUsd: teamConfig.mission.maxCostUsd ?? null,
+			missionTotalUsd,
+			budgetPaused,
+		},
+		agents,
+		missionRunning,
+	};
+	return { status: 200, body: data };
+}
+
+export async function writeMissionCap(
+	col: Collection<MissionDoc>,
+	db: Db,
+	missionId: string,
+	filter: Partial<MissionDoc>,
+	maxCostUsd: number,
+): Promise<RouteResult> {
+	if (!(maxCostUsd > 0)) {
+		return { status: 400, body: { error: "maxCostUsd must be > 0" } };
+	}
+	const mission = await col.findOne({ missionId, ...filter });
+	if (!mission) return { status: 404, body: { error: "Not found" } };
+	if (!mission.teamConfigYaml) {
+		return {
+			status: 404,
+			body: { error: "No config stored for this mission" },
+		};
+	}
+
+	let patched: string;
+	try {
+		patched = patchMissionCapYaml(mission.teamConfigYaml, maxCostUsd);
+		parseTeamConfig(patched);
+	} catch (e) {
+		return {
+			status: 400,
+			body: { error: `Invalid team config: ${(e as Error).message}` },
+		};
+	}
+
+	await col.updateOne(
+		{ missionId },
+		{ $set: { teamConfigYaml: patched, updatedAt: new Date() } },
+	);
+
+	// Best-effort live apply — the persisted YAML write above is the source
+	// of truth going forward regardless of whether this succeeds.
+	let liveUpdateApplied = false;
+	if (mission.status === "running" && mission.privateIp) {
+		try {
+			const token = deriveMonitorToken(missionId);
+			const res = await fetch(`http://[${mission.privateIp}]:4000/set-budget`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					...(token ? { "x-monitor-token": token } : {}),
+				},
+				body: JSON.stringify({ capUsd: maxCostUsd }),
+				signal: AbortSignal.timeout(10_000),
+			});
+			liveUpdateApplied = res.ok;
+		} catch {
+			// Best-effort.
+		}
+	}
+
+	await postLimitsAudit(
+		db,
+		missionId,
+		"Mission spend cap changed",
+		`Operator set the mission's spend cap to $${maxCostUsd.toFixed(2)} via the cockpit Limits panel.` +
+			(liveUpdateApplied
+				? " Applied immediately."
+				: " Will apply the next time the mission is resumed."),
+	);
+
+	return { status: 200, body: { ok: true, maxCostUsd, liveUpdateApplied } };
+}
+
+export async function writeAgentLimits(
+	col: Collection<MissionDoc>,
+	db: Db,
+	missionId: string,
+	filter: Partial<MissionDoc>,
+	agentId: string,
+	limits: Limits | null,
+): Promise<RouteResult> {
+	if (limits !== null) {
+		const parsed = LimitsSchema.safeParse(limits);
+		if (!parsed.success) {
+			return {
+				status: 400,
+				body: { error: `Invalid limits: ${parsed.error.message}` },
+			};
+		}
+	}
+	const mission = await col.findOne({ missionId, ...filter });
+	if (!mission) return { status: 404, body: { error: "Not found" } };
+	if (!mission.teamConfigYaml) {
+		return {
+			status: 404,
+			body: { error: "No config stored for this mission" },
+		};
+	}
+
+	let patched: string;
+	try {
+		patched = patchAgentLimits(mission.teamConfigYaml, agentId, limits);
+		parseTeamConfig(patched);
+	} catch (e) {
+		const msg = (e as Error).message;
+		return { status: /not found/i.test(msg) ? 404 : 400, body: { error: msg } };
+	}
+
+	// teamFiles is never read or written here — this route can't reproduce
+	// the earlier SaveMissionConfig teamFiles-wipe bug by construction.
+	await col.updateOne(
+		{ missionId },
+		{ $set: { teamConfigYaml: patched, updatedAt: new Date() } },
+	);
+
+	await postLimitsAudit(
+		db,
+		missionId,
+		`Agent "${agentId}" limits updated`,
+		`Operator updated limits for "${agentId}" via the cockpit Limits panel. ` +
+			"This takes effect the next time the mission is resumed, not immediately.",
+	);
+
+	return { status: 200, body: { ok: true, agentId, limits } };
 }
 
 export function createMissionsRouter(db: Db): Router {
@@ -592,6 +939,49 @@ export function createMissionsRouter(db: Db): Router {
 		}
 
 		res.json({ ok: true });
+	});
+
+	// ── Limits (cockpit Limits panel) ─────────────────────────────────────────
+
+	router.get("/:id/limits", async (req, res) => {
+		const result = await readLimits(col, db, req.params.id, userFilter(req));
+		res.status(result.status).json(result.body);
+	});
+
+	router.patch("/:id/limits/mission", async (req, res) => {
+		const maxCostUsd = req.body?.maxCostUsd;
+		if (typeof maxCostUsd !== "number") {
+			res.status(400).json({ error: "maxCostUsd (number) is required" });
+			return;
+		}
+		const result = await writeMissionCap(
+			col,
+			db,
+			req.params.id,
+			userFilter(req),
+			maxCostUsd,
+		);
+		res.status(result.status).json(result.body);
+	});
+
+	router.patch("/:id/limits/agent/:agentId", async (req, res) => {
+		const limits = req.body?.limits;
+		if (
+			limits !== null &&
+			(typeof limits !== "object" || Array.isArray(limits))
+		) {
+			res.status(400).json({ error: "limits (object or null) is required" });
+			return;
+		}
+		const result = await writeAgentLimits(
+			col,
+			db,
+			req.params.id,
+			userFilter(req),
+			req.params.agentId,
+			limits,
+		);
+		res.status(result.status).json(result.body);
 	});
 
 	// Provision a new mission.

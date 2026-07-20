@@ -380,6 +380,17 @@ Hard limits complement the existing between-turn mission cost cap (`MAX_COST_USD
 `waitForBudget`): the per-turn caps catch a single runaway *during* the turn, the mission cap
 gates the next dispatch. The copilot assesses soft alerts and decides whether to intervene.
 
+The mission-wide cap can also be set as `mission.maxCostUsd` in team config, which takes
+precedence over the `MAX_COST_USD` env var and — unlike the env var, re-derived fresh from the
+execution-plane machine's env at every boot — survives a suspend/resume cycle. The mission
+copilot's own limits live in a separate top-level `missionCopilotLimits` field (same shape as any
+agent's `limits`), since the copilot is daemon-injected and has no `agents[]` entry to carry a
+`limits` key. The cockpit's **Limits** tab reads and edits all of this — mission cap, every
+agent's hard/soft limits (including the copilot's) against live consumption — via
+`GET`/`PATCH /api/missions/:id/limits*` on the control plane; edits to per-agent limits (like any
+team-config change) apply on the mission's next resume, not immediately, while a mission-cap edit
+also applies live via the running mission's `/set-budget`.
+
 ### Tier B elevated tools (copilot only)
 
 Tier B tools require infrastructure only available in the control plane (MongoDB `db` handle,

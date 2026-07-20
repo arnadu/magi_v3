@@ -14,7 +14,7 @@ import { ZodError, z } from "zod";
  * route an advisory alert to the copilot without interrupting the turn; they
  * carry conservative built-in defaults when omitted (set to 0 to disable).
  */
-const LimitsSchema = z
+export const LimitsSchema = z
 	.object({
 		maxLlmCallsPerTurn: z.number().int().positive().optional(),
 		maxCostPerTurnUsd: z.number().positive().optional(),
@@ -99,12 +99,32 @@ const TeamConfigSchema = z.object({
 				},
 			)
 			.optional(),
+		/**
+		 * Mission-wide hard spending cap in USD. Pauses the entire mission (all
+		 * agent dispatch) when total spend reaches this value — distinct from any
+		 * agent's own `limits.maxLifetimeCostUsd`, which only stops that one
+		 * agent. Falls back to the MAX_COST_USD env var when unset (daemon.ts) —
+		 * this field, when present, takes precedence, and is the only one of the
+		 * two that survives a mission suspend/resume (the env var is re-derived
+		 * fresh from the execution-plane machine's env at every boot).
+		 */
+		maxCostUsd: z.number().positive().optional(),
 	}),
 	agents: z.array(AgentSchema).min(1),
+	/**
+	 * Limits for the daemon-injected mission-copilot agent (see ADR-0016).
+	 * A separate top-level field, not an entry in `agents[]`, because that
+	 * array holds only authored team members — the copilot's identity is
+	 * asserted in code (mission-copilot.ts), and parseTeamConfig rejects any
+	 * authored agent claiming its reserved id. Same LimitsSchema shape and
+	 * same "opt-in hard / defaulted soft" semantics as any other agent.
+	 */
+	missionCopilotLimits: LimitsSchema.optional(),
 });
 
 export type AgentConfig = z.infer<typeof AgentSchema>;
 export type TeamConfig = z.infer<typeof TeamConfigSchema>;
+export type Limits = z.infer<typeof LimitsSchema>;
 
 // ---------------------------------------------------------------------------
 // Environment variable expansion

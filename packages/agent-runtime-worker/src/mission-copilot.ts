@@ -326,6 +326,12 @@ export function buildMissionCopilotAgentConfig(
 			"data-factory-client",
 			"market-analysis-framework",
 		],
+		// A top-level TeamConfig field, not agents[].limits — the copilot has no
+		// node in the authored agents list to hang a `limits` key off of. Same
+		// LimitsSchema shape; set/edited via the cockpit Limits panel just like
+		// any other agent's, or directly by the copilot's own SaveMissionConfig
+		// tool (both write teamConfigYaml, this is just a different field in it).
+		limits: teamConfig.missionCopilotLimits,
 	};
 }
 

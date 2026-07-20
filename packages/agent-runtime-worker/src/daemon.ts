@@ -23,7 +23,11 @@
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
  *   MONITOR_PORT       optional — dashboard HTTP port (default: 4000; must be 1–65535)
  *   TOOL_PORT          optional — Tool API server port for background jobs (default: 4001; must be 1–65535)
- *   MAX_COST_USD       optional — spending cap in USD; pauses when reached
+ *   MAX_COST_USD       optional — spending cap in USD; pauses when reached. team config's
+ *                                 mission.maxCostUsd (set via the cockpit Limits panel) takes
+ *                                 precedence over this env var when present — it survives
+ *                                 suspend/resume, this doesn't (re-derived from the env fresh
+ *                                 at every boot)
  *   MISSION_COPILOT_ENABLED  optional — "false" to opt a mission out of the mission copilot
  *                                 (ADR-0016); default on
  *   MONITOR_TOKEN      optional — per-mission auth token for MonitorServer mutating routes
@@ -935,10 +939,16 @@ async function main(): Promise<void> {
 
 	writeFileSync(pidFile, String(process.pid));
 
-	// Usage accumulator + optional spending cap.
+	// Usage accumulator + optional spending cap. The mission's own persisted
+	// config (set via the cockpit Limits panel, survives suspend/resume) takes
+	// precedence over the MAX_COST_USD env var (re-derived fresh from the
+	// execution-plane machine's env at every boot, so any prior live-only
+	// /set-budget change made without a matching config edit doesn't survive
+	// a restart either way — only the config value does).
 	const usageAccumulator = new UsageAccumulator();
-	let maxCostUsd = (() => {
-		if (!process.env.MAX_COST_USD) return null;
+	let maxCostUsd: number | null = teamConfig.mission.maxCostUsd ?? null;
+	let maxCostUsdSource = "mission config";
+	if (maxCostUsd === null && process.env.MAX_COST_USD) {
 		const v = Number.parseFloat(process.env.MAX_COST_USD);
 		if (!Number.isFinite(v) || v <= 0) {
 			console.error(
@@ -946,10 +956,13 @@ async function main(): Promise<void> {
 			);
 			process.exit(1);
 		}
-		return v;
-	})();
+		maxCostUsd = v;
+		maxCostUsdSource = "MAX_COST_USD env var";
+	}
 	if (maxCostUsd !== null) {
-		console.log(`[daemon] Spending cap: $${maxCostUsd.toFixed(2)}`);
+		console.log(
+			`[daemon] Spending cap: $${maxCostUsd.toFixed(2)} (from ${maxCostUsdSource})`,
+		);
 	}
 
 	// Monitor server — SSE dashboard on MONITOR_PORT (default 4000).

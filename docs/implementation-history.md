@@ -483,3 +483,124 @@ the original Sprint 26b "historical drill-down" design and remains unbuilt — t
 boxes approximate its visual signal (busy vs. quiet turns) without the query.
 
 **Fetch integration tests de-flaked:** the `fetch-*.integration` tests served fixtures from `127.0.0.1`, which the SSRF guard blocked — so the agent improvised with `curl` (nondeterministic). Fixed the secure way, mirroring `BrowseWeb`: `createFetchUrlTool` gains an `allowedHosts` parameter (default `[]`), threaded test-only through `OrchestratorConfig` → `AgentRunContext`. Production (daemon/CLI) never sets it, so SSRF stays fully enforced; only the integration tests pass `["127.0.0.1"]` to reach their local fixture server. Both tests now exercise the real `FetchUrl → processBuffer` path deterministically.
+
+## Sprint 26b — Trace panel v4: brush-to-zoom, click-to-drill-down, turn-box visibility fix
+
+Closes the two gaps v3 (above) explicitly deferred ("click-to-drill-down into a turn's actual
+`llmCallLog`... remains unbuilt") — reported directly by the user comparing the shipped chart
+against `experimental/dump-trace.mjs`, a separate, richer D3-based trace-viewer prototype (not
+`cockpit-mock.html`, which `TracePanel.tsx` was actually ported from) that had brush-to-zoom,
+click-to-inspect, and keyboard navigation the React port never carried over.
+
+**Click-to-drill-down.** Every turn box, cost dot, file marker, and anomaly marker in
+`CostTimeline` is now `role="button"`/`tabIndex`/`onKeyDown` (Enter/Space) clickable, calling a
+new `onInspectTurn` prop threaded from `App.tsx` — the exact same deep link the Files panel
+already used to jump into the Transcripts tab at a specific agent+turn. `TracePanel`/`CostTimeline`
+now take `onInspectTurn` as a required prop instead of being a dead end. SVG has no native
+interactive-shape element (`biome-ignore lint/a11y/useSemanticElements` on each mark, `role="button"`
+is the WAI-ARIA-recommended pattern here).
+
+**Brush-to-zoom.** An overview strip below the main plot always shows the mission's full time
+range with per-turn density ticks; dragging selects a sub-range the main plot rescales to (a
+short drag/click resets to full range, matching the D3 prototype's convention). Implemented
+natively in React/SVG state (`drag`/`zoomDomain`, `useCallback`-memoized coordinate-conversion
+helpers so the drag-listener `useEffect` only re-subscribes on real state changes, not every
+render) rather than pulling in `d3` — this component was already hand-rolled SVG with no charting
+library, and the interaction is a handful of mouse-event handlers, not enough to justify a new
+frontend dependency.
+
+**Turn-box visibility bug, found during verification, not by the user report.** Boxes were
+rendering for every turn, but a typical multi-minute turn charted over a mission spanning days or
+weeks has a real width under 2px — smaller than the 6px cost dot drawn on top of it at the same
+x-position (the turn's end). The box was completely hidden under its own dot; only the rare
+turn whose real duration happened to exceed a few pixels (an unusually long or hung one) was ever
+visible, which read as "only some turns have boxes" when the user hit it independently on a real
+mission. Fixed by raising `MIN_BOX_WIDTH_PX` to 12 and padding symmetrically around the box's true
+midpoint rather than clamping rightward, so even an instant turn's box now visibly extends past
+the dot on both sides.
+
+**Verification:** a headless-Playwright harness (`experimental/*.local.mjs`, deleted after use —
+not committed) drove a live Vite dev server against mocked `page.route()` fixtures: synthetic
+multi-agent/multi-week data confirmed drag-to-zoom narrows the plot and reveals "Reset zoom",
+clicking a mark switches to Transcripts with the right agent selected, marks are keyboard-focusable,
+and — for the box-visibility fix specifically — a second pass with 204 short (2–12 min) turns over
+20 days plus one genuine multi-day aborted outlier confirmed every turn now shows a visible box,
+not just the outlier.
+
+**No backend changes** — purely a `TracePanel.tsx`/`App.tsx`/`styles.css` frontend pass.
+
+## Sprint 26b — Limits panel
+
+New 5th cockpit tab, closing the last item on the "show consumption vs. limits" list (Objectives
+showed budget-vs-objective, Transcripts showed per-turn cost, Trace showed per-agent cost — none
+showed anything against a configured *limit*). Grounded in real data from the longest-running
+mission (`gold-digest-v2-20260628-1451`): confirmed neither of its two authored agents had any
+`limits:` block configured, and — more significantly — confirmed cloud missions have **no
+mission-wide spend cap at all** by default (`MAX_COST_USD` is read from the daemon's own env at
+boot, but `fly-machines.ts` never injects it when provisioning; the mission had been running since
+2026-06-29 with ~$54.57 spent and no cap).
+
+**Storage model, revised mid-plan after direct pushback.** The first draft proposed a bespoke,
+separate `missions.maxCostUsd` Mongo field for the mission cap, outside `teamConfigYaml` —
+inconsistent with how per-agent limits are stored, and flagged directly: "we should not have any
+hardcoded limits of any sort, they should all be config parameters. why treat the mission copilot
+differently?" Revised so **every limit — per-agent, mission-wide, and the mission copilot's own —
+lives in exactly one place**: `TeamConfigSchema` gains `mission.maxCostUsd` (parallel to `id`/
+`name`/`model`/`visionModel`/`timezone`) and a new top-level `missionCopilotLimits?: LimitsSchema`
+field (the copilot is daemon-injected and has no node in `agents[]` to hang a `limits` key off —
+`mission-copilot.ts`'s `buildMissionCopilotAgentConfig()` now reads `teamConfig.missionCopilotLimits`).
+One schema, one validation path (`parseTeamConfig`), one Mongo field. The mission copilot is no
+longer a special case in the *editing* route — the same "set limits for X" call just targets a
+different YAML node depending on whether `X` is a normal agent or the reserved copilot id.
+Explicitly kept out of scope: making the built-in soft-limit *defaults* (`DEFAULT_SOFT_LIMITS` in
+`limits.ts`) themselves configurable — a separate, larger change to the enforcement path, not this
+feature's config-storage/UI concern.
+
+**New `packages/agent-config/src/yaml-patch.ts`** — the first use of `yaml`'s `Document`/
+`parseDocument()` API in this codebase (everywhere else uses `parse()`, which returns a plain
+object and would lose comments/key order on re-serialization). `patchAgentLimits(yaml, agentId,
+limits)` routes to the top-level `missionCopilotLimits` field for the reserved copilot id, or the
+matching `agents[]` entry's `limits` key otherwise; `patchMissionCap(yaml, maxCostUsd)` sets/clears
+`mission.maxCostUsd`. Both re-serialize with `.toString()`; callers must re-validate with
+`parseTeamConfig()` before persisting — same double-validation `SaveMissionConfig` already relies
+on.
+
+**New control-plane routes** in `missions.ts` (`readLimits`/`writeMissionCap`/`writeAgentLimits`,
+exported as plain functions per this repo's no-`supertest` testing convention — thin Express
+handlers wrap them): `GET /:id/limits` (mission cap + every agent's configured limits, computed
+`effectiveSoft` — configured value else `DEFAULT_SOFT_LIMITS`, imported from
+`@magi/agent-runtime-worker` — and the most-recently-completed turn's numbers, since no route
+anywhere exposes a genuinely in-progress turn), `PATCH /:id/limits/mission`, `PATCH
+/:id/limits/agent/:agentId`. Deliberately **not** `PUT /:id/config`'s route (which requires
+`status === "suspended"`) — mirrors the mission-copilot's own `SaveMissionConfig` tool instead
+(writes live, still "applies on next resume" since `daemon.ts` never re-reads config mid-run, but
+doesn't force a suspend/resume cycle just to tighten a runaway agent's cap). The mission-cap route
+is the one exception with a live-apply path: it persists to YAML *and* best-effort calls the
+running mission's own `/set-budget`, since that cap also exists as mutable in-memory
+`MonitorServer` state today. Every write posts a `from:"user", to:["mission-copilot"]` audit
+mailbox message — mirrors `/messages/send`'s human-to-agent convention (these are operator-
+initiated edits), the opposite direction from `SaveMissionConfig`'s agent-to-human audit post.
+
+**Cockpit**: new `LimitsPanel.tsx` — a mission-cap card (spend vs. cap bar, reusing
+`ObjectivesPanel`'s `budgetPct()` 90/70 threshold + `--ok`/`--warn`/`--bad` convention) plus one
+card per agent (hard limits with a "no cap set" placeholder when unconfigured, soft limits always
+showing the effective value annotated "(configured)" vs. "(built-in default: N)"). The mission
+copilot renders as an ordinary card — no special-casing anywhere in the frontend either. New
+`data.ts` fetch/save functions targeting `/api/missions/:id/limits*` (control-plane-native, not
+monitor-proxied — works regardless of mission status). Header gains an always-visible "budget
+paused" pill: `useRunningAgents` generalized into `useMissionStatus`, now also tracking the
+`"status"` SSE event `monitor-server.ts` already pushes on every cap/pause change (reliable for
+"did the mission just get paused," not a live spend ticker — no per-call SSE push exists for that).
+
+**No numeric-input pattern existed anywhere in this codebase before this** (grepped — one
+`<textarea>` was the only precedent) — new minimal `.limit-field`/`.badge` CSS, otherwise reusing
+`.trace-card`/`.minibar`/`.rail-btn`/existing color vars throughout.
+
+**Verified against the real mission**, not just synthetic fixtures: `readLimits` before any edits
+showed `analyst`/`trader`/`mission-copilot` all with empty `limits{}` but populated `effectiveSoft`
+(40/160000/8/3), confirming the "always show effective, never blank" contract; setting the mission
+cap, an `analyst` hard limit, and a `mission-copilot` soft limit all persisted correctly (the
+copilot's landed in the top-level `missionCopilotLimits` field, confirmed via raw YAML dump, not
+`agents[]`); three audit mailbox messages posted with correct content. These are real, standing
+changes to Gold Digest V2's live configuration, not reverted after verification (flagged to the
+user; the mission cap in particular closes a real, previously-unmitigated gap for that mission).
