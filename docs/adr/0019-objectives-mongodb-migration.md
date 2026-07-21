@@ -3,7 +3,7 @@
 **Status**: Proposed — not yet accepted or scheduled. Recorded now so the design reasoning
 survives to whichever sprint picks this up. Tracked in
 [GitHub issue #23](https://github.com/arnadu/magi_v3/issues/23).
-**Sprint**: Recommended Sprint 27 (see "Recommended timing" below) — not committed.
+**Sprint**: Recommended Sprint 26c (see "Recommended timing" below) — not committed.
 **Date**: 2026-07-21
 
 ---
@@ -102,17 +102,26 @@ be the one remaining place it still exists by design.
 
 ## Recommended timing
 
-**Sprint 27** ("launch hardening"), as a distinct, explicitly-scoped item within it — not Sprint
-26b (already large: cockpit SPA, mission-copilot rollout, Limits panel, ADR-0017, ADR-0018, and
-this incident's interim fix; the acute risk is already closed by the interim fix, so there's no
-urgency forcing it into 26b) and not deferred past 27 either. Rationale for 27 specifically:
-objectives are explicitly "the shared source of truth the operator watches" (`SKILL.md`) — core to
-the product's trustworthiness, not a peripheral nice-to-have, and this is now a well-documented,
-known architectural gap rather than a hypothetical one. If Sprint 27's other launch-hardening items
-(G-5 alerting, onboarding flow, usage dashboard, security review) are already fully time-boxed,
-the fallback is a dedicated follow-on sprint immediately after — but it should not be indefinitely
-deferred, given the pattern has now caused a real incident once and the interim fix, while correct,
-is explicitly described in its own code comment as a narrow patch, not the intended end state.
+**Sprint 26c**, a new sprint scoped as "close out the 24–26 alignment-infrastructure arc" —
+not Sprint 26b itself (already large: cockpit SPA, mission-copilot rollout, Limits panel,
+ADR-0017, ADR-0018, and this incident's interim fix; the acute risk is already closed by the
+interim fix, so there's no urgency forcing the full migration into 26b), and deliberately **not**
+Sprint 27. Sprint 27 ("launch hardening": G-5 alerting, onboarding flow, usage dashboard, security
+review, `index.html`→cockpit UI consolidation) is a coherent bundle about *external* launch
+readiness — a genuinely different kind of work than an internal data-model migration, and folding
+this into it would dilute that focus and likely get deprioritized against the other four items
+anyway.
+
+The roadmap's own "Design Notes" section frames Sprints 24–26 as one arc: "equip the copilot and
+operator with the instruments needed to keep agents aligned with mission intent." Objectives are
+that alignment infrastructure — arguably the central piece of it (`SKILL.md` calls the store
+explicitly "the shared source of truth the operator watches"). Finishing its single-source-of-truth
+hardening is the natural close of that arc, not a launch-readiness concern. Sprint 26c bundles this
+with 26b's other leftover items (Files panel direct-edit, cockpit-vs-chat mode auto-selection,
+copilot wake-up attribution + persisted anomaly/limit-breach logging) for exactly that reason — all
+of it is "finish what 24–26 started," not "get ready to launch." It should not be deferred
+indefinitely either way: the pattern has now caused one real incident, and the interim fix is
+explicitly described in its own code comment as a narrow patch, not the intended end state.
 
 ---
 

@@ -820,7 +820,17 @@ record the full pros/cons debate (single source of truth vs. migration cost vs. 
 git-versioned audit trail as-is vs. a second, independently-found gap — the cockpit's
 ObjectivesPanel is completely blank while a mission is suspended, since it proxies through the
 mission's own MonitorServer rather than reading Mongo directly, unlike `readLimits()` post
-ADR-0018) and recommend Sprint 27 ("launch hardening") as a distinct, explicitly-scoped item within
-it — objectives being "the shared source of truth the operator watches" per `SKILL.md` makes this
-a real launch-readiness concern, not a peripheral one, but not urgent enough to interrupt Sprint
-26b given the interim fix already closes the acute risk.
+ADR-0018) and initially recommended Sprint 27 ("launch hardening"). Revisited immediately after:
+asked whether 27 was really the right home, given it's themed around *external* launch readiness
+(alerting, onboarding, security, UI consolidation) — a different kind of work than an internal
+data-model migration. Landed on a new **Sprint 26c**, scoped as "close out the 24–26
+alignment-infrastructure arc": the objectives migration plus 26b's other leftover cockpit items
+(Files panel direct-edit, cockpit-vs-chat mode auto-selection, copilot wake-up attribution +
+persisted anomaly/limit-breach logging — the last confirmed still genuinely unbuilt, not just
+undocumented, by checking the actual code rather than trusting either `CLAUDE.md` or
+`MAGI_V3_ROADMAP.md`, which had drifted out of sync with each other on the Trace-drill-down item).
+`CLAUDE.md`, `MAGI_V3_ROADMAP.md`, and ADR-0019 all updated to reflect 26c as the target; issue #23
+commented with the change. Objectives being "the shared source of truth the operator watches" per
+`SKILL.md` makes finishing this a real completion of the 24–26 arc's own stated goal, not a
+peripheral one — but not urgent enough to interrupt Sprint 26b itself, given the interim fix
+already closes the acute risk.
