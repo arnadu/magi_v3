@@ -19,7 +19,9 @@ import { promisify } from "node:util";
 import type { Model } from "@mariozechner/pi-ai";
 import JSZip from "jszip";
 import type { Db } from "mongodb";
+import type { StatsCollector } from "./agent-stats.js";
 import { createDescribeImage, processBuffer } from "./document-processor.js";
+import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import { appendEvent, loadObjectivesStore } from "./objectives/store.js";
 import { KpiEventSchema } from "./objectives/types.js";
@@ -198,6 +200,7 @@ export class MonitorServer {
 		private readonly missionName: string,
 		private readonly model: string,
 		private readonly accumulator: UsageAccumulator,
+		private readonly statsCollector: StatsCollector,
 		private readonly mailboxRepo: MailboxRepository,
 		private readonly agents: AgentInfo[],
 		private readonly onStop: () => void,
@@ -257,13 +260,13 @@ export class MonitorServer {
 	 * Called by the daemon when the spending cap is reached.
 	 * Pushes `cost-pause` to all clients and sets the paused flag.
 	 */
-	notifyCostPause(spentUsd: number, capUsd: number): void {
+	async notifyCostPause(spentUsd: number, capUsd: number): Promise<void> {
 		this.budgetPaused = true;
 		console.warn(
 			`[monitor] Budget cap $${capUsd.toFixed(2)} reached ($${spentUsd.toFixed(4)} spent) — pausing`,
 		);
 		this.push("cost-pause", { spentUsd, capUsd, budgetPaused: true });
-		this.push("status", this.statusPayload());
+		this.push("status", await this.statusPayload());
 	}
 
 	/**
@@ -383,7 +386,7 @@ export class MonitorServer {
 			});
 			res.write("retry: 3000\n\n");
 			res.write(
-				`event: status\ndata: ${JSON.stringify(this.statusPayload())}\n\n`,
+				`event: status\ndata: ${JSON.stringify(await this.statusPayload())}\n\n`,
 			);
 			this.clients.add(res);
 			req.on("close", () => this.clients.delete(res));
@@ -400,7 +403,7 @@ export class MonitorServer {
 		// ── GET /status
 		if (url === "/status" && req.method === "GET") {
 			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(this.statusPayload()));
+			res.end(JSON.stringify(await this.statusPayload()));
 			return;
 		}
 
@@ -925,7 +928,7 @@ export class MonitorServer {
 				newCapUsd: this.currentCapUsd,
 				budgetPaused: false,
 			});
-			this.push("status", this.statusPayload());
+			this.push("status", await this.statusPayload());
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: true, newCapUsd: this.currentCapUsd }));
 			return;
@@ -950,17 +953,24 @@ export class MonitorServer {
 			}
 			this.currentCapUsd = capUsd;
 			this.onBudgetExtended?.(capUsd);
-			// Lift the pause if the new cap is above what has been spent.
-			if (this.budgetPaused && capUsd > this.accumulator.totalCostUsd()) {
-				this.budgetPaused = false;
-				if (this.budgetResolve) {
-					this.budgetResolve();
-					this.budgetResolve = null;
+			// Lift the pause if the new cap is above what has actually been spent —
+			// read fresh from missionStats (safety-critical: decides whether a
+			// paused mission resumes), never from the session-only accumulator.
+			if (this.budgetPaused) {
+				const snapshot = await this.statsCollector.readMissionSnapshot(
+					this.missionId,
+				);
+				if (capUsd > missionLifetimeCostUsd(snapshot)) {
+					this.budgetPaused = false;
+					if (this.budgetResolve) {
+						this.budgetResolve();
+						this.budgetResolve = null;
+					}
+					this.push("cost-resumed", { newCapUsd: capUsd, budgetPaused: false });
 				}
-				this.push("cost-resumed", { newCapUsd: capUsd, budgetPaused: false });
 			}
 			console.log(`[monitor] Budget cap set to $${capUsd.toFixed(2)}`);
-			this.push("status", this.statusPayload());
+			this.push("status", await this.statusPayload());
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: true, newCapUsd: capUsd }));
 			return;
@@ -973,7 +983,7 @@ export class MonitorServer {
 			this.pausedAgents.add(agentId);
 			console.log(`[monitor] Agent "${agentId}" paused`);
 			this.push("agent-paused", { agentId });
-			this.push("status", this.statusPayload());
+			this.push("status", await this.statusPayload());
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: true, paused: [...this.pausedAgents] }));
 			return;
@@ -986,7 +996,7 @@ export class MonitorServer {
 			this.pausedAgents.delete(agentId);
 			console.log(`[monitor] Agent "${agentId}" resumed`);
 			this.push("agent-resumed", { agentId });
-			this.push("status", this.statusPayload());
+			this.push("status", await this.statusPayload());
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: true, paused: [...this.pausedAgents] }));
 			return;
@@ -1544,7 +1554,13 @@ export class MonitorServer {
 							body: doc.body,
 							timestamp: (doc.timestamp ?? new Date()).toISOString(),
 						});
-						this.push("status", this.statusPayload());
+						this.statusPayload()
+							.then((payload) => this.push("status", payload))
+							.catch((e) =>
+								console.error(
+									`[monitor] statusPayload failed after mailbox insert: ${(e as Error).message}`,
+								),
+							);
 					});
 					stream.on("error", (e) => {
 						stream.close().catch(() => {});
@@ -1614,9 +1630,23 @@ export class MonitorServer {
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
 
-	private statusPayload() {
+	/**
+	 * Reads mission cost fresh from `missionStats` on every call — never
+	 * cached — so this payload can never show a stale total after a daemon
+	 * restart (see agent-stats.ts header for the rationale). Token/call-count
+	 * fields (input/output/cacheRead/llmCalls) are session-only telemetry from
+	 * `UsageAccumulator` and stay sourced from it; they're informational, not
+	 * checked against any limit.
+	 */
+	private async statusPayload() {
 		const uptimeSec = Math.floor(
 			(Date.now() - this.startedAt.getTime()) / 1000,
+		);
+		const snapshot = await this.statsCollector.readMissionSnapshot(
+			this.missionId,
+		);
+		const costByAgent = new Map(
+			snapshot.map((a) => [a.agentId, a.lifetimeCostUsd + a.turnCostUsd]),
 		);
 		return {
 			missionId: this.missionId,
@@ -1627,7 +1657,7 @@ export class MonitorServer {
 			stepEnabled: this.stepEnabled,
 			running: [...this.runningAgents],
 			pausedAgents: [...this.pausedAgents],
-			missionTotalUsd: this.accumulator.totalCostUsd(),
+			missionTotalUsd: missionLifetimeCostUsd(snapshot),
 			maxCostUsd: this.currentCapUsd,
 			budgetPaused: this.budgetPaused,
 			agents: this.accumulator.agents().map((a) => ({
@@ -1636,7 +1666,7 @@ export class MonitorServer {
 				output: a.output,
 				cacheRead: a.cacheRead,
 				llmCalls: a.llmCalls,
-				costUsd: a.costUsd,
+				costUsd: costByAgent.get(a.agentId) ?? a.costUsd,
 			})),
 		};
 	}

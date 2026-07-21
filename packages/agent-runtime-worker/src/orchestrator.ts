@@ -79,8 +79,13 @@ export interface OrchestratorConfig {
 	step?: boolean;
 	/** Called immediately when an agent posts a message to "user". */
 	onUserMessage?: (msg: MailboxMessage) => void;
-	/** Called for every inner-loop message produced by any agent (for logging/streaming). */
-	onAgentMessage?: (agentId: string, msg: Message) => void;
+	/**
+	 * Called for every inner-loop message produced by any agent (for logging/streaming).
+	 * May return a Promise — the orchestrator awaits it before letting the loop
+	 * continue, so a mission-wide budget check here is guaranteed to run using
+	 * this call's stats before the next LLM call is dispatched.
+	 */
+	onAgentMessage?: (agentId: string, msg: Message) => void | Promise<void>;
 	/**
 	 * Called just before an agent is dispatched.
 	 * `activePeers` lists the agents currently running concurrently (not including agentId).
@@ -454,7 +459,9 @@ export async function runOrchestrationLoop(
 					identity,
 					additionalTools: config.getAdditionalTools?.(agentId),
 					onMessage: config.onAgentMessage
-						? async (msg: Message) => config.onAgentMessage?.(agentId, msg)
+						? async (msg: Message) => {
+								await config.onAgentMessage?.(agentId, msg);
+							}
 						: undefined,
 				},
 				ctrl.signal,

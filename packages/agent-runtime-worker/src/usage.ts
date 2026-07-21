@@ -20,6 +20,14 @@ interface AgentRecord {
  * Call `add()` every time an AssistantMessage is received.
  * Use `callLine()` for a compact per-call console log entry.
  * Use `fullSummary()` on shutdown for the final roll-up.
+ *
+ * NON-AUTHORITATIVE for cost: this is an in-memory, session-only counter that
+ * resets to zero on every daemon restart. It exists purely to produce the
+ * live per-call console log line and the shutdown summary — never use its
+ * dollar figures for anything an operator relies on (dashboard totals, budget
+ * checks) or anything a limit is verified against. The durable source of
+ * truth for cost is `missionStats` (see agent-stats.ts), always read fresh
+ * via `StatsCollector.readLifetime` / `readMissionSnapshot`.
  */
 export class UsageAccumulator {
 	private readonly perAgent = new Map<string, AgentRecord>();

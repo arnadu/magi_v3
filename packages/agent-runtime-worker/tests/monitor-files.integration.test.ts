@@ -21,6 +21,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+	createMongoAgentStatsRepository,
+	StatsCollector,
+} from "../src/agent-stats.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
@@ -55,6 +59,9 @@ beforeAll(async () => {
 	client = conn.client;
 	const mailboxRepo = createMongoMailboxRepository(conn.db, missionId);
 	const agents: AgentInfo[] = [{ id: "echo", name: "Echo", role: "assistant" }];
+	const statsCollector = new StatsCollector(
+		createMongoAgentStatsRepository(conn.db),
+	);
 	const port = await freePort();
 	monitor = new MonitorServer(
 		conn.db,
@@ -62,6 +69,7 @@ beforeAll(async () => {
 		"Test",
 		CLAUDE_SONNET,
 		new UsageAccumulator(),
+		statsCollector,
 		mailboxRepo,
 		agents,
 		() => {},

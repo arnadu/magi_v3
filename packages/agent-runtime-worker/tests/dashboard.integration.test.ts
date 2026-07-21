@@ -23,6 +23,10 @@ import { loadTeamConfig } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import { chromium } from "playwright";
 import { describe, expect, it } from "vitest";
+import {
+	createMongoAgentStatsRepository,
+	StatsCollector,
+} from "../src/agent-stats.js";
 import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
 import { CLAUDE_SONNET } from "../src/models.js";
@@ -132,6 +136,9 @@ describe("dashboard — message round-trip", () => {
 		}));
 
 		const abortCtrl = new AbortController();
+		const statsCollector = new StatsCollector(
+			createMongoAgentStatsRepository(db),
+		);
 
 		const sharedDir = join(workdir, "missions", missionId, "shared");
 		const monitor = new MonitorServer(
@@ -140,6 +147,7 @@ describe("dashboard — message round-trip", () => {
 			teamConfig.mission.name,
 			CLAUDE_SONNET,
 			accumulator,
+			statsCollector,
 			mailboxRepo,
 			agentInfos,
 			() => abortCtrl.abort(),

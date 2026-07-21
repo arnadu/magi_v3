@@ -278,3 +278,19 @@ export function evaluateLimits(
 export function isTurnMetric(metric: LimitMetric): boolean {
 	return TURN_METRICS.has(metric);
 }
+
+/**
+ * Sum lifetime + in-flight-turn cost across every agent in a mission, for the
+ * mission-wide spend cap. Mirrors the `"lifetimeCostUsd"` case in
+ * `metricValue` (persisted lifetime + this-turn-so-far), extended across
+ * agents instead of within one. Pure; no I/O — callers obtain the snapshot via
+ * `StatsCollector.readMissionSnapshot`, always freshly read from MongoDB.
+ */
+export function missionLifetimeCostUsd(
+	snapshot: ReadonlyArray<{ lifetimeCostUsd: number; turnCostUsd: number }>,
+): number {
+	return snapshot.reduce(
+		(sum, a) => sum + a.lifetimeCostUsd + a.turnCostUsd,
+		0,
+	);
+}

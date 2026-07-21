@@ -62,6 +62,58 @@ class FakeStatsRepository implements AgentStatsRepository {
 		return this.missions.get(this.missionKey(missionId, agentId)) ?? null;
 	}
 
+	async incrementLifetimeCostOnly(delta: {
+		missionId: string;
+		agentId: string;
+		costUsd: number;
+		llmCallCount: number;
+	}): Promise<MissionStats> {
+		const key = this.missionKey(delta.missionId, delta.agentId);
+		const prior = this.missions.get(key);
+		const next: MissionStats = {
+			missionId: delta.missionId,
+			agentId: delta.agentId,
+			lifetimeCostUsd: (prior?.lifetimeCostUsd ?? 0) + delta.costUsd,
+			lifetimeLlmCallCount:
+				(prior?.lifetimeLlmCallCount ?? 0) + delta.llmCallCount,
+			lifetimeTurnCount: prior?.lifetimeTurnCount ?? 0,
+			consecutiveZeroOutputTurns: prior?.consecutiveZeroOutputTurns ?? 0,
+			lastTurnAt: prior?.lastTurnAt ?? new Date(),
+		};
+		this.missions.set(key, next);
+		return next;
+	}
+
+	async readMissionSnapshot(
+		missionId: string,
+	): Promise<
+		Array<{ agentId: string; lifetimeCostUsd: number; turnCostUsd: number }>
+	> {
+		const agentIds = new Set<string>();
+		for (const m of this.missions.values()) {
+			if (m.missionId === missionId) agentIds.add(m.agentId);
+		}
+		for (const t of this.turns.values()) {
+			if (t.missionId === missionId && t.status === "running") {
+				agentIds.add(t.agentId);
+			}
+		}
+		return [...agentIds].map((agentId) => {
+			const lifetimeCostUsd =
+				this.missions.get(this.missionKey(missionId, agentId))
+					?.lifetimeCostUsd ?? 0;
+			const turnCostUsd = [...this.turns.values()]
+				.filter(
+					(t) =>
+						t.missionId === missionId &&
+						t.agentId === agentId &&
+						t.status === "running",
+				)
+				.reduce((sum, t) => sum + t.costUsd, 0);
+			return { agentId, lifetimeCostUsd, turnCostUsd };
+		});
+	}
+
 	async queryTurns(filter: {
 		missionId: string;
 		agentId?: string;
@@ -272,7 +324,7 @@ describe("StatsCollector", () => {
 		expect(mission?.lifetimeTurnCount).toBe(3);
 	});
 
-	it("reloads lifetime totals from the repo after a restart", async () => {
+	it("readLifetime reads persisted totals fresh — survives a restart with no pre-load step", async () => {
 		// Pre-seed a mission-stats doc as if a prior daemon had run two turns.
 		await repo.incrementMission({
 			missionId: MISSION,
@@ -283,17 +335,97 @@ describe("StatsCollector", () => {
 			lastTurnAt: new Date(),
 		});
 
-		// Fresh collector (simulates restart) loads lifetime on first startTurn.
+		// A brand-new collector (simulates a daemon restart) has no cache to warm —
+		// readLifetime hits the repo directly, with no startTurn prerequisite.
 		const fresh = new StatsCollector(repo);
-		await fresh.startTurn(MISSION, AGENT, 5, false);
-		expect(fresh.getLifetime(AGENT)?.lifetimeCostUsd).toBeCloseTo(1.0, 10);
-		expect(fresh.getLifetime(AGENT)?.consecutiveZeroOutputTurns).toBe(2);
+		const lifetime = await fresh.readLifetime(MISSION, AGENT);
+		expect(lifetime?.lifetimeCostUsd).toBeCloseTo(1.0, 10);
+		expect(lifetime?.consecutiveZeroOutputTurns).toBe(2);
 
-		// A zero-output turn continues the streak from the reloaded value.
+		// A zero-output turn continues the streak from the persisted value —
+		// endTurn reads it fresh internally, not from any in-memory cache.
+		await fresh.startTurn(MISSION, AGENT, 5, false);
 		await fresh.endTurn(AGENT);
 		const mission = await repo.loadMission(MISSION, AGENT);
 		expect(mission?.consecutiveZeroOutputTurns).toBe(3);
 		expect(mission?.lifetimeCostUsd).toBeCloseTo(1.0, 10);
+	});
+
+	it("readLifetime reflects a change made by a different collector instance immediately", async () => {
+		// Simulates two daemon processes (or a daemon restart) sharing one repo —
+		// there is no in-memory cache to go stale between them.
+		const other = new StatsCollector(repo);
+		await other.startTurn(MISSION, AGENT, 0, false);
+		await other.recordLlmCall(AGENT, {
+			inputTokens: 1,
+			outputTokens: 1,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			costUsd: 2.5,
+		});
+		await other.endTurn(AGENT);
+
+		// A second, independent collector reads the same fresh total.
+		const second = new StatsCollector(repo);
+		expect(
+			(await second.readLifetime(MISSION, AGENT))?.lifetimeCostUsd,
+		).toBeCloseTo(2.5, 10);
+	});
+
+	it("readMissionSnapshot combines persisted lifetime cost with each agent's in-flight turn cost", async () => {
+		// Agent "a": a finished prior turn (persisted) plus a currently running turn.
+		await repo.incrementMission({
+			missionId: MISSION,
+			agentId: "a",
+			costUsd: 1.0,
+			llmCallCount: 1,
+			consecutiveZeroOutputTurns: 0,
+			lastTurnAt: new Date(),
+		});
+		await collector.startTurn(MISSION, "a", 1, false);
+		await collector.recordLlmCall("a", {
+			inputTokens: 1,
+			outputTokens: 1,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			costUsd: 0.5,
+		});
+		// Agent "b": only a persisted lifetime total, nothing running right now.
+		await repo.incrementMission({
+			missionId: MISSION,
+			agentId: "b",
+			costUsd: 3.0,
+			llmCallCount: 1,
+			consecutiveZeroOutputTurns: 0,
+			lastTurnAt: new Date(),
+		});
+
+		const snapshot = await collector.readMissionSnapshot(MISSION);
+		const byAgent = new Map(snapshot.map((s) => [s.agentId, s]));
+		expect(byAgent.get("a")).toEqual({
+			agentId: "a",
+			lifetimeCostUsd: 1.0,
+			turnCostUsd: 0.5,
+		});
+		expect(byAgent.get("b")).toEqual({
+			agentId: "b",
+			lifetimeCostUsd: 3.0,
+			turnCostUsd: 0,
+		});
+	});
+
+	it("recordReflectionCost persists lifetime cost without touching lifetimeTurnCount", async () => {
+		await collector.recordReflectionCost(MISSION, AGENT, 0.75);
+		const mission = await repo.loadMission(MISSION, AGENT);
+		expect(mission?.lifetimeCostUsd).toBeCloseTo(0.75, 10);
+		expect(mission?.lifetimeLlmCallCount).toBe(1);
+		expect(mission?.lifetimeTurnCount).toBe(0);
+
+		// A second reflection call accumulates rather than overwriting.
+		await collector.recordReflectionCost(MISSION, AGENT, 0.25);
+		const updated = await repo.loadMission(MISSION, AGENT);
+		expect(updated?.lifetimeCostUsd).toBeCloseTo(1.0, 10);
+		expect(updated?.lifetimeLlmCallCount).toBe(2);
 	});
 
 	it("isolates concurrent agents by id", async () => {

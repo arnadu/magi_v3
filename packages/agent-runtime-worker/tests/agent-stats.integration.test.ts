@@ -218,3 +218,66 @@ describe("integration: StatsCollector matches llmCallLog on a real run", () => {
 		}
 	}, 180_000); // 3-minute timeout — one real agent turn
 });
+
+describe("readMissionSnapshot + incrementLifetimeCostOnly against real MongoDB", () => {
+	const missionId = `stats-snapshot-${randomUUID()}`;
+	let client: Awaited<ReturnType<typeof connectMongo>>["client"] | null = null;
+
+	afterAll(async () => {
+		if (!client) return;
+		const db = client.db();
+		await Promise.all([
+			db.collection("agentTurnStats").deleteMany({ missionId }),
+			db.collection("missionStats").deleteMany({ missionId }),
+		]);
+		await client.close();
+	});
+
+	it("combines persisted lifetime cost with an in-flight turn's cost, fresh from Mongo", async () => {
+		const conn = await connectMongo(MONGODB_URI);
+		client = conn.client;
+		const statsRepo = createMongoAgentStatsRepository(conn.db);
+		const collector = new StatsCollector(statsRepo);
+
+		// Agent "alpha": persisted lifetime cost from a completed turn, plus a
+		// second turn currently running (not yet finalized).
+		await collector.startTurn(missionId, "alpha", 0, false);
+		await collector.recordLlmCall("alpha", {
+			inputTokens: 10,
+			outputTokens: 5,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			costUsd: 1.5,
+		});
+		await collector.endTurn("alpha");
+		await collector.startTurn(missionId, "alpha", 1, false);
+		await collector.recordLlmCall("alpha", {
+			inputTokens: 10,
+			outputTokens: 5,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			costUsd: 0.25,
+		});
+
+		// Agent "beta": a reflection call, recorded outside the turn lifecycle.
+		await collector.recordReflectionCost(missionId, "beta", 0.4);
+
+		// A second, independent collector instance (simulating a fresh daemon
+		// process reading the same mission) must see exactly the same totals —
+		// there is no in-memory cache to be out of sync with.
+		const independent = new StatsCollector(statsRepo);
+		const snapshot = await independent.readMissionSnapshot(missionId);
+		const byAgent = new Map(snapshot.map((s) => [s.agentId, s]));
+
+		expect(byAgent.get("alpha")?.lifetimeCostUsd).toBeCloseTo(1.5, 8);
+		expect(byAgent.get("alpha")?.turnCostUsd).toBeCloseTo(0.25, 8);
+		expect(byAgent.get("beta")?.lifetimeCostUsd).toBeCloseTo(0.4, 8);
+		expect(byAgent.get("beta")?.turnCostUsd).toBe(0);
+
+		const betaLifetime = await independent.readLifetime(missionId, "beta");
+		expect(betaLifetime?.lifetimeTurnCount).toBe(0);
+		expect(betaLifetime?.lifetimeLlmCallCount).toBe(1);
+
+		await collector.endTurn("alpha");
+	}, 30_000);
+});

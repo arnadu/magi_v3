@@ -20,10 +20,20 @@
  * restart, whereas an incomplete turn (one that never reached `endTurn`) never
  * contributed to the lifetime totals.
  *
- * The limits module (added later in Sprint 24) reads the in-memory accumulator
- * exposed by `getTurn` / `getLifetime` — there is no DB query in the enforcement
- * hot path. Lifetime totals are reloaded from `missionStats` on the first turn an
- * agent runs after a daemon restart, so caps survive restarts.
+ * The limits module reads the in-memory turn accumulator (`getTurn`) for the
+ * turn currently in flight — that's a write-side staging buffer for the turn
+ * doc, not a cache of anything durable, so it's always exactly as fresh as the
+ * in-progress turn itself. Lifetime totals are a different matter: anything
+ * checked against a limit reads `missionStats` FRESH from MongoDB at decision
+ * time via `readLifetime()` / `readMissionSnapshot()` — there is deliberately
+ * no in-memory cache of lifetime totals. An earlier version of this module
+ * cached lifetime totals in memory (loaded once per daemon lifetime); that
+ * cache was the root cause of a production bug where a mission's true spend
+ * ($60+) was checked against a stale in-memory value ($7) after a daemon
+ * restart. A DB read (low single-digit ms) is negligible next to LLM call
+ * latency (seconds), so there is no real performance case for caching
+ * verification-critical data — the correctness gained by never trusting a
+ * cache is worth far more than the round-trip saved. Do not reintroduce one.
  *
  * Collections: `agentTurnStats`, `missionStats`.
  */
@@ -148,6 +158,27 @@ export interface AgentStatsRepository {
 	}): Promise<MissionStats>;
 	/** Load lifetime totals for an agent, or null if none recorded yet. */
 	loadMission(missionId: string, agentId: string): Promise<MissionStats | null>;
+	/**
+	 * Apply a lifetime cost delta outside the normal turn lifecycle (reflection
+	 * calls have no turn to attribute to). Unlike `incrementMission`, does not
+	 * touch `lifetimeTurnCount` or `consecutiveZeroOutputTurns`.
+	 */
+	incrementLifetimeCostOnly(delta: {
+		missionId: string;
+		agentId: string;
+		costUsd: number;
+		llmCallCount: number;
+	}): Promise<MissionStats>;
+	/**
+	 * Snapshot every agent's persisted lifetime cost plus any currently in-flight
+	 * turn's cost so far, for a mission-wide total. Always reads fresh from
+	 * `missionStats` + `agentTurnStats` — never cached.
+	 */
+	readMissionSnapshot(
+		missionId: string,
+	): Promise<
+		Array<{ agentId: string; lifetimeCostUsd: number; turnCostUsd: number }>
+	>;
 	/** Query turn docs for a mission, ascending by turnNumber. */
 	queryTurns(filter: {
 		missionId: string;
@@ -243,6 +274,63 @@ export function createMongoAgentStatsRepository(db: Db): AgentStatsRepository {
 			return rest as MissionStats;
 		},
 
+		async incrementLifetimeCostOnly(delta) {
+			const { missionId, agentId } = delta;
+			const result = await missions.findOneAndUpdate(
+				{ missionId, agentId },
+				{
+					$inc: {
+						lifetimeCostUsd: delta.costUsd,
+						lifetimeLlmCallCount: delta.llmCallCount,
+					},
+					$setOnInsert: {
+						missionId,
+						agentId,
+						lifetimeTurnCount: 0,
+						consecutiveZeroOutputTurns: 0,
+						lastTurnAt: new Date(),
+					},
+				},
+				{ upsert: true, returnDocument: "after" },
+			);
+			const doc = result as MissionStats | null;
+			return (
+				doc ?? {
+					missionId,
+					agentId,
+					lifetimeCostUsd: delta.costUsd,
+					lifetimeLlmCallCount: delta.llmCallCount,
+					lifetimeTurnCount: 0,
+					consecutiveZeroOutputTurns: 0,
+					lastTurnAt: new Date(),
+				}
+			);
+		},
+
+		async readMissionSnapshot(missionId) {
+			const [lifetimeDocs, runningTurns] = await Promise.all([
+				missions.find({ missionId }).toArray(),
+				turns.find({ missionId, status: "running" }).toArray(),
+			]);
+			const turnCostByAgent = new Map<string, number>();
+			for (const t of runningTurns) {
+				turnCostByAgent.set(
+					t.agentId,
+					(turnCostByAgent.get(t.agentId) ?? 0) + t.costUsd,
+				);
+			}
+			const agentIds = new Set<string>([
+				...lifetimeDocs.map((d) => d.agentId),
+				...turnCostByAgent.keys(),
+			]);
+			return [...agentIds].map((agentId) => ({
+				agentId,
+				lifetimeCostUsd:
+					lifetimeDocs.find((d) => d.agentId === agentId)?.lifetimeCostUsd ?? 0,
+				turnCostUsd: turnCostByAgent.get(agentId) ?? 0,
+			}));
+		},
+
 		async queryTurns(filter) {
 			const q: Record<string, unknown> = { missionId: filter.missionId };
 			if (filter.agentId !== undefined) q.agentId = filter.agentId;
@@ -315,7 +403,6 @@ function freshTurn(
  */
 export class StatsCollector {
 	private readonly turns = new Map<string, AgentTurnStats>();
-	private readonly lifetimes = new Map<string, MissionStats>();
 
 	constructor(private readonly repo: AgentStatsRepository) {}
 
@@ -323,10 +410,7 @@ export class StatsCollector {
 		return agentId;
 	}
 
-	/**
-	 * Begin a new turn. Resets the in-memory turn accumulator and loads lifetime
-	 * totals from `missionStats` if not already cached (survives daemon restart).
-	 */
+	/** Begin a new turn. Resets the in-memory turn accumulator. */
 	async startTurn(
 		missionId: string,
 		agentId: string,
@@ -354,17 +438,6 @@ export class StatsCollector {
 			console.error(
 				`[agent-stats] reconcileStaleRunning failed { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
 			);
-		}
-
-		if (!this.lifetimes.has(this.key(agentId))) {
-			try {
-				const loaded = await this.repo.loadMission(missionId, agentId);
-				if (loaded) this.lifetimes.set(this.key(agentId), loaded);
-			} catch (e) {
-				console.error(
-					`[agent-stats] failed to load missionStats { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
-				);
-			}
 		}
 
 		await this.persist(agentId);
@@ -442,13 +515,13 @@ export class StatsCollector {
 
 		const producedOutput =
 			turn.filesWritten.length > 0 || turn.messagesSent.length > 0;
-		const prior = this.lifetimes.get(this.key(agentId));
-		const consecutiveZeroOutputTurns = producedOutput
-			? 0
-			: (prior?.consecutiveZeroOutputTurns ?? 0) + 1;
 
 		try {
-			const updated = await this.repo.incrementMission({
+			const prior = await this.repo.loadMission(turn.missionId, agentId);
+			const consecutiveZeroOutputTurns = producedOutput
+				? 0
+				: (prior?.consecutiveZeroOutputTurns ?? 0) + 1;
+			await this.repo.incrementMission({
 				missionId: turn.missionId,
 				agentId,
 				costUsd: turn.costUsd,
@@ -456,7 +529,6 @@ export class StatsCollector {
 				consecutiveZeroOutputTurns,
 				lastTurnAt: turn.completedAt,
 			});
-			this.lifetimes.set(this.key(agentId), updated);
 		} catch (e) {
 			console.error(
 				`[agent-stats] failed to increment missionStats { missionId: ${turn.missionId}, agentId: ${agentId}, turnNumber: ${turn.turnNumber} }: ${(e as Error).message}`,
@@ -471,9 +543,52 @@ export class StatsCollector {
 		return this.turns.get(this.key(agentId));
 	}
 
-	/** Cached lifetime totals (for limit checks). */
-	getLifetime(agentId: string): Readonly<MissionStats> | undefined {
-		return this.lifetimes.get(this.key(agentId));
+	/**
+	 * Read lifetime totals fresh from `missionStats` — never cached. Callers
+	 * that need restart-durable, always-correct totals (limit checks, cost
+	 * attribution) must use this instead of any in-memory value.
+	 */
+	async readLifetime(
+		missionId: string,
+		agentId: string,
+	): Promise<Readonly<MissionStats> | null> {
+		return this.repo.loadMission(missionId, agentId);
+	}
+
+	/**
+	 * Snapshot every agent's persisted lifetime cost plus in-flight turn cost,
+	 * fresh from MongoDB — the basis for the mission-wide spend cap.
+	 */
+	async readMissionSnapshot(
+		missionId: string,
+	): Promise<
+		Array<{ agentId: string; lifetimeCostUsd: number; turnCostUsd: number }>
+	> {
+		return this.repo.readMissionSnapshot(missionId);
+	}
+
+	/**
+	 * Record a reflection call's cost against lifetime totals. Reflection runs
+	 * outside the normal turn lifecycle (it happens before `startTurn`), so this
+	 * bypasses the turn-based increment entirely rather than waiting for endTurn.
+	 */
+	async recordReflectionCost(
+		missionId: string,
+		agentId: string,
+		costUsd: number,
+	): Promise<void> {
+		try {
+			await this.repo.incrementLifetimeCostOnly({
+				missionId,
+				agentId,
+				costUsd,
+				llmCallCount: 1,
+			});
+		} catch (e) {
+			console.error(
+				`[agent-stats] failed to record reflection cost { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
+			);
+		}
 	}
 
 	private async persist(agentId: string): Promise<void> {

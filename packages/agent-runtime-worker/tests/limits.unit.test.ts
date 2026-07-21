@@ -6,6 +6,7 @@ import {
 	evaluateLimits,
 	isTurnMetric,
 	type LimitConfig,
+	missionLifetimeCostUsd,
 } from "../src/limits.js";
 
 // ---------------------------------------------------------------------------
@@ -180,5 +181,20 @@ describe("evaluateLimits", () => {
 		expect(isTurnMetric("costUsd")).toBe(true);
 		expect(isTurnMetric("lifetimeCostUsd")).toBe(false);
 		expect(isTurnMetric("consecutiveZeroOutputTurns")).toBe(false);
+	});
+});
+
+describe("missionLifetimeCostUsd", () => {
+	it("sums persisted lifetime + in-flight turn cost across every agent", () => {
+		const total = missionLifetimeCostUsd([
+			{ lifetimeCostUsd: 10, turnCostUsd: 0.5 },
+			{ lifetimeCostUsd: 3, turnCostUsd: 0 },
+			{ lifetimeCostUsd: 0, turnCostUsd: 1.25 },
+		]);
+		expect(total).toBeCloseTo(14.75, 10);
+	});
+
+	it("returns 0 for an empty mission snapshot", () => {
+		expect(missionLifetimeCostUsd([])).toBe(0);
 	});
 });

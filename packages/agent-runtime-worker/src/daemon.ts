@@ -111,6 +111,7 @@ import {
 } from "./agent-stats.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
+import { missionLifetimeCostUsd } from "./limits.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
@@ -993,6 +994,7 @@ async function main(): Promise<void> {
 		teamConfig.mission.name,
 		modelId,
 		usageAccumulator,
+		statsCollector,
 		mailboxRepo,
 		agents,
 		() => ac.abort(),
@@ -1252,10 +1254,14 @@ async function main(): Promise<void> {
 				onIdle: () => monitor.notifyIdle(),
 				onMentalMapUpdate: (agentId, html) =>
 					monitor.notifyMentalMapUpdate(agentId, html),
-				onAgentMessage: (agentId, msg) => {
+				onAgentMessage: async (agentId, msg) => {
 					logMessage(msg, agentId);
 					if (msg.role === "assistant") {
 						const usage = (msg as AssistantMessage).usage as Usage;
+						// Session-only telemetry for the console log line and the SSE
+						// live ticker — cosmetic, never checked against a limit (see
+						// usage.ts header). The mission-wide cap below reads fresh from
+						// missionStats instead.
 						usageAccumulator.add(agentId, usage);
 						console.log(usageAccumulator.callLine(agentId, usage));
 						monitor.push("llm-call", {
@@ -1269,14 +1275,23 @@ async function main(): Promise<void> {
 									?.costUsd ?? 0,
 							missionTotalUsd: usageAccumulator.totalCostUsd(),
 						});
-						if (
-							maxCostUsd !== null &&
-							usageAccumulator.totalCostUsd() >= maxCostUsd
-						) {
-							monitor.notifyCostPause(
-								usageAccumulator.totalCostUsd(),
-								maxCostUsd,
-							);
+						if (maxCostUsd !== null) {
+							// A transient Mongo read failure must not crash the agent's
+							// turn — fail open (skip this one cap check) and log; the
+							// cap is re-checked on every subsequent LLM call, so a
+							// one-off hiccup self-heals rather than blocking the mission.
+							try {
+								const snapshot =
+									await statsCollector.readMissionSnapshot(missionId);
+								const missionTotal = missionLifetimeCostUsd(snapshot);
+								if (missionTotal >= maxCostUsd) {
+									await monitor.notifyCostPause(missionTotal, maxCostUsd);
+								}
+							} catch (e) {
+								console.error(
+									`[daemon] mission cap check failed { missionId: ${missionId} }: ${(e as Error).message}`,
+								);
+							}
 						}
 						const am = msg as AssistantMessage;
 						if (am.stopReason === "error") {

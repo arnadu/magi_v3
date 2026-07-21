@@ -604,3 +604,97 @@ copilot's landed in the top-level `missionCopilotLimits` field, confirmed via ra
 `agents[]`); three audit mailbox messages posted with correct content. These are real, standing
 changes to Gold Digest V2's live configuration, not reverted after verification (flagged to the
 user; the mission cap in particular closes a real, previously-unmitigated gap for that mission).
+
+## Sprint 26b — Cost-tracking correctness rewrite (always-fresh reads, no verification cache)
+
+Using the newly-shipped Limits panel against Gold Digest V2 immediately surfaced the bug it was
+built to make visible: the mission-wide spend card showed "$7.52 / $60.00" while the mission's real
+persisted lifetime cost (summed `missionStats.lifetimeCostUsd` across its agents) was $60.26. Root
+cause: the mission-wide cap check and every dashboard total were sourced from `UsageAccumulator`
+(`usage.ts`) — a purely in-memory, per-process counter with **zero MongoDB hydration** — so it
+silently resets to $0 on every daemon restart while the mission's true spend keeps climbing
+underneath it. Asked for "a complete code review of how we track costs and limits," on the explicit
+instruction that "we do not want any code debt: if there is a fundamental flaw in our code base, we
+need to fix it now."
+
+**Two design drafts were rejected in review before this one landed**, both for the same underlying
+reason. Draft 1 proposed hydrating `UsageAccumulator` from `missionStats` at boot — rejected because
+it kept a second, uncoordinated copy of the truth instead of removing it. Draft 2 extended
+`StatsCollector` with a better-hydrated in-memory lifetime cache (`hydrateRoster()`/`costSnapshot()`)
+— rejected for the identical reason one level up: *any* in-memory cache of verification-critical
+data can drift from what's persisted, which is exactly the bug class that caused the original $7.52
+number. The design that shipped removes the cache instead of improving it: **every place a limit is
+checked reads `missionStats` fresh from MongoDB at decision time**, with no in-memory value trusted
+for that purpose anywhere in the codebase. The reasoning, stated directly during design review: an
+LLM call takes seconds; an indexed MongoDB read takes low single-digit milliseconds — there is no
+real performance case for caching data whose staleness has actual dollar consequences, and the
+correctness gained by never trusting a cache is worth far more than the round-trip saved. Confirmed
+explicitly that this "always fresh" principle applies uniformly to both the new mission-wide check
+and the already-numerically-correct-but-still-cached per-agent `maxLifetimeCostUsd` check — "one
+consistent principle everywhere," not a special case for the bug that happened to be found first.
+
+**`agent-stats.ts`**: removed `StatsCollector`'s `lifetimes` in-memory `Map` and its `getLifetime()`
+accessor entirely — there is now no cached lifetime state to be correct or stale. Added
+`readLifetime(missionId, agentId)` (a thin, explicitly-named wrapper on the repo's existing
+`loadMission()`, so every call site visibly declares "this is an uncached read") and
+`readMissionSnapshot(missionId)` (combines every agent's persisted `missionStats.lifetimeCostUsd`
+with any currently-`status:"running"` `agentTurnStats.costUsd`, via two new repo methods —
+`readMissionSnapshot` and `incrementLifetimeCostOnly`). `endTurn()`'s `consecutiveZeroOutputTurns`
+streak calculation, which previously read the cache, now reads `loadMission()` directly at the same
+point. `StatsCollector.turns` (the per-turn write-staging buffer behind the incremental
+`agentTurnStats` upsert) is unaffected — it isn't a cache of anything durable, it's exactly as fresh
+as the turn currently in flight, and a restart naturally starts a new turn anyway.
+
+**Second, independent bug fixed in the same pass**: reflection LLM calls were excluded from
+`missionStats` by design (`agent-runner.ts`'s `makeOnLlmCall` explicitly gated `recordLlmCall` on
+`!isReflection`, since reflection runs before `startTurn` — there's no active turn to attribute it
+to) — meaning even the *persisted* "ground truth" under-counted real spend by cumulative reflection
+cost. Closed via `recordReflectionCost(missionId, agentId, costUsd)`, which calls the new
+`incrementLifetimeCostOnly` repo method — a leaner increment than `incrementMission` that doesn't
+touch `lifetimeTurnCount`/`consecutiveZeroOutputTurns`, since reflection isn't a turn.
+
+**Call-site changes**: `agent-runner.ts`'s `enforceLimits` (the per-agent hard/soft limit check) and
+its cost-attribution call into the objectives store both switched from `getLifetime()` to an
+`await readLifetime(...)` call — both were already inside `async` contexts, so the two
+`enforceLimits?.()` call sites just gained `await`. `orchestrator.ts`'s `OrchestratorConfig.onAgentMessage`
+was widened from `(agentId, msg) => void` to `=> void | Promise<void>` (backward-compatible — every
+existing caller already passes a sync callback) and its internal wrapper now actually `await`s it,
+so `daemon.ts`'s mission-wide cap check is guaranteed to run against this call's data before the
+inner loop dispatches its next LLM call. `daemon.ts`'s `onAgentMessage` cap check now calls
+`statsCollector.readMissionSnapshot()` + the new `limits.ts` function `missionLifetimeCostUsd()`
+(sums `lifetimeCostUsd + turnCostUsd` across agents — the same "persisted lifetime + this-turn-so-far"
+shape `metricValue()`'s existing `"lifetimeCostUsd"` case already used per-agent, just extended
+across the mission). `monitor-server.ts` gained a `statsCollector` constructor parameter;
+`statusPayload()` (8 call sites) and `/set-budget`'s pause/resume decision both became `async` and
+now read the fresh snapshot instead of `this.accumulator.totalCostUsd()` — `/set-budget`'s case is
+safety-critical (it decides whether a paused mission resumes) so this one was fixed regardless of
+how rarely it's called. `UsageAccumulator` itself is **unchanged** but its header comment now states
+explicitly that it is session-only console/SSE-ticker telemetry, never a source for any figure
+checked against a limit or relied on by an operator across a restart — kept alive purely for the
+live per-call log line and the SSE `llm-call` ticker, both cosmetic.
+
+**Hardening found during review, not in the original plan**: converting these paths from pure
+in-memory reads (which could never throw) to MongoDB reads (which can, on a transient connection
+blip) introduced a new failure mode on two hot paths — `agent-runner.ts`'s `enforceLimits` and
+`daemon.ts`'s per-message cap check. An uncaught read failure there would have crashed an agent's
+turn on a one-off Mongo hiccup, which the codebase's own standing principle ("statistics must not
+break a mission," already applied to every *write* path in this module) explicitly rules out. Both
+now fail open — log and skip that one check — since the same check runs again on the very next LLM
+call or tool result, so a transient failure self-heals rather than aborting a turn.
+
+**Verification**: 265 unit tests pass (`agent-stats.unit.test.ts` rewritten — the old "reloads
+lifetime totals from the repo after a restart" test asserted the now-removed `getLifetime()`; new
+tests cover `readLifetime`, `readMissionSnapshot` across multiple agents, and `recordReflectionCost`;
+`limits.unit.test.ts` gained cases for `missionLifetimeCostUsd`). New integration test in
+`agent-stats.integration.test.ts` exercises `readMissionSnapshot`/`incrementLifetimeCostOnly`
+against real MongoDB with two independent `StatsCollector` instances (simulating two daemon
+processes / a restart) to directly demonstrate there is no cache to be out of sync. Full existing
+integration coverage re-run and green: `dashboard.integration.test.ts` (real LLM call through the
+modified `MonitorServer`/orchestrator wiring), `agent-stats.integration.test.ts`'s original
+real-mission cross-check, `limits.integration.test.ts` (control-plane), `monitor-files.integration.test.ts`,
+`reflection.integration.test.ts` (a live reflection LLM call, directly exercising the new
+`recordReflectionCost` path), and `multi-agent.integration.test.ts`. Not verified live: the
+daemon-restart / stale-cache scenario itself needs an execution-plane image rebuild and Gold Digest
+V2's machine cycling onto it to observe directly — the same two-step verification gap hit for other
+features this sprint. The unit and integration suites prove the logic; the live daemon behavior is
+unverified pending that rebuild.

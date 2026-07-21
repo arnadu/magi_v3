@@ -1,6 +1,6 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
-import type { StatsCollector } from "./agent-stats.js";
+import type { MissionStats, StatsCollector } from "./agent-stats.js";
 import type {
 	ConversationRepository,
 	SummaryMessage,
@@ -314,14 +314,25 @@ export async function runAgent(
 					},
 				});
 			}
-			if (ctx.statsCollector && !isReflection) {
-				await ctx.statsCollector.recordLlmCall(agentId, {
-					inputTokens: usage.input,
-					outputTokens: usage.output,
-					cacheReadTokens: usage.cacheRead,
-					cacheWriteTokens: usage.cacheWrite,
-					costUsd: cost.totalCostUsd,
-				});
+			if (ctx.statsCollector) {
+				if (isReflection) {
+					// Reflection has no active turn to attribute to (it runs before
+					// startTurn) — record its cost against lifetime totals directly so
+					// missionStats/the mission-wide cap don't under-count real spend.
+					await ctx.statsCollector.recordReflectionCost(
+						missionId,
+						agentId,
+						cost.totalCostUsd,
+					);
+				} else {
+					await ctx.statsCollector.recordLlmCall(agentId, {
+						inputTokens: usage.input,
+						outputTokens: usage.output,
+						cacheReadTokens: usage.cacheRead,
+						cacheWriteTokens: usage.cacheWrite,
+						costUsd: cost.totalCostUsd,
+					});
+				}
 			}
 		};
 	};
@@ -587,10 +598,25 @@ export async function runAgent(
 	const firedSoftLimits = new Set<string>();
 	const enforceLimits =
 		ctx.statsCollector && limitRules.length > 0
-			? () => {
+			? async () => {
 					const turn = ctx.statsCollector?.getTurn(agentId);
 					if (!turn) return;
-					const lifetime = ctx.statsCollector?.getLifetime(agentId);
+					// Always read fresh from missionStats — never trust a cache for a
+					// value a hard limit is checked against (see agent-stats.ts header).
+					// A transient read failure must not abort the turn (statistics must
+					// never break a mission): fail open by treating lifetime as unknown
+					// for this one check — it is re-read on every subsequent call/tool
+					// result, so a one-off Mongo hiccup self-heals on the next check.
+					let lifetime: MissionStats | undefined;
+					try {
+						lifetime =
+							(await ctx.statsCollector?.readLifetime(missionId, agentId)) ??
+							undefined;
+					} catch (e) {
+						console.error(
+							`[agent-runner] readLifetime failed during limit check { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
+						);
+					}
 					const breaches = evaluateLimits(turn, lifetime, limitRules);
 					for (const b of breaches) {
 						if (b.rule.severity === "soft" && !firedSoftLimits.has(b.rule.id)) {
@@ -627,7 +653,7 @@ export async function runAgent(
 					isError: boolean;
 				}) => {
 					await ctx.statsCollector?.recordToolResult(agentId, event);
-					enforceLimits?.();
+					await enforceLimits?.();
 				}
 			: undefined;
 
@@ -644,7 +670,7 @@ export async function runAgent(
 			response: AssistantMessage;
 		}) => {
 			if (base) await base(event);
-			enforceLimits?.();
+			await enforceLimits?.();
 		};
 	};
 
@@ -798,14 +824,20 @@ export async function runAgent(
 		// turn. Best-effort: a failure here must never break the turn.
 		if (ctx.statsCollector && turnSnapshot) {
 			try {
+				// Fresh read: endTurn() just persisted this turn's contribution to
+				// missionStats, so this picks it up directly rather than relying on
+				// cache-ordering with endTurn's internal write.
+				const freshLifetime = await ctx.statsCollector.readLifetime(
+					missionId,
+					agentId,
+				);
 				await attributeTurnCost(sharedDir, {
 					agentId,
 					turnNumber: turnSnapshot.turnNumber,
 					windowStart: turnSnapshot.startedAt,
 					windowEnd: new Date(),
 					lifetimeCostUsd:
-						ctx.statsCollector.getLifetime(agentId)?.lifetimeCostUsd ??
-						turnSnapshot.costUsd,
+						freshLifetime?.lifetimeCostUsd ?? turnSnapshot.costUsd,
 				});
 			} catch (e) {
 				console.error("[agent-runner] cost attribution failed", {
