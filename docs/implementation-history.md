@@ -607,6 +607,8 @@ user; the mission cap in particular closes a real, previously-unmitigated gap fo
 
 ## Sprint 26b — Cost-tracking correctness rewrite (always-fresh reads, no verification cache)
 
+Full design rationale: [ADR-0017](adr/0017-cost-tracking-single-source-fresh-reads.md).
+
 Using the newly-shipped Limits panel against Gold Digest V2 immediately surfaced the bug it was
 built to make visible: the mission-wide spend card showed "$7.52 / $60.00" while the mission's real
 persisted lifetime cost (summed `missionStats.lifetimeCostUsd` across its agents) was $60.26. Root
