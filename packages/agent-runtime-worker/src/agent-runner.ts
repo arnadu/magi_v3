@@ -134,6 +134,41 @@ export interface AgentRunContext {
 }
 
 // ---------------------------------------------------------------------------
+// Limit enforcement helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the `LimitConfig` to enforce for `agentId` from a freshly-read
+ * TeamConfig (ADR-0018). Falls back to the boot-time snapshot ONLY when the
+ * live config itself couldn't be read (`live` is null — missing doc, parse
+ * failure, or the caller never attempted the read). When `live` IS available,
+ * an agent with no limits configured there is treated as genuinely having
+ * none — never silently falling back to a possibly-stale boot-time value,
+ * since that would defeat the entire point of reading fresh: an operator
+ * clearing a limit must see that take effect immediately, same as setting one.
+ *
+ * The mission copilot's limits live in `missionCopilotLimits`, a separate
+ * top-level TeamConfig field, not `agents[]` — it has no authored node in the
+ * persisted config to hang a `limits` key off (see mission-copilot.ts's
+ * `injectMissionCopilot`, which only appends it to the in-memory boot-time
+ * snapshot, never to what's persisted). A live read must check this field
+ * specifically for the copilot, or its own limit edits would silently never
+ * apply without a resume — exactly the bug ADR-0018 was fixing for everyone
+ * else.
+ */
+export function resolveLiveLimits(
+	live: TeamConfig | null,
+	agentId: string,
+	bootTimeSnapshot: LimitConfig,
+): LimitConfig {
+	if (!live) return bootTimeSnapshot;
+	if (agentId === MISSION_COPILOT_AGENT_ID) {
+		return live.missionCopilotLimits ?? {};
+	}
+	return live.agents.find((a) => a.id === agentId)?.limits ?? {};
+}
+
+// ---------------------------------------------------------------------------
 // Conversation recovery helpers
 // ---------------------------------------------------------------------------
 
@@ -618,9 +653,9 @@ export async function runAgent(
 				// is available for free.
 				let liveLimits: LimitConfig = agent.limits ?? {};
 				try {
-					const live = await ctx.missionConfig?.readTeamConfig(missionId);
-					const liveAgent = live?.agents.find((a) => a.id === agentId);
-					if (liveAgent) liveLimits = liveAgent.limits ?? {};
+					const live =
+						(await ctx.missionConfig?.readTeamConfig(missionId)) ?? null;
+					liveLimits = resolveLiveLimits(live, agentId, agent.limits ?? {});
 				} catch (e) {
 					console.error(
 						`[agent-runner] readTeamConfig failed during limit check, falling back to boot-time snapshot { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,

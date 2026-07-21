@@ -765,3 +765,20 @@ which is only possible if the live read path is genuinely wired in, not the boot
 yet verified live: an operator editing a limit on a running mission and watching it apply with no
 resume needs Gold Digest V2's planned restart plus an execution-plane image rebuild — same
 verification gap as ADR-0017.
+
+**Same-day follow-up, asked for directly as a review pass**: found and fixed three more gaps.
+(1) The mission copilot's own limits were never actually live-read — `enforceLimits` searched
+`live.agents`, but the copilot's limits live in the separate top-level `missionCopilotLimits` field
+(it's injected into the in-memory `teamConfig` at boot, never into the persisted YAML's authored
+agent list). Extracted `resolveLiveLimits()` (`agent-runner.ts`, exported, 6 new unit tests) to
+special-case this and also tightened the fallback semantics: an agent with no live limits
+configured now correctly resolves to "genuinely none," not a silent fallback to a stale snapshot.
+(2) Control-plane's `readLimits()` (the cockpit Limits panel's data source) hand-rolled its own
+`missionStats`-only sum for per-agent lifetime cost instead of reusing `readMissionSnapshot()` —
+the same function the actual enforcement path uses — so a running agent's displayed cost could
+under-report by the size of its current in-flight turn. Fixed by calling
+`createMongoAgentStatsRepository(db).readMissionSnapshot()` directly; new integration test seeds a
+`status: "running"` turn doc and asserts the returned figure includes it. (3) `SaveMissionConfig`'s
+tool description and audit message unconditionally claimed every change needs a resume — stale for
+`limits`/`mission.maxCostUsd` specifically after this ADR; reworded to name the exception. Full
+writeup: ADR-0018's "Follow-up" section.

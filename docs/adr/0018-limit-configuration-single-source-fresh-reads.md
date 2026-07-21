@@ -150,6 +150,51 @@ LLM call regardless — a pure fresh-read is sufficient.
 
 ---
 
+## Follow-up: three gaps found on review, fixed in the same sprint
+
+Asked directly to review the whole system once more for single-source-of-truth violations after
+this ADR shipped. Found and fixed three:
+
+1. **The mission copilot's own limits were never actually live-read.** `enforceLimits`'s live-read
+   did `live.agents.find(a => a.id === agentId)` — but the copilot isn't in `live.agents` (it's
+   injected into the in-memory `teamConfig` at boot only, never into the persisted YAML's authored
+   agent list; its limits live in the separate `missionCopilotLimits` field). So a
+   `missionCopilotLimits` edit silently fell back to the boot-time snapshot for the copilot
+   specifically, while working correctly for every authored agent. Fixed by extracting
+   `resolveLiveLimits(live, agentId, fallback)` (`agent-runner.ts`, exported and unit-tested) which
+   special-cases `agentId === MISSION_COPILOT_AGENT_ID` to read `live.missionCopilotLimits` instead.
+   While fixing this, also corrected an inconsistency in the fallback semantics: an agent with no
+   live limits configured (a legitimate "operator cleared it" state) now correctly resolves to `{}`
+   rather than any risk of falling back to a stale snapshot — only a genuinely unreadable `live`
+   (null) falls back.
+
+2. **Control-plane's `readLimits()` (the cockpit's Limits panel data source) hand-rolled its own
+   independent "sum lifetime cost" query against `missionStats` instead of reusing
+   `readMissionSnapshot()`** — the same function `enforceLimits`/the mission-wide cap check use.
+   The mission-wide total shown at the top of the panel was already correct (proxied through the
+   live mission's own `/status` when reachable, falling back to `null` rather than an independent
+   Mongo recomputation — no drift risk there). But the *per-agent* `lifetimeCostUsd` rows read only
+   the persisted `missionStats` total, never adding a currently in-flight turn's cost — meaning a
+   running agent's row could show less than what its own `maxLifetimeCostUsd` hard limit was
+   actually being checked against, for as long as its current turn stayed in flight. Fixed by
+   calling `createMongoAgentStatsRepository(db).readMissionSnapshot(missionId)` directly (control-
+   plane already depends on `@magi/agent-runtime-worker`) instead of a bespoke query — now the exact
+   same calculation, not a second implementation that happened to agree most of the time.
+
+3. **`SaveMissionConfig`'s tool description and audit message unconditionally said "takes effect
+   the next time the mission is resumed"** — true for most fields (prompts, roster, models, skills)
+   but stale for `limits`/`mission.maxCostUsd` specifically, which this ADR made apply immediately
+   regardless of which tool wrote them. Left uncorrected, this could lead the copilot to
+   under-communicate (or over-communicate delay) to the operator about exactly the fields this ADR
+   was built to make immediate. Reworded both strings to name the exception explicitly.
+
+New tests: `agent-runner.unit.test.ts` (6 cases for `resolveLiveLimits`, including the copilot
+field and the "explicit clear" case); a new `readLimits` integration case seeding a `status:
+"running"` `agentTurnStats` doc and asserting the returned `lifetimeCostUsd` includes it
+(`limits.integration.test.ts`, control-plane).
+
+---
+
 ## Related
 
 - [ADR-0017](0017-cost-tracking-single-source-fresh-reads.md) — the cost-metrics half of this same

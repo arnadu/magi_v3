@@ -19,7 +19,10 @@ import {
 	patchAgentLimits,
 	patchMissionCap as patchMissionCapYaml,
 } from "@magi/agent-config";
-import { DEFAULT_SOFT_LIMITS } from "@magi/agent-runtime-worker";
+import {
+	createMongoAgentStatsRepository,
+	DEFAULT_SOFT_LIMITS,
+} from "@magi/agent-runtime-worker";
 import type { Request, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Collection, Db } from "mongodb";
@@ -182,7 +185,10 @@ export async function readLimits(
 
 	// Lifetime numbers — own query, not the existing GET /mission-stats route
 	// (its projection excludes consecutiveZeroOutputTurns, and that route is
-	// monitor-proxied so it's unreachable while suspended anyway).
+	// monitor-proxied so it's unreachable while suspended anyway). Call count
+	// and the zero-output streak have no live/in-flight equivalent worth
+	// tracking (they're inherently "as of the last completed turn"), so those
+	// two still come straight from missionStats.
 	const statsDocs = await db
 		.collection("missionStats")
 		.find(
@@ -190,7 +196,6 @@ export async function readLimits(
 			{
 				projection: {
 					agentId: 1,
-					lifetimeCostUsd: 1,
 					lifetimeLlmCallCount: 1,
 					consecutiveZeroOutputTurns: 1,
 					_id: 0,
@@ -199,6 +204,19 @@ export async function readLimits(
 		)
 		.toArray();
 	const statsByAgent = new Map(statsDocs.map((d) => [d.agentId as string, d]));
+
+	// The dollar figure, by contrast, IS what a limit is actually checked
+	// against — reuse the exact same persisted-lifetime + in-flight-turn
+	// combination enforceLimits/the mission-wide cap check use
+	// (readMissionSnapshot, agent-stats.ts), rather than a second,
+	// independent sum that only reads the persisted total and can therefore
+	// under-report a live mission by the cost of whatever turn is currently
+	// in flight for that agent.
+	const snapshot =
+		await createMongoAgentStatsRepository(db).readMissionSnapshot(missionId);
+	const costByAgent = new Map(
+		snapshot.map((s) => [s.agentId, s.lifetimeCostUsd + s.turnCostUsd]),
+	);
 
 	// Authored roster + the synthesized mission-copilot row (daemon-injected,
 	// never in agents[] — its limits live in the top-level missionCopilotLimits
@@ -229,7 +247,7 @@ export async function readLimits(
 			limits,
 			effectiveSoft: effectiveSoftOf(limits),
 			live: {
-				lifetimeCostUsd: (stats?.lifetimeCostUsd as number) ?? null,
+				lifetimeCostUsd: costByAgent.get(agentId) ?? null,
 				lifetimeLlmCallCount: (stats?.lifetimeLlmCallCount as number) ?? null,
 				consecutiveZeroOutputTurns:
 					(stats?.consecutiveZeroOutputTurns as number) ?? null,

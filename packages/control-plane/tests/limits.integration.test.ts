@@ -160,6 +160,43 @@ describe("Limits panel backend", () => {
 			});
 			expect(result.status).toBe(404);
 		});
+
+		it("includes an in-flight turn's cost in lifetimeCostUsd — same basis enforceLimits checks against", async () => {
+			// A currently-running turn's cost is NOT yet reflected in
+			// missionStats (only $inc'd at endTurn) — before this fix, readLimits
+			// hand-rolled a missionStats-only query and would have missed this
+			// entirely, silently under-reporting a live mission's actual spend
+			// relative to what the mission-wide cap / per-agent hard limit checks
+			// (readMissionSnapshot, agent-stats.ts) are really comparing against.
+			await db.collection("agentTurnStats").insertOne({
+				missionId,
+				agentId: "analyst",
+				turnNumber: 6,
+				startedAt: new Date(),
+				status: "running",
+				costUsd: 3.3,
+				llmCallCount: 2,
+				peakContextTokens: 1000,
+				toolErrors: {},
+			});
+
+			const result = await readLimits(col(), db, missionId, {
+				userId: userA,
+			});
+			const body = result.body as {
+				agents: Array<{
+					agentId: string;
+					live: { lifetimeCostUsd: number | null };
+				}>;
+			};
+			const analyst = body.agents.find((a) => a.agentId === "analyst");
+			// 12.5 (persisted missionStats.lifetimeCostUsd) + 3.3 (in-flight turn)
+			expect(analyst?.live.lifetimeCostUsd).toBeCloseTo(15.8, 8);
+
+			await db
+				.collection("agentTurnStats")
+				.deleteOne({ missionId, agentId: "analyst", turnNumber: 6 });
+		});
 	});
 
 	describe("writeAgentLimits", () => {

@@ -193,7 +193,7 @@ export function createMissionCopilotTools(
 	const saveMissionConfig: MagiTool = {
 		name: "SaveMissionConfig",
 		description:
-			"Write a new team configuration. Validated before saving — an invalid config is rejected with the specific error and nothing is written. Takes effect the next time the mission is resumed, not immediately. Use to add/remove/deactivate an agent, change a system prompt, adjust a per-agent model or skill list, or any other config change — read current config first, change only what needs to change.\n\n" +
+			"Write a new team configuration. Validated before saving — an invalid config is rejected with the specific error and nothing is written. Most changes (system prompt, agent roster, models, skills) take effect the next time the mission is resumed, not immediately. The exception: changes to an agent's `limits` or `mission.maxCostUsd` apply on the very next limit check, no resume needed. Use to add/remove/deactivate an agent, change a system prompt, adjust a per-agent model or skill list, or any other config change — read current config first, change only what needs to change.\n\n" +
 			"teamFiles rules: omit teamFiles entirely to preserve whatever the mission already has attached (safe for YAML-only edits, e.g. a system-prompt tweak); pass teamFiles explicitly to replace them. WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.",
 		parameters: Type.Object({
 			teamConfigYaml: Type.String({ description: "Full team config YAML" }),
@@ -239,7 +239,9 @@ export function createMissionCopilotTools(
 				.updateOne({ missionId }, { $set: update });
 			await auditPost(
 				"Mission config updated",
-				"I updated this mission's team configuration. The change takes effect the next time the mission is resumed, not immediately.",
+				"I updated this mission's team configuration. Most changes take effect the " +
+					"next time the mission is resumed, not immediately — except `limits` and " +
+					"`mission.maxCostUsd`, which apply on the very next check.",
 			);
 			return okJson({ ok: true });
 		},
