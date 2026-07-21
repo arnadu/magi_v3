@@ -23,6 +23,7 @@ import type { StatsCollector } from "./agent-stats.js";
 import { createDescribeImage, processBuffer } from "./document-processor.js";
 import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
+import type { MissionConfigRepository } from "./mission-config.js";
 import { appendEvent, loadObjectivesStore } from "./objectives/store.js";
 import { KpiEventSchema } from "./objectives/types.js";
 import type { UsageAccumulator } from "./usage.js";
@@ -166,14 +167,11 @@ export class MonitorServer {
 	// Budget pause gate
 	private budgetPaused = false;
 	private budgetResolve: (() => void) | null = null;
-	private currentCapUsd: number | null;
-	/** Callback so daemon.ts can update its local maxCostUsd when the cap is changed. */
-	onBudgetExtended?: (newCapUsd: number) => void;
 
 	/**
 	 * Vision model for the upload pipeline's image captioning. Set by the daemon
-	 * after construction (like onBudgetExtended). When absent, uploaded-document
-	 * images are not auto-described — they fall back to InspectImage pointers.
+	 * after construction. When absent, uploaded-document images are not
+	 * auto-described — they fall back to InspectImage pointers.
 	 */
 	visionModel?: Model<string>;
 
@@ -201,17 +199,16 @@ export class MonitorServer {
 		private readonly model: string,
 		private readonly accumulator: UsageAccumulator,
 		private readonly statsCollector: StatsCollector,
+		private readonly missionConfig: MissionConfigRepository,
 		private readonly mailboxRepo: MailboxRepository,
 		private readonly agents: AgentInfo[],
 		private readonly onStop: () => void,
-		maxCostUsd: number | null,
 		private readonly startedAt = new Date(),
 		private readonly workdir: string = process.cwd(),
 		private readonly sharedDir: string = process.cwd(),
 		private readonly cancelSchedule?: (id: string) => Promise<void>,
 		private readonly publicDir: string = DEFAULT_PUBLIC_DIR,
 	) {
-		this.currentCapUsd = maxCostUsd;
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
 				console.error("[monitor] Request error:", e);
@@ -912,25 +909,32 @@ export class MonitorServer {
 			} catch {
 				// Malformed JSON — use default $5
 			}
-			const previousCap = this.currentCapUsd ?? 0;
-			this.currentCapUsd = previousCap + addUsd;
+			// Read the current persisted cap fresh — never a locally-cached value
+			// (ADR-0018) — so this adds on top of whatever the cap actually is,
+			// including a value set by another writer (cockpit, mission copilot)
+			// since this process last checked.
+			const live = await this.missionConfig.readTeamConfig(this.missionId);
+			const previousCap = live?.mission.maxCostUsd ?? 0;
+			const newCapUsd = previousCap + addUsd;
+			try {
+				await this.missionConfig.writeMissionCap(this.missionId, newCapUsd);
+			} catch (e) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ ok: false, error: (e as Error).message }));
+				return;
+			}
 			this.budgetPaused = false;
 			console.log(
-				`[monitor] Budget extended by $${addUsd.toFixed(2)} — new cap: $${this.currentCapUsd.toFixed(2)}`,
+				`[monitor] Budget extended by $${addUsd.toFixed(2)} — new cap: $${newCapUsd.toFixed(2)}`,
 			);
-			this.onBudgetExtended?.(this.currentCapUsd);
 			if (this.budgetResolve) {
 				this.budgetResolve();
 				this.budgetResolve = null;
 			}
-			this.push("cost-resumed", {
-				addUsd,
-				newCapUsd: this.currentCapUsd,
-				budgetPaused: false,
-			});
+			this.push("cost-resumed", { addUsd, newCapUsd, budgetPaused: false });
 			this.push("status", await this.statusPayload());
 			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, newCapUsd: this.currentCapUsd }));
+			res.end(JSON.stringify({ ok: true, newCapUsd }));
 			return;
 		}
 
@@ -951,8 +955,15 @@ export class MonitorServer {
 				res.end(JSON.stringify({ ok: false, error: "capUsd must be > 0" }));
 				return;
 			}
-			this.currentCapUsd = capUsd;
-			this.onBudgetExtended?.(capUsd);
+			// Persist first — this IS the source of truth from here on (ADR-0018);
+			// there is no local cap value to also update.
+			try {
+				await this.missionConfig.writeMissionCap(this.missionId, capUsd);
+			} catch (e) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ ok: false, error: (e as Error).message }));
+				return;
+			}
 			// Lift the pause if the new cap is above what has actually been spent —
 			// read fresh from missionStats (safety-critical: decides whether a
 			// paused mission resumes), never from the session-only accumulator.
@@ -1631,20 +1642,23 @@ export class MonitorServer {
 	// ── Helpers ───────────────────────────────────────────────────────────────
 
 	/**
-	 * Reads mission cost fresh from `missionStats` on every call — never
-	 * cached — so this payload can never show a stale total after a daemon
-	 * restart (see agent-stats.ts header for the rationale). Token/call-count
-	 * fields (input/output/cacheRead/llmCalls) are session-only telemetry from
-	 * `UsageAccumulator` and stay sourced from it; they're informational, not
-	 * checked against any limit.
+	 * Reads mission cost fresh from `missionStats` and the spend cap fresh from
+	 * the mission's persisted `teamConfigYaml` on every call — never cached —
+	 * so this payload can never show a stale total or a stale cap after a
+	 * daemon restart, and reflects a cap change made by any writer (cockpit,
+	 * mission copilot) immediately (see agent-stats.ts header + ADR-0018 for
+	 * the rationale). Token/call-count fields (input/output/cacheRead/llmCalls)
+	 * are session-only telemetry from `UsageAccumulator` and stay sourced from
+	 * it; they're informational, not checked against any limit.
 	 */
 	private async statusPayload() {
 		const uptimeSec = Math.floor(
 			(Date.now() - this.startedAt.getTime()) / 1000,
 		);
-		const snapshot = await this.statsCollector.readMissionSnapshot(
-			this.missionId,
-		);
+		const [snapshot, liveConfig] = await Promise.all([
+			this.statsCollector.readMissionSnapshot(this.missionId),
+			this.missionConfig.readTeamConfig(this.missionId),
+		]);
 		const costByAgent = new Map(
 			snapshot.map((a) => [a.agentId, a.lifetimeCostUsd + a.turnCostUsd]),
 		);
@@ -1658,7 +1672,7 @@ export class MonitorServer {
 			running: [...this.runningAgents],
 			pausedAgents: [...this.pausedAgents],
 			missionTotalUsd: missionLifetimeCostUsd(snapshot),
-			maxCostUsd: this.currentCapUsd,
+			maxCostUsd: liveConfig?.mission.maxCostUsd ?? null,
 			budgetPaused: this.budgetPaused,
 			agents: this.accumulator.agents().map((a) => ({
 				agentId: a.agentId,

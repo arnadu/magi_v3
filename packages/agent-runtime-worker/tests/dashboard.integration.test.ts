@@ -29,6 +29,7 @@ import {
 } from "../src/agent-stats.js";
 import { createMongoConversationRepository } from "../src/conversation-repository.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
+import { createMongoMissionConfigRepository } from "../src/mission-config.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
 import type { AgentInfo } from "../src/monitor-server.js";
@@ -139,6 +140,7 @@ describe("dashboard — message round-trip", () => {
 		const statsCollector = new StatsCollector(
 			createMongoAgentStatsRepository(db),
 		);
+		const missionConfigRepo = createMongoMissionConfigRepository(db);
 
 		const sharedDir = join(workdir, "missions", missionId, "shared");
 		const monitor = new MonitorServer(
@@ -148,10 +150,10 @@ describe("dashboard — message round-trip", () => {
 			CLAUDE_SONNET,
 			accumulator,
 			statsCollector,
+			missionConfigRepo,
 			mailboxRepo,
 			agentInfos,
 			() => abortCtrl.abort(),
-			null,
 			new Date(),
 			workdir,
 			sharedDir,

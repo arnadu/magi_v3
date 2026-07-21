@@ -259,7 +259,7 @@ function MissionSection({
 			setNote(
 				res.liveUpdateApplied
 					? "Saved — applied immediately."
-					: "Saved — will apply the next time the mission is resumed.",
+					: "Saved — will apply on the mission's next spend check, or the next resume if suspended.",
 			);
 			onSaved();
 		} catch (e) {

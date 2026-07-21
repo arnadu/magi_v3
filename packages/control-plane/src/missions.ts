@@ -344,7 +344,11 @@ export async function writeMissionCap(
 		`Operator set the mission's spend cap to $${maxCostUsd.toFixed(2)} via the cockpit Limits panel.` +
 			(liveUpdateApplied
 				? " Applied immediately."
-				: " Will apply the next time the mission is resumed."),
+				: mission.status === "running"
+					? " Will apply on the mission's next spend check (ADR-0018 — no restart needed); " +
+						"if the mission is currently paused for budget, it will stay paused until " +
+						"the operator resumes it or extends the budget again."
+					: " Will apply the next time the mission is resumed."),
 	);
 
 	return { status: 200, body: { ok: true, maxCostUsd, liveUpdateApplied } };
@@ -397,7 +401,8 @@ export async function writeAgentLimits(
 		missionId,
 		`Agent "${agentId}" limits updated`,
 		`Operator updated limits for "${agentId}" via the cockpit Limits panel. ` +
-			"This takes effect the next time the mission is resumed, not immediately.",
+			"If the mission is running, this applies on the agent's next limit check " +
+			"(ADR-0018 — no restart needed).",
 	);
 
 	return { status: 200, body: { ok: true, agentId, limits } };

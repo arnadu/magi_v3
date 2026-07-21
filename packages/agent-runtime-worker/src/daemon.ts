@@ -23,11 +23,12 @@
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
  *   MONITOR_PORT       optional — dashboard HTTP port (default: 4000; must be 1–65535)
  *   TOOL_PORT          optional — Tool API server port for background jobs (default: 4001; must be 1–65535)
- *   MAX_COST_USD       optional — spending cap in USD; pauses when reached. team config's
- *                                 mission.maxCostUsd (set via the cockpit Limits panel) takes
- *                                 precedence over this env var when present — it survives
- *                                 suspend/resume, this doesn't (re-derived from the env fresh
- *                                 at every boot)
+ *   MAX_COST_USD       optional — spending cap in USD; pauses when reached. The mission's own
+ *                                 persisted mission.maxCostUsd (set via the cockpit Limits panel
+ *                                 or the mission copilot) is read fresh from MongoDB on every
+ *                                 check and takes precedence (ADR-0018 — no suspend/resume
+ *                                 needed for a cap change to apply); this env var is only the
+ *                                 fallback used when no cap is configured or a live read fails
  *   MISSION_COPILOT_ENABLED  optional — "false" to opt a mission out of the mission copilot
  *                                 (ADR-0016); default on
  *   MONITOR_TOKEN      optional — per-mission auth token for MonitorServer mutating routes
@@ -115,6 +116,7 @@ import { missionLifetimeCostUsd } from "./limits.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
+import { createMongoMissionConfigRepository } from "./mission-config.js";
 import {
 	injectMissionCopilot,
 	MISSION_COPILOT_AGENT_ID,
@@ -849,6 +851,7 @@ async function main(): Promise<void> {
 	const statsCollector = new StatsCollector(
 		createMongoAgentStatsRepository(db),
 	);
+	const missionConfigRepo = createMongoMissionConfigRepository(db);
 
 	const copilotMissionId = process.env.COPILOT_MISSION_ID;
 	const copilotMailboxRepo = copilotMissionId
@@ -940,12 +943,10 @@ async function main(): Promise<void> {
 
 	writeFileSync(pidFile, String(process.pid));
 
-	// Usage accumulator + optional spending cap. The mission's own persisted
-	// config (set via the cockpit Limits panel, survives suspend/resume) takes
-	// precedence over the MAX_COST_USD env var (re-derived fresh from the
-	// execution-plane machine's env at every boot, so any prior live-only
-	// /set-budget change made without a matching config edit doesn't survive
-	// a restart either way — only the config value does).
+	// Usage accumulator + spending cap fallback. The mission's own persisted
+	// config is the live source of truth (ADR-0018 — read fresh from MongoDB
+	// on every check, in onAgentMessage below); this boot-time value is used
+	// ONLY as a fallback when a live read transiently fails.
 	const usageAccumulator = new UsageAccumulator();
 	let maxCostUsd: number | null = teamConfig.mission.maxCostUsd ?? null;
 	let maxCostUsdSource = "mission config";
@@ -995,10 +996,10 @@ async function main(): Promise<void> {
 		modelId,
 		usageAccumulator,
 		statsCollector,
+		missionConfigRepo,
 		mailboxRepo,
 		agents,
 		() => ac.abort(),
-		maxCostUsd,
 		new Date(),
 		workdir,
 		sharedDir,
@@ -1115,12 +1116,6 @@ async function main(): Promise<void> {
 	console.log(`[daemon] Mission: ${teamConfig.mission.name} (${missionId})`);
 	console.log(`[daemon] Dashboard: http://localhost:${monitorPort}`);
 
-	// Keep daemon's local maxCostUsd in sync when the operator extends the budget.
-	monitor.onBudgetExtended = (newCapUsd) => {
-		maxCostUsd = newCapUsd;
-		console.log(`[daemon] Spending cap updated to $${newCapUsd.toFixed(2)}`);
-	};
-
 	console.log("[daemon] Entering orchestration loop");
 
 	// Mission copilot elevated tools (ADR-0016). Built once (not per-dispatch)
@@ -1154,6 +1149,7 @@ async function main(): Promise<void> {
 				conversationRepo,
 				llmCallLog,
 				statsCollector,
+				missionConfig: missionConfigRepo,
 				model,
 				visionModel,
 				workdir,
@@ -1275,23 +1271,33 @@ async function main(): Promise<void> {
 									?.costUsd ?? 0,
 							missionTotalUsd: usageAccumulator.totalCostUsd(),
 						});
-						if (maxCostUsd !== null) {
-							// A transient Mongo read failure must not crash the agent's
-							// turn — fail open (skip this one cap check) and log; the
-							// cap is re-checked on every subsequent LLM call, so a
-							// one-off hiccup self-heals rather than blocking the mission.
-							try {
-								const snapshot =
-									await statsCollector.readMissionSnapshot(missionId);
+						// Mission-wide spend cap (ADR-0018): read the cap fresh from the
+						// mission's persisted config on every call — never the boot-time
+						// teamConfig snapshot — so a cap added, changed, or cleared live
+						// (cockpit or mission copilot) is enforced without a restart.
+						// Falls back to the boot-time value (mission config or
+						// MAX_COST_USD env var, resolved once above) when a live read
+						// fails or the live doc genuinely has no cap configured. A
+						// transient Mongo read failure must not crash the agent's turn —
+						// fail open (skip this one check) and log; both reads are
+						// re-attempted on every subsequent LLM call, so a one-off hiccup
+						// self-heals rather than blocking the mission.
+						try {
+							const [snapshot, liveConfig] = await Promise.all([
+								statsCollector.readMissionSnapshot(missionId),
+								missionConfigRepo.readTeamConfig(missionId),
+							]);
+							const effectiveCap = liveConfig?.mission.maxCostUsd ?? maxCostUsd;
+							if (effectiveCap !== null) {
 								const missionTotal = missionLifetimeCostUsd(snapshot);
-								if (missionTotal >= maxCostUsd) {
-									await monitor.notifyCostPause(missionTotal, maxCostUsd);
+								if (missionTotal >= effectiveCap) {
+									await monitor.notifyCostPause(missionTotal, effectiveCap);
 								}
-							} catch (e) {
-								console.error(
-									`[daemon] mission cap check failed { missionId: ${missionId} }: ${(e as Error).message}`,
-								);
 							}
+						} catch (e) {
+							console.error(
+								`[daemon] mission cap check failed { missionId: ${missionId} }: ${(e as Error).message}`,
+							);
 						}
 						const am = msg as AssistantMessage;
 						if (am.stopReason === "error") {

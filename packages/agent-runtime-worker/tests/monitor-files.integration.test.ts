@@ -26,6 +26,7 @@ import {
 	StatsCollector,
 } from "../src/agent-stats.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
+import { createMongoMissionConfigRepository } from "../src/mission-config.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
 import { type AgentInfo, MonitorServer } from "../src/monitor-server.js";
@@ -62,6 +63,7 @@ beforeAll(async () => {
 	const statsCollector = new StatsCollector(
 		createMongoAgentStatsRepository(conn.db),
 	);
+	const missionConfigRepo = createMongoMissionConfigRepository(conn.db);
 	const port = await freePort();
 	monitor = new MonitorServer(
 		conn.db,
@@ -70,10 +72,10 @@ beforeAll(async () => {
 		CLAUDE_SONNET,
 		new UsageAccumulator(),
 		statsCollector,
+		missionConfigRepo,
 		mailboxRepo,
 		agents,
 		() => {},
-		null,
 		new Date(),
 		workdir,
 		sharedDir,

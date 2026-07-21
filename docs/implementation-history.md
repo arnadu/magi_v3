@@ -700,3 +700,68 @@ daemon-restart / stale-cache scenario itself needs an execution-plane image rebu
 V2's machine cycling onto it to observe directly — the same two-step verification gap hit for other
 features this sprint. The unit and integration suites prove the logic; the live daemon behavior is
 unverified pending that rebuild.
+
+## Sprint 26b — Limit configuration: single source of truth, read fresh (ADR-0018)
+
+Full design rationale: [ADR-0018](adr/0018-limit-configuration-single-source-fresh-reads.md).
+
+Directly triggered by a follow-up question after the cost-tracking rewrite above: asked whether the
+mission copilot's claim that "a limit change requires a suspend/resume" was true, the honest answer
+split — the mission-wide cap mostly escapes it via a push mechanism (`writeMissionCap` best-effort
+calls the running mission's `/set-budget`), but per-agent limits have no such mechanism at all,
+since `daemon.ts` loads `teamConfig` once at boot and never re-reads it. Pointed out directly: "I
+thought we had agreed on a single place for all the computations" — the prior fix (ADR-0017) only
+covered the *measured* half (cost metrics); the *configured* half (limit thresholds) was still a
+boot-time snapshot with a manual sync callback bolted on for one field. This closes that gap with
+the identical principle: read the current limit configuration fresh from MongoDB at the same point
+`enforceLimits`/the mission-cap check already read `missionStats`.
+
+**Gap found while designing the fix, folded into the same change:** the mission copilot's
+`SetMissionSpendCap` tool calls `POST /set-budget` directly, and that route never wrote to MongoDB
+at all — only `MonitorServer.currentCapUsd` in memory. A copilot-set cap was invisible to any
+Mongo-based read and silently lost on daemon restart. Same true of the legacy dashboard's
+`/extend-budget` button (`public/app.js`, still reachable). Both fixed in the same pass — moving the
+read side to Mongo-only would otherwise have been a regression for these two write paths.
+
+New `packages/agent-runtime-worker/src/mission-config.ts` — `MissionConfigRepository`
+(`readTeamConfig`/`writeMissionCap`) + `createMongoMissionConfigRepository(db)`, mirroring
+`AgentStatsRepository`'s shape. `readTeamConfig` reuses the same
+`findOne({missionId}, {projection: {teamConfigYaml: 1}})` pattern `daemon.ts` already used for team
+files, then `parseTeamConfig()`; `writeMissionCap` reuses `patchMissionCap` + `parseTeamConfig` from
+`@magi/agent-config` — the same primitives control-plane's `missions.ts` already uses. No
+denormalized fast-read field needed here (unlike `missionStats` for cost) — `teamConfigYaml` is a
+small, non-growing text blob, so a full parse-and-validate per check is cheap next to LLM latency.
+
+`agent-runner.ts`'s `enforceLimits` moved `buildRules()` from once-per-turn (built from the static
+`agent.limits`) to inside the async closure, re-fetched on every check via
+`ctx.missionConfig?.readTeamConfig()`. Unlike the cost-metric fresh reads (which fail open by
+*skipping* the check — no safe fallback exists for a dollar figure), a strictly better fallback is
+available here for free: the boot-time snapshot already sitting in `ctx.teamConfig`. A transient
+Mongo hiccup degrades to "enforce yesterday's limits for one check," never "enforce nothing."
+`daemon.ts`'s mission-cap check fetches `missionConfig.readTeamConfig()` alongside the
+`readMissionSnapshot()` call ADR-0017 already added, using `live?.mission.maxCostUsd ?? maxCostUsd`
+(the boot-time value becomes fallback-only). The `onBudgetExtended` push-sync callback is deleted
+entirely — nothing needs to push into `daemon.ts`'s local variable anymore.
+
+`/set-budget` and `/extend-budget` (`monitor-server.ts`) become the durable write path: both now
+call `missionConfig.writeMissionCap()` before anything else, closing the copilot's Mongo-blind spot.
+`currentCapUsd` is removed as an instance field entirely; `statusPayload()`'s `maxCostUsd` reads
+fresh, matching `missionTotalUsd`'s existing treatment. `writeMissionCap`'s existing best-effort push
+from control-plane keeps a narrower but still-necessary role: `waitForBudget()` blocks the dispatch
+loop entirely while paused, and nothing else would wake it — the push remains the only way to wake
+an *already-paused* mission immediately, even though it's no longer the only way the cap *value*
+reaches a mission that isn't currently paused.
+
+**Verification**: existing 265 unit tests unaffected (the fallback design means `ctx.missionConfig`
+absent behaves exactly like before — no test needed updating). New integration coverage against real
+MongoDB: `mission-config.integration.test.ts` (6 tests — read/write, a second writer's edit visible
+to a fresh read, validation-before-persist); `monitor-budget.integration.test.ts` (5 tests —
+`/set-budget`/`/extend-budget` persist to `missions.teamConfigYaml`, `/status` reads it fresh,
+pause/resume still works). The strongest single proof is
+`limits-live-config.integration.test.ts` — a real-LLM end-to-end test where the boot-time
+`teamConfig` has no limits configured for the test agent at all, while the mission's persisted
+`teamConfigYaml` has `maxLlmCallsPerTurn: 1`; the turn aborted with exactly that hard-limit breach,
+which is only possible if the live read path is genuinely wired in, not the boot-time snapshot. Not
+yet verified live: an operator editing a limit on a running mission and watching it apply with no
+resume needs Gold Digest V2's planned restart plus an execution-plane image rebuild — same
+verification gap as ADR-0017.

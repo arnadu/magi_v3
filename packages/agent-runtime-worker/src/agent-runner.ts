@@ -5,7 +5,7 @@ import type {
 	ConversationRepository,
 	SummaryMessage,
 } from "./conversation-repository.js";
-import type { LimitAlert } from "./limits.js";
+import type { LimitAlert, LimitConfig } from "./limits.js";
 import { buildRules, evaluateLimits, LimitExceededError } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import { computeCost, truncateToolBodies } from "./llm-call-log.js";
@@ -17,6 +17,7 @@ import {
 	initMentalMap,
 	upsertManagedRegion,
 } from "./mental-map.js";
+import type { MissionConfigRepository } from "./mission-config.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import {
 	MY_OBJECTIVES_KEY,
@@ -84,6 +85,14 @@ export interface AgentRunContext {
 	 * startTurn/endTurn. Shared across agents; keyed internally by agentId.
 	 */
 	statsCollector?: StatsCollector;
+	/**
+	 * Optional live config reader (ADR-0018). When present, `enforceLimits`
+	 * reads the agent's current `limits` fresh from MongoDB on every check
+	 * instead of the boot-time `teamConfig` snapshot, so a cockpit edit takes
+	 * effect immediately with no suspend/resume. Falls back to the snapshot
+	 * when absent or when a live read fails.
+	 */
+	missionConfig?: MissionConfigRepository;
 	/**
 	 * Called when a configured limit (see agent `limits`) is breached — soft
 	 * limits fire an advisory alert (deduped per rule per turn); a hard limit
@@ -590,72 +599,89 @@ export async function runAgent(
 	// Used to decide whether the auto-post safety net should fire.
 	const supervisorTriggered = messages.some((m) => m.from === supervisorId);
 
-	// Limit enforcement (Sprint 24). Rules are built from the agent's `limits`
-	// config layered over conservative soft defaults; enforcement is a no-op
-	// without a stats collector (the rules read its in-memory accumulators).
-	const limitRules = ctx.statsCollector ? buildRules(agent.limits) : [];
+	// Limit enforcement (Sprint 24; live config reads added ADR-0018). Rules are
+	// built from the agent's `limits` config layered over conservative soft
+	// defaults; enforcement is a no-op without a stats collector (the rules
+	// read its in-memory turn accumulator + fresh lifetime reads).
 	// Soft alerts are fired at most once per rule per turn.
 	const firedSoftLimits = new Set<string>();
-	const enforceLimits =
-		ctx.statsCollector && limitRules.length > 0
-			? async () => {
-					const turn = ctx.statsCollector?.getTurn(agentId);
-					if (!turn) return;
-					// Always read fresh from missionStats — never trust a cache for a
-					// value a hard limit is checked against (see agent-stats.ts header).
-					// A transient read failure must not abort the turn (statistics must
-					// never break a mission): fail open by treating lifetime as unknown
-					// for this one check — it is re-read on every subsequent call/tool
-					// result, so a one-off Mongo hiccup self-heals on the next check.
-					let lifetime: MissionStats | undefined;
-					try {
-						lifetime =
-							(await ctx.statsCollector?.readLifetime(missionId, agentId)) ??
-							undefined;
-					} catch (e) {
-						console.error(
-							`[agent-runner] readLifetime failed during limit check { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
-						);
-					}
-					const breaches = evaluateLimits(turn, lifetime, limitRules);
-					for (const b of breaches) {
-						if (b.rule.severity === "soft" && !firedSoftLimits.has(b.rule.id)) {
-							firedSoftLimits.add(b.rule.id);
-							ctx.onLimitAlert?.({
-								agentId,
-								turnNumber: activeTurnNumber,
-								breach: b,
-							});
-						}
-					}
-					// A hard breach aborts the turn: alert first, then throw so the inner
-					// loop stops before the next LLM call / tool round.
-					const hard = breaches.find((b) => b.rule.severity === "hard");
-					if (hard) {
+	const enforceLimits = ctx.statsCollector
+		? async () => {
+				const turn = ctx.statsCollector?.getTurn(agentId);
+				if (!turn) return;
+				// Read the agent's current `limits` config fresh from MongoDB —
+				// never trust the boot-time teamConfig snapshot, so a cockpit edit
+				// takes effect on the very next check, no suspend/resume required
+				// (ADR-0018). A transient read failure falls back to the snapshot
+				// rather than skipping enforcement — a strictly safer degrade than
+				// the cost-metric fresh reads below, since a last-known-good config
+				// is available for free.
+				let liveLimits: LimitConfig = agent.limits ?? {};
+				try {
+					const live = await ctx.missionConfig?.readTeamConfig(missionId);
+					const liveAgent = live?.agents.find((a) => a.id === agentId);
+					if (liveAgent) liveLimits = liveAgent.limits ?? {};
+				} catch (e) {
+					console.error(
+						`[agent-runner] readTeamConfig failed during limit check, falling back to boot-time snapshot { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
+					);
+				}
+				const limitRules = buildRules(liveLimits);
+				if (limitRules.length === 0) return;
+				// Always read fresh from missionStats — never trust a cache for a
+				// value a hard limit is checked against (see agent-stats.ts header).
+				// A transient read failure must not abort the turn (statistics must
+				// never break a mission): fail open by treating lifetime as unknown
+				// for this one check — it is re-read on every subsequent call/tool
+				// result, so a one-off Mongo hiccup self-heals on the next check.
+				let lifetime: MissionStats | undefined;
+				try {
+					lifetime =
+						(await ctx.statsCollector?.readLifetime(missionId, agentId)) ??
+						undefined;
+				} catch (e) {
+					console.error(
+						`[agent-runner] readLifetime failed during limit check { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
+					);
+				}
+				const breaches = evaluateLimits(turn, lifetime, limitRules);
+				for (const b of breaches) {
+					if (b.rule.severity === "soft" && !firedSoftLimits.has(b.rule.id)) {
+						firedSoftLimits.add(b.rule.id);
 						ctx.onLimitAlert?.({
 							agentId,
 							turnNumber: activeTurnNumber,
-							breach: hard,
+							breach: b,
 						});
-						throw new LimitExceededError(hard);
 					}
 				}
-			: undefined;
+				// A hard breach aborts the turn: alert first, then throw so the inner
+				// loop stops before the next LLM call / tool round.
+				const hard = breaches.find((b) => b.rule.severity === "hard");
+				if (hard) {
+					ctx.onLimitAlert?.({
+						agentId,
+						turnNumber: activeTurnNumber,
+						breach: hard,
+					});
+					throw new LimitExceededError(hard);
+				}
+			}
+		: undefined;
 
 	// Feed tool usage to the statistics collector (tool counts, errors, touched
-	// files, sent messages, visited URLs), then re-check limits. Undefined when
-	// neither a collector nor enforcement is wired.
-	const onToolResultHandler =
-		ctx.statsCollector || enforceLimits
-			? async (event: {
-					toolName: string;
-					args: Record<string, unknown>;
-					isError: boolean;
-				}) => {
-					await ctx.statsCollector?.recordToolResult(agentId, event);
-					await enforceLimits?.();
-				}
-			: undefined;
+	// files, sent messages, visited URLs), then re-check limits. Undefined
+	// without a stats collector (enforceLimits is only ever wired alongside one).
+	const onToolResultHandler = ctx.statsCollector
+		? async (event: {
+				toolName: string;
+				args: Record<string, unknown>;
+				isError: boolean;
+			}) => {
+				await ctx.statsCollector?.recordToolResult(agentId, event);
+				await enforceLimits?.();
+			}
+		: undefined;
 
 	// Compose the onLlmCall hook for a turn: audit log + stats (makeOnLlmCall)
 	// followed by a limit re-check. enforceLimits reads activeTurnNumber live so
