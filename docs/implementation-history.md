@@ -782,3 +782,45 @@ under-report by the size of its current in-flight turn. Fixed by calling
 tool description and audit message unconditionally claimed every change needs a resume — stale for
 `limits`/`mission.maxCostUsd` specifically after this ADR; reworded to name the exception. Full
 writeup: ADR-0018's "Follow-up" section.
+
+## Sprint 26b — Objectives resume-time overwrite (Gold Digest V2 incident) + Mongo migration ADR draft
+
+The mission copilot reported "agents were overwriting their objectives" on
+`gold-digest-v2-20260628-1451` and described a fix (rewrite `goals.json`, bake it into `teamFiles`
+via `SaveMissionConfig`, warn both agents via supervisor notes). Asked whether that self-report was
+sufficient to close the loop — it wasn't. Direct investigation (querying `llmCallLog`/
+`conversationMessages` for the actual tool calls, then `flyctl ssh console` into the live mission
+machine for the real `git log`/`git diff` on `objectives/goals.json`) found the copilot's diagnosis
+right on the symptom but wrong on the mechanism: the commit it blamed on `trader/turn-15` came from
+a turn with **zero tool calls** in that agent's own conversation — trader never touched the file.
+The actual culprit: `WorkspaceManager.provision()` (which reruns on every resume, since resume
+deletes and recreates the Fly machine) calls `copyTeamFilesToSharedDir()`, which **unconditionally
+overwrote** `sharedDir/objectives/*` from MongoDB's `teamFiles` snapshot — stale, since nothing
+syncs it after the copilot's initial seed except an occasional manual `SaveMissionConfig` call.
+Real, evolved objectives on the volume got silently rolled back to whatever Mongo happened to have,
+and the git commit landed on whichever agent's turn closed right after the resume — a red herring.
+
+**Interim fix, shipped same day**: `copyTeamFilesToSharedDir` now seeds `objectives/*` only when
+the destination file doesn't already exist on disk — never overwrites an existing one. Scoped
+narrowly to `objectives/`, not all `teamFiles`: everything else (playbooks, reference docs) keeps
+its existing overwrite-on-resume behavior, since that's the correct, documented mechanism for an
+operator pushing an updated reference doc via `SaveMissionConfig`. New unit test file
+(`workspace-manager-objectives.unit.test.ts`, 5 cases, exercises `copyTeamFilesToSharedDir`
+directly against a temp dir — `setfacl` calls inside are best-effort/caught, no pool users needed)
+covers seed-if-missing, never-overwrite-existing (the actual regression), a genuinely new file
+under `objectives/` still getting seeded, and non-objectives `teamFiles` retaining unconditional
+overwrite.
+
+**Not fixed, deliberately deferred**: the underlying two-copy architecture (Fly volume + MongoDB
+`teamFiles` snapshot, no real single source of truth) remains. Asked directly to debate the
+alternative — moving objectives fully into MongoDB with agent-facing tools instead of Bash-script
+skills — and write it up: [ADR-0019](adr/0019-objectives-mongodb-migration.md) (status: Proposed,
+not yet accepted or scheduled) plus [GitHub issue #23](https://github.com/arnadu/magi_v3/issues/23)
+record the full pros/cons debate (single source of truth vs. migration cost vs. losing the
+git-versioned audit trail as-is vs. a second, independently-found gap — the cockpit's
+ObjectivesPanel is completely blank while a mission is suspended, since it proxies through the
+mission's own MonitorServer rather than reading Mongo directly, unlike `readLimits()` post
+ADR-0018) and recommend Sprint 27 ("launch hardening") as a distinct, explicitly-scoped item within
+it — objectives being "the shared source of truth the operator watches" per `SKILL.md` makes this
+a real launch-readiness concern, not a peripheral one, but not urgent enough to interrupt Sprint
+26b given the interim fix already closes the acute risk.
