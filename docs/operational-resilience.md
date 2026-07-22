@@ -13,6 +13,7 @@ mode that should appear in this document before it reaches production.
 
 | Fix | Sprint | Gap closed |
 |-----|--------|------------|
+| Persisted `missionAnomalies` log + `AnomalyRecorder` (`anomaly.ts`) unifying limit breaches, agent crashes/timeouts, LLM errors, permanently-failed jobs/scheduled deliveries, and unclean restarts into one sink that notifies the mission copilot and (hard-severity only) relays to the owning user's control-plane copilot via `copilot-{userId}`, replacing a `COPILOT_MISSION_ID` env var never actually set on execution-plane machines | 26c | Several failure categories had no automated wake-up trigger at all (LLM completion errors were SSE-only, invisible to either copilot); the control-plane copilot's relay path was dead code in production and, had it ever been enabled, would have routed every mission's alerts into one shared "copilot" mailbox regardless of which user owned the mission — a latent cross-user leak risk. See ADR-0020 |
 | `WorkspaceManager`'s `copyTeamFilesToSharedDir` now seeds `sharedDir/objectives/*` only when the file doesn't already exist on disk — never overwrites an existing one | 26b | Every mission resume reruns `provision()` (resume deletes and recreates the machine), which unconditionally overwrote the Fly volume's evolved objectives with whatever stale snapshot happened to be in MongoDB's `teamFiles` — silently reverting real progress. Found live on `gold-digest-v2-20260628-1451`; root-caused via direct `git log` inspection of the mission's own workspace after the mission copilot's self-report misattributed the mechanism to an agent's write. Interim fix only — the underlying two-copy architecture (volume + Mongo snapshot) remains; full removal proposed in ADR-0019, targeted Sprint 26c |
 | `mission-config.ts`'s `MissionConfigRepository` reads `agent.limits`/`mission.maxCostUsd` fresh from `teamConfigYaml` at the same point `enforceLimits`/the mission-cap check already read `missionStats`; `/set-budget`/`/extend-budget` now persist to MongoDB instead of only mutating in-memory `currentCapUsd` | 26b | Per-agent limit edits only took effect on the mission's next resume (`teamConfig` loaded once at daemon boot, never re-read); the mission copilot's `SetMissionSpendCap` tool called `/set-budget`, which never wrote to Mongo at all — a copilot-set cap was invisible to the cockpit and lost on restart. See ADR-0018 |
 | Removed `StatsCollector`'s in-memory lifetime-cost cache entirely; every cost verification (mission-wide spend cap, per-agent `maxLifetimeCostUsd`, cost-attribution) reads `missionStats` fresh from MongoDB at decision time (`StatsCollector.readLifetime()` / `readMissionSnapshot()`); reflection call cost (previously excluded from `missionStats` entirely) now recorded via `recordReflectionCost()` | 26b | The mission-wide spend cap and dashboard total were read from `UsageAccumulator`, an in-memory, session-only counter that resets to $0 on every daemon restart — found live when a mission's Limits panel showed "$7.52 / $60.00" spent against a real persisted total of $60.26. Two earlier fix drafts (better hydration, wider-scoped cache) were rejected in design review for preserving the same cache-can-drift bug class; the final design eliminates the cache instead — LLM-call latency (seconds) dwarfs an indexed Mongo read (low single-digit ms), so there is no real performance case for caching verification-critical data. See `agent-stats.ts`'s header comment for the full rationale |
@@ -84,8 +85,8 @@ The orchestrator marks messages read before calling `runAgent`. A crash in the n
 
 | Failure | Effect | Severity | Current mitigation | Gap |
 |---------|--------|----------|--------------------|-----|
-| Crash (unhandled exception) | All agent runs terminate; PID file left on disk | 🟠 | Next start auto-detects stale PID via `process.kill(pid, 0)`; MongoDB state intact | No auto-restart (see G-1) |
-| SIGKILL / OOM kill | Same; `finally` blocks do not run | 🟠 | Stale PID auto-detected; MongoDB write atomicity protects data | None |
+| Crash (unhandled exception) | All agent runs terminate; PID file left on disk | 🟠 | Next start auto-detects stale PID via `process.kill(pid, 0)`; MongoDB state intact; **an `unclean-restart` (soft) anomaly is recorded and mailed to the mission copilot (ADR-0020)** | No auto-restart (see G-1) |
+| SIGKILL / OOM kill | Same; `finally` blocks do not run | 🟠 | Stale PID auto-detected; MongoDB write atomicity protects data; same `unclean-restart` anomaly as above — a coarse "the process died abnormally" signal, not attribution (can't distinguish this from the row above without polling the Fly Machines API, deliberately out of scope) | None |
 | Graceful SIGTERM | Abort signal fires; orchestrator waits for active agents to finish their current tool call; PID file removed | 🟠 | Full graceful shutdown path | None |
 | Second SIGINT (force-exit) | Hard exit; PID file not removed | 🟠 | Intentional; stale PID auto-detected on next start | None |
 | Port 4000 / 4001 conflict on restart | Monitor / tool server fails to bind; daemon startup fails | 🟠 | PID check prevents two instances of same mission | Race window between hard kill and port release; `lsof -ti tcp:4000 \| xargs kill -9` resolves it |
@@ -101,7 +102,7 @@ The daemon startup checks whether the PID in `daemon.pid` is alive (`process.kil
 
 | Failure | Effect | Severity | Current mitigation | Gap |
 |---------|--------|----------|--------------------|-----|
-| Agent hung indefinitely | Agent occupies `active` map forever; loop freezes | 🟡 | `MAX_AGENT_RUN_SECONDS` (default 4 h) aborts dispatch via AbortSignal; `agent-error` SSE fires | 4-hour window may be long for production monitoring; lower with `MAX_AGENT_RUN_SECONDS` env var |
+| Agent hung indefinitely | Agent occupies `active` map forever; loop freezes | 🟡 | `MAX_AGENT_RUN_SECONDS` (default 4 h) aborts dispatch via AbortSignal; `agent-error` SSE fires; **an `agent-timeout` anomaly is recorded (`missionAnomalies`) and mailed to the mission copilot, relayed to the control-plane copilot as hard-severity (ADR-0020)** | 4-hour window may be long for production monitoring; lower with `MAX_AGENT_RUN_SECONDS` env var |
 | LLM completion call stalls mid-stream (provider hangs, not a rate limit) | Previously: turn stuck at `status:'running'` until the 4 h dispatch backstop fired — reported as "hung" while nothing was happening | 🟡 | `deriveDeadline()` in `loop.ts` gives each individual completion call its own cancelling deadline (default 8 min, `llmCallTimeoutMs`), threaded through nested sub-loops (e.g. Research tool); `lastCallAborted` is checked in `agent-runner.ts`'s `finally` so the turn is correctly marked `aborted`, not silently left `running` | None — closed Sprint 26 |
 | `maxRuns` cap reached | No further dispatches; daemon waits for mail indefinitely | 🟠 | Dashboard shows idle; operator can still send messages | No alert when cap is hit; operator must notice the idle state |
 | `waitForBudget` with dashboard unreachable | Orchestrator blocks forever waiting for budget extension | 🟠 | Every cap check (`onAgentMessage` in `daemon.ts`, `/set-budget`'s un-pause decision in `monitor-server.ts`) reads mission cost fresh from `missionStats` via `StatsCollector.readMissionSnapshot()` — no in-memory cache to go stale across a restart, so the pause/resume decision is always correct even after the daemon restarts mid-pause | None |
@@ -111,18 +112,30 @@ The daemon startup checks whether the PID in `daemon.pid` is alive (`process.kil
 
 ## Layer 5 — Scheduled messages
 
-**This is the highest-severity gap for production equity research missions.**
+The daily brief, weekly report, and event-alert wakeups depend on scheduled-message delivery
+happening at the right time.
 
-The daily brief, weekly report, and event-alert wakeups all depend on `node-cron` delivering scheduled messages at the right time. `node-cron` runs entirely in-memory inside the daemon process.
+**Correction (2026-07-22, ADR-0020): this section previously described an execution-plane,
+in-memory `node-cron` design and a corresponding "G-3: missed cron fires are not replayed" gap.
+That's no longer how this works — scheduling moved to the always-on control plane
+(`packages/control-plane/src/scheduler.ts`) at some point before this correction was written,
+and the doc was never updated. The real design and its real (narrower) gap are below.**
+
+Delivery runs on the **control plane**, not inside any mission's execution-plane daemon: a
+`node-cron` heartbeat ticks every minute, atomically claims any `scheduled_messages` doc with
+`status: "pending"` and `deliverAt <= now`, resumes the mission's machine if it's stopped, and
+inserts the message directly into `mailbox`. It also runs once immediately on control-plane
+startup. Because the control plane is always-on (unlike execution-plane machines, which are
+on-demand), a message that comes due while nothing was polling simply gets picked up by the very
+next minute's tick or the startup catch-up run — there is no window where a fire is silently
+missed the way there would be if this lived in a per-mission, on-demand process.
 
 | Failure | Effect | Severity | Current mitigation | Gap |
 |---------|--------|----------|--------------------|-----|
-| Daemon down when cron fires | Scheduled message is never delivered; that day's mission cycle is silently skipped | 🔴 | None | **G-3: Missed cron fires are not replayed** |
-| Daemon restarts between cron fires | Cron state is reconstructed from `scheduled_messages` collection; next fire scheduled correctly | 🟡 | Daemon reloads schedule from MongoDB on startup | None for future fires; only missed fires are lost |
+| Control plane down when a message comes due | Delivery delayed until the control plane is back up | 🟡 | Startup catch-up tick (`deliver(db)` runs immediately on `startScheduler()`) picks up anything overdue | None — the always-on-process design itself is the mitigation |
+| Mailbox insert or machine-resume fails (transient) | Delivery attempt fails | 🟡 | Retried on the next minute's tick, up to `MAX_DELIVERY_ATTEMPTS = 5` (`deliveryAttempts` counter on the doc, mirrors `MAX_JOB_RECOVERY_ATTEMPTS`'s reasoning) | None — closed as part of ADR-0020 |
+| Delivery keeps failing past the cap (e.g. the mission's machine or `missionId` no longer exists) | Previously: reopened to `"pending"` and retried forever, indefinitely, with no visibility | 🔴 | Marked `status: "failed"` past `MAX_DELIVERY_ATTEMPTS`; a `scheduling-failure` anomaly is recorded (`missionAnomalies`) and mailed to the mission copilot, relayed to the control-plane copilot as hard-severity (ADR-0020) | None — closed Sprint 26c |
 | `cancelSchedule` called concurrently with delivery | Document deleted; message not delivered | 🟡 | Low probability race; `deleteOne` is atomic | None |
-
-**Gap G-3 (moderate): No catch-up delivery for missed cron fires.**  
-On daemon startup, if any `scheduled_messages` entry has a `scheduledFor` timestamp in the past and was never delivered (`deliveredAt` absent), it should be delivered immediately (or within a short grace window). This requires a startup scan of `scheduled_messages` for past-due entries. The fix is ~20 lines in `daemon.ts` and would make the equity research mission resilient to overnight daemon outages.
 
 ---
 
@@ -130,8 +143,8 @@ On daemon startup, if any `scheduled_messages` entry has a `scheduledFor` timest
 
 | Failure | Effect | Severity | Current mitigation | Gap |
 |---------|--------|----------|--------------------|-----|
-| LLM rate limit / provider overload | `agent-error` SSE fires with `transient: true`; banner prompts operator | 🟡 | Anthropic SDK retries 2× internally; `agent-error` SSE banner with hint | No automatic re-dispatch after transient error; agent waits for next wakeup |
-| LLM auth failure / credits exhausted | `agent-error` SSE fires with `transient: false`; Resume button appears | 🟠 | `agent-error` SSE banner with Resume button | No out-of-band alerting (email, Slack) |
+| LLM rate limit / provider overload | `agent-error` SSE fires with `transient: true`; banner prompts operator | 🟡 | Anthropic SDK retries 2× internally; `agent-error` SSE banner with hint; **an `llm-error` (soft) anomaly is recorded and mailed to the mission copilot (ADR-0020)** — previously this signal was SSE-only, invisible to either copilot | No automatic re-dispatch after transient error; agent waits for next wakeup |
+| LLM auth failure / credits exhausted | `agent-error` SSE fires with `transient: false`; Resume button appears | 🟠 | `agent-error` SSE banner with Resume button; **an `llm-error` (hard) anomaly is recorded and relayed to the control-plane copilot (ADR-0020)** | No out-of-band alerting (email, Slack) — still G-5, the copilot now knows, the operator may still not until they check the dashboard |
 | Context window overflow (>200 k tokens) | Session compaction + reflection runs at session boundary | 🟡 | Sprint 9 reflection system; amber context bar in dashboard; **Sprint 21 mid-session pruning stubs ephemeral tool results + old thinking blocks when context exceeds 160k tokens (80% of window)** | If pruning is insufficient (e.g. a single giant tool result), the next LLM call fails; agent can use `AnalyzeMemories` to recover stubbed content |
 | Reflection LLM call fails | Next session starts without updated mental map summary; context grows faster | 🟡 | Non-fatal; session proceeds | Operator sees no indication |
 | Conversation write fails mid-session | Partial session in DB; possible replay gap | 🟠 | Atlas HA makes this unlikely | No retry on write failure |
@@ -162,7 +175,7 @@ On daemon startup, if any `scheduled_messages` entry has a `scheduledFor` timest
 | Failure | Effect | Severity | Current mitigation | Gap |
 |---------|--------|----------|--------------------|-----|
 | Daemon restarts while job running | Job process becomes orphaned; `jobs/running/` never cleaned | 🟠 | Orphaned job bounded by its own timeout; `recoverOrphanedJobs()` (now `job-recovery.ts`) scans `jobs/running/` on daemon startup and requeues stale entries to `jobs/pending/` | None — G-6 closed |
-| Recovered job's own execution crashes the machine (e.g. OOM) | Without a retry cap, the job is recovered → re-run → crashes again → recovered again on every daemon restart, indefinitely — a real production incident | 🔴 | `MAX_JOB_RECOVERY_ATTEMPTS = 2` in `job-recovery.ts`: after 2 recovery attempts the job is moved to `jobs/failed/`, a failure status is written, and the owning agent (or `"user"` if none) is notified via mailbox instead of being silently requeued forever | None — closed Sprint 26 |
+| Recovered job's own execution crashes the machine (e.g. OOM) | Without a retry cap, the job is recovered → re-run → crashes again → recovered again on every daemon restart, indefinitely — a real production incident | 🔴 | `MAX_JOB_RECOVERY_ATTEMPTS = 2` in `job-recovery.ts`: after 2 recovery attempts the job is moved to `jobs/failed/`, a failure status is written, and the owning agent (or `"user"` if none) is notified via mailbox instead of being silently requeued forever; **a `job-failure` (hard) anomaly is also recorded so it's visible mission-wide, not just to whoever the job happened to notify (ADR-0020)** | None — closed Sprint 26 |
 | Job spawns unbounded concurrent subprocesses (e.g. data-factory `refresh.py` fanning out one adapter subprocess per configured data source) | Machine OOMs under peak concurrent subprocess memory, independent of any single job's own timeout | 🔴 | `catalog.cmd_refresh()` bounds adapter fan-out to `DEFAULT_MAX_WORKERS = 5` via `ThreadPoolExecutor`, configurable per mission via `max_parallel_adapters` in `schedule.json` | None — closed Sprint 26. Other background-job scripts that spawn their own subprocess fan-out should apply the same bound; not yet audited repo-wide |
 | Job executor crash | Status written to `jobs/status/` as failed | 🟡 | Agent reads status file and handles | None |
 | `sharedDir` full | Job output writes fail | 🔴 | None | Same as Fly Volume full |
@@ -190,7 +203,7 @@ The pruner also runs once on control-plane startup to catch any entries missed d
 |----|-----|----------------------|----------------|
 | ~~G-1~~ | ~~No auto-restart policy on Fly execution machine~~ | ~~🟠 Mission stall until operator resumes~~ | **Closed Sprint 20** — `restart: { policy: "on-failure", max_retries: 3 }` added to `fly-machines.ts` |
 | G-2 | Inbox messages marked-read before agent completes | 🟠 Inbox text lost (context preserved via mental map) | Moderate — two-phase read/ack in orchestrator |
-| G-3 | Missed cron fires not replayed on daemon restart | 🔴 Silently skips daily brief cycle | Moderate — startup catch-up scan in `daemon.ts` |
+| ~~G-3~~ | ~~Missed cron fires not replayed on daemon restart~~ | ~~🔴 Silently skips daily brief cycle~~ | **Corrected, not a real gap (2026-07-22)** — this described an execution-plane in-memory `node-cron` design that no longer matches the code; delivery is control-plane-owned, always-on, with a startup catch-up tick already in place. The real (narrower) gap it was standing in for — no attempt cap on repeated delivery failure — closed Sprint 26c via `MAX_DELIVERY_ATTEMPTS` in `scheduler.ts` (ADR-0020) |
 | G-4 | No disk monitoring for Fly Volume | 🔴 Volume fills silently; writes fail | Moderate — log disk usage in daemon; alert in dashboard |
 | G-5 | No out-of-band alerting for LLM auth failure | 🟠 Operator must notice dashboard banner | Moderate — POST to a webhook / send email |
 | ~~G-6~~ | ~~Orphaned background jobs not cleaned on restart~~ | ~~🟠 `jobs/running/` accumulates stale entries~~ | **Closed (Sprint 12)** — `recoverOrphanedJobs()` in `daemon.ts` scans on startup |

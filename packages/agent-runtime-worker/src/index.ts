@@ -11,6 +11,13 @@ export {
 	StatsCollector,
 } from "./agent-stats.js";
 export type {
+	AnomalyCategory,
+	AnomalyRecorder,
+	AnomalySeverity,
+	MissionAnomaly,
+} from "./anomaly.js";
+export { createMongoAnomalyRecorder } from "./anomaly.js";
+export type {
 	ConversationRepository,
 	StoredMessage,
 } from "./conversation-repository.js";
@@ -45,6 +52,7 @@ export {
 	updateElement,
 	upsertManagedRegion,
 } from "./mental-map.js";
+export { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 export {
 	anthropicModel,
 	CLAUDE_HAIKU,

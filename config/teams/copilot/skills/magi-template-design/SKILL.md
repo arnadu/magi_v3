@@ -64,6 +64,16 @@ domain. Anything **without** an id is permanent: put high-level structure, headi
 standing instructions in non-id'd elements so the agent cannot change or erase them. Keep
 it scannable; the operator sees it in the dashboard.
 
+**Vs. a skill**: the mental map is for what's specific to *this* agent's own unfolding
+history — current state, commitments, things it has actually observed — not general
+reference material or procedure, even if it feels durable. Reusable "how to do X" content
+belongs in a skill instead (see "Omit" above): skills are re-copied fresh into
+`shared/skills` on every provision (including every resume), so a fix you make to one
+later reaches every mission that uses it automatically, and cost context only when
+actually read. Content seeded into a template's `initialMentalMap` has no such
+propagation — it's frozen at whatever it was when the template was written, and costs its
+full length every turn, forever, for every mission launched from it.
+
 ## teamFiles conventions
 
 | Path | Purpose |

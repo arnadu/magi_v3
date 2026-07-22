@@ -110,6 +110,7 @@ import {
 	createMongoAgentStatsRepository,
 	StatsCollector,
 } from "./agent-stats.js";
+import { createMongoAnomalyRecorder } from "./anomaly.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
 import { missionLifetimeCostUsd } from "./limits.js";
@@ -853,10 +854,44 @@ async function main(): Promise<void> {
 	);
 	const missionConfigRepo = createMongoMissionConfigRepository(db);
 
-	const copilotMissionId = process.env.COPILOT_MISSION_ID;
-	const copilotMailboxRepo = copilotMissionId
-		? createMongoMailboxRepository(db, copilotMissionId)
-		: undefined;
+	// Owning user's control-plane copilot mailbox (copilot-{userId}), for
+	// relaying hard-severity anomalies. Previously gated by a COPILOT_MISSION_ID
+	// env var that was never actually set on execution-plane machines (dead
+	// code) and, even set, would have routed every mission's alerts into one
+	// global "copilot" mailbox shared across all users — a leftover from
+	// before the Sprint 23 multi-user pivot to per-user copilot-{uid}. Reading
+	// the mission's own userId directly (same collection this daemon already
+	// reads for teamFiles) routes correctly per-user with no env var at all.
+	const missionUserId = (
+		await db
+			.collection("missions")
+			.findOne({ missionId }, { projection: { userId: 1 } })
+	)?.userId as string | undefined;
+	if (!missionUserId) {
+		console.warn(
+			`[daemon] Mission ${missionId} has no userId on its mission document — hard anomalies will not be relayed to a control-plane copilot.`,
+		);
+	}
+
+	const missionCopilotAgentIdForAnomalies =
+		missionCopilotEnabled &&
+		teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
+			? MISSION_COPILOT_AGENT_ID
+			: undefined;
+	const anomalyRecorder = createMongoAnomalyRecorder(
+		db,
+		mailboxRepo,
+		missionCopilotAgentIdForAnomalies,
+		missionUserId
+			? {
+					mailboxRepo: createMongoMailboxRepository(
+						db,
+						`copilot-${missionUserId}`,
+					),
+					missionId: `copilot-${missionUserId}`,
+				}
+			: undefined,
+	);
 
 	const modelId =
 		teamConfig.mission.model ?? process.env.MODEL ?? "claude-sonnet-4-6";
@@ -935,6 +970,24 @@ async function main(): Promise<void> {
 				console.warn(
 					`[daemon] Stale PID file (PID ${existingPid} not found) — starting fresh.`,
 				);
+				// A live PID with no matching process means the prior run never
+				// reached graceful shutdown (SIGKILL, OOM kill, machine crash).
+				// This can't identify the cause (that would need polling the Fly
+				// Machines API — deliberately out of scope here), but "the process
+				// died abnormally" is a real, cheap signal worth recording rather
+				// than silently swallowing into a console.warn no one reads.
+				anomalyRecorder
+					.record({
+						missionId,
+						category: "unclean-restart",
+						severity: "soft",
+						message: `Daemon restarted after an unclean shutdown (stale PID ${existingPid} with no matching live process) — the prior run did not exit gracefully.`,
+					})
+					.catch((e: Error) =>
+						console.error(
+							`[daemon] Failed to record unclean-restart anomaly: ${e.message}`,
+						),
+					);
 			}
 		}
 	} catch {
@@ -1035,7 +1088,7 @@ async function main(): Promise<void> {
 	// Moving them back to pending/ allows the next heartbeat to retry them —
 	// unless a job has already caused too many crashes, in which case it is
 	// failed out permanently instead (see recoverOrphanedJobs' doc comment).
-	await recoverOrphanedJobs(sharedDir, missionId, mailboxRepo);
+	await recoverOrphanedJobs(sharedDir, missionId, mailboxRepo, anomalyRecorder);
 	// Scheduled message delivery has moved to the control plane (Sprint 14).
 	// The daemon only runs background job files written to jobs/pending/.
 	const stopJobRunner = startJobRunner(
@@ -1154,7 +1207,7 @@ async function main(): Promise<void> {
 				visionModel,
 				workdir,
 				workspaceManager,
-				copilotMailboxRepo,
+				anomalyRecorder,
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
@@ -1180,51 +1233,34 @@ async function main(): Promise<void> {
 					console.warn(
 						`[daemon] limit ${rule.severity} ${rule.id}: ${agentId} turn ${turnNumber} — ${rule.metric}=${value} > ${rule.threshold} (${rule.label})`,
 					);
-					// Route to the copilot so it can assess and intervene (between turns).
-					copilotMailboxRepo
-						?.post({
-							missionId: "copilot",
-							from: "system",
-							to: ["copilot"],
-							subject: `Limit ${rule.severity}: ${agentId} (${rule.metric})`,
-							body:
-								`Agent "${agentId}" in mission "${missionId}" breached a ${rule.severity} limit on ` +
-								`turn ${turnNumber}: ${rule.metric}=${value} exceeded threshold ${rule.threshold} (${rule.label}).` +
-								(rule.severity === "hard"
-									? " The turn was aborted."
-									: " The turn continued; assess whether intervention is warranted."),
+					const body =
+						`Agent "${agentId}" breached a ${rule.severity} limit on turn ${turnNumber}: ` +
+						`${rule.metric}=${value} exceeded threshold ${rule.threshold} (${rule.label}).` +
+						(rule.severity === "hard"
+							? " The turn was aborted."
+							: " The turn continued; assess whether intervention is warranted.");
+					// Persist + wake this mission's own copilot (and, for hard
+					// breaches, relay to the control-plane copilot) — both handled
+					// internally by anomalyRecorder (ADR-0020).
+					anomalyRecorder
+						.record({
+							missionId,
+							category: "limit-breach",
+							severity: rule.severity,
+							agentId,
+							turnNumber,
+							message: body,
 						})
 						.catch((e: Error) =>
 							console.error(
-								`[daemon] failed to post limit alert to copilot: ${e.message}`,
+								`[daemon] failed to record limit-breach anomaly: ${e.message}`,
 							),
 						);
-					// Additively: also wake this mission's own copilot, which has
-					// direct in-mission access to actually diagnose it (ADR-0016).
-					if (
-						missionCopilotEnabled &&
-						teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
-					) {
-						mailboxRepo
-							.post({
-								missionId,
-								from: "system",
-								to: [MISSION_COPILOT_AGENT_ID],
-								subject: `Limit ${rule.severity}: ${agentId} (${rule.metric})`,
-								body:
-									`Agent "${agentId}" breached a ${rule.severity} limit on turn ${turnNumber}: ` +
-									`${rule.metric}=${value} exceeded threshold ${rule.threshold} (${rule.label}).` +
-									(rule.severity === "hard"
-										? " The turn was aborted."
-										: " The turn continued; assess whether intervention is warranted."),
-							})
-							.catch((e: Error) =>
-								console.error(
-									`[daemon] failed to post limit alert to mission copilot: ${e.message}`,
-								),
-							);
-					}
 				},
+				// Whole-turn crash (runAgent rejected). This is purely the SSE
+				// dashboard signal — orchestrator.ts's own dispatch-error handler
+				// (which has the errMsg first-hand) records the anomaly and relays
+				// it; recording it again here from the same event would double it.
 				onAgentError: (agentId, errorMessage) =>
 					monitor.push("agent-error", {
 						agentId,
@@ -1313,6 +1349,19 @@ async function main(): Promise<void> {
 								errorMessage: errMsg,
 								transient,
 							});
+							anomalyRecorder
+								.record({
+									missionId,
+									category: "llm-error",
+									severity: transient ? "soft" : "hard",
+									agentId,
+									message: `Agent "${agentId}" had an LLM call fail: ${errMsg}`,
+								})
+								.catch((e: Error) =>
+									console.error(
+										`[daemon] failed to record llm-error anomaly: ${e.message}`,
+									),
+								);
 						}
 					}
 				},

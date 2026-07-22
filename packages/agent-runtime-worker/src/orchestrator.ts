@@ -3,12 +3,12 @@ import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
 import { runAgent } from "./agent-runner.js";
 import type { StatsCollector } from "./agent-stats.js";
+import type { AnomalyRecorder } from "./anomaly.js";
 import type { ConversationRepository } from "./conversation-repository.js";
 import type { LimitAlert } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
-import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import type { MagiTool } from "./tools.js";
 import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
@@ -157,10 +157,11 @@ export interface OrchestratorConfig {
 	 */
 	onWorkspaceReady?: (workdirs: Map<string, string>) => void;
 	/**
-	 * When provided, wall-clock timeouts and non-transient agent errors are posted
-	 * as alert messages to this mailbox so the copilot can diagnose and respond.
+	 * When provided, wall-clock timeouts and dispatch-level crashes are recorded
+	 * as anomalies — persisted to `missionAnomalies`, mailed to the mission
+	 * copilot (if present), and relayed to the control-plane copilot (ADR-0020).
 	 */
-	copilotMailboxRepo?: MailboxRepository;
+	anomalyRecorder?: AnomalyRecorder;
 	/**
 	 * Called when runAgent rejects (whole-turn crash, not an LLM error).
 	 * LLM errors are surfaced via onAgentMessage with stopReason === "error".
@@ -211,13 +212,6 @@ export async function runOrchestrationLoop(
 	} = config;
 	const maxRuns = config.maxRuns ?? 50;
 	const missionId = teamConfig.mission.id;
-	// Whether this mission has its own copilot in the roster (ADR-0016) —
-	// additively routes timeout/error/limit alerts to its mailbox alongside
-	// the existing control-plane-copilot routing, since it's the one with
-	// direct in-mission context to actually diagnose them.
-	const missionCopilotPresent = teamConfig.agents.some(
-		(a) => a.id === MISSION_COPILOT_AGENT_ID,
-	);
 
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config must have at least one agent");
@@ -411,40 +405,22 @@ export async function runOrchestrationLoop(
 						`[orchestrator] ${agentId} exceeded ${maxRunMs / 1000}s wall-clock limit — aborting`,
 					);
 					ctrl.abort();
-					config.copilotMailboxRepo
-						?.post({
-							missionId: "copilot",
-							from: "system",
-							to: ["copilot"],
-							subject: `Agent timeout: ${agentId}`,
-							body:
-								`Agent "${agentId}" in mission "${missionId}" exceeded the ` +
-								`${maxRunMs / 1000}s wall-clock limit and was aborted. ` +
-								`Please investigate and consider resuming or restarting the mission.`,
+					config.anomalyRecorder
+						?.record({
+							missionId,
+							category: "agent-timeout",
+							severity: "hard",
+							agentId,
+							message:
+								`Agent "${agentId}" exceeded the ${maxRunMs / 1000}s wall-clock ` +
+								`limit and was aborted. Investigate with ReadAgentSessionDetail ` +
+								`before concluding what happened.`,
 						})
 						.catch((e: Error) =>
 							console.error(
-								`[orchestrator] failed to post copilot alert: ${e.message}`,
+								`[orchestrator] failed to record agent-timeout anomaly: ${e.message}`,
 							),
 						);
-					if (missionCopilotPresent) {
-						mailboxRepo
-							.post({
-								missionId,
-								from: "system",
-								to: [MISSION_COPILOT_AGENT_ID],
-								subject: `Agent timeout: ${agentId}`,
-								body:
-									`Agent "${agentId}" exceeded the ${maxRunMs / 1000}s wall-clock ` +
-									`limit and was aborted. Investigate with ReadAgentSessionDetail ` +
-									`before concluding what happened.`,
-							})
-							.catch((e: Error) =>
-								console.error(
-									`[orchestrator] failed to post timeout alert to mission copilot: ${e.message}`,
-								),
-							);
-					}
 				}
 			}, maxRunMs);
 
@@ -479,36 +455,19 @@ export async function runOrchestrationLoop(
 						const errMsg = (err as Error).message;
 						console.error(`[orchestrator] ${agentId} error: ${errMsg}`);
 						config.onAgentError?.(agentId, errMsg);
-						config.copilotMailboxRepo
-							?.post({
-								missionId: "copilot",
-								from: "system",
-								to: ["copilot"],
-								subject: `Agent error: ${agentId}`,
-								body:
-									`Agent "${agentId}" in mission "${missionId}" encountered an error: ` +
-									`${errMsg}`,
+						config.anomalyRecorder
+							?.record({
+								missionId,
+								category: "agent-crash",
+								severity: "hard",
+								agentId,
+								message: `Agent "${agentId}" encountered an error: ${errMsg}`,
 							})
 							.catch((e: Error) =>
 								console.error(
-									`[orchestrator] failed to post copilot alert: ${e.message}`,
+									`[orchestrator] failed to record agent-crash anomaly: ${e.message}`,
 								),
 							);
-						if (missionCopilotPresent) {
-							mailboxRepo
-								.post({
-									missionId,
-									from: "system",
-									to: [MISSION_COPILOT_AGENT_ID],
-									subject: `Agent error: ${agentId}`,
-									body: `Agent "${agentId}" encountered an error: ${errMsg}`,
-								})
-								.catch((e: Error) =>
-									console.error(
-										`[orchestrator] failed to post error alert to mission copilot: ${e.message}`,
-									),
-								);
-						}
 					}
 				})
 				.finally(() => {

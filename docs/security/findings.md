@@ -40,6 +40,12 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 
 ## Fixed Findings
 
+### Sprint 26c
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-028 | MEDIUM | `packages/agent-runtime-worker/src/daemon.ts`, `packages/agent-runtime-worker/src/orchestrator.ts` | **Every relay from a mission to the control-plane copilot (limit alerts, agent timeouts, dispatch-level crashes) targeted a single global mailbox** — `missionId: "copilot"`, `to: ["copilot"]` — gated by a `COPILOT_MISSION_ID` env var. Confirmed via `fly-machines.ts`'s env-injection block that this var is never actually set on execution-plane machines in production, so the relay was inert (dead code, not a live leak). Had it ever been set, every mission from every user would have posted into that one shared mailbox regardless of which user owned the mission — a cross-user information disclosure (mission names, agent IDs, breach/crash details) under the Sprint 23 multi-user model (`copilot-{uid}`, one copilot per user). Root cause: a holdover from a pre-Sprint-23 single-copilot design, never updated after that migration. Found while designing ADR-0020's anomaly-log wake-up feature, not from an incident. | Removed `COPILOT_MISSION_ID`/`copilotMailboxRepo` entirely. The daemon now reads the mission's own `userId` directly from its Mongo document (same collection already read for `teamFiles`) and routes hard-severity anomaly relays to `copilot-{userId}` — correct per-user scoping with no env var required. Centralized in the new `AnomalyRecorder` (`anomaly.ts`) so there is exactly one relay code path instead of three independent ones. |
+
 ### Sprint 26
 
 | ID | Severity | Location | Description | Fix applied |

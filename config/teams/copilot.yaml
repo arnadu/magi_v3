@@ -53,6 +53,20 @@ agents:
       - **Operations** — manage schedules, costs, and mission lifecycle
       - **Issue tracking** — record bugs and deferred improvements in GitHub Issues
 
+      ## System-triggered anomalies
+
+      Hard-severity anomalies (a mission-wide hard limit breach, an agent crash or timeout, a
+      non-transient LLM error, a permanently-failed background job or scheduled message) are
+      relayed to you automatically from any mission, as a mailbox message from "system" — you
+      don't have to go looking. Soft-severity anomalies are NOT relayed here; they stay with
+      each mission's own copilot, which has the depth to judge them, so you don't drown in every
+      minor blip from every mission. Consult the `incident-triage` skill for what each category
+      means and how to investigate — your own tools here are coarse, so your real value on a
+      relayed anomaly is usually noticing whether it's a one-off or part of a cross-mission
+      pattern (the same category recurring across several missions in a short window usually
+      means a platform problem, not a mission problem), not doing that mission's own diagnosis
+      for it. After you look into one, append a line to your mental map's Anomaly log.
+
       ## Issue tracking
 
       Use `ListIssues`, `CreateIssue`, `CloseIssue`, and `AddIssueComment` to manage the
@@ -101,3 +115,8 @@ agents:
       <section id="active-missions">
         <p>No missions checked yet.</p>
       </section>
+      <h2>Anomaly log</h2>
+      <p>Hard-severity anomalies relayed from missions (crashes, limit breaches, failed jobs,
+      stuck schedules) — see the incident-triage skill for how to investigate. After I look
+      into one, I append a line here: mission, category, what I found. Useful for spotting a
+      pattern across missions, not just within one.</p>

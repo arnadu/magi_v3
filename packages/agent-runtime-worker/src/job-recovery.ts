@@ -12,6 +12,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import type { AnomalyRecorder } from "./anomaly.js";
 import type { MailboxRepository } from "./mailbox.js";
 
 export interface JobSpec {
@@ -68,6 +69,7 @@ export async function recoverOrphanedJobs(
 	sharedDir: string,
 	missionId: string,
 	mailboxRepo: MailboxRepository,
+	anomalyRecorder?: AnomalyRecorder,
 ): Promise<void> {
 	const runningDir = join(sharedDir, "jobs", "running");
 	const pendingDir = join(sharedDir, "jobs", "pending");
@@ -123,23 +125,39 @@ export async function recoverOrphanedJobs(
 					`[daemon:jobs] Failed to fail-out ${file}: ${(e as Error).message}`,
 				);
 			}
+			const failureMessage =
+				`Job "${spec.scriptPath}" (${spec.id}) has crashed the mission process ` +
+				`${attempts - 1} time(s) in a row and will NOT be retried again. ` +
+				`This usually means the job itself is the cause (e.g. it exhausts machine ` +
+				`memory) rather than an unrelated crash. The job spec was moved to ` +
+				`jobs/failed/${file} for inspection. Manual investigation required before ` +
+				`resubmitting it.`;
 			await mailboxRepo
 				.post({
 					missionId,
 					from: "scheduler",
 					to: [spec.notifyAgentId ?? "user"],
 					subject: `Background job permanently failed: ${spec.id}`,
-					body:
-						`Job "${spec.scriptPath}" (${spec.id}) has crashed the mission process ` +
-						`${attempts - 1} time(s) in a row and will NOT be retried again. ` +
-						`This usually means the job itself is the cause (e.g. it exhausts machine ` +
-						`memory) rather than an unrelated crash. The job spec was moved to ` +
-						`jobs/failed/${file} for inspection. Manual investigation required before ` +
-						`resubmitting it.`,
+					body: failureMessage,
 				})
 				.catch((e: Error) =>
 					console.error(
 						`[daemon:jobs] Failed to notify about permanently-failed job ${spec.id}: ${e.message}`,
+					),
+				);
+			// Also record it as a mission-wide anomaly — the notification above
+			// only reaches spec.notifyAgentId (or "user"), which may not be the
+			// mission copilot; the anomaly log makes it visible mission-wide.
+			await anomalyRecorder
+				?.record({
+					missionId,
+					category: "job-failure",
+					severity: "hard",
+					message: failureMessage,
+				})
+				.catch((e: Error) =>
+					console.error(
+						`[daemon:jobs] Failed to record job-failure anomaly for ${spec.id}: ${e.message}`,
 					),
 				);
 			continue;

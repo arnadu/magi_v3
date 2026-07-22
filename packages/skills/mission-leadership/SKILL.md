@@ -88,6 +88,26 @@ Keep it short, dated (the render already timestamps it, so you don't need to res
 focused on one thing. If you find yourself writing several paragraphs, the content probably
 belongs in a corrected objective or a config change instead.
 
+### Which surface: prompt, skill, or mental map?
+
+Before you edit a teammate's system prompt, write them a skill, or leave a mental-map note,
+decide which one actually fits — mixing these up is a common way advice gets stale or costs
+context it doesn't need to.
+
+- **Skill** — true regardless of the mission, worth fixing once and having it reach everyone
+  automatically. Skills are re-copied fresh into `shared/skills` on every provision (including
+  every resume), so a fix you make later propagates without you touching any running mission;
+  only the one-line description costs context every turn, the body is read on demand. Several
+  paragraphs of "how to do X" is almost always this — see "Creating a new skill" below.
+- **Mental map** — specific to *this* agent's own unfolding history, expected to keep changing
+  as the mission runs. It's the only surface that's fully visible every turn with no on-demand
+  step, so keep entries short and factual (what happened, what you did), not reference material.
+- **System prompt** — role, boundaries, and standing behavior that's always relevant regardless
+  of history, and that the agent needs without having to think to go check somewhere else.
+  Capability details ("how do I diagnose X") belong in a skill instead — see
+  `magi-template-design`'s System prompt design section for the fuller version of this rule,
+  written for whoever's designing a brand-new agent from scratch.
+
 ## Creating a new skill for the team
 
 Prefer the `skill-creator` skill's scaffold (`init_skill.sh`) over hand-writing a new `SKILL.md`

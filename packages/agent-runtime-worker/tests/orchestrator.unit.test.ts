@@ -8,6 +8,7 @@
 
 import type { AgentConfig, TeamConfig } from "@magi/agent-config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AnomalyRecorder } from "../src/anomaly.js";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "../src/mission-copilot.js";
 import type { OrchestratorConfig } from "../src/orchestrator.js";
@@ -110,6 +111,13 @@ function makeMockMailbox(initialMail: Record<string, string[]> = {}) {
 	}
 
 	return { repo, addMail };
+}
+
+/** Mock AnomalyRecorder — records() is a plain vi.fn() spy. */
+function makeMockAnomalyRecorder(): AnomalyRecorder & {
+	record: ReturnType<typeof vi.fn>;
+} {
+	return { record: vi.fn(async () => {}) };
 }
 
 /** Minimal workspace manager stub. */
@@ -567,12 +575,13 @@ describe("TC-8: getAdditionalTools", () => {
 // ---------------------------------------------------------------------------
 
 describe("TC-9: mission-copilot alert routing", () => {
-	it("posts a timeout alert to the mission copilot's mailbox when one is in the roster", async () => {
+	it("records an agent-timeout anomaly when a copilot is in the roster", async () => {
 		const tc = makeTeamConfig(["worker", MISSION_COPILOT_AGENT_ID]);
 		const { repo } = makeMockMailbox({
 			worker: ["task"],
 			[MISSION_COPILOT_AGENT_ID]: ["task"],
 		});
+		const anomalyRecorder = makeMockAnomalyRecorder();
 
 		// worker never resolves except on abort — forces the wall-clock timeout.
 		mockRunAgent.mockImplementation(
@@ -594,23 +603,25 @@ describe("TC-9: mission-copilot alert routing", () => {
 		);
 
 		await runOrchestrationLoop(
-			buildConfig(tc, repo, { maxAgentRunSeconds: 0.02 }),
+			buildConfig(tc, repo, { maxAgentRunSeconds: 0.02, anomalyRecorder }),
 		);
 		// The timeout fires on its own setTimeout, independent of dispatch —
 		// give it room to land before asserting.
 		await new Promise<void>((r) => setTimeout(r, 100));
 
-		const copilotPost = repo.post.mock.calls.find(
-			(c) =>
-				(c[0] as { to: string[] }).to.includes(MISSION_COPILOT_AGENT_ID) &&
-				(c[0] as { subject: string }).subject.startsWith("Agent timeout"),
+		expect(anomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({
+				category: "agent-timeout",
+				severity: "hard",
+				agentId: "worker",
+			}),
 		);
-		expect(copilotPost).toBeDefined();
 	});
 
-	it("does not post a mission-copilot timeout alert when no copilot is in the roster", async () => {
+	it("still records the anomaly when no copilot is in the roster (mission copilot notification is anomalyRecorder's own concern)", async () => {
 		const tc = makeTeamConfig(["worker"]);
 		const { repo } = makeMockMailbox({ worker: ["task"] });
+		const anomalyRecorder = makeMockAnomalyRecorder();
 
 		mockRunAgent.mockImplementation(
 			async (
@@ -630,49 +641,51 @@ describe("TC-9: mission-copilot alert routing", () => {
 		);
 
 		await runOrchestrationLoop(
-			buildConfig(tc, repo, { maxAgentRunSeconds: 0.02 }),
+			buildConfig(tc, repo, { maxAgentRunSeconds: 0.02, anomalyRecorder }),
 		);
 		await new Promise<void>((r) => setTimeout(r, 100));
 
-		const copilotPost = repo.post.mock.calls.find((c) =>
-			(c[0] as { subject: string }).subject.startsWith("Agent timeout"),
+		// orchestrator.ts always calls record() — whether the mission copilot
+		// gets notified is anomalyRecorder's own internal decision (it checks
+		// missionCopilotAgentId, which daemon.ts resolves from the roster
+		// before ever constructing the recorder), not orchestrator.ts's.
+		expect(anomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({ category: "agent-timeout" }),
 		);
-		expect(copilotPost).toBeUndefined();
 	});
 
-	it("posts an error alert to the mission copilot's mailbox when one is in the roster", async () => {
-		const tc = makeTeamConfig(["worker", MISSION_COPILOT_AGENT_ID]);
-		const { repo } = makeMockMailbox({
-			worker: ["task"],
-			[MISSION_COPILOT_AGENT_ID]: ["task"],
-		});
-
-		mockRunAgent.mockImplementation(async (agentId: string) => {
-			if (agentId === "worker") throw new Error("boom");
-		});
-
-		await runOrchestrationLoop(buildConfig(tc, repo));
-
-		const copilotPost = repo.post.mock.calls.find(
-			(c) =>
-				(c[0] as { to: string[] }).to.includes(MISSION_COPILOT_AGENT_ID) &&
-				(c[0] as { subject: string }).subject.startsWith("Agent error"),
-		);
-		expect(copilotPost).toBeDefined();
-		expect((copilotPost?.[0] as { body: string }).body).toContain("boom");
-	});
-
-	it("does not post a mission-copilot error alert when no copilot is in the roster", async () => {
+	it("does not throw when no anomalyRecorder is configured at all", async () => {
 		const tc = makeTeamConfig(["worker"]);
 		const { repo } = makeMockMailbox({ worker: ["task"] });
 
 		mockRunAgent.mockRejectedValue(new Error("boom"));
 
-		await runOrchestrationLoop(buildConfig(tc, repo));
+		await expect(
+			runOrchestrationLoop(buildConfig(tc, repo)),
+		).resolves.not.toThrow();
+	});
 
-		const copilotPost = repo.post.mock.calls.find((c) =>
-			(c[0] as { subject: string }).subject.startsWith("Agent error"),
+	it("records an agent-crash anomaly with the error message", async () => {
+		const tc = makeTeamConfig(["worker", MISSION_COPILOT_AGENT_ID]);
+		const { repo } = makeMockMailbox({
+			worker: ["task"],
+			[MISSION_COPILOT_AGENT_ID]: ["task"],
+		});
+		const anomalyRecorder = makeMockAnomalyRecorder();
+
+		mockRunAgent.mockImplementation(async (agentId: string) => {
+			if (agentId === "worker") throw new Error("boom");
+		});
+
+		await runOrchestrationLoop(buildConfig(tc, repo, { anomalyRecorder }));
+
+		expect(anomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({
+				category: "agent-crash",
+				severity: "hard",
+				agentId: "worker",
+				message: expect.stringContaining("boom"),
+			}),
 		);
-		expect(copilotPost).toBeUndefined();
 	});
 });

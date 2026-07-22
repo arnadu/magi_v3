@@ -834,3 +834,43 @@ commented with the change. Objectives being "the shared source of truth the oper
 `SKILL.md` makes finishing this a real completion of the 24–26 arc's own stated goal, not a
 peripheral one — but not urgent enough to interrupt Sprint 26b itself, given the interim fix
 already closes the acute risk.
+
+## Sprint 26c — Copilot wake-up triggers and a persisted anomaly log (ADR-0020)
+
+Asked to audit, from first principles, what already wakes either copilot for operational problems
+(failed scheduling, tool failures, a runaway agent, a doom loop, VM resources exceeded) rather than
+resuming the stale "copilot wake-up attribution" scoping from before. The audit alone surfaced two
+things worth correcting before any design started. First, `onAgentError` looked SSE-only, but
+`orchestrator.ts` turned out to independently post to mailboxes on its own two inline paths (a
+wall-clock timeout, a dispatch-level crash) — real, working delivery that the earlier scoping had
+missed entirely by only grepping `daemon.ts`. Second, all three of the mission-side alert paths
+(`onLimitAlert`, and orchestrator's own timeout/crash posts) targeted one global `"copilot"`
+mailbox, gated by a `COPILOT_MISSION_ID` env var confirmed (via `fly-machines.ts`'s env-injection
+block) to never actually be set on execution-plane machines — dead code in production, and, had it
+ever been live, a cross-user mailbox leak under the Sprint 23 multi-user model. Logged as F-028
+(found-and-fixed, not a live incident).
+
+Design discussion before implementation covered where copilot-facing guidance for the new anomaly
+categories should live, given most relevant skills are disabled for both copilots. Landed on: a
+skill for what's true regardless of mission (category runbooks — new `incident-triage`, shared by
+both copilots), a small mental-map section for what's specific to this mission's own history (an
+`Anomaly log` the copilot itself curates), and nothing duplicated between them. Extended to a
+further, more general point mid-discussion: both copilots are themselves expected to make this same
+"skill vs. mental map vs. system prompt" placement call when authoring *other* agents' prompts,
+skills, and mental maps (`EditAgentMentalMap`, skill creation, template design) — so the decision
+test itself was written into `mission-leadership` (mission copilot) and `magi-template-design`
+(control-plane copilot, which already had half of it via an existing "capability details belong in
+a skill" rule), not just applied once to design this one feature.
+
+Implementation: new `anomaly.ts` (`AnomalyRecorder`, `missionAnomalies` collection) — one call
+persists, notifies the mission's own copilot, and (hard severity only) relays to the owning user's
+`copilot-{userId}` mailbox, resolved by reading the mission doc's real `userId` directly instead of
+the removed env var. Wired into `onLimitAlert`, orchestrator's timeout/crash paths (replacing their
+inline duplicated posts), the one genuinely-SSE-only signal found (LLM `stopReason: "error"` in
+`onAgentMessage`), `job-recovery.ts`'s permanent-failure branch, and a new attempt cap
+(`MAX_DELIVERY_ATTEMPTS = 5`, mirroring `MAX_JOB_RECOVERY_ATTEMPTS`'s reasoning) on the
+control-plane `scheduler.ts`'s delivery retries. That last one also caught a second doc-drift bug:
+`operational-resilience.md`'s "G-3: missed cron fires" gap described an execution-plane in-memory
+`node-cron` design that had already been replaced by the always-on control-plane scheduler at some
+earlier, unrecorded point — corrected in place rather than left to compound further. Full design
+and consequences: [ADR-0020](adr/0020-copilot-wake-up-anomaly-log.md).

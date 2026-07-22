@@ -1,9 +1,21 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 26b — Cost-tracking/limit-config single-source-of-truth rewrite (ADR-0017/0018) + objectives resume-overwrite incident fix: no new trust boundary, but `/set-budget` (TB-2/TB-11) now durably persists to MongoDB instead of only mutating in-memory state — F-025 updated to reflect this; `missions.ts`'s `writeMissionCap` added as a 5th caller of TB-11's direct-monitor-call pattern (previously undocumented, pre-existing since the Limits panel sprint); new TB-7 STRIDE row for the objectives incident (stale MongoDB snapshot overwriting evolved on-volume state on resume — ADR-0019 tracks the full fix) (2026-07-21)
-**Previously:** Sprint 26b — Limits panel: two new mutating routes under existing TB-9 (`PATCH /api/missions/:id/limits/mission`, `PATCH /api/missions/:id/limits/agent/:agentId`) — same `userFilter` scoping as every other `missions.ts` route, no new trust boundary; validated via `LimitsSchema` + `parseTeamConfig` double-validation (2026-07-20)
+**Last updated:** Sprint 26c — Copilot wake-up anomaly log (ADR-0020): no new trust boundary — the
+new `missionAnomalies` collection is written by the daemon under the same missionId-scoped access
+pattern as `agentTurnStats`/`llmCallLog` (TB-8's implementing files), and the control-plane relay
+is a direct MongoDB `mailbox` write from the execution-plane daemon, the same mechanism TB-18
+already covers for the mission copilot's own mailbox, just targeting `copilot-{userId}` instead of
+the mission's own id. What changed is a **security-relevant correction**, not a new boundary:
+removed a `COPILOT_MISSION_ID` env-var-gated relay (TB-18/TB-19 area) that was never actually set
+on execution-plane machines in production (confirmed via `fly-machines.ts`'s env-injection block)
+and, had it ever been set, would have routed every mission's alerts into one global `"copilot"`
+mailbox shared across all users — a cross-user information leak under the Sprint 23 multi-user
+model. Replaced with per-mission routing that reads the mission's own `userId` directly and
+targets `copilot-{userId}`, matching how every other per-user copilot boundary in this document is
+already scoped. See F-028 (found-and-fixed) (2026-07-22)
+**Previously:** Sprint 26b — Cost-tracking/limit-config single-source-of-truth rewrite (ADR-0017/0018) + objectives resume-overwrite incident fix: no new trust boundary, but `/set-budget` (TB-2/TB-11) now durably persists to MongoDB instead of only mutating in-memory state — F-025 updated to reflect this; `missions.ts`'s `writeMissionCap` added as a 5th caller of TB-11's direct-monitor-call pattern (previously undocumented, pre-existing since the Limits panel sprint); new TB-7 STRIDE row for the objectives incident (stale MongoDB snapshot overwriting evolved on-volume state on resume — ADR-0019 tracks the full fix) (2026-07-21)
+**Earlier:** Sprint 26b — Limits panel: two new mutating routes under existing TB-9 (`PATCH /api/missions/:id/limits/mission`, `PATCH /api/missions/:id/limits/agent/:agentId`) — same `userFilter` scoping as every other `missions.ts` route, no new trust boundary; validated via `LimitsSchema` + `parseTeamConfig` double-validation (2026-07-20)
 **Earlier:** Sprint 26 — ADR-0016 mission-copilot architecture: TB-17/18/19 added (mission-copilot tool-executor sudo boundary; mission-copilot → own MonitorServer, amplifies TB-8; execution plane → control-plane GitHub proxy); F-023 (mission-copilot GitHub write has no confirmation gate), F-024 (ListSchedule missing userId scope), F-025 (mission copilot can raise its own spend cap unconfirmed), F-026 (Family D/E tools other than SaveMissionConfig have no resume-delay grace period) opened (2026-07-14)
-**Earlier:** Sprint 26b — `/threat-model --full` audit: TB-15/16 added (copilot tool-executor sudo boundary; copilot ↔ GitHub API); F-021 (copilot GitHub write tools bypass ProposeAction confirmation), F-022 (AnalyzeMemories search has no length cap) opened (2026-07-12)
 **Update cadence:** Update whenever a new trust boundary, external service, or privilege level is added.
 
 ---

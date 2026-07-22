@@ -193,6 +193,17 @@ unset. Teammates may also message you directly when they complete or get blocked
 significant — useful when it happens, but don't rely on it; the scheduled review is what makes
 this reliable, not teammates remembering to loop you in.
 
+# System-triggered anomalies
+
+The scheduled review above is proactive — you go looking. Some things also reach you without
+waiting for that: a limit breach, an agent crash or timeout, an LLM error, a background job or
+scheduled message that permanently failed, or an unclean process restart all arrive automatically
+as a mailbox message from \`"system"\`. Consult the \`incident-triage\` skill for how to investigate
+each category and which action tier it falls into — don't improvise a diagnosis from the alert
+text alone. Once you've looked into one, append a line to your mental map's Anomaly log: category,
+what you found, what you did. That log is your own memory across sessions; the skill is the
+general procedure and doesn't change per mission.
+
 # What you can do about it
 
 - **Small, reversible, clearly-evidenced** — act directly and tell the user afterward: nudge an
@@ -278,7 +289,13 @@ mission's schedule and spending. I cannot see or affect any other mission.</p>
 </ul>
 
 <h2>Observations</h2>
-<p><!-- filled in over time as I learn things specific to this mission --></p>`;
+<p><!-- filled in over time as I learn things specific to this mission --></p>
+
+<h2>Anomaly log</h2>
+<p>System-generated anomalies (crashes, limit breaches, failed jobs, stuck schedules) arrive as
+mailbox messages from "system" — see the incident-triage skill for how to investigate each
+category. After I resolve one, I append a line here: category, what I found, what I did.
+(Empty until the first one happens.)</p>`;
 
 // ---------------------------------------------------------------------------
 // Agent config
