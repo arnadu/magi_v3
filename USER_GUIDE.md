@@ -65,17 +65,22 @@ The control plane loads `.env` automatically via dotenv — the Firebase vars yo
 ```
 [local-provision] Mission files written to: /home/you/.magi/local/my-mission-001/
 [local-provision] Start the daemon in a separate terminal:
-  TEAM_CONFIG=/home/you/.magi/local/my-mission-001/team.yaml \
+  MISSION_ID=my-mission-001 \
   npm run daemon -w packages/agent-runtime-worker
 ```
 
 **Terminal 2 — daemon:**
 ```bash
-TEAM_CONFIG=/home/you/.magi/local/my-mission-001/team.yaml \
+MISSION_ID=my-mission-001 \
 npm run daemon -w packages/agent-runtime-worker
 ```
 
-The dashboard, copilot, and all lifecycle controls (suspend/resume/destroy) work normally. Config files are stored under `~/.magi/local/` by default; override with `LOCAL_MISSIONS_DIR`.
+The daemon reads its structured config (`mission`/`agents`/`missionCopilotLimits`) directly from
+the mission's own MongoDB document via `MISSION_ID` — no YAML file involved for a
+control-plane-launched mission (ADR-0021). Team files (skills, playbooks) are still written to
+disk under `~/.magi/local/<missionId>/team/`; override the base directory with
+`LOCAL_MISSIONS_DIR`. The dashboard, copilot, and all lifecycle controls (suspend/resume/destroy)
+work normally.
 
 ---
 

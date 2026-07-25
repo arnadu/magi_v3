@@ -86,7 +86,13 @@ function findSuspiciousEmptyValues(obj, path = "") {
 }
 
 const { MongoClient } = await import("mongodb");
-const client = new MongoClient(mongoUri);
+// ignoreUndefined: a mission with no missionCopilotLimits configured yields
+// `teamConfig.missionCopilotLimits === undefined` below — without this flag
+// the driver serializes that as a literal stored `null`, which then fails
+// parseTeamConfig's `.optional()` (not `.nullable()`) validation on every
+// subsequent read. See packages/agent-runtime-worker/src/mongo.ts's doc
+// comment for the full incident.
+const client = new MongoClient(mongoUri, { ignoreUndefined: true });
 
 try {
 	await client.connect();
