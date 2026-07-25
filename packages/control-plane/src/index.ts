@@ -34,7 +34,7 @@ import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { createProxyRouter } from "./proxy.js";
 import { startScheduler } from "./scheduler.js";
-import { createTemplatesRouter, seedTemplates } from "./templates.js";
+import { createTemplatesRouter, loadTemplates } from "./templates.js";
 
 const REPO_ROOT = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -75,8 +75,9 @@ async function main(): Promise<void> {
 
 	const { client, db } = await connectMongo(mongoUri);
 
-	// Seed templates from config/teams/ on startup (idempotent).
-	await seedTemplates(db, REPO_ROOT);
+	// Templates are immutable disk files, loaded once into memory at startup
+	// (ADR-0021) — no database involved.
+	loadTemplates(REPO_ROOT);
 
 	const app = express();
 
@@ -152,7 +153,7 @@ async function main(): Promise<void> {
 	app.use(
 		"/api/templates",
 		express.json({ limit: "4mb" }),
-		createTemplatesRouter(db),
+		createTemplatesRouter(),
 	);
 
 	// Copilot chat API + SSE (per-user daemon started lazily on first message).

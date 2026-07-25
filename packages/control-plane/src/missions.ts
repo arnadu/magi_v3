@@ -4,23 +4,24 @@
  * POST   /api/missions              — provision a new mission
  * GET    /api/missions              — list all missions
  * GET    /api/missions/:id          — get one mission
- * GET    /api/missions/:id/config   — get full YAML config + live mental maps
- * PUT    /api/missions/:id/config   — update YAML config + mental maps (suspended only)
+ * GET    /api/missions/:id/config   — get structured config + live mental maps
+ * PUT    /api/missions/:id/config   — update structured config + mental maps (suspended only)
  * POST   /api/missions/:id/suspend  — stop execution machine
- * POST   /api/missions/:id/resume   — start execution machine (injects updated YAML)
+ * POST   /api/missions/:id/resume   — start execution machine
  * DELETE /api/missions/:id          — destroy machine + volume (irreversible)
  */
 
 import { randomUUID } from "node:crypto";
 import {
+	type AgentConfig,
 	type Limits,
 	LimitsSchema,
 	parseTeamConfig,
-	patchAgentLimits,
-	patchMissionCap as patchMissionCapYaml,
+	type TeamConfig,
 } from "@magi/agent-config";
 import {
 	createMongoAgentStatsRepository,
+	createMongoMissionConfigWriter,
 	DEFAULT_SOFT_LIMITS,
 } from "@magi/agent-runtime-worker";
 import type { Request, Router } from "express";
@@ -35,10 +36,9 @@ import {
 	provisionLocal,
 	provisionMission,
 	suspendMission,
-	updateLocalMissionConfig,
 } from "./fly-machines.js";
 import { deriveMonitorToken } from "./monitor-token.js";
-import { getTemplate, patchMissionId } from "./templates.js";
+import { getTemplate } from "./templates.js";
 
 interface MissionDoc {
 	missionId: string;
@@ -46,12 +46,12 @@ interface MissionDoc {
 	userId: string;
 	name: string;
 	teamConfig: string;
-	/** Full YAML stored at provision time; updated on config edit. */
-	teamConfigYaml?: string;
+	/** Structured config (ADR-0021) — the live source of truth. */
+	mission?: TeamConfig["mission"];
+	agents?: AgentConfig[];
+	missionCopilotLimits?: Limits;
 	/** Team files (skills, etc.) stored at provision time; updated on config edit. */
 	teamFiles?: Array<{ path: string; content: string }>;
-	/** Template version used when the mission was launched (audit trail). */
-	templateVersion?: number;
 	machineId?: string;
 	privateIp?: string;
 	volumeId?: string;
@@ -70,11 +70,12 @@ function userFilter(req: Request): Partial<MissionDoc> {
 // ---------------------------------------------------------------------------
 // Limits (cockpit Limits panel) — GET/PATCH read+write current & configured
 // budget/limit state. Every limit (mission-wide cap, per-agent, mission
-// copilot's own) lives inside teamConfigYaml — see yaml-patch.ts. Exported as
-// plain functions, separate from the Express handlers that wrap them, so
-// tests can call them directly against real Mongo (this repo has no
-// supertest-equivalent HTTP-route test pattern — see copilot-tools.integration.test.ts
-// for the precedent this follows).
+// copilot's own) lives in the mission doc's structured `mission`/`agents`/
+// `missionCopilotLimits` fields (ADR-0021). Exported as plain functions,
+// separate from the Express handlers that wrap them, so tests can call them
+// directly against real Mongo (this repo has no supertest-equivalent
+// HTTP-route test pattern — see copilot-tools.integration.test.ts for the
+// precedent this follows).
 // ---------------------------------------------------------------------------
 
 export interface AgentLimitsRow {
@@ -164,16 +165,20 @@ export async function readLimits(
 ): Promise<RouteResult> {
 	const mission = await col.findOne({ missionId, ...filter });
 	if (!mission) return { status: 404, body: { error: "Not found" } };
-	if (!mission.teamConfigYaml) {
+	if (!mission.mission || !mission.agents) {
 		return {
 			status: 404,
 			body: { error: "No config stored for this mission" },
 		};
 	}
 
-	let teamConfig: ReturnType<typeof parseTeamConfig>;
+	let teamConfig: TeamConfig;
 	try {
-		teamConfig = parseTeamConfig(mission.teamConfigYaml);
+		teamConfig = parseTeamConfig({
+			mission: mission.mission,
+			agents: mission.agents,
+			missionCopilotLimits: mission.missionCopilotLimits,
+		});
 	} catch (e) {
 		return {
 			status: 500,
@@ -220,7 +225,7 @@ export async function readLimits(
 
 	// Authored roster + the synthesized mission-copilot row (daemon-injected,
 	// never in agents[] — its limits live in the top-level missionCopilotLimits
-	// field instead, see yaml-patch.ts).
+	// field instead).
 	const roster: Array<{ agentId: string; limits: Partial<Limits> }> = [
 		...teamConfig.agents.map((a) => ({
 			agentId: a.id,
@@ -311,17 +316,20 @@ export async function writeMissionCap(
 	}
 	const mission = await col.findOne({ missionId, ...filter });
 	if (!mission) return { status: 404, body: { error: "Not found" } };
-	if (!mission.teamConfigYaml) {
+	if (!mission.mission || !mission.agents) {
 		return {
 			status: 404,
 			body: { error: "No config stored for this mission" },
 		};
 	}
 
-	let patched: string;
+	let validated: TeamConfig;
 	try {
-		patched = patchMissionCapYaml(mission.teamConfigYaml, maxCostUsd);
-		parseTeamConfig(patched);
+		validated = parseTeamConfig({
+			mission: { ...mission.mission, maxCostUsd },
+			agents: mission.agents,
+			missionCopilotLimits: mission.missionCopilotLimits,
+		});
 	} catch (e) {
 		return {
 			status: 400,
@@ -329,9 +337,14 @@ export async function writeMissionCap(
 		};
 	}
 
-	await col.updateOne(
-		{ missionId },
-		{ $set: { teamConfigYaml: patched, updatedAt: new Date() } },
+	await createMongoMissionConfigWriter(db).write(
+		missionId,
+		{
+			mission: validated.mission,
+			agents: validated.agents,
+			missionCopilotLimits: validated.missionCopilotLimits,
+		},
+		"user",
 	);
 
 	// Best-effort live apply — the persisted YAML write above is the source
@@ -391,27 +404,56 @@ export async function writeAgentLimits(
 	}
 	const mission = await col.findOne({ missionId, ...filter });
 	if (!mission) return { status: 404, body: { error: "Not found" } };
-	if (!mission.teamConfigYaml) {
+	if (!mission.mission || !mission.agents) {
 		return {
 			status: 404,
 			body: { error: "No config stored for this mission" },
 		};
 	}
 
-	let patched: string;
+	// mission-copilot is daemon-injected and never appears in agents[] — its
+	// limits live in the top-level missionCopilotLimits field instead.
+	let nextMissionCopilotLimits = mission.missionCopilotLimits;
+	let nextAgents = mission.agents;
+	if (agentId === "mission-copilot") {
+		nextMissionCopilotLimits = limits ?? undefined;
+	} else {
+		const target = mission.agents.find((a) => a.id === agentId);
+		if (!target) {
+			return {
+				status: 404,
+				body: { error: `Agent "${agentId}" not found in team config` },
+			};
+		}
+		nextAgents = mission.agents.map((a) =>
+			a.id === agentId ? { ...a, limits: limits ?? undefined } : a,
+		);
+	}
+
+	let validated: TeamConfig;
 	try {
-		patched = patchAgentLimits(mission.teamConfigYaml, agentId, limits);
-		parseTeamConfig(patched);
+		validated = parseTeamConfig({
+			mission: mission.mission,
+			agents: nextAgents,
+			missionCopilotLimits: nextMissionCopilotLimits,
+		});
 	} catch (e) {
-		const msg = (e as Error).message;
-		return { status: /not found/i.test(msg) ? 404 : 400, body: { error: msg } };
+		return {
+			status: 400,
+			body: { error: `Invalid team config: ${(e as Error).message}` },
+		};
 	}
 
 	// teamFiles is never read or written here — this route can't reproduce
 	// the earlier SaveMissionConfig teamFiles-wipe bug by construction.
-	await col.updateOne(
-		{ missionId },
-		{ $set: { teamConfigYaml: patched, updatedAt: new Date() } },
+	await createMongoMissionConfigWriter(db).write(
+		missionId,
+		{
+			mission: validated.mission,
+			agents: validated.agents,
+			missionCopilotLimits: validated.missionCopilotLimits,
+		},
+		"user",
 	);
 
 	await postLimitsAudit(
@@ -598,9 +640,9 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
-		// Prefer the live daemon's actual roster over the stored YAML: the
-		// mission copilot (ADR-0016) is injected in-memory only at daemon
-		// startup, never written back to teamConfigYaml, so a static parse
+		// Prefer the live daemon's actual roster over the stored structured
+		// config: the mission copilot (ADR-0016) is injected in-memory only at
+		// daemon startup, never written back to `agents`, so a static read
 		// alone would never include it — the cockpit would never be able to
 		// show or address it, no matter what its id is.
 		if (mission.status === "running" && mission.privateIp) {
@@ -632,13 +674,9 @@ export function createMissionsRouter(db: Db): Router {
 				);
 			}
 		}
-		try {
-			const cfg = parseTeamConfig(mission.teamConfigYaml ?? "");
-			res.json(cfg.agents.map((a) => ({ id: a.id, name: a.name ?? a.id })));
-		} catch {
-			// Malformed/absent YAML — degrade to an empty roster rather than 500.
-			res.json([]);
-		}
+		res.json(
+			(mission.agents ?? []).map((a) => ({ id: a.id, name: a.name ?? a.id })),
+		);
 	});
 
 	// Mark operator messages as read (body: { ids: string[] }).
@@ -853,7 +891,7 @@ export function createMissionsRouter(db: Db): Router {
 		});
 	});
 
-	// Get full config for editing — YAML + live mental maps per agent.
+	// Get full config for editing — structured config + live mental maps per agent.
 	router.get("/:id/config", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
@@ -863,16 +901,14 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
-		if (!mission.teamConfigYaml) {
+		if (!mission.mission || !mission.agents) {
 			res.status(404).json({ error: "No config stored for this mission" });
 			return;
 		}
 
-		// Extract agent IDs from YAML to look up live mental maps.
-		const agentIds = extractAgentIds(mission.teamConfigYaml);
 		const mentalMaps: Record<string, string> = {};
 		const convCol = db.collection("conversationMessages");
-		for (const agentId of agentIds) {
+		for (const agentId of mission.agents.map((a) => a.id)) {
 			const doc = await convCol.findOne(
 				{
 					agentId,
@@ -887,13 +923,15 @@ export function createMissionsRouter(db: Db): Router {
 		}
 
 		res.json({
-			teamConfigYaml: mission.teamConfigYaml,
+			mission: mission.mission,
+			agents: mission.agents,
+			missionCopilotLimits: mission.missionCopilotLimits,
 			teamFiles: mission.teamFiles ?? [],
 			mentalMaps,
 		});
 	});
 
-	// Update config (YAML + mental maps). Mission must be suspended.
+	// Update config (structured + mental maps). Mission must be suspended.
 	router.put("/:id/config", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
@@ -910,17 +948,30 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 
-		const { teamConfigYaml, teamFiles, mentalMaps } = req.body as {
-			teamConfigYaml?: string;
+		const {
+			mission: nextMission,
+			agents,
+			missionCopilotLimits,
+			teamFiles,
+			mentalMaps,
+		} = req.body as {
+			mission?: TeamConfig["mission"];
+			agents?: AgentConfig[];
+			missionCopilotLimits?: Limits;
 			teamFiles?: Array<{ path: string; content: string }>;
 			mentalMaps?: Record<string, string>;
 		};
-		if (typeof teamConfigYaml !== "string") {
-			res.status(400).json({ error: "teamConfigYaml is required" });
+		if (!nextMission || !agents) {
+			res.status(400).json({ error: "mission and agents are required" });
 			return;
 		}
+		let validated: TeamConfig;
 		try {
-			parseTeamConfig(teamConfigYaml);
+			validated = parseTeamConfig({
+				mission: { ...nextMission, id: req.params.id },
+				agents,
+				missionCopilotLimits,
+			});
 		} catch (e) {
 			res
 				.status(400)
@@ -928,15 +979,18 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 
+		await createMongoMissionConfigWriter(db).write(
+			req.params.id,
+			{
+				mission: validated.mission,
+				agents: validated.agents,
+				missionCopilotLimits: validated.missionCopilotLimits,
+			},
+			"user",
+		);
 		await col.updateOne(
 			{ missionId: req.params.id },
-			{
-				$set: {
-					teamConfigYaml,
-					teamFiles: teamFiles ?? [],
-					updatedAt: new Date(),
-				},
-			},
+			{ $set: { teamFiles: teamFiles ?? [] } },
 		);
 
 		// Update live mental maps in conversationMessages if provided.
@@ -1013,13 +1067,17 @@ export function createMissionsRouter(db: Db): Router {
 			missionId,
 			name,
 			teamConfig,
-			teamConfigYaml: inlineYaml,
+			mission: inlineMission,
+			agents: inlineAgents,
+			missionCopilotLimits: inlineMissionCopilotLimits,
 			teamFiles: inlineFiles,
 		} = req.body as {
 			missionId?: string;
 			name?: string;
 			teamConfig?: string;
-			teamConfigYaml?: string;
+			mission?: TeamConfig["mission"];
+			agents?: AgentConfig[];
+			missionCopilotLimits?: Limits;
 			teamFiles?: Array<{ path: string; content: string }>;
 		};
 		if (!missionId || !name || !teamConfig) {
@@ -1029,17 +1087,39 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 
-		// Validate inline YAML before inserting the record so a bad payload
-		// never leaves a stuck "provisioning" document.
-		if (inlineYaml) {
+		// Resolve structured config BEFORE inserting the mission doc so a bad
+		// payload or an unknown template name never leaves a stuck
+		// "provisioning" document — an explicit error here, not a silent
+		// fallback to a generic default (ADR-0021: a deliberate correctness
+		// fix over the previous behavior).
+		let resolvedConfig: TeamConfig;
+		let resolvedFiles: Array<{ path: string; content: string }>;
+
+		if (inlineMission && inlineAgents) {
 			try {
-				parseTeamConfig(inlineYaml);
+				resolvedConfig = parseTeamConfig({
+					mission: { ...inlineMission, id: missionId },
+					agents: inlineAgents,
+					missionCopilotLimits: inlineMissionCopilotLimits,
+				});
 			} catch (e) {
 				res
 					.status(400)
-					.json({ error: `Invalid teamConfigYaml: ${(e as Error).message}` });
+					.json({ error: `Invalid team config: ${(e as Error).message}` });
 				return;
 			}
+			resolvedFiles = inlineFiles ?? [];
+		} else {
+			const template = getTemplate(teamConfig);
+			if (!template) {
+				res.status(404).json({ error: `Unknown template "${teamConfig}"` });
+				return;
+			}
+			resolvedConfig = {
+				...template.config,
+				mission: { ...template.config.mission, id: missionId },
+			};
+			resolvedFiles = template.teamFiles;
 		}
 
 		const existing = await col.findOne({ missionId });
@@ -1048,38 +1128,19 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 
-		// Resolve YAML + teamFiles BEFORE inserting the mission doc so the daemon
-		// can fetch teamFiles from MongoDB at startup instead of reading a large
-		// TEAM_FILES_PAYLOAD env var (which would exceed Fly's machine config limit
-		// for team configs with many skill files).
-		let resolvedYaml: string | undefined;
-		let resolvedFiles: Array<{ path: string; content: string }> = [];
-		let resolvedTemplateVersion: number | undefined;
-
-		if (inlineYaml) {
-			resolvedYaml = patchMissionId(inlineYaml, missionId);
-			resolvedFiles = inlineFiles ?? [];
-		} else {
-			const template = await getTemplate(db, teamConfig);
-			if (template) {
-				resolvedYaml = patchMissionId(template.teamConfigYaml, missionId);
-				resolvedFiles = template.teamFiles ?? [];
-				resolvedTemplateVersion = template.version;
-			} else {
-				console.warn(
-					`[missions] No template found for "${teamConfig}" — falling back to baked-in image path`,
-				);
-			}
-		}
-
+		// Resolve teamFiles BEFORE inserting the mission doc so the daemon can
+		// fetch them from MongoDB at startup instead of reading a large
+		// TEAM_FILES_PAYLOAD env var (which would exceed Fly's machine config
+		// limit for team configs with many skill files).
 		const doc: MissionDoc = {
 			missionId,
 			userId: req.userId,
 			name,
 			teamConfig,
-			teamConfigYaml: resolvedYaml,
+			mission: resolvedConfig.mission,
+			agents: resolvedConfig.agents,
+			missionCopilotLimits: resolvedConfig.missionCopilotLimits,
 			teamFiles: resolvedFiles,
-			templateVersion: resolvedTemplateVersion,
 			status: "provisioning",
 			createdAt: new Date(),
 			updatedAt: new Date(),
@@ -1090,13 +1151,8 @@ export function createMissionsRouter(db: Db): Router {
 			// Cloud: omit teamFiles from the machine env — daemon fetches from MongoDB.
 			// Local: write to disk since the developer's daemon reads from the local path.
 			const handle = isLocalExecution()
-				? provisionLocal(missionId, {
-						teamConfigYaml: resolvedYaml,
-						teamFiles: resolvedFiles,
-					})
-				: await provisionMission(missionId, teamConfig, {
-						teamConfigYaml: resolvedYaml,
-					});
+				? provisionLocal(missionId, { teamFiles: resolvedFiles })
+				: await provisionMission(missionId, {});
 			await col.updateOne(
 				{ missionId },
 				{
@@ -1150,7 +1206,7 @@ export function createMissionsRouter(db: Db): Router {
 		}
 	});
 
-	// Resume — push latest YAML to machine env before starting.
+	// Resume — the daemon reads structured config directly from `missions` at boot (ADR-0021).
 	router.post("/:id/resume", async (req, res) => {
 		const missionId = req.params.id;
 		const mission = await col.findOne({
@@ -1163,14 +1219,9 @@ export function createMissionsRouter(db: Db): Router {
 		}
 		try {
 			if (mission.machineId.startsWith("local-")) {
-				// Re-write config files so the developer can restart the daemon.
-				if (mission.teamConfigYaml) {
-					updateLocalMissionConfig(
-						missionId,
-						mission.teamConfigYaml,
-						mission.teamFiles ?? [],
-					);
-				}
+				// Nothing to re-write — the developer's restarted daemon reads
+				// structured config directly from `missions` at boot (ADR-0021),
+				// same as the Fly path below.
 			} else {
 				// Resume on Fly: delete the stopped machine and provision a fresh one
 				// against the preserved workspace volume. This guarantees the new machine
@@ -1193,9 +1244,8 @@ export function createMissionsRouter(db: Db): Router {
 						`[missions] could not delete machine ${mission.machineId}: ${(e as Error).message} — proceeding to provision anyway`,
 					);
 				}
-				const handle = await provisionMission(missionId, mission.teamConfig, {
+				const handle = await provisionMission(missionId, {
 					existingVolumeId: mission.volumeId,
-					teamConfigYaml: mission.teamConfigYaml,
 					// teamFiles omitted: daemon fetches from missions collection at startup
 				});
 				await col.updateOne(
@@ -1255,15 +1305,6 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	return router;
-}
-
-/** Extract all agent IDs from a team YAML using the `  - id:` sequence item pattern. */
-function extractAgentIds(yaml: string): string[] {
-	const ids: string[] = [];
-	for (const m of yaml.matchAll(/^ {2}- id:\s*(\S+)/gm)) {
-		ids.push(m[1]);
-	}
-	return ids;
 }
 
 function liveStateToStatus(flyState: string): MissionDoc["status"] {

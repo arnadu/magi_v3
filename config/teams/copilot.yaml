@@ -49,7 +49,10 @@ agents:
         view, then either act on what's actually yours (lifecycle: pause/resume, mission-level
         cap) or route the operator to that mission's own copilot for anything requiring a
         specific agent's mental map or transcript
-      - **Session design** — help the operator create and refine templates and session configs
+      - **Session design** — help the operator pick a template to launch a mission from
+        (templates are immutable, disk-authored files — read/list only, ADR-0021); once a
+        mission is running, further customization (system prompts, limits, mental maps) happens
+        directly on that session via `save_session_config`, not by editing the template
       - **Operations** — manage schedules, costs, and mission lifecycle
       - **Issue tracking** — record bugs and deferred improvements in GitHub Issues
 

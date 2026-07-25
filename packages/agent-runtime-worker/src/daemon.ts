@@ -10,14 +10,16 @@
  * Environment variables:
  *   ANTHROPIC_API_KEY  required
  *   MONGODB_URI        required
- *   TEAM_CONFIG        required — path to team config YAML
- *   TEAM_CONFIG_YAML   optional — base64-encoded YAML; if set and TEAM_CONFIG path does not
- *                                 yet exist, written to disk on first boot (volume injection)
- *   TEAM_FILES_PAYLOAD optional — base64-encoded JSON array of {path,content} for all team
- *                                 files (skills, playbook.json, etc.); written to teamDir on
- *                                 first boot alongside TEAM_CONFIG_YAML
+ *   MISSION_ID         one of MISSION_ID/TEAM_CONFIG required — control-plane-provisioned path
+ *                                 (ADR-0021): reads this mission's structured `mission`/`agents`/
+ *                                 `missionCopilotLimits` fields directly from its `missions`
+ *                                 document. No YAML file, no baked-image fallback — a missing or
+ *                                 invalid document is a hard boot failure, not a silent default.
+ *   TEAM_CONFIG        one of MISSION_ID/TEAM_CONFIG required — standalone local/dev path: path
+ *                                 to a hand-authored team config YAML file, no MongoDB `missions`
+ *                                 document needed. Ignored when MISSION_ID is set.
  *   TEAM_SKILLS_PATH   optional — override path to team skills dir (default: derived from
- *                                 TEAM_CONFIG path)
+ *                                 wherever this boot's team files were written — see teamDir)
  *   MODEL              optional — model id (default: claude-sonnet-4-6)
  *   VISION_MODEL       optional — model for image captioning / BrowseWeb (default: claude-haiku-4-5-20251001)
  *   AGENT_WORKDIR      optional — working directory (default: cwd)
@@ -55,7 +57,11 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTeamConfig, type TeamConfig } from "@magi/agent-config";
+import {
+	loadTeamConfig,
+	parseTeamConfig,
+	type TeamConfig,
+} from "@magi/agent-config";
 
 import { config as dotenvConfig } from "dotenv";
 
@@ -718,29 +724,12 @@ async function main(): Promise<void> {
 		// Log setup failure is non-fatal — daemon continues without file logging.
 	}
 
-	// Write TEAM_CONFIG_YAML env var to the TEAM_CONFIG path on every boot.
-	// Always overwrites so that config edits made via the control plane (stored
-	// in MongoDB and pushed back via Fly machine env update on resume) take effect.
-	const teamConfigYamlEnv = process.env.TEAM_CONFIG_YAML;
-	const teamConfigTarget = process.env.TEAM_CONFIG;
-	if (teamConfigYamlEnv && teamConfigTarget) {
-		mkdirSync(dirname(teamConfigTarget), { recursive: true });
-		writeFileSync(
-			teamConfigTarget,
-			Buffer.from(teamConfigYamlEnv, "base64").toString("utf-8"),
-		);
-		process.stdout.write(
-			`[daemon] Wrote team config from env to ${teamConfigTarget}\n`,
-		);
-	}
-
-	// Team files are fetched from MongoDB after connection (see below) — the
-	// previous TEAM_FILES_PAYLOAD env var approach exceeded Fly's machine config
-	// size limit for team configs with many skill files.
-
 	const teamConfigPath = process.env.TEAM_CONFIG;
+	const missionIdEnv = process.env.MISSION_ID;
 	const mongoUri = process.env.MONGODB_URI;
+	const agentWorkdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
+	process.stdout.write(`[daemon] MISSION_ID=${missionIdEnv ?? "(unset)"}\n`);
 	process.stdout.write(`[daemon] TEAM_CONFIG=${teamConfigPath ?? "(unset)"}\n`);
 	process.stdout.write(
 		`[daemon] MONGODB_URI=${mongoUri ? "(set)" : "(unset)"}\n`,
@@ -757,8 +746,13 @@ async function main(): Promise<void> {
 		);
 	}
 
-	if (!teamConfigPath || !mongoUri) {
-		process.stderr.write("Error: TEAM_CONFIG and MONGODB_URI are required\n");
+	if (!mongoUri) {
+		process.stderr.write("Error: MONGODB_URI is required\n");
+		process.exitCode = 1;
+		return;
+	}
+	if (!missionIdEnv && !teamConfigPath) {
+		process.stderr.write("Error: MISSION_ID or TEAM_CONFIG is required\n");
 		process.exitCode = 1;
 		return;
 	}
@@ -768,14 +762,61 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	process.stdout.write("[daemon] Loading team config…\n");
-	const teamConfig = loadTeamConfig(teamConfigPath);
-	// MISSION_ID env var (set by control plane at machine creation) overrides the YAML's
-	// mission.id so each provisioned mission has its own isolated MongoDB namespace.
-	const missionId = process.env.MISSION_ID ?? teamConfig.mission.id;
-	if (process.env.MISSION_ID) {
-		teamConfig.mission.id = missionId;
+	process.stdout.write("[daemon] Connecting to MongoDB…\n");
+	const { client, db } = await connectMongo(mongoUri);
+	process.stdout.write("[daemon] MongoDB connected.\n");
+
+	let teamConfig: TeamConfig;
+	let missionId: string;
+	// Where this boot's team files (skills, playbooks, etc.) live on disk —
+	// resolved per-path below, used for both the MongoDB teamFiles fetch and
+	// the TEAM_SKILLS_PATH default further down.
+	let teamDir: string;
+
+	if (missionIdEnv) {
+		// Control-plane-provisioned path (ADR-0021) — read the mission's own
+		// structured config directly. No YAML file, no baked-image fallback:
+		// a missing or invalid document is a hard failure, not a silent
+		// default a real config bug could hide behind.
+		process.stdout.write("[daemon] Loading team config from MongoDB…\n");
+		missionId = missionIdEnv;
+		const missionDoc = await db.collection("missions").findOne({ missionId });
+		if (!missionDoc?.mission || !missionDoc.agents) {
+			process.stderr.write(
+				`Error: no structured config stored for mission ${missionId}\n`,
+			);
+			process.exitCode = 1;
+			return;
+		}
+		try {
+			teamConfig = parseTeamConfig({
+				mission: missionDoc.mission,
+				agents: missionDoc.agents,
+				missionCopilotLimits: missionDoc.missionCopilotLimits,
+			});
+		} catch (e) {
+			process.stderr.write(
+				`Error: stored config for mission ${missionId} is invalid: ${(e as Error).message}\n`,
+			);
+			process.exitCode = 1;
+			return;
+		}
+		teamDir = join(agentWorkdir, "team");
+	} else {
+		// Standalone local/dev path — boot directly against a hand-authored
+		// YAML file, no MongoDB `missions` document required.
+		process.stdout.write("[daemon] Loading team config from file…\n");
+		// biome-ignore lint/style/noNonNullAssertion: checked above — missionIdEnv is falsy here, so teamConfigPath must be set
+		teamConfig = loadTeamConfig(teamConfigPath!);
+		missionId = teamConfig.mission.id;
+		teamDir = join(
+			// biome-ignore lint/style/noNonNullAssertion: same as above
+			dirname(teamConfigPath!),
+			// biome-ignore lint/style/noNonNullAssertion: same as above
+			basename(teamConfigPath!, ".yaml"),
+		);
 	}
+
 	// Mission copilot injection (ADR-0016) — in-memory only, must run before
 	// ensureAgentUsers so the copilot gets a real per-agent OS user and
 	// workspace ACL through the exact same path every other agent goes
@@ -806,44 +847,32 @@ async function main(): Promise<void> {
 		}
 	}
 
-	process.stdout.write("[daemon] Connecting to MongoDB…\n");
-	const { client, db } = await connectMongo(mongoUri);
-	process.stdout.write("[daemon] MongoDB connected.\n");
-
-	// Fetch team files from the mission document and write to /missions/team/ on
-	// every boot. Stored in MongoDB before machine provisioning so they survive
-	// restarts without requiring a TEAM_FILES_PAYLOAD env var (which would exceed
-	// Fly's machine config size limit for large team configs).
-	const teamFilesConfigTarget = process.env.TEAM_CONFIG;
-	if (teamFilesConfigTarget) {
-		try {
-			const missionDoc = await db
-				.collection("missions")
-				.findOne({ missionId }, { projection: { teamFiles: 1 } });
-			const dbFiles = missionDoc?.teamFiles as
-				| Array<{ path: string; content: string }>
-				| undefined;
-			if (dbFiles && dbFiles.length > 0) {
-				const teamDir = join(
-					dirname(teamFilesConfigTarget),
-					basename(teamFilesConfigTarget, ".yaml"),
-				);
-				let written = 0;
-				for (const { path: relPath, content } of dbFiles) {
-					const dest = join(teamDir, relPath);
-					mkdirSync(dirname(dest), { recursive: true });
-					writeFileSync(dest, content);
-					written++;
-				}
-				process.stdout.write(
-					`[daemon] Wrote ${written} team files from MongoDB to ${teamDir}\n`,
-				);
+	// Fetch team files from the mission document and write to teamDir on every
+	// boot. Stored in MongoDB before machine provisioning so they survive
+	// restarts without requiring a size-limited env var payload.
+	try {
+		const missionDoc = await db
+			.collection("missions")
+			.findOne({ missionId }, { projection: { teamFiles: 1 } });
+		const dbFiles = missionDoc?.teamFiles as
+			| Array<{ path: string; content: string }>
+			| undefined;
+		if (dbFiles && dbFiles.length > 0) {
+			let written = 0;
+			for (const { path: relPath, content } of dbFiles) {
+				const dest = join(teamDir, relPath);
+				mkdirSync(dirname(dest), { recursive: true });
+				writeFileSync(dest, content);
+				written++;
 			}
-		} catch (e) {
-			process.stderr.write(
-				`[daemon] Failed to write team files from MongoDB: ${(e as Error).message}\n`,
+			process.stdout.write(
+				`[daemon] Wrote ${written} team files from MongoDB to ${teamDir}\n`,
 			);
 		}
+	} catch (e) {
+		process.stderr.write(
+			`[daemon] Failed to write team files from MongoDB: ${(e as Error).message}\n`,
+		);
 	}
 
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
@@ -910,12 +939,9 @@ async function main(): Promise<void> {
 		enrichModelPricing(visionModel),
 	]);
 
-	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
-	// TEAM_SKILLS_PATH is set by the control plane when the YAML is injected from MongoDB
-	// so team-specific skills are still read from the baked-in image path.
+	const workdir = agentWorkdir;
 	const teamSkillsPath =
-		process.env.TEAM_SKILLS_PATH ??
-		join(dirname(teamConfigPath), basename(teamConfigPath, ".yaml"), "skills");
+		process.env.TEAM_SKILLS_PATH ?? join(teamDir, "skills");
 	const workspaceManager = new WorkspaceManager({
 		layout: {
 			homeBase: join(workdir, "home"),

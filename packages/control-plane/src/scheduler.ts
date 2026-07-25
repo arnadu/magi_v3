@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { parseTeamConfig } from "@magi/agent-config";
+import type { AgentConfig } from "@magi/agent-config";
 import {
 	createMongoAnomalyRecorder,
 	createMongoMailboxRepository,
@@ -58,7 +58,7 @@ interface MissionDoc {
 	machineId?: string;
 	status: string;
 	userId?: string;
-	teamConfigYaml?: string;
+	agents?: AgentConfig[];
 }
 
 /**
@@ -76,21 +76,11 @@ async function recordSchedulingFailure(
 	message: string,
 ): Promise<void> {
 	const mission = await missionsCol.findOne({ missionId: doc.missionId });
-	let missionCopilotAgentId: string | undefined;
-	try {
-		const teamConfig = mission?.teamConfigYaml
-			? parseTeamConfig(mission.teamConfigYaml)
-			: undefined;
-		missionCopilotAgentId = teamConfig?.agents.some(
-			(a) => a.id === MISSION_COPILOT_AGENT_ID,
-		)
-			? MISSION_COPILOT_AGENT_ID
-			: undefined;
-	} catch (e) {
-		console.error(
-			`[scheduler] Failed to parse teamConfigYaml for ${doc.missionId}: ${(e as Error).message}`,
-		);
-	}
+	const missionCopilotAgentId = mission?.agents?.some(
+		(a) => a.id === MISSION_COPILOT_AGENT_ID,
+	)
+		? MISSION_COPILOT_AGENT_ID
+		: undefined;
 	const anomalyRecorder = createMongoAnomalyRecorder(
 		db,
 		createMongoMailboxRepository(db, doc.missionId),

@@ -1,17 +1,18 @@
 /**
- * ADR-0018 — /set-budget and /extend-budget against a real MonitorServer +
- * MongoDB. No LLM calls.
+ * ADR-0018/ADR-0021 — /set-budget and /extend-budget against a real
+ * MonitorServer + MongoDB. No LLM calls.
  *
- * Before this ADR, these routes only mutated an in-memory `currentCapUsd` —
+ * Before ADR-0018, these routes only mutated an in-memory `currentCapUsd` —
  * a cap set here (e.g. by the mission copilot's SetMissionSpendCap tool,
  * which calls /set-budget directly) was invisible to Mongo-based reads and
  * lost on daemon restart. This proves both routes now persist to the same
- * `missions.teamConfigYaml` field the cockpit's Limits panel reads/writes.
+ * structured `missions.mission.maxCostUsd` field the cockpit's Limits panel
+ * reads/writes.
  */
 
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { parseTeamConfig } from "@magi/agent-config";
+import type { TeamConfig } from "@magi/agent-config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	createMongoAgentStatsRepository,
@@ -38,17 +39,24 @@ function freePort(): Promise<number> {
 	});
 }
 
-const baseYaml = (missionId: string) => `
-mission:
-  id: ${missionId}
-  name: Budget Route Test
-
-agents:
-  - id: analyst
-    supervisor: user
-    systemPrompt: You are a helpful agent.
-    initialMentalMap: <section id="tasks"></section>
-`;
+function baseConfig(missionId: string): {
+	mission: TeamConfig["mission"];
+	agents: TeamConfig["agents"];
+} {
+	return {
+		mission: { id: missionId, name: "Budget Route Test" },
+		agents: [
+			{
+				id: "analyst",
+				name: "analyst",
+				role: "analyst",
+				supervisor: "user",
+				systemPrompt: "You are a helpful agent.",
+				initialMentalMap: '<section id="tasks"></section>',
+			},
+		],
+	};
+}
 
 const missionId = `monitor-budget-${randomUUID()}`;
 let client: Awaited<ReturnType<typeof connectMongo>>["client"];
@@ -60,7 +68,7 @@ beforeAll(async () => {
 	client = conn.client;
 	await conn.db
 		.collection("missions")
-		.insertOne({ missionId, teamConfigYaml: baseYaml(missionId) });
+		.insertOne({ missionId, ...baseConfig(missionId) });
 
 	const mailboxRepo = createMongoMailboxRepository(conn.db, missionId);
 	const agents: AgentInfo[] = [
@@ -93,11 +101,15 @@ afterAll(async () => {
 		?.db("magi-test")
 		.collection("missions")
 		.deleteMany({ missionId });
+	await client
+		?.db("magi-test")
+		.collection("missionConfigRevisions")
+		.deleteMany({ missionId });
 	await client?.close();
 });
 
 describe("POST /set-budget", () => {
-	it("persists the cap to missions.teamConfigYaml, not just in-memory", async () => {
+	it("persists the cap to missions.mission.maxCostUsd, not just in-memory", async () => {
 		const res = await fetch(`${base}/set-budget`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -109,8 +121,10 @@ describe("POST /set-budget", () => {
 			.db("magi-test")
 			.collection("missions")
 			.findOne({ missionId });
-		const config = parseTeamConfig(doc?.teamConfigYaml as string);
-		expect(config.mission.maxCostUsd).toBeCloseTo(42.5, 8);
+		expect((doc?.mission as TeamConfig["mission"]).maxCostUsd).toBeCloseTo(
+			42.5,
+			8,
+		);
 	});
 
 	it("/status reflects the persisted cap (read fresh, not from a local field)", async () => {
@@ -131,8 +145,10 @@ describe("POST /set-budget", () => {
 			.db("magi-test")
 			.collection("missions")
 			.findOne({ missionId });
-		const config = parseTeamConfig(doc?.teamConfigYaml as string);
-		expect(config.mission.maxCostUsd).toBeCloseTo(42.5, 8);
+		expect((doc?.mission as TeamConfig["mission"]).maxCostUsd).toBeCloseTo(
+			42.5,
+			8,
+		);
 	});
 });
 
@@ -151,8 +167,10 @@ describe("POST /extend-budget", () => {
 			.db("magi-test")
 			.collection("missions")
 			.findOne({ missionId });
-		const config = parseTeamConfig(doc?.teamConfigYaml as string);
-		expect(config.mission.maxCostUsd).toBeCloseTo(52.5, 8);
+		expect((doc?.mission as TeamConfig["mission"]).maxCostUsd).toBeCloseTo(
+			52.5,
+			8,
+		);
 	});
 });
 

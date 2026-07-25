@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { parseTeamConfig } from "@magi/agent-config";
+import type { AgentConfig, TeamConfig } from "@magi/agent-config";
 import type { Db, MongoClient } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
@@ -16,23 +16,31 @@ import {
 	writeMissionCap,
 } from "../src/missions.js";
 
-const baseYaml = (extra = "") => `
-mission:
-  id: test-mission
-  name: Test Mission
-${extra}
-agents:
-  - id: analyst
-    supervisor: user
-    systemPrompt: You are a helpful agent.
-    initialMentalMap: <section id="tasks"></section>
-  - id: trader
-    supervisor: user
-    systemPrompt: You are a helpful agent.
-    initialMentalMap: <section id="tasks"></section>
-    limits:
-      maxLlmCallsPerTurn: 10
-`;
+function baseMission(): TeamConfig["mission"] {
+	return { id: "test-mission", name: "Test Mission" };
+}
+
+function baseAgents(): AgentConfig[] {
+	return [
+		{
+			id: "analyst",
+			name: "analyst",
+			role: "analyst",
+			supervisor: "user",
+			systemPrompt: "You are a helpful agent.",
+			initialMentalMap: '<section id="tasks"></section>',
+		},
+		{
+			id: "trader",
+			name: "trader",
+			role: "trader",
+			supervisor: "user",
+			systemPrompt: "You are a helpful agent.",
+			initialMentalMap: '<section id="tasks"></section>',
+			limits: { maxLlmCallsPerTurn: 10 },
+		},
+	];
+}
 
 describe("Limits panel backend", () => {
 	// biome-ignore lint/style/noNonNullAssertion: required env var; vitest.setup.ts validates presence
@@ -53,7 +61,8 @@ describe("Limits panel backend", () => {
 			userId: userA,
 			name: "Test Mission",
 			teamConfig: "",
-			teamConfigYaml: baseYaml(),
+			mission: baseMission(),
+			agents: baseAgents(),
 			status: "running",
 			privateIp: "::1", // unreachable in tests — exercises the best-effort-null path
 			createdAt: now,
@@ -98,6 +107,7 @@ describe("Limits panel backend", () => {
 		await db.collection("missionStats").deleteMany({ missionId });
 		await db.collection("agentTurnStats").deleteMany({ missionId });
 		await db.collection("mailbox").deleteMany({ missionId });
+		await db.collection("missionConfigRevisions").deleteMany({ missionId });
 		await client.close();
 	});
 
@@ -200,7 +210,7 @@ describe("Limits panel backend", () => {
 	});
 
 	describe("writeAgentLimits", () => {
-		it("persists a valid patch, round-trip-parseable, teamFiles untouched", async () => {
+		it("persists a valid patch, logs a revision, teamFiles untouched", async () => {
 			const before = await col().findOne({ missionId });
 			expect(before?.teamFiles).toBeUndefined();
 
@@ -215,11 +225,18 @@ describe("Limits panel backend", () => {
 			expect(result.status).toBe(200);
 
 			const after = await col().findOne({ missionId });
-			const config = parseTeamConfig(after?.teamConfigYaml as string);
-			expect(config.agents.find((a) => a.id === "analyst")?.limits).toEqual({
+			const agents = after?.agents as AgentConfig[];
+			expect(agents.find((a) => a.id === "analyst")?.limits).toEqual({
 				maxLifetimeCostUsd: 40,
 			});
 			expect(after?.teamFiles).toBeUndefined();
+
+			const revisions = await db
+				.collection("missionConfigRevisions")
+				.find({ missionId })
+				.toArray();
+			expect(revisions).toHaveLength(1);
+			expect(revisions[0].by).toBe("user");
 		});
 
 		it("rejects an invalid limits object and writes nothing", async () => {
@@ -234,7 +251,7 @@ describe("Limits panel backend", () => {
 			);
 			expect(result.status).toBe(400);
 			const after = await col().findOne({ missionId });
-			expect(after?.teamConfigYaml).toBe(before?.teamConfigYaml);
+			expect(after?.agents).toEqual(before?.agents);
 		});
 
 		it("targeting mission-copilot persists into missionCopilotLimits, not agents[]", async () => {
@@ -248,9 +265,9 @@ describe("Limits panel backend", () => {
 			);
 			expect(result.status).toBe(200);
 			const after = await col().findOne({ missionId });
-			const config = parseTeamConfig(after?.teamConfigYaml as string);
-			expect(config.missionCopilotLimits).toEqual({ maxLifetimeCostUsd: 15 });
-			expect(config.agents.some((a) => a.id === "mission-copilot")).toBe(false);
+			expect(after?.missionCopilotLimits).toEqual({ maxLifetimeCostUsd: 15 });
+			const agents = after?.agents as AgentConfig[];
+			expect(agents.some((a) => a.id === "mission-copilot")).toBe(false);
 		});
 
 		it("404s on an unknown agentId and writes nothing", async () => {
@@ -265,7 +282,7 @@ describe("Limits panel backend", () => {
 			);
 			expect(result.status).toBe(404);
 			const after = await col().findOne({ missionId });
-			expect(after?.teamConfigYaml).toBe(before?.teamConfigYaml);
+			expect(after?.agents).toEqual(before?.agents);
 		});
 
 		it("posts exactly one mailbox audit message", async () => {
@@ -286,7 +303,7 @@ describe("Limits panel backend", () => {
 	});
 
 	describe("writeMissionCap", () => {
-		it("persists maxCostUsd into teamConfigYaml's mission node", async () => {
+		it("persists maxCostUsd into the mission's structured mission field, logs a revision", async () => {
 			const result = await writeMissionCap(
 				col(),
 				db,
@@ -296,8 +313,13 @@ describe("Limits panel backend", () => {
 			);
 			expect(result.status).toBe(200);
 			const after = await col().findOne({ missionId });
-			const config = parseTeamConfig(after?.teamConfigYaml as string);
-			expect(config.mission.maxCostUsd).toBe(50);
+			expect((after?.mission as TeamConfig["mission"]).maxCostUsd).toBe(50);
+
+			const revisions = await db
+				.collection("missionConfigRevisions")
+				.find({ missionId })
+				.toArray();
+			expect(revisions).toHaveLength(1);
 		});
 
 		it("liveUpdateApplied is false when the monitor is unreachable, but the write still succeeds", async () => {

@@ -1,14 +1,44 @@
 ---
 name: magi-template-design
 description: |
-  How to design a MAGI mission template: YAML structure, system prompt and
-  mental map conventions, teamFiles contents, and the ProposeAction workflow
-  for creating, editing, and launching templates and sessions.
+  How to read MAGI mission templates and help the operator pick one to launch,
+  plus the YAML structure, system prompt and mental map conventions, teamFiles
+  contents, and the ProposeAction workflow for launching and customizing a
+  running session.
 ---
 
 # Mission Template Design
 
-## Template YAML structure
+Templates are **immutable, disk-authored files** (`config/teams/*.yaml`), loaded once at
+control-plane startup (ADR-0021). There is no template create/edit/version/rollback capability
+anywhere in the running system — `list_templates`/`get_template` are read-only. To change a
+template, a developer edits the YAML file on disk and redeploys; that is out of your reach as the
+copilot. Your job is to help the operator **choose** the right template to launch a mission from,
+then help them **customize the running session afterward** via `save_session_config` (below) —
+never to author or version templates yourself.
+
+## Choosing and launching a template
+
+1. Call `list_templates` and, if needed, `get_template` on a candidate to check its mission
+   roster, prompts, and teamFiles against what the operator wants.
+2. If nothing fits well, say so plainly — don't try to force-fit a mismatched template. The
+   operator's options are: launch the closest template and customize it afterward via
+   `save_session_config` (below), or ask a developer to add a new template file to the repo.
+3. Propose `launch_mission: { missionId, name?, templateId }` — operator confirms.
+
+## Editing a live session config
+
+A session must be **suspended** before its config can be edited:
+1. Propose `suspend_mission` — wait for confirmation
+2. Propose `save_session_config` with `{ missionId, teamConfigYaml, teamFiles?, mentalMaps? }`
+3. Operator confirms → config saved; propose `resume_mission` when ready
+
+`mentalMaps` is optional: `{ [agentId]: htmlString }` — updates each agent's persisted
+mental map before the next wakeup.
+
+## Reference: reading a template's YAML structure
+
+Useful when comparing candidate templates or explaining one to the operator:
 
 ```yaml
 mission:
@@ -32,7 +62,7 @@ agents:
       <section id="status"><p>Ready.</p></section>
 ```
 
-## System prompt design
+### System prompt conventions
 
 **Include:**
 1. Role identity — who the agent is and what its mission is
@@ -45,7 +75,7 @@ agents:
 - Behaviours already built into the model (honesty, reasoning, tool use)
 - Capability details already covered by a skill (put those in a skill file instead)
 
-## Mental map design
+### Mental map conventions
 
 The mental map is an HTML document injected into the system prompt every turn.
 It persists across session compaction — it is the agent's durable structured memory.
@@ -74,7 +104,7 @@ actually read. Content seeded into a template's `initialMentalMap` has no such
 propagation — it's frozen at whatever it was when the template was written, and costs its
 full length every turn, forever, for every mission launched from it.
 
-## teamFiles conventions
+### teamFiles conventions
 
 | Path | Purpose |
 |------|---------|
@@ -87,25 +117,26 @@ Never put platform skill *files* (`run-background`, `schedule-task`, `objectives
 teamFiles — the skills themselves are always present regardless. (The objectives **data** files
 below are the one exception: they configure the always-present objectives skill.)
 
-## Objectives, tasks & KPIs (the outcome spine)
+### Objectives, tasks & KPIs (the outcome spine)
 
 Every mission has the **`objectives` platform skill** available automatically. A template opts a
-mission into it by shipping an objectives **data** file as a teamFile — you do not ship the skill.
+mission into it by shipping an objectives **data** file as a teamFile — the skill itself is never
+shipped as a teamFile.
 
-**Do not tell the operator you "added the objectives/task skills" to the template — and do not put
-skill files in teamFiles.** The skill is always present at runtime; what you add to the template is
-the **data** (`objectives/goals.json`, optionally `objectives/tasks.jsonl`). So the operator will
-correctly see only those JSON files in teamFiles, never skill files. Describe it that way:
-"I added the objectives data; the objectives skill itself is always available to every mission."
+**Do not tell the operator you "added the objectives/task skills" — and do not put skill files in
+teamFiles.** The skill is always present at runtime; what a template adds is the **data**
+(`objectives/goals.json`, optionally `objectives/tasks.jsonl`). So the operator will correctly see
+only those JSON files in teamFiles, never skill files. Describe it that way: "this template ships
+objectives data; the objectives skill itself is always available to every mission."
 
-To make a mission outcome-driven:
+What outcome-driven templates ship:
 
-1. **Ship `objectives/goals.json`** (a teamFile) — the objective tree + KPI definitions + budgets.
-   Objectives nest via `parent`; each has an `owner` (the supervisor agent accountable for it).
-   KPIs hang off objectives; each has an `owner` + a `source`:
-   `auto-stat` (computed from stats, e.g. `metricKey: "objectiveCostUsd"`), `task-rollup`
-   (computed from task completion), `agent-reported` (an agent publishes it), `copilot-assessment`
-   (the copilot judges a rubric), or `manual`.
+1. **`objectives/goals.json`** — the objective tree + KPI definitions + budgets. Objectives nest
+   via `parent`; each has an `owner` (the supervisor agent accountable for it). KPIs hang off
+   objectives; each has an `owner` + a `source`: `auto-stat` (computed from stats, e.g.
+   `metricKey: "objectiveCostUsd"`), `task-rollup` (computed from task completion),
+   `agent-reported` (an agent publishes it), `copilot-assessment` (the copilot judges a rubric),
+   or `manual`.
 
    ```json
    {
@@ -125,8 +156,8 @@ To make a mission outcome-driven:
    }
    ```
 
-   **Use these EXACT field names — do not improvise (an invalid `goals.json` fails to load and
-   the cockpit shows an error):**
+   **Exact field names — do not improvise (an invalid `goals.json` fails to load and the cockpit
+   shows an error):**
    - **Objective**: `id`, `title`, `owner` (required); `parent`, `status`, `budgetUsd`, `kpis`
      (optional). Do NOT add a top-level `"mission"` key.
    - **KPI**: `id`, `label`, `owner`, `kind`, `source` (ALL required); `target`, `unit`,
@@ -137,52 +168,19 @@ To make a mission outcome-driven:
      - A rubric-judged KPI an agent reports → `"kind":"qualitative","source":"agent-reported"`,
        plus an optional `"rubric"`. A copilot-judged one → `"source":"copilot-assessment"`.
 
-2. **Optionally ship `objectives/tasks.jsonl`** — one initial task per line, assigned to agents:
+2. **`objectives/tasks.jsonl`** (optional) — one initial task per line, assigned to agents:
    ```
    {"id":"TASK-1","at":"2026-01-01T00:00:00.000Z","by":"user","title":"Pull prices","objective":"OBJ-1.1","assignee":"data-scientist","status":"open"}
    ```
    (Or let a lead agent create tasks at runtime with `task-add`.)
 
-3. **Prompt the agents to use it.** Each agent is shown its owned objectives, owned KPIs, and open
-   tasks in a synced **"Your objectives"** section of its mental map (do not author that section —
-   it is injected). Tell agents to keep it current via the objectives skill scripts:
+3. Each agent is shown its owned objectives, owned KPIs, and open tasks in a synced **"Your
+   objectives"** section of its mental map (injected, not authored). Agents keep it current via
+   the objectives skill scripts:
    - `bash $SHARED_DIR/skills/_platform/objectives/scripts/task-update.sh --id <id> --status <s> --effort <n>`
    - `bash $SHARED_DIR/skills/_platform/objectives/scripts/record-kpi.sh --kpi <id> --value <v>`
    Read `$SHARED_DIR/skills/_platform/objectives/SKILL.md` for the full command reference.
 
 Status values: `open | in-progress | blocked | completed | deferred | cancelled`. The operator
 watches all of this in the Mission Cockpit, and cost is attributed to tasks/objectives
-automatically — so set realistic `budgetUsd` and assign clear owners.
-
-## Creating a new template
-
-1. Draft YAML and any teamFiles content
-2. Propose `save_template` (omit `id` to mint a new one) — operator confirms — template visible immediately
-3. The operator can open it in the config editor, adjust fields, and click "Start session ›"
-
-## Editing an EXISTING template (read this carefully)
-
-`save_template` **replaces** the whole template with a new version — it does not patch. Two rules
-prevent the most common failures:
-
-1. **Always pass the existing `id`.** Get it from `list_templates` and pass that exact `id` in the
-   `save_template` payload. **If you omit (or change) `id`, you create a brand-new template instead
-   of a new version of the one the operator is editing** — the operator's template will appear
-   unchanged. The result message tells you which happened: *"saved as v2"* = you versioned the
-   existing template (correct); *"created as NEW template"* = you forked a copy (wrong — re-do with
-   the right `id`).
-2. **Send the FULL, updated `teamConfigYaml`.** Apply your change to the *current* YAML (fetch it
-   with `get_template` first) and submit the complete file. If you submit a stale or partial YAML,
-   your change is lost even though the save "succeeds."
-
-For a YAML-only edit, omit `teamFiles` — the previous version's teamFiles are preserved.
-
-## Editing a live session config
-
-A session must be **suspended** before its config can be edited:
-1. Propose `suspend_mission` — wait for confirmation
-2. Propose `save_session_config` with `{ missionId, teamConfigYaml, teamFiles?, mentalMaps? }`
-3. Operator confirms → config saved; propose `resume_mission` when ready
-
-`mentalMaps` is optional: `{ [agentId]: htmlString }` — updates each agent's persisted
-mental map before the next wakeup.
+automatically.

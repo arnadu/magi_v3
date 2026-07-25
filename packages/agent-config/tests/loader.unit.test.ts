@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTeamConfig } from "../src/loader.js";
+import { parseTeamConfigYaml } from "../src/loader.js";
 
 /**
  * Reserved "mission-copilot" agent id (ADR-0016) — the daemon injects the
@@ -22,20 +22,20 @@ agents:
     initialMentalMap: <section id="tasks"></section>
 `;
 
-describe("parseTeamConfig — reserved mission-copilot id", () => {
+describe("parseTeamConfigYaml — reserved mission-copilot id", () => {
 	it("rejects an authored agent with id 'mission-copilot'", () => {
-		expect(() => parseTeamConfig(baseYaml("mission-copilot"))).toThrow(
+		expect(() => parseTeamConfigYaml(baseYaml("mission-copilot"))).toThrow(
 			/reserved/i,
 		);
 	});
 
 	it("accepts an authored agent with any other id", () => {
-		const config = parseTeamConfig(baseYaml("lead"));
+		const config = parseTeamConfigYaml(baseYaml("lead"));
 		expect(config.agents[0].id).toBe("lead");
 	});
 
 	it("accepts an authored agent with id 'copilot' (the control-plane copilot's own identity, not reserved by this check)", () => {
-		const config = parseTeamConfig(baseYaml("copilot"));
+		const config = parseTeamConfigYaml(baseYaml("copilot"));
 		expect(config.agents[0].id).toBe("copilot");
 	});
 
@@ -54,13 +54,13 @@ agents:
     systemPrompt: You are a helpful agent.
     initialMentalMap: <section id="tasks"></section>
 `;
-		expect(() => parseTeamConfig(yaml)).toThrow(/reserved/i);
+		expect(() => parseTeamConfigYaml(yaml)).toThrow(/reserved/i);
 	});
 });
 
-describe("parseTeamConfig — mission.timezone", () => {
+describe("parseTeamConfigYaml — mission.timezone", () => {
 	it("accepts a valid IANA timezone", () => {
-		const config = parseTeamConfig(
+		const config = parseTeamConfigYaml(
 			baseYaml("lead").replace(
 				"name: Test Mission",
 				"name: Test Mission\n  timezone: America/New_York",
@@ -70,7 +70,7 @@ describe("parseTeamConfig — mission.timezone", () => {
 	});
 
 	it("is optional — omitting it leaves timezone undefined", () => {
-		const config = parseTeamConfig(baseYaml("lead"));
+		const config = parseTeamConfigYaml(baseYaml("lead"));
 		expect(config.mission.timezone).toBeUndefined();
 	});
 
@@ -79,6 +79,32 @@ describe("parseTeamConfig — mission.timezone", () => {
 			"name: Test Mission",
 			"name: Test Mission\n  timezone: Not/A_Real_Zone",
 		);
-		expect(() => parseTeamConfig(yaml)).toThrow(/valid IANA timezone/i);
+		expect(() => parseTeamConfigYaml(yaml)).toThrow(/valid IANA timezone/i);
+	});
+});
+
+describe("parseTeamConfigYaml — agent name/role defaulting (ADR-0021)", () => {
+	it("defaults name and role to id when both are omitted", () => {
+		const config = parseTeamConfigYaml(baseYaml("lead"));
+		expect(config.agents[0].name).toBe("lead");
+		expect(config.agents[0].role).toBe("lead");
+	});
+
+	it("keeps an explicit name/role when provided", () => {
+		const yaml = `
+mission:
+  id: test-mission
+  name: Test Mission
+agents:
+  - id: lead
+    name: "Lead"
+    role: lead-agent
+    supervisor: user
+    systemPrompt: You are a helpful agent.
+    initialMentalMap: <section id="tasks"></section>
+`;
+		const config = parseTeamConfigYaml(yaml);
+		expect(config.agents[0].name).toBe("Lead");
+		expect(config.agents[0].role).toBe("lead-agent");
 	});
 });

@@ -1,22 +1,26 @@
 /**
- * Copilot agent integration test — template + skill authoring.
+ * Copilot agent integration test — template selection + mission launch.
+ *
+ * ADR-0021 note: templates became immutable, disk-only, read-only (no more
+ * `save_template`/template authoring). This test replaces the old
+ * "copilot drafts a brand-new template from scratch" scenario (no longer
+ * possible — that capability was deliberately cut) with what the copilot
+ * actually does now: read the available templates and propose launching a
+ * mission from the one that best matches the operator's request.
  *
  * Exercises the full copilot workflow:
- *   1. A pre-seeded mailbox message instructs the copilot to draft a
- *      2-agent char-count team template and a 'text-stats' platform skill.
+ *   1. A pre-seeded mailbox message asks the copilot to launch a mission
+ *      from the repo's own "general-assistant" template.
  *   2. The daemon wakes immediately (pre-seeded message), runs a copilot turn
- *      that involves LLM planning, optional Bash tool calls, and ProposeAction.
- *   3. A copilot-action SSE event is pushed with the proposed save_template
- *      payload, including teamFiles.
- *   4. The test asserts the proposed template has the right structure:
- *      two agents (lead + worker), and a text-stats skill in teamFiles.
+ *      that calls ListTemplates/GetTemplate and then ProposeAction.
+ *   3. A copilot-action SSE event is pushed with the proposed launch_mission
+ *      payload.
+ *   4. The test asserts the proposal references the right templateId — it
+ *      does not confirm/execute the action (no machine is provisioned).
  *
  * Requires:
  *   - ANTHROPIC_API_KEY and MONGODB_URI in .env
- *   - config/teams/copilot.yaml to exist (already in the repo)
- *
- * The magi-copilot OS user is not required.  If the copilot tries Bash
- * and sudo fails, the inner loop continues and it drafts from its context.
+ *   - config/teams/general-assistant.yaml to exist (already in the repo)
  */
 
 import { randomUUID } from "node:crypto";
@@ -28,6 +32,7 @@ import { CLAUDE_SONNET } from "../../agent-runtime-worker/src/models.js";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
 import { startCopilotDaemon } from "../src/copilot-daemon.js";
 import { PendingActionsStore } from "../src/copilot-tools.js";
+import { loadTemplates } from "../src/templates.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -35,26 +40,31 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 // Types
 // ---------------------------------------------------------------------------
 
-interface SaveTemplatePayload {
-	id: string;
+interface LaunchMissionPayload {
+	missionId: string;
 	name?: string;
-	teamConfigYaml: string;
-	teamFiles?: Array<{ path: string; content: string }>;
+	templateId: string;
 }
 
 interface CopilotActionEvent {
 	id: string;
 	type: string;
 	label: string;
-	payload: SaveTemplatePayload;
+	payload: LaunchMissionPayload;
 }
 
 // ---------------------------------------------------------------------------
 // Test
 // ---------------------------------------------------------------------------
 
-describe("copilot daemon — template + skill authoring", () => {
-	it("proposes a save_template action with two agents and a text-stats skill", async () => {
+describe("copilot daemon — template selection + mission launch", () => {
+	it("proposes a launch_mission action for the requested template", async () => {
+		// Templates are loaded once at control-plane startup in production
+		// (index.ts); this test runs the copilot daemon standalone, so it must
+		// populate the in-memory template store itself before the copilot's
+		// ListTemplates/GetTemplate tools have anything to read.
+		loadTemplates(REPO_ROOT);
+
 		const missionId = `copilot-test-${randomUUID()}`;
 		// biome-ignore lint/style/noNonNullAssertion: required env var; vitest.setup.ts validates presence
 		const MONGODB_URI = process.env.MONGODB_URI!;
@@ -71,23 +81,13 @@ describe("copilot daemon — template + skill authoring", () => {
 			missionId,
 			from: "user",
 			to: ["copilot"],
-			subject: "Create char-count template",
+			subject: "Launch a general-assistant mission",
 			body: [
-				"Create a new team template for a 2-agent character-counting mission.",
+				"List the available mission templates, then launch a new mission from",
+				'the one with id "general-assistant".',
 				"",
-				"Requirements:",
-				"1. Template id: char-count-test",
-				"2. Two agents:",
-				'   - id: "lead", role: supervisor, delegates the task to the worker',
-				'   - id: "worker", uses Bash with `wc -c` to count characters and reports back',
-				"3. A team skill file at path skills/_team/text-stats/SKILL.md that teaches",
-				"   agents to run `wc -l -w -c <file>` and return the counts as",
-				"   {lines, words, chars}. Include a short Bash example.",
-				"4. Include the skill in teamFiles.",
-				"",
-				"Propose saving the template using ProposeAction.",
-				"Use the standard MAGI team YAML format with mission.id, mission.name,",
-				"and agents list. Each agent needs id, name, role, and a brief systemPrompt.",
+				`Use missionId "${missionId}-launch" for the new mission.`,
+				"Propose the launch using ProposeAction with type launch_mission.",
 			].join("\n"),
 		});
 
@@ -101,7 +101,7 @@ describe("copilot daemon — template + skill authoring", () => {
 		);
 
 		try {
-			// Poll the events array until the copilot proposes the save_template
+			// Poll the events array until the copilot proposes the launch_mission
 			// action or we hit the 90 s deadline.
 			let actionEvent: CopilotActionEvent | undefined;
 			const deadline = Date.now() + 90_000;
@@ -112,7 +112,8 @@ describe("copilot daemon — template + skill authoring", () => {
 					.map((e) => e.data as CopilotActionEvent)
 					.find(
 						(d) =>
-							d.type === "save_template" && d.payload?.id === "char-count-test",
+							d.type === "launch_mission" &&
+							d.payload?.templateId === "general-assistant",
 					);
 				if (!actionEvent) {
 					await new Promise<void>((res) => setTimeout(res, 2_000));
@@ -134,7 +135,7 @@ describe("copilot daemon — template + skill authoring", () => {
 						return `[${m.role}] ${text}`;
 					});
 				console.error(
-					"[test] No save_template event. Loop messages:\n",
+					"[test] No launch_mission event. Loop messages:\n",
 					loopMsgs.join("\n---\n"),
 				);
 				const allEvents = events.map((e) => e.type);
@@ -143,35 +144,12 @@ describe("copilot daemon — template + skill authoring", () => {
 
 			expect(
 				actionEvent,
-				"expected a save_template ProposeAction for char-count-test",
+				"expected a launch_mission ProposeAction for templateId general-assistant",
 			).toBeDefined();
 
 			const payload = actionEvent?.payload;
-
-			// teamConfigYaml must define at least two agents.
-			const agentEntries = (payload.teamConfigYaml.match(/^\s*- id:/gm) ?? [])
-				.length;
-			expect(
-				agentEntries,
-				"teamConfigYaml must define 2 agents",
-			).toBeGreaterThanOrEqual(2);
-
-			// teamFiles must include the text-stats skill.
-			expect(
-				payload.teamFiles,
-				"teamFiles must be present and non-empty",
-			).toBeDefined();
-
-			const skillFile = (payload.teamFiles ?? []).find((f) =>
-				f.path.endsWith("SKILL.md"),
-			);
-			expect(
-				skillFile,
-				"teamFiles must contain a SKILL.md entry",
-			).toBeDefined();
-
-			// The skill must mention wc (the core tool it is supposed to teach).
-			expect(skillFile?.content, "skill content must mention wc").toMatch(/wc/);
+			expect(payload?.missionId).toBeTruthy();
+			expect(payload?.templateId).toBe("general-assistant");
 		} finally {
 			daemon.stop();
 

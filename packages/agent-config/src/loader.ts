@@ -26,11 +26,14 @@ export const LimitsSchema = z
 	})
 	.strict();
 
-const AgentSchema = z.object({
+const AgentInputSchema = z.object({
 	id: z.string().trim().min(1),
-	/** Display name — falls back to id where omitted (dashboard, step-mode prompts). */
+	/** Display name — optional on input, defaulted to id below (ADR-0021: the
+	 * disk-YAML authoring format may omit it; every downstream consumer — the
+	 * in-memory template cache, every `missions` document, every tool payload —
+	 * always sees an explicit value, resolved exactly once, here). */
 	name: z.string().trim().optional(),
-	/** Free-text role label — falls back to id where omitted (MonitorServer's AgentInfo). */
+	/** Free-text role label — same optional-on-input, defaulted-on-output rule as `name`. */
 	role: z.string().trim().optional(),
 	supervisor: z.string().trim().min(1),
 	systemPrompt: z.string().trim().min(1),
@@ -66,7 +69,20 @@ const AgentSchema = z.object({
 // with typed array fields like disabledTools — see git history if this
 // needs revisiting.
 
-const TeamConfigSchema = z.object({
+/**
+ * `name`/`role` become required in the *output* type via `.transform()` —
+ * `z.infer` on a transformed schema reflects the transform's return shape, not
+ * the input shape. This replaces the scattered `a.name ?? a.id`-style fallback
+ * that used to live independently in daemon.ts/orchestrator.ts/missions.ts with
+ * one place the default is decided (ADR-0021, "Required-field rule").
+ */
+export const AgentSchema = AgentInputSchema.transform((a) => ({
+	...a,
+	name: a.name ?? a.id,
+	role: a.role ?? a.id,
+}));
+
+export const TeamConfigSchema = z.object({
 	mission: z.object({
 		id: z.string().trim().min(1),
 		name: z.string().trim().min(1),
@@ -164,19 +180,16 @@ function expandEnvInObject(obj: unknown): unknown {
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a team config YAML string into a validated TeamConfig.
- * Throws with a descriptive message on validation failure.
- * Environment variables (${VAR}) in string fields are expanded before validation.
+ * Parse a plain object (already-structured — e.g. a MongoDB document's
+ * `mission`/`agents`/`missionCopilotLimits` fields assembled into one object,
+ * or an inline JSON payload from a tool call) into a validated TeamConfig.
+ * Throws with a descriptive message on validation failure. This is the core
+ * validator (ADR-0021, "Parsing") — env-var expansion, Zod validation, and the
+ * reserved-id check all happen here, on a plain object, no YAML involved.
+ * Every caller except `parseTeamConfigYaml` below should call this directly.
  */
-export function parseTeamConfig(yamlContent: string): TeamConfig {
-	let raw: unknown;
-	try {
-		raw = parse(yamlContent);
-	} catch (e) {
-		throw new Error(`Team config YAML parse error: ${(e as Error).message}`);
-	}
-
-	raw = expandEnvInObject(raw);
+export function parseTeamConfig(obj: unknown): TeamConfig {
+	const raw = expandEnvInObject(obj);
 
 	let parsed: TeamConfig;
 	try {
@@ -211,9 +224,26 @@ export function parseTeamConfig(yamlContent: string): TeamConfig {
 }
 
 /**
+ * Parse a team config YAML string into a validated TeamConfig. A thin wrapper
+ * around `parseTeamConfig`, used in exactly two places in the whole system
+ * (ADR-0021): the in-memory template loader (control-plane startup) and
+ * `loadTeamConfig` below (local CLI/test-harness file loading). Never called
+ * against anything stored in MongoDB — nothing there is YAML text anymore.
+ */
+export function parseTeamConfigYaml(yamlContent: string): TeamConfig {
+	let raw: unknown;
+	try {
+		raw = parse(yamlContent);
+	} catch (e) {
+		throw new Error(`Team config YAML parse error: ${(e as Error).message}`);
+	}
+	return parseTeamConfig(raw);
+}
+
+/**
  * Load and parse a team config from a YAML file path.
  */
 export function loadTeamConfig(filePath: string): TeamConfig {
 	const content = readFileSync(filePath, "utf-8");
-	return parseTeamConfig(content);
+	return parseTeamConfigYaml(content);
 }

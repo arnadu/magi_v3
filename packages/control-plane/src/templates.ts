@@ -1,40 +1,43 @@
 /**
- * Mission templates — versioned, MongoDB-backed collection seeded from config/teams/ on disk.
+ * Mission templates — immutable, disk-only (ADR-0021).
  *
- * Each save creates a new version document. "Latest" is always the highest version number.
- * Missions record which version they launched from for a permanent audit trail.
- *
- * Schema: { _id: ObjectId, templateId, version, name, teamConfigYaml, teamFiles, createdAt, createdBy }
- * Unique index: { templateId, version }
- *
- * Configs under config/teams/test/ are excluded (dev/CI only).
+ * A template is a named, hand-authored starting point for a mission:
+ * `config/teams/{id}.yaml`. Templates are read-only at runtime and never
+ * stored in a database. Every `config/teams/*.yaml` file (excluding
+ * `copilot.yaml` and anything under `test/`) is parsed exactly once, at
+ * control-plane startup, into an in-memory map. Changing a template means
+ * editing the file and redeploying — there is no template edit, version, or
+ * rollback capability anywhere in the running system (cut deliberately; see
+ * ADR-0021's "Templates" section for the full rationale).
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
-import { parseTeamConfig } from "@magi/agent-config";
+import { parseTeamConfigYaml, type TeamConfig } from "@magi/agent-config";
 import { Router } from "express";
-import type { Db, ObjectId } from "mongodb";
 
 export interface TeamFile {
 	path: string; // relative to team dir, e.g. "skills/dpo-forms/SKILL.md"
 	content: string; // UTF-8 text
 }
 
-export interface MissionTemplate {
-	_id: ObjectId;
-	templateId: string; // e.g. "dpo-team"
-	version: number; // 1, 2, 3… monotonically increasing per templateId
-	name: string; // display name
-	teamConfigYaml: string;
+export interface Template {
+	id: string; // e.g. "dpo-team" — the filename stem
+	name: string;
+	config: TeamConfig;
 	teamFiles: TeamFile[];
-	createdAt: Date;
-	createdBy: string; // userId, or "seed" for disk-seeded versions
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers
+// In-memory store — populated once at startup by loadTemplates(), read by
+// getTemplate()/listTemplates(). A module-level singleton is deliberate here:
+// templates are process-lifetime-immutable, single control-plane instance,
+// and threading a store object through every call site (missions.ts's mission
+// creation, the router below, the copilot's ListTemplates/GetTemplate tools)
+// would add indirection with no corresponding benefit at this scale.
 // ---------------------------------------------------------------------------
+
+const templates = new Map<string, Template>();
 
 /**
  * Recursively collect all files under a directory as {path, content} pairs.
@@ -67,35 +70,14 @@ function collectFiles(dir: string, rootDir: string): TeamFile[] {
 	return results;
 }
 
-/** Return the next version number for a templateId (1 if no versions exist). */
-export async function getNextTemplateVersion(
-	db: Db,
-	templateId: string,
-): Promise<number> {
-	const latest = await db
-		.collection<MissionTemplate>("templates")
-		.findOne(
-			{ templateId },
-			{ sort: { version: -1 }, projection: { version: 1 } },
-		);
-	return (latest?.version ?? 0) + 1;
-}
-
-// ---------------------------------------------------------------------------
-// Seed
-// ---------------------------------------------------------------------------
-
 /**
- * Read all *.yaml files from config/teams/ (excluding test/) and insert a v1
- * document for each that has no versions yet. Existing operator-edited templates
- * are never touched — seeding only initialises missing ones.
- * Called once at control plane startup.
+ * Parse every config/teams/*.yaml file (excluding copilot.yaml and test/)
+ * into the in-memory template store. Called once at control-plane startup.
+ * A file that fails to parse is logged and skipped — one bad template must
+ * not prevent the control plane from starting.
  */
-export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
-	const col = db.collection<MissionTemplate>("templates");
-	// Ensure the compound unique index exists.
-	await col.createIndex({ templateId: 1, version: 1 }, { unique: true });
-
+export function loadTemplates(repoRoot: string): void {
+	templates.clear();
 	const teamsDir = join(repoRoot, "config", "teams");
 	let files: string[];
 	try {
@@ -111,7 +93,6 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 
 	for (const file of files) {
 		const templateId = basename(file, ".yaml");
-		// Skip test configs.
 		if (templateId.startsWith("test/") || file.includes("/test/")) continue;
 
 		let yaml: string;
@@ -124,180 +105,68 @@ export async function seedTemplates(db: Db, repoRoot: string): Promise<void> {
 			continue;
 		}
 
-		const existing = await col.findOne({ templateId });
-		if (existing) continue; // operator has versions already — never overwrite
+		let config: TeamConfig;
+		try {
+			config = parseTeamConfigYaml(yaml);
+		} catch (e) {
+			console.warn(
+				`[templates] Skipping invalid template ${templateId}: ${(e as Error).message}`,
+			);
+			continue;
+		}
 
 		const teamDir = join(teamsDir, templateId);
 		const teamFiles = collectFiles(teamDir, teamDir);
 
-		const nameMatch = yaml.match(/^\s*name:\s*["']?([^"'\n]+)["']?/m);
-		const name = nameMatch ? nameMatch[1].trim() : templateId;
-
-		await col.insertOne({
-			templateId,
-			version: 1,
-			name,
-			teamConfigYaml: yaml,
+		templates.set(templateId, {
+			id: templateId,
+			name: config.mission.name,
+			config,
 			teamFiles,
-			createdAt: new Date(),
-			createdBy: "seed",
-		} as unknown as MissionTemplate);
+		});
 		console.log(
-			`[templates] Seeded template: ${templateId} ("${name}") v1 with ${teamFiles.length} files`,
+			`[templates] Loaded template: ${templateId} ("${config.mission.name}") with ${teamFiles.length} files`,
 		);
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Lookup (used by missions.ts at provision time)
-// ---------------------------------------------------------------------------
+/** Returns a template by id, or null if none exists. */
+export function getTemplate(templateId: string): Template | null {
+	return templates.get(templateId) ?? null;
+}
 
-/**
- * Returns the latest version of a template, or null if none exists.
- */
-export async function getTemplate(
-	db: Db,
-	templateId: string,
-): Promise<MissionTemplate | null> {
-	return db
-		.collection<MissionTemplate>("templates")
-		.findOne({ templateId }, { sort: { version: -1 } });
+/** Every loaded template, `{id, name}` only — for listing. */
+export function listTemplates(): Array<{ id: string; name: string }> {
+	return [...templates.values()]
+		.map((t) => ({ id: t.id, name: t.name }))
+		.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 // ---------------------------------------------------------------------------
-// Router
+// Router — read-only: GET / (list), GET /:id (fetch). No create/update/version
+// routes — templates are immutable once loaded (see module doc comment).
 // ---------------------------------------------------------------------------
 
-export function createTemplatesRouter(db: Db): Router {
+export function createTemplatesRouter(): Router {
 	const router = Router();
-	const col = db.collection<MissionTemplate>("templates");
 
-	/** List all templates — one row per templateId at the latest version. */
-	router.get("/", async (_req, res) => {
-		const latest = await col
-			.aggregate<{ _id: string; name: string; version: number }>([
-				{ $sort: { version: -1 } },
-				{
-					$group: {
-						_id: "$templateId",
-						name: { $first: "$name" },
-						version: { $first: "$version" },
-					},
-				},
-				{ $sort: { _id: 1 } },
-			])
-			.toArray();
-		res.json(
-			latest.map((t) => ({ id: t._id, name: t.name, version: t.version })),
-		);
+	router.get("/", (_req, res) => {
+		res.json(listTemplates());
 	});
 
-	/** Get the latest version of a template. */
-	router.get("/:id", async (req, res) => {
-		const template = await getTemplate(db, req.params.id);
+	router.get("/:id", (req, res) => {
+		const template = getTemplate(req.params.id);
 		if (!template) {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
 		res.json({
-			id: template.templateId,
-			version: template.version,
+			id: template.id,
 			name: template.name,
-			teamConfigYaml: template.teamConfigYaml,
+			config: template.config,
 			teamFiles: template.teamFiles,
 		});
 	});
 
-	/** Create a template (v1). Fails if any version already exists for this templateId. */
-	router.post("/", async (req, res) => {
-		const { id, name, teamConfigYaml, teamFiles } = req.body as {
-			id?: string;
-			name?: string;
-			teamConfigYaml?: string;
-			teamFiles?: Array<{ path: string; content: string }>;
-		};
-		if (!id || !name || typeof teamConfigYaml !== "string") {
-			res
-				.status(400)
-				.json({ error: "id, name, and teamConfigYaml are required" });
-			return;
-		}
-		try {
-			parseTeamConfig(teamConfigYaml);
-		} catch (e) {
-			res
-				.status(400)
-				.json({ error: `Invalid team config: ${(e as Error).message}` });
-			return;
-		}
-		const existing = await col.findOne({ templateId: id });
-		if (existing) {
-			res.status(409).json({ error: "Template already exists" });
-			return;
-		}
-		await col.insertOne({
-			templateId: id,
-			version: 1,
-			name,
-			teamConfigYaml,
-			teamFiles: teamFiles ?? [],
-			createdAt: new Date(),
-			createdBy: (req as { userId?: string }).userId ?? "api",
-		} as unknown as MissionTemplate);
-		res.status(201).json({ ok: true, id, version: 1 });
-	});
-
-	/** Update a template — inserts a new version, preserves history. */
-	router.put("/:id", async (req, res) => {
-		const { teamConfigYaml, teamFiles } = req.body as {
-			teamConfigYaml?: string;
-			teamFiles?: Array<{ path: string; content: string }>;
-		};
-		if (typeof teamConfigYaml !== "string") {
-			res.status(400).json({ error: "teamConfigYaml is required" });
-			return;
-		}
-		try {
-			parseTeamConfig(teamConfigYaml);
-		} catch (e) {
-			res
-				.status(400)
-				.json({ error: `Invalid team config: ${(e as Error).message}` });
-			return;
-		}
-		const latest = await getTemplate(db, req.params.id);
-		if (!latest) {
-			res.status(404).json({ error: "Template not found" });
-			return;
-		}
-		const nextVersion = latest.version + 1;
-		await col.insertOne({
-			templateId: req.params.id,
-			version: nextVersion,
-			name: latest.name,
-			teamConfigYaml,
-			teamFiles: teamFiles ?? latest.teamFiles,
-			createdAt: new Date(),
-			createdBy: (req as { userId?: string }).userId ?? "api",
-		} as unknown as MissionTemplate);
-		res.json({ ok: true, version: nextVersion });
-	});
-
 	return router;
-}
-
-// ---------------------------------------------------------------------------
-// YAML patching
-// ---------------------------------------------------------------------------
-
-/**
- * Replace the mission.id value in a team config YAML with the actual missionId
- * assigned at provision time. Only patches the `id:` field within the `mission:`
- * block — agent `id:` fields (which are list items) are untouched.
- */
-export function patchMissionId(yaml: string, missionId: string): string {
-	return yaml.replace(
-		/^(mission:\r?\n(?:[ \t]+[^\n]*\r?\n)*?)([ \t]+id:[ \t]*)\S[^\n]*/m,
-		`$1$2${missionId}`,
-	);
 }

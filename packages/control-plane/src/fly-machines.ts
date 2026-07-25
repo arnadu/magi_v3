@@ -53,10 +53,6 @@ export interface MachineHandle {
 }
 
 export interface ProvisionOptions {
-	/** base64-encoded team config YAML from MongoDB templates. When provided the
-	 *  daemon writes it to /missions/team.yaml on first boot instead of reading
-	 *  the baked-in image path. */
-	teamConfigYaml?: string;
 	/** All files from config/teams/{id}/ — skills, playbook.json, etc. When
 	 *  provided the daemon writes them to /missions/team/ on first boot so the
 	 *  entire team setup is volume-based and image-independent. */
@@ -76,9 +72,12 @@ export interface ProvisionOptions {
  *   2. Create a Machine attached to the volume.
  *   3. Return machineId, privateIp, volumeId for storage in MongoDB.
  *
- * When opts.teamConfigYaml is provided the machine receives TEAM_CONFIG_YAML
- * (base64) + TEAM_SKILLS_PATH (image path) so the daemon writes the YAML to
- * the volume on first boot and still finds skills in the image.
+ * Machine creation carries no config payload of any kind (ADR-0021) — the
+ * daemon reads its own mission's structured config directly from `missions`
+ * at boot, using MISSION_ID (below), which is already required for other
+ * reasons. The mission document must already exist in Mongo, with its
+ * structured `mission`/`agents`/`missionCopilotLimits` fields set, before
+ * this function is called — see missions.ts's `POST /` route.
  */
 
 /**
@@ -96,7 +95,6 @@ function flyVolumeName(missionId: string): string {
 
 export async function provisionMission(
 	missionId: string,
-	teamConfigName: string,
 	opts: ProvisionOptions = {},
 ): Promise<MachineHandle> {
 	const region = opts.region ?? process.env.FLY_REGION ?? "iad";
@@ -131,27 +129,11 @@ export async function provisionMission(
 		volumeId = vol.id;
 	}
 
-	// 2. Build team-config env vars.
-	// When YAML + files are provided (from MongoDB templates), the daemon writes
-	// them to /missions/team.yaml and /missions/team/* on first boot.
-	// teamDir is derived from TEAM_CONFIG path: dirname + basename without .yaml,
-	// so /missions/team.yaml → teamDir = /missions/team — playbook.json, skills/
-	// all resolve correctly without any extra path overrides.
+	// 2. Create machine. No team-config env vars — the daemon reads its own
+	// structured config directly from `missions` at boot, keyed by MISSION_ID.
 	// teamFiles are stored in MongoDB before provisioning and fetched by the
 	// daemon at startup — no TEAM_FILES_PAYLOAD env var needed (would exceed
 	// Fly's machine config size limit for large team configs).
-	const teamConfigEnv = opts.teamConfigYaml
-		? {
-				TEAM_CONFIG: "/missions/team.yaml",
-				TEAM_CONFIG_YAML: Buffer.from(opts.teamConfigYaml, "utf-8").toString(
-					"base64",
-				),
-			}
-		: {
-				TEAM_CONFIG: `/app/config/teams/${teamConfigName}.yaml`,
-			};
-
-	// 3. Create machine.
 	const machineRes = await flyFetch(`/apps/${app}/machines`, {
 		method: "POST",
 		body: JSON.stringify({
@@ -162,7 +144,6 @@ export async function provisionMission(
 					process.env.FLY_MISSIONS_IMAGE ?? `registry.fly.io/${app}:latest`,
 				env: {
 					MISSION_ID: missionId,
-					...teamConfigEnv,
 					AGENT_WORKDIR: "/missions",
 					MONITOR_PORT: "4000",
 					TOOL_PORT: "4001",
@@ -316,9 +297,11 @@ function localMissionsDir(): string {
 }
 
 /**
- * Provision a local mission by writing config files to disk and returning a
- * fake MachineHandle pointing at 127.0.0.1. The developer must start the
- * daemon manually using the printed command.
+ * Provision a local mission by writing teamFiles to disk and returning a fake
+ * MachineHandle pointing at 127.0.0.1. The developer must start the daemon
+ * manually using the printed command. No config file is written (ADR-0021) —
+ * the daemon reads its structured config directly from `missions` at boot,
+ * exactly like the Fly path; the developer's own `.env` supplies MONGODB_URI.
  */
 export function provisionLocal(
 	missionId: string,
@@ -327,9 +310,6 @@ export function provisionLocal(
 	const missionDir = join(localMissionsDir(), missionId);
 	mkdirSync(missionDir, { recursive: true });
 
-	if (opts.teamConfigYaml) {
-		writeFileSync(join(missionDir, "team.yaml"), opts.teamConfigYaml, "utf-8");
-	}
 	if (opts.teamFiles && opts.teamFiles.length > 0) {
 		for (const f of opts.teamFiles) {
 			const dest = join(missionDir, "team", f.path);
@@ -341,7 +321,7 @@ export function provisionLocal(
 	console.log(`[local-provision] Mission files written to: ${missionDir}`);
 	console.log(
 		`[local-provision] Start the daemon in a separate terminal:\n` +
-			`  TEAM_CONFIG=${join(missionDir, "team.yaml")} \\\n` +
+			`  MISSION_ID=${missionId} \\\n` +
 			`  npm run daemon -w packages/agent-runtime-worker`,
 	);
 
@@ -359,24 +339,6 @@ export function destroyLocal(missionId: string): void {
 		rmSync(missionDir, { recursive: true, force: true });
 	} catch {
 		// Non-fatal — directory may not exist.
-	}
-}
-
-/** Update local mission files when config is edited and mission is resumed. */
-export function updateLocalMissionConfig(
-	missionId: string,
-	teamConfigYaml: string,
-	teamFiles?: Array<{ path: string; content: string }>,
-): void {
-	const missionDir = join(localMissionsDir(), missionId);
-	mkdirSync(missionDir, { recursive: true });
-	writeFileSync(join(missionDir, "team.yaml"), teamConfigYaml, "utf-8");
-	if (teamFiles && teamFiles.length > 0) {
-		for (const f of teamFiles) {
-			const dest = join(missionDir, "team", f.path);
-			mkdirSync(join(dest, ".."), { recursive: true });
-			writeFileSync(dest, f.content, "utf-8");
-		}
 	}
 }
 

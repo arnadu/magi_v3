@@ -52,6 +52,12 @@ export {
 	updateElement,
 	upsertManagedRegion,
 } from "./mental-map.js";
+export type {
+	MissionConfigRevisionDoc,
+	MissionConfigSnapshot,
+	MissionConfigWriter,
+} from "./mission-config-revisions.js";
+export { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
 export { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 export {
 	anthropicModel,

@@ -33,12 +33,18 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseTeamConfig } from "@magi/agent-config";
+import {
+	type AgentConfig,
+	type Limits,
+	parseTeamConfig,
+	type TeamConfig,
+} from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import cronParser from "cron-parser";
 import { type Db, ObjectId } from "mongodb";
 import type { JobSpec } from "./job-recovery.js";
 import type { MailboxRepository } from "./mailbox.js";
+import { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { loadObjectivesStore } from "./objectives/store.js";
 import { writeSupervisorNote } from "./supervisor-note.js";
@@ -122,6 +128,8 @@ export function createMissionCopilotTools(
 		controlPlaneUrl,
 	} = config;
 
+	const missionConfigWriter = createMongoMissionConfigWriter(db);
+
 	async function monitorGet(path: string): Promise<ToolResult> {
 		try {
 			const res = await fetch(`http://127.0.0.1:${monitorPort}${path}`, {
@@ -184,7 +192,9 @@ export function createMissionCopilotTools(
 				),
 			}));
 			return okJson({
-				teamConfigYaml: mission.teamConfigYaml ?? "",
+				mission: mission.mission ?? null,
+				agents: mission.agents ?? [],
+				missionCopilotLimits: mission.missionCopilotLimits ?? null,
 				teamFiles,
 			});
 		},
@@ -193,10 +203,28 @@ export function createMissionCopilotTools(
 	const saveMissionConfig: MagiTool = {
 		name: "SaveMissionConfig",
 		description:
-			"Write a new team configuration. Validated before saving — an invalid config is rejected with the specific error and nothing is written. Most changes (system prompt, agent roster, models, skills) take effect the next time the mission is resumed, not immediately. The exception: changes to an agent's `limits` or `mission.maxCostUsd` apply on the very next limit check, no resume needed. Use to add/remove/deactivate an agent, change a system prompt, adjust a per-agent model or skill list, or any other config change — read current config first, change only what needs to change.\n\n" +
-			"teamFiles rules: omit teamFiles entirely to preserve whatever the mission already has attached (safe for YAML-only edits, e.g. a system-prompt tweak); pass teamFiles explicitly to replace them. WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.",
+			"Patch this mission's structured team configuration. Validated before saving — an invalid resulting config is rejected with the specific error and nothing is written. Most changes (system prompt, agent roster, models, skills) take effect the next time the mission is resumed, not immediately. The exception: changes to an agent's `limits` or `mission.maxCostUsd` apply on the very next limit check, no resume needed. Read current config with ReadMissionConfig first, then pass only what needs to change.\n\n" +
+			"`mission`, if passed, is shallow-merged into the current mission object (omit a field to keep its current value; `id` is always preserved as this mission's own id regardless of what's passed). `agents`, if passed, is upserted by `id` into the current roster — an existing id is replaced, a new id is appended; to remove an agent, set its `active: false` rather than omitting it from the array (omitting an existing agent from this list does NOT delete it). `missionCopilotLimits`, if passed, replaces the current value wholesale. Omit any of the three top-level fields entirely to leave it untouched.\n\n" +
+			"teamFiles rules: omit teamFiles entirely to preserve whatever the mission already has attached; pass teamFiles explicitly to replace them. WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.",
 		parameters: Type.Object({
-			teamConfigYaml: Type.String({ description: "Full team config YAML" }),
+			mission: Type.Optional(
+				Type.Record(Type.String(), Type.Unknown(), {
+					description:
+						"Partial mission fields to merge in (e.g. { name, model, maxCostUsd }). Omit to leave unchanged.",
+				}),
+			),
+			agents: Type.Optional(
+				Type.Array(Type.Record(Type.String(), Type.Unknown()), {
+					description:
+						"Full agent objects to upsert by id into the current roster. Omit to leave the roster unchanged.",
+				}),
+			),
+			missionCopilotLimits: Type.Optional(
+				Type.Record(Type.String(), Type.Unknown(), {
+					description:
+						"Replaces the current value wholesale. Omit to leave unchanged.",
+				}),
+			),
 			teamFiles: Type.Optional(
 				Type.Array(
 					Type.Object({
@@ -211,32 +239,74 @@ export function createMissionCopilotTools(
 			),
 		}),
 		async execute(_id, args) {
-			const teamConfigYaml = args.teamConfigYaml as string;
+			const missionPatch = args.mission as
+				| Partial<TeamConfig["mission"]>
+				| undefined;
+			const agentsPatch = args.agents as AgentConfig[] | undefined;
+			const missionCopilotLimitsPatch = args.missionCopilotLimits as
+				| Limits
+				| undefined;
 			const teamFilesProvided = args.teamFiles !== undefined;
 			const teamFiles = args.teamFiles as
 				| Array<{ path: string; content: string }>
 				| undefined;
+
+			const current = await db.collection("missions").findOne({ missionId });
+			if (!current?.mission || !current.agents) {
+				return err(`Mission "${missionId}" has no structured config stored`);
+			}
+
+			const nextMission = {
+				...(current.mission as TeamConfig["mission"]),
+				...missionPatch,
+				id: missionId,
+			};
+			const currentAgents = current.agents as AgentConfig[];
+			const nextAgents = agentsPatch
+				? [
+						...currentAgents.filter(
+							(a) => !agentsPatch.some((p) => p.id === a.id),
+						),
+						...agentsPatch,
+					]
+				: currentAgents;
+			const nextMissionCopilotLimits =
+				missionCopilotLimitsPatch ??
+				(current.missionCopilotLimits as Limits | undefined);
+
+			let validated: TeamConfig;
 			try {
 				// Rejects id "mission-copilot" (Phase 1), so a compromised copilot
 				// cannot escalate a second agent by writing itself into the
 				// authored config a second time.
-				parseTeamConfig(teamConfigYaml);
+				validated = parseTeamConfig({
+					mission: nextMission,
+					agents: nextAgents,
+					missionCopilotLimits: nextMissionCopilotLimits,
+				});
 			} catch (e) {
 				return err(`Invalid team config: ${(e as Error).message}`);
 			}
+
+			await missionConfigWriter.write(
+				missionId,
+				{
+					mission: validated.mission,
+					agents: validated.agents,
+					missionCopilotLimits: validated.missionCopilotLimits,
+				},
+				MISSION_COPILOT_AGENT_ID,
+			);
 			// Omitting teamFiles must preserve whatever the mission already has —
 			// defaulting to [] here silently wiped every attached team file
-			// (goals.json, tasks.jsonl, skills) on any YAML-only edit, e.g. a
-			// simple system-prompt tweak. Matches save_template's existing
-			// "omit to preserve" contract on the control-plane copilot.
-			const update: Record<string, unknown> = {
-				teamConfigYaml,
-				updatedAt: new Date(),
-			};
-			if (teamFilesProvided) update.teamFiles = teamFiles;
-			await db
-				.collection("missions")
-				.updateOne({ missionId }, { $set: update });
+			// (goals.json, tasks.jsonl, skills) on any config-only edit, e.g. a
+			// simple system-prompt tweak. Matches save_template's former (now
+			// removed, ADR-0021) "omit to preserve" contract.
+			if (teamFilesProvided) {
+				await db
+					.collection("missions")
+					.updateOne({ missionId }, { $set: { teamFiles } });
+			}
 			await auditPost(
 				"Mission config updated",
 				"I updated this mission's team configuration. Most changes take effect the " +

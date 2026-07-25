@@ -10,9 +10,16 @@
  * started lazily on first message. SSE events are routed per-user.
  */
 
-import { randomUUID } from "node:crypto";
-import { parseTeamConfig } from "@magi/agent-config";
-import { createMongoMailboxRepository } from "@magi/agent-runtime-worker";
+import {
+	type AgentConfig,
+	type Limits,
+	parseTeamConfig,
+	type TeamConfig,
+} from "@magi/agent-config";
+import {
+	createMongoMailboxRepository,
+	createMongoMissionConfigWriter,
+} from "@magi/agent-runtime-worker";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { type Collection, type Db, ObjectId } from "mongodb";
@@ -27,11 +34,7 @@ import {
 	suspendMission,
 } from "./fly-machines.js";
 import { deriveMonitorToken } from "./monitor-token.js";
-import {
-	getNextTemplateVersion,
-	getTemplate,
-	type MissionTemplate,
-} from "./templates.js";
+import { getTemplate } from "./templates.js";
 import { getCopilotModel, setCopilotModel } from "./users.js";
 
 // ---------------------------------------------------------------------------
@@ -322,6 +325,10 @@ interface MissionDoc {
 	userId: string;
 	name: string;
 	teamConfig: string;
+	mission?: TeamConfig["mission"];
+	agents?: AgentConfig[];
+	missionCopilotLimits?: Limits;
+	teamFiles?: Array<{ path: string; content: string }>;
 	machineId?: string;
 	privateIp?: string;
 	volumeId?: string;
@@ -330,7 +337,7 @@ interface MissionDoc {
 	updatedAt: Date;
 }
 
-async function executeAction(
+export async function executeAction(
 	db: Db,
 	action: PendingAction,
 	userId: string,
@@ -345,14 +352,14 @@ async function executeAction(
 			const name = (payload.name as string | undefined) ?? missionId;
 			const templateId = payload.templateId as string;
 
-			const template = await getTemplate(db, templateId);
+			const template = getTemplate(templateId);
 			if (!template) throw new Error(`Template "${templateId}" not found`);
 
 			const existing = await missions.findOne({ missionId });
 			if (existing) throw new Error(`Mission "${missionId}" already exists`);
 
-			const handle = await provisionMission(missionId, templateId, {
-				teamConfigYaml: template.teamConfigYaml,
+			const resolvedMission = { ...template.config.mission, id: missionId };
+			const handle = await provisionMission(missionId, {
 				teamFiles: template.teamFiles,
 			});
 
@@ -361,6 +368,10 @@ async function executeAction(
 				userId,
 				name,
 				teamConfig: templateId,
+				mission: resolvedMission,
+				agents: template.config.agents,
+				missionCopilotLimits: template.config.missionCopilotLimits,
+				teamFiles: template.teamFiles,
 				machineId: handle.machineId,
 				privateIp: handle.privateIp,
 				volumeId: handle.volumeId,
@@ -425,80 +436,16 @@ async function executeAction(
 			return `File "${path}" written to mission "${missionId}"`;
 		}
 
-		case "save_template": {
-			const id = (payload.id as string | undefined) ?? randomUUID().slice(0, 8);
-			const name = payload.name as string;
-			const teamConfigYaml = payload.teamConfigYaml as string;
-			const fromMissionId = payload.fromMissionId as string | undefined;
-			const inlineFiles = payload.teamFiles as TeamFile[] | undefined;
-
-			// Resolve teamFiles from one of three sources:
-			// 1. Inline payload (explicit replace, including [] to clear)
-			// 2. Mission snapshot via fromMissionId
-			// 3. Latest version in the templates collection (preserve on YAML-only edits)
-			let teamFiles: TeamFile[];
-			if (inlineFiles !== undefined) {
-				teamFiles = inlineFiles;
-			} else if (fromMissionId) {
-				teamFiles = [];
-			} else {
-				const latest = await getTemplate(db, id);
-				teamFiles = latest?.teamFiles ?? [];
-			}
-
-			// If fromMissionId is given, snapshot the running mission's sharedDir and
-			// merge the files into teamFiles (inline payload takes precedence).
-			if (fromMissionId) {
-				const srcMission = await db
-					.collection<MissionDoc>("missions")
-					.findOne({ missionId: fromMissionId, userId });
-				if (!srcMission?.privateIp) {
-					return `save_template: mission "${fromMissionId}" not found, not owned by you, or has no running machine (must be in "running" state to snapshot files)`;
-				}
-				const snapped = await snapshotSharedDir(
-					srcMission.privateIp,
-					fromMissionId,
-				);
-				const existingPaths = new Set(teamFiles.map((f) => f.path));
-				// Payload files take precedence; snapshot fills in everything else.
-				teamFiles = [
-					...teamFiles,
-					...snapped.filter((f) => !existingPaths.has(f.path)),
-				];
-			}
-
-			// Versioning: each save is an insertOne. Version history is free.
-			const nextVersion = await getNextTemplateVersion(db, id);
-
-			// Warn if the YAML references {{sharedDir}}/ paths but no teamFiles are
-			// attached — agents will fail at runtime looking for those paths.
-			const refsSharedDir = teamConfigYaml.includes("{{sharedDir}}/");
-			await db.collection("templates").insertOne({
-				templateId: id,
-				version: nextVersion,
-				name,
-				teamConfigYaml,
-				teamFiles,
-				createdAt: now,
-				createdBy: userId,
-			});
-
-			// v1 means a brand-new templateId — surface it so an unintended fork
-			// (editing meant to version an existing template but the id was omitted
-			// or wrong) is immediately visible rather than silently creating a copy.
-			const savedAs =
-				nextVersion === 1
-					? `Template created as NEW template "${id}" (v1)`
-					: `Template "${id}" saved as v${nextVersion}`;
-			if (refsSharedDir && teamFiles.length === 0) {
-				return `WARNING: ${savedAs}, but it references {{sharedDir}}/ paths and has no teamFiles attached. Agents will not find those files at runtime. To fix: re-save with fromMissionId pointing to a running mission that has those files in its sharedDir, or pass teamFiles explicitly.`;
-			}
-			return `${savedAs} (${teamFiles.length} teamFiles attached)`;
-		}
-
 		case "save_session_config": {
 			const scMissionId = payload.missionId as string | undefined;
-			const scYaml = payload.teamConfigYaml as string | undefined;
+			const scMissionPatch = payload.mission as
+				| Partial<TeamConfig["mission"]>
+				| undefined;
+			const scAgentsPatch = payload.agents as AgentConfig[] | undefined;
+			const scMissionCopilotLimitsPatch = payload.missionCopilotLimits as
+				| Limits
+				| undefined;
+			const scTeamFilesProvided = payload.teamFiles !== undefined;
 			const scFiles =
 				(payload.teamFiles as
 					| Array<{ path: string; content: string }>
@@ -507,31 +454,63 @@ async function executeAction(
 				| Record<string, string>
 				| undefined;
 
-			if (!scMissionId || typeof scYaml !== "string") {
-				return "save_session_config: missionId and teamConfigYaml are required";
+			if (!scMissionId) {
+				return "save_session_config: missionId is required";
 			}
-			const scMission = await db
-				.collection("missions")
-				.findOne({ missionId: scMissionId, userId });
+			const scMission = await missions.findOne({
+				missionId: scMissionId,
+				userId,
+			});
 			if (!scMission) return `Mission ${scMissionId} not found`;
 			if (scMission.status !== "suspended") {
-				return `Mission ${scMissionId} must be suspended before editing config (current: ${scMission.status as string})`;
+				return `Mission ${scMissionId} must be suspended before editing config (current: ${scMission.status})`;
 			}
+			if (!scMission.mission || !scMission.agents) {
+				return `Mission ${scMissionId} has no structured config stored`;
+			}
+
+			const nextMission = {
+				...scMission.mission,
+				...scMissionPatch,
+				id: scMissionId,
+			};
+			const nextAgents = scAgentsPatch
+				? [
+						...scMission.agents.filter(
+							(a) => !scAgentsPatch.some((p) => p.id === a.id),
+						),
+						...scAgentsPatch,
+					]
+				: scMission.agents;
+			const nextMissionCopilotLimits =
+				scMissionCopilotLimitsPatch ?? scMission.missionCopilotLimits;
+
+			let scValidated: TeamConfig;
 			try {
-				parseTeamConfig(scYaml);
+				scValidated = parseTeamConfig({
+					mission: nextMission,
+					agents: nextAgents,
+					missionCopilotLimits: nextMissionCopilotLimits,
+				});
 			} catch (e) {
 				return `Invalid team config: ${(e as Error).message}`;
 			}
-			await db.collection("missions").updateOne(
-				{ missionId: scMissionId },
+
+			await createMongoMissionConfigWriter(db).write(
+				scMissionId,
 				{
-					$set: {
-						teamConfigYaml: scYaml,
-						teamFiles: scFiles,
-						updatedAt: now,
-					},
+					mission: scValidated.mission,
+					agents: scValidated.agents,
+					missionCopilotLimits: scValidated.missionCopilotLimits,
 				},
+				"copilot",
 			);
+			if (scTeamFilesProvided) {
+				await missions.updateOne(
+					{ missionId: scMissionId },
+					{ $set: { teamFiles: scFiles, updatedAt: now } },
+				);
+			}
 			if (scMentalMaps) {
 				const convCol = db.collection("conversationMessages");
 				for (const [agentId, html] of Object.entries(scMentalMaps)) {
@@ -552,31 +531,6 @@ async function executeAction(
 				}
 			}
 			return `Session config saved for mission ${scMissionId}`;
-		}
-
-		case "restore_template_version": {
-			const restoreId = payload.templateId as string;
-			const restoreVersion = payload.version as number;
-			const versionDoc = await db
-				.collection<MissionTemplate>("templates")
-				.findOne({ templateId: restoreId, version: restoreVersion });
-			if (!versionDoc) {
-				return `restore_template_version: version ${restoreVersion} of template "${restoreId}" not found`;
-			}
-			// Restore = insert a new version copying content from the old one.
-			// The old version and all history remain in the collection unchanged.
-			const nextVersion = await getNextTemplateVersion(db, restoreId);
-			await db.collection("templates").insertOne({
-				templateId: restoreId,
-				version: nextVersion,
-				name: versionDoc.name,
-				teamConfigYaml: versionDoc.teamConfigYaml,
-				teamFiles: versionDoc.teamFiles,
-				createdAt: now,
-				createdBy: userId,
-			});
-			const tf = (versionDoc.teamFiles as TeamFile[]).length;
-			return `Template "${restoreId}" restored from v${restoreVersion} → new v${nextVersion} (${tf} teamFiles)`;
 		}
 
 		case "cancel_schedule": {
@@ -646,8 +600,6 @@ async function executeAction(
 // Helpers
 // ---------------------------------------------------------------------------
 
-type TeamFile = { path: string; content: string };
-
 /**
  * POST a JSON body to a mutating endpoint on a mission's execution-plane monitor
  * server (port 4000), scoped to the requesting user and authenticated with the
@@ -680,87 +632,4 @@ async function postToMissionMonitor(
 	if (!res.ok) {
 		throw new Error(`Monitor ${endpoint} failed: HTTP ${res.status}`);
 	}
-}
-
-/**
- * Recursively read a mission's sharedDir via the monitor server and return a
- * teamFiles-compatible array.
- *
- * Path translation:
- *   sharedDir/skills/_team/foo  → skills/foo   (re-deployed to _team/ by WorkspaceManager)
- *   sharedDir/GUIDE.md          → GUIDE.md     (copied to sharedDir root by WorkspaceManager)
- *
- * Skipped:
- *   skills/_platform/   — baked into the Docker image; never needs embedding
- *   skills/mission/     — agent-created during runtime; not template material
- *   .git/               — version control metadata
- *   logs/               — runtime output
- */
-async function snapshotSharedDir(
-	privateIp: string,
-	missionId: string,
-): Promise<TeamFile[]> {
-	const token = deriveMonitorToken(missionId);
-	const headers: Record<string, string> = token
-		? { "x-monitor-token": token }
-		: {};
-	const base = `http://[${privateIp}]:4000`;
-
-	const files: TeamFile[] = [];
-
-	type MonitorFileResponse = {
-		type: "dir" | "file";
-		entries?: Array<{ name: string; type: "dir" | "file" }>;
-		encoding?: "text" | "base64";
-		content?: string;
-	};
-
-	async function monitorGet(
-		path: string,
-	): Promise<MonitorFileResponse | undefined> {
-		try {
-			const r = await fetch(
-				`${base}/files/shared?path=${encodeURIComponent(path)}`,
-				{ headers, signal: AbortSignal.timeout(10_000) },
-			);
-			if (!r.ok) return undefined;
-			return (await r.json()) as MonitorFileResponse;
-		} catch {
-			return undefined;
-		}
-	}
-
-	async function walk(urlPath: string): Promise<void> {
-		const data = await monitorGet(urlPath);
-		if (!data) return;
-
-		if (data.type === "dir") {
-			for (const entry of data.entries ?? []) {
-				if (entry.name === ".git" || entry.name === "logs") continue;
-				const child =
-					urlPath === "/" ? `/${entry.name}` : `${urlPath}/${entry.name}`;
-				if (urlPath === "/" && entry.name === "skills") {
-					// Only descend into _team/ — skip _platform/ and mission/.
-					await walk("/skills/_team");
-					continue;
-				}
-				await walk(child);
-			}
-		} else if (
-			data.type === "file" &&
-			data.encoding === "text" &&
-			data.content !== undefined
-		) {
-			// Convert sharedDir-relative path to teamFiles path.
-			// skills/_team/foo → skills/foo  (WorkspaceManager re-deploys to _team/)
-			const rel = urlPath
-				.replace(/^\/skills\/_team\//, "skills/")
-				.replace(/^\//, "");
-			files.push({ path: rel, content: data.content });
-		}
-		// Binary files are skipped — not useful in templates.
-	}
-
-	await walk("/");
-	return files;
 }

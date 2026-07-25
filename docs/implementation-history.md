@@ -874,3 +874,94 @@ control-plane `scheduler.ts`'s delivery retries. That last one also caught a sec
 `node-cron` design that had already been replaced by the always-on control-plane scheduler at some
 earlier, unrecorded point — corrected in place rather than left to compound further. Full design
 and consequences: [ADR-0020](adr/0020-copilot-wake-up-anomaly-log.md).
+
+## Sprint 26c — Structured mission/template config storage (ADR-0021)
+
+Started from a plain architecture question — "why do we still need a YAML file at all?" — that
+unwound into a genuine redesign once the answer turned out to be "we don't, for missions." Templates
+still need to be YAML (the one place multi-line system-prompt authoring is genuinely more readable
+as text than JSON), but a mission was always going to become structured JSON the moment it's
+instantiated from one — the previous design just deferred that conversion to every read instead of
+doing it once, at instantiation. Design went through several rounds before implementation: an
+initial two-lifecycle diagram (template lifecycle vs. mission lifecycle) got approved, then walked
+back a day later on review — "our template-editing machinery is over-engineered for an MVP" — which
+turned out to simplify the whole migration substantially: cutting template editing/versioning
+entirely (no more `save_template`/`restore_template_version`, no `templates` Mongo collection, no
+`ListTemplateVersions`) meant templates could become plain immutable disk files, read once into an
+in-memory map at control-plane startup. A `MissionConfigRevisionDoc` design draft that stored
+`before`/`after` pairs per edit was corrected on review — redundant (edit N's `after` is edit N+1's
+implicit `before`) and risked being misread as an upsert-only design — to a pure append-only
+`config`-snapshot-per-edit shape, mirroring `missionStats`/`llmCallLog` and this sprint's own
+`AnomalyRecorder` precedent. The plan itself went through two enrichment passes after review found
+it "aspirational, not operational" (needed a real target-state ADR, not a change narrative — the ADR
+was rewritten as a destination spec, not a diff) and then under-specified on the migration/testing
+mechanics (added a concrete before/after JSON example of a real mission document, explicit
+safe-to-run-against-a-live-mission reasoning, and a full test inventory with real before/after code
+for every "rewrite" file) — a final review pass before execution found one more real gap on its own:
+`missions.ts`'s `POST /`/`PUT /:id/config`/`POST /:id/resume` routes had zero test coverage before
+this sprint, confirmed by grep, not assumed.
+
+Implementation shipped as one continuous arc rather than the plan's original stage boundaries
+(intended for production-deploy risk communication, not a rigid contract for a single session):
+`agent-config`'s `parseTeamConfig(obj)` (structured-object validator, with `name`/`role` resolved
+once via a Zod `.transform()` so every downstream consumer sees a required value) now sits alongside
+the renamed `parseTeamConfigYaml(text)` (thin wrapper, used in exactly two places system-wide —
+template loading and `loadTeamConfig()`); `templates.ts` shrank to an in-memory `Map` populated by
+`loadTemplates()` and a two-route (`GET /`, `GET /:id`) read-only router; `missions.ts`'s
+`MissionDoc` gained `mission`/`agents`/`missionCopilotLimits` as the live structured fields
+(`teamConfigYaml` kept only as an unread, unmigrated safety-net field on old documents); a new
+shared `mission-config-revisions.ts` (`createMongoMissionConfigWriter`) — one `$set` + one
+`missionConfigRevisions` insert — is now the single write path for every limit/config edit
+(`writeMissionCap`, `writeAgentLimits`, `PUT /:id/config`, `SaveMissionConfig`,
+`save_session_config`), replacing `yaml-patch.ts`'s five independent copies of "read, patch,
+re-validate, write" (deleted, along with its test file); `daemon.ts`'s boot sequence now forks on
+`MISSION_ID` (control-plane-provisioned — reads structured Mongo directly, hard-fails on a missing
+or invalid document rather than silently falling back to a generic baked default) vs. `TEAM_CONFIG`
+(standalone local/dev — unchanged `loadTeamConfig(path)`); `fly-machines.ts`'s `provisionMission`/
+`provisionLocal` dropped the `teamConfigName` parameter and all `TEAM_CONFIG`/`TEAM_CONFIG_YAML` env
+vars entirely — machine creation carries no config payload of any kind now. New
+`scripts/migrate-mission-config-to-structured.mjs` (additive-only, idempotent via a `mission: {
+$exists: false }` guard, flags suspicious empty values from unresolved `${VAR}` substitutions in its
+summary) migrated every pre-existing mission; `seed-templates.mjs` and its two `package.json`
+scripts were deleted as the templates-Mongo mechanism they seeded no longer exists.
+
+Both copilots' template-authoring surface was cut to match: the control-plane copilot's
+`save_template`/`restore_template_version` actions and `snapshotSharedDir` helper are gone from
+`copilot-tools.ts`/`copilot-router.ts`; `save_session_config` and the mission copilot's
+`SaveMissionConfig` became structured partial patches (`mission` shallow-merges, `agents` upserts by
+id into the current roster, `missionCopilotLimits` replaces wholesale, any omitted top-level field
+stays untouched) instead of full-YAML-text replacement; `magi-template-design`'s skill content and
+`copilot.yaml`'s "Session design" role text were rewritten to describe choosing and launching a
+template plus post-launch `save_session_config` customization, not authoring one.
+
+A real, non-hypothetical bug came out of writing the new test suite rather than being designed
+around in advance: `createMongoMissionConfigWriter.write()`'s `$set` included
+`missionCopilotLimits: undefined` for the (extremely common) case of a mission with no
+mission-copilot limits configured — the MongoDB Node driver's default BSON serialization turns an
+`undefined` object property into a literal stored `null` rather than omitting the key, and
+`missionCopilotLimits` is `.optional()`, not `.nullable()`, in `TeamConfigSchema`, so that stored
+`null` failed `parseTeamConfig` validation on every subsequent read. In practice this meant
+`readTeamConfig` (and therefore live limit checks, `/status`, the Limits panel) would go silently
+null the moment *any* write path touched *any* mission that had never configured mission-copilot
+limits — effectively every mission. Fixed at the root, not the symptom: `mongo.ts`'s single shared
+`connectMongo()` now sets `ignoreUndefined: true` on the `MongoClient` constructor, closing this bug
+class application-wide rather than requiring every future insert/update call site to remember to
+omit undefined keys itself. The shared writer still needed one explicit `$unset` on top of that fix
+— `write()`'s contract is "here is the complete desired state," so an undefined
+`missionCopilotLimits` has to mean "clear it" (e.g. an operator clearing the mission-copilot's
+limits via the Limits panel), and `$set` alone can never express clearing a field it doesn't
+mention, `ignoreUndefined` or not. Caught by, and verified fixed against, the new integration test
+suite (`mission-config-revisions`, `mission-config`, `monitor-budget`) before it reached any real
+mission.
+
+New test coverage: `templates.unit.test.ts`, `fly-machines.unit.test.ts` (pins the
+no-config-payload-of-any-kind machine env), `copilot-router-execute-action.unit.test.ts` (first
+direct coverage of `save_session_config`, rewritten in place once its payload shape changed),
+`missions.integration.test.ts` (first-ever coverage of `POST /`/`PUT /:id/config`/`POST /:id/resume`
+— includes the literal suspend→edit→resume landmine scenario the original design review flagged),
+`mission-config-revisions.integration.test.ts`; seven existing test files rewritten for the
+structured shape (`loader`, `limits`, `mission-config`, `limits-live-config`, `monitor-budget`,
+`mission-copilot-tools`, `scheduler`); `copilot.integration.test.ts`'s real-LLM scenario replaced
+end to end (drafting a brand-new template is no longer a capability that exists — the new test
+drives the control-plane copilot through `ListTemplates`/`GetTemplate` to a `launch_mission`
+proposal instead of `save_template`). Full design: [ADR-0021](adr/0021-structured-mission-config-storage.md).

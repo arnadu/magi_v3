@@ -102,6 +102,9 @@ function makeFakeDb(seed: Record<string, unknown[]> = {}) {
 					docs.splice(idx, 1);
 					return { acknowledged: true, deletedCount: 1 };
 				},
+				async createIndex() {
+					return "ok";
+				},
 			};
 		},
 	};
@@ -182,12 +185,25 @@ describe("mission-copilot-tools", () => {
 	// ── Family A ─────────────────────────────────────────────────────────────
 
 	describe("ReadMissionConfig / SaveMissionConfig", () => {
-		it("ReadMissionConfig returns the stored config with trust-boundary-marked team files", async () => {
+		const BASE_MISSION = { id: "m1", name: "Test" };
+		const BASE_AGENTS = [
+			{
+				id: "lead",
+				name: "lead",
+				role: "lead",
+				supervisor: "user",
+				systemPrompt: "x",
+				initialMentalMap: "<section></section>",
+			},
+		];
+
+		it("ReadMissionConfig returns the structured config with trust-boundary-marked team files", async () => {
 			const fake = makeFakeDb({
 				missions: [
 					{
 						missionId: "m1",
-						teamConfigYaml: "mission:\n  id: m1\n",
+						mission: BASE_MISSION,
+						agents: BASE_AGENTS,
 						teamFiles: [{ path: "skills/x/SKILL.md", content: "do the thing" }],
 					},
 				],
@@ -196,110 +212,159 @@ describe("mission-copilot-tools", () => {
 			const result = await get(tools, "ReadMissionConfig").execute("t1", {});
 			expect(result.isError).toBeFalsy();
 			const parsed = JSON.parse(result.content[0].text);
-			expect(parsed.teamConfigYaml).toContain("mission:");
+			expect(parsed.mission).toEqual(BASE_MISSION);
+			expect(parsed.agents).toEqual(BASE_AGENTS);
 			expect(parsed.teamFiles[0].contentPreview).toContain(
 				"TEAMMATE-AUTHORED CONTENT",
 			);
 			expect(parsed.teamFiles[0].contentPreview).toContain("do the thing");
 		});
 
-		it("SaveMissionConfig rejects invalid YAML without writing", async () => {
+		it("SaveMissionConfig errors when the mission has no structured config stored", async () => {
 			const fake = makeFakeDb({ missions: [{ missionId: "m1" }] });
 			const { tools } = buildTools(fake.db);
 			const result = await get(tools, "SaveMissionConfig").execute("t1", {
-				teamConfigYaml: "not: valid: yaml: at: all: [",
+				mission: { name: "Renamed" },
 			});
 			expect(result.isError).toBe(true);
 			expect(fake.updateOneCalls).toHaveLength(0);
 		});
 
-		it("SaveMissionConfig rejects an authored agent with the reserved mission-copilot id", async () => {
-			const fake = makeFakeDb({ missions: [{ missionId: "m1" }] });
+		it("SaveMissionConfig rejects an invalid resulting config without writing", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{ missionId: "m1", mission: BASE_MISSION, agents: BASE_AGENTS },
+				],
+			});
 			const { tools } = buildTools(fake.db);
-			const yaml = [
-				"mission:",
-				"  id: m1",
-				"  name: Test",
-				"agents:",
-				`  - id: ${MISSION_COPILOT_AGENT_ID}`,
-				"    supervisor: user",
-				"    systemPrompt: x",
-				"    initialMentalMap: <section></section>",
-			].join("\n");
 			const result = await get(tools, "SaveMissionConfig").execute("t1", {
-				teamConfigYaml: yaml,
+				mission: { name: "" },
+			});
+			expect(result.isError).toBe(true);
+			expect(fake.updateOneCalls).toHaveLength(0);
+			expect(fake.insertOneCalls).toHaveLength(0);
+		});
+
+		it("SaveMissionConfig rejects an authored agent with the reserved mission-copilot id", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{ missionId: "m1", mission: BASE_MISSION, agents: BASE_AGENTS },
+				],
+			});
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				agents: [
+					{
+						id: MISSION_COPILOT_AGENT_ID,
+						supervisor: "user",
+						systemPrompt: "x",
+						initialMentalMap: "<section></section>",
+					},
+				],
 			});
 			expect(result.isError).toBe(true);
 			expect(result.content[0].text).toContain("reserved");
 			expect(fake.updateOneCalls).toHaveLength(0);
 		});
 
-		it("SaveMissionConfig writes on success and posts an audit message", async () => {
-			const fake = makeFakeDb({ missions: [{ missionId: "m1" }] });
+		it("SaveMissionConfig writes on success, logs a revision, and posts an audit message", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{ missionId: "m1", mission: BASE_MISSION, agents: BASE_AGENTS },
+				],
+			});
 			const { tools } = buildTools(fake.db);
-			const yaml = [
-				"mission:",
-				"  id: m1",
-				"  name: Test",
-				"agents:",
-				"  - id: lead",
-				"    supervisor: user",
-				"    systemPrompt: x",
-				"    initialMentalMap: <section></section>",
-			].join("\n");
 			const result = await get(tools, "SaveMissionConfig").execute("t1", {
-				teamConfigYaml: yaml,
+				mission: { name: "Renamed" },
 			});
 			expect(result.isError).toBeFalsy();
-			expect(fake.updateOneCalls).toHaveLength(1);
+			const missionsUpdates = fake.updateOneCalls.filter(
+				(c) => c.collection === "missions",
+			);
+			expect(missionsUpdates).toHaveLength(1);
+			const revisions = fake.insertOneCalls.filter(
+				(c) => c.collection === "missionConfigRevisions",
+			);
+			expect(revisions).toHaveLength(1);
 			expect(mailboxPosts).toHaveLength(1);
 			expect(mailboxPosts[0].to).toEqual(["user"]);
 		});
 
-		it("omitting teamFiles does not touch the stored teamFiles field (regression: used to silently wipe it via ?? [])", async () => {
-			const fake = makeFakeDb({ missions: [{ missionId: "m1" }] });
+		it("upserts an agent by id into the current roster (patch semantics)", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{ missionId: "m1", mission: BASE_MISSION, agents: BASE_AGENTS },
+				],
+			});
 			const { tools } = buildTools(fake.db);
-			const yaml = [
-				"mission:",
-				"  id: m1",
-				"  name: Test",
-				"agents:",
-				"  - id: lead",
-				"    supervisor: user",
-				"    systemPrompt: x",
-				"    initialMentalMap: <section></section>",
-			].join("\n");
 			const result = await get(tools, "SaveMissionConfig").execute("t1", {
-				teamConfigYaml: yaml,
+				agents: [
+					{
+						id: "lead",
+						supervisor: "user",
+						systemPrompt: "updated",
+						initialMentalMap: "<section></section>",
+					},
+					{
+						id: "worker",
+						supervisor: "lead",
+						systemPrompt: "y",
+						initialMentalMap: "<section></section>",
+					},
+				],
+			});
+			expect(result.isError).toBeFalsy();
+			const missionsUpdate = fake.updateOneCalls.find(
+				(c) => c.collection === "missions",
+			);
+			const update = missionsUpdate?.update as {
+				$set: { agents: Array<{ id: string; systemPrompt: string }> };
+			};
+			const ids = update.$set.agents.map((a) => a.id).sort();
+			expect(ids).toEqual(["lead", "worker"]);
+			expect(
+				update.$set.agents.find((a) => a.id === "lead")?.systemPrompt,
+			).toBe("updated");
+		});
+
+		it("omitting teamFiles does not touch the stored teamFiles field (regression: used to silently wipe it via ?? [])", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{ missionId: "m1", mission: BASE_MISSION, agents: BASE_AGENTS },
+				],
+			});
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				mission: { name: "Renamed" },
 				// teamFiles deliberately omitted — must preserve, not wipe.
 			});
 			expect(result.isError).toBeFalsy();
-			const update = fake.updateOneCalls[0].update as {
-				$set: Record<string, unknown>;
-			};
-			expect(update.$set).not.toHaveProperty("teamFiles");
-			expect(update.$set.teamConfigYaml).toBe(yaml);
+			const teamFilesUpdate = fake.updateOneCalls.find(
+				(c) =>
+					c.collection === "missions" &&
+					"teamFiles" in (c.update as { $set: Record<string, unknown> }).$set,
+			);
+			expect(teamFilesUpdate).toBeUndefined();
 		});
 
 		it("passing teamFiles: [] explicitly does clear it (the intentional path)", async () => {
-			const fake = makeFakeDb({ missions: [{ missionId: "m1" }] });
+			const fake = makeFakeDb({
+				missions: [
+					{ missionId: "m1", mission: BASE_MISSION, agents: BASE_AGENTS },
+				],
+			});
 			const { tools } = buildTools(fake.db);
-			const yaml = [
-				"mission:",
-				"  id: m1",
-				"  name: Test",
-				"agents:",
-				"  - id: lead",
-				"    supervisor: user",
-				"    systemPrompt: x",
-				"    initialMentalMap: <section></section>",
-			].join("\n");
 			const result = await get(tools, "SaveMissionConfig").execute("t1", {
-				teamConfigYaml: yaml,
+				mission: { name: "Renamed" },
 				teamFiles: [],
 			});
 			expect(result.isError).toBeFalsy();
-			const update = fake.updateOneCalls[0].update as {
+			const teamFilesUpdate = fake.updateOneCalls.find(
+				(c) =>
+					c.collection === "missions" &&
+					"teamFiles" in (c.update as { $set: Record<string, unknown> }).$set,
+			);
+			const update = teamFilesUpdate?.update as {
 				$set: Record<string, unknown>;
 			};
 			expect(update.$set.teamFiles).toEqual([]);

@@ -28,9 +28,7 @@ function fakeDb(opts: {
 }) {
 	const scheduled = opts.scheduled;
 	const mailboxInserts: Record<string, unknown>[] = [];
-	const missions = [
-		{ missionId: "m1", userId: opts.userId ?? "user1", teamConfigYaml: "" },
-	];
+	const missions = [{ missionId: "m1", userId: opts.userId ?? "user1" }];
 
 	const db = {
 		collection(name: string) {

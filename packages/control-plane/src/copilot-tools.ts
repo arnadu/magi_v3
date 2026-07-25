@@ -21,7 +21,10 @@ import type { Db } from "mongodb";
 import { getMachineState } from "./fly-machines.js";
 import { GITHUB_REPO, ghFetch } from "./github.js";
 import { deriveMonitorToken } from "./monitor-token.js";
-import type { MissionTemplate } from "./templates.js";
+import {
+	getTemplate as getTemplateData,
+	listTemplates as listTemplateData,
+} from "./templates.js";
 
 // ---------------------------------------------------------------------------
 // Pending-actions store (ProposeAction ↔ /confirm endpoint)
@@ -332,97 +335,42 @@ export function createCopilotTools(
 	const listTemplates: MagiTool = {
 		name: "ListTemplates",
 		description:
-			"List available mission team config templates (latest version of each).",
+			"List available mission team config templates. Templates are immutable " +
+			"(disk-authored, ADR-0021) — there is no version history to browse.",
 		parameters: Type.Object({}),
 		async execute() {
-			const latest = await db
-				.collection("templates")
-				.aggregate<{ _id: string; name: string; version: number }>([
-					{ $sort: { version: -1 } },
-					{
-						$group: {
-							_id: "$templateId",
-							name: { $first: "$name" },
-							version: { $first: "$version" },
-						},
-					},
-					{ $sort: { _id: 1 } },
-				])
-				.toArray();
-			if (latest.length === 0) return ok("(no templates)");
-			const rows = latest
-				.map((t) => `${t._id} | v${t.version} | ${t.name}`)
-				.join("\n");
-			return ok(rows);
+			const all = listTemplateData();
+			if (all.length === 0) return ok("(no templates)");
+			return ok(all.map((t) => `${t.id} | ${t.name}`).join("\n"));
 		},
 	};
 
 	const getTemplate: MagiTool = {
 		name: "GetTemplate",
 		description:
-			"Get the full YAML and associated files for a team config template (latest version).",
+			"Get the full config and associated files for a team config template.",
 		parameters: Type.Object({
 			id: Type.String({ description: "Template ID" }),
 		}),
 		async execute(_id, args) {
 			const templateId = args.id as string;
-			const template = await db
-				.collection<MissionTemplate>("templates")
-				.findOne({ templateId }, { sort: { version: -1 } });
+			const template = getTemplateData(templateId);
 			if (!template) return err(`Template "${templateId}" not found`);
 
-			const fileList = Array.isArray(template.teamFiles)
-				? (template.teamFiles as Array<{ path: string }>)
-						.map((f) => f.path)
-						.join("\n")
-				: "(none)";
+			const fileList =
+				template.teamFiles.length > 0
+					? template.teamFiles.map((f) => f.path).join("\n")
+					: "(none)";
 
 			const text = [
-				`=== Template: ${template.templateId} v${template.version} (${template.name}) ===`,
+				`=== Template: ${template.id} (${template.name}) ===`,
 				"",
-				template.teamConfigYaml as string,
+				JSON.stringify(template.config, null, 2),
 				"",
 				`=== Files ===`,
 				fileList,
 			].join("\n");
 			return ok(text);
-		},
-	};
-
-	const listTemplateVersions: MagiTool = {
-		name: "ListTemplateVersions",
-		description:
-			"List the full version history for a template. " +
-			"Every save_template is a new version — nothing is ever deleted. " +
-			"Use restore_template_version (via ProposeAction) to make an old version current again.",
-		parameters: Type.Object({
-			id: Type.String({ description: "Template ID" }),
-		}),
-		async execute(_id, args) {
-			const templateId = args.id as string;
-			const versions = await db
-				.collection<MissionTemplate>("templates")
-				.find(
-					{ templateId },
-					{
-						projection: {
-							version: 1,
-							name: 1,
-							createdAt: 1,
-							createdBy: 1,
-							teamFiles: 1,
-						},
-					},
-				)
-				.sort({ version: -1 })
-				.toArray();
-			if (versions.length === 0)
-				return ok(`No versions found for template "${templateId}"`);
-			const rows = versions.map(
-				(v) =>
-					`v${v.version} | ${v.createdAt.toISOString()} | ${v.createdBy} | ${(v.teamFiles ?? []).length} files | ${v.name}`,
-			);
-			return ok(rows.join("\n"));
 		},
 	};
 
@@ -439,13 +387,12 @@ export function createCopilotTools(
 			"- suspend_mission: { missionId }\n" +
 			"- resume_mission: { missionId }\n" +
 			"- write_mission_file: { missionId, path, content, agentId? }\n" +
-			"- save_template: { id, name, teamConfigYaml, teamFiles?: [{path, content}], fromMissionId?: string }\n" +
-			"  teamFiles rules: omit teamFiles entirely to preserve whatever the template already has (safe for YAML-only edits);\n" +
-			"  pass teamFiles explicitly to replace them; use fromMissionId (a running mission id) to snapshot its sharedDir instead.\n" +
-			"  WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.\n" +
-			"  Each save archives the previous state — use ListTemplateVersions to see history and restore_template_version to roll back.\n" +
-			"- restore_template_version: { templateId, version } — roll back a template to an archived version (archives current state first)\n" +
-			"- save_session_config: { missionId, teamConfigYaml, teamFiles?: [{path, content}], mentalMaps?: {[agentId]: html} }\n" +
+			"- save_session_config: { missionId, mission?, agents?, missionCopilotLimits?, teamFiles?: [{path, content}], mentalMaps?: {[agentId]: html} } " +
+			"— mission must be suspended first. Structured partial patch (ADR-0021): omit mission/agents/" +
+			"missionCopilotLimits to leave that field untouched; mission is shallow-merged, agents are " +
+			"upserted by id into the current roster, missionCopilotLimits replaces wholesale. " +
+			"Omit teamFiles to preserve the current ones; " +
+			"WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.\n" +
 			"- cancel_schedule: { id }\n" +
 			"- create_schedule: { missionId, to, subject, body, cron?, deliverAt?, label? }\n" +
 			"- pause_agent: { missionId, agentId } — halt one agent at its next dispatch boundary (e.g. a runaway flagged by a limit alert)\n" +
@@ -474,8 +421,6 @@ export function createCopilotTools(
 				"suspend_mission",
 				"resume_mission",
 				"write_mission_file",
-				"save_template",
-				"restore_template_version",
 				"save_session_config",
 				"cancel_schedule",
 				"create_schedule",
@@ -739,7 +684,6 @@ export function createCopilotTools(
 		listSchedule,
 		listTemplates,
 		getTemplate,
-		listTemplateVersions,
 		proposeAction,
 		listIssues,
 		createIssue,

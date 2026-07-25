@@ -1,8 +1,8 @@
 /**
- * ADR-0018 — live limit-config integration test, real LLM + real MongoDB.
+ * ADR-0018/ADR-0021 — live limit-config integration test, real LLM + real MongoDB.
  *
  * Proves `enforceLimits` (agent-runner.ts) actually reads a hard limit fresh
- * from the mission's persisted teamConfigYaml rather than the boot-time
+ * from the mission's persisted structured config rather than the boot-time
  * `teamConfig` snapshot the orchestrator was constructed with. The in-memory
  * `teamConfig` passed to `runOrchestrationLoop` here has NO limits configured
  * for the agent at all — the only place `maxLlmCallsPerTurn: 1` exists is the
@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseTeamConfig } from "@magi/agent-config";
+import type { AgentConfig, TeamConfig } from "@magi/agent-config";
 import { afterAll, describe, expect, it } from "vitest";
 import {
 	createMongoAgentStatsRepository,
@@ -42,21 +42,26 @@ const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI)
 	throw new Error("MONGODB_URI env var is required for integration tests");
 
-const teamYaml = (missionId: string) => `
-mission:
-  id: ${missionId}
-  name: Live Limits Test
+const WORKER_SYSTEM_PROMPT =
+	'You test tool usage. On every wakeup: first call Bash with command "echo hi", ' +
+	"then call PostMessage to reply to the user with the Bash output. Always do " +
+	"both steps in that order — never skip the Bash call.";
 
-agents:
-  - id: worker
-    supervisor: user
-    linuxUser: magi-w1
-    systemPrompt: |
-      You test tool usage. On every wakeup: first call Bash with command "echo hi",
-      then call PostMessage to reply to the user with the Bash output. Always do
-      both steps in that order — never skip the Bash call.
-    initialMentalMap: <section id="tasks"></section>
-`;
+function baseAgent(): AgentConfig {
+	return {
+		id: "worker",
+		name: "worker",
+		role: "worker",
+		supervisor: "user",
+		linuxUser: "magi-w1",
+		systemPrompt: WORKER_SYSTEM_PROMPT,
+		initialMentalMap: '<section id="tasks"></section>',
+	};
+}
+
+function baseMission(missionId: string): TeamConfig["mission"] {
+	return { id: missionId, name: "Live Limits Test" };
+}
 
 describe("integration: enforceLimits reads the agent's hard limit fresh, not from the boot-time snapshot", () => {
 	const missionId = `limits-live-${randomUUID()}`;
@@ -71,6 +76,7 @@ describe("integration: enforceLimits reads the agent's hard limit fresh, not fro
 			db.collection("conversationMessages").deleteMany({ missionId }),
 			db.collection("agentTurnStats").deleteMany({ missionId }),
 			db.collection("missionStats").deleteMany({ missionId }),
+			db.collection("missionConfigRevisions").deleteMany({ missionId }),
 		]);
 		await client.close();
 	});
@@ -86,16 +92,17 @@ describe("integration: enforceLimits reads the agent's hard limit fresh, not fro
 		// The boot-time teamConfig the orchestrator is constructed with — NO
 		// `limits` block for "worker" at all, so a hard breach cannot come from
 		// this object; it must come from a live read.
-		const teamConfig = parseTeamConfig(teamYaml(missionId));
+		const teamConfig: TeamConfig = {
+			mission: baseMission(missionId),
+			agents: [baseAgent()],
+		};
 
 		// The persisted config a cockpit/copilot edit would have written —
 		// diverges from the boot-time snapshot by exactly one hard limit.
 		await db.collection("missions").insertOne({
 			missionId,
-			teamConfigYaml: teamYaml(missionId).replace(
-				"linuxUser: magi-w1",
-				"linuxUser: magi-w1\n    limits:\n      maxLlmCallsPerTurn: 1",
-			),
+			mission: baseMission(missionId),
+			agents: [{ ...baseAgent(), limits: { maxLlmCallsPerTurn: 1 } }],
 		});
 
 		const mailboxRepo = createMongoMailboxRepository(db, missionId);
