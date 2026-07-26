@@ -144,17 +144,12 @@
     .tmpl-file-list { display: flex; flex-direction: column; gap: 6px; }
     .tmpl-file-row { border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; }
     .tmpl-file-header { display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #f1f5f9; }
-    .tmpl-file-path { flex: 1; background: transparent; border: none; color: #475569; font-family: monospace; font-size: 12px; outline: none; min-width: 0; }
-    .tmpl-file-path:focus { color: #1e293b; }
+    .tmpl-file-path-label { flex: 1; color: #475569; font-family: monospace; font-size: 12px; min-width: 0; }
     .tmpl-file-toggle { background: none; border: none; color: #94a3b8; font-size: 10px; padding: 2px 6px; cursor: pointer; flex-shrink: 0; transition: transform 0.15s; }
     .tmpl-file-row.open .tmpl-file-toggle { transform: rotate(90deg); }
     .tmpl-file-toggle:hover { color: #475569; opacity: 1; }
-    .tmpl-file-remove { background: none; border: none; color: #94a3b8; font-size: 14px; padding: 2px 4px; cursor: pointer; flex-shrink: 0; line-height: 1; }
-    .tmpl-file-remove:hover { color: #dc2626; opacity: 1; }
     .file-content-editor { display: none; width: 100%; background: #f8fafc; border: none; border-top: 1px solid #cbd5e1; color: #334155; font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; line-height: 1.65; padding: 12px 14px; resize: vertical; min-height: 100px; max-height: 320px; outline: none; }
     .tmpl-file-row.open .file-content-editor { display: block; }
-    .file-content-editor:focus { background: #ffffff; }
-    .add-file-btn { margin-top: 8px; font-size: 13px; padding: 7px 14px; }
 
     /* ── Save bar ────────────────────────────────────────────────────────────── */
     .save-bar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #cbd5e1; flex-shrink: 0; background: #f8fafc; }
@@ -239,7 +234,6 @@
     .field-input:focus { border-color: #7c3aed; }
     .field-input:disabled { opacity: 0.45; cursor: default; }
     .field-textarea { font-family: "SF Mono", "Fira Code", monospace; resize: vertical; min-height: 80px; }
-    .field-adv { min-height: 60px; color: #475569; font-size: 12px; }
     .field-sp { min-height: 160px; }
     .field-section { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 8px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
     .field-src { font-size: 11px; color: #94a3b8; margin-bottom: 6px; display: block; }
@@ -270,9 +264,6 @@
     .card-stats   { display:flex; gap:12px; font-size:11px; color:#64748b; flex-wrap:wrap; }
     .card-activity { color:#94a3b8; }
     .card-snippet { margin-top:6px; font-size:11px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    /* ── Add agent tab button ────────────────────────────────────────────────── */
-    .dtab-add { font-size:11px; color:#64748b; border:1px dashed #cbd5e1; }
-    .dtab-add:hover { color:#7c3aed; border-color:#7c3aed; opacity:1; }
     /* ── Small extra-small button ────────────────────────────────────────────── */
     .btn-xs { padding:2px 8px; font-size:11px; }
 
@@ -545,98 +536,14 @@
   // ── YAML utilities ────────────────────────────────────────────────────────
 
   // Split YAML into header + per-agent raw blocks (used for tab labels + raw preview).
-  function parseYamlBlocks(yaml) {
-    const normalized = yaml.replace(/\r\n/g, '\n');
-    const m = normalized.match(/^agents:\s*$/m);
-    if (!m) return { header: normalized, agents: [] };
-
-    const headerEnd = m.index + m[0].length + 1;
-    const header = normalized.slice(0, headerEnd);
-    const rest   = normalized.slice(headerEnd);
-
-    const lines = rest.split('\n');
-    const rawBlocks = [];
-    let cur = null;
-    for (const line of lines) {
-      if (/^ {2}- id:/.test(line)) {
-        if (cur !== null) rawBlocks.push(cur);
-        cur = [line];
-      } else if (cur !== null) {
-        cur.push(line);
-      }
-    }
-    if (cur !== null) rawBlocks.push(cur);
-
-    const agents = rawBlocks.map(bLines => {
-      const block = bLines.join('\n');
-      const id = (block.match(/^\s*-\s+id:\s*(\S+)/) || [])[1] || 'unknown';
-      const nm = (block.match(/^\s+name:\s*["']?([^"'\n]+)/m) || [])[1] || id;
-      return { id, name: nm.trim().replace(/["']$/, ''), block };
-    });
-
-    return { header, agents };
-  }
-
-  const KNOWN_AGENT_FIELDS  = ['id', 'name', 'role', 'linuxUser', 'supervisor', 'model', 'systemPrompt', 'initialMentalMap', 'active', 'disabledSkills'];
-  const KNOWN_MISSION_FIELDS = ['id', 'name', 'model', 'visionModel'];
-
-  // Parse a raw agent block ("  - id: foo\n    name: bar\n...") into widget values.
-  function parseAgentBlock(block) {
-    try {
-      const deindented = block.split('\n').map(l => l.slice(2)).join('\n');
-      const items = jsyaml.load(deindented);
-      const agent = (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object') ? items[0] : {};
-      const known = {};
-      const rest  = {};
-      for (const [k, v] of Object.entries(agent)) {
-        if (KNOWN_AGENT_FIELDS.includes(k)) known[k] = v; // preserve type (bool, array, etc.)
-        else rest[k] = v;
-      }
-      return {
-        id:              String(known.id              ?? ''),
-        name:            String(known.name            ?? ''),
-        role:            String(known.role            ?? ''),
-        linuxUser:       String(known.linuxUser       ?? ''),
-        supervisor:      String(known.supervisor      ?? ''),
-        model:           String(known.model           ?? ''),
-        systemPrompt:    String(known.systemPrompt    ?? ''),
-        initialMentalMap: String(known.initialMentalMap ?? ''),
-        active:          known.active !== false,  // true unless explicitly false
-        disabledSkills:  Array.isArray(known.disabledSkills) ? known.disabledSkills : [],
-        advanced: Object.keys(rest).length > 0 ? jsyaml.dump(rest, { lineWidth: -1, indent: 2 }) : '',
-      };
-    } catch {
-      const id = (block.match(/^\s*-\s+id:\s*(\S+)/) || [])[1] || 'unknown';
-      return { id, name: id, role: '', linuxUser: '', supervisor: '', model: '', systemPrompt: '', initialMentalMap: '', active: true, disabledSkills: [], advanced: '' };
-    }
-  }
-
-  // Rebuild a raw agent block from widget values.
-  function buildAgentBlock(fields) {
-    const obj = {};
-    // String-valued known fields (skip id-like, active, disabledSkills — handled separately)
-    const STRING_AGENT_FIELDS = ['id', 'name', 'role', 'linuxUser', 'supervisor', 'model', 'systemPrompt', 'initialMentalMap'];
-    for (const k of STRING_AGENT_FIELDS) {
-      const v = fields[k];
-      if (v !== undefined && v !== null && String(v).trim() !== '') obj[k] = String(v);
-    }
-    // Only emit active:false when explicitly disabled (omit true to keep YAML clean)
-    if (fields.active === false) obj.active = false;
-    // Only emit disabledSkills when non-empty
-    if (Array.isArray(fields.disabledSkills) && fields.disabledSkills.length > 0) {
-      obj.disabledSkills = fields.disabledSkills;
-    }
-    if (fields.advanced?.trim()) {
-      try {
-        const extra = jsyaml.load(fields.advanced);
-        if (extra && typeof extra === 'object') Object.assign(obj, extra);
-      } catch { /* ignore malformed advanced */ }
-    }
-    const raw = jsyaml.dump([obj], { lineWidth: -1, indent: 2 }).trimEnd();
-    // raw is a YAML sequence "- id: ...\n  name: ...\n..." — re-indent with 2 extra spaces
-    const lines = raw.split('\n');
-    return `  ${lines[0]}\n${lines.slice(1).map(l => `  ${l}`).join('\n')}`;
-  }
+  // Every Tier A tool name (MAGI_V3_SPEC.md "Tier A tool inventory") — the
+  // full set an agent's disabledTools[] may reference. Hardcoded like
+  // availableSkills() below; drifts from the spec if a tool is added there.
+  const TIER_A_TOOLS = [
+    'Bash', 'WriteFile', 'EditFile', 'PostMessage', 'ListMessages', 'ReadMessage',
+    'ListTeam', 'UpdateMentalMap', 'FetchUrl', 'InspectImage', 'SearchWeb',
+    'BrowseWeb', 'Research', 'AnalyzeMemories',
+  ];
 
   // Return list of skill names available for a config (platform + team skills from files).
   function availableSkills(teamFiles) {
@@ -651,77 +558,24 @@
     return [...new Set([...platform, ...team])];
   }
 
-  // Parse the mission header block into widget values.
-  function parseMissionHeader(header) {
-    try {
-      const noAgents = header.replace(/\nagents:\s*\n?$/, '').trim();
-      const parsed = jsyaml.load(noAgents);
-      const mission = (parsed && typeof parsed === 'object' && parsed.mission) ? parsed.mission : {};
-      const known = {};
-      const rest  = {};
-      for (const [k, v] of Object.entries(mission)) {
-        if (KNOWN_MISSION_FIELDS.includes(k)) known[k] = v;
-        else rest[k] = v;
-      }
-      return {
-        id:          String(known.id          ?? ''),
-        name:        String(known.name        ?? ''),
-        model:       String(known.model       ?? ''),
-        visionModel: String(known.visionModel ?? ''),
-        advanced: Object.keys(rest).length > 0 ? jsyaml.dump(rest, { lineWidth: -1, indent: 2 }) : '',
-      };
-    } catch {
-      return { id: '', name: '', model: '', visionModel: '', advanced: '' };
-    }
-  }
-
-  // Rebuild the mission header YAML block from widget values.
-  function buildMissionHeader(fields) {
-    const mission = {};
-    for (const k of KNOWN_MISSION_FIELDS) {
-      const v = fields[k];
-      if (v !== undefined && v !== null && String(v).trim() !== '') mission[k] = String(v);
-    }
-    if (fields.advanced?.trim()) {
-      try {
-        const extra = jsyaml.load(fields.advanced);
-        if (extra && typeof extra === 'object') Object.assign(mission, extra);
-      } catch { /* ignore malformed advanced */ }
-    }
-    return `${jsyaml.dump({ mission }, { lineWidth: -1, indent: 2 })}\nagents:\n`;
-  }
-
-  // Reconstruct full teamConfigYaml from widget values.
-  function reconstructYaml(missionFields, agentFieldsList) {
-    return buildMissionHeader(missionFields) + agentFieldsList.map(buildAgentBlock).join('\n');
-  }
-
-  // ── Structured-config API boundary (ADR-0021) ───────────────────────────────
-  // The API (GET/PUT /api/missions/:id/config, GET /api/templates/:id) speaks
-  // structured JSON (mission/agents/missionCopilotLimits) — this editor's
-  // internals (parseYamlBlocks/parseMissionHeader/parseAgentBlock/
-  // buildAgentBlock/buildMissionHeader/reconstructYaml) still operate on YAML
-  // text, unchanged. These two helpers convert at the boundary only, reusing
-  // the jsyaml library already loaded for the "Advanced" field parsing above.
-
-  // {mission, agents} → the same teamConfigYaml text shape this editor has
-  // always round-tripped internally.
+  // ── Raw YAML preview (ADR-0022: display only, never parsed back) ───────────
+  // Everything this editor writes goes through PUT/POST as structured JSON
+  // directly — this is purely a read-only rendering of that same structured
+  // config as YAML text, for operator visibility on the "Raw YAML" tab.
   function structuredToYaml(mission, agents) {
     try {
       return jsyaml.dump({ mission: mission ?? {}, agents: agents ?? [] }, { lineWidth: -1, indent: 2 });
     } catch {
-      return 'mission:\n  id: \nagents:\n';
+      return '(unable to render)';
     }
   }
 
-  // Reconstructed teamConfigYaml text → {mission, agents} for the API.
-  function yamlToStructured(teamConfigYaml) {
-    try {
-      const parsed = jsyaml.load(teamConfigYaml) ?? {};
-      return { mission: parsed.mission ?? {}, agents: parsed.agents ?? [] };
-    } catch {
-      return { mission: {}, agents: [] };
-    }
+  // Converts an empty/whitespace-only string to undefined, so an operator
+  // blanking an optional scalar field (model, visionModel, timezone) clears
+  // it rather than sending an empty string.
+  function orUndef(v) {
+    const s = (v ?? '').trim();
+    return s === '' ? undefined : s;
   }
 
   // ── Sign-in ───────────────────────────────────────────────────────────────
@@ -905,17 +759,17 @@
         return;
       }
       const detail = await res.json();
-      // detail.config is structured ({mission, agents, missionCopilotLimits}, ADR-0021) —
-      // synthesize the YAML text this editor's internals still operate on.
-      detail.teamConfigYaml = structuredToYaml(detail.config?.mission, detail.config?.agents);
-      detail.missionCopilotLimits = detail.config?.missionCopilotLimits;
       state.templateCache.set(id, detail);
     }
     if (state.selected?.type !== 'template' || state.selected?.id !== id) return;
     const cached = state.templateCache.get(id);
     renderConfigForm({
       type: 'template', id,
-      config: { teamConfigYaml: cached.teamConfigYaml, teamFiles: cached.teamFiles ?? [] },
+      config: {
+        mission: cached.config?.mission ?? {},
+        agents: cached.config?.agents ?? [],
+        teamFiles: cached.teamFiles ?? [],
+      },
       status: undefined,
       name: cached.name,
     });
@@ -923,6 +777,7 @@
 
   // ── Unified config form (templates + suspended missions) ──────────────────
 
+  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm/renderAgentPane
   function switchDetailTab(btn, paneId) {
     const body = btn.closest('.detail-body');
     if (!body) return;
@@ -934,24 +789,33 @@
     if (saveBar) saveBar.style.display = paneId.endsWith('-raw') ? 'none' : '';
   }
 
-  function renderAgentPane(ei, _id, _ctxKey, a, canEdit, config) {
+  // ADR-0022: only name/model/active/disabledSkills/disabledTools are
+  // editable here. systemPrompt/supervisor/initialMentalMap/linuxUser/role
+  // are shown read-only (or omitted) — edit those via the mission's own
+  // copilot (SaveMissionConfig/EditAgentMentalMap), not this dashboard.
+  function renderAgentPane(ei, a, canEdit, config, mentalMapLabel) {
     const dis = canEdit ? '' : 'disabled';
     const skills = availableSkills(config.teamFiles);
-    const disSet = new Set(a.disabledSkills ?? []);
+    const disSkillSet = new Set(a.disabledSkills ?? []);
     const skillRows = skills.map(s => {
-      const checked = !disSet.has(s) ? 'checked' : '';
+      const checked = !disSkillSet.has(s) ? 'checked' : '';
       return `<label class="skill-toggle-row">
         <input type="checkbox" id="fn-skill-${ei}-${esc(a.id)}-${esc(s)}" ${checked} ${dis}>
         <span>${esc(s)}</span>
       </label>`;
     }).join('');
-    const removeBtn = canEdit
-      ? `<button type="button" class="btn-danger btn-xs" style="margin-left:8px" onclick="removeAgent('${esc(a._type ?? 'template')}','${ei}','${esc(a.id)}')">Remove</button>`
-      : '';
+    const disToolSet = new Set(a.disabledTools ?? []);
+    const toolRows = TIER_A_TOOLS.map(t => {
+      const checked = !disToolSet.has(t) ? 'checked' : '';
+      return `<label class="skill-toggle-row">
+        <input type="checkbox" id="fn-tool-${ei}-${esc(a.id)}-${esc(t)}" ${checked} ${dis}>
+        <span>${esc(t)}</span>
+      </label>`;
+    }).join('');
     return `
       <div class="dtab-pane" id="dtab-pane-${ei}-agent-${esc(a.id)}">
         <div class="form-scroll">
-          <div class="agent-id-badge">id: ${esc(a.id)}${removeBtn}</div>
+          <div class="agent-id-badge">id: ${esc(a.id)}</div>
           <div class="field-group agent-active-row">
             <label class="field-label">
               <input type="checkbox" id="fn-active-${ei}-${esc(a.id)}" ${a.active !== false ? 'checked' : ''} ${dis}>
@@ -960,98 +824,94 @@
           </div>
           <div class="field-group"><label class="field-label">Name</label>
             <input class="field-input" type="text" id="fn-name-${ei}-${esc(a.id)}" value="${esc(a.name)}" ${dis}></div>
-          <div class="field-group"><label class="field-label">Role</label>
-            <input class="field-input" type="text" id="fn-role-${ei}-${esc(a.id)}" value="${esc(a.role)}" ${dis}></div>
-          <div class="field-group"><label class="field-label">Linux User</label>
-            <input class="field-input" type="text" id="fn-linuxUser-${ei}-${esc(a.id)}" value="${esc(a.linuxUser)}" ${dis}></div>
-          <div class="field-group"><label class="field-label">Supervisor</label>
-            <input class="field-input" type="text" id="fn-supervisor-${ei}-${esc(a.id)}" value="${esc(a.supervisor)}" list="agent-list-${ei}" ${dis}></div>
           <div class="field-group"><label class="field-label">Model</label>
             <small class="field-src model-catalog-hint">${catalogHintText()}</small>
-            <input class="field-input" type="text" id="fn-model-${ei}-${esc(a.id)}" value="${esc(a.model)}" list="model-list-${ei}"
+            <input class="field-input" type="text" id="fn-model-${ei}-${esc(a.id)}" value="${esc(a.model ?? '')}" list="model-list-${ei}"
+              placeholder="(inherits mission model)"
               oninput="checkModelKnown(this, document.getElementById('fn-model-hint-${ei}-${esc(a.id)}'))" ${dis}>
             <small class="field-hint field-warn" id="fn-model-hint-${ei}-${esc(a.id)}"></small></div>
+          <div class="field-section">Supervisor</div>
+          <div class="field-group"><small class="field-src">Read-only — edit via the mission copilot (structural team change)</small>
+            <input class="field-input" type="text" value="${esc(a.supervisor ?? '')}" disabled></div>
           <div class="field-section">System Prompt</div>
-          <div class="field-group">
-            <textarea class="field-input field-textarea field-sp" id="fn-sp-${ei}-${esc(a.id)}" ${dis}>${esc(a.systemPrompt)}</textarea>
+          <div class="field-group"><small class="field-src">Read-only — edit via the mission copilot (SaveMissionConfig)</small>
+            <textarea class="field-input field-textarea field-sp" disabled>${esc(a.systemPrompt ?? '')}</textarea>
           </div>
           <div class="field-section">Mental Map</div>
           <div class="field-group">
-            <small class="field-src">${esc(a._mentalMapLabel ?? 'Template initial value')}</small>
-            <div class="cm-wrap${canEdit ? '' : ' cm-disabled'}" id="cm-wrap-${ei}-${esc(a.id)}"></div>
+            <small class="field-src">${esc(mentalMapLabel)} — read-only, edit via the mission copilot (EditAgentMentalMap)</small>
+            <div class="cm-wrap cm-disabled" id="cm-wrap-${ei}-${esc(a.id)}"></div>
           </div>
           <div class="field-section">Skills</div>
           <div class="field-group">${skillRows}</div>
-          <div class="field-section">Advanced</div>
-          <div class="field-group">
-            <textarea class="field-input field-textarea field-adv" id="fn-adv-${ei}-${esc(a.id)}" ${dis}>${esc(a.advanced)}</textarea>
-          </div>
+          <div class="field-section">Tools</div>
+          <div class="field-group">${toolRows}</div>
         </div>
       </div>`;
   }
 
   function renderConfigForm({ type, id, config, status, name }) {
-    // Templates are immutable/disk-only (ADR-0021) — only a suspended mission is editable.
+    // Templates are immutable/disk-only (ADR-0021) — only a suspended mission is
+    // editable, and even then only the restricted field set below (ADR-0022).
     const canEdit = type === 'mission' && status === 'suspended';
     const ei = esc(id);
     // ctxKey scopes CM editor map keys to avoid template/mission collisions
     const ctxKey = (type === 'template' ? 't:' : 'm:') + id;
 
-    const { teamConfigYaml, teamFiles, mentalMaps } = config;
-    const { header, agents } = parseYamlBlocks(teamConfigYaml ?? '');
-    const mf = parseMissionHeader(header ?? '');
-    const parsedAgents = agents.map(a => {
-      const fields = parseAgentBlock(a.block);
-      const liveMap = mentalMaps?.[a.id];
-      fields._mentalMapValue = liveMap ?? fields.initialMentalMap ?? '';
-      fields._mentalMapLabel = liveMap ? 'Live state (last session)' : 'Template initial value';
-      fields._type = type;
-      return fields;
-    });
+    const mission = config.mission ?? {};
+    const agentList = config.agents ?? [];
+    const teamFiles = config.teamFiles ?? [];
+    const mentalMaps = config.mentalMaps ?? {};
 
-    // Store parsed agents in state so add/remove can mutate them
-    state.configAgents.set(ctxKey, parsedAgents);
+    // Cache the full, unmodified structured agents — saveConfig() clones these
+    // and overlays only the editable fields, so every non-editable field
+    // (systemPrompt, supervisor, initialMentalMap, limits, linuxUser, id)
+    // passes through byte-for-byte, never touched by this editor.
+    state.configAgents.set(ctxKey, agentList);
 
     const modelSuggestions = modelOptionsHtml(false);
     const visionModelSuggestions = modelOptionsHtml(true);
 
-    const agentIdOptions = `${parsedAgents.map(a => `<option value="${esc(a.id)}">`).join('')}<option value="user">`;
-
-    const agentTabs = parsedAgents.map(a =>
+    const agentTabs = agentList.map(a =>
       `<button class="dtab" type="button" onclick="switchDetailTab(this,'dtab-pane-${ei}-agent-${esc(a.id)}')">${esc(a.name || a.id)}</button>`
     ).join('');
 
-    const agentPanes = parsedAgents.map(a => renderAgentPane(ei, id, ctxKey, a, canEdit, config)).join('');
+    const agentPanes = agentList.map(a => {
+      const mentalMapLabel = mentalMaps?.[a.id] ? 'Live state (last session)' : 'Initial value';
+      return renderAgentPane(ei, a, canEdit, config, mentalMapLabel);
+    }).join('');
 
     const dis = canEdit ? '' : 'disabled';
     const missionPane = `
       <div class="dtab-pane active" id="dtab-pane-${ei}-mission">
         <div class="form-scroll">
           <div class="field-group"><label class="field-label">ID</label>
-            <input class="field-input" type="text" value="${esc(mf.id)}" disabled></div>
+            <input class="field-input" type="text" value="${esc(mission.id ?? id)}" disabled></div>
           <div class="field-group"><label class="field-label">Name</label>
-            <input class="field-input" type="text" id="fn-name-${ei}" value="${esc(mf.name)}" ${dis}></div>
+            <input class="field-input" type="text" id="fn-name-${ei}" value="${esc(mission.name ?? '')}" ${dis}></div>
           <div class="field-group"><label class="field-label">Model</label>
             <small class="field-src model-catalog-hint">${catalogHintText()}</small>
-            <input class="field-input" type="text" id="fn-model-${ei}" value="${esc(mf.model)}" list="model-list-${ei}"
+            <input class="field-input" type="text" id="fn-model-${ei}" value="${esc(mission.model ?? '')}" list="model-list-${ei}"
               oninput="checkModelKnown(this, document.getElementById('fn-model-hint-${ei}'))" ${dis}>
             <small class="field-hint field-warn" id="fn-model-hint-${ei}"></small></div>
           <div class="field-group"><label class="field-label">Vision Model</label>
             <small class="field-src model-catalog-hint">${catalogHintText()}</small>
-            <input class="field-input" type="text" id="fn-vmodel-${ei}" value="${esc(mf.visionModel)}" list="vmodel-list-${ei}"
+            <input class="field-input" type="text" id="fn-vmodel-${ei}" value="${esc(mission.visionModel ?? '')}" list="vmodel-list-${ei}"
               oninput="checkModelKnown(this, document.getElementById('fn-vmodel-hint-${ei}'))" ${dis}>
             <small class="field-hint field-warn" id="fn-vmodel-hint-${ei}"></small></div>
-          <div class="field-section">Advanced</div>
-          <div class="field-group">
-            <textarea class="field-input field-textarea field-adv" id="fn-adv-${ei}" ${dis}>${esc(mf.advanced)}</textarea>
-          </div>
+          <div class="field-group"><label class="field-label">Timezone</label>
+            <small class="field-src">IANA name, e.g. America/New_York — used for the local-time line in every agent's prompt</small>
+            <input class="field-input" type="text" id="fn-timezone-${ei}" value="${esc(mission.timezone ?? '')}" ${dis}></div>
           <datalist id="model-list-${ei}">${modelSuggestions}</datalist>
           <datalist id="vmodel-list-${ei}">${visionModelSuggestions}</datalist>
-          <datalist id="agent-list-${ei}">${agentIdOptions}</datalist>
         </div>
       </div>`;
 
-    const fileRows = (teamFiles ?? []).map((f, i) => fileRowHtml(id, i, f.path, f.content)).join('');
+    // Files: view-only (ADR-0022) — content is instructional/data material in
+    // the same risk class as systemPrompt. Edit via write_mission_file
+    // (control-plane or mission copilot), not a bulk textarea editor.
+    const fileRows = teamFiles.map((f, i) => fileRowHtml(id, i, f.path, f.content)).join('')
+      || '<div class="field-src" style="padding:8px 0">No files attached.</div>';
 
     const gateHtml = (!canEdit && type === 'mission') ? `
       <div class="edit-gate-banner">
@@ -1087,10 +947,6 @@
           </div>
         </div>`;
 
-    const addAgentBtn = canEdit
-      ? `<button class="dtab dtab-add" type="button" onclick="addAgent('${esc(type)}','${ei}')">+ Agent</button>`
-      : '';
-
     // Templates are immutable/disk-only (ADR-0021) — no save action, launch only.
     const saveBarContent = type === 'template' ? `
       <button type="button" class="btn-primary btn-sm" onclick="startSession('${ei}')">Start session ›</button>
@@ -1105,7 +961,6 @@
         <div class="dtab-bar">
           <button class="dtab active" type="button" onclick="switchDetailTab(this,'dtab-pane-${ei}-mission')">Mission</button>
           ${agentTabs}
-          ${addAgentBtn}
           <button class="dtab" type="button" onclick="switchDetailTab(this,'dtab-pane-${ei}-files')">Files</button>
           <button class="dtab" type="button" onclick="switchDetailTab(this,'dtab-pane-${ei}-raw')">Raw YAML</button>
         </div>
@@ -1114,11 +969,10 @@
         <div class="dtab-pane" id="dtab-pane-${ei}-files">
           <div class="files-scroll">
             <div class="tmpl-file-list" id="file-list-${ei}">${fileRows}</div>
-            <button type="button" class="btn-ghost btn-sm add-file-btn" onclick="addFileRow('${ei}')">+ Add file</button>
           </div>
         </div>
         <div class="dtab-pane" id="dtab-pane-${ei}-raw">
-          <pre class="raw-yaml-pre" id="raw-pre-${ei}">${esc(teamConfigYaml ?? '')}</pre>
+          <pre class="raw-yaml-pre" id="raw-pre-${ei}">${esc(structuredToYaml(mission, agentList))}</pre>
         </div>
         <div class="save-bar" id="save-bar-${ei}" ${type === 'mission' && !canEdit ? 'style="display:none"' : ''}>
           <span class="save-status" id="save-status-${ei}"></span>
@@ -1126,20 +980,22 @@
         </div>
       </div>`;
 
-    // Create CodeMirror editors after DOM is ready
+    // Create read-only CodeMirror viewers after DOM is ready. Never editable
+    // here (ADR-0022) — use the mission copilot's EditAgentMentalMap.
     setTimeout(() => {
       for (const agent of state.configAgents.get(ctxKey) ?? []) {
         const cmKey = `cm-${ctxKey}-${agent.id}`;
-        const wrap  = document.getElementById(`cm-wrap-${id}-${agent.id}`);
+        const wrap  = document.getElementById(`cm-wrap-${ei}-${esc(agent.id)}`);
         if (wrap && typeof CodeMirror !== 'undefined' && !wrap.__cmInit) {
           wrap.__cmInit = true;
+          const liveMap = mentalMaps?.[agent.id];
           const cm = CodeMirror(wrap, {
-            value: agent._mentalMapValue || '',
+            value: liveMap ?? agent.initialMentalMap ?? '',
             mode: 'xml',
             lineNumbers: true,
             lineWrapping: true,
             tabSize: 2,
-            readOnly: !canEdit,
+            readOnly: true,
           });
           state.cmEditors.set(cmKey, cm);
         }
@@ -1163,11 +1019,9 @@
       const res = await apiFetch(`/api/missions/${encodeURIComponent(id)}/config`);
       if (state.selected?.type !== 'mission' || state.selected?.id !== id) return;
       if (res?.ok) {
-        config = await res.json();
         // Structured response ({mission, agents, missionCopilotLimits, teamFiles,
-        // mentalMaps}, ADR-0021) — synthesize the YAML text this editor's
-        // internals still operate on.
-        config.teamConfigYaml = structuredToYaml(config.mission, config.agents);
+        // mentalMaps}, ADR-0021) — cached and used directly, no YAML round-trip.
+        config = await res.json();
         state.missionConfigCache.set(id, config);
       } else if (res?.status === 404) {
         // Mission has no stored config (provisioned before this feature, or failed before YAML was written)
@@ -1196,50 +1050,44 @@
 
   // ── Shared field-collection helpers ──────────────────────────────────────
 
-  function readMissionFields(ctxId, rawId) {
+  // ADR-0022: reads only the editable mission-level fields from the DOM.
+  function readMissionFields(ctxId) {
     return {
-      id:          rawId,
-      name:        document.getElementById(`fn-name-${ctxId}`)?.value    ?? '',
-      model:       document.getElementById(`fn-model-${ctxId}`)?.value   ?? '',
-      visionModel: document.getElementById(`fn-vmodel-${ctxId}`)?.value  ?? '',
-      advanced:    document.getElementById(`fn-adv-${ctxId}`)?.value     ?? '',
+      name:        document.getElementById(`fn-name-${ctxId}`)?.value,
+      model:       document.getElementById(`fn-model-${ctxId}`)?.value,
+      visionModel: document.getElementById(`fn-vmodel-${ctxId}`)?.value,
+      timezone:    document.getElementById(`fn-timezone-${ctxId}`)?.value,
     };
   }
 
-  function collectAgentFields(ctxId, ctxKey, agents, config) {
+  // ADR-0022: clones each cached (unmodified) agent object and overlays only
+  // the editable fields read from the DOM — systemPrompt/supervisor/
+  // initialMentalMap/limits/linuxUser/id pass through untouched, never
+  // parsed from or serialized to text.
+  function collectAgentFields(ctxId, agents, config) {
     return agents.map(a => {
       const aid = esc(a.id);
-      const cmKey = `cm-${ctxKey}-${a.id}`;
-      const mentalMapVal = state.cmEditors.get(cmKey)?.getValue() ?? a._mentalMapValue ?? '';
       const allSkills = availableSkills(config.teamFiles ?? []);
       const disabledSkills = allSkills.filter(s => {
         const cb = document.getElementById(`fn-skill-${ctxId}-${aid}-${esc(s)}`);
         return cb && !cb.checked;
       });
+      const disabledTools = TIER_A_TOOLS.filter(t => {
+        const cb = document.getElementById(`fn-tool-${ctxId}-${aid}-${esc(t)}`);
+        return cb && !cb.checked;
+      });
       const activeCb = document.getElementById(`fn-active-${ctxId}-${aid}`);
+      const nameVal  = document.getElementById(`fn-name-${ctxId}-${aid}`)?.value;
+      const modelVal = document.getElementById(`fn-model-${ctxId}-${aid}`)?.value;
       return {
-        id:              a.id,
-        name:            document.getElementById(`fn-name-${ctxId}-${aid}`)?.value       ?? a.name ?? '',
-        role:            document.getElementById(`fn-role-${ctxId}-${aid}`)?.value       ?? '',
-        linuxUser:       document.getElementById(`fn-linuxUser-${ctxId}-${aid}`)?.value  ?? '',
-        supervisor:      document.getElementById(`fn-supervisor-${ctxId}-${aid}`)?.value ?? '',
-        model:           document.getElementById(`fn-model-${ctxId}-${aid}`)?.value      ?? '',
-        systemPrompt:    document.getElementById(`fn-sp-${ctxId}-${aid}`)?.value         ?? '',
-        initialMentalMap: mentalMapVal,
-        active:          activeCb ? activeCb.checked : true,
+        ...a,
+        name: nameVal?.trim() ? nameVal : a.name,
+        model: orUndef(modelVal),
+        active: activeCb ? activeCb.checked : a.active !== false,
         disabledSkills,
-        advanced:        document.getElementById(`fn-adv-${ctxId}-${aid}`)?.value        ?? '',
+        disabledTools,
       };
     });
-  }
-
-  function collectTeamFiles(ctxId) {
-    return Array.from(document.querySelectorAll(`#file-list-${ctxId} .tmpl-file-row`))
-      .map(row => ({
-        path:    row.querySelector('.tmpl-file-path')?.value?.trim() ?? '',
-        content: row.querySelector('.file-content-editor')?.value    ?? '',
-      }))
-      .filter(f => f.path);
   }
 
   // ── Config saving ─────────────────────────────────────────────────────────
@@ -1251,18 +1099,20 @@
   async function saveConfig(type, id) {
     if (type !== 'mission') return;
     const ctxKey = `m:${id}`;
-    const config = state.missionConfigCache.get(id) ?? { teamFiles: [] };
+    const config = state.missionConfigCache.get(id);
+    if (!config?.mission || !config?.agents) return;
 
-    const missionFields = readMissionFields(id, id);
-    // Recover the real mission id from the cached YAML (id input is read-only)
-    const cachedYaml = config.teamConfigYaml ?? '';
-    missionFields.id = parseMissionHeader(parseYamlBlocks(cachedYaml).header ?? '').id || id;
+    const mf = readMissionFields(id);
+    const nextMission = {
+      ...config.mission,
+      name: mf.name?.trim() ? mf.name : config.mission.name,
+      model: orUndef(mf.model),
+      visionModel: orUndef(mf.visionModel),
+      timezone: orUndef(mf.timezone),
+    };
 
     const agents = state.configAgents.get(ctxKey) ?? [];
-    const agentFieldsList = collectAgentFields(id, ctxKey, agents, config);
-    const teamConfigYaml = reconstructYaml(missionFields, agentFieldsList);
-    const { mission, agents: structuredAgents } = yamlToStructured(teamConfigYaml);
-    const teamFiles = collectTeamFiles(id);
+    const nextAgents = collectAgentFields(id, agents, config);
 
     const statusEl = document.getElementById(`save-status-${id}`);
     const setStatus = (msg, cls) => {
@@ -1270,29 +1120,25 @@
     };
     setStatus('Saving…', '');
 
-    const mentalMaps = {};
-    for (const a of agents) {
-      const cm = state.cmEditors.get(`cm-${ctxKey}-${a.id}`);
-      if (cm) mentalMaps[a.id] = cm.getValue();
-    }
-    // missionCopilotLimits isn't editable in this UI — pass through the value
-    // last read from GET so a save here can't silently clear it (the API's
-    // PUT is a full replace, not a per-field patch).
+    // teamFiles/mentalMaps aren't editable in this UI (ADR-0022) — pass
+    // through the cached values unchanged so a save here can't silently
+    // clear either one (the API's PUT is a full replace, not a per-field
+    // patch). Same reasoning for missionCopilotLimits.
     const res = await apiFetch(`/api/missions/${encodeURIComponent(id)}/config`, {
       method: 'PUT',
       body: JSON.stringify({
-        mission, agents: structuredAgents, missionCopilotLimits: config.missionCopilotLimits,
-        teamFiles, mentalMaps,
+        mission: nextMission, agents: nextAgents,
+        missionCopilotLimits: config.missionCopilotLimits,
+        teamFiles: config.teamFiles ?? [],
       }),
     });
 
     if (!res) { setStatus('', ''); return; }
 
     if (res.ok) {
-      const cached = state.missionConfigCache.get(id) ?? {};
-      state.missionConfigCache.set(id, { ...cached, teamConfigYaml, teamFiles });
+      state.missionConfigCache.set(id, { ...config, mission: nextMission, agents: nextAgents });
       const rawPre = document.getElementById(`raw-pre-${id}`);
-      if (rawPre) rawPre.textContent = teamConfigYaml;
+      if (rawPre) rawPre.textContent = structuredToYaml(nextMission, nextAgents);
       setStatus('Saved', 'ok');
       setTimeout(() => setStatus('', ''), 3000);
     } else {
@@ -1303,41 +1149,28 @@
 
   // ── Quick launch ──────────────────────────────────────────────────────────
 
+  // ADR-0022: launches the template exactly as authored — no pre-launch
+  // customization from this dashboard. To adjust something, launch as-is
+  // then ask the mission copilot once it's running (SaveMissionConfig
+  // applies on the next resume even while already running).
   // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
   async function startSession(templateId) {
-    const ctxKey = `t:${templateId}`;
-    const config = state.templateCache.get(templateId) ?? { teamFiles: [] };
-
-    const mf = readMissionFields(templateId, templateId);
-    const cachedYaml = config.teamConfigYaml ?? '';
-    mf.id = parseMissionHeader(parseYamlBlocks(cachedYaml).header ?? '').id || templateId;
-
-    const agents = state.configAgents.get(ctxKey) ?? [];
-    const agentFieldsList = collectAgentFields(templateId, ctxKey, agents, config);
-    const teamConfigYaml = reconstructYaml(mf, agentFieldsList);
-    const { mission, agents: structuredAgents } = yamlToStructured(teamConfigYaml);
-    const teamFiles = collectTeamFiles(templateId);
+    const config = state.templateCache.get(templateId);
+    const missionNameBase = config?.name || templateId;
 
     const now = new Date();
     const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
     const hex  = Math.random().toString(16).slice(2, 6);
     const missionId   = `${templateId}-${date}-${hex}`;
-    const missionName = `${mf.name || templateId} ${date}-${hex}`;
+    const missionName = `${missionNameBase} ${date}-${hex}`;
 
     const saveBar = document.getElementById(`save-bar-${templateId}`);
     const btn = saveBar?.querySelector('.btn-primary');
     if (btn) { btn.disabled = true; btn.textContent = 'Launching…'; }
 
-    // Sends this editor's widget edits as the inline structured config (rather
-    // than the raw, unmodified template) so any customization made here before
-    // launching is actually applied, not silently discarded.
     const res = await apiFetch('/api/missions', {
       method: 'POST',
-      body: JSON.stringify({
-        missionId, name: missionName, teamConfig: templateId,
-        mission, agents: structuredAgents, missionCopilotLimits: config.missionCopilotLimits,
-        teamFiles,
-      }),
+      body: JSON.stringify({ missionId, name: missionName, teamConfig: templateId }),
     });
 
     if (btn) { btn.disabled = false; btn.textContent = 'Start session ›'; }
@@ -1353,125 +1186,23 @@
   }
 
 
-  // ── File rows ─────────────────────────────────────────────────────────────
+  // ── File rows (ADR-0022: view-only — content is instructional/data material,
+  // same risk class as systemPrompt; edit via write_mission_file instead) ────
 
   function fileRowHtml(id, idx, path, content) {
     return `
       <div class="tmpl-file-row" id="file-row-${esc(id)}-${idx}">
         <div class="tmpl-file-header">
           <button type="button" class="tmpl-file-toggle" onclick="toggleFileRow('${esc(id)}',${idx})">›</button>
-          <input class="tmpl-file-path" type="text" value="${esc(path)}" placeholder="path/to/file.md" />
-          <button type="button" class="tmpl-file-remove" onclick="removeFileRow('${esc(id)}',${idx})" title="Remove file">×</button>
+          <span class="tmpl-file-path-label"><code>${esc(path)}</code></span>
         </div>
-        <textarea class="file-content-editor">${esc(content)}</textarea>
+        <textarea class="file-content-editor" readonly>${esc(content)}</textarea>
       </div>`;
   }
 
   // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in fileRowHtml
   function toggleFileRow(id, idx) {
     document.getElementById(`file-row-${id}-${idx}`)?.classList.toggle('open');
-  }
-
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in fileRowHtml
-  function removeFileRow(id, idx) {
-    document.getElementById(`file-row-${id}-${idx}`)?.remove();
-  }
-
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
-  function addFileRow(id) {
-    const list = document.getElementById(`file-list-${id}`);
-    if (!list) return;
-    const idx = Date.now();
-    const div = document.createElement('div');
-    div.innerHTML = fileRowHtml(id, idx, '', '');
-    const row = div.firstElementChild;
-    if (row) {
-      list.appendChild(row);
-      row.classList.add('open');
-      row.querySelector('.tmpl-file-path')?.focus();
-    }
-  }
-
-  // ── Add / remove agent ────────────────────────────────────────────────────
-
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderConfigForm
-  function addAgent(type, id) {
-    const ctxKey = (type === 'template' ? 't:' : 'm:') + id;
-    const agents = state.configAgents.get(ctxKey) ?? [];
-    const newId  = `new-agent-${agents.length + 1}`;
-    const blank  = {
-      id: newId, name: 'New Agent', role: '', linuxUser: '', supervisor: 'user',
-      model: '', systemPrompt: 'You are a helpful assistant.',
-      initialMentalMap: '<h1>Mental Map</h1>', active: true, disabledSkills: [], advanced: '',
-      _mentalMapValue: '<h1>Mental Map</h1>', _mentalMapLabel: 'Template initial value',
-      _type: type,
-    };
-    agents.push(blank);
-    state.configAgents.set(ctxKey, agents);
-
-    const config = type === 'template'
-      ? (state.templateCache.get(id) ?? { teamFiles: [] })
-      : (state.missionConfigCache.get(id) ?? { teamFiles: [] });
-    const ei = esc(id);
-    const canEdit = true; // only reachable when canEdit
-    const paneHtml = renderAgentPane(ei, id, ctxKey, blank, canEdit, config);
-
-    // Inject tab button before the "+" button
-    const tabBar = document.querySelector(`#detail-panel .dtab-bar`);
-    if (tabBar) {
-      const addBtn = tabBar.querySelector('.dtab-add');
-      const tabBtn = document.createElement('button');
-      tabBtn.className = 'dtab';
-      tabBtn.type = 'button';
-      tabBtn.textContent = blank.name;
-      tabBtn.setAttribute('onclick', `switchDetailTab(this,'dtab-pane-${ei}-agent-${esc(newId)}')`);
-      tabBar.insertBefore(tabBtn, addBtn ?? null);
-    }
-
-    // Inject pane before the files pane
-    const filePane = document.getElementById(`dtab-pane-${id}-files`);
-    if (filePane) {
-      const div = document.createElement('div');
-      div.innerHTML = paneHtml;
-      const newPane = div.firstElementChild;
-      if (newPane) filePane.parentNode.insertBefore(newPane, filePane);
-    }
-
-    // Create CM editor for new agent
-    setTimeout(() => {
-      const cmKey = `cm-${ctxKey}-${newId}`;
-      const wrap  = document.getElementById(`cm-wrap-${id}-${esc(newId)}`);
-      if (wrap && typeof CodeMirror !== 'undefined' && !wrap.__cmInit) {
-        wrap.__cmInit = true;
-        const cm = CodeMirror(wrap, {
-          value: blank._mentalMapValue,
-          mode: 'xml',
-          lineNumbers: true,
-          lineWrapping: true,
-          tabSize: 2,
-        });
-        state.cmEditors.set(cmKey, cm);
-      }
-    }, 0);
-  }
-
-  // biome-ignore lint/correctness/noUnusedVariables: called from inline onclick in renderAgentPane
-  function removeAgent(type, id, agentId) {
-    const ctxKey = (type === 'template' ? 't:' : 'm:') + id;
-    const agents = (state.configAgents.get(ctxKey) ?? []).filter(a => a.id !== agentId);
-    if (agents.length === 0) { showToast('Cannot remove the last agent.', true); return; }
-    state.configAgents.set(ctxKey, agents);
-
-    // Remove tab + pane from DOM
-    const ei = esc(id);
-    const escapedAgentId = esc(agentId);
-    document.querySelector(`[onclick*="dtab-pane-${ei}-agent-${escapedAgentId}"]`)?.remove();
-    document.getElementById(`dtab-pane-${id}-agent-${agentId}`)?.remove();
-    state.cmEditors.delete(`cm-${ctxKey}-${agentId}`);
-
-    // Switch back to Mission tab
-    const missionTab = document.querySelector(`[onclick*="dtab-pane-${ei}-mission"]`);
-    if (missionTab) switchDetailTab(missionTab, `dtab-pane-${id}-mission`);
   }
 
   // ── Data loading ──────────────────────────────────────────────────────────
