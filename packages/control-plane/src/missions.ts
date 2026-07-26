@@ -1217,6 +1217,18 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(404).json({ error: "Not found or no machine" });
 			return;
 		}
+		// Idempotency guard: without this, a duplicate/retried resume call (e.g.
+		// a slow first request the operator gives up on and retries, or a
+		// double-click) races with itself — the second call reads the mission
+		// doc before the first call's $set lands, deletes the machine the first
+		// call just created, and re-provisions again. Only a mission that isn't
+		// already running or mid-provision can be (re-)resumed.
+		if (mission.status === "running" || mission.status === "provisioning") {
+			res.status(409).json({
+				error: `Mission is already ${mission.status} — resume not needed`,
+			});
+			return;
+		}
 		try {
 			if (mission.machineId.startsWith("local-")) {
 				// Nothing to re-write — the developer's restarted daemon reads
@@ -1257,6 +1269,7 @@ export function createMissionsRouter(db: Db): Router {
 							status: "running",
 							updatedAt: new Date(),
 						},
+						$unset: { errorMessage: "" },
 					},
 				);
 				res.json({ status: "running" });
@@ -1264,14 +1277,26 @@ export function createMissionsRouter(db: Db): Router {
 			}
 			await col.updateOne(
 				{ missionId },
-				{ $set: { status: "running", updatedAt: new Date() } },
+				{
+					$set: { status: "running", updatedAt: new Date() },
+					$unset: { errorMessage: "" },
+				},
 			);
 			res.json({ status: "running" });
 		} catch (e) {
+			const errorMessage = (e as Error).message;
 			console.error(
-				`[missions] resume failed { missionId: "${missionId}", error: "${(e as Error).message}" }`,
+				`[missions] resume failed { missionId: "${missionId}", error: "${errorMessage}" }`,
 			);
-			res.status(500).json({ error: (e as Error).message });
+			// Surface the failure in Mongo, not just the HTTP response — without
+			// this, a failed resume left the mission looking like an ordinary,
+			// resumable "suspended" mission while actually pointing at a machine
+			// that may already be deleted, with no visible explanation anywhere.
+			await col.updateOne(
+				{ missionId },
+				{ $set: { status: "error", errorMessage, updatedAt: new Date() } },
+			);
+			res.status(500).json({ error: errorMessage });
 		}
 	});
 

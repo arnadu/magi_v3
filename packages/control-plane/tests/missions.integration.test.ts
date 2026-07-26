@@ -254,6 +254,26 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 			expect(revisions.length).toBeGreaterThanOrEqual(1);
 		});
 
+		it("409s on a duplicate/retried resume call instead of racing with itself", async () => {
+			// The mission created in beforeEach is already "running" (POST /
+			// provisions immediately) — resuming it without suspending first is
+			// exactly the double-click/retry scenario the idempotency guard exists
+			// for: a second resume call must not delete the machine the first one
+			// (or the original creation) just stood up.
+			const before = await db.collection("missions").findOne({ missionId });
+			expect(before?.status).toBe("running");
+			const machineIdBefore = before?.machineId;
+
+			const resumeRes = await fetch(`${baseUrl}/${missionId}/resume`, {
+				method: "POST",
+			});
+			expect(resumeRes.status).toBe(409);
+
+			const after = await db.collection("missions").findOne({ missionId });
+			expect(after?.status).toBe("running");
+			expect(after?.machineId).toBe(machineIdBefore);
+		});
+
 		it("400s when mission or agents are missing from the PUT payload", async () => {
 			await fetch(`${baseUrl}/${missionId}/suspend`, { method: "POST" });
 			const res = await fetch(`${baseUrl}/${missionId}/config`, {
