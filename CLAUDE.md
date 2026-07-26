@@ -30,6 +30,11 @@ bash scripts/deploy-missions.sh       # ALWAYS use this to deploy the execution 
                                       # Never use bare `flyctl deploy` for the missions app alone.
 flyctl deploy --config fly.control-dev.toml  # deploy control plane only
 
+# Reconcile MongoDB mission state against real Fly.io machines/volumes — report-only by default;
+# --fix-status corrects Mongo drift, --purge-orphans destroys untracked Fly resources (destructive).
+# Requires MONGODB_URI, FLY_API_TOKEN_MACHINES, FLY_MISSIONS_APP_NAME.
+node scripts/reconcile-mission-state.mjs [--fix-status] [--purge-orphans]
+
 # CLI — run the orchestration loop with a team config
 cd packages/agent-runtime-worker && npm run build   # build first
 TEAM_CONFIG=config/teams/test/word-count.yaml npm run cli -- "count the words"
