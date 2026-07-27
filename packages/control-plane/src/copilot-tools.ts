@@ -15,7 +15,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { MagiTool, ToolResult } from "@magi/agent-runtime-worker";
+import {
+	createMongoObjectivesRepository,
+	type MagiTool,
+	type ToolResult,
+} from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
 import { getMachineState } from "./fly-machines.js";
@@ -123,7 +127,7 @@ export function createCopilotTools(
 	}
 
 	/** Token-authed POST to a mission's monitor server (mutating endpoints). */
-	async function monitorPost(
+	async function _monitorPost(
 		privateIp: string,
 		missionId: string,
 		path: string,
@@ -605,13 +609,16 @@ export function createCopilotTools(
 		},
 	};
 
-	// ─── Objectives (Sprint 26a, C1) ──────────────────────────────────────────
+	// ─── Objectives (Sprint 26a, C1; MongoDB-direct since ADR-0019) ──────────
+
+	const objectivesRepo = createMongoObjectivesRepository(db);
 
 	const reviewObjectives: MagiTool = {
 		name: "ReviewObjectives",
 		description:
 			"Read a mission's objective tree with current task status, KPI values, " +
-			"and budget-vs-spend. Use this to assess progress and decide which KPIs to update.",
+			"and budget-vs-spend. Use this to assess progress and decide which KPIs to update. " +
+			"Works whether the mission is running or suspended.",
 		parameters: Type.Object({
 			missionId: Type.String({ description: "Mission ID" }),
 		}),
@@ -620,11 +627,10 @@ export function createCopilotTools(
 			const mission = await db
 				.collection<MissionDoc>("missions")
 				.findOne({ missionId, userId });
-			if (!mission?.privateIp)
-				return err(`Mission "${missionId}" not found or not running.`);
+			if (!mission) return err(`Mission "${missionId}" not found.`);
 			try {
-				const text = await monitorFetch(mission.privateIp, "/objectives");
-				return ok(text || "(empty objectives store)");
+				const tree = await objectivesRepo.readTree(missionId);
+				return ok(JSON.stringify(tree, null, 2));
 			} catch (e) {
 				return err(`Failed to read objectives: ${(e as Error).message}`);
 			}
@@ -636,10 +642,13 @@ export function createCopilotTools(
 		description:
 			"Record a value for a KPI you assess (a copilot-assessment KPI). The latest " +
 			"value wins. Use after ReviewObjectives to publish your judgement (e.g. " +
-			'a coverage rubric: "met" / "partial" / "unmet", or a computed number).',
+			'a coverage rubric: "met" / "partial" / "unmet", or a computed number). ' +
+			"Works whether the mission is running or suspended.",
 		parameters: Type.Object({
 			missionId: Type.String({ description: "Mission ID" }),
-			kpi: Type.String({ description: "KPI id (from goals.json), e.g. K1" }),
+			kpi: Type.String({
+				description: "KPI id (from the objective tree), e.g. K1",
+			}),
 			value: Type.Union([Type.String(), Type.Number()], {
 				description: "The value to record (string rubric or number)",
 			}),
@@ -652,14 +661,14 @@ export function createCopilotTools(
 			const mission = await db
 				.collection<MissionDoc>("missions")
 				.findOne({ missionId, userId });
-			if (!mission?.privateIp)
-				return err(`Mission "${missionId}" not found or not running.`);
+			if (!mission) return err(`Mission "${missionId}" not found.`);
 			try {
-				await monitorPost(mission.privateIp, missionId, "/objectives/kpi", {
-					kpi: args.kpi,
-					value: args.value,
-					note: args.note,
+				await objectivesRepo.appendKpiEvent(missionId, {
+					kpi: args.kpi as string,
+					value: args.value as string | number,
 					by: "copilot",
+					at: new Date().toISOString(),
+					...(args.note !== undefined ? { note: args.note as string } : {}),
 				});
 				pushEvent("copilot-kpi", {
 					missionId,

@@ -143,35 +143,6 @@ export class WorkspaceManager {
 			mkdirSync(join(identity.workdir, "skills"), { recursive: true });
 		}
 
-		// The objectives store (Sprint 26) is writable mission state: agents append
-		// task/KPI events via skill scripts and the daemon appends cost. Ensure it
-		// exists and is agent-writable even when a template shipped goals.json —
-		// copyTeamFilesToSharedDir grants copied dirs read-only (r-x), which would
-		// block the skill scripts. Harmless for missions that don't use objectives
-		// (an empty dir folds to an empty tree).
-		const objectivesStore = join(sharedDir, "objectives");
-		mkdirSync(objectivesStore, { recursive: true });
-		for (const user of linuxUsers) {
-			try {
-				execFileSync(
-					"setfacl",
-					["-R", "-m", `u:${user}:rwx`, objectivesStore],
-					{
-						stdio: "ignore",
-					},
-				);
-				execFileSync(
-					"setfacl",
-					["-d", "-m", `u:${user}:rwx`, objectivesStore],
-					{
-						stdio: "ignore",
-					},
-				);
-			} catch {
-				// best-effort — ACLs may be unsupported in some local/test envs
-			}
-		}
-
 		if (!existsSync(join(sharedDir, ".git"))) {
 			initSharedGitRepo(sharedDir);
 		}
@@ -332,18 +303,13 @@ function provisionSkills(
  * Files under teamDir/skills/ are skipped here — they are handled by
  * provisionSkills() above.
  *
- * `objectives/` is agent- and copilot-writable mission state that lives on
- * the Fly volume and is meant to survive suspend/resume via that volume
- * persisting — MongoDB's teamFiles copy of it is only ever a seed for a
- * genuinely fresh mission (no volume yet, or a template shipping starting
- * objectives). Every resume re-runs provision(), and this function used to
- * unconditionally overwrite sharedDir from teamFiles every time — silently
- * rolling back real, evolved objectives to whatever stale snapshot MongoDB
- * happened to have (nothing keeps teamFiles in sync with the volume's
- * append-only updates in between). Existing files under objectives/ are
- * therefore left alone here; only genuinely missing ones get seeded. See the
- * objectives-mongo-migration ADR draft for the fuller single-source-of-truth
- * fix this is a narrow, incident-driven interim patch for.
+ * `objectives/` used to need special seed-if-missing handling here (an
+ * incident-driven interim patch — a resume-time overwrite of evolved,
+ * on-disk objectives data with a stale MongoDB snapshot). That's no longer a
+ * concern: objectives moved fully into MongoDB (ADR-0019) and nothing writes
+ * to sharedDir/objectives/ at runtime anymore, so a plain overwrite-on-resume
+ * here is harmless — the daemon's boot-time migration step reads these files
+ * (if present) into Mongo once and never touches them again.
  */
 export function copyTeamFilesToSharedDir(
 	sharedDir: string,
@@ -369,10 +335,6 @@ export function copyTeamFilesToSharedDir(
 				rel.startsWith("skills\\")
 			)
 				continue;
-			const isObjectivesPath =
-				rel === "objectives" ||
-				rel.startsWith("objectives/") ||
-				rel.startsWith("objectives\\");
 			let st: ReturnType<typeof statSync>;
 			try {
 				st = statSync(src);
@@ -394,9 +356,6 @@ export function copyTeamFilesToSharedDir(
 					}
 				}
 			} else {
-				// Seed-if-missing only for objectives/ — never roll back a file
-				// that already evolved on the volume (see doc comment above).
-				if (isObjectivesPath && existsSync(dest)) continue;
 				mkdirSync(dirname(dest), { recursive: true });
 				try {
 					writeFileSync(dest, readFileSync(src));

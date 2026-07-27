@@ -22,6 +22,7 @@ import {
 import {
 	createMongoAgentStatsRepository,
 	createMongoMissionConfigWriter,
+	createMongoObjectivesRepository,
 	DEFAULT_SOFT_LIMITS,
 } from "@magi/agent-runtime-worker";
 import type { Request, Router } from "express";
@@ -302,6 +303,24 @@ export async function readLimits(
 		missionRunning,
 	};
 	return { status: 200, body: data };
+}
+
+/**
+ * Folded objectives tree, read directly from MongoDB (ADR-0019) — unlike the
+ * old proxy-through-MonitorServer path this replaces, this works regardless
+ * of mission running state (the same "readLimits works while suspended"
+ * property ADR-0018 already gave cost/limits).
+ */
+export async function readObjectives(
+	col: Collection<MissionDoc>,
+	db: Db,
+	missionId: string,
+	filter: Partial<MissionDoc>,
+): Promise<RouteResult> {
+	const mission = await col.findOne({ missionId, ...filter });
+	if (!mission) return { status: 404, body: { error: "Not found" } };
+	const tree = await createMongoObjectivesRepository(db).readTree(missionId);
+	return { status: 200, body: tree };
 }
 
 export async function writeMissionCap(
@@ -1022,6 +1041,18 @@ export function createMissionsRouter(db: Db): Router {
 
 	router.get("/:id/limits", async (req, res) => {
 		const result = await readLimits(col, db, req.params.id, userFilter(req));
+		res.status(result.status).json(result.body);
+	});
+
+	// ── Objectives (cockpit ObjectivesPanel) — reads Mongo directly, works
+	// regardless of mission running state (ADR-0019).
+	router.get("/:id/objectives", async (req, res) => {
+		const result = await readObjectives(
+			col,
+			db,
+			req.params.id,
+			userFilter(req),
+		);
 		res.status(result.status).json(result.body);
 	});
 

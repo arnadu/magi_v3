@@ -1,26 +1,74 @@
 /**
- * Cost attribution — unit tests (Sprint 26a, deliverable B2).
+ * Cost attribution — unit tests (Sprint 26a, deliverable B2; MongoDB-backed
+ * since ADR-0019 — uses a fake in-memory ObjectivesRepository instead of a
+ * real Mongo connection, so this stays a fast, dependency-free unit test).
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
 	attributeTurnCost,
 	splitByWeight,
 	tasksUpdatedInWindow,
 	turnsSinceLastAttribution,
 } from "../src/objectives/attribution.js";
-import { appendEvent, loadObjectivesStore } from "../src/objectives/store.js";
+import type { ObjectivesRepository } from "../src/objectives/repository.js";
+import { foldStore } from "../src/objectives/store.js";
 import type {
+	AllocEvent,
 	CostEvent,
 	GoalsFile,
+	KpiEvent,
 	TaskEvent,
 } from "../src/objectives/types.js";
 
 const T = (h: number, m = 0) =>
 	`2026-06-25T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00.000Z`;
+
+function createFakeObjectivesRepository(): ObjectivesRepository {
+	let goals: GoalsFile = { objectives: [] };
+	let hasGoals = false;
+	const taskEvents: TaskEvent[] = [];
+	const kpiEvents: KpiEvent[] = [];
+	const costEvents: CostEvent[] = [];
+	const allocEvents: AllocEvent[] = [];
+
+	return {
+		async readTree(_missionId, opts) {
+			return foldStore({ goals, taskEvents, kpiEvents, costEvents }, opts);
+		},
+		async readGoals() {
+			return goals;
+		},
+		async saveGoals(_missionId, g) {
+			goals = g;
+			hasGoals = true;
+		},
+		async appendTaskEvent(_missionId, e) {
+			taskEvents.push(e);
+		},
+		async appendKpiEvent(_missionId, e) {
+			kpiEvents.push(e);
+		},
+		async appendCostEvent(_missionId, e) {
+			costEvents.push(e);
+		},
+		async appendAllocEvent(_missionId, e) {
+			allocEvents.push(e);
+		},
+		async readTaskEvents() {
+			return taskEvents;
+		},
+		async readCostEvents() {
+			return costEvents;
+		},
+		async readAllocEvents() {
+			return allocEvents;
+		},
+		async hasGoalsDoc() {
+			return hasGoals;
+		},
+	};
+}
 
 describe("tasksUpdatedInWindow", () => {
 	const events: TaskEvent[] = [
@@ -79,7 +127,8 @@ describe("splitByWeight", () => {
 });
 
 describe("attributeTurnCost — carry-over + flush", () => {
-	let shared: string;
+	const missionId = "m1";
+	let repo: ObjectivesRepository;
 	const goals: GoalsFile = {
 		objectives: [
 			{
@@ -93,25 +142,20 @@ describe("attributeTurnCost — carry-over + flush", () => {
 		],
 	};
 
-	beforeEach(() => {
-		shared = mkdtempSync(join(tmpdir(), "attr-"));
-		mkdirSync(join(shared, "objectives"), { recursive: true });
-		writeFileSync(
-			join(shared, "objectives", "goals.json"),
-			JSON.stringify(goals),
-		);
+	beforeEach(async () => {
+		repo = createFakeObjectivesRepository();
+		await repo.saveGoals(missionId, goals, "test");
 	});
-	afterEach(() => rmSync(shared, { recursive: true, force: true }));
 
 	it("attributes a turn's full cost to the single task updated that turn", async () => {
-		await appendEvent(shared, "tasks", {
+		await repo.appendTaskEvent(missionId, {
 			id: "T1",
 			at: T(1),
 			by: "alice",
 			objective: "OBJ-1",
 			status: "in-progress",
 		});
-		const ev = await attributeTurnCost(shared, {
+		const ev = await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 1,
 			windowStart: new Date(T(0)),
@@ -119,13 +163,13 @@ describe("attributeTurnCost — carry-over + flush", () => {
 			lifetimeCostUsd: 0.4,
 		});
 		expect(ev?.alloc.T1).toBeCloseTo(0.4);
-		const tree = await loadObjectivesStore(shared);
+		const tree = await repo.readTree(missionId);
 		expect(tree.objectives[0].costUsd).toBeCloseTo(0.4); // rolled up
 	});
 
 	it("carries cost over when no task is updated, then flushes it all on the next update", async () => {
 		// Turn 1: no task updated → nothing attributed, cost carries.
-		const none = await attributeTurnCost(shared, {
+		const none = await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 1,
 			windowStart: new Date(T(0)),
@@ -135,14 +179,14 @@ describe("attributeTurnCost — carry-over + flush", () => {
 		expect(none).toBeNull();
 
 		// Turn 2: agent updates a task; lifetime now 0.5 → all 0.5 lands on T1.
-		await appendEvent(shared, "tasks", {
+		await repo.appendTaskEvent(missionId, {
 			id: "T1",
 			at: T(3),
 			by: "alice",
 			objective: "OBJ-1",
 			status: "in-progress",
 		});
-		const ev = await attributeTurnCost(shared, {
+		const ev = await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 2,
 			windowStart: new Date(T(2, 30)),
@@ -153,7 +197,7 @@ describe("attributeTurnCost — carry-over + flush", () => {
 	});
 
 	it("splits a turn's cost across multiple updated tasks by effort", async () => {
-		await appendEvent(shared, "tasks", {
+		await repo.appendTaskEvent(missionId, {
 			id: "A",
 			at: T(1),
 			by: "alice",
@@ -161,7 +205,7 @@ describe("attributeTurnCost — carry-over + flush", () => {
 			status: "in-progress",
 			effort: 3,
 		});
-		await appendEvent(shared, "tasks", {
+		await repo.appendTaskEvent(missionId, {
 			id: "B",
 			at: T(1, 10),
 			by: "alice",
@@ -169,7 +213,7 @@ describe("attributeTurnCost — carry-over + flush", () => {
 			status: "blocked",
 			effort: 1,
 		});
-		const ev = await attributeTurnCost(shared, {
+		const ev = await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 1,
 			windowStart: new Date(T(0)),
@@ -181,8 +225,8 @@ describe("attributeTurnCost — carry-over + flush", () => {
 	});
 
 	it("returns null when the mission has no task store", async () => {
-		rmSync(join(shared, "objectives"), { recursive: true, force: true });
-		const ev = await attributeTurnCost(shared, {
+		const empty = createFakeObjectivesRepository(); // never seeded — no goals, no tasks
+		const ev = await attributeTurnCost(empty, missionId, {
 			agentId: "alice",
 			turnNumber: 1,
 			windowStart: new Date(T(0)),
@@ -194,19 +238,19 @@ describe("attributeTurnCost — carry-over + flush", () => {
 
 	it("uses an explicit allocate intent over task updates (the timesheet fallback)", async () => {
 		// Agent updated a task, but also ran allocate → the intent wins.
-		await appendEvent(shared, "tasks", {
+		await repo.appendTaskEvent(missionId, {
 			id: "T1",
 			at: T(1),
 			by: "alice",
 			objective: "OBJ-1",
 			status: "in-progress",
 		});
-		await appendEvent(shared, "alloc", {
+		await repo.appendAllocEvent(missionId, {
 			by: "alice",
 			at: T(1, 30),
 			key: { "OBJ-1": 70, overhead: 30 },
 		});
-		const ev = await attributeTurnCost(shared, {
+		const ev = await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 1,
 			windowStart: new Date(T(0)),
@@ -220,7 +264,7 @@ describe("attributeTurnCost — carry-over + flush", () => {
 
 	it("attributes a stale supervisor's balance to its owned objective", async () => {
 		// alice owns OBJ-1, updates no task. Before STALE_TURNS it carries…
-		const early = await attributeTurnCost(shared, {
+		const early = await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 1,
 			windowStart: new Date(T(0)),
@@ -229,7 +273,7 @@ describe("attributeTurnCost — carry-over + flush", () => {
 		});
 		expect(early).toBeNull();
 		// …by turn 3 (>= STALE_TURNS) it lands on OBJ-1.
-		const ev = await attributeTurnCost(shared, {
+		const ev = await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 3,
 			windowStart: new Date(T(2)),
@@ -237,19 +281,19 @@ describe("attributeTurnCost — carry-over + flush", () => {
 			lifetimeCostUsd: 0.6,
 		});
 		expect(ev?.alloc["OBJ-1"]).toBeCloseTo(0.6);
-		const tree = await loadObjectivesStore(shared);
+		const tree = await repo.readTree(missionId);
 		expect(tree.objectives[0].costUsd).toBeCloseTo(0.6); // supervisor overhead on the objective
 	});
 
 	it("does not double-attribute across turns", async () => {
-		await appendEvent(shared, "tasks", {
+		await repo.appendTaskEvent(missionId, {
 			id: "T1",
 			at: T(1),
 			by: "alice",
 			objective: "OBJ-1",
 			status: "in-progress",
 		});
-		await attributeTurnCost(shared, {
+		await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 1,
 			windowStart: new Date(T(0)),
@@ -257,13 +301,13 @@ describe("attributeTurnCost — carry-over + flush", () => {
 			lifetimeCostUsd: 0.4,
 		});
 		// Turn 2: another update, lifetime grew to 0.7 → only the new 0.3 attributed.
-		await appendEvent(shared, "tasks", {
+		await repo.appendTaskEvent(missionId, {
 			id: "T1",
 			at: T(3),
 			by: "alice",
 			status: "completed",
 		});
-		const ev2 = await attributeTurnCost(shared, {
+		const ev2 = await attributeTurnCost(repo, missionId, {
 			agentId: "alice",
 			turnNumber: 2,
 			windowStart: new Date(T(2, 30)),
@@ -271,7 +315,7 @@ describe("attributeTurnCost — carry-over + flush", () => {
 			lifetimeCostUsd: 0.7,
 		});
 		expect(ev2?.alloc.T1).toBeCloseTo(0.3);
-		const tree = await loadObjectivesStore(shared);
+		const tree = await repo.readTree(missionId);
 		expect(tree.tasks[0].costUsd).toBeCloseTo(0.7); // 0.4 + 0.3, no double count
 	});
 });

@@ -2,18 +2,69 @@
  * Mission copilot injection + objectives seeding — unit tests (ADR-0016).
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { TeamConfig } from "@magi/agent-config";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
 	buildMissionCopilotAgentConfig,
 	injectMissionCopilot,
 	MISSION_COPILOT_AGENT_ID,
 	seedMissionCopilotObjectives,
 } from "../src/mission-copilot.js";
-import { loadGoals, loadTaskEvents } from "../src/objectives/store.js";
+import type { ObjectivesRepository } from "../src/objectives/repository.js";
+import { foldStore } from "../src/objectives/store.js";
+import type {
+	AllocEvent,
+	CostEvent,
+	GoalsFile,
+	KpiEvent,
+	TaskEvent,
+} from "../src/objectives/types.js";
+
+function createFakeObjectivesRepository(): ObjectivesRepository {
+	let goals: GoalsFile = { objectives: [] };
+	let hasGoals = false;
+	const taskEvents: TaskEvent[] = [];
+	const kpiEvents: KpiEvent[] = [];
+	const costEvents: CostEvent[] = [];
+	const allocEvents: AllocEvent[] = [];
+
+	return {
+		async readTree(_missionId, opts) {
+			return foldStore({ goals, taskEvents, kpiEvents, costEvents }, opts);
+		},
+		async readGoals() {
+			return goals;
+		},
+		async saveGoals(_missionId, g) {
+			goals = g;
+			hasGoals = true;
+		},
+		async appendTaskEvent(_missionId, e) {
+			taskEvents.push(e);
+		},
+		async appendKpiEvent(_missionId, e) {
+			kpiEvents.push(e);
+		},
+		async appendCostEvent(_missionId, e) {
+			costEvents.push(e);
+		},
+		async appendAllocEvent(_missionId, e) {
+			allocEvents.push(e);
+		},
+		async readTaskEvents() {
+			return taskEvents;
+		},
+		async readCostEvents() {
+			return costEvents;
+		},
+		async readAllocEvents() {
+			return allocEvents;
+		},
+		async hasGoalsDoc() {
+			return hasGoals;
+		},
+	};
+}
 
 function baseTeamConfig(): TeamConfig {
 	return {
@@ -86,19 +137,17 @@ describe("injectMissionCopilot", () => {
 });
 
 describe("seedMissionCopilotObjectives", () => {
-	let shared: string;
+	const missionId = "m1";
+	let repo: ObjectivesRepository;
 
 	beforeEach(() => {
-		shared = mkdtempSync(join(tmpdir(), "mission-copilot-seed-"));
-	});
-	afterEach(() => {
-		rmSync(shared, { recursive: true, force: true });
+		repo = createFakeObjectivesRepository();
 	});
 
 	it("writes five objectives and three seed tasks", async () => {
-		await seedMissionCopilotObjectives(shared);
+		await seedMissionCopilotObjectives(repo, missionId);
 
-		const goals = await loadGoals(shared);
+		const goals = await repo.readGoals(missionId);
 		expect(goals.objectives.map((o) => o.id)).toEqual([
 			"OBJ-MISSION-FIT",
 			"OBJ-TEAM-OBJECTIVES",
@@ -112,7 +161,7 @@ describe("seedMissionCopilotObjectives", () => {
 			for (const k of o.kpis) expect(k.owner).toBe(MISSION_COPILOT_AGENT_ID);
 		}
 
-		const tasks = await loadTaskEvents(shared);
+		const tasks = await repo.readTaskEvents(missionId);
 		expect(tasks.map((t) => t.id)).toEqual([
 			"TASK-COPILOT-1",
 			"TASK-COPILOT-2",
@@ -125,37 +174,40 @@ describe("seedMissionCopilotObjectives", () => {
 	});
 
 	it("is idempotent across repeated calls (resume_mission reprovisioning)", async () => {
-		await seedMissionCopilotObjectives(shared);
-		await seedMissionCopilotObjectives(shared);
-		await seedMissionCopilotObjectives(shared);
+		await seedMissionCopilotObjectives(repo, missionId);
+		await seedMissionCopilotObjectives(repo, missionId);
+		await seedMissionCopilotObjectives(repo, missionId);
 
-		const goals = await loadGoals(shared);
+		const goals = await repo.readGoals(missionId);
 		expect(goals.objectives).toHaveLength(5);
 
-		const tasks = await loadTaskEvents(shared);
+		const tasks = await repo.readTaskEvents(missionId);
 		expect(tasks).toHaveLength(3);
 	});
 
 	it("does not clobber a pre-existing goals.json with unrelated objectives", async () => {
 		// Simulate a mission that already has its own (non-copilot) objectives
 		// before the copilot's first run — e.g. authored by another agent.
-		const { saveGoals } = await import("../src/objectives/store.js");
-		await saveGoals(shared, {
-			objectives: [
-				{
-					id: "OBJ-EXISTING",
-					parent: null,
-					title: "Pre-existing objective",
-					owner: "lead",
-					status: "active",
-					kpis: [],
-				},
-			],
-		});
+		await repo.saveGoals(
+			missionId,
+			{
+				objectives: [
+					{
+						id: "OBJ-EXISTING",
+						parent: null,
+						title: "Pre-existing objective",
+						owner: "lead",
+						status: "active",
+						kpis: [],
+					},
+				],
+			},
+			"lead",
+		);
 
-		await seedMissionCopilotObjectives(shared);
+		await seedMissionCopilotObjectives(repo, missionId);
 
-		const goals = await loadGoals(shared);
+		const goals = await repo.readGoals(missionId);
 		expect(goals.objectives.map((o) => o.id)).toContain("OBJ-EXISTING");
 		expect(goals.objectives.map((o) => o.id)).toContain("OBJ-MISSION-FIT");
 		expect(goals.objectives).toHaveLength(6);

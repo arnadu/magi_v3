@@ -10,7 +10,7 @@
  */
 
 import type { AgentConfig, TeamConfig } from "@magi/agent-config";
-import { appendEvent, loadGoals, saveGoals } from "./objectives/store.js";
+import type { ObjectivesRepository } from "./objectives/repository.js";
 import type { ObjectiveDef, TaskEvent } from "./objectives/types.js";
 
 // Deliberately not "copilot": the cockpit frontend (packages/cockpit/src/data.ts)
@@ -527,9 +527,7 @@ function buildSeedTasks(now: string): TaskEvent[] {
 
 /**
  * Seed the mission copilot's five objectives and three kick-off tasks into
- * sharedDir/objectives/. Must run AFTER WorkspaceManager.provision() (which
- * creates sharedDir/objectives/ on disk) — calling this before provisioning
- * would write to a directory that doesn't exist yet.
+ * the Mongo-backed objectives store (ADR-0019).
  *
  * Idempotent: resume_mission fully reprovisions the machine (delete +
  * recreate), so every suspend→resume cycle re-runs the daemon's startup path
@@ -537,17 +535,20 @@ function buildSeedTasks(now: string): TaskEvent[] {
  * duplicating the seed on every resume.
  */
 export async function seedMissionCopilotObjectives(
-	sharedDir: string,
+	repo: ObjectivesRepository,
+	missionId: string,
 ): Promise<void> {
-	const goals = await loadGoals(sharedDir);
+	const goals = await repo.readGoals(missionId);
 	if (goals.objectives.some((o) => o.id === "OBJ-MISSION-FIT")) return;
 
-	await saveGoals(sharedDir, {
-		objectives: [...goals.objectives, ...SEED_OBJECTIVES],
-	});
+	await repo.saveGoals(
+		missionId,
+		{ objectives: [...goals.objectives, ...SEED_OBJECTIVES] },
+		MISSION_COPILOT_AGENT_ID,
+	);
 
 	const now = new Date().toISOString();
 	for (const task of buildSeedTasks(now)) {
-		await appendEvent(sharedDir, "tasks", task);
+		await repo.appendTaskEvent(missionId, task);
 	}
 }

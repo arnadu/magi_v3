@@ -24,8 +24,6 @@ import { createDescribeImage, processBuffer } from "./document-processor.js";
 import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
-import { appendEvent, loadObjectivesStore } from "./objectives/store.js";
-import { KpiEventSchema } from "./objectives/types.js";
 import type { UsageAccumulator } from "./usage.js";
 
 /** Body cap for file uploads (base64-encoded). ~22 MB raw file. */
@@ -1013,31 +1011,6 @@ export class MonitorServer {
 			return;
 		}
 
-		// ── GET /objectives — folded objectives store (tree + tasks + KPIs + cost).
-		// Read-only: the control-plane proxy scopes this by mission + user.
-		if (url === "/objectives" && req.method === "GET") {
-			try {
-				const tree = await loadObjectivesStore(this.sharedDir);
-				res.writeHead(200, { "Content-Type": "application/json" });
-				res.end(JSON.stringify(tree));
-			} catch (e) {
-				console.error("[monitor] load objectives failed", {
-					missionId: this.missionId,
-					error: (e as Error).message,
-				});
-				res.writeHead(500, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: "failed to load objectives" }));
-			}
-			return;
-		}
-
-		// ── POST /objectives/kpi — append a KPI value event (copilot assessment /
-		// auto-KPI). Token-gated above. The store fold takes the latest value.
-		if (url === "/objectives/kpi" && req.method === "POST") {
-			await this.handleObjectivesKpi(req, res);
-			return;
-		}
-
 		// ── POST /stop
 		if (url === "/stop" && req.method === "POST") {
 			res.writeHead(200, { "Content-Type": "application/json" });
@@ -1449,57 +1422,6 @@ export class MonitorServer {
 	 * or names an agent not in this mission's team — so a stray id can never
 	 * silently create a phantom pause entry.
 	 */
-	/**
-	 * POST /objectives/kpi — append a KPI value event. Body:
-	 * `{ kpi, value, by?, note? }`. `by` defaults to "copilot" (the usual caller).
-	 */
-	private async handleObjectivesKpi(
-		req: IncomingMessage,
-		res: ServerResponse,
-	): Promise<void> {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(await readBody(req));
-		} catch {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: false, error: "invalid JSON body" }));
-			return;
-		}
-		const body = parsed as Record<string, unknown>;
-		const event = KpiEventSchema.safeParse({
-			kpi: body.kpi,
-			value: body.value,
-			by: typeof body.by === "string" && body.by.trim() ? body.by : "copilot",
-			at: new Date().toISOString(),
-			...(typeof body.note === "string" ? { note: body.note } : {}),
-		});
-		if (!event.success) {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify({
-					ok: false,
-					error: "kpi and value are required (value: string or number)",
-				}),
-			);
-			return;
-		}
-		try {
-			await appendEvent(this.sharedDir, "kpis", event.data);
-		} catch (e) {
-			console.error("[monitor] append KPI failed", {
-				missionId: this.missionId,
-				kpi: event.data.kpi,
-				error: (e as Error).message,
-			});
-			res.writeHead(500, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: false, error: "failed to record KPI" }));
-			return;
-		}
-		this.push("kpi-recorded", { kpi: event.data.kpi, value: event.data.value });
-		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(JSON.stringify({ ok: true, kpi: event.data.kpi }));
-	}
-
 	private async readAgentId(
 		req: IncomingMessage,
 		res: ServerResponse,

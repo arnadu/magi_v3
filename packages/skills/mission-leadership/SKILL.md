@@ -60,9 +60,10 @@ objective. When you define or correct a teammate's objective:
 Two genuinely different concepts, both called "budget" — don't conflate them:
 
 - **Objective-level `budgetUsd`** (on any node in the tree, including `OBJ-RESOURCES`) — soft,
-  informational, auto-attributed from real per-turn spend. Edited directly in `goals.json` via
-  the objectives skill's normal mechanism — no elevated tool needed. Use this to track whether
-  spend on a piece of work is proportionate to what it's producing.
+  informational, auto-attributed from real per-turn spend. Edited via `EditObjectiveTree`
+  (read the tree with `ReadMissionObjectives`, edit `budgetUsd` on the node, pass the full
+  objectives array back). Use this to track whether spend on a piece of work is proportionate
+  to what it's producing.
 - **`SetMissionSpendCap`** — hard, pauses the *entire mission* if exceeded. A safety valve, not a
   tracking mechanism. Raise it only when the mission's actual objectives justify it, and remember
   it's self-referential: raising it also funds your own further calls, which is exactly why it's

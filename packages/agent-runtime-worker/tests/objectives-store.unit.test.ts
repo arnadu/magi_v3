@@ -3,15 +3,8 @@
  * Pure, no network, no MongoDB.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-	appendEvent,
-	foldStore,
-	loadObjectivesStore,
-} from "../src/objectives/store.js";
+import { foldStore } from "../src/objectives/store.js";
 import type {
 	CostEvent,
 	GoalsFile,
@@ -328,82 +321,5 @@ describe("objectives store — KPI fold", () => {
 			findObj(tree.objectives, "OBJ-1")?.kpis.find((k) => k.id === "K-auto")
 				?.value,
 		).toBeNull();
-	});
-});
-
-describe("objectives store — I/O", () => {
-	it("appends events and folds them back from disk", async () => {
-		const shared = mkdtempSync(join(tmpdir(), "obj-store-"));
-		try {
-			await appendEvent(shared, "tasks", {
-				id: "T1",
-				at: T(1),
-				by: "alice",
-				title: "do it",
-				objective: "OBJ-1",
-				status: "in-progress",
-			});
-			await appendEvent(shared, "tasks", {
-				id: "T1",
-				at: T(2),
-				by: "alice",
-				status: "completed",
-			});
-			await appendEvent(shared, "kpis", {
-				kpi: "K1",
-				value: "met",
-				by: "lead",
-				at: T(2),
-			});
-			await appendEvent(shared, "cost", {
-				turn: 1,
-				agent: "alice",
-				at: T(2),
-				alloc: { T1: 0.9 },
-			});
-
-			// No goals.json written → objectives empty, but tasks fold and orphan.
-			const tree = await loadObjectivesStore(shared);
-			expect(tree.tasks).toHaveLength(1);
-			expect(tree.tasks[0].status).toBe("completed");
-			expect(tree.tasks[0].costUsd).toBeCloseTo(0.9);
-			expect(tree.orphanTasks).toHaveLength(1); // OBJ-1 not defined
-		} finally {
-			rmSync(shared, { recursive: true });
-		}
-	});
-
-	it("returns an empty tree for a missing store", async () => {
-		const tree = await loadObjectivesStore(
-			join(tmpdir(), "does-not-exist-xyz"),
-		);
-		expect(tree.objectives).toEqual([]);
-		expect(tree.tasks).toEqual([]);
-	});
-
-	it("degrades to empty (no throw) when goals.json is invalid", async () => {
-		const shared = mkdtempSync(join(tmpdir(), "obj-bad-goals-"));
-		try {
-			mkdirSync(join(shared, "objectives"), { recursive: true });
-			// A copilot-authored goals.json with the wrong KPI fields (title/type/
-			// assignee instead of label/kind/source/owner) — must not 500 the reader.
-			writeFileSync(
-				join(shared, "objectives", "goals.json"),
-				JSON.stringify({
-					objectives: [
-						{
-							id: "O1",
-							title: "x",
-							owner: "a",
-							kpis: [{ id: "K", title: "bad", type: "agent", assignee: "a" }],
-						},
-					],
-				}),
-			);
-			const tree = await loadObjectivesStore(shared);
-			expect(tree.objectives).toEqual([]);
-		} finally {
-			rmSync(shared, { recursive: true, force: true });
-		}
 	});
 });

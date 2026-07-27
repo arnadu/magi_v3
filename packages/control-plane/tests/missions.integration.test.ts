@@ -284,4 +284,65 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 			expect(res.status).toBe(400);
 		});
 	});
+
+	describe("GET /:id/objectives", () => {
+		let missionId: string;
+
+		beforeEach(async () => {
+			missionId = newMissionId();
+			const res = await fetch(baseUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					missionId,
+					name: "Objectives Mission",
+					teamConfig: "inline",
+					mission: { name: "Objectives Mission" },
+					agents: baseAgents(),
+				}),
+			});
+			expect(res.status).toBe(201);
+			await db.collection("objectivesGoals").insertOne({
+				missionId,
+				objectives: [
+					{
+						id: "OBJ-1",
+						parent: null,
+						title: "root",
+						owner: "analyst",
+						status: "active",
+						kpis: [],
+					},
+				],
+				updatedAt: new Date(),
+				updatedBy: "test",
+			});
+		});
+
+		afterEach(async () => {
+			await db.collection("objectivesGoals").deleteMany({ missionId });
+			await db.collection("objectivesEvents").deleteMany({ missionId });
+		});
+
+		it("reads Mongo directly and works while the mission is suspended", async () => {
+			const suspendRes = await fetch(`${baseUrl}/${missionId}/suspend`, {
+				method: "POST",
+			});
+			expect(suspendRes.status).toBe(200);
+
+			// The literal regression test this route exists to fix: the old
+			// proxy-through-MonitorServer path 503'd on any non-"running" status.
+			const res = await fetch(`${baseUrl}/${missionId}/objectives`);
+			expect(res.status).toBe(200);
+			const tree = (await res.json()) as {
+				objectives: Array<{ id: string }>;
+			};
+			expect(tree.objectives[0]?.id).toBe("OBJ-1");
+		});
+
+		it("404s for an unknown mission id", async () => {
+			const res = await fetch(`${baseUrl}/does-not-exist/objectives`);
+			expect(res.status).toBe(404);
+		});
+	});
 });

@@ -1,14 +1,17 @@
 /**
  * Sprint 26 — end-to-end smoke test for the objectives spine, via the real
  * template path. Uses the `objectives-demo` team (config/teams/objectives-demo)
- * whose companion dir ships objectives/goals.json + tasks.jsonl. Provisioning
- * copies them into the mission's shared store and makes it agent-writable; the
- * orchestration loop then runs the mission. Verifies the whole headless loop:
- *   - provisioning: template goals.json/tasks.jsonl land in a writable store
+ * whose companion dir ships objectives/goals.json + tasks.jsonl as teamFiles.
+ * Provisioning copies them onto disk as any other teamFile; this test's
+ * onWorkspaceReady hook then runs the same boot-time self-migration
+ * (ADR-0019) daemon.ts runs for every real mission, importing them into
+ * MongoDB before the orchestration loop starts. Verifies the whole headless
+ * loop, now Mongo-backed end to end:
+ *   - migration: template goals.json/tasks.jsonl import into Mongo once
  *   - B1: the daemon injects the agent's #my-objectives mental-map region
- *   - A2: the agent runs the objectives skill scripts under sudo isolation
- *   - A1: the store folds the updates (tasks completed, KPI value set)
- *   - B2: the daemon attributes the turn's cost to the tasks (cost.jsonl)
+ *   - A2: the agent calls the AddTask/UpdateTask/RecordKpi tools
+ *   - A1: the repo folds the updates (tasks completed, KPI value set)
+ *   - B2: the daemon attributes the turn's cost to the tasks
  *
  * Requires ANTHROPIC_API_KEY + MONGODB_URI and pool user magi-w1 (setup-dev.sh).
  */
@@ -28,10 +31,8 @@ import { createMongoConversationRepository } from "../src/conversation-repositor
 import { createMongoMailboxRepository } from "../src/mailbox.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
-import {
-	loadCostEvents,
-	loadObjectivesStore,
-} from "../src/objectives/store.js";
+import { migrateLegacyObjectivesStore } from "../src/objectives/migrate-legacy-store.js";
+import { createMongoObjectivesRepository } from "../src/objectives/repository.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
 
@@ -63,8 +64,10 @@ describe("integration: objectives spine end-to-end (template path)", () => {
 			const statsCollector = new StatsCollector(
 				createMongoAgentStatsRepository(db),
 			);
+			const objectivesRepo = createMongoObjectivesRepository(db);
 			// teamSkillsPath points at the demo's skills/; its dirname is the team
-			// dir, so provisioning copies objectives/goals.json + tasks.jsonl.
+			// dir, so provisioning copies objectives/goals.json + tasks.jsonl onto
+			// disk as plain teamFiles (unchanged, ADR-0021).
 			const workspaceManager = new WorkspaceManager({
 				layout: {
 					homeBase: join(tmpDir, "home"),
@@ -72,6 +75,22 @@ describe("integration: objectives spine end-to-end (template path)", () => {
 				},
 				teamSkillsPath: join(DEMO_DIR, "skills"),
 			});
+
+			// Provision once here (idempotent — runOrchestrationLoop provisions
+			// again internally) so the migration below can run to completion
+			// before any agent turn starts. In production this same sequencing
+			// (provision → migrate → seed, all before dispatch) happens inside
+			// daemon.ts's onWorkspaceReady chain; that hook fires fire-and-forget
+			// (not awaited) from inside runOrchestrationLoop, so a test relying on
+			// it would race the first turn against migration completion.
+			workspaceManager.provision(
+				missionId,
+				teamConfig.agents.map((a) => ({
+					id: a.id,
+					linuxUser: a.linuxUser ?? a.id,
+				})),
+			);
+			await migrateLegacyObjectivesStore(sharedDir, missionId, objectivesRepo);
 
 			await mailboxRepo.post({
 				missionId,
@@ -88,6 +107,7 @@ describe("integration: objectives spine end-to-end (template path)", () => {
 					mailboxRepo,
 					conversationRepo,
 					statsCollector,
+					objectivesRepo,
 					model: CLAUDE_SONNET,
 					workdir: tmpDir,
 					workspaceManager,
@@ -96,8 +116,8 @@ describe("integration: objectives spine end-to-end (template path)", () => {
 				ac.signal,
 			);
 
-			// Provisioning + A1 + A2: template tasks folded and completed by the agent.
-			const tree = await loadObjectivesStore(sharedDir);
+			// Migration + A1 + A2: template tasks folded and completed by the agent.
+			const tree = await objectivesRepo.readTree(missionId);
 			const byId = Object.fromEntries(tree.tasks.map((t) => [t.id, t]));
 			expect(byId["TASK-1"]?.status, "TASK-1 should be completed").toBe(
 				"completed",
@@ -111,7 +131,7 @@ describe("integration: objectives spine end-to-end (template path)", () => {
 			expect(kpi?.value, "K-coverage should be recorded").not.toBeNull();
 
 			// B2: cost attributed to the tasks.
-			const costEvents = await loadCostEvents(sharedDir);
+			const costEvents = await objectivesRepo.readCostEvents(missionId);
 			const attributed = costEvents
 				.flatMap((e) => Object.values(e.alloc))
 				.reduce((a, b) => a + b, 0);
@@ -130,6 +150,8 @@ describe("integration: objectives spine end-to-end (template path)", () => {
 			await db.collection("agentTurnStats").deleteMany({ missionId });
 			await db.collection("missionStats").deleteMany({ missionId });
 			await db.collection("llmCallLog").deleteMany({ missionId });
+			await db.collection("objectivesGoals").deleteMany({ missionId });
+			await db.collection("objectivesEvents").deleteMany({ missionId });
 			await client.close();
 			rmSync(tmpDir, { recursive: true, force: true });
 		}

@@ -1,6 +1,20 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 26c — Structured mission/template config storage (ADR-0021): no new trust
+**Last updated:** Sprint 26c — Objectives storage moved to MongoDB (ADR-0019): no new trust
+boundary, a net tightening. Agent-writable objectives moved from `sharedDir/objectives/*` files
+(Bash skill scripts, ACL-granted OS write access) to four Zod-validated `MagiTool`s
+(`AddTask`/`UpdateTask`/`RecordKpi`/`Allocate`) at the same in-process, orchestrator-mediated trust
+tier as mailbox tools — closing the pre-existing "any agent with `WriteFile`/Bash access could
+technically overwrite `goals.json`" gap (enforced only by prompt convention before; now
+structurally impossible since it's not a file). New `GET /api/missions/:id/objectives` control-plane
+route added under existing TB-9 (same `userFilter` scoping as `GET /:id/limits`); `monitor-server.ts`'s
+`GET /objectives`/`POST /objectives/kpi` routes deleted (nothing calls them anymore). The
+control-plane copilot's `ReviewObjectives`/`AssessKpi` switched from the `monitorFetch`/`monitorPost`
+pattern (required a running mission) to direct, `{missionId, userId}`-scoped Mongo access — closes
+the `objectives/*` row this doc's Sprint 26b entry opened for the resume-time-overwrite incident
+(the interim fix's special-casing is now deleted, not superseded). (2026-07-26)
+
+**Previously:** Sprint 26c — Structured mission/template config storage (ADR-0021): no new trust
 boundary, a reduction in blast radius — the control-plane copilot's `save_template`/
 `restore_template_version` action types and the `snapshotSharedDir` helper (an unauthenticated-by-
 role but confirmation-gated file-tree read across a mission's `sharedDir`, used only by
@@ -246,8 +260,7 @@ graph TB
 - `packages/agent-runtime-worker/src/workspace-git.ts` — `WorkspaceGit`: git-commit-on-sleep (Sprint 25); runs as the mission's git identity, no `sudo` (already within the trusted daemon/sharedDir boundary); serializes all commits through one promise chain
 - `packages/agent-runtime-worker/src/skills.ts` — `discoverSkills()`: SKILL.md frontmatter parsing, scope precedence
 - `packages/agent-runtime-worker/src/daemon.ts` — scheduled message upsert (`spec.label` filter), job spec file reads
-- `packages/agent-runtime-worker/src/objectives/store.ts` — append-only fold of `sharedDir/objectives/*.jsonl` + `goals.json` (Sprint 26a); agent-writable via the `objectives` skill scripts below, same shared-write posture as any other sharedDir content
-- `packages/skills/objectives/scripts/` — `task-add`/`task-update`/`record-kpi`/`allocate` (append-only writes only; agent's own `linuxUser`, no elevated privilege)
+- `packages/agent-runtime-worker/src/objectives/{store,repository}.ts` — MongoDB-backed since ADR-0019 (Sprint 26c; file-based in Sprint 26a); agent-writable via the `AddTask`/`UpdateTask`/`RecordKpi`/`Allocate` `MagiTool`s (`objectives/tools.ts`), same trust tier as mailbox tools (in-process, orchestrator-mediated Mongo write, no new boundary) — a *tightening* from the file-based design, where any agent with `WriteFile`/Bash access to `sharedDir` could technically overwrite `goals.json` directly (enforced only by prompt convention); the objective tree itself is no longer a file at all, so only the copilot-only `EditObjectiveTree` tool can touch it now
 
 ### TB-8: Untrusted content → agent context (prompt injection)
 - `packages/agent-runtime-worker/src/tools/fetch-url.ts` — tool result (markdown) injected into LLM messages
@@ -285,7 +298,7 @@ graph TB
 - `packages/agent-runtime-worker/src/monitor-server.ts` — reads `MONITOR_TOKEN` env var (set at provision); `tokenOk()` checks `x-monitor-token` header on all non-GET requests; skips check when env var absent (dev mode)
 - `packages/control-plane/src/fly-machines.ts` — derives and injects `MONITOR_TOKEN` into machine env at provision time; `MONITOR_SIGNING_KEY` never leaves the control plane
 - `packages/control-plane/src/copilot-router.ts` — a second caller of this same boundary: `executeAction`'s `write_mission_file`/`save_session_config` handlers call the mission's MonitorServer directly (`http://[privateIp]:4000${endpoint}`) rather than through the browser-facing proxy, using the same `deriveMonitorToken` + `x-monitor-token` mechanism, scoped by `{ missionId, userId }` on the preceding `missions.findOne`
-- `packages/control-plane/src/copilot-tools.ts` — `monitorFetch`/`monitorPost` helpers: same direct-call pattern, used by `GetMissionStatus`/`ReadMissionMailbox`/`ReadMissionLog`/`ReadMissionFile`/`ReviewObjectives`/`AssessKpi`; every caller resolves `privateIp` from a `{ missionId, userId }`-scoped `missions.findOne` first
+- `packages/control-plane/src/copilot-tools.ts` — `monitorFetch`/`monitorPost` helpers: same direct-call pattern, used by `GetMissionStatus`/`ReadMissionMailbox`/`ReadMissionLog`/`ReadMissionFile`; every caller resolves `privateIp` from a `{ missionId, userId }`-scoped `missions.findOne` first. `ReviewObjectives`/`AssessKpi` no longer use this pattern (ADR-0019, Sprint 26c) — both call `createMongoObjectivesRepository(db)` directly, scoped by the same `{ missionId, userId }` `missions.findOne` check but with no `privateIp`/running-mission dependency at all
 - `packages/control-plane/src/missions.ts` — `GET /:id/agents` (fourth caller): fetches the mission's own `GET /team` route to get the *live* daemon roster rather than the stored `teamConfigYaml`, since the mission copilot (ADR-0016) is injected in-memory only and would otherwise never appear in the cockpit's Conversations panel. GET-only (monitor's `tokenOk()` exempts GET), scoped by the preceding `{ missionId, ...userFilter(req) }` lookup; falls back to the static YAML parse on any fetch failure (mission suspended, still booting, network hiccup) rather than 500ing
 - `packages/control-plane/src/missions.ts` — `writeMissionCap` (fifth caller, pre-existing since the Limits panel sprint but not previously listed here): best-effort `POST /set-budget` immediately after persisting the new cap to MongoDB, so a currently-paused mission wakes without waiting for its own next check; scoped by the same preceding `{ missionId, ...userFilter(req) }` lookup as every other caller. Failure is silently tolerated (`liveUpdateApplied: false` in the response) — the Mongo write is the source of truth regardless (ADR-0018)
 
@@ -347,8 +360,8 @@ graph TB
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| Unauthenticated `POST /stop`, `/send-message`, `/extend-budget`, `/set-budget`, `/pause-agent`, `/resume-agent`, `/upload`, `/objectives/kpi` | S / E | ⚠️ F-008 | Binds to `127.0.0.1:4000` (localhost only); no auth on mutating routes in dev. In production all are token-checked via `tokenOk()` (TB-11) and reached only through the `{missionId, userId}`-scoped control-plane proxy. `/upload` writes operator files into `sharedDir` (path-sanitised via `basename`) and processes them with the document processor. `/objectives/kpi` appends a Zod-validated KPI value event to `sharedDir/objectives/kpis.jsonl` (no path input; body is `{kpi, value, by?, note?}`) — used by the copilot's `AssessKpi` tool |
-| `GET /download?path=` streams files / a folder zip from `sharedDir`; `GET /objectives` returns the folded objectives store | I | ~ | `/download` path resolved + checked within `sharedDir` (no traversal — `400` otherwise). `/objectives` reads only `sharedDir/objectives/*` (fixed paths, no input) and returns JSON; a malformed store line is skipped, not fatal. Same posture as `GET /files/shared` (GET reads are not token-checked but reach the monitor only via the authenticated, user-scoped proxy; `.git` excluded from zips) |
+| Unauthenticated `POST /stop`, `/send-message`, `/extend-budget`, `/set-budget`, `/pause-agent`, `/resume-agent`, `/upload` | S / E | ⚠️ F-008 | Binds to `127.0.0.1:4000` (localhost only); no auth on mutating routes in dev. In production all are token-checked via `tokenOk()` (TB-11) and reached only through the `{missionId, userId}`-scoped control-plane proxy. `/upload` writes operator files into `sharedDir` (path-sanitised via `basename`) and processes them with the document processor. (`GET /objectives`/`POST /objectives/kpi` removed under ADR-0019 — Sprint 26c; objectives moved fully to MongoDB, reached only through the new `GET /api/missions/:id/objectives` control-plane route and the copilot's `ReviewObjectives`/`AssessKpi` tools, both Mongo-direct, not this server — see TB-9) |
+| `GET /download?path=` streams files / a folder zip from `sharedDir` | I | ~ | Path resolved + checked within `sharedDir` (no traversal — `400` otherwise). Same posture as `GET /files/shared` (GET reads are not token-checked but reach the monitor only via the authenticated, user-scoped proxy; `.git` excluded from zips) |
 | SSE stream exposes all mission data on localhost | I | ⚠️ F-009 | Any process on the machine can subscribe to the full agent activity stream |
 | `GET /log` exposes daemon stdout/stderr (may include agent message excerpts, internal paths) | I | ~ | In local dev: localhost-only (same as F-009). In production: behind TB-9 `X-API-Key` via proxy; only authenticated operators can reach it |
 
@@ -394,7 +407,7 @@ graph TB
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
 | Agent overwrites another agent's sharedDir output | T | A | Intentional design (collaboration); workdir ACL isolation is the backstop (A-001) |
-| Stale MongoDB `teamFiles` snapshot silently overwrites evolved on-volume `objectives/*` on every resume — not an agent-vs-agent overwrite, `WorkspaceManager.provision()`'s own `copyTeamFilesToSharedDir()` was the actor | T / D | ✅ | Real production incident (Gold Digest V2, 2026-07-21) — root-caused via direct `git log` inspection of the live mission's workspace after the mission copilot's own self-diagnosis misattributed the mechanism to an agent's write. Interim fix: `copyTeamFilesToSharedDir` now seeds `objectives/*` only if missing on disk, never overwrites existing content there; every other teamFile keeps its overwrite-on-resume behavior (operator-pushed config updates still need to propagate). Full fix (remove the two-copy architecture entirely) proposed in ADR-0019, not yet scheduled (targeted Sprint 26c) |
+| Stale MongoDB `teamFiles` snapshot silently overwrites evolved on-volume `objectives/*` on every resume — not an agent-vs-agent overwrite, `WorkspaceManager.provision()`'s own `copyTeamFilesToSharedDir()` was the actor | T / D | ✅ | Real production incident (Gold Digest V2, 2026-07-21) — root-caused via direct `git log` inspection of the live mission's workspace after the mission copilot's own self-diagnosis misattributed the mechanism to an agent's write. Interim fix (seed-if-missing) shipped same-day; **fully closed Sprint 26c (ADR-0019)** by removing the two-copy architecture entirely — objectives moved to MongoDB, nothing ever writes to `sharedDir/objectives/*` after provisioning, so `copyTeamFilesToSharedDir` reverted to its fully generic overwrite-on-resume behavior (the special-casing that was this row's original interim fix is deleted, not just superseded) |
 | Adversarial SKILL.md in mission/ tier (prompt injection via skill description) | T | ~ | `description` injected into all agents' system prompts; no sanitisation; symlinks excluded in `discoverSkills()` |
 | Agent writes crafted schedule label — MongoDB operator injection | T | ✅ F-005 | Fixed Sprint 13: `typeof spec.label !== 'string'` guard; invalid specs skipped |
 
@@ -417,6 +430,7 @@ graph TB
 | CONTROL_API_KEY stored in `magi_session` cookie exposes admin credential | I | ~ | Cookie is `SameSite=Strict` (blocks CSRF); no `HttpOnly` (JS-accessible by design for cross-tab); admin key in cookie has same lifetime as session tab |
 | Cross-user edit of another user's mission limits (`PATCH /:id/limits/mission`, `PATCH /:id/limits/agent/:agentId`) | T / S | ✅ | Same `userFilter(req)` scoping as every other `missions.ts` route (`col.findOne({missionId, ...userFilter(req)})` before any write); no new auth mechanism |
 | Operator-supplied `limits` object used to inject arbitrary YAML structure | T | ✅ | `LimitsSchema.safeParse()` pre-validates the body (`.strict()`, numeric fields only) before it ever reaches `patchAgentLimits()`; the patched document is re-validated end-to-end via `parseTeamConfig()` before persisting — same double-validation `SaveMissionConfig` already relies on |
+| Cross-user read of another user's objectives (`GET /:id/objectives`, ADR-0019) | I | ✅ | Same `userFilter(req)` scoping as `GET /:id/limits` (`col.findOne({missionId, ...userFilter(req)})` before the Mongo read); no new auth mechanism. Unlike the old monitor-proxied route, this one reads Mongo directly and works regardless of mission running state — intentional (closes the ADR-0019-named suspended-mission blank-panel gap), not a new exposure (still gated on mission ownership) |
 
 ### TB-12: Browser ↔ Firebase Auth (Google OAuth)
 

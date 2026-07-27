@@ -133,6 +133,8 @@ import { createMissionCopilotTools } from "./mission-copilot-tools.js";
 import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer } from "./monitor-server.js";
+import { migrateLegacyObjectivesStore } from "./objectives/migrate-legacy-store.js";
+import { createMongoObjectivesRepository } from "./objectives/repository.js";
 import { enrichModelPricing } from "./openrouter-pricing.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
@@ -882,6 +884,7 @@ async function main(): Promise<void> {
 		createMongoAgentStatsRepository(db),
 	);
 	const missionConfigRepo = createMongoMissionConfigRepository(db);
+	const objectivesRepo = createMongoObjectivesRepository(db);
 
 	// Owning user's control-plane copilot mailbox (copilot-{userId}), for
 	// relaying hard-severity anomalies. Previously gated by a COPILOT_MISSION_ID
@@ -1211,6 +1214,7 @@ async function main(): Promise<void> {
 				db,
 				missionId,
 				sharedDir,
+				objectivesRepo,
 				mailboxRepo,
 				monitorPort,
 				monitorToken: process.env.MONITOR_TOKEN ?? "",
@@ -1229,6 +1233,7 @@ async function main(): Promise<void> {
 				llmCallLog,
 				statsCollector,
 				missionConfig: missionConfigRepo,
+				objectivesRepo,
 				model,
 				visionModel,
 				workdir,
@@ -1296,17 +1301,36 @@ async function main(): Promise<void> {
 				onAgentStart: (agentId) => monitor.notifyAgentStart(agentId),
 				onWorkspaceReady: (workdirs) => {
 					monitor.setAgentWorkdirs(workdirs);
-					// Seed after provisioning, not at injection time — provision()
-					// is what creates sharedDir/objectives/ on disk. Idempotent, so
-					// a resume_mission reprovision (which re-runs this whole path)
-					// never duplicates the seed.
-					if (missionCopilotEnabled && workdirs.has(MISSION_COPILOT_AGENT_ID)) {
-						seedMissionCopilotObjectives(sharedDir).catch((e: Error) =>
+					// Migrate any legacy file-based objectives (ADR-0019) after
+					// provisioning, not at injection time — provision() is what
+					// creates sharedDir/objectives/ on disk for a fresh-from-template
+					// mission. Idempotent (no-ops once a mission has an
+					// objectivesGoals doc), so a resume_mission reprovision (which
+					// re-runs this whole path) never re-imports. Chained (not fired
+					// in parallel) before the copilot seed so a legacy
+					// OBJ-MISSION-FIT is picked up first and the seed correctly
+					// no-ops on it.
+					migrateLegacyObjectivesStore(sharedDir, missionId, objectivesRepo)
+						.catch((e: Error) =>
 							console.error(
-								`[daemon] failed to seed mission copilot objectives: ${e.message}`,
+								`[daemon] failed to migrate legacy objectives store: ${e.message}`,
 							),
-						);
-					}
+						)
+						.then(() => {
+							if (
+								missionCopilotEnabled &&
+								workdirs.has(MISSION_COPILOT_AGENT_ID)
+							) {
+								return seedMissionCopilotObjectives(
+									objectivesRepo,
+									missionId,
+								).catch((e: Error) =>
+									console.error(
+										`[daemon] failed to seed mission copilot objectives: ${e.message}`,
+									),
+								);
+							}
+						});
 				},
 				onAgentDone: (agentId) => monitor.notifyAgentDone(agentId),
 				onIdle: () => monitor.notifyIdle(),

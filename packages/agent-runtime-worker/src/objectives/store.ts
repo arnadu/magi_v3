@@ -1,36 +1,28 @@
 /**
- * Objectives store — fold + I/O (Sprint 26a, deliverable A1).
+ * Objectives store — fold engine (Sprint 26a, deliverable A1; storage moved to
+ * MongoDB under ADR-0019 — see `repository.ts` for the I/O layer).
  *
- * `foldStore` is pure: it takes the parsed `goals.json` plus the append-only
- * event arrays and returns the current-state tree (task status, KPI values,
- * costs rolled up). `loadObjectivesStore` reads the files from a directory and
- * folds them. `appendEvent` is the only writer helper — used by the daemon
- * (cost attribution, B2) and tests; agent skill scripts append directly in JS.
+ * `foldStore` is pure: it takes the parsed goals plus the append-only event
+ * arrays and returns the current-state tree (task status, KPI values, costs
+ * rolled up). It has no knowledge of where those arrays came from — this is
+ * exactly what let the ADR-0019 migration swap file I/O for MongoDB without
+ * touching this file's logic at all.
  */
 
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import {
-	type AllocEvent,
-	AllocEventSchema,
-	type CostEvent,
-	CostEventSchema,
-	type FoldedKpi,
-	type FoldedObjective,
-	type FoldedTask,
-	type FoldedTree,
-	type GoalsFile,
-	GoalsFileSchema,
-	type KpiDef,
-	type KpiEvent,
-	KpiEventSchema,
-	type ObjectiveDef,
-	OVERHEAD_BUCKET,
-	STORE_FILES,
-	type TaskEvent,
-	TaskEventSchema,
-	type TaskStatus,
+import type {
+	CostEvent,
+	FoldedKpi,
+	FoldedObjective,
+	FoldedTask,
+	FoldedTree,
+	GoalsFile,
+	KpiDef,
+	KpiEvent,
+	ObjectiveDef,
+	TaskEvent,
+	TaskStatus,
 } from "./types.js";
+import { OVERHEAD_BUCKET } from "./types.js";
 
 export interface FoldInput {
 	goals: GoalsFile;
@@ -296,145 +288,6 @@ function foldKpi(
 	}
 
 	return { ...def, value, updatedAt, updatedBy, stale };
-}
-
-// ---------------------------------------------------------------------------
-// I/O
-// ---------------------------------------------------------------------------
-
-function objectivesDir(sharedDir: string): string {
-	return join(sharedDir, "objectives");
-}
-
-async function readJsonl<T>(
-	path: string,
-	parse: (o: unknown) => T,
-): Promise<T[]> {
-	let text: string;
-	try {
-		text = await readFile(path, "utf8");
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
-		throw e;
-	}
-	const out: T[] = [];
-	for (const line of text.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-		// Append-only logs are written by agent skill scripts; one malformed or
-		// schema-invalid line must not make the whole store unreadable (it would
-		// break the mental-map sync for every agent). Skip and warn instead.
-		try {
-			out.push(parse(JSON.parse(trimmed)));
-		} catch (err) {
-			console.warn(
-				`[objectives] skipping malformed line in ${path}: ${(err as Error).message}`,
-			);
-		}
-	}
-	return out;
-}
-
-/** Load and fold the objectives store from a mission's shared dir. */
-export async function loadObjectivesStore(
-	sharedDir: string,
-	opts: FoldOptions & { autoStats?: Record<string, number> } = {},
-): Promise<FoldedTree> {
-	const dir = objectivesDir(sharedDir);
-
-	const goals = await loadGoals(sharedDir);
-
-	const [taskEvents, kpiEvents, costEvents] = await Promise.all([
-		readJsonl(join(dir, STORE_FILES.tasks), (o) => TaskEventSchema.parse(o)),
-		readJsonl(join(dir, STORE_FILES.kpis), (o) => KpiEventSchema.parse(o)),
-		readJsonl(join(dir, STORE_FILES.cost), (o) => CostEventSchema.parse(o)),
-	]);
-
-	return foldStore(
-		{ goals, taskEvents, kpiEvents, costEvents, autoStats: opts.autoStats },
-		opts,
-	);
-}
-
-/** Append one validated event to a store log (the only writer helper). */
-export async function appendEvent(
-	sharedDir: string,
-	file: "tasks" | "kpis" | "cost" | "alloc",
-	event: TaskEvent | KpiEvent | CostEvent | AllocEvent,
-): Promise<void> {
-	const path = join(objectivesDir(sharedDir), STORE_FILES[file]);
-	await mkdir(dirname(path), { recursive: true });
-	await appendFile(path, `${JSON.stringify(event)}\n`, "utf8");
-}
-
-/** Raw task events (no fold) — for cost attribution's turn-window scan. */
-export async function loadTaskEvents(sharedDir: string): Promise<TaskEvent[]> {
-	return readJsonl(join(objectivesDir(sharedDir), STORE_FILES.tasks), (o) =>
-		TaskEventSchema.parse(o),
-	);
-}
-
-/** Raw cost events (no fold) — for computing already-attributed totals. */
-export async function loadCostEvents(sharedDir: string): Promise<CostEvent[]> {
-	return readJsonl(join(objectivesDir(sharedDir), STORE_FILES.cost), (o) =>
-		CostEventSchema.parse(o),
-	);
-}
-
-/** Raw allocation-intent events (no fold) — for the `allocate` timesheet fallback. */
-export async function loadAllocEvents(
-	sharedDir: string,
-): Promise<AllocEvent[]> {
-	return readJsonl(join(objectivesDir(sharedDir), STORE_FILES.alloc), (o) =>
-		AllocEventSchema.parse(o),
-	);
-}
-
-/** The authored objective tree + KPI definitions (or empty when absent). */
-export async function loadGoals(sharedDir: string): Promise<GoalsFile> {
-	try {
-		return GoalsFileSchema.parse(
-			JSON.parse(
-				await readFile(
-					join(objectivesDir(sharedDir), STORE_FILES.goals),
-					"utf8",
-				),
-			),
-		);
-	} catch (e) {
-		// A missing store is normal. A malformed/invalid goals.json (e.g. an
-		// agent- or copilot-authored file that doesn't match the schema) must NOT
-		// take down the read path — degrade to "no objectives" and warn, so the
-		// monitor's GET /objectives and the mental-map sync keep working.
-		if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
-			console.warn(
-				`[objectives] ignoring invalid goals.json (${(e as Error).message}); treating as no objectives`,
-			);
-		}
-		return { objectives: [] };
-	}
-}
-
-/**
- * Overwrite goals.json with a validated objective tree. Unlike appendEvent's
- * logs, goals.json is a low-churn authored file, not an append-only log — this
- * is a plain overwrite, not a merge. Callers that need to add to an existing
- * tree must loadGoals() first and pass the merged result. Used by daemon-side
- * seeding (e.g. the mission copilot's initial objectives); agent skill scripts
- * continue to write this file directly via WriteFile/EditFile, unaffected.
- */
-export async function saveGoals(
-	sharedDir: string,
-	goals: GoalsFile,
-): Promise<void> {
-	const validated = GoalsFileSchema.parse(goals);
-	const dir = objectivesDir(sharedDir);
-	await mkdir(dir, { recursive: true });
-	await writeFile(
-		join(dir, STORE_FILES.goals),
-		`${JSON.stringify(validated, null, 2)}\n`,
-		"utf8",
-	);
 }
 
 export { OVERHEAD_BUCKET };

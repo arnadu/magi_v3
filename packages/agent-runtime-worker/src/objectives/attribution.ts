@@ -15,13 +15,7 @@
  * objective level, approximate per task.
  */
 
-import {
-	appendEvent,
-	loadAllocEvents,
-	loadCostEvents,
-	loadGoals,
-	loadTaskEvents,
-} from "./store.js";
+import type { ObjectivesRepository } from "./repository.js";
 import type { AllocEvent, CostEvent, GoalsFile, TaskEvent } from "./types.js";
 
 /** A carry-over balance this many turns stale triggers the fallbacks. */
@@ -122,14 +116,15 @@ export interface AttributeParams {
  * the cost carries over).
  */
 export async function attributeTurnCost(
-	sharedDir: string,
+	repo: ObjectivesRepository,
+	missionId: string,
 	p: AttributeParams,
 ): Promise<CostEvent | null> {
 	const [taskEvents, costEvents, allocEvents, goals] = await Promise.all([
-		loadTaskEvents(sharedDir),
-		loadCostEvents(sharedDir),
-		loadAllocEvents(sharedDir),
-		loadGoals(sharedDir),
+		repo.readTaskEvents(missionId),
+		repo.readCostEvents(missionId),
+		repo.readAllocEvents(missionId),
+		repo.readGoals(missionId),
 	]);
 	if (taskEvents.length === 0 && goals.objectives.length === 0) return null;
 
@@ -175,6 +170,6 @@ export async function attributeTurnCost(
 		at: new Date().toISOString(),
 		alloc,
 	};
-	await appendEvent(sharedDir, "cost", event);
+	await repo.appendCostEvent(missionId, event);
 	return event;
 }

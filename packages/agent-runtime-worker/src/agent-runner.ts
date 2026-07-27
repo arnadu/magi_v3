@@ -28,7 +28,8 @@ import {
 	STALE_TURNS,
 	turnsSinceLastAttribution,
 } from "./objectives/attribution.js";
-import { loadCostEvents, loadObjectivesStore } from "./objectives/store.js";
+import type { ObjectivesRepository } from "./objectives/repository.js";
+import { createObjectivesTools } from "./objectives/tools.js";
 import { buildSystemPrompt, formatMessages } from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
 import {
@@ -93,6 +94,14 @@ export interface AgentRunContext {
 	 * when absent or when a live read fails.
 	 */
 	missionConfig?: MissionConfigRepository;
+	/**
+	 * Optional Mongo-backed objectives store (ADR-0019). When present, the
+	 * agent gets the AddTask/UpdateTask/RecordKpi/Allocate tools, the
+	 * #my-objectives mental-map sync runs each turn, and turn-end cost
+	 * attribution writes into it. Absent in test/CLI harnesses that don't
+	 * exercise objectives — all three of those steps simply no-op.
+	 */
+	objectivesRepo?: ObjectivesRepository;
 	/**
 	 * Called when a configured limit (see agent `limits`) is breached — soft
 	 * limits fire an advisory alert (deduped per rule per turn); a hard limit
@@ -422,36 +431,39 @@ export async function runAgent(
 		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
 
 	// Sync the daemon-managed #my-objectives mental-map section from the
-	// objectives store (Sprint 26a, B1). The agent reads its owned tasks/KPIs
-	// here and acts via the objectives skill scripts. The staleness nudge (B2b)
-	// is shown when the agent has cost unattributed for several turns. Store
-	// load must never break the turn — on any error, leave the mental map alone.
-	try {
-		const tree = await loadObjectivesStore(sharedDir);
-		const costEvents = await loadCostEvents(sharedDir);
-		const staleAttributionTurns = turnsSinceLastAttribution(
-			costEvents,
-			agentId,
-			activeTurnNumber,
-		);
-		const section = renderMyObjectives(tree, agentId, {
-			staleAttributionTurns,
-			staleThreshold: STALE_TURNS,
-		});
-		if (section !== null) {
-			currentMentalMapHtml = upsertManagedRegion(
-				currentMentalMapHtml,
-				MY_OBJECTIVES_KEY,
-				section,
+	// objectives store (Sprint 26a, B1; MongoDB-backed since ADR-0019). The
+	// agent reads its owned tasks/KPIs here and acts via the AddTask/
+	// UpdateTask/RecordKpi/Allocate tools. The staleness nudge (B2b) is shown
+	// when the agent has cost unattributed for several turns. Store load must
+	// never break the turn — on any error, leave the mental map alone.
+	if (ctx.objectivesRepo) {
+		try {
+			const tree = await ctx.objectivesRepo.readTree(missionId);
+			const costEvents = await ctx.objectivesRepo.readCostEvents(missionId);
+			const staleAttributionTurns = turnsSinceLastAttribution(
+				costEvents,
+				agentId,
+				activeTurnNumber,
 			);
-			ctx.onMentalMapUpdate?.(agentId, currentMentalMapHtml);
+			const section = renderMyObjectives(tree, agentId, {
+				staleAttributionTurns,
+				staleThreshold: STALE_TURNS,
+			});
+			if (section !== null) {
+				currentMentalMapHtml = upsertManagedRegion(
+					currentMentalMapHtml,
+					MY_OBJECTIVES_KEY,
+					section,
+				);
+				ctx.onMentalMapUpdate?.(agentId, currentMentalMapHtml);
+			}
+		} catch (e) {
+			console.error("[agent-runner] objectives sync failed", {
+				missionId,
+				agentId,
+				error: (e as Error).message,
+			});
 		}
-	} catch (e) {
-		console.error("[agent-runner] objectives sync failed", {
-			missionId,
-			agentId,
-			error: (e as Error).message,
-		});
 	}
 
 	// Sync the daemon-managed #supervisor-note mental-map section (ADR-0016) —
@@ -587,6 +599,9 @@ export async function runAgent(
 		}),
 		...(searchWebTool ? [searchWebTool] : []),
 		...(browseWebHandle ? [browseWebHandle.tool] : []),
+		...(ctx.objectivesRepo
+			? createObjectivesTools(ctx.objectivesRepo, missionId, agentId)
+			: []),
 	];
 
 	// Apply disabledTools filter (Tier A only), then append additionalTools (Tier B, never filtered).
@@ -883,7 +898,7 @@ export async function runAgent(
 		// Attribute the turn's cost to the task(s) the agent updated this turn
 		// (Sprint 26a, B2). Runs after endTurn so lifetimeCostUsd includes this
 		// turn. Best-effort: a failure here must never break the turn.
-		if (ctx.statsCollector && turnSnapshot) {
+		if (ctx.objectivesRepo && ctx.statsCollector && turnSnapshot) {
 			try {
 				// Fresh read: endTurn() just persisted this turn's contribution to
 				// missionStats, so this picks it up directly rather than relying on
@@ -892,7 +907,7 @@ export async function runAgent(
 					missionId,
 					agentId,
 				);
-				await attributeTurnCost(sharedDir, {
+				await attributeTurnCost(ctx.objectivesRepo, missionId, {
 					agentId,
 					turnNumber: turnSnapshot.turnNumber,
 					windowStart: turnSnapshot.startedAt,

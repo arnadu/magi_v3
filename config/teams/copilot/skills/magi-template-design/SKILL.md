@@ -172,14 +172,14 @@ What outcome-driven templates ship:
    ```
    {"id":"TASK-1","at":"2026-01-01T00:00:00.000Z","by":"user","title":"Pull prices","objective":"OBJ-1.1","assignee":"data-scientist","status":"open"}
    ```
-   (Or let a lead agent create tasks at runtime with `task-add`.)
+   (Or let a lead agent create tasks at runtime with the `AddTask` tool.)
 
 3. Each agent is shown its owned objectives, owned KPIs, and open tasks in a synced **"Your
    objectives"** section of its mental map (injected, not authored). Agents keep it current via
-   the objectives skill scripts:
-   - `bash $SHARED_DIR/skills/_platform/objectives/scripts/task-update.sh --id <id> --status <s> --effort <n>`
-   - `bash $SHARED_DIR/skills/_platform/objectives/scripts/record-kpi.sh --kpi <id> --value <v>`
-   Read `$SHARED_DIR/skills/_platform/objectives/SKILL.md` for the full command reference.
+   the objectives tools:
+   - `UpdateTask(id, status, effort)`
+   - `RecordKpi(kpi, value)`
+   Read `$SHARED_DIR/skills/_platform/objectives/SKILL.md` for the full reference.
 
 Status values: `open | in-progress | blocked | completed | deferred | cancelled`. The operator
 watches all of this in the Mission Cockpit, and cost is attributed to tasks/objectives

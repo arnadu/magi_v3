@@ -46,7 +46,8 @@ import type { JobSpec } from "./job-recovery.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
-import { loadObjectivesStore } from "./objectives/store.js";
+import type { ObjectivesRepository } from "./objectives/repository.js";
+import { type ObjectiveDef, ObjectiveDefSchema } from "./objectives/types.js";
 import { writeSupervisorNote } from "./supervisor-note.js";
 import type { MagiTool, ToolResult } from "./tools.js";
 
@@ -57,6 +58,7 @@ export interface MissionCopilotToolsConfig {
 	db: Db;
 	missionId: string;
 	sharedDir: string;
+	objectivesRepo: ObjectivesRepository;
 	mailboxRepo: MailboxRepository;
 	monitorPort: number;
 	/** Empty string in local dev, matching MonitorServer's own fail-open convention for that case. */
@@ -120,6 +122,7 @@ export function createMissionCopilotTools(
 		db,
 		missionId,
 		sharedDir,
+		objectivesRepo,
 		mailboxRepo,
 		monitorPort,
 		monitorToken,
@@ -326,10 +329,44 @@ export function createMissionCopilotTools(
 		parameters: Type.Object({}),
 		async execute() {
 			try {
-				const tree = await loadObjectivesStore(sharedDir);
+				const tree = await objectivesRepo.readTree(missionId);
 				return okJson(tree);
 			} catch (e) {
 				return err(`Failed to read objectives: ${(e as Error).message}`);
+			}
+		},
+	};
+
+	const editObjectiveTree: MagiTool = {
+		name: "EditObjectiveTree",
+		description:
+			"Replace the mission's objective tree (definitions + KPI definitions — not task/KPI status, which agents update themselves via AddTask/UpdateTask/RecordKpi). This is a full replace, not a merge: call ReadMissionObjectives first, edit the objectives array in memory, and pass the complete updated list back. This is the only way to change objective/KPI definitions — agents cannot write them directly.",
+		parameters: Type.Object({
+			objectives: Type.Array(Type.Record(Type.String(), Type.Unknown()), {
+				description:
+					"The complete replacement objective tree (flat array, parent field encodes nesting)",
+			}),
+		}),
+		async execute(_id, args) {
+			let parsed: ObjectiveDef[];
+			try {
+				parsed = ObjectiveDefSchema.array().parse(args.objectives);
+			} catch (e) {
+				return err(`Invalid objectives: ${(e as Error).message}`);
+			}
+			try {
+				await objectivesRepo.saveGoals(
+					missionId,
+					{ objectives: parsed },
+					MISSION_COPILOT_AGENT_ID,
+				);
+				await auditPost(
+					"Objective tree updated",
+					`The mission copilot replaced the objective tree (${parsed.length} objective(s)).`,
+				);
+				return okJson({ ok: true, objectiveCount: parsed.length });
+			} catch (e) {
+				return err(`Failed to save objectives: ${(e as Error).message}`);
 			}
 		},
 	};
@@ -1156,6 +1193,7 @@ export function createMissionCopilotTools(
 		readMissionConfig,
 		saveMissionConfig,
 		readMissionObjectives,
+		editObjectiveTree,
 		readAgentMentalMap,
 		listAgentSessions,
 		readAgentUsage,

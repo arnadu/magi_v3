@@ -2,7 +2,9 @@ import type { FoldedTree } from "./types";
 
 // The cockpit is served same-origin by the control plane, so the magi_session
 // cookie set by the dashboard login carries auth automatically. `/missions/:id/*`
-// is proxied to that mission's monitor; `GET /objectives` returns the folded store.
+// is proxied to that mission's monitor (unreachable while suspended);
+// `/api/missions/:id/*` is control-plane-native, reading Mongo directly, and
+// works regardless of mission running state.
 
 export class AuthError extends Error {}
 
@@ -18,9 +20,10 @@ async function api<T>(path: string): Promise<T> {
 	return (await res.json()) as T;
 }
 
+/** Folded objectives tree — reads Mongo directly (ADR-0019), works while suspended. */
 export function fetchObjectives(missionId: string): Promise<FoldedTree> {
 	return api<FoldedTree>(
-		`/missions/${encodeURIComponent(missionId)}/objectives`,
+		`/api/missions/${encodeURIComponent(missionId)}/objectives`,
 	);
 }
 

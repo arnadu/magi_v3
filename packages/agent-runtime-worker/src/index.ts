@@ -65,6 +65,19 @@ export {
 	CLAUDE_SONNET,
 	resolveModel,
 } from "./models.js";
+export type {
+	ObjectivesReadOptions,
+	ObjectivesRepository,
+} from "./objectives/repository.js";
+export { createMongoObjectivesRepository } from "./objectives/repository.js";
+export type {
+	FoldedKpi,
+	FoldedObjective,
+	FoldedTask,
+	FoldedTree,
+	GoalsFile,
+	ObjectiveDef,
+} from "./objectives/types.js";
 export type { OpenRouterModelInfo } from "./openrouter-pricing.js";
 export { fetchOpenRouterCatalog } from "./openrouter-pricing.js";
 export type { OrchestratorConfig } from "./orchestrator.js";

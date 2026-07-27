@@ -965,3 +965,89 @@ structured shape (`loader`, `limits`, `mission-config`, `limits-live-config`, `m
 end to end (drafting a brand-new template is no longer a capability that exists — the new test
 drives the control-plane copilot through `ListTemplates`/`GetTemplate` to a `launch_mission`
 proposal instead of `save_template`). Full design: [ADR-0021](adr/0021-structured-mission-config-storage.md).
+
+## Sprint 26c — Objectives storage moved to MongoDB (ADR-0019)
+
+Closed the two-copy architecture (`sharedDir/objectives/*` files on a per-mission Fly volume, plus
+an inert, never-synced `missions.teamFiles` snapshot) behind the resume-time-overwrite incident
+fixed with an interim patch earlier in Sprint 26b. The full fix, deferred to 26c at the time: move
+objectives fully into MongoDB and remove the file-based copy, not just patch the sync gap.
+
+Two new collections, mirroring existing patterns rather than inventing new ones: `objectivesGoals`
+(one current-state doc per mission — the `goals.json` equivalent, overwritten not merged on write)
+and `objectivesEvents` (one append-only doc per event, `{missionId, kind: "task"|"kpi"|"cost"|"alloc",
+...event}`, indexed `{missionId, kind, at}` — the direct equivalent of `tasks.jsonl`/`kpis.jsonl`/
+`cost.jsonl`/`alloc.jsonl` combined, structurally identical in spirit to `llmCallLog`). This
+collection doubles as the git-audit-trail replacement the original ADR draft flagged as a real
+loss — no separate mechanism was needed. New `ObjectivesRepository` interface +
+`createMongoObjectivesRepository(db)` (`objectives/repository.ts`), mirroring
+`MissionConfigRepository`'s shape. The existing fold engine (`foldStore` in `objectives/store.ts`)
+needed **zero changes** — it was already pure, taking plain `TaskEvent[]`/`KpiEvent[]`/
+`CostEvent[]`/`GoalsFile` arrays in and returning a `FoldedTree` with no knowledge of where they
+came from; only the file-reading I/O section of `store.ts` was deleted and replaced by the new
+repository. `objectives/agent-view.ts`'s `renderMyObjectives` needed no changes either, for the
+same reason.
+
+Agent Bash subprocess children deliberately receive no secrets, including no `MONGODB_URI` (the
+existing isolation model), so the four Bash skill scripts (`task-add.sh`/`task-update.sh`/
+`record-kpi.sh`/`allocate.sh`) could not simply be repointed at Mongo — they were deleted and
+replaced with real `MagiTool`s (`AddTask`/`UpdateTask`/`RecordKpi`/`Allocate`, new
+`objectives/tools.ts`), added to every agent's standard tool set beside `createFileTools`/
+`createMailboxTools`, filterable via each agent's existing `disabledTools`.
+`packages/skills/objectives/SKILL.md` was kept, not deleted — rewritten to teach tool calls
+instead of Bash invocations, the same shape the pre-existing `inter-agent-comms` skill already has
+alongside built-in mailbox tools. The mission copilot's previous ad hoc `WriteFile` access to
+`goals.json` (taught in `mission-leadership/SKILL.md`) got a proper replacement instead of a
+silent capability loss: new copilot-only `EditObjectiveTree` tool (`mission-copilot-tools.ts`,
+beside the pre-existing `ReadMissionObjectives`), full-replacement contract matching
+`SaveMissionConfig`'s caller-reads-then-merges pattern. A side benefit, not the goal: since the
+tree is no longer a file, no other agent can touch it at all now (previously blocked only by
+prompt convention).
+
+Migration of existing missions was the one piece the original ADR draft didn't fully specify.
+Objectives files live on a per-mission Fly volume, only reachable when that mission's own daemon
+is running — unlike ADR-0021's config migration, which could run as a standalone script against
+Mongo directly. Each mission migrates itself, once, the next time it resumes:
+`migrateLegacyObjectivesStore()` (new `objectives/migrate-legacy-store.ts`) runs from `daemon.ts`'s
+`onWorkspaceReady`, chained (not fired in parallel) before the mission-copilot seed step so a
+legacy `OBJ-MISSION-FIT` is picked up first and the seed correctly no-ops on it. It no-ops
+entirely — no marker write — when no local `objectives/` files exist at all (the common case:
+most missions never use objectives), and otherwise imports whatever is present and always writes
+a goals doc (even empty) as the migrated marker `hasGoalsDoc()` checks going forward. Local files
+are never deleted afterward — an inert backup, same precedent as ADR-0021 leaving stale
+`teamConfigYaml` in place. This same mechanism doubles as the template-seed path: a template's
+shipped `objectives/goals.json`/`tasks.jsonl` (still plain teamFiles, unchanged shape) land on
+disk once at provision like any other teamFile, and the mission's first boot imports them via the
+same migration function — one mechanism, not two. This let the Sprint 26b interim fix
+(`copyTeamFilesToSharedDir`'s `isObjectivesPath` seed-if-missing special case, plus the ACL-grant
+block in `WorkspaceManager.provision()`) be deleted outright: nothing ever writes to
+`sharedDir/objectives/*` again after provisioning, so a plain overwrite-on-resume is harmless.
+
+The cockpit's `ObjectivesPanel` had an independent, second gap this migration closed directly: it
+proxied through the mission's own MonitorServer (`GET /missions/:id/objectives`), gated by
+`proxy.ts` on `status === "running"` — blank while suspended. New, non-proxied
+`GET /api/missions/:id/objectives` route in `missions.ts` (mirrors `readLimits`'s shape exactly)
+reads Mongo directly and works regardless of running state; `cockpit/src/data.ts`'s
+`fetchObjectives` repointed at it, matching the convention the Limits panel already established.
+The control-plane copilot's `ReviewObjectives`/`AssessKpi` had the same `mission.privateIp`/
+running-mission dependency via `monitorFetch`/`monitorPost` — both switched to
+`createMongoObjectivesRepository(db)` directly, a real capability gain (both now work on a
+suspended mission) that fell out of the migration rather than requiring separate design.
+`monitor-server.ts`'s `GET /objectives`/`POST /objectives/kpi` HTTP routes were deleted entirely
+once nothing called them anymore.
+
+New test coverage: `objectives-repository.integration.test.ts` (first-ever coverage of the Mongo
+repository — readTree/saveGoals/append*Event/hasGoalsDoc round-trips, cross-mission scoping, and
+graceful degradation on an invalid stored document), `objectives-migration.unit.test.ts` (the
+boot-time migration function against a fake in-memory repository — imports, idempotency, the
+no-local-files no-op case), `objectives-tools.unit.test.ts` (replaces the deleted
+`objectives-skill.unit.test.ts` — same behavioral coverage against the new tools instead of real
+Bash/fs), new control-plane coverage for `GET /:id/objectives` (the literal suspended-mission
+regression test) and `ReviewObjectives`/`AssessKpi` (previously zero coverage, confirmed by grep
+before this migration). `objectives-attribution.unit.test.ts` and `mission-copilot.unit.test.ts`'s
+seeding tests rewritten against a small fake in-memory `ObjectivesRepository` (same fake-repository
+pattern already used elsewhere in this test suite) rather than real Mongo, keeping them fast
+unit-tier tests; `objectives-store.unit.test.ts` trimmed to fold-logic-only cases (the file-I/O
+cases moved into the new repository integration test); `workspace-manager-objectives.unit.test.ts`
+deleted outright, its subject (the interim fix) no longer existing. Full design:
+[ADR-0019](adr/0019-objectives-mongodb-migration.md).

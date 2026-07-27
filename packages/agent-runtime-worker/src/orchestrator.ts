@@ -9,6 +9,7 @@ import type { LimitAlert } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
+import type { ObjectivesRepository } from "./objectives/repository.js";
 import type { MagiTool } from "./tools.js";
 import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
@@ -42,6 +43,11 @@ export interface OrchestratorConfig {
 	 * instead of the boot-time teamConfig snapshot.
 	 */
 	missionConfig?: MissionConfigRepository;
+	/**
+	 * Optional Mongo-backed objectives store (ADR-0019). Forwarded to each
+	 * agent run — see `AgentRunContext.objectivesRepo`'s doc comment.
+	 */
+	objectivesRepo?: ObjectivesRepository;
 	/**
 	 * Called when a configured agent limit is breached (soft = advisory, hard =
 	 * turn aborted). The daemon routes these to the copilot mailbox and the
@@ -276,6 +282,7 @@ export async function runOrchestrationLoop(
 		llmCallLog,
 		statsCollector: config.statsCollector,
 		missionConfig: config.missionConfig,
+		objectivesRepo: config.objectivesRepo,
 		onLimitAlert: config.onLimitAlert,
 		commitWorkspace: (message: string) => workspaceGit.commit(message),
 		allowedHosts: config.allowedHosts,
