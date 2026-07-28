@@ -1,3 +1,17 @@
+import { css } from "@codemirror/lang-css";
+import { html } from "@codemirror/lang-html";
+import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
+import { markdown as markdownLang } from "@codemirror/lang-markdown";
+import { python } from "@codemirror/lang-python";
+import { sql } from "@codemirror/lang-sql";
+import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
+import { StreamLanguage } from "@codemirror/language";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
+import type { Extension } from "@codemirror/state";
+import CodeMirror from "@uiw/react-codemirror";
 import { useEffect, useState } from "react";
 import {
 	type DirEntry,
@@ -6,6 +20,7 @@ import {
 	fetchFileHistory,
 	fetchFileNode,
 	fileDownloadUrl,
+	saveFile,
 } from "./data";
 import { JsonNode } from "./JsonTree";
 import { Markdown } from "./Markdown";
@@ -17,6 +32,35 @@ const extOf = (name: string) => {
 	return i === -1 ? "" : name.slice(i).toLowerCase();
 };
 const MAX_CSV_ROWS = 500;
+
+// ── Edit mode: one CodeMirror instance for every editable text type, syntax
+// highlighting selected by extension where a mode exists, plain text (still
+// line numbers + search) otherwise. Kept deliberately simple — no per-type
+// custom editor (a JSON tree editor, a CSV grid) — matches read mode's own
+// "type-driven rendering, not type-specific editing" scope.
+const LANG_BY_EXT: Record<string, () => Extension> = {
+	".json": () => json(),
+	".yaml": () => yaml(),
+	".yml": () => yaml(),
+	".md": () => markdownLang(),
+	".markdown": () => markdownLang(),
+	".ts": () => javascript({ typescript: true }),
+	".js": () => javascript(),
+	".mjs": () => javascript(),
+	".py": () => python(),
+	".html": () => html(),
+	".css": () => css(),
+	".xml": () => xml(),
+	".sql": () => sql(),
+	".sh": () => StreamLanguage.define(shell),
+	".bash": () => StreamLanguage.define(shell),
+	".toml": () => StreamLanguage.define(toml),
+};
+
+function langFor(ext: string): Extension[] {
+	const factory = LANG_BY_EXT[ext];
+	return factory ? [factory()] : [];
+}
 
 function fmtTime(iso: string) {
 	return new Date(iso).toLocaleString();
@@ -187,33 +231,110 @@ function FileViewer({
 }) {
 	const [node, setNode] = useState<FileNode | null>(null);
 	const [history, setHistory] = useState<FileHistoryEntry[] | null>(null);
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [saveError, setSaveError] = useState<string | null>(null);
 
 	useEffect(() => {
 		setNode(null);
 		setHistory(null);
+		setEditing(false);
+		setSaveError(null);
 		fetchFileNode(missionId, path).then(setNode, () => setNode(null));
 		fetchFileHistory(missionId, path).then(setHistory, () => setHistory([]));
 	}, [missionId, path]);
 
 	const name = path.split("/").pop() ?? path;
 	const ext = extOf(name);
+	const editable =
+		node?.type === "file" && node.encoding === "text" && !node.truncated;
+
+	async function handleSave() {
+		setSaving(true);
+		setSaveError(null);
+		try {
+			await saveFile(missionId, path, draft);
+			const [freshNode, freshHistory] = await Promise.all([
+				fetchFileNode(missionId, path),
+				fetchFileHistory(missionId, path),
+			]);
+			setNode(freshNode);
+			setHistory(freshHistory);
+			setEditing(false);
+		} catch (e) {
+			// Keep the operator's draft intact on failure (e.g. the mission was
+			// suspended mid-edit) — never silently discard unsaved work.
+			setSaveError((e as Error).message);
+		} finally {
+			setSaving(false);
+		}
+	}
 
 	return (
 		<div className="fv">
 			<div className="fv-head">
 				<span className="fv-name">{name}</span>
-				<a
-					className="rail-btn"
-					href={fileDownloadUrl(missionId, path)}
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					⬇ Download
-				</a>
+				{editing ? (
+					<>
+						<button
+							type="button"
+							className="rail-btn"
+							onClick={handleSave}
+							disabled={saving}
+						>
+							{saving ? "Saving…" : "💾 Save"}
+						</button>
+						<button
+							type="button"
+							className="rail-btn"
+							onClick={() => {
+								setEditing(false);
+								setSaveError(null);
+							}}
+							disabled={saving}
+						>
+							Cancel
+						</button>
+					</>
+				) : (
+					<>
+						{editable && (
+							<button
+								type="button"
+								className="rail-btn"
+								onClick={() => {
+									setDraft(node?.type === "file" ? (node.content ?? "") : "");
+									setEditing(true);
+								}}
+							>
+								✎ Edit
+							</button>
+						)}
+						<a
+							className="rail-btn"
+							href={fileDownloadUrl(missionId, path)}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							⬇ Download
+						</a>
+					</>
+				)}
 			</div>
-			<Provenance history={history} onInspectTurn={onInspectTurn} />
+			{saveError && <p className="fv-error">{saveError}</p>}
+			{!editing && (
+				<Provenance history={history} onInspectTurn={onInspectTurn} />
+			)}
 			<div className="fv-body">
-				{node === null ? (
+				{editing ? (
+					<CodeMirror
+						value={draft}
+						extensions={langFor(ext)}
+						onChange={setDraft}
+						height="70vh"
+					/>
+				) : node === null ? (
 					<p className="mut">Loading…</p>
 				) : node.type === "dir" ? (
 					<p className="mut">Not a file.</p>
@@ -245,7 +366,7 @@ function FileViewer({
 					<>
 						{node.truncated && (
 							<p className="mut">
-								Truncated to 200 KB —{" "}
+								Truncated to 10 MB —{" "}
 								<a
 									href={fileDownloadUrl(missionId, path)}
 									target="_blank"
@@ -253,7 +374,7 @@ function FileViewer({
 								>
 									download the full file
 								</a>
-								.
+								. Truncated files can't be edited from the cockpit.
 							</p>
 						)}
 						<pre className="mv-json fv-pre">{node.content}</pre>

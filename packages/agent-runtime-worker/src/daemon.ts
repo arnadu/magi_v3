@@ -140,6 +140,7 @@ import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
 import { UsageAccumulator } from "./usage.js";
+import { WorkspaceGit } from "./workspace-git.js";
 import type { AgentIdentity } from "./workspace-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
@@ -1071,6 +1072,10 @@ async function main(): Promise<void> {
 		role: a.role ?? a.id,
 	}));
 	const sharedDir = join(workdir, "missions", missionId, "shared");
+	// Shared between the orchestrator (agent turn-end commits) and MonitorServer
+	// (operator file-edit commits) — one serialized queue, so the two can never
+	// race each other on .git/index.lock.
+	const workspaceGit = new WorkspaceGit(sharedDir);
 	const monitor = new MonitorServer(
 		db,
 		missionId,
@@ -1094,6 +1099,8 @@ async function main(): Promise<void> {
 				.collection("scheduled_messages")
 				.deleteOne({ _id: new ObjectId(id), missionId });
 		},
+		undefined, // publicDir — use the default
+		workspaceGit,
 	);
 	// Vision model for the upload pipeline's image captioning (Sprint 25).
 	monitor.visionModel = visionModel;
@@ -1238,6 +1245,7 @@ async function main(): Promise<void> {
 				visionModel,
 				workdir,
 				workspaceManager,
+				workspaceGit,
 				anomalyRecorder,
 				waitForMail,
 				waitForStep: () => monitor.waitForStep(),

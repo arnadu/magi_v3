@@ -1,6 +1,13 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 26c — Objectives storage moved to MongoDB (ADR-0019): no new trust
+**Last updated:** Sprint 26c — Files panel direct-edit: no new trust boundary, one new mutating
+route under the existing MonitorServer mutating-route boundary (TB-11-style token check,
+`{missionId, userId}`-scoped proxy). `POST /files/shared/edit` (cockpit-triggered, operator-only)
+adds server-side extension allowlisting and a 10 MB content cap on top of the existing
+path-traversal check every file route already has, and commits immediately + notifies the file's
+last-touching agent rather than deferring to the next agent turn.
+
+**Previously:** Sprint 26c — Objectives storage moved to MongoDB (ADR-0019): no new trust
 boundary, a net tightening. Agent-writable objectives moved from `sharedDir/objectives/*` files
 (Bash skill scripts, ACL-granted OS write access) to four Zod-validated `MagiTool`s
 (`AddTask`/`UpdateTask`/`RecordKpi`/`Allocate`) at the same in-process, orchestrator-mediated trust
@@ -360,7 +367,7 @@ graph TB
 
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
-| Unauthenticated `POST /stop`, `/send-message`, `/extend-budget`, `/set-budget`, `/pause-agent`, `/resume-agent`, `/upload` | S / E | ⚠️ F-008 | Binds to `127.0.0.1:4000` (localhost only); no auth on mutating routes in dev. In production all are token-checked via `tokenOk()` (TB-11) and reached only through the `{missionId, userId}`-scoped control-plane proxy. `/upload` writes operator files into `sharedDir` (path-sanitised via `basename`) and processes them with the document processor. (`GET /objectives`/`POST /objectives/kpi` removed under ADR-0019 — Sprint 26c; objectives moved fully to MongoDB, reached only through the new `GET /api/missions/:id/objectives` control-plane route and the copilot's `ReviewObjectives`/`AssessKpi` tools, both Mongo-direct, not this server — see TB-9) |
+| Unauthenticated `POST /stop`, `/send-message`, `/extend-budget`, `/set-budget`, `/pause-agent`, `/resume-agent`, `/upload`, `/files/shared/write`, `/files/shared/edit` | S / E | ⚠️ F-008 | Binds to `127.0.0.1:4000` (localhost only); no auth on mutating routes in dev. In production all are token-checked via `tokenOk()` (TB-11) and reached only through the `{missionId, userId}`-scoped control-plane proxy. `/upload` writes operator files into `sharedDir` (path-sanitised via `basename`) and processes them with the document processor. `/files/shared/edit` (Sprint 26c, cockpit Files-panel direct-edit) is path-traversal-checked the same way as every other file route, additionally validates the extension server-side against the same text-type allowlist the read side uses (not trusting the cockpit UI's own gating alone) and caps content at 10 MB; unlike `/files/shared/write` (used by the copilot mid-turn, swept into that turn's own commit) it commits immediately through the daemon's shared `WorkspaceGit` queue and posts a mailbox notification to the file's last-touching agent. (`GET /objectives`/`POST /objectives/kpi` removed under ADR-0019 — Sprint 26c; objectives moved fully to MongoDB, reached only through the new `GET /api/missions/:id/objectives` control-plane route and the copilot's `ReviewObjectives`/`AssessKpi` tools, both Mongo-direct, not this server — see TB-9) |
 | `GET /download?path=` streams files / a folder zip from `sharedDir` | I | ~ | Path resolved + checked within `sharedDir` (no traversal — `400` otherwise). Same posture as `GET /files/shared` (GET reads are not token-checked but reach the monitor only via the authenticated, user-scoped proxy; `.git` excluded from zips) |
 | SSE stream exposes all mission data on localhost | I | ⚠️ F-009 | Any process on the machine can subscribe to the full agent activity stream |
 | `GET /log` exposes daemon stdout/stderr (may include agent message excerpts, internal paths) | I | ~ | In local dev: localhost-only (same as F-009). In production: behind TB-9 `X-API-Key` via proxy; only authenticated operators can reach it |

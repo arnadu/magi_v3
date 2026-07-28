@@ -1145,6 +1145,11 @@ h2.sec {
 	font: inherit;
 	font-size: inherit;
 }
+.fv-error {
+	color: var(--warn);
+	font-size: 12px;
+	margin: 0 0 8px;
+}
 .fv-body {
 	font-size: 13px;
 }

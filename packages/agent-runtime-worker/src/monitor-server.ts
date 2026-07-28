@@ -25,9 +25,27 @@ import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import type { UsageAccumulator } from "./usage.js";
+import { WorkspaceGit } from "./workspace-git.js";
 
 /** Body cap for file uploads (base64-encoded). ~22 MB raw file. */
 const UPLOAD_MAX_BODY_BYTES = 30 * 1024 * 1024;
+
+/**
+ * Cap for a text file's preview content and — since a truncated file must
+ * never be editable, editing would silently discard the un-fetched remainder
+ * on save — the same figure gates whether the cockpit's Edit button appears.
+ */
+const TEXT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Cap for the raw POST body of a file-edit request — must exceed
+ * TEXT_FILE_MAX_BYTES with margin for the JSON envelope (the `path` field)
+ * and string-escaping overhead, or a legitimate near-the-limit edit would be
+ * rejected by readBody() before handleFileEdit's own content-length check
+ * ever runs. readBody()'s default (MAILBOX_MAX_BODY_BYTES, sized for mailbox
+ * messages) is far too small for this route.
+ */
+const FILE_EDIT_MAX_BODY_BYTES = TEXT_FILE_MAX_BYTES * 2;
 
 // Default public/ dir: next to the compiled JS (dist/public/).
 // Tests running from src/ via Vitest pass an explicit publicDir to the constructor.
@@ -108,6 +126,14 @@ export interface AgentInfo {
 	role: string;
 }
 
+/** One entry of a file's git provenance — see `resolveFileHistory`. */
+export interface FileHistoryEntry {
+	commit: string;
+	timestamp: string;
+	agentId: string | null;
+	turnNumber: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // Monitor server
 // ---------------------------------------------------------------------------
@@ -150,6 +176,7 @@ export interface AgentInfo {
 export class MonitorServer {
 	private readonly clients = new Set<ServerResponse>();
 	private readonly server;
+	private readonly workspaceGit: WorkspaceGit;
 
 	// Start gate
 	private started = false;
@@ -206,7 +233,16 @@ export class MonitorServer {
 		private readonly sharedDir: string = process.cwd(),
 		private readonly cancelSchedule?: (id: string) => Promise<void>,
 		private readonly publicDir: string = DEFAULT_PUBLIC_DIR,
+		/**
+		 * Git-commit-on-sleep checkpointer, shared with the orchestrator so an
+		 * operator's file edit (POST /files/shared/edit) commits through the same
+		 * serialized queue as agent turn-end commits, never racing it. Falls back
+		 * to a private instance when absent (tests that construct MonitorServer
+		 * standalone, with no orchestrator running alongside it).
+		 */
+		workspaceGit?: WorkspaceGit,
 	) {
+		this.workspaceGit = workspaceGit ?? new WorkspaceGit(this.sharedDir);
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
 				console.error("[monitor] Request error:", e);
@@ -796,6 +832,15 @@ export class MonitorServer {
 			return;
 		}
 
+		// ── POST /files/shared/edit  (cockpit: operator edits a text file —
+		// unlike /files/shared/write above, this commits immediately and
+		// notifies the file's last-touching agent; see handleFileEdit's doc
+		// comment for why the two routes are deliberately separate.)
+		if (url === "/files/shared/edit" && req.method === "POST") {
+			await this.handleFileEdit(req, res);
+			return;
+		}
+
 		// ── POST /files/workdir/:agentId/write  (copilot: write a file to agent workdir)
 		const workdirWriteMatch = url.match(/^\/files\/workdir\/([^/]+)\/write$/);
 		if (workdirWriteMatch && req.method === "POST") {
@@ -1269,9 +1314,8 @@ export class MonitorServer {
 			return;
 		}
 		if (TEXT_EXTENSIONS.has(ext) || ext === "") {
-			const MAX_BYTES = 200 * 1024;
 			const raw = readFileSync(abs);
-			const content = raw.slice(0, MAX_BYTES).toString("utf8");
+			const content = raw.slice(0, TEXT_FILE_MAX_BYTES).toString("utf8");
 			res.end(
 				JSON.stringify({
 					type: "file",
@@ -1279,7 +1323,7 @@ export class MonitorServer {
 					encoding: "text",
 					mimeType: "text/plain",
 					content,
-					truncated: raw.length > MAX_BYTES,
+					truncated: raw.length > TEXT_FILE_MAX_BYTES,
 				}),
 			);
 			return;
@@ -1301,11 +1345,31 @@ export class MonitorServer {
 		userPath: string,
 		res: ServerResponse,
 	): Promise<void> {
-		const abs = resolve(this.sharedDir, userPath);
-		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
+		const history = await this.resolveFileHistory(userPath);
+		if (history === null) {
 			res.writeHead(400, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "Path outside root" }));
 			return;
+		}
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(history));
+	}
+
+	/**
+	 * Git provenance for a sharedDir file: commit history joined against
+	 * `agentTurnStats.gitCommit` to name the agent/turn that produced each
+	 * commit. Most-recent commit first. Returns `null` on a path-traversal
+	 * attempt; `[]` when the file has no history (never committed, or git
+	 * unavailable — a normal, renderable state, not an error). Shared by the
+	 * `GET /files/history` route and the file-edit route's notify-last-agent
+	 * lookup — both need "who touched this file most recently."
+	 */
+	private async resolveFileHistory(
+		userPath: string,
+	): Promise<FileHistoryEntry[] | null> {
+		const abs = resolve(this.sharedDir, userPath);
+		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
+			return null;
 		}
 		const relPath = relative(this.sharedDir, abs);
 
@@ -1338,11 +1402,7 @@ export class MonitorServer {
 			);
 		}
 
-		if (commits.length === 0) {
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify([]));
-			return;
-		}
+		if (commits.length === 0) return [];
 
 		const turns = await this.db
 			.collection("agentTurnStats")
@@ -1361,17 +1421,12 @@ export class MonitorServer {
 			]),
 		);
 
-		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(
-			JSON.stringify(
-				commits.map((c) => ({
-					commit: c.commit,
-					timestamp: c.timestamp,
-					agentId: turnByCommit.get(c.commit)?.agentId ?? null,
-					turnNumber: turnByCommit.get(c.commit)?.turnNumber ?? null,
-				})),
-			),
-		);
+		return commits.map((c) => ({
+			commit: c.commit,
+			timestamp: c.timestamp,
+			agentId: turnByCommit.get(c.commit)?.agentId ?? null,
+			turnNumber: turnByCommit.get(c.commit)?.turnNumber ?? null,
+		}));
 	}
 
 	private writeFilePath(
@@ -1412,6 +1467,127 @@ export class MonitorServer {
 			res.writeHead(500, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: (e as Error).message }));
 		}
+	}
+
+	/**
+	 * POST /files/shared/edit — operator edits an existing text file from the
+	 * cockpit. Deliberately separate from `writeFilePath`/`/files/shared/write`
+	 * above: that route is used by the copilot mid-turn, whose own turn-end
+	 * commit already sweeps up whatever it wrote there. An operator edit has
+	 * no turn — nothing would ever commit or notify it unless this route does
+	 * so itself.
+	 *
+	 * Validates the extension against the same `TEXT_EXTENSIONS` allowlist the
+	 * read side uses — the cockpit UI only offers Edit for that bucket, but
+	 * the server must not trust a client to enforce that alone (a buggy or
+	 * malicious caller could otherwise overwrite a binary file with arbitrary
+	 * text through this route). Commits immediately through the shared
+	 * `WorkspaceGit` queue (so it can never race an agent's turn-end commit),
+	 * then notifies whichever agent's turn most recently touched this file,
+	 * if any — skipped, not guessed, when history has no resolved agent.
+	 */
+	private async handleFileEdit(
+		req: IncomingMessage,
+		res: ServerResponse,
+	): Promise<void> {
+		let rawBody: string;
+		try {
+			rawBody = await readBody(req, FILE_EDIT_MAX_BODY_BYTES);
+		} catch {
+			// readBody destroys the socket on overflow — res is no longer usable
+			// for this connection. Nothing to write; the client sees a reset.
+			return;
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(rawBody);
+		} catch {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Invalid JSON" }));
+			return;
+		}
+		const { path: userPath, content } = parsed as Record<string, unknown>;
+		if (typeof userPath !== "string" || typeof content !== "string") {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					error: "path (string) and content (string) are required",
+				}),
+			);
+			return;
+		}
+
+		const abs = resolve(this.sharedDir, userPath);
+		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "Path outside root" }));
+			return;
+		}
+
+		const ext = extname(abs).toLowerCase();
+		if (!TEXT_EXTENSIONS.has(ext) && ext !== "") {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					error: `"${ext}" files are not editable from the cockpit — only text-type files can be`,
+				}),
+			);
+			return;
+		}
+
+		if (Buffer.byteLength(content, "utf8") > TEXT_FILE_MAX_BYTES) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					error: `Content exceeds the ${TEXT_FILE_MAX_BYTES / (1024 * 1024)} MB edit limit`,
+				}),
+			);
+			return;
+		}
+
+		const relPath = relative(this.sharedDir, abs);
+
+		// Who to notify — resolved BEFORE the write, so it reflects who touched
+		// the file prior to this edit, not this edit's own (not-yet-created) commit.
+		const history = await this.resolveFileHistory(userPath);
+		const lastAgentId = history?.[0]?.agentId ?? null;
+
+		try {
+			mkdirSync(resolve(abs, ".."), { recursive: true });
+			writeFileSync(abs, content, "utf-8");
+		} catch (e) {
+			res.writeHead(500, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: (e as Error).message }));
+			return;
+		}
+
+		const commitResult = await this.workspaceGit.commit(
+			`operator edit: ${relPath}`,
+		);
+
+		if (lastAgentId) {
+			try {
+				await this.mailboxRepo.post({
+					missionId: this.missionId,
+					from: "user",
+					to: [lastAgentId],
+					subject: `File edited: ${relPath}`,
+					body: `The operator edited \`${relPath}\`, which you last touched. Read it again before assuming your previous version is still current.`,
+				});
+			} catch (e) {
+				// Notification failing must not fail the save — the edit is
+				// already committed at this point.
+				console.error("[monitor] file-edit notification failed", {
+					missionId: this.missionId,
+					path: relPath,
+					agentId: lastAgentId,
+					error: (e as Error).message,
+				});
+			}
+		}
+
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ ok: true, commit: commitResult?.commit ?? null }));
 	}
 
 	// ── Change stream watchers ────────────────────────────────────────────────

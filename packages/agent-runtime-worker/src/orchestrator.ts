@@ -74,6 +74,16 @@ export interface OrchestratorConfig {
 	 */
 	workspaceManager: WorkspaceManager;
 	/**
+	 * Git-commit-on-sleep checkpointer for the shared workspace. Optional —
+	 * when absent, the orchestrator constructs its own (the pre-existing
+	 * behavior, still correct for cli.ts/tests, which have no other consumer
+	 * that needs to share the same commit queue). daemon.ts supplies one
+	 * explicitly so MonitorServer's file-edit route can commit through the
+	 * exact same serialized queue as agent turn-end commits, rather than
+	 * racing a second, independent WorkspaceGit instance against it.
+	 */
+	workspaceGit?: WorkspaceGit;
+	/**
 	 * Max total agent dispatches across the whole loop lifetime.
 	 * Default: 50.
 	 */
@@ -252,8 +262,11 @@ export async function runOrchestrationLoop(
 
 	// git-commit-on-sleep: one WorkspaceGit per mission (serializes commits across
 	// concurrent agents). All agents share the same sharedDir / git repo, which
-	// WorkspaceManager.provision() has already initialised.
-	const workspaceGit = new WorkspaceGit(firstIdentity.sharedDir);
+	// WorkspaceManager.provision() has already initialised. Use the caller-supplied
+	// instance when given (daemon.ts, so MonitorServer's file-edit route shares the
+	// same serialized commit queue) — construct our own otherwise.
+	const workspaceGit =
+		config.workspaceGit ?? new WorkspaceGit(firstIdentity.sharedDir);
 
 	// Buffer for user input typed during agent runs.
 	const inputBuffer: string[] = [];
