@@ -691,27 +691,6 @@ h2.sec {
 	cursor: default;
 }
 
-/* Copilot — the cross-mission assistant, visually distinct (violet). */
-.chip.copilot {
-	border-color: var(--copilot);
-	color: var(--copilot);
-}
-.chip.copilot.on {
-	background: var(--copilot);
-	border-color: var(--copilot);
-	color: #fff;
-}
-.bub.copilot {
-	background: var(--copilot-soft);
-	border-color: var(--copilot);
-}
-.bub.copilot .bub-from {
-	color: var(--copilot);
-}
-.thread-row.copilot .tr-who {
-	color: var(--copilot);
-}
-
 /* Transcripts / LLM-log explorer. */
 .tx {
 	display: flex;

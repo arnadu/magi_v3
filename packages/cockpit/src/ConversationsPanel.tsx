@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	type Agent,
-	COPILOT_ID,
 	type ConvMessage,
 	fetchAgents,
 	fetchConversations,
-	fetchCopilotHistory,
 	markMessagesRead,
 	sendMessage,
-	sendToCopilot,
 	uploadAttachment,
 } from "./data";
 import { Markdown } from "./Markdown";
@@ -97,13 +94,9 @@ export function ConversationsPanel({
 
 	const load = useCallback(async () => {
 		if (!missionId) return;
-		// Mission messages + the cross-mission copilot thread, folded together.
-		const [mission, copilot] = await Promise.all([
-			fetchConversations(missionId).catch(() => null),
-			fetchCopilotHistory().catch(() => null),
-		]);
-		if (!mission && !copilot) return; // keep last good data
-		setConversations([...(mission ?? []), ...(copilot ?? [])]);
+		const mission = await fetchConversations(missionId).catch(() => null);
+		if (!mission) return; // keep last good data
+		setConversations(mission);
 	}, [missionId]);
 
 	useEffect(() => {
@@ -117,13 +110,9 @@ export function ConversationsPanel({
 		fetchAgents(missionId).then(setAgents, () => setAgents([]));
 	}, [missionId]);
 
-	// The copilot is always an available recipient, listed first and distinct.
-	const roster: Agent[] = [{ id: COPILOT_ID, name: "Copilot" }, ...agents];
+	const roster: Agent[] = agents;
 	const agentName = useCallback(
-		(id: string) =>
-			id === COPILOT_ID
-				? "Copilot"
-				: (agents.find((a) => a.id === id)?.name ?? id),
+		(id: string) => agents.find((a) => a.id === id)?.name ?? id,
 		[agents],
 	);
 	const label = useCallback(
@@ -201,18 +190,11 @@ export function ConversationsPanel({
 		bottomRef.current?.scrollIntoView({ block: "end" });
 	}, [activeMessages.length, active]);
 
-	// The copilot is its own system (separate mailbox, no uploads), so it can't
-	// share a thread with mission agents — selecting it is mutually exclusive.
 	const toggleRecipient = (id: string) =>
 		setActive((prev) => {
 			const cur = prev ?? [];
-			if (id === COPILOT_ID)
-				return cur.includes(COPILOT_ID) ? [] : [COPILOT_ID];
-			const base = cur.filter((x) => x !== COPILOT_ID);
-			return base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+			return cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
 		});
-
-	const toCopilot = (active ?? []).includes(COPILOT_ID);
 
 	const send = async () => {
 		const body = draft.trim();
@@ -220,9 +202,7 @@ export function ConversationsPanel({
 		if (!missionId || to.length === 0 || (!body && !file) || sending) return;
 		setSending(true);
 		try {
-			if (toCopilot) {
-				await sendToCopilot(body); // copilot has no upload pipeline
-			} else if (file) {
+			if (file) {
 				await uploadAttachment(missionId, to, file, body);
 			} else {
 				await sendMessage(missionId, to, body);
@@ -309,9 +289,7 @@ export function ConversationsPanel({
 						<button
 							type="button"
 							key={t.key}
-							className={`thread-row${t.unread > 0 ? " unread" : ""}${
-								t.participants.includes(COPILOT_ID) ? " copilot" : ""
-							}`}
+							className={`thread-row${t.unread > 0 ? " unread" : ""}`}
 							onClick={() => openThread(t)}
 						>
 							<span className="tr-dot" />
@@ -339,13 +317,7 @@ export function ConversationsPanel({
 						{activeMessages.map((m) => (
 							<div
 								key={m.id}
-								className={`bub ${
-									m.from === "user"
-										? "me"
-										: m.from === COPILOT_ID
-											? "them copilot"
-											: "them"
-								}`}
+								className={`bub ${m.from === "user" ? "me" : "them"}`}
 							>
 								{m.from !== "user" && (
 									<div className="bub-from">{agentName(m.from)}</div>
@@ -365,9 +337,7 @@ export function ConversationsPanel({
 								<button
 									type="button"
 									key={a.id}
-									className={`chip${active.includes(a.id) ? " on" : ""}${
-										a.id === COPILOT_ID ? " copilot" : ""
-									}`}
+									className={`chip${active.includes(a.id) ? " on" : ""}`}
 									onClick={() => toggleRecipient(a.id)}
 								>
 									{runningAgents.has(a.id) && (
@@ -377,7 +347,7 @@ export function ConversationsPanel({
 								</button>
 							))}
 						</div>
-						{!toCopilot && file && (
+						{file && (
 							<div className="attach-row">
 								📎 {file.name}
 								<button
@@ -390,16 +360,14 @@ export function ConversationsPanel({
 							</div>
 						)}
 						<div className="compose-input">
-							{!toCopilot && (
-								<label className="attach-btn" title="Attach a file">
-									📎
-									<input
-										type="file"
-										hidden
-										onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-									/>
-								</label>
-							)}
+							<label className="attach-btn" title="Attach a file">
+								📎
+								<input
+									type="file"
+									hidden
+									onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+								/>
+							</label>
 							<textarea
 								value={draft}
 								placeholder={
@@ -418,9 +386,7 @@ export function ConversationsPanel({
 								className="send"
 								onClick={() => void send()}
 								disabled={
-									sending ||
-									active.length === 0 ||
-									(!draft.trim() && (toCopilot || !file))
+									sending || active.length === 0 || (!draft.trim() && !file)
 								}
 							>
 								Send
