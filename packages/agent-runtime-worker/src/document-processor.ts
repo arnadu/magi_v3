@@ -27,11 +27,7 @@
  */
 
 import { join } from "node:path";
-import {
-	completeSimple,
-	type Model,
-	type UserMessage,
-} from "@mariozechner/pi-ai";
+import type { Model, UserMessage } from "@mariozechner/pi-ai";
 import ExcelJS from "exceljs";
 import { imageSize } from "image-size";
 import JSZip from "jszip";
@@ -44,6 +40,7 @@ import {
 	saveArtifact,
 } from "./artifacts.js";
 import { MIME_TO_EXT, VISION_MIMES } from "./mime-types.js";
+import { piModels } from "./models.js";
 
 // ---------------------------------------------------------------------------
 // Types + limits
@@ -139,7 +136,7 @@ export function createDescribeImage(
 					{ type: "image", data: bytes.toString("base64"), mimeType: mime },
 				],
 			};
-			const response = await completeSimple(
+			const response = await piModels.completeSimple(
 				model,
 				{ messages: [msg] },
 				{ signal },

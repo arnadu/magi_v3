@@ -22,6 +22,13 @@ COPY packages/agent-runtime-worker/package.json ./packages/agent-runtime-worker/
 COPY packages/cockpit/package.json ./packages/cockpit/
 
 RUN npm ci --ignore-scripts
+
+# --ignore-scripts above skips postinstall, so patch-package's own hook never
+# runs; apply the pi-ai patch (patches/) explicitly. Needed here too — this
+# image bundles agent-runtime-worker (the copilot daemon), a pi-ai consumer.
+COPY patches/ ./patches/
+RUN npx patch-package
+
 COPY packages/agent-config ./packages/agent-config
 COPY packages/agent-runtime-worker ./packages/agent-runtime-worker
 COPY packages/control-plane ./packages/control-plane

@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "patch-package",
     "build": "npm run build --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -23,6 +24,7 @@
     "@types/express": "^4.17.0",
     "@types/node": "^22.0.0",
     "dotenv": "^17.3.1",
+    "patch-package": "^8.0.0",
     "typescript": "^6.0.0",
     "vitest": "^3.0.0"
   },
@@ -30,6 +32,6 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.52.12"
+    "@mariozechner/pi-ai": "npm:@earendil-works/pi-ai@0.82.1"
   }
 }

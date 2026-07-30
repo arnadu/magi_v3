@@ -21,7 +21,7 @@
 	"dependencies": {
 		"@browserbasehq/stagehand": "^3.0.0",
 		"@magi/agent-config": "*",
-		"@mariozechner/pi-ai": "0.52.12",
+		"@mariozechner/pi-ai": "npm:@earendil-works/pi-ai@0.82.1",
 		"@mozilla/readability": "^0.6.0",
 		"@sinclair/typebox": "^0.34.41",
 		"@types/jsdom": "^27.0.0",

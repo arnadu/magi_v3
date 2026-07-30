@@ -13,6 +13,11 @@ COPY packages/control-plane/package.json ./packages/control-plane/
 
 RUN npm ci --ignore-scripts
 
+# --ignore-scripts above skips postinstall, so patch-package's own hook never
+# runs; apply the pi-ai patch (patches/) explicitly.
+COPY patches/ ./patches/
+RUN npx patch-package
+
 # Copy source.
 COPY packages/agent-config/ ./packages/agent-config/
 COPY packages/agent-runtime-worker/ ./packages/agent-runtime-worker/

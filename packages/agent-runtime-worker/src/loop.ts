@@ -7,8 +7,8 @@ import type {
 	ThinkingLevel,
 	ToolResultMessage,
 } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
 import { pruneEphemeralResults } from "./context-utils.js";
+import { piModels } from "./models.js";
 import type { MagiTool } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -194,7 +194,10 @@ export async function runInnerLoop(
 		maxTurns,
 		reasoning,
 	} = config;
-	const completeFn: CompleteFn = config.completeFn ?? completeSimple;
+	const completeFn: CompleteFn =
+		config.completeFn ??
+		((model, context, options) =>
+			piModels.completeSimple(model, context, options));
 
 	// Seed with prior history if resuming; onMessage does not fire for these.
 	const messages: Message[] = config.previousMessages

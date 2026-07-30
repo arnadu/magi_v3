@@ -1,5 +1,17 @@
-import type { Model } from "@mariozechner/pi-ai";
-import { getModel } from "@mariozechner/pi-ai";
+import { createModels, type Model } from "@mariozechner/pi-ai";
+import { getBuiltinModel } from "@mariozechner/pi-ai/providers/all";
+import { anthropicProvider } from "@mariozechner/pi-ai/providers/anthropic";
+import { openrouterProvider } from "@mariozechner/pi-ai/providers/openrouter";
+
+/**
+ * Shared Models collection for the two providers MAGI_V3 calls (Anthropic
+ * direct, OpenRouter — see VISION_MODEL's accepted providers in CLAUDE.md).
+ * Provider auth resolves from ANTHROPIC_API_KEY/OPENROUTER_API_KEY via the
+ * environment, same as the old global completeSimple().
+ */
+export const piModels = createModels();
+piModels.setProvider(anthropicProvider());
+piModels.setProvider(openrouterProvider());
 
 /**
  * Construct an Anthropic model descriptor.
@@ -56,10 +68,13 @@ export const CLAUDE_HAIKU = anthropicModel("claude-haiku-4-5-20251001", {
 });
 
 /** DeepSeek V3.2 via OpenRouter — text-only, strong reasoning, cheap ($0.25/$0.38 per MTok). */
-export const DEEPSEEK_V3_2 = getModel("openrouter", "deepseek/deepseek-v3.2");
+export const DEEPSEEK_V3_2 = getBuiltinModel(
+	"openrouter",
+	"deepseek/deepseek-v3.2",
+);
 
 /** Mistral Ministral 14B 2512 via OpenRouter — text + image, cheap vision model ($0.20/$0.20 per MTok). */
-export const MINISTRAL_14B = getModel(
+export const MINISTRAL_14B = getBuiltinModel(
 	"openrouter",
 	"mistralai/ministral-14b-2512",
 );
@@ -88,8 +103,8 @@ export function resolveModel(id: string): Model<string> {
  */
 export function parseModel(id: string): Model<string> {
 	if (id.includes("/")) {
-		// biome-ignore lint/suspicious/noExplicitAny: getModel expects a literal from models.generated; arbitrary IDs require the cast
-		const registered = getModel("openrouter", id as any);
+		// biome-ignore lint/suspicious/noExplicitAny: getBuiltinModel expects a literal from models.generated; arbitrary IDs require the cast
+		const registered = getBuiltinModel("openrouter", id as any);
 		if (registered) return registered;
 		// Not in the pre-generated registry — construct a descriptor directly.
 		return {

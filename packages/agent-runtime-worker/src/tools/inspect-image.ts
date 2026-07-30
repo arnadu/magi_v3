@@ -2,9 +2,9 @@ import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
-import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { EXT_TO_MIME } from "../mime-types.js";
+import { piModels } from "../models.js";
 import type { MagiTool, ToolResult } from "../tools.js";
 
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ export function createInspectImageTool(
 
 			let description: string;
 			try {
-				const response = await completeSimple(
+				const response = await piModels.completeSimple(
 					model,
 					{ messages: [message] },
 					{ signal },

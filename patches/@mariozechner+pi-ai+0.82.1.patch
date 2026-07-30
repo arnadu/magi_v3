@@ -1,0 +1,29 @@
+diff --git a/node_modules/@mariozechner/pi-ai/dist/api/openai-completions.js b/node_modules/@mariozechner/pi-ai/dist/api/openai-completions.js
+index ed81baa..f4eeae5 100644
+--- a/node_modules/@mariozechner/pi-ai/dist/api/openai-completions.js
++++ b/node_modules/@mariozechner/pi-ai/dist/api/openai-completions.js
+@@ -1077,6 +1077,7 @@ function parseChunkUsage(rawUsage, model) {
+         reasoning: rawUsage.completion_tokens_details?.reasoning_tokens || 0,
+         totalTokens: input + outputTokens + cacheReadTokens + cacheWriteTokens,
+         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
++        ...(typeof rawUsage.cost === "number" && { providerCost: rawUsage.cost }),
+     };
+     calculateCost(model, usage);
+     return usage;
+diff --git a/node_modules/@mariozechner/pi-ai/dist/types.d.ts b/node_modules/@mariozechner/pi-ai/dist/types.d.ts
+index 0a1b769..8a3b4d7 100644
+--- a/node_modules/@mariozechner/pi-ai/dist/types.d.ts
++++ b/node_modules/@mariozechner/pi-ai/dist/types.d.ts
+@@ -269,6 +269,12 @@ export interface Usage {
+         cacheWrite: number;
+         total: number;
+     };
++    /**
++     * Exact amount charged, as reported by the provider itself (e.g. OpenRouter's
++     * `usage.cost`), when available. Independent of `cost.total`, which is always
++     * pi's own estimate computed from a static per-token price table.
++     */
++    providerCost?: number;
+ }
+ export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
+ export interface UserMessage {
