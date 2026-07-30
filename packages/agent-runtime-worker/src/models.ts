@@ -14,6 +14,24 @@ piModels.setProvider(anthropicProvider());
 piModels.setProvider(openrouterProvider());
 
 /**
+ * OpenRouter's own sticky-routing guarantee (session_id / x-session-id — see the
+ * OpenRouter caching investigation, issue #10/#24) is opt-in in pi-ai:
+ * `sendSessionAffinityHeaders` defaults to false for every provider, OpenRouter
+ * included, even though pi-ai already auto-detects the correct header format
+ * for it. Every OpenRouter Model MAGI builds should carry this — without it,
+ * pi-ai never sends the `x-session-id` header even when a caller passes
+ * `options.sessionId`.
+ */
+function withOpenRouterAffinity(
+	model: Model<"openai-completions">,
+): Model<"openai-completions"> {
+	return {
+		...model,
+		compat: { ...model.compat, sendSessionAffinityHeaders: true },
+	};
+}
+
+/**
  * Construct an Anthropic model descriptor.
  * completeSimple reads ANTHROPIC_API_KEY from the environment automatically.
  */
@@ -68,15 +86,13 @@ export const CLAUDE_HAIKU = anthropicModel("claude-haiku-4-5-20251001", {
 });
 
 /** DeepSeek V3.2 via OpenRouter — text-only, strong reasoning, cheap ($0.25/$0.38 per MTok). */
-export const DEEPSEEK_V3_2 = getBuiltinModel(
-	"openrouter",
-	"deepseek/deepseek-v3.2",
+export const DEEPSEEK_V3_2 = withOpenRouterAffinity(
+	getBuiltinModel("openrouter", "deepseek/deepseek-v3.2"),
 );
 
 /** Mistral Ministral 14B 2512 via OpenRouter — text + image, cheap vision model ($0.20/$0.20 per MTok). */
-export const MINISTRAL_14B = getBuiltinModel(
-	"openrouter",
-	"mistralai/ministral-14b-2512",
+export const MINISTRAL_14B = withOpenRouterAffinity(
+	getBuiltinModel("openrouter", "mistralai/ministral-14b-2512"),
 );
 
 /**
@@ -105,9 +121,9 @@ export function parseModel(id: string): Model<string> {
 	if (id.includes("/")) {
 		// biome-ignore lint/suspicious/noExplicitAny: getBuiltinModel expects a literal from models.generated; arbitrary IDs require the cast
 		const registered = getBuiltinModel("openrouter", id as any);
-		if (registered) return registered;
+		if (registered) return withOpenRouterAffinity(registered);
 		// Not in the pre-generated registry — construct a descriptor directly.
-		return {
+		return withOpenRouterAffinity({
 			id,
 			name: id,
 			api: "openai-completions",
@@ -118,7 +134,7 @@ export function parseModel(id: string): Model<string> {
 			cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 128_000,
 			maxTokens: 8_096,
-		};
+		});
 	}
 	return anthropicModel(id);
 }

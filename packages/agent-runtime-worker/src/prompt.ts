@@ -25,16 +25,25 @@ const RENDERING_NOTE = [
 ].join("\n");
 
 /**
- * Rounding granularity for the current-time block. The system prompt is cached
- * as a single block (pi-ai's Anthropic provider applies one cache_control marker
- * to the whole string) and rebuilt fresh before every LLM call in the inner loop
- * (see agent-runner.ts's getSystemPrompt getter) — an unrounded, to-the-second
- * timestamp would invalidate that cache on every single call, including
- * consecutive tool-call rounds within the same turn seconds apart. Agents have
- * no need for sub-5-minute precision, so rounding trades away nothing useful in
- * exchange for keeping the cache warm across a turn's iterations.
+ * Rounding granularity for the current-time block. Agents have no need for
+ * sub-5-minute precision, so rounding trades away nothing useful in exchange
+ * for keeping buildDynamicContextMessage's output stable across calls a few
+ * seconds apart within the same bucket.
  */
 const TIME_ROUND_MS = 5 * 60 * 1000;
+
+/**
+ * Static pointer substituted for the {{mentalMap}} placeholder every team YAML
+ * places at the end of agent.systemPrompt. The actual live mental map is NOT
+ * here — see buildDynamicContextMessage. Keeping the system prompt free of
+ * anything that changes within a session is what lets pi-ai's Anthropic
+ * cache_control breakpoint (and OpenRouter's own default routing-key hash,
+ * both of which fingerprint the system prompt as a single unit) survive a
+ * mid-turn mental-map edit instead of invalidating on every single one — see
+ * the OpenRouter caching investigation, issue #24.
+ */
+const MENTAL_MAP_POINTER =
+	"(Your current mental map is provided as a separate message below — always up to date.)";
 
 function isoMinute(d: Date): string {
 	return `${d.toISOString().slice(0, 16)}Z`;
@@ -83,21 +92,21 @@ export function buildTimeBlock(timezone?: string): string {
 /**
  * Build the system prompt for an agent's unified loop.
  *
- * Reads agent.systemPrompt from the team YAML, substitutes the
- * {{mentalMap}} placeholder with the agent's current mental map HTML,
- * and appends a rendering-capability note, a current-time block, and a
- * skills block listing all discoverable skills across the platform, mission,
- * and agent-private tiers.
+ * Fully static per agent/session: reads agent.systemPrompt from the team YAML,
+ * substitutes the {{mentalMap}} placeholder with a static pointer (the actual
+ * live mental map is injected separately — see buildDynamicContextMessage),
+ * and appends a rendering-capability note and a skills block listing all
+ * discoverable skills across the platform, mission, and agent-private tiers.
+ * Deliberately carries nothing that changes within a session (no mental map,
+ * no timestamp) — see MENTAL_MAP_POINTER's doc comment.
  */
 export function buildSystemPrompt(
 	agent: AgentConfig,
-	mentalMapHtml: string,
 	sharedDir: string,
 	workdir: string,
-	timezone?: string,
 ): string {
 	const base = agent.systemPrompt
-		.replace(/\{\{mentalMap\}\}/g, mentalMapHtml)
+		.replace(/\{\{mentalMap\}\}/g, MENTAL_MAP_POINTER)
 		.replace(/\{\{sharedDir\}\}/g, sharedDir)
 		.replace(/\{\{workdir\}\}/g, workdir);
 	const block = discoverSkills(sharedDir, workdir);
@@ -107,7 +116,24 @@ export function buildSystemPrompt(
 		skills: block.skills.filter((s) => !disabled.has(s.name)),
 	};
 	const skillsBlock = formatSkillsBlock(filtered);
-	return `${base}\n\n${buildTimeBlock(timezone)}\n\n${RENDERING_NOTE}\n\n${skillsBlock}`;
+	return `${base}\n\n${RENDERING_NOTE}\n\n${skillsBlock}`;
+}
+
+/**
+ * The one part of the prompt that legitimately changes within a session: the
+ * current-time block and the agent's live mental map. Kept OUT of the system
+ * prompt (which pi-ai's Anthropic provider and OpenRouter's own default
+ * routing hash both fingerprint as a single cache/routing unit) and injected
+ * as its own message instead — replaced in place across inner-loop iterations
+ * only when it actually changes (see loop.ts's runInnerLoop), so the system
+ * prompt stays byte-identical call to call even across a mid-turn mental-map
+ * edit. See the OpenRouter caching investigation, issue #24.
+ */
+export function buildDynamicContextMessage(
+	mentalMapHtml: string,
+	timezone?: string,
+): string {
+	return `${buildTimeBlock(timezone)}\n\n## Your Mental Map\n${mentalMapHtml}`;
 }
 
 /**

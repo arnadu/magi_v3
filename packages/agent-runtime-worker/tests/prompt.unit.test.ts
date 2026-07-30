@@ -8,10 +8,19 @@
  * turn tracking began — the task was silently dropped with no recovery path.
  */
 
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AgentConfig } from "@magi/agent-config";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { MailboxMessage } from "../src/mailbox.js";
 import { safeTimestamp } from "../src/mailbox.js";
-import { buildTimeBlock, formatMessages } from "../src/prompt.js";
+import {
+	buildDynamicContextMessage,
+	buildSystemPrompt,
+	buildTimeBlock,
+	formatMessages,
+} from "../src/prompt.js";
 
 function baseMessage(overrides: Partial<MailboxMessage> = {}): MailboxMessage {
 	return {
@@ -108,5 +117,89 @@ describe("buildTimeBlock", () => {
 		const match = buildTimeBlock().match(/Unix: (\d+)/);
 		expect(match).not.toBeNull();
 		expect(Number(match?.[1]) % 300).toBe(0);
+	});
+});
+
+// OpenRouter caching investigation (issue #24): the system prompt must stay
+// byte-identical across calls within a session for pi-ai's Anthropic
+// cache_control breakpoint (and OpenRouter's own default routing-key hash) to
+// survive a mid-turn mental-map edit. buildSystemPrompt() is fully static;
+// the mental map + current time live in buildDynamicContextMessage instead.
+describe("buildSystemPrompt / buildDynamicContextMessage", () => {
+	let sharedDir: string;
+	let workdir: string;
+
+	function agent(systemPrompt: string): AgentConfig {
+		return {
+			id: "analyst",
+			supervisor: "user",
+			systemPrompt,
+			initialMentalMap: "<section></section>",
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fixture, only the fields buildSystemPrompt reads matter
+		} as any;
+	}
+
+	beforeEach(() => {
+		sharedDir = mkdtempSync(join(tmpdir(), "magi-prompt-test-shared-"));
+		workdir = mkdtempSync(join(tmpdir(), "magi-prompt-test-workdir-"));
+	});
+
+	afterEach(() => {
+		rmSync(sharedDir, { recursive: true, force: true });
+		rmSync(workdir, { recursive: true, force: true });
+	});
+
+	it("substitutes {{mentalMap}} with a static pointer, never the live HTML", () => {
+		const text = buildSystemPrompt(
+			agent("## Your mental map\n{{mentalMap}}"),
+			sharedDir,
+			workdir,
+		);
+		expect(text).not.toContain("{{mentalMap}}");
+		expect(text).toContain("provided as a separate message below");
+	});
+
+	it("carries no current-time block — that moved to buildDynamicContextMessage", () => {
+		const text = buildSystemPrompt(
+			agent("Hello {{mentalMap}}"),
+			sharedDir,
+			workdir,
+		);
+		expect(text).not.toContain("## Current Time");
+	});
+
+	it("is fully static: two calls produce byte-identical output regardless of an agent's live mental map changing", () => {
+		const a = buildSystemPrompt(agent("{{mentalMap}}"), sharedDir, workdir);
+		const b = buildSystemPrompt(agent("{{mentalMap}}"), sharedDir, workdir);
+		expect(a).toBe(b);
+	});
+
+	it("still substitutes {{sharedDir}}/{{workdir}}", () => {
+		const text = buildSystemPrompt(
+			agent("root={{sharedDir}} work={{workdir}}"),
+			sharedDir,
+			workdir,
+		);
+		expect(text).toContain(`root=${sharedDir}`);
+		expect(text).toContain(`work=${workdir}`);
+	});
+
+	it("buildDynamicContextMessage contains both the current-time block and the given mental map HTML", () => {
+		const text = buildDynamicContextMessage("<p>notes</p>");
+		expect(text).toContain("## Current Time");
+		expect(text).toContain("## Your Mental Map");
+		expect(text).toContain("<p>notes</p>");
+	});
+
+	it("buildDynamicContextMessage is stable across calls a few seconds apart within the same 5-min bucket", () => {
+		expect(buildDynamicContextMessage("<p>notes</p>")).toBe(
+			buildDynamicContextMessage("<p>notes</p>"),
+		);
+	});
+
+	it("buildDynamicContextMessage differs only when the mental map itself differs", () => {
+		const a = buildDynamicContextMessage("<p>v1</p>");
+		const b = buildDynamicContextMessage("<p>v2</p>");
+		expect(a).not.toBe(b);
 	});
 });

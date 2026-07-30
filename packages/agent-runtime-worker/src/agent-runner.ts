@@ -34,7 +34,11 @@ import {
 } from "./objectives/attribution.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
 import { createObjectivesTools } from "./objectives/tools.js";
-import { buildSystemPrompt, formatMessages } from "./prompt.js";
+import {
+	buildDynamicContextMessage,
+	buildSystemPrompt,
+	formatMessages,
+} from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
 import {
 	readSupervisorNote,
@@ -503,14 +507,19 @@ export async function runAgent(
 	// -1 = task user message (before first LLM call); increments to 0, 1, 2… on each AssistantMessage.
 	let currentCallSeq = -1;
 
-	// Getter so the inner loop rebuilds the system prompt each iteration (picks up
-	// UpdateMentalMap changes and refreshes the current-time block — see prompt.ts).
-	const getSystemPrompt = () =>
-		buildSystemPrompt(
-			agent,
+	// The system prompt is now fully static per agent/session (see prompt.ts) —
+	// this getter exists for InnerLoopConfig's interface, not because the output
+	// actually varies call to call. The mental map + current time live in
+	// getDynamicContext below instead.
+	const getSystemPrompt = () => buildSystemPrompt(agent, sharedDir, workdir);
+
+	// Getter so the inner loop picks up mid-turn UpdateMentalMap changes and
+	// refreshes the current-time block on the very next call, without touching
+	// the (now-static, cacheable) system prompt — see prompt.ts and loop.ts's
+	// runInnerLoop for how this is spliced into messages[0].
+	const getDynamicContext = () =>
+		buildDynamicContextMessage(
 			currentMentalMapHtml,
-			sharedDir,
-			workdir,
 			ctx.teamConfig.mission.timezone,
 		);
 
@@ -525,6 +534,9 @@ export async function runAgent(
 		console.log(`${sep}`);
 		console.log("[DEBUG] SYSTEM PROMPT:\n");
 		console.log(getSystemPrompt());
+		console.log(`\n${"─".repeat(72)}`);
+		console.log("[DEBUG] DYNAMIC CONTEXT (messages[0], not persisted):\n");
+		console.log(getDynamicContext());
 		if (previousMessages.length > 0) {
 			console.log(`\n${"─".repeat(72)}`);
 			console.log("[DEBUG] PREVIOUS MESSAGES (passed as prior context):\n");
@@ -782,6 +794,7 @@ export async function runAgent(
 		const result = await runInnerLoop({
 			model: ctx.model,
 			getSystemPrompt,
+			getDynamicContext,
 			task,
 			tools: effectiveTools,
 			signal,
@@ -790,6 +803,7 @@ export async function runAgent(
 			onLlmCall: makeOnLlmCallWithLimits(activeTurnNumber),
 			onToolResult: onToolResultHandler,
 			reasoning: "medium",
+			sessionId: `${missionId}:${agentId}`,
 		});
 		const lastMsg = result.messages.at(-1);
 		lastCallAborted =
@@ -825,6 +839,7 @@ export async function runAgent(
 			await runInnerLoop({
 				model: ctx.model,
 				getSystemPrompt,
+				getDynamicContext,
 				task,
 				tools,
 				signal,
@@ -833,6 +848,7 @@ export async function runAgent(
 				onLlmCall: makeOnLlmCallWithLimits(activeTurnNumber),
 				onToolResult: onToolResultHandler,
 				reasoning: "medium",
+				sessionId: `${missionId}:${agentId}`,
 			});
 		}
 

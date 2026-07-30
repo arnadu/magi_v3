@@ -78,6 +78,18 @@ export interface InnerLoopConfig {
 	 * picked up before the next LLM call.
 	 */
 	getSystemPrompt: () => string;
+	/**
+	 * Returns the "dynamic context" message (current time + mental map — see
+	 * prompt.ts's buildDynamicContextMessage) injected as messages[0]. Pulled
+	 * fresh each iteration like getSystemPrompt, but only actually replaces
+	 * messages[0] when the content has changed — see the OpenRouter caching
+	 * investigation (issue #24): keeping the system prompt itself byte-stable
+	 * across a session is what lets it stay cached/routed to the same backend
+	 * even when the mental map or time block legitimately change mid-turn.
+	 * Optional — omitted by sub-loop callers (reflection, Research, BrowseWeb)
+	 * that have no equivalent concept.
+	 */
+	getDynamicContext?: () => string;
 	task: string;
 	tools: MagiTool[];
 	signal?: AbortSignal;
@@ -157,6 +169,15 @@ export interface InnerLoopConfig {
 	 * Only applied when model.reasoning === true; silently ignored otherwise.
 	 */
 	reasoning?: ThinkingLevel;
+	/**
+	 * Stable identifier passed through to the provider as options.sessionId —
+	 * on OpenRouter (with Model.compat.sendSessionAffinityHeaders set, see
+	 * models.ts's withOpenRouterAffinity) this becomes the x-session-id header,
+	 * OpenRouter's own sticky-routing guarantee. Should stay stable for the
+	 * agent's whole lifetime, not just one turn, to maximize routing/cache
+	 * consistency across sessions. Ignored by providers that don't support it.
+	 */
+	sessionId?: string;
 }
 
 // Prune ephemeral tool results when context exceeds 80% of the 200k window.
@@ -193,6 +214,7 @@ export async function runInnerLoop(
 		llmCallTimeoutMs = 480_000,
 		maxTurns,
 		reasoning,
+		sessionId,
 	} = config;
 	const completeFn: CompleteFn =
 		config.completeFn ??
@@ -203,6 +225,20 @@ export async function runInnerLoop(
 	const messages: Message[] = config.previousMessages
 		? [...config.previousMessages]
 		: [];
+
+	// Dynamic-context message (current time + mental map) goes at index 0, ahead
+	// of any resumed history — never routed through pushAndNotify/onMessage, so
+	// it is never persisted to conversationMessages, exactly like systemPrompt
+	// itself. Replaced in place (not re-pushed) whenever it changes; see the
+	// per-iteration check below.
+	let lastDynamicContext = config.getDynamicContext?.();
+	if (lastDynamicContext !== undefined) {
+		messages.unshift({
+			role: "user",
+			content: lastDynamicContext,
+			timestamp: Date.now(),
+		});
+	}
 
 	/** Append a message and notify the caller immediately. */
 	async function pushAndNotify(msg: Message): Promise<void> {
@@ -220,6 +256,21 @@ export async function runInnerLoop(
 		turnCount++;
 
 		const systemPrompt = config.getSystemPrompt();
+
+		// Pull-based, like getSystemPrompt — but only replace messages[0] when
+		// content actually changed, so the (much larger, cacheable) history after
+		// it stays byte-identical across iterations where nothing changed.
+		if (config.getDynamicContext) {
+			const freshDynamicContext = config.getDynamicContext();
+			if (freshDynamicContext !== lastDynamicContext) {
+				messages[0] = {
+					role: "user",
+					content: freshDynamicContext,
+					timestamp: Date.now(),
+				};
+				lastDynamicContext = freshDynamicContext;
+			}
+		}
 
 		const context: Context = {
 			systemPrompt,
@@ -246,6 +297,7 @@ export async function runInnerLoop(
 				maxTokens: maxOutputTokens,
 				// Enable extended thinking only when the model declares reasoning support.
 				...(reasoning && model.reasoning ? { reasoning } : {}),
+				...(sessionId ? { sessionId } : {}),
 			};
 			try {
 				return await completeFn(model, context, callOpts);
