@@ -11,8 +11,11 @@
  * uses accurate list prices.
  *
  * This is still an ESTIMATE — it uses OpenRouter's list price, not the exact
- * amount charged for the upstream that actually served each request (which pi-ai
- * does not surface). Exact per-call cost is tracked as Track 2 on issue #10.
+ * amount charged for the upstream that actually served each request. It remains
+ * the fallback: agent-runner.ts's makeOnLlmCall prefers the provider-reported
+ * per-call cost (AssistantMessage.usage.providerCost, Track 2 on issue #10,
+ * wired via the pi-ai patch in ADR-0023) when the response includes it, and
+ * falls back to this module's live-priced estimate otherwise.
  *
  * No API key required — `/api/v1/models` is public. The URL is constant (not
  * user-influenced), so there is no SSRF surface. Fetch failures are non-fatal:

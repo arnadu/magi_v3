@@ -43,10 +43,22 @@ const MAX_TOOL_BODY_CHARS = 2_000;
 export type LoggedMessage = Message;
 
 export interface LlmCallCost {
+	/**
+	 * Per-component breakdown, always computed from the static price table —
+	 * even when `totalCostUsd` is provider-reported (OpenRouter's `usage.cost`
+	 * doesn't split by component, so these four may not sum to `totalCostUsd`
+	 * in that case; see `costEstimated` on `LlmCallLogEntry`).
+	 */
 	inputCostUsd: number;
 	outputCostUsd: number;
 	cacheReadCostUsd: number;
 	cacheWriteCostUsd: number;
+	/**
+	 * The effective cost used everywhere downstream (llmCallLog, agentTurnStats,
+	 * missionStats, budget/limit checks). Exact when the provider reports its own
+	 * charged amount (OpenRouter's `usage.cost` — see issue #10); a static-price
+	 * estimate otherwise.
+	 */
 	totalCostUsd: number;
 }
 
@@ -79,11 +91,13 @@ export interface LlmCallLogEntry {
 	/** Model id (e.g. "claude-sonnet-4-6"). */
 	model: string;
 	/**
-	 * True when `usage.cost` is an estimate rather than an authoritative figure.
-	 * First-party Anthropic list prices are exact (false); OpenRouter costs are
-	 * estimated from list pricing — the amount actually charged for the upstream
-	 * that served the request is not surfaced by pi-ai (see GitHub issue #10).
-	 * Absent on entries written before this field existed (treat as unknown).
+	 * True when `usage.cost.totalCostUsd` is a static-price-table estimate
+	 * rather than an authoritative figure. False for first-party Anthropic
+	 * (exact list prices) and for OpenRouter calls where the provider reported
+	 * its own charged amount (`usage.cost` on the response — see GitHub issue
+	 * #10); true for OpenRouter calls where it didn't, and for any other
+	 * non-Anthropic provider. Absent on entries written before this field
+	 * existed (treat as unknown).
 	 */
 	costEstimated?: boolean;
 	/** Full call input — absent after the 7-day retention window. */
@@ -156,6 +170,29 @@ export function computeCost(
 		cacheWriteCostUsd,
 		totalCostUsd:
 			inputCostUsd + outputCostUsd + cacheReadCostUsd + cacheWriteCostUsd,
+	};
+}
+
+/**
+ * Resolve the effective cost + costEstimated flag for one call, preferring
+ * the provider-reported cost (OpenRouter's `usage.cost`, surfaced by pi-ai as
+ * `AssistantMessage.usage.providerCost` — see issue #10) over the
+ * static-price-table estimate for `totalCostUsd`. The itemized per-component
+ * breakdown is always the static estimate — OpenRouter reports one total
+ * figure, not a per-component split.
+ */
+export function resolveCallCost(
+	estimatedCost: LlmCallCost,
+	provider: string,
+	providerCost: number | undefined,
+): { cost: LlmCallCost; costEstimated: boolean } {
+	const costIsExact = provider === "anthropic" || providerCost !== undefined;
+	return {
+		cost:
+			providerCost !== undefined
+				? { ...estimatedCost, totalCostUsd: providerCost }
+				: estimatedCost,
+		costEstimated: !costIsExact,
 	};
 }
 

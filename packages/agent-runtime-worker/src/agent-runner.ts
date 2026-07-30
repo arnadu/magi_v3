@@ -8,7 +8,11 @@ import type {
 import type { LimitAlert, LimitConfig } from "./limits.js";
 import { buildRules, evaluateLimits, LimitExceededError } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
-import { computeCost, truncateToolBodies } from "./llm-call-log.js";
+import {
+	computeCost,
+	resolveCallCost,
+	truncateToolBodies,
+} from "./llm-call-log.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
@@ -330,6 +334,7 @@ export async function runAgent(
 				output: number;
 				cacheRead: number;
 				cacheWrite: number;
+				providerCost?: number;
 			};
 			const modelCost = ctx.model.cost as {
 				input: number;
@@ -337,7 +342,12 @@ export async function runAgent(
 				cacheRead: number;
 				cacheWrite: number;
 			};
-			const cost = computeCost(usage, modelCost);
+			const estimatedCost = computeCost(usage, modelCost);
+			const { cost, costEstimated } = resolveCallCost(
+				estimatedCost,
+				ctx.model.provider,
+				usage.providerCost,
+			);
 			if (ctx.llmCallLog) {
 				await ctx.llmCallLog.append({
 					missionId,
@@ -346,9 +356,7 @@ export async function runAgent(
 					isReflection,
 					savedAt: new Date(),
 					model: ctx.model.id,
-					// Anthropic list prices are exact; other providers (OpenRouter) are
-					// estimated from list pricing (see issue #10).
-					costEstimated: ctx.model.provider !== "anthropic",
+					costEstimated,
 					input: {
 						systemPrompt: event.systemPrompt,
 						messages: truncateToolBodies(event.messages),

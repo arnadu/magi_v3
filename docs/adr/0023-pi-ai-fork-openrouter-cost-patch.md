@@ -103,15 +103,39 @@ the two Dockerfile lines the moment the upstream PR merges and a release picks i
   — run twice, once against the local fork and again against the final published+patched
   dependency, to prove the delivery mechanism swap didn't change behavior.
 - **Not yet done**: submitting the patch as a PR to `earendil-works/pi` (the original motivation for
-  forking at all) — planned once this has run in dev for a while. `issue #10` stays open until
-  MAGI_V3 is actually reading `providerCost` for real cost accounting (this ADR lands the
-  *capability*; wiring `openrouter-pricing.ts`/cost attribution to prefer `providerCost` when
-  present is separate, follow-up work).
+  forking at all) — planned once this has run in dev for a while.
+
+## Follow-up: cost-attribution wiring (Track 2), same day
+
+`agent-runner.ts`'s `makeOnLlmCall` — the single choke point every LLM call's cost passes through on
+its way to `llmCallLog`, `agentTurnStats`, and `missionStats` (per `openrouter-pricing.ts`'s own
+header comment) — now prefers `usage.providerCost` over the static-price-table estimate for
+`totalCostUsd` whenever the response includes it. The per-component breakdown
+(`inputCostUsd`/`outputCostUsd`/etc.) stays the static estimate always, since OpenRouter reports one
+total figure, not a per-component split — documented on `LlmCallCost` so a future reader isn't
+surprised the four components don't sum to `totalCostUsd` in that case.
+
+Extracted as a pure, unit-tested function (`resolveCallCost`, `llm-call-log.ts`, mirroring the
+`resolveLiveLimits` pattern from ADR-0018) rather than left inline, since the override logic itself
+is pure and deterministic and shouldn't need a live LLM call to test. `costEstimated` is now `false`
+for Anthropic (as before) **and** for any OpenRouter call that reported its own cost; `true` only
+when no authoritative figure exists — the exact semantic the field's doc comment always claimed but
+couldn't yet deliver on before this.
+
+Verified live, not just in unit tests: one real OpenRouter call (`mistralai/ministral-14b-2512`,
+"Say OK.") through `piModels.completeSimple` came back with `usage.providerCost: 0.0000038` alongside
+pi's own `usage.cost.total` estimate — proving the field survives the full stream/parse/auth path in
+production, not just in the patch's own isolated logic.
+
+`issue #10` stays open for one remaining piece: submitting the patch upstream. Cost accounting itself
+is now wired end to end.
 
 ## Related
 
-- [GitHub issue #10](https://github.com/arnadu/magi_v3/issues/10) — OpenRouter real-cost tracking,
-  stays open
+- [GitHub issue #10](https://github.com/arnadu/magi_v3/issues/10) — OpenRouter real-cost tracking;
+  cost-attribution wiring done, upstream PR still open
+- `packages/agent-runtime-worker/src/llm-call-log.ts` — `resolveCallCost`, `LlmCallCost`
+- `packages/agent-runtime-worker/src/agent-runner.ts` — `makeOnLlmCall`
 - `packages/agent-runtime-worker/src/models.ts` — `piModels`, `getBuiltinModel` usage
 - `packages/agent-runtime-worker/src/loop.ts` — default `completeFn`
 - `patches/@mariozechner+pi-ai+0.82.1.patch` — the patch itself
