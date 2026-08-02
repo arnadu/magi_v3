@@ -198,7 +198,7 @@ export function resolveLiveLimits(
  *   "messages: roles must alternate…"                    (consecutive user msgs)
  *   "first message must use the `user` role"             (history ordering)
  */
-function isConversationStructureError(msg: AssistantMessage): boolean {
+export function isConversationStructureError(msg: AssistantMessage): boolean {
 	if (msg.stopReason !== "error") return false;
 	const err = (msg.errorMessage ?? "").toLowerCase();
 	return (
@@ -220,15 +220,24 @@ function isConversationStructureError(msg: AssistantMessage): boolean {
  * session's failed messages. The next load() returns only the recovery
  * summary, letting the agent resume from its last known mental map state.
  */
-async function forceCompactSession(
+export async function forceCompactSession(
 	agentId: string,
 	missionId: string,
 	nextTurnNumber: number,
 	repo: ConversationRepository,
 ): Promise<void> {
+	// The summary must land AT the compact boundary (nextTurnNumber + 1), not
+	// before it (nextTurnNumber - 1, the original bug here) — compact()'s
+	// `turnNumber < keepFrom` cutoff would otherwise mark the summary itself
+	// compacted the instant it's written, since nextTurnNumber - 1 is always
+	// < nextTurnNumber + 1. That silently defeated this function's own stated
+	// purpose ("next load() returns only the recovery summary") — load()
+	// would instead return nothing at all. Found live: this bug was masked
+	// until the .findLast fix above made this function actually get called.
+	const summaryTurnNumber = nextTurnNumber + 1;
 	await repo.append(agentId, missionId, [
 		{
-			turnNumber: nextTurnNumber - 1,
+			turnNumber: summaryTurnNumber,
 			message: {
 				role: "summary",
 				content:
@@ -239,9 +248,10 @@ async function forceCompactSession(
 			} as SummaryMessage,
 		},
 	]);
-	// Compact everything including the current session's failed messages so the
-	// retry starts with only the recovery summary in context.
-	await repo.compact(agentId, missionId, nextTurnNumber + 1);
+	// Compact everything strictly before the summary — including the current
+	// session's failed messages — so the retry starts with only the recovery
+	// summary in context.
+	await repo.compact(agentId, missionId, summaryTurnNumber);
 }
 
 // ---------------------------------------------------------------------------
@@ -813,13 +823,21 @@ export async function runAgent(
 		// turnCount === 1 means no tools ran — the error came from the history,
 		// not from anything this session did. Force-compact the corrupt history
 		// and retry once with a clean slate.
-		const firstAssistant = result.messages.find(
-			(m): m is AssistantMessage => m.role === "assistant",
-		);
+		//
+		// Reuses lastMsg (the LAST message overall), not the FIRST assistant
+		// message in result.messages ([...previousMessages, task, ...this
+		// session's new messages]). For any agent with real prior history,
+		// searching from the front would find the FIRST assistant message ever
+		// sent — almost certainly a successful one from long ago — making this
+		// check silently never fire. Found live: a corrupted copilot history
+		// kept failing identically across multiple retries because this looked
+		// at the wrong message. turnCount === 1 guarantees nothing could follow
+		// the erroring message, so it's always the last one in the array.
+		const latestAssistant = lastMsg?.role === "assistant" ? lastMsg : undefined;
 		if (
 			result.turnCount === 1 &&
-			firstAssistant &&
-			isConversationStructureError(firstAssistant) &&
+			latestAssistant &&
+			isConversationStructureError(latestAssistant) &&
 			activeTurnNumber > 0
 		) {
 			console.error(

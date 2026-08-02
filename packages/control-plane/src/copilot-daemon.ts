@@ -61,6 +61,13 @@ export interface CopilotDaemonHandle {
 	stop(): void;
 	/** Resolves when the watch loop has opened its first Change Stream and is ready to receive messages. */
 	ready: Promise<void>;
+	/**
+	 * True while a turn (runAgent call) is actively in flight. stop() aborts
+	 * immediately regardless — this is for callers (the /settings model-switch
+	 * route) that want to know whether an abort would cut off in-progress work
+	 * before deciding to call stop() at all. See copilot-router.ts's busy guard.
+	 */
+	isBusy(): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +102,8 @@ export function startCopilotDaemon(
 		resolveReady = res;
 	});
 
+	const busyRef = { current: false };
+
 	runWatchLoop(
 		db,
 		repoRoot,
@@ -104,6 +113,7 @@ export function startCopilotDaemon(
 		signal,
 		resolvedMissionId,
 		resolveReady,
+		busyRef,
 	).catch((e) => {
 		resolveReady(); // unblock waiters even on crash
 		if (!signal.aborted) {
@@ -118,6 +128,9 @@ export function startCopilotDaemon(
 			ac.abort();
 		},
 		ready,
+		isBusy() {
+			return busyRef.current;
+		},
 	};
 }
 
@@ -195,6 +208,7 @@ async function runWatchLoop(
 	signal: AbortSignal,
 	missionId: string,
 	onReady: () => void,
+	busyRef: { current: boolean },
 ): Promise<void> {
 	const mailboxCol = db.collection("mailbox");
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
@@ -329,6 +343,7 @@ async function runWatchLoop(
 						: missionId,
 				),
 			};
+			busyRef.current = true;
 			await runAgent(agentId, messages, ctx, signal);
 			console.log("[copilot-daemon] Turn complete");
 		} catch (e) {
@@ -338,6 +353,7 @@ async function runWatchLoop(
 				pushEvent("copilot-error", { errorMessage });
 			}
 		} finally {
+			busyRef.current = false;
 			// Push updated usage totals so the UI cost indicator stays current.
 			const [agg] = await db
 				.collection("llmCallLog")

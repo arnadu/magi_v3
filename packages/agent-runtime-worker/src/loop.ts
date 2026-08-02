@@ -344,6 +344,34 @@ export async function runInnerLoop(
 			assistantMessage.stopReason === "error" ||
 			assistantMessage.stopReason === "aborted"
 		) {
+			// The loop is ending without ever executing any tool calls this
+			// message requested — a stream that was cut off (abort, or an error
+			// mid-stream) can still carry parsed toolCall blocks. Left as-is,
+			// that's a permanent dangling tool_use in persisted history: every
+			// future replay (regardless of provider) fails identically, since
+			// the provider's own tool_use/tool_result pairing validation rejects
+			// it. Persist matching synthetic results now, at write time, so
+			// history is self-consistent from the moment it's written — belt and
+			// suspenders alongside convertToLlm's read-time patch (reflection.ts),
+			// which stays as a backstop for any older/pre-existing corruption.
+			// Found live: a copilot model switch mid-turn aborted a call with an
+			// in-flight tool_use, corrupting history for every session after.
+			for (const block of assistantMessage.content) {
+				if (block.type !== "toolCall") continue;
+				await pushAndNotify({
+					role: "toolResult",
+					toolCallId: block.id,
+					toolName: block.name,
+					content: [
+						{
+							type: "text",
+							text: "Tool result was not saved — the session was interrupted before this tool completed.",
+						},
+					],
+					isError: true,
+					timestamp: Date.now(),
+				} as ToolResultMessage);
+			}
 			break;
 		}
 

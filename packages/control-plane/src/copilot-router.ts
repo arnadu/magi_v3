@@ -156,13 +156,31 @@ export function createCopilotRouter(
 			res.status(400).json({ error: "model must be a string or null" });
 			return;
 		}
+
+		// Guard against switching models mid-turn: stop() only aborts the signal
+		// — it does not wait for the in-flight runAgent() call to unwind, and the
+		// very next /message call starts a fresh daemon immediately, racing the
+		// old one's still-in-progress final write. Found live: that race left a
+		// tool_use persisted with no result (the tool never ran), permanently
+		// corrupting the copilot's history — every later session failed
+		// identically, regardless of which model it replayed against. Rejecting
+		// here instead of aborting mid-flight is simpler and more honest than
+		// trying to sequence the abort/restart correctly, and matches how the
+		// operator was already retrying by hand.
+		if (runningDaemons.get(req.userId)?.isBusy()) {
+			res.status(409).json({
+				error:
+					"Copilot is currently running a turn — wait for it to finish before changing the model.",
+			});
+			return;
+		}
+
 		await setCopilotModel(db, req.userId, model ?? undefined);
 
 		// The running daemon (if any) captured the old model at startup and
 		// won't pick up the change on its own — stop it so the next message
-		// triggers a fresh ensureCopilotRunning() with the new model. Mid-turn
-		// work in flight for this user is aborted cleanly (AbortController),
-		// same as any other daemon stop.
+		// triggers a fresh ensureCopilotRunning() with the new model. Safe now:
+		// the busy check above already ruled out an in-flight turn.
 		runningDaemons.get(req.userId)?.stop();
 		runningDaemons.delete(req.userId);
 

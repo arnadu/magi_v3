@@ -1463,7 +1463,11 @@
       toggleCopilotModelPicker();
       loadCopilotModelSetting();
     } else {
-      showToast('Failed to update the copilot model.', true);
+      // Surface the real reason (e.g. "Copilot is currently running a turn —
+      // wait for it to finish") instead of a generic failure — a vague message
+      // here is exactly what led to blindly retrying into the same error.
+      const body = await res?.json().catch(() => null);
+      showToast(body?.error || 'Failed to update the copilot model.', true);
     }
   }
 
