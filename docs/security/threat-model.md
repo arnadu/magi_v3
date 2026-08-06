@@ -1,6 +1,14 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 26c — Files panel direct-edit: no new trust boundary, one new mutating
+**Last updated:** Sprint 27 — UI consolidation: TB-12/TB-13's client-side implementation moved
+from the retired `packages/control-plane/public/index.html` to `packages/cockpit/src/auth.ts`
+(same mechanism — Firebase Google sign-in + `magi_session` cookie — via the bundled `firebase`
+npm package instead of an unpinned CDN compat SDK, closing F-018 as a side effect). No new trust
+boundary: the cockpit was already the authenticated surface for per-mission tabs; this sprint
+extended it to also cover auth/login, mission CRUD, template browsing, and the standalone copilot
+chat, all against already-existing, already-scoped control-plane routes.
+
+**Previously:** Sprint 26c — Files panel direct-edit: no new trust boundary, one new mutating
 route under the existing MonitorServer mutating-route boundary (TB-11-style token check,
 `{missionId, userId}`-scoped proxy). `POST /files/shared/edit` (cockpit-triggered, operator-only)
 adds server-side extension allowlisting and a 10 MB content cap on top of the existing
@@ -157,7 +165,7 @@ graph TB
 
     subgraph CLOUD ["Fly.io (same org — private WireGuard mesh)"]
         subgraph CTRL ["Control Plane — magi-control-{suffix} · always-on · 256 MB"]
-            CTRL_STATIC["/firebase-config.js + index.html\nunauthenticated · TB-14"]
+            CTRL_STATIC["/firebase-config.js + cockpit (Vite SPA)\nunauthenticated · TB-14"]
             CTRL_API["Express API\nmissions CRUD + lifecycle\nauth.ts — dual-mode: Firebase JWT | CONTROL_API_KEY"]
             CTRL_PROXY["HTTP reverse proxy\n/missions/:id/**\ntarget resolved from MongoDB only\n⚠️ no userId scope (F-019)"]
             CTRL_CRON["node-cron\nscheduled_messages heartbeat"]
@@ -286,10 +294,10 @@ graph TB
 
 ### TB-12: Browser ↔ Firebase Auth (Google OAuth)
 - `packages/control-plane/src/firebase.ts` — server-side token verification via Firebase Admin SDK
-- `packages/control-plane/public/index.html` — client-side: `firebase.initializeApp(window.FIREBASE_CONFIG)`; `signInWithPopup(GoogleAuthProvider)`; `onIdTokenChanged` hook updates `magi_session` cookie on token refresh
+- `packages/cockpit/src/auth.ts` — client-side: `initializeApp(window.FIREBASE_CONFIG)`; `signInWithPopup(GoogleAuthProvider)`; `onIdTokenChanged` hook updates `magi_session` cookie on token refresh. Sprint 27: moved here from the retired `packages/control-plane/public/index.html`, using the modular `firebase` npm package (bundled into the cockpit's own build) instead of index.html's unpinned CDN `<script>` compat SDK — closes F-018 as a side effect, not just a file move.
 
 ### TB-13: `magi_session` cookie
-- `packages/control-plane/public/index.html` — `setSessionCookie(token)` sets `magi_session=<encoded-token>; path=/; SameSite=Strict; max-age=3600`; `clearSessionCookie()` on sign-out; cookie updated on every `onIdTokenChanged` event
+- `packages/cockpit/src/auth.ts` — `setSessionCookie(token)` sets `magi_session=<encoded-token>; path=/; SameSite=Strict; max-age=3600`; `clearSessionCookie()` on sign-out; cookie updated on every `onIdTokenChanged` event (moved from `index.html`, Sprint 27)
 - `packages/control-plane/src/auth.ts` — `extractCookie()`: parses cookie header, `decodeURIComponent`s the JWT value; cookie value fed into same auth pipeline as Bearer token
 
 ### TB-14: `/firebase-config.js` unauthenticated endpoint

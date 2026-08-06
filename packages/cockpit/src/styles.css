@@ -299,7 +299,7 @@ a {
 .missions {
 	list-style: none;
 	padding: 0;
-	max-width: 520px;
+	max-width: 720px;
 }
 .missions li {
 	padding: 8px 10px;
@@ -307,6 +307,251 @@ a {
 	border-radius: 8px;
 	margin-bottom: 7px;
 	background: var(--panel);
+}
+.missions-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	max-width: 720px;
+	margin-bottom: 10px;
+}
+.missions-toolbar h2 {
+	margin: 0;
+}
+.mission-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.mission-row-main {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.mission-row-stats {
+	display: flex;
+	gap: 12px;
+	font-size: 11px;
+	padding-left: 2px;
+	flex-wrap: wrap;
+}
+.mission-snippet {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 360px;
+}
+.mission-unread-badge {
+	font-size: 10.5px;
+	font-weight: 600;
+	padding: 2px 8px;
+	border-radius: 20px;
+	background: var(--copilot-soft);
+	color: var(--copilot);
+	white-space: nowrap;
+}
+.mission-name {
+	font-weight: 600;
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.mission-date {
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+.mission-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.mission-danger:hover {
+	border-color: var(--bad);
+	color: var(--bad);
+}
+.mission-status {
+	font-size: 10.5px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 2px 8px;
+	border-radius: 20px;
+	background: var(--chip);
+	color: var(--mut);
+	white-space: nowrap;
+}
+.mission-status-running {
+	background: #e1f6ea;
+	color: var(--ok);
+}
+.mission-status-suspended {
+	background: #e5eefb;
+	color: var(--info);
+}
+.mission-status-provisioning {
+	background: #fdf1dc;
+	color: var(--warn);
+}
+.mission-status-error {
+	background: #fbe3e6;
+	color: var(--bad);
+}
+.mission-status-destroyed {
+	background: var(--chip);
+	color: var(--dim);
+}
+.create-mission-box {
+	max-width: 420px;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 16px;
+	margin-bottom: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.create-mission-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.create-mission-row label {
+	font-size: 11px;
+	color: var(--mut);
+}
+.create-mission-row input,
+.create-mission-row select {
+	background: var(--panel2);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 6px 8px;
+	font: inherit;
+	font-size: 13px;
+	color: var(--txt);
+}
+.create-mission-actions {
+	display: flex;
+	gap: 8px;
+}
+
+/* Home nav (Missions/Templates tabs shown above the picker) */
+.home-tabs {
+	display: flex;
+	gap: 4px;
+	padding: 8px 16px 0;
+}
+.home-tab {
+	background: none;
+	border: none;
+	border-bottom: 2px solid transparent;
+	padding: 6px 4px;
+	color: var(--mut);
+	font: inherit;
+	font-size: 12.5px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.home-tab:hover {
+	color: var(--txt);
+}
+.home-tab-active {
+	color: var(--info);
+	border-bottom-color: var(--info);
+}
+
+/* Templates panel */
+.templates-main {
+	display: flex;
+	gap: 20px;
+	padding: 16px;
+	align-items: flex-start;
+}
+.templates-list {
+	width: 220px;
+	flex-shrink: 0;
+}
+.templates-ul {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.template-row-btn {
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	padding: 7px 9px;
+	color: var(--txt);
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+}
+.template-row-btn:hover {
+	background: var(--hover);
+}
+.template-row-selected {
+	background: var(--panel2);
+	border-color: var(--line);
+	font-weight: 600;
+}
+.template-detail {
+	flex: 1;
+	max-width: 560px;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 18px;
+}
+.template-detail-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 10px;
+}
+.template-detail-header h3 {
+	margin: 0;
+}
+.template-meta {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 12px;
+	font-size: 12.5px;
+	margin: 0 0 16px;
+}
+.template-meta dt {
+	color: var(--mut);
+}
+.template-meta dd {
+	margin: 0;
+}
+.template-roster-title {
+	font-size: 11px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--dim);
+	margin: 0 0 8px;
+}
+.template-roster {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 12.5px;
+}
+.template-agent-name {
+	font-weight: 600;
+}
+.template-agent-supervisor {
+	font-size: 11px;
 }
 h2.sec {
 	font-size: 11px;
@@ -1508,4 +1753,449 @@ h2.sec {
 .badge-bad {
 	background: var(--bad);
 	color: #fff;
+}
+
+/* Primitives — a stronger CTA button and inline error text, for full-page
+   flows (login) that need more visual weight than the rail's .rail-btn. */
+.btn-primary {
+	background: var(--info);
+	border: none;
+	border-radius: 6px;
+	padding: 8px 14px;
+	color: #fff;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.btn-primary:hover {
+	filter: brightness(1.08);
+}
+.btn-primary:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+.error-msg {
+	color: var(--bad);
+	font-size: 12px;
+	margin: 6px 0 0;
+}
+
+/* Login screen */
+.login-main {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.login-box {
+	width: 320px;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 28px;
+	display: flex;
+	flex-direction: column;
+}
+.login-box h2 {
+	margin: 0 0 4px;
+}
+.login-box .mut {
+	margin: 0 0 18px;
+	font-size: 12.5px;
+}
+.login-box label {
+	font-size: 11px;
+	color: var(--mut);
+	margin-bottom: 4px;
+}
+.login-box input {
+	background: var(--panel2);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 7px 9px;
+	font: inherit;
+	font-size: 13px;
+	color: var(--txt);
+	margin-bottom: 10px;
+}
+.login-google {
+	width: 100%;
+}
+.login-key {
+	width: 100%;
+}
+.login-divider {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 16px 0 12px;
+	color: var(--dim);
+	font-size: 11px;
+}
+.login-divider::before,
+.login-divider::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: var(--line);
+}
+
+/* App shell — a top-level flex row so the persistent copilot side panel can
+   sit alongside either the picker or the mission dashboard, matching
+   index.html's #layout (sidebar/detail-panel/copilot-panel siblings). */
+.app-shell {
+	display: flex;
+	height: 100vh;
+	align-items: stretch;
+}
+.app-shell > .app {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+/* Copilot panel — ported from index.html's #copilot-panel, same visual
+   language (var(--copilot) instead of hardcoded #7c3aed etc). */
+.copilot-panel {
+	width: 380px;
+	flex-shrink: 0;
+	background: var(--panel);
+	border-left: 1px solid var(--line);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+.copilot-header {
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--line);
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+.copilot-header h3 {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--copilot);
+	margin: 0;
+}
+.copilot-header-right {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.copilot-cost {
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+.copilot-model-btn {
+	font-size: 11px;
+	color: var(--copilot);
+	border-color: var(--copilot-soft);
+	font-family: ui-monospace, monospace;
+}
+.copilot-model-picker {
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--line);
+	background: var(--copilot-soft);
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+.copilot-model-picker label {
+	flex-basis: 100%;
+	font-size: 11px;
+	color: var(--mut);
+}
+.copilot-model-picker input {
+	flex: 1;
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 6px 8px;
+	font-size: 12px;
+	font-family: ui-monospace, monospace;
+}
+.copilot-model-error {
+	flex-basis: 100%;
+	margin: 0;
+}
+.copilot-messages {
+	flex: 1;
+	overflow-y: auto;
+	padding: 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.cop-bubble {
+	max-width: 90%;
+	padding: 8px 12px;
+	border-radius: 12px;
+	font-size: 13px;
+	line-height: 1.5;
+	word-break: break-word;
+	white-space: pre-wrap;
+}
+.cop-bubble.from-copilot {
+	background: var(--panel2);
+	color: var(--txt);
+	align-self: flex-start;
+	border-bottom-left-radius: 4px;
+}
+.cop-bubble.from-user {
+	background: var(--copilot);
+	color: #fff;
+	align-self: flex-end;
+	border-bottom-right-radius: 4px;
+}
+.cop-bubble.system-msg {
+	color: var(--dim);
+	font-size: 11px;
+	font-style: italic;
+	align-self: center;
+}
+.cop-action-card {
+	background: var(--copilot-soft);
+	border: 1px solid var(--copilot);
+	border-radius: 10px;
+	padding: 12px 14px;
+	font-size: 12.5px;
+	align-self: flex-start;
+	width: 100%;
+}
+.cop-action-card .action-label {
+	font-weight: 600;
+	color: var(--copilot);
+	margin-bottom: 4px;
+}
+.cop-action-card .action-type {
+	color: var(--mut);
+	font-size: 11px;
+	margin-bottom: 10px;
+	font-family: ui-monospace, monospace;
+}
+.cop-action-card .action-btns {
+	display: flex;
+	gap: 8px;
+}
+.cop-action-card .action-result {
+	font-size: 12px;
+	color: var(--ok);
+	margin-top: 8px;
+}
+.cop-action-card .action-result.error {
+	color: var(--bad);
+}
+.copilot-thinking {
+	font-size: 11px;
+	color: var(--mut);
+	font-style: italic;
+	padding: 4px 14px;
+	flex-shrink: 0;
+}
+.cop-activity {
+	font-size: 11px;
+	padding: 2px 10px;
+	align-self: stretch;
+	font-family: ui-monospace, monospace;
+	border-left: 2px solid var(--line);
+	margin: 1px 0;
+	color: var(--dim);
+	word-break: break-all;
+	white-space: pre-wrap;
+}
+.cop-activity.tool-error {
+	color: var(--bad);
+	border-left-color: var(--bad);
+}
+.copilot-input-area {
+	padding: 10px 14px;
+	border-top: 1px solid var(--line);
+	display: flex;
+	gap: 8px;
+	align-items: flex-end;
+	flex-shrink: 0;
+}
+.copilot-input-area textarea {
+	flex: 1;
+	background: var(--panel2);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	color: var(--txt);
+	font-size: 13px;
+	font-family: inherit;
+	padding: 8px 10px;
+	resize: none;
+	outline: none;
+	min-height: 36px;
+	max-height: 120px;
+}
+.copilot-input-area textarea:focus {
+	border-color: var(--copilot);
+}
+
+/* Agent-error banner — ported from agent-runtime-worker/public/app.js's #agent-error-banner */
+.agent-error-banner {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 16px;
+	background: #fbe3e6;
+	border-bottom: 1px solid var(--bad);
+	flex-shrink: 0;
+}
+.ae-icon {
+	color: var(--bad);
+}
+.ae-msg {
+	font-weight: 600;
+	font-size: 12.5px;
+}
+.ae-hint {
+	font-size: 11.5px;
+	flex: 1;
+}
+
+/* Schedule panel — ported from the mission-local dashboard's Schedule tab */
+.schedule-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12.5px;
+}
+.schedule-table th {
+	text-align: left;
+	font-size: 11px;
+	color: var(--mut);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--line);
+}
+.schedule-table td {
+	padding: 8px 10px;
+	border-bottom: 1px solid var(--line);
+	vertical-align: top;
+}
+
+/* Log panel — ported from index.html's log-viewer modal */
+.log-panel {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	gap: 8px;
+}
+.log-panel-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+.log-content {
+	flex: 1;
+	overflow-y: auto;
+	background: #0d0f1a;
+	padding: 12px;
+	border-radius: 6px;
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-all;
+	color: #94a3b8;
+	margin: 0;
+}
+
+/* Config panel — ported from index.html's renderConfigForm/renderAgentPane */
+.config-panel {
+	max-width: 640px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.config-hint {
+	background: var(--panel2);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 8px 12px;
+	margin: 0 0 8px;
+}
+.config-mission-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-bottom: 16px;
+}
+.config-agent-tabs {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+	border-bottom: 1px solid var(--line);
+	margin-bottom: 12px;
+	padding-bottom: 4px;
+}
+.config-agent-form {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.config-active-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12.5px;
+	cursor: pointer;
+}
+.config-section-label {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin-top: 8px;
+	border-top: 1px solid var(--line);
+	padding-top: 10px;
+}
+.config-readonly-note {
+	font-size: 11px;
+	margin: 0 0 4px;
+}
+.config-readonly-textarea {
+	background: var(--panel2);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 8px;
+	font-size: 12px;
+	font-family: ui-monospace, monospace;
+	color: var(--mut);
+	resize: vertical;
+}
+.config-toggle-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 4px 12px;
+}
+.config-save-bar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 16px;
+	padding-top: 12px;
+	border-top: 1px solid var(--line);
+}
+.config-save-ok {
+	color: var(--ok);
+	font-size: 12.5px;
+}
+.skill-toggle-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	cursor: pointer;
+}
+.agent-id-badge {
+	font-family: ui-monospace, monospace;
+	font-size: 11px;
+	margin-bottom: 4px;
 }

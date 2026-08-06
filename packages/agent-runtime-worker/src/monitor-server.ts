@@ -173,10 +173,23 @@ export interface FileHistoryEntry {
  *   POST   /start                         unblock waitForStart
  *   POST   /stop                          graceful daemon shutdown
  */
+/**
+ * SSE heartbeat interval. The control-plane→execution-plane WireGuard path has
+ * a documented >60s idle-connection cutoff (operational-resilience.md Layer 1)
+ * that drops the TCP connection silently — no FIN/RST reaches the browser, so
+ * EventSource's native reconnect (which only fires on a detected close) never
+ * triggers. A periodic named `ping` event keeps the connection active through
+ * that hop — sent as a real event (not a `:`-prefixed comment) so the
+ * client's own watchdog (cockpit App.tsx's useMissionStatus) can observe it
+ * and distinguish "idle but alive" from "silently dead".
+ */
+const SSE_HEARTBEAT_MS = 20_000;
+
 export class MonitorServer {
 	private readonly clients = new Set<ServerResponse>();
 	private readonly server;
 	private readonly workspaceGit: WorkspaceGit;
+	private heartbeatTimer: NodeJS.Timeout | null = null;
 
 	// Start gate
 	private started = false;
@@ -344,6 +357,16 @@ export class MonitorServer {
 			this.server.once("error", reject);
 		});
 		console.log(`[monitor] Dashboard: http://localhost:${port}`);
+
+		this.heartbeatTimer = setInterval(() => {
+			for (const client of this.clients) {
+				try {
+					client.write("event: ping\ndata: {}\n\n");
+				} catch {
+					this.clients.delete(client);
+				}
+			}
+		}, SSE_HEARTBEAT_MS);
 	}
 
 	stop(): void {
@@ -352,6 +375,8 @@ export class MonitorServer {
 		this.startResolve?.();
 		this.budgetResolve?.();
 		this.stepResolve?.();
+
+		if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
 
 		for (const client of this.clients) {
 			try {

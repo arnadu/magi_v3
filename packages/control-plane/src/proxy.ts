@@ -40,6 +40,17 @@ export function createProxyRouter(db: Db): Router {
 			proxy = createProxyMiddleware({
 				target,
 				changeOrigin: true,
+				// Without these, a stale privateIp (machine restarted/crashed,
+				// Mongo not yet reconciled) or a genuinely wedged backend hangs the
+				// browser request indefinitely instead of failing fast — this was
+				// part of what surfaced as "the cockpit times out". proxyTimeout
+				// bounds the upstream connect+response; timeout bounds the
+				// inbound socket. The mission's own SSE stream (long-lived by
+				// design, keeps itself alive via monitor-server.ts's heartbeat) is
+				// unaffected — these are per-request/per-connection idle bounds,
+				// not a cap on total connection lifetime.
+				proxyTimeout: 30_000,
+				timeout: 30_000,
 				pathRewrite: (path) => path.replace(`/missions/${missionId}`, ""),
 				on: {
 					error: (err, _req, proxyRes) => {

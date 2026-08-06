@@ -27,14 +27,115 @@ export function fetchObjectives(missionId: string): Promise<FoldedTree> {
 	);
 }
 
+export type MissionStatusValue =
+	| "provisioning"
+	| "running"
+	| "suspended"
+	| "destroyed"
+	| "error";
+
 export interface MissionSummary {
 	missionId: string;
 	name: string;
+	status: MissionStatusValue;
+	createdAt: string;
+	errorMessage?: string;
 }
 
 /** The current user's missions (for the picker when no ?mission is given). */
 export function fetchMissions(): Promise<MissionSummary[]> {
 	return api<MissionSummary[]>("/api/missions");
+}
+
+/** Launches a mission from a template. Returns the created mission's id. */
+export async function createMission(
+	missionId: string,
+	name: string,
+	templateId: string,
+): Promise<void> {
+	const res = await fetch("/api/missions", {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ missionId, name, teamConfig: templateId }),
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok) {
+		const body = await res.json().catch(() => null);
+		throw new Error(
+			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
+		);
+	}
+}
+
+async function missionAction(missionId: string, action: string): Promise<void> {
+	const res = await fetch(`/api/missions/${mp(missionId)}/${action}`, {
+		method: "POST",
+		credentials: "include",
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok) {
+		const body = await res.json().catch(() => null);
+		throw new Error(
+			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
+		);
+	}
+}
+
+export const suspendMission = (missionId: string): Promise<void> =>
+	missionAction(missionId, "suspend");
+
+export const resumeMission = (missionId: string): Promise<void> =>
+	missionAction(missionId, "resume");
+
+export async function deleteMission(missionId: string): Promise<void> {
+	const res = await fetch(`/api/missions/${mp(missionId)}`, {
+		method: "DELETE",
+		credentials: "include",
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok) {
+		const body = await res.json().catch(() => null);
+		throw new Error(
+			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
+		);
+	}
+}
+
+// ── Templates (read-only, disk-only — ADR-0021/0022) ────────────────────────
+
+export interface TemplateSummary {
+	id: string;
+	name: string;
+}
+
+export interface TemplateDetail {
+	id: string;
+	name: string;
+	config: {
+		mission: { id: string; name: string; model?: string };
+		agents: Array<{
+			id: string;
+			name?: string;
+			role?: string;
+			supervisor: string;
+		}>;
+	};
+	teamFiles: Array<{ path: string; content: string }>;
+}
+
+export function fetchTemplates(): Promise<TemplateSummary[]> {
+	return api<TemplateSummary[]>("/api/templates");
+}
+
+export function fetchTemplate(id: string): Promise<TemplateDetail> {
+	return api<TemplateDetail>(`/api/templates/${mp(id)}`);
 }
 
 export interface ConvMessage {
@@ -486,4 +587,246 @@ export async function saveAgentLimits(
 		},
 	);
 	if (!res.ok) throw new Error(`HTTP ${res.status} saving agent limits`);
+}
+
+// ── Standalone copilot chat — cross-mission, control-plane-native ──────────
+// Ports index.html's copilot pane (lines ~339-360, ~1342-1607) to the cockpit.
+
+export interface CopilotHistoryEntry {
+	role: "user" | "assistant";
+	body: string;
+	subject: string;
+	timestamp: string;
+}
+
+export function fetchCopilotHistory(): Promise<CopilotHistoryEntry[]> {
+	return api<CopilotHistoryEntry[]>("/api/copilot/history");
+}
+
+export interface CopilotUsage {
+	calls: number;
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	costUsd: number;
+}
+
+export function fetchCopilotUsage(): Promise<CopilotUsage> {
+	return api<CopilotUsage>("/api/copilot/usage");
+}
+
+export interface CopilotSettings {
+	model: string;
+	isDefault: boolean;
+}
+
+export function fetchCopilotSettings(): Promise<CopilotSettings> {
+	return api<CopilotSettings>("/api/copilot/settings");
+}
+
+/** Throws with the server's real error text on failure (e.g. a 409 while a turn is in flight). */
+export async function saveCopilotSettings(model: string | null): Promise<void> {
+	const res = await fetch("/api/copilot/settings", {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ model }),
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok) {
+		const body = await res.json().catch(() => null);
+		throw new Error(
+			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
+		);
+	}
+}
+
+export async function sendCopilotMessage(body: string): Promise<void> {
+	const res = await fetch("/api/copilot/message", {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ subject: "Operator message", body }),
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+export async function confirmCopilotAction(
+	pendingActionId: string,
+): Promise<{ result?: string; error?: string }> {
+	const res = await fetch("/api/copilot/confirm", {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ pendingActionId }),
+	});
+	const body = await res.json().catch(() => ({}));
+	if (!res.ok) {
+		return {
+			error: (body as { error?: string }).error ?? `HTTP ${res.status}`,
+		};
+	}
+	return { result: (body as { result?: string }).result };
+}
+
+export async function dismissCopilotAction(
+	pendingActionId: string,
+): Promise<void> {
+	await fetch("/api/copilot/dismiss", {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ pendingActionId }),
+	});
+}
+
+// ── Scheduled wake-ups — ported from the mission-local dashboard's Schedule
+// tab (agent-runtime-worker/public/app.js), which has no cockpit surface.
+
+export interface ScheduledMessage {
+	id: string;
+	to: string[];
+	subject: string;
+	cronExpression: string | null;
+	scheduledFor: string | null;
+}
+
+export function fetchSchedule(missionId: string): Promise<ScheduledMessage[]> {
+	return api<ScheduledMessage[]>(`/missions/${mp(missionId)}/schedule`);
+}
+
+export async function cancelScheduledMessage(
+	missionId: string,
+	id: string,
+): Promise<void> {
+	const res = await fetch(`/missions/${mp(missionId)}/schedule/${mp(id)}`, {
+		method: "DELETE",
+		credentials: "include",
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok)
+		throw new Error(`HTTP ${res.status} cancelling scheduled message`);
+}
+
+// ── Daemon log — ported from index.html's log-viewer modal ─────────────────
+
+export async function fetchDaemonLog(
+	missionId: string,
+	lines = 300,
+): Promise<string> {
+	const res = await fetch(`/missions/${mp(missionId)}/log?lines=${lines}`, {
+		credentials: "include",
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok) throw new Error(`HTTP ${res.status} fetching log`);
+	return res.text();
+}
+
+// ── Mission/agent config editor — ported from index.html's renderConfigForm.
+// ADR-0022: only mission name/model/visionModel/timezone and per-agent
+// name/model/active/disabledSkills/disabledTools are editable, and only
+// while the mission is suspended. Every other field (id, supervisor,
+// systemPrompt, initialMentalMap, limits, linuxUser, teamFiles,
+// missionCopilotLimits) must round-trip unmodified — the PUT is a full
+// replace, not a per-field patch, so omitting any of them silently clears
+// it server-side (missions.ts:1010-1013).
+
+export interface MissionConfigAgent {
+	id: string;
+	name?: string;
+	role?: string;
+	supervisor: string;
+	systemPrompt: string;
+	initialMentalMap: string;
+	model?: string;
+	active?: boolean;
+	disabledSkills?: string[];
+	disabledTools?: string[];
+	[key: string]: unknown;
+}
+
+export interface MissionConfigMission {
+	id: string;
+	name: string;
+	model?: string;
+	visionModel?: string;
+	timezone?: string;
+	[key: string]: unknown;
+}
+
+export interface MissionConfigData {
+	mission: MissionConfigMission;
+	agents: MissionConfigAgent[];
+	missionCopilotLimits?: unknown;
+	teamFiles: Array<{ path: string; content: string }>;
+	mentalMaps: Record<string, string>;
+}
+
+export function fetchMissionConfig(
+	missionId: string,
+): Promise<MissionConfigData> {
+	return api<MissionConfigData>(`/api/missions/${mp(missionId)}/config`);
+}
+
+/** Throws with the server's real error text on failure (e.g. 409 while not suspended). */
+export async function saveMissionConfig(
+	missionId: string,
+	payload: {
+		mission: MissionConfigMission;
+		agents: MissionConfigAgent[];
+		missionCopilotLimits: unknown;
+		teamFiles: Array<{ path: string; content: string }>;
+	},
+): Promise<void> {
+	const res = await fetch(`/api/missions/${mp(missionId)}/config`, {
+		method: "PUT",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok) {
+		const body = await res.json().catch(() => null);
+		throw new Error(
+			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
+		);
+	}
+}
+
+/** Just the fields the config editor needs to know whether editing is allowed right now. */
+export async function fetchMissionStatus(
+	missionId: string,
+): Promise<MissionStatusValue> {
+	const m = await api<{ status: MissionStatusValue }>(
+		`/api/missions/${mp(missionId)}`,
+	);
+	return m.status;
+}
+
+// ── Cross-mission stats — ported from index.html's Active Sessions cards ───
+
+export interface MissionStatsEntry {
+	unread: number;
+	spendTotal: number;
+	spendToday: number;
+	spendLastHour: number;
+	lastActivity: string | null;
+	snippet: string | null;
+}
+
+export function fetchMissionsStats(): Promise<
+	Record<string, MissionStatsEntry>
+> {
+	return api<Record<string, MissionStatsEntry>>("/api/missions/stats");
 }

@@ -1,20 +1,44 @@
 import { useEffect, useState } from "react";
+import { type AuthState, subscribeAuth } from "./auth";
+import { ConfigPanel } from "./ConfigPanel";
 import { ConversationsPanel } from "./ConversationsPanel";
+import { CopilotPanel } from "./CopilotPanel";
 import {
 	AuthError,
 	fetchMissions,
 	fetchObjectives,
 	type MissionSummary,
+	sendMessage,
 } from "./data";
 import { FilesPanel } from "./FilesPanel";
 import { LimitsPanel } from "./LimitsPanel";
+import { LoginScreen } from "./LoginScreen";
+import { LogPanel } from "./LogPanel";
+import { MissionsPanel } from "./MissionsPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
+import { SchedulePanel } from "./SchedulePanel";
 import { SAMPLE_TREE } from "./sample";
+import { TemplatesPanel } from "./TemplatesPanel";
 import { TracePanel } from "./TracePanel";
 import { TranscriptsPanel } from "./TranscriptsPanel";
 import type { FoldedTree } from "./types";
 
-type MainTab = "objectives" | "files" | "transcripts" | "trace" | "limits";
+/** Drives whether the cockpit shows the login screen or the rest of the app. */
+function useAuthState(): AuthState {
+	const [state, setState] = useState<AuthState>({ status: "loading" });
+	useEffect(() => subscribeAuth(setState), []);
+	return state;
+}
+
+type MainTab =
+	| "objectives"
+	| "files"
+	| "transcripts"
+	| "trace"
+	| "limits"
+	| "schedule"
+	| "log"
+	| "config";
 
 /** A "inspect turn →" deep link from Files into Transcripts. */
 interface TurnJump {
@@ -38,10 +62,24 @@ type View =
 	| { kind: "auth" }
 	| { kind: "error"; message: string };
 
-function useView(): View {
+/**
+ * refreshKey: bump to force the picker (no ?mission given) to re-fetch — e.g.
+ * after MissionsPanel creates/destroys a mission.
+ * authStatus: gates the fetch entirely — without this, useView() fired its
+ * fetchMissions()/fetchObjectives() call on every mount regardless of auth
+ * state, producing a benign-but-noisy 401 before sign-in, and — the real bug —
+ * never retried after a *successful* sign-in (view stayed stuck at
+ * `{kind:"auth"}` from the pre-sign-in 401 forever, since refreshKey never
+ * changes just because auth succeeded). Including authStatus in the deps
+ * makes any transition, especially signed-out→signed-in, trigger a fresh
+ * fetch.
+ */
+function useView(refreshKey: number, authStatus: AuthState["status"]): View {
 	const [view, setView] = useState<View>({ kind: "loading" });
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is a deliberate manual-refetch trigger, not a value read inside the effect
 	useEffect(() => {
+		if (authStatus !== "signed-in") return;
 		const mission = new URLSearchParams(window.location.search).get("mission");
 		let cancelled = false;
 
@@ -101,29 +139,45 @@ function useView(): View {
 								updatedAt: Date.now(),
 							},
 				);
-			} catch {
-				if (!cancelled)
-					setView({
-						kind: "ready",
-						tree: SAMPLE_TREE,
-						mission: null,
-						demo: true,
-						updatedAt: Date.now(),
-					});
+			} catch (e) {
+				if (cancelled) return;
+				// An expired/missing session must surface the login screen, not
+				// silently fall back to demo data — a signed-out operator hitting
+				// the bare cockpit URL used to see demo data with no indication
+				// anything was wrong (only the ?mission= branch above checked this).
+				if (e instanceof AuthError) {
+					setView({ kind: "auth" });
+					return;
+				}
+				setView({
+					kind: "ready",
+					tree: SAMPLE_TREE,
+					mission: null,
+					demo: true,
+					updatedAt: Date.now(),
+				});
 			}
 		})();
 
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [refreshKey, authStatus]);
 
 	return view;
+}
+
+interface AgentError {
+	agentId: string;
+	errorMessage: string;
+	transient: boolean;
 }
 
 interface MissionStatus {
 	running: Set<string>;
 	budgetPaused: boolean;
+	agentError: AgentError | null;
+	dismissAgentError: () => void;
 }
 
 /**
@@ -139,44 +193,110 @@ interface MissionStatus {
  * accrual (no per-LLM-call SSE push exists) — this is not a live spend
  * ticker, that's what the Limits panel's own fetch is for.
  */
+/**
+ * How long to wait for any message (a real event, or the server's periodic
+ * heartbeat comment — monitor-server.ts's SSE_HEARTBEAT_MS, 20s) before
+ * assuming the connection died silently and forcing a reconnect. A silent
+ * drop (the WireGuard control→mission path has a documented >60s idle-
+ * connection cutoff) never fires EventSource's own onerror, so native
+ * reconnect alone can't catch it — this watchdog is the backstop.
+ */
+const SSE_WATCHDOG_MS = 45_000;
+
 function useMissionStatus(missionId: string | null): MissionStatus {
 	const [running, setRunning] = useState<Set<string>>(new Set());
 	const [budgetPaused, setBudgetPaused] = useState(false);
+	const [agentError, setAgentError] = useState<AgentError | null>(null);
 	useEffect(() => {
 		setRunning(new Set());
 		setBudgetPaused(false);
+		setAgentError(null);
 		if (!missionId) return;
-		// withCredentials: the magi_session cookie carries auth, same as every
-		// fetch() call in data.ts — EventSource doesn't send cookies by default.
-		const es = new EventSource(
-			`/missions/${encodeURIComponent(missionId)}/events`,
-			{ withCredentials: true },
-		);
-		es.addEventListener("agent-status", (e) => {
-			try {
-				const d = JSON.parse((e as MessageEvent).data) as {
-					running?: string[];
-				};
-				setRunning(new Set(d.running ?? []));
-			} catch {
-				// Malformed event — ignore rather than crash the whole cockpit.
-			}
-		});
-		es.addEventListener("status", (e) => {
-			try {
-				const d = JSON.parse((e as MessageEvent).data) as {
-					budgetPaused?: boolean;
-				};
-				setBudgetPaused(!!d.budgetPaused);
-			} catch {
-				// Malformed event — ignore rather than crash the whole cockpit.
-			}
-		});
-		// No manual reconnect logic: the browser's native EventSource already
-		// retries automatically on a dropped connection.
-		return () => es.close();
+		const mid = missionId; // narrow once — TS doesn't carry the guard above into the nested connect()
+
+		let es: EventSource;
+		let watchdog: ReturnType<typeof setTimeout>;
+		let cancelled = false;
+
+		const resetWatchdog = () => {
+			clearTimeout(watchdog);
+			watchdog = setTimeout(connect, SSE_WATCHDOG_MS);
+		};
+
+		function connect() {
+			es?.close();
+			if (cancelled) return;
+			// withCredentials: the magi_session cookie carries auth, same as every
+			// fetch() call in data.ts — EventSource doesn't send cookies by default.
+			es = new EventSource(`/missions/${encodeURIComponent(mid)}/events`, {
+				withCredentials: true,
+			});
+			es.onopen = resetWatchdog;
+			es.onerror = resetWatchdog;
+			// Server's periodic keepalive (monitor-server.ts's SSE_HEARTBEAT_MS) —
+			// sent as a real event, not a `:`-comment, specifically so it's
+			// observable here and can reset the watchdog below.
+			es.addEventListener("ping", resetWatchdog);
+			es.addEventListener("agent-status", (e) => {
+				resetWatchdog();
+				try {
+					const d = JSON.parse((e as MessageEvent).data) as {
+						running?: string[];
+					};
+					setRunning(new Set(d.running ?? []));
+				} catch {
+					// Malformed event — ignore rather than crash the whole cockpit.
+				}
+			});
+			es.addEventListener("status", (e) => {
+				resetWatchdog();
+				try {
+					const d = JSON.parse((e as MessageEvent).data) as {
+						budgetPaused?: boolean;
+					};
+					setBudgetPaused(!!d.budgetPaused);
+				} catch {
+					// Malformed event — ignore rather than crash the whole cockpit.
+				}
+			});
+			// Ported from app.js's showAgentErrorBanner — the daemon already fires
+			// this on a provider failure, but neither the cockpit nor (until now)
+			// any part of it actually listened for it.
+			es.addEventListener("agent-error", (e) => {
+				resetWatchdog();
+				try {
+					const d = JSON.parse((e as MessageEvent).data) as {
+						agentId?: string;
+						errorMessage?: string;
+						transient?: boolean;
+					};
+					if (d.agentId && d.errorMessage) {
+						setAgentError({
+							agentId: d.agentId,
+							errorMessage: d.errorMessage,
+							transient: !!d.transient,
+						});
+					}
+				} catch {
+					// Malformed event — ignore rather than crash the whole cockpit.
+				}
+			});
+			resetWatchdog();
+		}
+
+		connect();
+		return () => {
+			cancelled = true;
+			clearTimeout(watchdog);
+			es?.close();
+		};
 	}, [missionId]);
-	return { running, budgetPaused };
+	return {
+		running,
+		budgetPaused,
+		agentError,
+		dismissAgentError: () => setAgentError(null),
+	};
 }
 
 function Header({
@@ -215,21 +335,86 @@ function Header({
 	);
 }
 
-export function App() {
-	const view = useView();
-	const { running: runningAgents, budgetPaused } = useMissionStatus(
-		view.kind === "ready" ? view.mission : null,
+/** Ported from app.js's showAgentErrorBanner/hideAgentErrorBanner (agent-runtime-worker/public/app.js). */
+function AgentErrorBanner({
+	error,
+	missionId,
+	onDismiss,
+}: {
+	error: AgentError;
+	missionId: string;
+	onDismiss: () => void;
+}) {
+	const [resuming, setResuming] = useState(false);
+	const short =
+		error.errorMessage.length > 120
+			? `${error.errorMessage.slice(0, 120)}…`
+			: error.errorMessage;
+
+	async function handleResume() {
+		setResuming(true);
+		try {
+			await sendMessage(
+				missionId,
+				[error.agentId],
+				"A technical issue (LLM provider error) interrupted your previous session. The issue has been resolved. Review your mental map to recall where you were, then continue your work.",
+				"Resume after technical interruption",
+			);
+			onDismiss();
+		} catch {
+			setResuming(false);
+		}
+	}
+
+	return (
+		<div className="agent-error-banner">
+			<span className="ae-icon">✗</span>
+			<span className="ae-msg">
+				Agent {error.agentId} stopped — {short}
+			</span>
+			<span className="ae-hint mut">
+				{error.transient
+					? "Transient error (rate limit / overload) — the agent will retry automatically on the next wakeup."
+					: "Provider error (credit exhaustion or auth failure) — resolve the issue then click Resume."}
+			</span>
+			<button type="button" className="rail-btn" onClick={onDismiss}>
+				Dismiss
+			</button>
+			{!error.transient && (
+				<button
+					type="button"
+					className="rail-btn"
+					disabled={resuming}
+					onClick={handleResume}
+				>
+					{resuming ? "Sending…" : "Resume"}
+				</button>
+			)}
+		</div>
 	);
+}
+
+export function App() {
+	const authState = useAuthState();
+	const [refreshKey, setRefreshKey] = useState(0);
+	const view = useView(refreshKey, authState.status);
+	const {
+		running: runningAgents,
+		budgetPaused,
+		agentError,
+		dismissAgentError,
+	} = useMissionStatus(view.kind === "ready" ? view.mission : null);
 	const [openAgent, setOpenAgent] = useState<string | null>(null);
 	const [mainTab, setMainTab] = useState<MainTab>("objectives");
 	const [turnJump, setTurnJump] = useState<TurnJump | null>(null);
+	const [homeTab, setHomeTab] = useState<"missions" | "templates">("missions");
 
 	const inspectTurn = (agent: string, turn: number) => {
 		setMainTab("transcripts");
 		setTurnJump({ agent, turn });
 	};
 
-	if (view.kind === "loading") {
+	if (authState.status === "loading" || view.kind === "loading") {
 		return (
 			<div className="app">
 				<Header subtitle="loading…" />
@@ -240,17 +425,16 @@ export function App() {
 		);
 	}
 
-	if (view.kind === "auth") {
+	// Proactive: no session at all. Reactive backstop: view.kind === "auth" is
+	// set when a fetch 401s mid-session (cookie expired) even though
+	// authState hadn't caught up yet — same login screen either way.
+	if (authState.status === "signed-out" || view.kind === "auth") {
 		return (
-			<div className="app">
-				<Header subtitle="not signed in" />
-				<main>
-					<p className="mut">
-						You're not signed in. Open the <a href="/">dashboard</a> to sign in,
-						then return here.
-					</p>
-				</main>
-			</div>
+			<LoginScreen
+				initialError={
+					authState.status === "signed-out" ? authState.error : null
+				}
+			/>
 		);
 	}
 
@@ -267,113 +451,171 @@ export function App() {
 
 	if (view.kind === "picker") {
 		return (
-			<div className="app">
-				<Header subtitle="select a mission" />
-				<main>
-					<h2 className="sec">Your missions</h2>
-					<ul className="missions">
-						{view.missions.map((m) => (
-							<li key={m.missionId}>
-								<a href={`?mission=${encodeURIComponent(m.missionId)}`}>
-									{m.name || m.missionId}
-								</a>
-							</li>
-						))}
-					</ul>
-				</main>
+			<div className="app-shell">
+				<div className="app">
+					<Header subtitle="select a mission" />
+					<nav className="home-tabs">
+						<button
+							type="button"
+							className={`home-tab${homeTab === "missions" ? " home-tab-active" : ""}`}
+							onClick={() => setHomeTab("missions")}
+						>
+							Missions
+						</button>
+						<button
+							type="button"
+							className={`home-tab${homeTab === "templates" ? " home-tab-active" : ""}`}
+							onClick={() => setHomeTab("templates")}
+						>
+							Templates
+						</button>
+					</nav>
+					{homeTab === "missions" ? (
+						<MissionsPanel
+							missions={view.missions}
+							onRefresh={() => setRefreshKey((k) => k + 1)}
+							initialTemplateId={new URLSearchParams(
+								window.location.search,
+							).get("launch")}
+						/>
+					) : (
+						<TemplatesPanel
+							onLaunch={(templateId) => {
+								window.location.search = `?launch=${encodeURIComponent(templateId)}`;
+							}}
+						/>
+					)}
+				</div>
+				<CopilotPanel />
 			</div>
 		);
 	}
 
 	const updated = new Date(view.updatedAt).toLocaleTimeString();
 	return (
-		<div className="app">
-			<Header
-				subtitle={
-					view.demo
-						? "demo data — append ?mission=<id> for a live mission"
-						: `● live · updated ${updated}`
-				}
-				tree={view.tree}
-				budgetPaused={view.demo ? false : budgetPaused}
-			/>
-			<div className="cols">
-				<ConversationsPanel
-					missionId={view.mission}
-					openAgent={openAgent}
-					onOpened={() => setOpenAgent(null)}
-					runningAgents={runningAgents}
+		<div className="app-shell">
+			<div className="app">
+				<Header
+					subtitle={
+						view.demo
+							? "demo data — append ?mission=<id> for a live mission"
+							: `● live · updated ${updated}`
+					}
+					tree={view.tree}
+					budgetPaused={view.demo ? false : budgetPaused}
 				/>
-				<main className="col-main">
-					<nav className="tabs">
-						<button
-							type="button"
-							className={`tab ${mainTab === "objectives" ? "on" : ""}`}
-							onClick={() => setMainTab("objectives")}
-						>
-							Objectives
-						</button>
-						<button
-							type="button"
-							className={`tab ${mainTab === "files" ? "on" : ""}`}
-							onClick={() => setMainTab("files")}
-						>
-							Files
-						</button>
-						<button
-							type="button"
-							className={`tab ${mainTab === "transcripts" ? "on" : ""}`}
-							onClick={() => setMainTab("transcripts")}
-						>
-							Transcripts
-						</button>
-						<button
-							type="button"
-							className={`tab ${mainTab === "trace" ? "on" : ""}`}
-							onClick={() => setMainTab("trace")}
-						>
-							Trace
-						</button>
-						<button
-							type="button"
-							className={`tab ${mainTab === "limits" ? "on" : ""}`}
-							onClick={() => setMainTab("limits")}
-						>
-							Limits
-						</button>
-					</nav>
-					<div className="tab-body">
-						{mainTab === "objectives" && (
-							<ObjectivesPanel
-								tree={view.tree}
-								missionId={view.mission}
-								onAgentClick={setOpenAgent}
-							/>
-						)}
-						{mainTab === "files" && (
-							<FilesPanel
-								missionId={view.mission}
-								onInspectTurn={inspectTurn}
-							/>
-						)}
-						{mainTab === "transcripts" && (
-							<TranscriptsPanel
-								missionId={view.mission}
-								jumpTo={turnJump}
-								onJumped={() => setTurnJump(null)}
-								runningAgents={runningAgents}
-							/>
-						)}
-						{mainTab === "trace" && (
-							<TracePanel
-								missionId={view.mission}
-								onInspectTurn={inspectTurn}
-							/>
-						)}
-						{mainTab === "limits" && <LimitsPanel missionId={view.mission} />}
-					</div>
-				</main>
+				{agentError && view.mission && (
+					<AgentErrorBanner
+						error={agentError}
+						missionId={view.mission}
+						onDismiss={dismissAgentError}
+					/>
+				)}
+				<div className="cols">
+					<ConversationsPanel
+						missionId={view.mission}
+						openAgent={openAgent}
+						onOpened={() => setOpenAgent(null)}
+						runningAgents={runningAgents}
+					/>
+					<main className="col-main">
+						<nav className="tabs">
+							<button
+								type="button"
+								className={`tab ${mainTab === "objectives" ? "on" : ""}`}
+								onClick={() => setMainTab("objectives")}
+							>
+								Objectives
+							</button>
+							<button
+								type="button"
+								className={`tab ${mainTab === "files" ? "on" : ""}`}
+								onClick={() => setMainTab("files")}
+							>
+								Files
+							</button>
+							<button
+								type="button"
+								className={`tab ${mainTab === "transcripts" ? "on" : ""}`}
+								onClick={() => setMainTab("transcripts")}
+							>
+								Transcripts
+							</button>
+							<button
+								type="button"
+								className={`tab ${mainTab === "trace" ? "on" : ""}`}
+								onClick={() => setMainTab("trace")}
+							>
+								Trace
+							</button>
+							<button
+								type="button"
+								className={`tab ${mainTab === "limits" ? "on" : ""}`}
+								onClick={() => setMainTab("limits")}
+							>
+								Limits
+							</button>
+							<button
+								type="button"
+								className={`tab ${mainTab === "schedule" ? "on" : ""}`}
+								onClick={() => setMainTab("schedule")}
+							>
+								Schedule
+							</button>
+							<button
+								type="button"
+								className={`tab ${mainTab === "config" ? "on" : ""}`}
+								onClick={() => setMainTab("config")}
+							>
+								Config
+							</button>
+							<button
+								type="button"
+								className={`tab ${mainTab === "log" ? "on" : ""}`}
+								onClick={() => setMainTab("log")}
+							>
+								Log
+							</button>
+						</nav>
+						<div className="tab-body">
+							{mainTab === "objectives" && (
+								<ObjectivesPanel
+									tree={view.tree}
+									missionId={view.mission}
+									onAgentClick={setOpenAgent}
+								/>
+							)}
+							{mainTab === "files" && (
+								<FilesPanel
+									missionId={view.mission}
+									onInspectTurn={inspectTurn}
+								/>
+							)}
+							{mainTab === "transcripts" && (
+								<TranscriptsPanel
+									missionId={view.mission}
+									jumpTo={turnJump}
+									onJumped={() => setTurnJump(null)}
+									runningAgents={runningAgents}
+								/>
+							)}
+							{mainTab === "trace" && (
+								<TracePanel
+									missionId={view.mission}
+									onInspectTurn={inspectTurn}
+								/>
+							)}
+							{mainTab === "limits" && <LimitsPanel missionId={view.mission} />}
+							{mainTab === "schedule" && (
+								<SchedulePanel missionId={view.mission} />
+							)}
+							{mainTab === "config" && <ConfigPanel missionId={view.mission} />}
+							{mainTab === "log" && <LogPanel missionId={view.mission} />}
+						</div>
+					</main>
+				</div>
 			</div>
+			<CopilotPanel />
 		</div>
 	);
 }

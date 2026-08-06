@@ -644,7 +644,7 @@ gh workflow run "Deploy control plane" --ref main
 not committed — it only exists because the CI workflow runs `npm run build -w @magi/cockpit`
 *before* `docker build` (the Dockerfile itself does not build it — see the comment there). A
 local `flyctl deploy --config fly.control-dev.toml` skips that step entirely: if you have a
-stale or absent local `packages/control-plane/public/cockpit/` build, that stale bundle (or
+stale or absent local `packages/control-plane/public/` build, that stale bundle (or
 whatever `flyctl`'s own remote build produces) gets deployed instead, and — because bare
 `flyctl deploy` doesn't pin an explicit `--image` tag the way the CI workflow does — a later
 restart of the same machine is not guaranteed to still be running what you think you just
