@@ -675,10 +675,18 @@ export class MonitorServer {
 
 		// ── GET /schedule
 		if (url === "/schedule" && req.method === "GET") {
+			// Field names must match ScheduledMessageDoc (scheduler.ts) exactly:
+			// pending/delivered/cancelled/failed status, deliverAt (Date, doubles
+			// as "next fire time" for cron entries too — scheduler.ts re-arms a
+			// delivered cron doc by writing its next occurrence back into this
+			// same field), optional cron expression string. The previous version
+			// read cronExpression/scheduledFor and filtered on deliveredAt — none
+			// of which are real fields on this collection, so every row always
+			// came back with a blank "when" column.
 			const docs = await this.db
 				.collection("scheduled_messages")
-				.find({ missionId: this.missionId, deliveredAt: { $exists: false } })
-				.sort({ scheduledFor: 1 })
+				.find({ missionId: this.missionId, status: "pending" })
+				.sort({ deliverAt: 1 })
 				.limit(50)
 				.toArray();
 			res.writeHead(200, { "Content-Type": "application/json" });
@@ -688,8 +696,10 @@ export class MonitorServer {
 						id: String(d._id),
 						to: d.to ?? [],
 						subject: d.subject ?? "",
-						cronExpression: d.cronExpression ?? null,
-						scheduledFor: d.scheduledFor ?? null,
+						cronExpression: d.cron ?? null,
+						scheduledFor: d.deliverAt
+							? new Date(d.deliverAt).toISOString()
+							: null,
 					})),
 				),
 			);
