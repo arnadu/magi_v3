@@ -394,6 +394,17 @@ function AgentErrorBanner({
 	);
 }
 
+function LoadingView() {
+	return (
+		<div className="app">
+			<Header subtitle="loading…" />
+			<main>
+				<p className="mut">Loading objectives…</p>
+			</main>
+		</div>
+	);
+}
+
 export function App() {
 	const authState = useAuthState();
 	const [refreshKey, setRefreshKey] = useState(0);
@@ -414,15 +425,8 @@ export function App() {
 		setTurnJump({ agent, turn });
 	};
 
-	if (authState.status === "loading" || view.kind === "loading") {
-		return (
-			<div className="app">
-				<Header subtitle="loading…" />
-				<main>
-					<p className="mut">Loading objectives…</p>
-				</main>
-			</div>
-		);
+	if (authState.status === "loading") {
+		return <LoadingView />;
 	}
 
 	// Proactive: no session at all. Reactive backstop: view.kind === "auth" is
@@ -436,6 +440,13 @@ export function App() {
 				}
 			/>
 		);
+	}
+
+	// Only meaningful once signed in — useView()'s effect is a no-op while
+	// signed out, so view.kind stays "loading" forever in that state (that's
+	// fine, it's masked by the signed-out gate above, not this one).
+	if (view.kind === "loading") {
+		return <LoadingView />;
 	}
 
 	if (view.kind === "error") {
