@@ -72,6 +72,20 @@ header h1 {
 	margin: 0;
 	font-weight: 600;
 }
+.header-back-btn {
+	background: none;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 4px 10px;
+	color: var(--txt);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.header-back-btn:hover {
+	border-color: var(--info);
+	color: var(--info);
+}
 .dot {
 	width: 9px;
 	height: 9px;
@@ -340,6 +354,10 @@ a {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	max-width: 360px;
+}
+.mission-room-over {
+	color: var(--bad);
+	font-weight: 600;
 }
 .mission-unread-badge {
 	font-size: 10.5px;
@@ -1867,6 +1885,20 @@ h2.sec {
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+	position: relative;
+}
+.copilot-resize {
+	position: absolute;
+	left: -3px;
+	top: 0;
+	bottom: 0;
+	width: 7px;
+	cursor: col-resize;
+	z-index: 5;
+}
+.copilot-resize:hover {
+	background: var(--info);
+	opacity: 0.4;
 }
 .copilot-header {
 	padding: 12px 16px;

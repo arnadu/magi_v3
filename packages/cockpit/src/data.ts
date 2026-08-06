@@ -40,6 +40,8 @@ export interface MissionSummary {
 	status: MissionStatusValue;
 	createdAt: string;
 	errorMessage?: string;
+	/** GET /api/missions returns the full stored doc (no projection) — mission.maxCostUsd rides along for free. */
+	mission?: { maxCostUsd?: number | null };
 }
 
 /** The current user's missions (for the picker when no ?mission is given). */

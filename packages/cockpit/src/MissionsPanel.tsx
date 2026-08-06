@@ -186,12 +186,30 @@ function CreateMissionForm({
 	);
 }
 
-function StatsLine({ s }: { s: MissionStatsEntry }) {
+function StatsLine({
+	s,
+	maxCostUsd,
+}: {
+	s: MissionStatsEntry;
+	maxCostUsd?: number | null;
+}) {
+	const room = maxCostUsd != null ? maxCostUsd - s.spendTotal : null;
 	return (
 		<div className="mission-row-stats mut">
 			<span>${s.spendLastHour.toFixed(3)}/hr</span>
 			<span>${s.spendToday.toFixed(3)} today</span>
-			<span>${s.spendTotal.toFixed(2)} total</span>
+			{maxCostUsd != null ? (
+				<span
+					className={
+						room != null && room <= 0 ? "mission-room-over" : undefined
+					}
+				>
+					${s.spendTotal.toFixed(2)} / ${maxCostUsd.toFixed(2)} cap
+					{room != null && ` — $${room.toFixed(2)} left`}
+				</span>
+			) : (
+				<span>${s.spendTotal.toFixed(2)} total (no cap set)</span>
+			)}
 			{s.lastActivity && <span>active {relativeTime(s.lastActivity)}</span>}
 			{s.snippet && <span className="mission-snippet">{s.snippet}</span>}
 		</div>
@@ -217,6 +235,7 @@ export function MissionsPanel({
 	// Ported from index.html's Active Sessions cards (unread/spend/last-activity/
 	// snippet) — refetches whenever the mission list itself refreshes (a new
 	// array reference from the parent), same cadence the old dashboard used.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: missions is a deliberate refetch trigger (new array reference from the parent), not read inside the effect
 	useEffect(() => {
 		let cancelled = false;
 		fetchMissionsStats()
@@ -230,7 +249,7 @@ export function MissionsPanel({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [missions]);
 
 	async function runAction(id: string, action: (id: string) => Promise<void>) {
 		setBusyId(id);
@@ -353,7 +372,7 @@ export function MissionsPanel({
 								</div>
 							</div>
 							{s && (m.status === "running" || m.status === "suspended") && (
-								<StatsLine s={s} />
+								<StatsLine s={s} maxCostUsd={m.mission?.maxCostUsd} />
 							)}
 						</li>
 					);

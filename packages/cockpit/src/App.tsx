@@ -303,10 +303,13 @@ function Header({
 	subtitle,
 	tree,
 	budgetPaused,
+	onBack,
 }: {
 	subtitle: string;
 	tree?: FoldedTree;
 	budgetPaused?: boolean;
+	/** Shown as a "← Missions" link when set — only the per-mission view has anywhere to go back to. */
+	onBack?: () => void;
 }) {
 	const spent = tree ? tree.objectives.reduce((a, o) => a + o.costUsd, 0) : 0;
 	const budget = tree
@@ -314,6 +317,11 @@ function Header({
 		: 0;
 	return (
 		<header>
+			{onBack && (
+				<button type="button" className="header-back-btn" onClick={onBack}>
+					← Missions
+				</button>
+			)}
 			<h1>
 				<span className="dot" /> Mission Cockpit
 			</h1>
@@ -504,129 +512,129 @@ export function App() {
 
 	const updated = new Date(view.updatedAt).toLocaleTimeString();
 	return (
-		<div className="app-shell">
-			<div className="app">
-				<Header
-					subtitle={
-						view.demo
-							? "demo data — append ?mission=<id> for a live mission"
-							: `● live · updated ${updated}`
-					}
-					tree={view.tree}
-					budgetPaused={view.demo ? false : budgetPaused}
+		<div className="app">
+			<Header
+				subtitle={
+					view.demo
+						? "demo data — append ?mission=<id> for a live mission"
+						: `● live · updated ${updated}`
+				}
+				tree={view.tree}
+				budgetPaused={view.demo ? false : budgetPaused}
+				onBack={() => {
+					window.location.search = "";
+				}}
+			/>
+			{agentError && view.mission && (
+				<AgentErrorBanner
+					error={agentError}
+					missionId={view.mission}
+					onDismiss={dismissAgentError}
 				/>
-				{agentError && view.mission && (
-					<AgentErrorBanner
-						error={agentError}
-						missionId={view.mission}
-						onDismiss={dismissAgentError}
-					/>
-				)}
-				<div className="cols">
-					<ConversationsPanel
-						missionId={view.mission}
-						openAgent={openAgent}
-						onOpened={() => setOpenAgent(null)}
-						runningAgents={runningAgents}
-					/>
-					<main className="col-main">
-						<nav className="tabs">
-							<button
-								type="button"
-								className={`tab ${mainTab === "objectives" ? "on" : ""}`}
-								onClick={() => setMainTab("objectives")}
-							>
-								Objectives
-							</button>
-							<button
-								type="button"
-								className={`tab ${mainTab === "files" ? "on" : ""}`}
-								onClick={() => setMainTab("files")}
-							>
-								Files
-							</button>
-							<button
-								type="button"
-								className={`tab ${mainTab === "transcripts" ? "on" : ""}`}
-								onClick={() => setMainTab("transcripts")}
-							>
-								Transcripts
-							</button>
-							<button
-								type="button"
-								className={`tab ${mainTab === "trace" ? "on" : ""}`}
-								onClick={() => setMainTab("trace")}
-							>
-								Trace
-							</button>
-							<button
-								type="button"
-								className={`tab ${mainTab === "limits" ? "on" : ""}`}
-								onClick={() => setMainTab("limits")}
-							>
-								Limits
-							</button>
-							<button
-								type="button"
-								className={`tab ${mainTab === "schedule" ? "on" : ""}`}
-								onClick={() => setMainTab("schedule")}
-							>
-								Schedule
-							</button>
-							<button
-								type="button"
-								className={`tab ${mainTab === "config" ? "on" : ""}`}
-								onClick={() => setMainTab("config")}
-							>
-								Config
-							</button>
-							<button
-								type="button"
-								className={`tab ${mainTab === "log" ? "on" : ""}`}
-								onClick={() => setMainTab("log")}
-							>
-								Log
-							</button>
-						</nav>
-						<div className="tab-body">
-							{mainTab === "objectives" && (
-								<ObjectivesPanel
-									tree={view.tree}
-									missionId={view.mission}
-									onAgentClick={setOpenAgent}
-								/>
-							)}
-							{mainTab === "files" && (
-								<FilesPanel
-									missionId={view.mission}
-									onInspectTurn={inspectTurn}
-								/>
-							)}
-							{mainTab === "transcripts" && (
-								<TranscriptsPanel
-									missionId={view.mission}
-									jumpTo={turnJump}
-									onJumped={() => setTurnJump(null)}
-									runningAgents={runningAgents}
-								/>
-							)}
-							{mainTab === "trace" && (
-								<TracePanel
-									missionId={view.mission}
-									onInspectTurn={inspectTurn}
-								/>
-							)}
-							{mainTab === "limits" && <LimitsPanel missionId={view.mission} />}
-							{mainTab === "schedule" && (
-								<SchedulePanel missionId={view.mission} />
-							)}
-							{mainTab === "config" && <ConfigPanel missionId={view.mission} />}
-							{mainTab === "log" && <LogPanel missionId={view.mission} />}
-						</div>
-					</main>
-				</div>
+			)}
+			<div className="cols">
+				<ConversationsPanel
+					missionId={view.mission}
+					openAgent={openAgent}
+					onOpened={() => setOpenAgent(null)}
+					runningAgents={runningAgents}
+				/>
+				<main className="col-main">
+					<nav className="tabs">
+						<button
+							type="button"
+							className={`tab ${mainTab === "objectives" ? "on" : ""}`}
+							onClick={() => setMainTab("objectives")}
+						>
+							Objectives
+						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "files" ? "on" : ""}`}
+							onClick={() => setMainTab("files")}
+						>
+							Files
+						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "transcripts" ? "on" : ""}`}
+							onClick={() => setMainTab("transcripts")}
+						>
+							Transcripts
+						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "trace" ? "on" : ""}`}
+							onClick={() => setMainTab("trace")}
+						>
+							Trace
+						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "limits" ? "on" : ""}`}
+							onClick={() => setMainTab("limits")}
+						>
+							Limits
+						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "schedule" ? "on" : ""}`}
+							onClick={() => setMainTab("schedule")}
+						>
+							Schedule
+						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "config" ? "on" : ""}`}
+							onClick={() => setMainTab("config")}
+						>
+							Config
+						</button>
+						<button
+							type="button"
+							className={`tab ${mainTab === "log" ? "on" : ""}`}
+							onClick={() => setMainTab("log")}
+						>
+							Log
+						</button>
+					</nav>
+					<div className="tab-body">
+						{mainTab === "objectives" && (
+							<ObjectivesPanel
+								tree={view.tree}
+								missionId={view.mission}
+								onAgentClick={setOpenAgent}
+							/>
+						)}
+						{mainTab === "files" && (
+							<FilesPanel
+								missionId={view.mission}
+								onInspectTurn={inspectTurn}
+							/>
+						)}
+						{mainTab === "transcripts" && (
+							<TranscriptsPanel
+								missionId={view.mission}
+								jumpTo={turnJump}
+								onJumped={() => setTurnJump(null)}
+								runningAgents={runningAgents}
+							/>
+						)}
+						{mainTab === "trace" && (
+							<TracePanel
+								missionId={view.mission}
+								onInspectTurn={inspectTurn}
+							/>
+						)}
+						{mainTab === "limits" && <LimitsPanel missionId={view.mission} />}
+						{mainTab === "schedule" && (
+							<SchedulePanel missionId={view.mission} />
+						)}
+						{mainTab === "config" && <ConfigPanel missionId={view.mission} />}
+						{mainTab === "log" && <LogPanel missionId={view.mission} />}
+					</div>
+				</main>
 			</div>
-			<CopilotPanel />
 		</div>
 	);
 }

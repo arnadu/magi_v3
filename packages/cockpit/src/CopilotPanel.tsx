@@ -60,7 +60,47 @@ function formatToolArgs(args: unknown): string {
 	return s.length > 70 ? `${s.slice(0, 70)}…` : s;
 }
 
+const WIDTH_STORAGE_KEY = "magi-copilot-panel-width";
+const DEFAULT_WIDTH = 380;
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 720;
+
+function loadStoredWidth(): number {
+	const raw = localStorage.getItem(WIDTH_STORAGE_KEY);
+	const n = raw ? Number(raw) : Number.NaN;
+	return Number.isFinite(n)
+		? Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, n))
+		: DEFAULT_WIDTH;
+}
+
 export function CopilotPanel() {
+	const [width, setWidth] = useState(loadStoredWidth);
+
+	// Matches ConversationsPanel's startResize (same closure-over-`last`
+	// pattern, direct position rather than delta tracking — no stale-closure
+	// risk either way). The rail derives width straight from clientX because
+	// it's pinned to the viewport's left edge; this panel is pinned to the
+	// right edge instead, so width is the distance from clientX to the right
+	// edge of the viewport.
+	const startResize = (e: React.MouseEvent) => {
+		e.preventDefault();
+		let last = width;
+		const onMove = (ev: MouseEvent) => {
+			last = Math.min(
+				MAX_WIDTH,
+				Math.max(MIN_WIDTH, window.innerWidth - ev.clientX),
+			);
+			setWidth(last);
+		};
+		const onUp = () => {
+			document.removeEventListener("mousemove", onMove);
+			document.removeEventListener("mouseup", onUp);
+			localStorage.setItem(WIDTH_STORAGE_KEY, String(last));
+		};
+		document.addEventListener("mousemove", onMove);
+		document.addEventListener("mouseup", onUp);
+	};
+
 	const [entries, setEntries] = useState<Entry[]>([]);
 	const [thinking, setThinking] = useState(false);
 	const [usage, setUsage] = useState<{
@@ -292,7 +332,13 @@ export function CopilotPanel() {
 	}
 
 	return (
-		<div className="copilot-panel">
+		<div className="copilot-panel" style={{ width }}>
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: drag-to-resize handle, matches ConversationsPanel's rail-resize */}
+			<div
+				className="copilot-resize"
+				onMouseDown={startResize}
+				title="Drag to resize"
+			/>
 			<div className="copilot-header">
 				<h3>MAGI Copilot</h3>
 				<div className="copilot-header-right">
