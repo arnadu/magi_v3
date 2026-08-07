@@ -185,8 +185,10 @@ export function createMailboxTools(
 			'Use "user" as a recipient id to send a message to the operator. ' +
 			"Messages are delivered to the recipient's inbox immediately. " +
 			"The body supports basic markdown (headers, bold/italic, code, links, " +
-			"tables, ```mermaid fenced diagrams). To show a chart, screenshot, or " +
-			"other image (e.g. one you produced with a Bash/matplotlib script), " +
+			"tables, ```mermaid fenced diagrams, $$...$$ block math via KaTeX — " +
+			"inline $...$ math is NOT supported, use $$ on its own lines instead). " +
+			"To show a chart, screenshot, or other image (e.g. one you produced " +
+			"with a Bash/matplotlib script), " +
 			"write it into $SHARED_DIR first, then embed it inline with " +
 			"`![caption](path/relative/to/SHARED_DIR/image.png)` — it renders in " +
 			"the operator's dashboard, not just as a downloadable file. Only " +
