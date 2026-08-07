@@ -86,6 +86,28 @@ header h1 {
 	border-color: var(--info);
 	color: var(--info);
 }
+.header-status-btn {
+	background: none;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 4px 10px;
+	color: var(--txt);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.header-status-btn:hover {
+	border-color: var(--warn);
+	color: var(--warn);
+}
+.header-status-btn:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+.header-status-error {
+	color: var(--bad);
+	font-size: 11px;
+}
 .dot {
 	width: 9px;
 	height: 9px;
