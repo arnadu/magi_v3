@@ -235,12 +235,14 @@ function FileViewer({
 	const [draft, setDraft] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
+	const [htmlView, setHtmlView] = useState<"rendered" | "source">("rendered");
 
 	useEffect(() => {
 		setNode(null);
 		setHistory(null);
 		setEditing(false);
 		setSaveError(null);
+		setHtmlView("rendered");
 		fetchFileNode(missionId, path).then(setNode, () => setNode(null));
 		fetchFileHistory(missionId, path).then(setHistory, () => setHistory([]));
 	}, [missionId, path]);
@@ -249,6 +251,7 @@ function FileViewer({
 	const ext = extOf(name);
 	const editable =
 		node?.type === "file" && node.encoding === "text" && !node.truncated;
+	const isHtml = ext === ".html" || ext === ".htm";
 
 	async function handleSave() {
 		setSaving(true);
@@ -299,6 +302,17 @@ function FileViewer({
 					</>
 				) : (
 					<>
+						{isHtml && (
+							<button
+								type="button"
+								className="rail-btn"
+								onClick={() =>
+									setHtmlView((v) => (v === "rendered" ? "source" : "rendered"))
+								}
+							>
+								{htmlView === "rendered" ? "</> Source" : "👁 Preview"}
+							</button>
+						)}
 						{editable && (
 							<button
 								type="button"
@@ -356,6 +370,20 @@ function FileViewer({
 						</a>{" "}
 						to view.
 					</p>
+				) : isHtml && htmlView === "rendered" ? (
+					<iframe
+						className="fv-html-frame"
+						title={name}
+						srcDoc={node.content ?? ""}
+						// No allow-same-origin: the frame gets an opaque origin, so
+						// agent-authored (possibly web-influenced, per TB-8) HTML/JS
+						// cannot read the magi_session cookie, call the control-plane
+						// API with the operator's credentials, or reach the parent
+						// DOM — the same trust boundary already applied to mental-map
+						// HTML elsewhere in the cockpit, just via sandboxing instead of
+						// stripping tags, since this feature needs live script to run.
+						sandbox="allow-scripts"
+					/>
 				) : ext === ".md" || ext === ".markdown" ? (
 					<Markdown text={node.content ?? ""} />
 				) : ext === ".csv" ? (

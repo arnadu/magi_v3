@@ -1404,6 +1404,13 @@ h2.sec {
 	border-radius: 6px;
 	border: 1px solid var(--line);
 }
+.fv-html-frame {
+	width: 100%;
+	height: 75vh;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: #fff;
+}
 .md h1,
 .md h2,
 .md h3 {

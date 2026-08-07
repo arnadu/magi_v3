@@ -1,6 +1,13 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 27 — UI consolidation: TB-12/TB-13's client-side implementation moved
+**Last updated:** Sprint 27 — Files panel HTML/JS preview: new trust boundary TB-20. Agent-authored
+`.html`/`.htm` files render live (script execution included) in a sandboxed `<iframe
+sandbox="allow-scripts">` with `allow-same-origin` deliberately omitted, giving the frame an opaque
+origin with no access to the `magi_session` cookie, the control-plane API, or the parent DOM. Not a
+finding — designed safe from the start, same pattern used by CodeSandbox/JSFiddle-style live
+previews.
+
+**Previously:** Sprint 27 — UI consolidation: TB-12/TB-13's client-side implementation moved
 from the retired `packages/control-plane/public/index.html` to `packages/cockpit/src/auth.ts`
 (same mechanism — Firebase Google sign-in + `magi_session` cookie — via the bundled `firebase`
 npm package instead of an unpinned CDN compat SDK, closing F-018 as a side effect). No new trust
@@ -232,6 +239,7 @@ graph TB
 | **TB-17** | Daemon (magi-operator) ↔ mission-copilot tool-executor (own per-agent `linuxUser`) | Same mechanism as TB-3, on the execution plane: `sudo -u <copilot's own linuxUser>`, clean env; the mission copilot gets a real per-agent OS user and workspace ACL through the exact same provisioning path (`ensureAgentUsers`) as any other teammate — narrower than TB-15's shared `magi-copilot` identity, which is one identity shared by every user's control-plane copilot | Outbound: commands; Inbound: stdout/stderr |
 | **TB-18** | Mission copilot → own mission's MonitorServer (loopback) | HTTP to `127.0.0.1:{monitorPort}`; reuses the machine's existing `MONITOR_TOKEN` (no new secret) for mutating routes; GET routes exempt (`tokenOk()` fails open when unset, dev-mode only). **Amplifies TB-8** (prompt injection): unlike any other agent, the mission copilot reads every teammate's mailbox/mental-map/transcripts/files and can write into a teammate's mental map and the whole mission's config, so a successful injection against it has a larger blast radius than against any other agent | Bidirectional: elevated diagnostic reads + mutating writes (Families A/C/D/E/F) |
 | **TB-19** | Execution plane → control-plane GitHub proxy (`/api/mission-copilot`) | HTTPS; **new direction** — first inbound-from-execution-plane surface on the control plane. HMAC-verified: re-derives `deriveMonitorToken(missionId)` from the request body/query and compares to the `x-monitor-token` header (reuses TB-11's derive-and-compare mechanism, in reverse); fails **closed** on a missing/empty `MONITOR_SIGNING_KEY` (deliberate divergence from `tokenOk()`'s fail-open dev-mode behavior — this endpoint is public HTTPS, not loopback-only); rate-limited 20/min, default per-IP keying (naturally isolates per mission since each runs on its own stable WireGuard address) | Outbound: `ReportGithubIssue`/`ListGithubIssues` requests; Inbound: issue metadata; `GH_TOKEN` never leaves the control plane |
+| **TB-20** | Agent-authored file content (`.html`/`.htm`) → operator's browser (Files panel preview, Sprint 27) | `FileViewer` renders the file's raw text via `<iframe sandbox="allow-scripts" srcDoc={...}>` — deliberately omits `allow-same-origin`, so the frame gets a unique opaque origin: script inside it cannot read `document.cookie` (the `SameSite=Strict` `magi_session` cookie is unreachable regardless, since the frame's effective site differs from the real origin), cannot call control-plane APIs with the operator's credentials, and cannot reach the parent DOM. Same untrusted-content class as TB-8/TB-18 (agent output can be transitively web-influenced) — this boundary is new because it's the first place that content gets **live script execution** in the *operator's* browser rather than being escaped/stripped (contrast the mental-map viewer, which renders the equivalent risk as plain text instead) | Inbound only: file content into a sandboxed rendering context, nothing flows back out |
 
 ---
 
