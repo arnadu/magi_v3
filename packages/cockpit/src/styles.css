@@ -1441,6 +1441,13 @@ h2.sec {
 	background: none;
 	padding: 0;
 }
+.md-img {
+	max-width: 100%;
+	border-radius: 6px;
+	border: 1px solid var(--line);
+	margin: 0.4em 0;
+	display: block;
+}
 .md table {
 	border-collapse: collapse;
 	margin: 0.5em 0;

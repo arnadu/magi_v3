@@ -183,13 +183,26 @@ export function createMailboxTools(
 		description:
 			"Send a message to one or more agents or to the operator. " +
 			'Use "user" as a recipient id to send a message to the operator. ' +
-			"Messages are delivered to the recipient's inbox immediately.",
+			"Messages are delivered to the recipient's inbox immediately. " +
+			"The body supports basic markdown (headers, bold/italic, code, links, " +
+			"tables, ```mermaid fenced diagrams). To show a chart, screenshot, or " +
+			"other image (e.g. one you produced with a Bash/matplotlib script), " +
+			"write it into $SHARED_DIR first, then embed it inline with " +
+			"`![caption](path/relative/to/SHARED_DIR/image.png)` — it renders in " +
+			"the operator's dashboard, not just as a downloadable file. Only " +
+			"images already in the shared workspace render this way; a path in " +
+			"your own private workdir or an external URL will not.",
 		parameters: Type.Object({
 			to: Type.Array(Type.String(), {
 				description: 'Recipient agent ids (or "user" for the operator)',
 			}),
 			subject: Type.String({ description: "Message subject line" }),
-			body: Type.String({ description: "Message body" }),
+			body: Type.String({
+				description:
+					"Message body. Markdown supported, including " +
+					"![caption](path/in/SHARED_DIR.png) to embed an image already " +
+					"written to the shared workspace.",
+			}),
 		}),
 		async execute(_id, args) {
 			// The schema declares to: string[] for LLM-driven tool calls (always

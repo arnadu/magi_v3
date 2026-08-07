@@ -325,7 +325,11 @@ export function ConversationsPanel({
 								{m.subject && m.subject !== "Message from operator" && (
 									<div className="bub-subj">{m.subject}</div>
 								)}
-								<Markdown text={m.body} className="bub-body" />
+								<Markdown
+									text={m.body}
+									className="bub-body"
+									missionId={missionId ?? undefined}
+								/>
 							</div>
 						))}
 						<div ref={bottomRef} />

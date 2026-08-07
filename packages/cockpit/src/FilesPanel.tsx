@@ -385,7 +385,7 @@ function FileViewer({
 						sandbox="allow-scripts"
 					/>
 				) : ext === ".md" || ext === ".markdown" ? (
-					<Markdown text={node.content ?? ""} />
+					<Markdown text={node.content ?? ""} missionId={missionId} />
 				) : ext === ".csv" ? (
 					<CsvTable text={node.content ?? ""} />
 				) : ext === ".json" && !node.truncated ? (

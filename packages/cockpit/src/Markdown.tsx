@@ -47,12 +47,15 @@ let diagramSeq = 0;
 export function Markdown({
 	text,
 	className,
+	missionId,
 }: {
 	text: string;
 	className?: string;
+	/** Enables `![alt](path)` image rendering — see renderMarkdown()'s own doc comment. */
+	missionId?: string;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
-	const html = renderMarkdown(text);
+	const html = renderMarkdown(text, missionId);
 
 	// html isn't referenced in the body, but it's what produced ref.current's
 	// DOM content (via dangerouslySetInnerHTML below) — this must re-run

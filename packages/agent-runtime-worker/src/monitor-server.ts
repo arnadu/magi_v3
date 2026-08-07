@@ -1245,6 +1245,11 @@ export class MonitorServer {
 		const params = new URL(rawUrl, "http://x").searchParams;
 		const userPath = params.get("path") ?? "";
 		const asZip = params.get("format") === "zip";
+		// Sprint 27: lets a chat/mailbox message embed an inline <img src=...>
+		// pointing straight at this route (renderMarkdown's image support) —
+		// the default (no `inline`) keeps forcing a download, unchanged for the
+		// Files panel's own "Download" button and every other existing caller.
+		const inline = params.get("inline") === "1";
 
 		const abs = resolve(this.sharedDir, userPath);
 		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
@@ -1275,6 +1280,17 @@ export class MonitorServer {
 					res.writeHead(500, { "Content-Type": "application/json" });
 					res.end(JSON.stringify({ error: e.message }));
 				});
+			return;
+		}
+
+		const imageMime = inline
+			? IMAGE_MIME[extname(abs).toLowerCase()]
+			: undefined;
+		if (imageMime) {
+			// No Content-Disposition — this must render in an <img> tag, not
+			// prompt a save dialog.
+			res.writeHead(200, { "Content-Type": imageMime });
+			createReadStream(abs).pipe(res);
 			return;
 		}
 
