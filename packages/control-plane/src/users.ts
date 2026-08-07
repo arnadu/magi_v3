@@ -13,6 +13,12 @@ export interface UserDoc {
 	 * OpenRouter model ID" convention as team-config `model`/`visionModel`.
 	 */
 	copilotModel?: string;
+	/**
+	 * Lifetime spend cap for the user's own control-plane copilot, in USD.
+	 * Unset means unbounded. Enforced in copilot-router.ts's POST /message —
+	 * a synchronous gate on the next dispatch, not a mid-turn abort.
+	 */
+	copilotSpendCapUsd?: number;
 }
 
 /**
@@ -66,6 +72,34 @@ export async function setCopilotModel(
 			model
 				? { $set: { copilotModel: model } }
 				: { $unset: { copilotModel: "" } },
+			{ upsert: true },
+		);
+}
+
+/** Read a user's copilot spend cap (USD), if they've set one. Undefined = unbounded. */
+export async function getCopilotSpendCap(
+	db: Db,
+	uid: string,
+): Promise<number | undefined> {
+	const doc = await db
+		.collection<UserDoc>("users")
+		.findOne({ uid }, { projection: { copilotSpendCapUsd: 1 } });
+	return doc?.copilotSpendCapUsd;
+}
+
+/** Set (or clear, with undefined) a user's copilot spend cap. Upserts, same as setCopilotModel. */
+export async function setCopilotSpendCap(
+	db: Db,
+	uid: string,
+	capUsd: number | undefined,
+): Promise<void> {
+	await db
+		.collection<UserDoc>("users")
+		.updateOne(
+			{ uid },
+			capUsd !== undefined
+				? { $set: { copilotSpendCapUsd: capUsd } }
+				: { $unset: { copilotSpendCapUsd: "" } },
 			{ upsert: true },
 		);
 }

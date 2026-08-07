@@ -17,16 +17,20 @@ import {
 	type TeamConfig,
 } from "@magi/agent-config";
 import {
+	createMongoAgentStatsRepository,
 	createMongoMailboxRepository,
 	createMongoMissionConfigWriter,
+	StatsCollector,
 } from "@magi/agent-runtime-worker";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { type Collection, type Db, ObjectId } from "mongodb";
 import {
+	COPILOT_WORKDIR,
 	type CopilotDaemonHandle,
 	startCopilotDaemon,
 } from "./copilot-daemon.js";
+import { readCopilotFileNode } from "./copilot-files.js";
 import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
 import {
 	provisionMission,
@@ -35,7 +39,21 @@ import {
 } from "./fly-machines.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { getTemplate } from "./templates.js";
-import { getCopilotModel, setCopilotModel } from "./users.js";
+import {
+	queryLlmCall,
+	queryLlmCalls,
+	queryTranscript,
+	queryTurns,
+} from "./transcript-queries.js";
+import {
+	getCopilotModel,
+	getCopilotSpendCap,
+	setCopilotModel,
+	setCopilotSpendCap,
+} from "./users.js";
+
+/** The copilot's own agent id, as defined in config/teams/copilot.yaml. */
+const COPILOT_AGENT_ID = "copilot";
 
 // ---------------------------------------------------------------------------
 // Per-user SSE event bus
@@ -113,6 +131,13 @@ export function createCopilotRouter(
 			return;
 		}
 
+		const missionId = `copilot-${req.userId}`;
+		const capError = await checkCopilotSpendCap(db, req.userId);
+		if (capError !== null) {
+			res.status(402).json({ error: capError });
+			return;
+		}
+
 		// Post BEFORE starting the daemon (not after): on a cold start,
 		// startCopilotDaemon's watch loop checks for unread mail before it opens
 		// its Change Stream, so a message that already exists in the mailbox is
@@ -121,7 +146,6 @@ export function createCopilotRouter(
 		// ahead of the stream actually being open and be silently missed (the
 		// daemon is otherwise event-only, so a missed wake-up looks like the
 		// copilot never responding).
-		const missionId = `copilot-${req.userId}`;
 		const mailboxRepo = createMongoMailboxRepository(db, missionId);
 		const msg = await mailboxRepo.post({
 			missionId,
@@ -243,6 +267,93 @@ export function createCopilotRouter(
 			timestamp: m.timestamp,
 		}));
 		res.json(entries);
+	});
+
+	// ── GET /api/copilot/turns, /transcript, /llm-calls, /llm-call ─────────────
+	// Same data shape as the mission Transcripts tab (`/api/missions/:id/...`),
+	// but scoped directly by req.userId — no `missions` collection document
+	// exists for "copilot-{userId}", so there's no ownership lookup to do; the
+	// userId is already the whole scope. See transcript-queries.ts.
+
+	router.get("/turns", async (req: Request, res: Response) => {
+		const missionId = `copilot-${req.userId}`;
+		res.json(await queryTurns(db, missionId, COPILOT_AGENT_ID));
+	});
+
+	router.get("/transcript", async (req: Request, res: Response) => {
+		const missionId = `copilot-${req.userId}`;
+		const turn = Number(req.query.turn);
+		if (Number.isNaN(turn)) {
+			res.status(400).json({ error: "turn query param required" });
+			return;
+		}
+		res.json(await queryTranscript(db, missionId, COPILOT_AGENT_ID, turn));
+	});
+
+	router.get("/llm-calls", async (req: Request, res: Response) => {
+		const missionId = `copilot-${req.userId}`;
+		const turn = Number(req.query.turn);
+		if (Number.isNaN(turn)) {
+			res.status(400).json({ error: "turn query param required" });
+			return;
+		}
+		res.json(await queryLlmCalls(db, missionId, COPILOT_AGENT_ID, turn));
+	});
+
+	router.get("/llm-call", async (req: Request, res: Response) => {
+		const missionId = `copilot-${req.userId}`;
+		const turn = Number(req.query.turn);
+		const i = Number(req.query.i);
+		if (Number.isNaN(turn) || Number.isNaN(i)) {
+			res.status(400).json({ error: "turn and i query params required" });
+			return;
+		}
+		const detail = await queryLlmCall(db, missionId, COPILOT_AGENT_ID, turn, i);
+		if (!detail) {
+			res.status(404).json({ error: "call not found" });
+			return;
+		}
+		res.json(detail);
+	});
+
+	// ── GET /api/copilot/files ──────────────────────────────────────────────
+	// Direct filesystem read, not a proxy — the copilot runs in-process in the
+	// control-plane container, so COPILOT_WORKDIR is on this process's own
+	// filesystem. See copilot-files.ts for the path-boundary/symlink guard.
+
+	router.get("/files", (req: Request, res: Response) => {
+		const userPath = (req.query.path as string | undefined) ?? "";
+		const node = readCopilotFileNode(COPILOT_WORKDIR, userPath);
+		if (node === null) {
+			res.status(400).json({ error: "Path outside root" });
+			return;
+		}
+		res.json(node);
+	});
+
+	// ── GET/PATCH /api/copilot/limits ───────────────────────────────────────
+
+	router.get("/limits", async (req: Request, res: Response) => {
+		const missionId = `copilot-${req.userId}`;
+		const [capUsd, spentUsd] = await Promise.all([
+			getCopilotSpendCap(db, req.userId),
+			readCopilotSpend(db, missionId),
+		]);
+		res.json({ capUsd: capUsd ?? null, spentUsd });
+	});
+
+	router.patch("/limits", async (req: Request, res: Response) => {
+		const { capUsd } = req.body as { capUsd?: number | null };
+		if (capUsd !== null && capUsd !== undefined && typeof capUsd !== "number") {
+			res.status(400).json({ error: "capUsd must be a number or null" });
+			return;
+		}
+		if (typeof capUsd === "number" && capUsd <= 0) {
+			res.status(400).json({ error: "capUsd must be positive" });
+			return;
+		}
+		await setCopilotSpendCap(db, req.userId, capUsd ?? undefined);
+		res.json({ ok: true, capUsd: capUsd ?? null });
 	});
 
 	// ── GET /api/copilot/events ───────────────────────────────────────────────
@@ -650,4 +761,39 @@ async function postToMissionMonitor(
 	if (!res.ok) {
 		throw new Error(`Monitor ${endpoint} failed: HTTP ${res.status}`);
 	}
+}
+
+/**
+ * Lifetime spend for the copilot, read fresh from missionStats every call —
+ * same "no cache for verification-critical data" discipline as the mission
+ * spend cap (see agent-stats.ts's module header). Cheap to construct a
+ * StatsCollector per call: it does no I/O beyond the read itself.
+ */
+export async function readCopilotSpend(
+	db: Db,
+	missionId: string,
+): Promise<number> {
+	const stats = await new StatsCollector(
+		createMongoAgentStatsRepository(db),
+	).readLifetime(missionId, COPILOT_AGENT_ID);
+	return stats?.lifetimeCostUsd ?? 0;
+}
+
+/**
+ * Returns an error message if the user's copilot spend cap is reached (the
+ * caller should reject the request with it), or null if the request may
+ * proceed. Exported separately from the POST /message handler so tests can
+ * exercise it directly against real Mongo, matching this file's existing
+ * plain-function-under-the-route pattern (see readLimits/writeMissionCap in
+ * missions.ts).
+ */
+export async function checkCopilotSpendCap(
+	db: Db,
+	userId: string,
+): Promise<string | null> {
+	const capUsd = await getCopilotSpendCap(db, userId);
+	if (capUsd === undefined) return null;
+	const spentUsd = await readCopilotSpend(db, `copilot-${userId}`);
+	if (spentUsd < capUsd) return null;
+	return `Copilot spend cap reached ($${spentUsd.toFixed(2)} / $${capUsd.toFixed(2)}). Raise the cap in Limits to continue.`;
 }

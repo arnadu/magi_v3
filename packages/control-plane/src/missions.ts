@@ -40,6 +40,12 @@ import {
 } from "./fly-machines.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { getTemplate } from "./templates.js";
+import {
+	queryLlmCall,
+	queryLlmCalls,
+	queryTranscript,
+	queryTurns,
+} from "./transcript-queries.js";
 
 interface MissionDoc {
 	missionId: string;
@@ -773,24 +779,7 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(400).json({ error: "agent query param required" });
 			return;
 		}
-		const turns = await db
-			.collection("agentTurnStats")
-			.find({ missionId: req.params.id, agentId: agent })
-			.sort({ turnNumber: 1 })
-			.toArray();
-		res.json(
-			turns.map((t) => ({
-				turnNumber: t.turnNumber,
-				startedAt: t.startedAt,
-				completedAt: t.completedAt ?? null,
-				status: t.status,
-				llmCallCount: t.llmCallCount ?? 0,
-				costUsd: t.costUsd ?? 0,
-				peakContextTokens: t.peakContextTokens ?? 0,
-				toolCalls: t.toolCalls ?? {},
-				toolErrors: t.toolErrors ?? {},
-			})),
-		);
+		res.json(await queryTurns(db, req.params.id, agent));
 	});
 
 	// Detailed transcript for one agent+turn (conversationMessages, including
@@ -810,18 +799,7 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(400).json({ error: "agent and turn query params required" });
 			return;
 		}
-		const docs = await db
-			.collection("conversationMessages")
-			.find({ missionId: req.params.id, agentId: agent, turnNumber: turn })
-			.sort({ callSeq: 1, _id: 1 })
-			.toArray();
-		res.json(
-			docs.map((d) => ({
-				callSeq: d.callSeq ?? 0,
-				parentToolUseId: d.parentToolUseId ?? null,
-				message: d.message,
-			})),
-		);
+		res.json(await queryTranscript(db, req.params.id, agent, turn));
 	});
 
 	// LLM calls for one agent+turn — summaries (the drill-down list).
@@ -840,28 +818,7 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(400).json({ error: "agent and turn query params required" });
 			return;
 		}
-		const calls = await db
-			.collection("llmCallLog")
-			.find({ missionId: req.params.id, agentId: agent, turnNumber: turn })
-			.sort({ savedAt: 1 })
-			.toArray();
-		res.json(
-			calls.map((c, i) => ({
-				index: i,
-				savedAt: c.savedAt,
-				model: c.model,
-				isReflection: c.isReflection ?? false,
-				costEstimated: c.costEstimated ?? false,
-				stopReason: c.output?.response?.stopReason ?? null,
-				usage: c.usage ?? null,
-				cost: c.cost ?? null,
-				toolNames: c.input?.toolNames ?? [],
-				messageCount: Array.isArray(c.input?.messages)
-					? c.input.messages.length
-					: 0,
-				hasBody: Boolean(c.output),
-			})),
-		);
+		res.json(await queryLlmCalls(db, req.params.id, agent, turn));
 	});
 
 	// One full LLM call (the drill-down detail: exact input + output). `output`
@@ -884,30 +841,12 @@ export function createMissionsRouter(db: Db): Router {
 				.json({ error: "agent, turn and i query params required" });
 			return;
 		}
-		const c = (
-			await db
-				.collection("llmCallLog")
-				.find({ missionId: req.params.id, agentId: agent, turnNumber: turn })
-				.sort({ savedAt: 1 })
-				.skip(i)
-				.limit(1)
-				.toArray()
-		)[0];
-		if (!c) {
+		const detail = await queryLlmCall(db, req.params.id, agent, turn, i);
+		if (!detail) {
 			res.status(404).json({ error: "call not found" });
 			return;
 		}
-		res.json({
-			index: i,
-			savedAt: c.savedAt,
-			model: c.model,
-			isReflection: c.isReflection ?? false,
-			costEstimated: c.costEstimated ?? false,
-			usage: c.usage ?? null,
-			cost: c.cost ?? null,
-			input: c.input ?? null,
-			output: c.output ?? null,
-		});
+		res.json(detail);
 	});
 
 	// Get full config for editing — structured config + live mental maps per agent.

@@ -687,6 +687,63 @@ export async function dismissCopilotAction(
 	});
 }
 
+// ── Copilot visibility — transcripts, files, spend-cap limits ──────────────
+// Same response shapes as the mission Transcripts/Files/Limits routes (reusing
+// those types below), but scoped by the caller's own session — no missionId/
+// agentId params, since there's exactly one copilot per user.
+
+export function fetchCopilotTurns(): Promise<TurnSummary[]> {
+	return api<TurnSummary[]>("/api/copilot/turns");
+}
+
+export function fetchCopilotTranscript(
+	turn: number,
+): Promise<TranscriptEntry[]> {
+	return api<TranscriptEntry[]>(`/api/copilot/transcript?turn=${turn}`);
+}
+
+export function fetchCopilotLlmCalls(turn: number): Promise<LlmCallSummary[]> {
+	return api<LlmCallSummary[]>(`/api/copilot/llm-calls?turn=${turn}`);
+}
+
+export function fetchCopilotLlmCall(
+	turn: number,
+	i: number,
+): Promise<LlmCallDetail> {
+	return api<LlmCallDetail>(`/api/copilot/llm-call?turn=${turn}&i=${i}`);
+}
+
+export function fetchCopilotFileNode(path: string): Promise<FileNode> {
+	return api<FileNode>(`/api/copilot/files?path=${encodeURIComponent(path)}`);
+}
+
+export interface CopilotLimits {
+	capUsd: number | null;
+	spentUsd: number;
+}
+
+export function fetchCopilotLimits(): Promise<CopilotLimits> {
+	return api<CopilotLimits>("/api/copilot/limits");
+}
+
+export async function saveCopilotLimits(capUsd: number | null): Promise<void> {
+	const res = await fetch("/api/copilot/limits", {
+		method: "PATCH",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ capUsd }),
+	});
+	if (res.status === 401 || res.status === 403) {
+		throw new AuthError("not signed in");
+	}
+	if (!res.ok) {
+		const body = await res.json().catch(() => null);
+		throw new Error(
+			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
+		);
+	}
+}
+
 // ── Scheduled wake-ups — ported from the mission-local dashboard's Schedule
 // tab (agent-runtime-worker/public/app.js), which has no cockpit surface.
 

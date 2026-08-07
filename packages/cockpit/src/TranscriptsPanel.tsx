@@ -75,7 +75,7 @@ function Content({ content }: { content: unknown }) {
 	return <pre className="mv-json">{JSON.stringify(content, null, 2)}</pre>;
 }
 
-function MessageView({ m, sub }: { m: RawMessage; sub?: boolean }) {
+export function MessageView({ m, sub }: { m: RawMessage; sub?: boolean }) {
 	const role = m.role;
 	const label =
 		role === "toolResult"
@@ -91,7 +91,7 @@ function MessageView({ m, sub }: { m: RawMessage; sub?: boolean }) {
 	);
 }
 
-function toolCallsIn(m: RawMessage): { id: string; name: string }[] {
+export function toolCallsIn(m: RawMessage): { id: string; name: string }[] {
 	if (!Array.isArray(m.content)) return [];
 	return (m.content as Record<string, unknown>[])
 		.filter((b) => b?.type === "toolCall")
@@ -100,7 +100,7 @@ function toolCallsIn(m: RawMessage): { id: string; name: string }[] {
 
 // ── Turn timeline row ────────────────────────────────────────────────────────
 
-function TurnRow({
+export function TurnRow({
 	t,
 	selected,
 	onClick,
@@ -136,11 +136,11 @@ function TurnRow({
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
-type CallDetailState = LlmCallDetail | "loading" | null;
+export type CallDetailState = LlmCallDetail | "loading" | null;
 
 // Inline, collapsible LLM call under an assistant message: expands to Input and
 // Output, each a nested JSON tree. Lazy-loads the full body on first open.
-function LlmCallView({
+export function LlmCallView({
 	summary,
 	detail,
 	onOpen,

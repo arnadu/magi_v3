@@ -17,6 +17,7 @@ import {
 	type AgentIdentity,
 	type AgentRunContext,
 	type AssistantMessage,
+	createMongoAgentStatsRepository,
 	createMongoConversationRepository,
 	createMongoLlmCallLogRepository,
 	createMongoMailboxRepository,
@@ -24,6 +25,7 @@ import {
 	type Message,
 	resolveModel,
 	runAgent,
+	StatsCollector,
 } from "@magi/agent-runtime-worker";
 import type { Collection, Db } from "mongodb";
 import type { PendingActionsStore } from "./copilot-tools.js";
@@ -35,7 +37,7 @@ import { createCopilotTools } from "./copilot-tools.js";
 
 export const COPILOT_MISSION_ID = "copilot";
 
-const COPILOT_WORKDIR = "/home/magi-copilot/workdir";
+export const COPILOT_WORKDIR = "/home/magi-copilot/workdir";
 
 /**
  * Upper bound on how long the watch loop waits on a single Change Stream
@@ -214,6 +216,13 @@ async function runWatchLoop(
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
 	const conversationRepo = createMongoConversationRepository(db);
 	const llmCallLog: LlmCallLogRepository = createMongoLlmCallLogRepository(db);
+	// Gives the copilot the same agentTurnStats/missionStats visibility every
+	// mission agent already has (Transcripts turn timeline, spend-cap reads) —
+	// StatsCollector needs nothing beyond a Db handle, no `missions` collection
+	// document required, so this is a drop-in addition with no special-casing.
+	const statsCollector = new StatsCollector(
+		createMongoAgentStatsRepository(db),
+	);
 	const model = resolveModel(modelId);
 
 	let teamConfig: TeamConfig;
@@ -317,6 +326,7 @@ async function runWatchLoop(
 				mailboxRepo,
 				conversationRepo,
 				llmCallLog,
+				statsCollector,
 				identity: COPILOT_IDENTITY,
 				onUserMessage: (msg) => pushEvent("copilot-msg", msg),
 				onMessage: async (msg: Message) => {

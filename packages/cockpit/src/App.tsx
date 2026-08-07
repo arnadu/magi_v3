@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { type AuthState, subscribeAuth } from "./auth";
 import { ConfigPanel } from "./ConfigPanel";
 import { ConversationsPanel } from "./ConversationsPanel";
+import { CopilotFilesPanel } from "./CopilotFilesPanel";
+import { CopilotLimitsPanel } from "./CopilotLimitsPanel";
 import { CopilotPanel } from "./CopilotPanel";
+import { CopilotTranscriptsPanel } from "./CopilotTranscriptsPanel";
 import {
 	AuthError,
 	fetchMissionStatus,
@@ -492,7 +495,12 @@ export function App() {
 	const [openAgent, setOpenAgent] = useState<string | null>(null);
 	const [mainTab, setMainTab] = useState<MainTab>("objectives");
 	const [turnJump, setTurnJump] = useState<TurnJump | null>(null);
-	const [homeTab, setHomeTab] = useState<"missions" | "templates">("missions");
+	const [homeTab, setHomeTab] = useState<"missions" | "templates" | "copilot">(
+		"missions",
+	);
+	const [copilotTab, setCopilotTab] = useState<
+		"transcripts" | "files" | "limits"
+	>("transcripts");
 
 	const inspectTurn = (agent: string, turn: number) => {
 		setMainTab("transcripts");
@@ -554,6 +562,13 @@ export function App() {
 						>
 							Templates
 						</button>
+						<button
+							type="button"
+							className={`home-tab${homeTab === "copilot" ? " home-tab-active" : ""}`}
+							onClick={() => setHomeTab("copilot")}
+						>
+							Copilot
+						</button>
 					</nav>
 					{homeTab === "missions" ? (
 						<MissionsPanel
@@ -563,12 +578,43 @@ export function App() {
 								window.location.search,
 							).get("launch")}
 						/>
-					) : (
+					) : homeTab === "templates" ? (
 						<TemplatesPanel
 							onLaunch={(templateId) => {
 								window.location.search = `?launch=${encodeURIComponent(templateId)}`;
 							}}
 						/>
+					) : (
+						<div className="col-main">
+							<nav className="tabs">
+								<button
+									type="button"
+									className={`tab ${copilotTab === "transcripts" ? "on" : ""}`}
+									onClick={() => setCopilotTab("transcripts")}
+								>
+									Transcripts
+								</button>
+								<button
+									type="button"
+									className={`tab ${copilotTab === "files" ? "on" : ""}`}
+									onClick={() => setCopilotTab("files")}
+								>
+									Files
+								</button>
+								<button
+									type="button"
+									className={`tab ${copilotTab === "limits" ? "on" : ""}`}
+									onClick={() => setCopilotTab("limits")}
+								>
+									Limits
+								</button>
+							</nav>
+							<div className="tab-body">
+								{copilotTab === "transcripts" && <CopilotTranscriptsPanel />}
+								{copilotTab === "files" && <CopilotFilesPanel />}
+								{copilotTab === "limits" && <CopilotLimitsPanel />}
+							</div>
+						</div>
 					)}
 				</div>
 				<CopilotPanel />
