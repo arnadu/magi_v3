@@ -42,7 +42,7 @@ describe("renderMarkdown", () => {
 	it("emits a katex placeholder div for $$...$$ block math, not <p>-wrapped", () => {
 		const html = renderMarkdown("$$x^2 + y^2 = z^2$$");
 		expect(html).toContain(
-			'<div class="katex-pending" data-katex-src="x^2 + y^2 = z^2">',
+			'<div class="katex-pending" data-katex-src="x^2 + y^2 = z^2" data-katex-display="true">',
 		);
 		expect(html).not.toContain("<p><div");
 		expect(html).not.toContain("BLOCK");
@@ -52,6 +52,25 @@ describe("renderMarkdown", () => {
 		const html = renderMarkdown("Price: $5.00 and $10.00 target.");
 		expect(html).not.toContain("katex");
 		expect(html).toContain("$5.00 and $10.00 target");
+	});
+
+	it("emits a block katex placeholder for the \\[...\\] alias, same as $$...$$", () => {
+		const html = renderMarkdown("\\[x^2 + y^2 = z^2\\]");
+		expect(html).toContain(
+			'<div class="katex-pending" data-katex-src="x^2 + y^2 = z^2" data-katex-display="true">',
+		);
+	});
+
+	it("emits an inline katex placeholder span for \\(...\\), staying inline in the sentence", () => {
+		const html = renderMarkdown("heat capacity (\\( C \\)) and temperature");
+		expect(html).toContain(
+			'<span class="katex-pending" data-katex-src="C" data-katex-display="false">',
+		);
+		// Inline math must render mid-paragraph, not break the surrounding
+		// text into a separate block the way a block placeholder
+		// (BLOCK_TOKEN_WHOLE_RE) is allowed to.
+		expect(html).toContain("<p>heat capacity (");
+		expect(html).toContain(") and temperature</p>");
 	});
 
 	it("emits a mermaid placeholder div with the escaped source, not <p>-wrapped", () => {

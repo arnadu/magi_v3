@@ -93,8 +93,11 @@ export function Markdown({
 				for (const node of katexNodes) {
 					if (cancelled) return;
 					const src = node.dataset.katexSrc ?? "";
+					// Block math (data-katex-display="true", a <div>) vs inline
+					// (data-katex-display="false", a <span>) -- see markdown.ts.
+					const displayMode = node.dataset.katexDisplay !== "false";
 					try {
-						katex.render(src, node, { throwOnError: false, displayMode: true });
+						katex.render(src, node, { throwOnError: false, displayMode });
 					} catch (e) {
 						node.textContent = `Math error: ${(e as Error).message}`;
 					}

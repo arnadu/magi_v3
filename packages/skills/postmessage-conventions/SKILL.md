@@ -61,17 +61,22 @@ graph TD
 ```
 ````
 
-**Math — KaTeX block math only:**
+**Math — KaTeX, block and inline:**
+
+Block (its own display line), either delimiter works:
 ```
 $$
 \text{Sharpe} = \frac{R_p - R_f}{\sigma_p}
 $$
 ```
-Put `$$` on its own line before and after the expression. Inline `$...$`
-math is **not** supported — this app's messages are full of dollar
-amounts ("$5.00 per share"), which a naive inline-math parser would
-constantly misinterpret. Don't use single-`$` math; it will render as
-literal text.
+or `\[ \text{Sharpe} = \frac{R_p - R_f}{\sigma_p} \]`.
+
+Inline (mid-sentence), use `\( ... \)` — e.g. `heat capacity (\( C \))
+and temperature (\( T \))`. **Not** single-`$...$`: this app's messages
+are full of dollar amounts ("$5.00 per share"), which a naive
+inline-math parser would constantly misinterpret, so bare `$...$` is
+never treated as math and renders as literal text. `\( ... \)` has no
+such collision risk and is the only inline form that renders.
 
 **Images:** to show a chart, screenshot, or any other image you've
 produced (e.g. a Bash/matplotlib script that wrote a PNG), reference it
