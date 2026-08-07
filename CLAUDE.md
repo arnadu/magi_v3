@@ -84,7 +84,7 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 - `packages/control-plane/` — Express API (missions CRUD + lifecycle), Fly Machines client, cron scheduler, HTTP reverse proxy, single-page UI
 - `packages/agent-runtime-worker/` — daemon (persistent process), orchestration loop, agent runner, monitor server (port 4000), tool API server (port 4001)
 - `packages/agent-config/` — Zod schema for team YAML; `loadTeamConfig()`, `parseTeamConfig()`
-- `packages/skills/` — platform skills: `skill-creator`, `git-provenance`, `inter-agent-comms`, `run-background`, `schedule-task`
+- `packages/skills/` — platform skills: `skill-creator`, `git-provenance`, `postmessage-conventions`, `run-background`, `schedule-task`
 
 ### Agent identity and workspace
 

@@ -90,7 +90,7 @@ For local development setup and environment variables, see [USER_GUIDE.md](USER_
 | `packages/control-plane/` | Express API, Fly Machines client, cron scheduler, HTTP reverse proxy, single-page UI |
 | `packages/agent-runtime-worker/` | Daemon, orchestration loop, agent runner, monitor server (:4000), tool API server (:4001) |
 | `packages/agent-config/` | Zod schema for team YAML; `loadTeamConfig()`, `parseTeamConfig()` |
-| `packages/skills/` | Platform skills: `skill-creator`, `git-provenance`, `inter-agent-comms`, `run-background`, `schedule-task` |
+| `packages/skills/` | Platform skills: `skill-creator`, `git-provenance`, `postmessage-conventions`, `run-background`, `schedule-task` |
 
 ### Technology Stack
 

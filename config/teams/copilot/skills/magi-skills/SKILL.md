@@ -29,7 +29,7 @@ Every launched mission automatically receives these five skills, injected from
 
 - **git-provenance** — commit completed work to the mission git repo
 - **skill-creator** — create new mission or agent-private skill packages
-- **inter-agent-comms** — structured agent-to-agent message protocol
+- **postmessage-conventions** — structured agent-to-agent message protocol; markdown/mermaid/KaTeX/image formatting syntax for PostMessage
 - **run-background** — submit long-running scripts as background jobs
 - **schedule-task** — register recurring scheduled agent wakeups
 

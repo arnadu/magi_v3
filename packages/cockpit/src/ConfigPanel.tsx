@@ -20,7 +20,7 @@ import {
 const PLATFORM_SKILLS = [
 	"git-provenance",
 	"skill-creator",
-	"inter-agent-comms",
+	"postmessage-conventions",
 	"run-background",
 	"schedule-task",
 	"objectives",
