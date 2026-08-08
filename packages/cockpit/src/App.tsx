@@ -8,6 +8,7 @@ import { CopilotPanel } from "./CopilotPanel";
 import { CopilotTranscriptsPanel } from "./CopilotTranscriptsPanel";
 import {
 	AuthError,
+	fetchMissionName,
 	fetchMissionStatus,
 	fetchMissions,
 	fetchObjectives,
@@ -364,6 +365,28 @@ function MissionStatusButton({ missionId }: { missionId: string }) {
 	);
 }
 
+/** Self-fetches the mission's display name — same pattern as MissionStatusButton. */
+function useMissionName(missionId: string | undefined): string | null {
+	const [name, setName] = useState<string | null>(null);
+	useEffect(() => {
+		setName(null);
+		if (!missionId) return;
+		let cancelled = false;
+		fetchMissionName(missionId).then(
+			(n) => {
+				if (!cancelled) setName(n);
+			},
+			() => {
+				if (!cancelled) setName(null);
+			},
+		);
+		return () => {
+			cancelled = true;
+		};
+	}, [missionId]);
+	return name;
+}
+
 function Header({
 	subtitle,
 	tree,
@@ -383,6 +406,7 @@ function Header({
 	const budget = tree
 		? tree.objectives.reduce((a, o) => a + o.budgetUsd, 0)
 		: 0;
+	const missionName = useMissionName(missionId);
 	return (
 		<header>
 			{onBack && (
@@ -391,7 +415,10 @@ function Header({
 				</button>
 			)}
 			<h1>
-				<span className="dot" /> MAGI Control Cockpit
+				<span className="dot" />{" "}
+				{missionId
+					? `Mission Cockpit — ${missionName ?? missionId}`
+					: "MAGI Control Cockpit"}
 			</h1>
 			{missionId && <MissionStatusButton missionId={missionId} />}
 			{tree && (

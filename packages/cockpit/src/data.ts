@@ -873,6 +873,12 @@ export async function fetchMissionStatus(
 	return m.status;
 }
 
+/** The mission's display name, for the per-mission dashboard header. */
+export async function fetchMissionName(missionId: string): Promise<string> {
+	const m = await api<{ name: string }>(`/api/missions/${mp(missionId)}`);
+	return m.name;
+}
+
 // ── Cross-mission stats — ported from index.html's Active Sessions cards ───
 
 export interface MissionStatsEntry {
