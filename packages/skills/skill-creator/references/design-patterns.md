@@ -10,16 +10,15 @@ Every good skill has three parts:
 2. **Instructions** — step-by-step procedure. Number the steps. Be explicit
    about file paths (use the paths shown in the Available Skills section).
 
-3. **Verification** — how to confirm the skill worked. E.g., "check git log
-   shows the commit", or "confirm the file exists at the expected path".
+3. **Verification** — how to confirm the skill worked. E.g., "confirm the file
+   exists at the expected path", or "check the tool's output for a success field".
 
 ## Scripts vs. instructions
 
 **Use a script when:**
 - The steps must always execute in exactly the same sequence
 - The output must be in a machine-readable format (JSON, JSONL, etc.)
-- The operation has side effects that must be idempotent (e.g. git commit,
-  ledger append)
+- The operation has side effects that must be idempotent (e.g. a ledger append)
 
 **Use instructions when:**
 - The agent must adapt the procedure to context
@@ -28,7 +27,7 @@ Every good skill has three parts:
 ## Naming conventions
 
 - Skill names: lowercase, hyphens only, max 64 chars
-- Script names: verb-noun, e.g. `record-work.sh`, `init-report.sh`
+- Script names: verb-noun, e.g. `schedule-task.sh`, `close-issue.sh`
 - Keep names stable — renaming a skill breaks agents that have learned it
 
 ## Scope choice
@@ -46,8 +45,9 @@ The description is the most important part of SKILL.md. It is the only thing
 agents read before deciding whether to invoke the skill. Write it as a
 one-sentence answer to: "When would I need this?"
 
-Good: "Record completed work with a git commit. Use when you have finished
-writing a file that should be tracked."
+Good: "Post a structured status update to the mission dashboard. Use when
+you've reached a checkpoint the operator should see without reading the
+full mailbox."
 
-Bad: "This skill is for git provenance and records work to the git repository
-using commits and the ledger."
+Bad: "This skill is for status reporting and posts updates using the
+dashboard API and a formatted template."

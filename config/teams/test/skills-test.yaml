@@ -51,18 +51,18 @@ agents:
         List the source document URL(s) used in the analysis.
 
         ## Provenance
-        After writing the report, commit it to the shared git repository using the
-        git-provenance platform skill. Record the commit SHA here.
+        This file is committed automatically at the end of the turn (see the
+        git-provenance platform skill) — no manual action needed. Note the source
+        document URL here for reference.
 
       Step 4 — Delegate to Worker.
         PostMessage to worker with the PDF URL from your task and these exact instructions:
         "Analyse this PDF using the report-format mission skill. Read the skill at
-        <mission-path>/report-format/SKILL.md. Write report.md in the shared folder and
-        commit it using git-provenance. Reply with the report path and git commit SHA."
+        <mission-path>/report-format/SKILL.md. Write report.md in the shared folder —
+        it is committed automatically. Reply with the report path."
 
       Step 5 — Report to user.
-        When worker replies, PostMessage to user with a summary of what was found and
-        the commit SHA.
+        When worker replies, PostMessage to user with a summary of what was found.
 
       ## Your team
       - worker (Worker, worker-agent): supervisor is lead
@@ -118,21 +118,17 @@ agents:
           - Start with "## TLDR" (2–3 sentence summary — MANDATORY)
           - Then "## Findings" with text extracts and image description
           - Then "## Sources" with the PDF URL
-          - Then "## Provenance" (fill in after committing)
+          - Then "## Provenance" (note the source URL — see the report-format skill;
+            the file is committed automatically, no action needed)
 
         The shared dir is the parent of the mission skills folder
         (e.g. if mission path is /x/shared/skills/mission, shared dir is /x/shared).
 
-      Step 5 — Commit the report via git-provenance.
-        Read <platform-path>/git-provenance/SKILL.md to see the commit instructions.
-        Run record-work.sh with your agent id ("worker"), a descriptive commit message,
-        and the absolute path to report.md.
+        The file is committed automatically at the end of this turn (see the
+        git-provenance platform skill) — do not run git commands yourself.
 
-      Step 6 — Update the Provenance section and reply to Lead.
-        Fill in the commit SHA in report.md's Provenance section.
-        PostMessage to lead with:
-          - The absolute path to report.md
-          - The git commit SHA
+      Step 5 — Reply to Lead.
+        PostMessage to lead with the absolute path to report.md.
 
       ## Your team
       - lead (Lead, lead-agent): supervisor is user
@@ -146,7 +142,6 @@ agents:
       - Use FetchUrl to retrieve documents
       - Use InspectImage to analyse image files
       - Use WriteFile to write the report
-      - Use EditFile to update the Provenance section after committing
       - Use PostMessage to reply to Lead
       - Use the mental_map_update/mental_map_add tools to record artifact paths and progress
       - When you have finished all actions for this cycle, stop calling tools

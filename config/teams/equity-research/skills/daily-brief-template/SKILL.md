@@ -15,10 +15,15 @@ Every section must be present. Omit data only if genuinely unavailable — note 
 
 As Lead Analyst, after receiving research from all three team members:
 1. Create the file: `{{sharedDir}}/briefs/YYYY-MM-DD.md`
-2. Fill each section using the Economist's and Junior Analyst's committed research notes
-3. Commit via git-provenance:
-   `bash <platform-skills-path>/git-provenance/scripts/record-work.sh "lead-analyst" "report(daily-brief-YYYY-MM-DD): LONG/SHORT NVDA — <one-line rationale> [sources: <commit-SHAs>]" "{{sharedDir}}/briefs/YYYY-MM-DD.md"`
-4. PostMessage user with the recommendation, 3-sentence rationale, and commit SHA
+2. Fill each section using the Economist's and Junior Analyst's committed research notes.
+   To cite the exact commit each source came from, run (read-only, no write access to `.git`
+   needed): `git -C {{sharedDir}} log -1 --format=%h -- economist/YYYY-MM-DD.md` (and similarly
+   for the Junior Analyst's file).
+3. That's it — see the git-provenance skill. The file is committed automatically at the end of
+   this turn; do not run `git commit` yourself. Leave this brief's own "Rationale commit" field
+   as `(see Files panel)` — the exact hash isn't known until after the turn ends, and the
+   operator can find it there.
+4. PostMessage user with the recommendation and a 3-sentence rationale.
 
 ## Template
 
@@ -27,7 +32,8 @@ As Lead Analyst, after receiving research from all three team members:
 
 **Recommendation:** {LONG | SHORT | HOLD}
 **Confidence:** {High | Medium | Low}
-**Rationale commit:** {git SHA — links to this brief's commit via git-provenance}
+**Rationale commit:** (see Files panel) — this brief's own commit hash isn't known until
+after this turn ends
 
 ---
 
@@ -69,13 +75,13 @@ Running record: {N} trading days tracked. Win rate: {X}%. Cumulative PnL: ${Y}.
 
 ---
 
-*Brief by: lead-analyst (Alex) | Commit: {SHA} | Economist: {SHA} | Junior: {SHA}*
+*Brief by: lead-analyst (Alex) | Economist source commit: {SHA} | Junior source commit: {SHA}*
 *Sources: {comma-separated URLs of key articles / filings fetched today}*
 ```
 
 ## Quality checklist
 
-Before committing:
+Before finishing this turn (the file is committed automatically once you stop writing to it):
 - [ ] All four sections are populated (no empty sections)
 - [ ] Recommendation is one of: LONG, SHORT, HOLD
 - [ ] Confidence level stated

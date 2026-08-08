@@ -379,10 +379,15 @@ export function copyTeamFilesToSharedDir(
 
 /**
  * Initialise the shared directory as a git repository and create an empty
- * initial commit so git-provenance scripts can commit agent work immediately.
+ * initial commit, so the daemon's automatic commit-on-sleep (WorkspaceGit,
+ * called at the end of every agent turn — see agent-runner.ts) always has a
+ * repo to commit into from mission start.
  *
  * Git is workspace infrastructure — it is always present from mission start.
- * The git-provenance skill teaches the commit convention, not git init.
+ * The git-provenance skill teaches agents that commits happen automatically;
+ * it does not teach a manual commit convention, and agents should never run
+ * `git commit` themselves in sharedDir (they don't own `.git`, the daemon
+ * does — see git-provenance/SKILL.md).
  */
 function initSharedGitRepo(sharedDir: string): void {
 	execFileSync("git", ["-C", sharedDir, "init", "-b", "main"], {

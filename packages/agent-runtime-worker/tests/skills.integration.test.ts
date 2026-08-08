@@ -5,18 +5,21 @@
  *   - Lead receives a task: create a report-format mission skill, then delegate
  *     PDF analysis to Worker using that skill.
  *   - Lead uses skill-creator (platform skill) to scaffold report-format.
- *   - Lead writes the SKILL.md requiring: ## TLDR, ## Sources, git commit.
+ *   - Lead writes the SKILL.md requiring: ## TLDR, ## Sources.
  *   - Lead PostMessages to Worker with the PDF URL and skill instructions.
  *   - Worker discovers the report-format skill, fetches the PDF via FetchUrl,
- *     inspects page images via InspectImage, writes report.md with a TLDR,
- *     and commits via git-provenance.
- *   - Worker PostMessages the commit SHA back to Lead.
+ *     inspects page images via InspectImage, and writes report.md with a TLDR.
+ *   - report.md is committed automatically at the end of Worker's turn
+ *     (git-commit-on-sleep, Sprint 25) — Worker does not commit it manually.
+ *   - Worker PostMessages the report path back to Lead.
  *   - Lead reports to user.
  *
  * Assertions:
  *   1. report-format mission skill file was created by Lead.
  *   2. report.md in the shared folder contains a TLDR section.
- *   3. git log in the shared folder shows a commit authored by "worker".
+ *   3. git log in the shared folder shows a commit touching report.md
+ *      (the automatic checkpoint — not authored by "worker": commit-on-sleep
+ *      uses a fixed daemon identity, not the writing agent's own name).
  *   4. Lead sent at least one message to user.
  *
  * Requires:
@@ -150,7 +153,7 @@ const KEEP_WORKSPACE = Boolean(process.env.MAGI_KEEP_WORKSPACE);
 const FIXED_WORKSPACE = join(tmpdir(), "magi-skills-test");
 
 describe("integration: agent skills — skill creation and discovery", () => {
-	it("Lead creates report-format skill; Worker follows it, commits report, reports to user", async () => {
+	it("Lead creates report-format skill; Worker follows it, report is auto-committed, reports to user", async () => {
 		// Use a fixed, human-readable path when keeping; otherwise a fresh temp dir.
 		const tmpDir = KEEP_WORKSPACE
 			? FIXED_WORKSPACE
@@ -197,11 +200,12 @@ describe("integration: agent skills — skill creation and discovery", () => {
 				to: ["lead"],
 				subject: "Skills test task",
 				body:
-					"Create a report-format mission skill (with TLDR, Sources, and git commit " +
+					"Create a report-format mission skill (with TLDR and Sources " +
 					"requirements), then delegate analysis of this PDF to Worker: " +
 					`${pdfUrl}\n` +
-					"Worker should follow the skill, write report.md in the shared folder, " +
-					"commit it, and report back. Once Worker replies, report to me with a summary.",
+					"Worker should follow the skill, write report.md in the shared folder " +
+					"(it's committed automatically), and report back. Once Worker replies, " +
+					"report to me with a summary.",
 			});
 
 			const ac = new AbortController();
@@ -271,13 +275,16 @@ describe("integration: agent skills — skill creation and discovery", () => {
 			const reportContent = readFileSync(reportPath, "utf-8");
 			expect(reportContent).toMatch(/TLDR/i);
 
-			// 3. The shared git repo has a commit authored by the worker agent.
+			// 3. The automatic end-of-turn commit (git-commit-on-sleep) captured
+			// report.md — not authored by "worker": commit-on-sleep always commits
+			// as the daemon's own fixed identity, regardless of which agent wrote
+			// the file (see workspace-git.ts).
 			const gitLog = execFileSync(
 				"git",
-				["-C", sharedDir, "log", "--format=%an"],
+				["-C", sharedDir, "log", "--name-only", "--format="],
 				{ encoding: "utf-8" },
 			);
-			expect(gitLog).toMatch(/worker/i);
+			expect(gitLog).toMatch(/report\.md/);
 
 			// 4. Lead sent at least one message to the user.
 			expect(userMessages.length).toBeGreaterThanOrEqual(1);
