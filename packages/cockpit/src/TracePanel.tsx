@@ -225,15 +225,16 @@ function CostTimeline({
 	);
 
 	// Window-level listeners while dragging — a drag routinely continues past
-	// the overview strip's own bounds, so per-element mouse handlers alone
-	// would lose track of the pointer.
+	// the overview strip's own bounds, so per-element pointer handlers alone
+	// would lose track of the pointer. Pointer Events (not mouse-only) so this
+	// also works with touch input (iPad/tablet).
 	useEffect(() => {
 		if (!drag) return;
-		const onMove = (e: MouseEvent) => {
+		const onMove = (e: PointerEvent) => {
 			const x = clientXToSvg(e.clientX);
 			setDrag((d) => (d ? { ...d, curX: x } : d));
 		};
-		const onUp = (e: MouseEvent) => {
+		const onUp = (e: PointerEvent) => {
 			const x = clientXToSvg(e.clientX);
 			setDrag((d) => {
 				if (!d) return null;
@@ -247,11 +248,11 @@ function CostTimeline({
 				return null;
 			});
 		};
-		window.addEventListener("mousemove", onMove);
-		window.addEventListener("mouseup", onUp);
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
 		return () => {
-			window.removeEventListener("mousemove", onMove);
-			window.removeEventListener("mouseup", onUp);
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onUp);
 		};
 	}, [drag, clientXToSvg, invertOv]);
 
@@ -675,18 +676,17 @@ function CostTimeline({
 								className="trace-brush"
 							/>
 						)}
-						{/* Mouse-only drag-to-zoom surface — not the sole path to
-						    anything: every mark above is itself a role="button" jump
-						    target, and "Reset zoom" already undoes zoom state from the
-						    keyboard. Not tabIndex'd, so it never enters the tab order. */}
-						{/* biome-ignore lint/a11y/noStaticElementInteractions: mouse-only drag gesture with no keyboard equivalent to offer or role that fits (it's a drag surface, not a button) */}
+						{/* Pointer (mouse/touch/pen) drag-to-zoom surface — not the sole
+						    path to anything: every mark above is itself a role="button"
+						    jump target, and "Reset zoom" already undoes zoom state from
+						    the keyboard. Not tabIndex'd, so it never enters the tab order. */}
 						<rect
 							x={PAD_L}
 							y={OVERVIEW_TOP}
 							width={CHART_W - PAD_L - PAD_R}
 							height={OVERVIEW_H}
 							className="trace-overview-hit"
-							onMouseDown={(e) => {
+							onPointerDown={(e) => {
 								const x = clientXToSvg(e.clientX);
 								setDrag({ startX: x, curX: x });
 							}}

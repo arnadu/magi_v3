@@ -81,11 +81,13 @@ export function CopilotPanel() {
 	// risk either way). The rail derives width straight from clientX because
 	// it's pinned to the viewport's left edge; this panel is pinned to the
 	// right edge instead, so width is the distance from clientX to the right
-	// edge of the viewport.
-	const startResize = (e: React.MouseEvent) => {
+	// edge of the viewport. Pointer Events (not mouse-only) so this also works
+	// with touch input (iPad/tablet) — a single event model covers mouse,
+	// touch, and pen.
+	const startResize = (e: React.PointerEvent) => {
 		e.preventDefault();
 		let last = width;
-		const onMove = (ev: MouseEvent) => {
+		const onMove = (ev: PointerEvent) => {
 			last = Math.min(
 				MAX_WIDTH,
 				Math.max(MIN_WIDTH, window.innerWidth - ev.clientX),
@@ -93,12 +95,12 @@ export function CopilotPanel() {
 			setWidth(last);
 		};
 		const onUp = () => {
-			document.removeEventListener("mousemove", onMove);
-			document.removeEventListener("mouseup", onUp);
+			document.removeEventListener("pointermove", onMove);
+			document.removeEventListener("pointerup", onUp);
 			localStorage.setItem(WIDTH_STORAGE_KEY, String(last));
 		};
-		document.addEventListener("mousemove", onMove);
-		document.addEventListener("mouseup", onUp);
+		document.addEventListener("pointermove", onMove);
+		document.addEventListener("pointerup", onUp);
 	};
 
 	const [entries, setEntries] = useState<Entry[]>([]);
@@ -333,10 +335,9 @@ export function CopilotPanel() {
 
 	return (
 		<div className="copilot-panel" style={{ width }}>
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: drag-to-resize handle, matches ConversationsPanel's rail-resize */}
 			<div
 				className="copilot-resize"
-				onMouseDown={startResize}
+				onPointerDown={startResize}
 				title="Drag to resize"
 			/>
 			<div className="copilot-header">

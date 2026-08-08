@@ -175,12 +175,16 @@ main {
 }
 .rail-resize {
 	position: absolute;
-	right: -3px;
+	right: -6px;
 	top: 0;
 	bottom: 0;
-	width: 7px;
+	width: 13px;
 	cursor: col-resize;
 	z-index: 5;
+	/* Without this, a touch-drag on the handle is captured by the browser as
+	   a scroll/pan gesture instead of reaching our pointermove listener —
+	   critical for iPad/tablet, not just a nicety. */
+	touch-action: none;
 }
 .rail-resize:hover {
 	background: var(--info);
@@ -1662,6 +1666,8 @@ h2.sec {
 .trace-overview-hit {
 	fill: transparent;
 	cursor: crosshair;
+	/* See .rail-resize's comment — same touch-drag-vs-scroll-gesture reason. */
+	touch-action: none;
 }
 .trace-brush {
 	fill: var(--info);
@@ -1925,12 +1931,14 @@ h2.sec {
 }
 .copilot-resize {
 	position: absolute;
-	left: -3px;
+	left: -6px;
 	top: 0;
 	bottom: 0;
-	width: 7px;
+	width: 13px;
 	cursor: col-resize;
 	z-index: 5;
+	/* See .rail-resize's comment — same touch-drag-vs-scroll-gesture reason. */
+	touch-action: none;
 }
 .copilot-resize:hover {
 	background: var(--info);

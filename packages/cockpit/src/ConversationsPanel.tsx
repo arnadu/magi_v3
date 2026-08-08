@@ -215,29 +215,30 @@ export function ConversationsPanel({
 		}
 	};
 
-	const startResize = (e: React.MouseEvent) => {
+	// Pointer Events (not mouse-only) so this also works with touch input
+	// (iPad/tablet) — a single event model covers mouse, touch, and pen.
+	const startResize = (e: React.PointerEvent) => {
 		e.preventDefault();
 		let last = width;
-		const onMove = (ev: MouseEvent) => {
+		const onMove = (ev: PointerEvent) => {
 			// Rail is the left column; its right edge is at x = width.
 			last = Math.min(MAX_W, Math.max(MIN_W, ev.clientX));
 			setWidth(last);
 		};
 		const onUp = () => {
-			document.removeEventListener("mousemove", onMove);
-			document.removeEventListener("mouseup", onUp);
+			document.removeEventListener("pointermove", onMove);
+			document.removeEventListener("pointerup", onUp);
 			localStorage.setItem("magi-rail-width", String(last));
 		};
-		document.addEventListener("mousemove", onMove);
-		document.addEventListener("mouseup", onUp);
+		document.addEventListener("pointermove", onMove);
+		document.addEventListener("pointerup", onUp);
 	};
 
 	return (
 		<aside className="col-rail" style={{ width }}>
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: drag-to-resize handle */}
 			<div
 				className="rail-resize"
-				onMouseDown={startResize}
+				onPointerDown={startResize}
 				title="Drag to resize"
 			/>
 			<div className="rail-head">
