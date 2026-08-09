@@ -7,10 +7,10 @@
  *      insert the message into mailbox, mark delivered, re-arm cron entries.
  *
  * 2. Log retention pruning — daily at 02:00 UTC:
- *      Strip `input` and `output` from llmCallLog entries older than 7 days.
- *      Usage/cost metadata is preserved indefinitely for billing reconciliation.
- *      This keeps storage manageable on the M0/M2 Atlas tier while retaining
- *      full context for active debugging windows.
+ *      Strip `input` and `output` from llmCallLog entries older than
+ *      LOG_RETENTION_DAYS. Usage/cost metadata is preserved indefinitely for
+ *      billing reconciliation. This keeps storage manageable on the M0/M2
+ *      Atlas tier while retaining full context for active debugging windows.
  */
 
 import { randomUUID } from "node:crypto";
@@ -233,7 +233,13 @@ export async function deliver(db: Db): Promise<void> {
 // Log retention pruning
 // ---------------------------------------------------------------------------
 
-const LOG_RETENTION_DAYS = 7;
+// Lowered from 7 to 2 (2026-08-09): at current call volume across the active
+// missions, 7 days of full-body retention alone was ~370MB of "in-flight, not
+// yet eligible to prune" data — enough by itself to exceed the 512MB Atlas M0
+// quota, blocking all writes cluster-wide (including the per-request user-sync
+// write in requireAuth, which took login down with it). A shorter window caps
+// how much full-body data can accumulate before the nightly prune reclaims it.
+const LOG_RETENTION_DAYS = 2;
 
 /**
  * Strip `input` and `output` from llmCallLog entries older than LOG_RETENTION_DAYS.
