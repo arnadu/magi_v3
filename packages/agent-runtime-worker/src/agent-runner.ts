@@ -11,6 +11,7 @@ import type { LlmCallLogRepository } from "./llm-call-log.js";
 import {
 	computeCost,
 	resolveCallCost,
+	truncateOldMessages,
 	truncateToolBodies,
 } from "./llm-call-log.js";
 import { runInnerLoop } from "./loop.js";
@@ -373,7 +374,7 @@ export async function runAgent(
 					costEstimated,
 					input: {
 						systemPrompt: event.systemPrompt,
-						messages: truncateToolBodies(event.messages),
+						messages: truncateOldMessages(truncateToolBodies(event.messages)),
 						toolNames: event.toolNames,
 					},
 					output: {

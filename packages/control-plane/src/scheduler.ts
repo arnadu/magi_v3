@@ -6,11 +6,10 @@
  *      For each: look up the mission's machineId, resume the machine if stopped,
  *      insert the message into mailbox, mark delivered, re-arm cron entries.
  *
- * 2. Log retention pruning — daily at 02:00 UTC:
- *      Strip `input` and `output` from llmCallLog entries older than
- *      LOG_RETENTION_DAYS. Usage/cost metadata is preserved indefinitely for
- *      billing reconciliation. This keeps storage manageable on the M0/M2
- *      Atlas tier while retaining full context for active debugging windows.
+ * 2. Log retention pruning — every 30 minutes:
+ *      Delete llmCallLog entries older than LOG_RETENTION_DAYS outright (not a
+ *      field-strip — see pruneOldLogEntries's doc comment for why). Keeps
+ *      storage manageable on the M0/M2 Atlas tier.
  */
 
 import { randomUUID } from "node:crypto";
@@ -233,33 +232,39 @@ export async function deliver(db: Db): Promise<void> {
 // Log retention pruning
 // ---------------------------------------------------------------------------
 
-// Lowered from 7 to 2 (2026-08-09): at current call volume across the active
-// missions, 7 days of full-body retention alone was ~370MB of "in-flight, not
-// yet eligible to prune" data — enough by itself to exceed the 512MB Atlas M0
-// quota, blocking all writes cluster-wide (including the per-request user-sync
-// write in requireAuth, which took login down with it). A shorter window caps
-// how much full-body data can accumulate before the nightly prune reclaims it.
-const LOG_RETENTION_DAYS = 2;
+// Lowered from 7 to 2 (2026-08-09), then to 1 (2026-08-10): the Atlas M0 quota
+// was hit a second time even at 2 days, driven by a separate bug (llmCallLog's
+// `input.messages` stored the *entire accumulated conversation* on every call —
+// O(n²) growth over a mission's life — fixed in llm-call-log.ts's
+// truncateOldMessages, which is the real fix; this shorter window is
+// defense-in-depth on top of it, not a substitute for it.
+const LOG_RETENTION_DAYS = 1;
 
 /**
- * Strip `input` and `output` from llmCallLog entries older than LOG_RETENTION_DAYS.
- * Runs on startup (to catch anything missed while the control plane was down) and
- * then daily at 02:00 UTC.
+ * Delete llmCallLog entries older than LOG_RETENTION_DAYS outright, rather than
+ * $unset-stripping input/output and keeping the rest. Two reasons this is safer,
+ * not just more aggressive: (1) $unset is an update, and Atlas blocks *all*
+ * writes once truly at quota — including shrink-only ones — so the old
+ * strip-only pruner could never dig itself out of the exact situation it exists
+ * to prevent, while deleteMany is confirmed (live, twice) to still work when
+ * Atlas is blocking other writes; (2) missionStats/agentTurnStats already hold
+ * the cumulative lifetime cost/call totals independent of llmCallLog (a
+ * separate write path — see agent-stats.ts), so full deletion here only costs
+ * per-call granularity beyond the retention window, not the ability to account
+ * for spend. Runs on startup (to catch anything missed while the control plane
+ * was down) and then every 30 minutes — daily was too slow to catch fast
+ * accumulation on a busy mission before it reached quota.
  */
 async function pruneOldLogEntries(db: Db): Promise<void> {
 	const cutoff = new Date(
 		Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000,
 	);
-	const result = await db.collection("llmCallLog").updateMany(
-		{
-			savedAt: { $lt: cutoff },
-			$or: [{ input: { $exists: true } }, { output: { $exists: true } }],
-		},
-		{ $unset: { input: "", output: "" } },
-	);
-	if (result.modifiedCount > 0) {
+	const result = await db
+		.collection("llmCallLog")
+		.deleteMany({ savedAt: { $lt: cutoff } });
+	if (result.deletedCount > 0) {
 		console.log(
-			`[scheduler] Log pruning: stripped input/output from ${result.modifiedCount} entries older than ${LOG_RETENTION_DAYS} days`,
+			`[scheduler] Log pruning: deleted ${result.deletedCount} entries older than ${LOG_RETENTION_DAYS} day(s)`,
 		);
 	}
 }
@@ -284,8 +289,9 @@ export function startScheduler(db: Db): () => void {
 	prune();
 
 	const deliveryTask = schedule("* * * * *", tick);
-	// Daily at 02:00 UTC.
-	const pruneTask = schedule("0 2 * * *", prune);
+	// Every 30 minutes — was daily at 02:00 UTC, too slow to catch fast
+	// accumulation on a busy mission before it reached the Atlas quota.
+	const pruneTask = schedule("*/30 * * * *", prune);
 
 	return () => {
 		deliveryTask.stop();

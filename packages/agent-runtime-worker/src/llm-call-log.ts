@@ -10,13 +10,18 @@
  * Storage notes:
  *   - Tool result bodies are truncated to MAX_TOOL_BODY_CHARS to prevent bloat
  *     from large FetchUrl / BrowseWeb / Bash outputs.
- *   - System prompts are stored in full (5–15 kB each; they include the current
- *     Mental Map HTML which changes between sessions).
- *   - Retention policy: full entries (input + output + usage) are kept for 7 days.
- *     After 7 days the control-plane pruner runs $unset on `input` and `output`,
- *     keeping usage/cost metadata indefinitely for billing reconciliation.
- *     Pruned entries still carry missionId, agentId, turnNumber, model, savedAt,
- *     isReflection, and usage — enough for cost accounting and audit.
+ *   - `input.messages` is capped to the most recent MAX_LOGGED_MESSAGES — without
+ *     this, `messages` is the *entire accumulated conversation at call time*, so a
+ *     deep mission re-stores its whole early history on every single subsequent
+ *     call (O(n²) growth). Older messages are still fully recoverable from
+ *     `conversationMessages`; they were also captured in full themselves, at the
+ *     point they were newest, in some earlier logged call.
+ *   - Retention policy: full entries (input + output + usage) are kept for
+ *     LOG_RETENTION_DAYS (`scheduler.ts`). After that the control-plane pruner
+ *     runs $unset on `input` and `output`, keeping usage/cost metadata
+ *     indefinitely for billing reconciliation. Pruned entries still carry
+ *     missionId, agentId, turnNumber, model, savedAt, isReflection, and usage —
+ *     enough for cost accounting and audit.
  *
  * Collection: `llmCallLog`
  */
@@ -34,6 +39,14 @@ import type { Db } from "mongodb";
 
 /** Tool result bodies beyond this length are truncated in the stored log. */
 const MAX_TOOL_BODY_CHARS = 2_000;
+
+/**
+ * Only the most recent MAX_LOGGED_MESSAGES are kept in full per logged call —
+ * see the module header comment for why. Chosen to comfortably cover a single
+ * turn's worth of tool-call back-and-forth for the cockpit's Transcripts "Input"
+ * drill-down, without re-storing an entire mission's history on every call.
+ */
+const MAX_LOGGED_MESSAGES = 40;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -219,6 +232,25 @@ export function truncateToolBodies(messages: Message[]): LoggedMessage[] {
 		});
 		return { ...tr, content: truncatedContent };
 	});
+}
+
+/**
+ * Return a copy of the message array with only the most recent
+ * MAX_LOGGED_MESSAGES kept; earlier ones are replaced with a single count
+ * marker. Combined with truncateToolBodies, this bounds each logged call's
+ * storage footprint to roughly constant size regardless of how deep into a
+ * mission the call happens — without it, a long-running mission's llmCallLog
+ * entries grow with the conversation on every single call, not just once.
+ */
+export function truncateOldMessages(messages: Message[]): LoggedMessage[] {
+	if (messages.length <= MAX_LOGGED_MESSAGES) return messages;
+	const omitted = messages.length - MAX_LOGGED_MESSAGES;
+	const marker: Message = {
+		role: "user",
+		content: `[${omitted} earlier message(s) omitted from this log entry — see conversationMessages for full mission history]`,
+		timestamp: Date.now(),
+	};
+	return [marker, ...messages.slice(-MAX_LOGGED_MESSAGES)];
 }
 
 // ---------------------------------------------------------------------------

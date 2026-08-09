@@ -88,8 +88,13 @@ Full design: [docs/adr/0013-cloud-execution-architecture.md](docs/adr/0013-cloud
 This system runs AI agents that execute shell commands, write files, browse the web, and message each other — autonomously, for extended periods, with minimal human supervision.
 
 !!!DO NOT GIVE YOUR AGENTS THE PASSWORDS TO YOUR OWN ACCOUNTS!!! 
+You never know what they could do in your name...
 
-!!!THINK THREE TIMES BEFORE GIVING THEM ANY OTHER SENSITIVE INFORMATION, AND THEN DO NOT DO IT ANYWAY.
+!!!THINK THREE TIMES BEFORE GIVING THEM ANY OTHER SENSITIVE INFORMATION, AND THEN DO NOT DO IT ANYWAY!!! 
+Your information will be written at external providers (Fly.io, MongoDB Atlas, and of course your LLM providers). The plaform has not undergone any pen-testing.
+
+!!!ALWAYS MAINTAIN HARD TOKEN LIMITS AT YOUR LLM PROVIDERS (and do not use their auto-replensih features)!!! 
+MAGI-V3 ships with its own limit system, but better safe than sorry.
 
 - **Agents execute real shell commands.** A confused or manipulated agent can delete files, make network requests, or exhaust disk. Review `permittedPaths` before deploying.
 - **Web content is untrusted.** The trust-boundary headers are a mitigation, not a guarantee. Do not point agents at adversarial content and ask them to act on it without human review checkpoints.

@@ -5,9 +5,10 @@
  * estimate.
  */
 
+import type { Message, UserMessage } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import type { LlmCallCost } from "../src/llm-call-log.js";
-import { resolveCallCost } from "../src/llm-call-log.js";
+import { resolveCallCost, truncateOldMessages } from "../src/llm-call-log.js";
 
 const estimatedCost: LlmCallCost = {
 	inputCostUsd: 0.003,
@@ -59,5 +60,38 @@ describe("resolveCallCost", () => {
 			undefined,
 		);
 		expect(costEstimated).toBe(true);
+	});
+});
+
+function userMsg(i: number): UserMessage {
+	return { role: "user", content: `message ${i}`, timestamp: i };
+}
+
+describe("truncateOldMessages", () => {
+	it("passes a short array through unchanged", () => {
+		const messages: Message[] = [userMsg(0), userMsg(1), userMsg(2)];
+		expect(truncateOldMessages(messages)).toBe(messages);
+	});
+
+	it("caps a long array to the most recent 40, prepending a count marker", () => {
+		const messages: Message[] = Array.from({ length: 50 }, (_, i) =>
+			userMsg(i),
+		);
+		const result = truncateOldMessages(messages);
+		expect(result).toHaveLength(41); // marker + last 40
+		const marker = result[0] as UserMessage;
+		expect(marker.role).toBe("user");
+		expect(marker.content).toContain("10 earlier message(s) omitted");
+		// The kept tail is exactly the last 40 original messages, in order.
+		expect(result.slice(1)).toEqual(messages.slice(-40));
+	});
+
+	it("is exactly at the cap: no marker inserted", () => {
+		const messages: Message[] = Array.from({ length: 40 }, (_, i) =>
+			userMsg(i),
+		);
+		const result = truncateOldMessages(messages);
+		expect(result).toHaveLength(40);
+		expect(result).toBe(messages);
 	});
 });
