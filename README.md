@@ -1,49 +1,85 @@
 # MAGI V3
 
-**An autonomous multi-agent system for long-horizon research and operations missions.**
+MAGI V3 runs teams of AI agents that work autonomously on long-running tasks, coordinating with each other and with a human operator through a persistent mailbox.
 
-MAGI runs teams of AI agents that collaborate on shared missions — delegating tasks, sharing artifacts, and operating unattended for hours or days. The anchor use case is an equity research team: agents producing daily market briefs, sector reports, and event-driven alerts with full citation lineage.
+The human operator is assisted by "copilot" agents: one at the 'control' level to spin up new teams, and one at each 'mission' level to monitor the performance and fine-tune the configuration of the team.
 
-This is a working prototype, not a polished product. It gets real things done, and it breaks in interesting ways.
+High level objectives for the team are set by the human operator (with the help of the mission copilot); more granular tasks are also defined for each agent, very much like you would manage people. The copilot guides the agents in reporting progress and KPIs and in allocating their LLM token consumption to tasks and objectives. The copilot also monitors the alignment of the agents with the mission objectives. 
 
----
+Agents maintain their own 'mental maps' with medium to long term memory; the high-level structure of these mental maps can be enforced, along with detailed instructions.
 
-## What it can do today
+Agents are given access to a virtual computer to save artefacts or execute programs. All agents in a team share the same file-system, each with its own linux user-name and permissions. The human operator can inspect, edit and download/upload all these files. Agents also have access to the worldwide web with search and interactive browsing abilities.
 
-- **Run teams of agents** defined in a YAML config — each with a role, a system prompt, a supervisor chain, and per-agent tool/skill toggles
-- **Coordinate via a durable mailbox** backed by MongoDB; agents post structured messages to each other (and the operator) by role
-- **Use tools**: shell (`Bash`), file I/O, web fetch (Readability + PDF + vision), image inspection (vision LLM), web search (Brave API), headless browser (Playwright/Stagehand) for JS-rendered pages and login flows, an isolated `Research` sub-loop, and a background-job system for long-running data work
-- **Persist conversations** across restarts — each agent's full turn history accumulates across wakeups, with session-boundary compaction and reflection, plus in-session pruning to stay under the context window
-- **Sleep and wake on demand** via a MongoDB Change Stream — no polling, no wasted compute at rest
-- **Schedule recurring tasks** via a cron-based delivery loop (e.g. "brief me every morning at 06:00")
-- **Enforce OS-level isolation** between agents: each runs tools under a dedicated Linux user with `setfacl` ACLs, forked via `sudo` with no access to secrets
-- **Discover and use skills** — versioned playbooks shared via a tiered workspace, injected into each agent's system prompt
-- **Run in the cloud** — an always-on **control plane** (Express API + single-page UI) provisions on-demand **execution-plane** machines on Fly.io, one per mission, and reverse-proxies the live monitor dashboard
-- **Multi-user** — Firebase (Google) auth, per-user mission scoping, and one privileged **copilot** assistant per user that can inspect missions, propose actions (operator-confirmed), and file GitHub issues
-- **Account for spend** — every LLM call is logged with a full cost breakdown; per-turn and lifetime statistics are aggregated into dedicated collections for budgeting and observability
-- **A data factory** — a Python adapter layer (FRED, FMP, yfinance, NewsAPI, GDELT, IMF, World Bank) feeding background data-refresh jobs via a loopback tool IPC server
+The abilities of agents are increased through a library of 'skills'. These are written by the human operator, the copilot or the agents themselves on the file system. Each skill describes how to perform a specific task and may also include scripts or programs that can be used.
+
+LLM token consumption is monitored through a number of hard and soft limits.
+
+For security reasons, teams are deployed on virtual machines in the cloud (one machine per team + one machine for the control plane to manage all the missions). Agents do not have access to your personal computer. Agents do not have access to API secrets.
 
 ---
 
-## Design
+## Capabilities
 
-Each agent is a role definition in a YAML file: a system prompt, an initial mental map, a supervisor, and a Linux user. Agents communicate through a structured mailbox (not free-form chat) — messages carry intent, artifact references, and deadlines. All durable state lives in MongoDB; worker processes are stateless and can be restarted at any point without losing context.
+- Agent teams with a role, a supervisor chain, and per-agent tool/skill access. Start one through
+  the cockpit (sign in, pick a template, launch) or run purely locally with no cloud machine at
+  all — see [Running a mission](#running-a-mission)
+- An objectives tree (goals → tasks → KPIs) with automatic cost attribution, reviewed by the
+  mission copilot; a control-plane copilot to launch and manage missions
+- Shell, file I/O, web fetch/search, image inspection, a headless browser, an isolated `Research`
+  sub-loop, background jobs, and a data factory (FRED, FMP, yfinance, NewsAPI, GDELT, IMF, World
+  Bank)
+- Conversation history and mental maps survive restarts; a mission sleeps between wakeups — woken
+  by a database change stream, not polling — and every file an agent writes is committed to git
+  automatically, traceable back to the turn and agent that produced it
+- Cron-based recurring wakeups; inline images, tables, Mermaid, and KaTeX in agent messages
+- Each agent's shell tools run as a dedicated, ACL'd Linux user; web content is treated as
+  untrusted by default; a maintained threat model and findings tracker
+- An always-on control plane provisions on-demand cloud machines per mission (Fly.io), with
+  Google auth and per-user mission scoping
+- Every LLM call logged with a full cost breakdown; configurable hard/soft spend limits enforced
+  live
 
-Tool execution is OS-isolated: shell commands run as a dedicated user (`magi-w1`, `magi-w2`, … in dev; per-agent users in production) forked via `sudo`, with no access to API keys or other agents' workspaces. ACLs are enforced at the filesystem level by `setfacl`. The orchestrator and the tool executor are deliberately kept separate — the child process that runs Bash is clean.
+---
 
-The shared workspace is a git repository provisioned at mission startup. Agents commit artifacts, scripts, and reports to it, giving every work product a provenance trail. Reusable workflows are published as skill playbooks (Markdown + scripts) at four tiers — platform, team, mission, and agent-local — and discovered automatically.
+## Architecture at a glance
 
-Web content is treated as untrusted by default. Every artifact from `FetchUrl` or `BrowseWeb` is wrapped in an `⚠ UNTRUSTED WEB CONTENT` header; `content.md` files carry a machine-readable untrusted-source comment to guard against prompt injection via the artifact supply chain.
+```mermaid
+flowchart LR
+    Operator(["Operator (browser)"]) -->|Google auth| CP
 
-The cloud architecture splits into two planes. The **control plane** is a small always-on Fly app: it owns mission CRUD and lifecycle, the cron scheduler, the per-user copilot, Firebase auth, and a reverse proxy. Each mission's **execution plane** is an on-demand Fly machine running the daemon, the monitor server (port 4000), and the tool IPC server (port 4001); it suspends when idle and its volume persists across suspend/resume. See [docs/adr/0013-cloud-execution-architecture.md](docs/adr/0013-cloud-execution-architecture.md).
+    subgraph CP["Control plane (always on)"]
+        Auth["Auth + mission lifecycle"]
+        Cron["Cron scheduler"]
+        Cop1["Per-user copilot"]
+    end
+
+    CP -->|provisions on demand| EP
+
+    subgraph EP["Execution plane (one machine per mission)"]
+        Daemon["Orchestration daemon"]
+        Dash["Live monitor dashboard"]
+    end
+
+    Daemon --> MB[("Mailbox")]
+    MB --> A1["Agent: Lead"]
+    MB --> A2["Agent: Analyst"]
+    MB --> A3["Agent: Analyst"]
+    MB --> Cop2["Mission copilot"]
+    A1 --> Tools["Shell, Files, Web, Vision, Browser"]
+    A2 --> Tools
+    A3 --> Tools
+
+    CP -.-> DB[("MongoDB")]
+    EP -.-> DB
+```
+
+Full design: [docs/adr/0013-cloud-execution-architecture.md](docs/adr/0013-cloud-execution-architecture.md).
 
 ---
 
 ## Status
 
-Sprints 1–23 are complete: the system runs end-to-end locally and in the cloud — agents coordinate, use tools, persist state, wake on schedule, and are managed through a multi-user control plane with a per-user copilot. Sprint 24 (budget hardening + alignment signals) is in progress; the statistics-collector foundation (per-turn `agentTurnStats` + lifetime `missionStats`) has landed.
-
-See [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) for the full sprint plan and the Sprint 24–26 "Agent Alignment and Efficiency" design notes.
+**MVP complete.** The system runs end-to-end, locally and in the cloud: agent teams coordinate, use tools, persist state across restarts, wake on schedule, and are managed through a multi-tenant cloud control plane with a cockpit UI and a per-user AI copilot. Current work is operational and security hardening ahead of a production launch — see [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) for the full sprint history and what's next.
 
 ---
 
@@ -51,10 +87,14 @@ See [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) for the full sprint plan and the Sp
 
 This system runs AI agents that execute shell commands, write files, browse the web, and message each other — autonomously, for extended periods, with minimal human supervision.
 
+!!!DO NOT GIVE YOUR AGENTS THE PASSWORDS TO YOUR OWN ACCOUNTS!!! 
+
+!!!THINK THREE TIMES BEFORE GIVING THEM ANY OTHER SENSITIVE INFORMATION, AND THEN DO NOT DO IT ANYWAY.
+
 - **Agents execute real shell commands.** A confused or manipulated agent can delete files, make network requests, or exhaust disk. Review `permittedPaths` before deploying.
 - **Web content is untrusted.** The trust-boundary headers are a mitigation, not a guarantee. Do not point agents at adversarial content and ask them to act on it without human review checkpoints.
 - **API costs are real.** Set `MAX_COST_USD` in your environment. A misconfigured cron schedule can accumulate significant spend.
-- **This is a prototype.** The security model has had internal review (see `docs/security/`) but no independent audit. Browser process isolation is a known gap (Playwright runs in the orchestrator process), documented and deferred.
+- **The security model has had internal review** (see `docs/security/`) but no independent audit. Browser process isolation is a known gap (Playwright runs in the orchestrator process), documented and deferred.
 
 Use this in a controlled environment. The monitor and control-plane endpoints are authenticated; do not disable that.
 
@@ -77,7 +117,9 @@ Use this in a controlled environment. The monitor and control-plane endpoints ar
 
 **Linux only — OS isolation setup:**
 
-The system runs each agent's shell tools as a dedicated OS user (`magi-w1`, `magi-w2`, …). This requires the pool users and a sudoers rule. `setup-dev.sh` creates them, sets up the Python venv used by the data factory, and configures `/etc/sudoers.d/magi`:
+The system runs each agent's shell tools as a dedicated OS user (`magi-w1`, `magi-w2`, …). This
+requires the pool users and a sudoers rule. `setup-dev.sh` creates them, sets up the Python venv
+used by the data factory, and configures `/etc/sudoers.d/magi`:
 
 ```bash
 sudo env NODE_BIN=$(which node) scripts/setup-dev.sh

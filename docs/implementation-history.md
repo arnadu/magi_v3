@@ -1051,3 +1051,206 @@ unit-tier tests; `objectives-store.unit.test.ts` trimmed to fold-logic-only case
 cases moved into the new repository integration test); `workspace-manager-objectives.unit.test.ts`
 deleted outright, its subject (the interim fix) no longer existing. Full design:
 [ADR-0019](adr/0019-objectives-mongodb-migration.md).
+
+## Sprint 26c — Control-plane vs. mission-plane config editing scope (ADR-0022)
+
+The legacy dashboard's config editor corrupted a live mission's config on save — an agent's
+`supervisor`/`systemPrompt` was silently dropped. Root cause was two compounding design choices:
+a client-side YAML round-trip (parse → edit → re-serialize) that didn't reliably preserve fields
+the UI itself never rendered, and a free-text "Advanced" escape hatch that could write fields
+already owned by a dedicated safe path (`mission.maxCostUsd`, `missionCopilotLimits`,
+`agents[].limits` — the Limits panel, ADR-0018). The fix deleted the round-trip and the escape
+hatch rather than patching around them: the editor now holds cached structured JSON and edits
+only an explicit allowlist (mission name/model/visionModel/timezone; per-agent name/model/active/
+disabledSkills/disabledTools — the last newly a first-class checkbox), with every other field
+passing through the `PUT` unmodified. `systemPrompt`/`supervisor`/`initialMentalMap`/skill-file
+content move to the mission copilot's own tools (`SaveMissionConfig`/`EditAgentMentalMap`), and
+pre-launch template customization from this dashboard is removed entirely — launch a template
+as-is, then tweak it via the copilot afterward. Full design: [ADR-0022](adr/0022-control-plane-mission-plane-config-editing-scope.md).
+
+## Sprint 26c — pi-ai fork, OpenRouter real cost patch (ADR-0023)
+
+First concrete step on GitHub issue #10 (OpenRouter provider-reported actual cost, vs. MAGI's own
+static per-token estimate). Forked `earendil-works/pi` (the renamed, maintained successor to the
+dead `badlogic/pi-mono`/`@mariozechner/pi-ai`) at current `main`, patched roughly ten lines across
+`types.ts` and `api/openai-completions.ts` to surface OpenRouter's real `usage.cost` as a new
+`Usage.providerCost` field, and re-tested at both layers — pi's own suite (681/681) and MAGI V3's
+full build/lint/unit/integration suite, run twice: once against the local fork, once against the
+actual delivery mechanism, to separate patch correctness from the ~30-version jump's own risk
+(0.52.12 → 0.82.1). One real breaking change from that jump was fixed rather than shimmed: pi
+v0.80.0 moved `completeSimple`/`getModel` to a documented-temporary `/compat` entrypoint, so the
+four call sites were migrated to the new `Models` API instead of pinning to the compat shim.
+Shipped via `patch-package` against the real published `@earendil-works/pi-ai@0.82.1`
+(npm-aliased, no import-specifier changes anywhere) rather than a `file:` link to the fork clone —
+a `file:` link would have broken both Dockerfiles' build, since their build context is the repo
+root only and can't reach a sibling directory. `makeOnLlmCall` now prefers `usage.providerCost`
+over the static estimate whenever present, via a new pure `resolveCallCost()` (mirrors
+`resolveLiveLimits` from ADR-0018); `costEstimated` is genuinely `false` for any OpenRouter call
+that reported its own cost, verified against a real OpenRouter call, not just unit tests. Full
+design: [ADR-0023](adr/0023-pi-ai-fork-openrouter-cost-patch.md).
+
+## Sprint 26c — OpenRouter cache efficiency, OpenRouter half (ADR-0024)
+
+The `providerCost` wiring above made real OpenRouter spend visible for the first time, and a
+read-only `llmCallLog` query against the live `gold-digest-v2` mission found 16 of 58 calls over
+24h (27.6%) were full prompt-cache misses — about $0.68/day wasted. Only one of those sixteen
+aligned with the usual 5-minute cache-timeout bucket, pointing at OpenRouter's own request routing
+inconsistency as the dominant cause, not MAGI's prompt instability. Two fixes: explicit OpenRouter
+session affinity (`models.ts`'s `withOpenRouterAffinity()` turns on pi-ai's
+`sendSessionAffinityHeaders` default-off setting; `loop.ts` threads a stable `missionId:agentId`
+through as the session id — verified live by instrumenting the installed package to confirm
+`x-session-id` actually goes out on the wire), and a fully static system prompt
+(`buildSystemPrompt()` drops `mentalMapHtml`/`timezone` entirely; a new
+`buildDynamicContextMessage()` carries the mental map and time block as `messages[0]` instead,
+replaced in place only when it changes) — a prompt that mutates every turn defeats caching by
+construction, independent of routing. Scoped to the main turn loop only, not sub-loops or one-shot
+vision calls. The actual production miss-rate drop was not yet verified at time of writing. Full
+design: [ADR-0024](adr/0024-openrouter-cache-efficiency.md).
+
+## Sprint 27 — Conversation-recovery bugs + model-switch guard (ADR-0025)
+
+Pulled forward out of the planned Sprint 27 UI work as a live production incident: switching the
+control-plane copilot's model mid-turn corrupted its history permanently, and every subsequent
+turn failed identically regardless of which model was selected afterward. Root cause:
+`copilot-router.ts`'s `/settings` route stopped the running daemon (`AbortController.abort()`,
+fire-and-forget) and immediately started a fresh one on the new model, racing the old turn's
+still-unwinding `runAgent()` call — `loop.ts`'s `runInnerLoop` persisted the in-progress assistant
+message's tool call via `pushAndNotify` *before* checking whether the turn had aborted, leaving a
+permanent dangling `tool_use` with no matching result. This codebase already has a self-healing
+mechanism for exactly this shape of corruption (`convertToLlm()`'s synthetic-interrupted-result
+injection, and `agent-runner.ts`'s structural-error detection + `forceCompactSession` recovery),
+but it never fired, for two independent, previously-undetected reasons: the structural-error check
+searched for the first assistant message in the full history (an ancient, successful one for any
+agent with real prior history, not the one that just failed), and `forceCompactSession`'s own
+recovery summary was written at a turn number that immediately qualified it for its own
+compaction pass — it marked itself stale the instant it was written. Both fixed at the root, plus
+a new busy guard on `/settings` that rejects a model switch while a turn is in flight instead of
+racing an abort — the honest fix, given the corruption mechanism, rather than trying to sequence
+the abort/restart correctly. The live corrupted copilot data was repaired using the corrected
+logic. Full design: [ADR-0025](adr/0025-conversation-recovery-and-model-switch-guard.md).
+
+## Sprint 27 — UI consolidation: cockpit reaches feature parity, `index.html` retired (MVP milestone)
+
+`MAGI_V3_ROADMAP.md` names its post-MVP backlog section "Post-MVP (after Sprint 27)" — this is the
+commit that crosses that line. Until now the cockpit SPA (`packages/cockpit/`) covered only
+per-mission deep-dive tabs (Objectives/Files/Transcripts/Trace/Limits); everything else — signing
+in, creating or destroying a mission, browsing templates, the cross-mission copilot chat — existed
+only in the legacy `packages/control-plane/public/index.html` dashboard (1934 lines), which this
+sprint deletes outright. New cockpit surfaces: Login (Google + admin key, `auth.ts` +
+`LoginScreen.tsx`); a Missions view (list/create/suspend/resume/destroy, with cross-mission stats
+— unread count, spend, last-activity snippet — on each row); a read-only template browser
+(templates are immutable/disk-only per ADR-0022, so browse-and-launch only, no editor); standalone
+copilot chat, porting `index.html`'s design onto the same `/api/copilot/*` backend; an agent-error
+banner wired to the mission SSE stream; a Schedule tab (scheduled wake-ups + cancel) and a Log tab
+(daemon log tail), both previously reachable only via the mission-local dashboard with no cockpit
+surface at all; and a Config tab implementing ADR-0022's restricted editor. Two pre-existing,
+unrelated bugs were found and fixed along the way: `monitor-server.ts`'s `/events` SSE had no
+heartbeat, so the cockpit's assumption that `EventSource`'s native reconnect was sufficient didn't
+hold up against a silent connection drop on the WireGuard control→mission path (the actual cause
+of reported UI timeouts) — fixed with a named `ping` heartbeat plus a client-side watchdog that
+force-reconnects; and `useView()` fetched the mission list on mount regardless of auth state and
+never retried after a successful sign-in, which could leave the cockpit stuck on the login screen
+after entering valid credentials. Retiring `index.html` also closed finding F-018 (unpinned CDN
+scripts) for free, since Firebase is now bundled via the npm package instead of a CDN compat
+script; `vite.config.ts` now builds straight into `control-plane/public/` at the static root
+instead of `public/cockpit/`, since the cockpit is the only UI left.
+
+## Sprint 27 — PostMessage math/mermaid rendering fix + postmessage-conventions skill rename
+
+Two related pieces of live feedback. First, a design question: `PostMessage`'s tool description
+had grown to include full mermaid/KaTeX/image syntax documentation, re-sent on every single LLM
+call in a conversation — moved to a short pointer plus a by-name skill reference instead (the same
+lazy-loading pattern every other platform skill already uses), and the skill itself renamed from
+`inter-agent-comms` to `postmessage-conventions` so the tool description's reference reads as an
+obvious trigger to read it. Rewriting that skill also surfaced and fixed a real pre-existing
+inaccuracy: it documented a `priority` parameter on `PostMessage` that never actually existed in
+the tool's schema. Second, a live bug reported from a running mission: inline math written as
+`\( C \)` rendered as literal text — `renderMarkdown()` had no support for that delimiter at all,
+only block-level `$...$`. Root cause was a genuine gap, not a logic bug: the skill told agents
+"inline math isn't supported" with no alternative, and agents kept reaching for the LaTeX-native
+`\(...\)` form out of training-data habit anyway. Fixed by implementing real `\(...\)` inline
+support (plus a `\[...\]` block-math alias for parity) rather than warning more forcefully — unlike
+bare `$...$`, which has to stay unsupported because it collides with ordinary dollar amounts in
+message text (`"$5.00 per share"`), `\(...\)` has no such collision risk, so there was no reason to
+keep withholding it. `Markdown.tsx`'s KaTeX rendering gained a `data-katex-display` attribute to
+distinguish block (centered, own line) from inline (flows with text) placeholders.
+
+## Sprint 27 — Inline image embedding in chat (port from MAGI V2)
+
+Agents can now write an image to their shared workspace (e.g. a matplotlib chart) and reference it
+in a `PostMessage` body with standard markdown image syntax, `![caption](path/in/SHARED_DIR.png)`,
+and it renders inline in the Conversations rail instead of only being reachable as a download; the
+Files panel's own markdown viewer picks up the same syntax for consistency. `monitor-server.ts`'s
+existing `GET /download` route (already the Files panel's download-button endpoint) gained an
+`inline=1` mode that serves known image extensions with a real `image/*` Content-Type and no
+`Content-Disposition`, so it can be used directly as an `<img src>`; the default (no `inline`)
+behavior is unchanged. `renderMarkdown()` gained `![alt](relative/path)` support gated behind a new
+optional `missionId` parameter — omitted, the syntax is left as plain text. The path rule is
+deliberately the mirror image of the existing link-rendering rule's scheme allowlist: only
+relative paths are accepted, rejecting any scheme (including `http`/`https`) and any
+protocol-relative `//` path. Agent output can be transitively web-influenced (TB-8); an `<img src>`
+pointing at an arbitrary external URL would leak the operator's IP and viewing activity to a third
+party with zero interaction the moment the message renders — the same tracking-pixel risk class
+link rendering already guards against for `href`s, now closed for image `src`s too. Deliberately
+did not port MAGI V2's actual mechanism (an `ImageGenerationTool` writing into a per-conversation
+base64 asset registry) — V2's own image path had a real bug where generated images never reliably
+reached that registry, and V3 already has a complete, working, git-tracked file storage/serving/
+auth story via the shared workspace and Files panel that this reuses directly instead.
+
+## Sprint 27 — Control-plane copilot visibility: Transcripts, Files, spend-cap Limits (ADR-0027)
+
+The control-plane copilot (distinct from the per-mission mission copilot, ADR-0016) runs as a real
+agent — its own OS user, a real workdir, full LLM turns persisted via `conversationRepo`/
+`llmCallLog` — but none of that was visible in the cockpit: only the live chat stream and a
+one-line cost readout. Investigation found `agentTurnStats`/`missionStats` were silently never
+written for the copilot at all, because `runAgent()` only records them when the caller supplies
+`ctx.statsCollector`, and `copilot-daemon.ts` never set it — fixed by wiring in a `StatsCollector`,
+which needs nothing beyond a `Db` handle (no `missions` collection document required), unlocking
+both a real Transcripts turn timeline and a lifetime-cost read for a new spend cap. The four
+mission Transcripts routes' query logic (`queryTurns`/`queryTranscript`/`queryLlmCalls`/
+`queryLlmCall`) was extracted into a shared `transcript-queries.ts` so the new copilot-scoped
+routes reuse the same code with no ownership lookup needed (the caller's `userId` is already baked
+into the derived `missionId`). A new Files route reads the copilot's workdir directly off the
+control-plane's own local filesystem rather than proxying to a MonitorServer — the copilot runs
+in-process in the control-plane container, unlike a mission's execution-plane machine — guarded by
+the same symlink-safe path-boundary check as the F-003 fix (see threat-model.md TB-21, including
+a known, consciously-accepted gap: the copilot's workdir is one shared OS identity across every
+user, so this route isn't yet per-user scoped). A new per-user `copilotSpendCapUsd` setting is
+enforced synchronously at the top of `POST /message` — a hard block on the *next* dispatch, not a
+mid-turn abort, deliberately simpler than missions' async pause/`waitForBudget` mechanism since the
+copilot has one HTTP request per turn rather than a continuous loop. New "Copilot" tab in the
+cockpit nav, alongside Missions/Templates, with its own Transcripts/Files/Limits sub-tabs. Full
+design: [ADR-0027](adr/0027-copilot-visibility-spend-cap.md).
+
+## Sprint 27 — Touch/Pointer Events support for resizable cockpit panels (iPad)
+
+Reported live: cockpit panels weren't resizable on iPad, though everything else rendered fine.
+Root cause: all three drag-handle implementations in the cockpit (the conversations rail resize,
+the copilot side-panel resize, and the Trace chart's drag-to-zoom brush) were built on
+`mousedown`/`mousemove`/`mouseup`, which iPadOS Safari never fires for touch input — those events
+only exist there with an attached trackpad/mouse. Switched all three to the Pointer Events API
+(`pointerdown`/`pointermove`/`pointerup`), which unifies mouse, touch, and pen under one model, and
+added `touch-action: none` to each handle — without it, a touch-drag on a thin handle gets captured
+as a page scroll/pan gesture before the app's own listener ever sees it. The two panel-resize hit
+targets were also widened (7px → 13px, still invisible except on hover) since a fingertip needs
+more tolerance than a mouse cursor.
+
+## Sprint 27 — MongoDB Atlas quota incident: log retention 7d → 2d
+
+MongoDB Atlas hit its 512MB M0 quota, which — confirmed live — blocks *all* writes cluster-wide
+once truly at the cap, including shrink-only `$unset` updates, not just inserts. This took down
+login: `requireAuth` performs a MongoDB write (`syncFirebaseUser`, an upsert) on every single
+authenticated request, and that write started failing, surfacing to the operator only as an
+unexplained 401 on every API call — the Firebase sign-in itself was working fine. Root cause of the
+quota pressure: the existing daily pruner correctly strips `llmCallLog`'s `input`/`output` fields
+after 7 days, but at the mission activity volume in play, 7 days of full-body retention alone was
+~370MB of data that's legitimately "still within the window, not yet eligible to prune" at any
+given moment — enough by itself to exceed the quota even with the pruner working exactly as
+designed. Recovered by deleting (not stripping — `$unset` was blocked too) the oldest 792 entries
+older than 2 days that still carried a full body, reclaiming ~163MB and confirming live that Atlas
+permits `deleteMany` even while blocking other writes; a harmless test write confirmed the cluster
+was unblocked afterward. `LOG_RETENTION_DAYS` (`scheduler.ts`) lowered from 7 to 2 so less
+full-body data accumulates before the nightly prune reclaims it going forward. Not fully closed: no
+Atlas storage monitoring or alerting exists yet, so sustained high call volume can still exceed
+quota before the shorter window prunes it — documented as an open gap in
+`docs/operational-resilience.md`'s Layer 9.

@@ -123,13 +123,17 @@ Full guide (app naming, GitHub Actions, integration test environments, operation
 
 ## Sprint Roadmap
 
-Full history and per-sprint detail: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md). Sprints 1–26c are
+Full history and per-sprint detail: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md). Sprints 1–27 are
 done — this section tracks only what's active now, not a running log of what shipped.
 
-**Sprint 27 — UI consolidation (not started).** Cockpit feature parity — auth/login, mission list +
-create/destroy, a read-only template browser (templates are immutable/disk-only per ADR-0022, no
-editor), standalone copilot chat, an in-app agent-error banner — then retire the legacy
-`packages/control-plane/public/index.html` dashboard.
+**Sprint 27 — UI consolidation — ✅ Done, MVP milestone.** Cockpit feature parity (auth/login,
+mission CRUD, template browser, standalone copilot chat, agent-error banner; legacy
+`packages/control-plane/public/index.html` retired), plus a Copilot visibility tab
+(Transcripts/Files/Limits, ADR-0027), the PostMessage math/mermaid fix, inline image embedding,
+a touch/Pointer-Events fix for the cockpit, and recovery from a MongoDB Atlas quota incident. This
+is the sprint `MAGI_V3_ROADMAP.md`'s own "Post-MVP (after Sprint 27)" section names as the
+completion line. See `MAGI_V3_ROADMAP.md`'s Sprint 27 row and `docs/implementation-history.md` for
+full detail.
 
 **Sprint 28 — Operational + security hardening (not started).** Out-of-band alerting (issues #3,
 #4), onboarding flow, usage dashboard, a full `/security-review` pass (issues #7, #21; unblocks
