@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { MagiTool, ToolResult } from "../tools.js";
+import { truncate } from "../tools.js";
 
 // ---------------------------------------------------------------------------
 // Brave Search API types (subset)
@@ -22,11 +23,11 @@ interface BraveWebResponse {
 // ---------------------------------------------------------------------------
 
 function ok(text: string): ToolResult {
-	return { content: [{ type: "text", text }] };
+	return { content: [{ type: "text", text: truncate(text) }] };
 }
 
 function toolErr(text: string): ToolResult {
-	return { content: [{ type: "text", text }], isError: true };
+	return { content: [{ type: "text", text: truncate(text) }], isError: true };
 }
 
 // ---------------------------------------------------------------------------

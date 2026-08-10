@@ -13,6 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { Type } from "@sinclair/typebox";
 import type { MagiTool, ToolResult } from "../tools.js";
+import { truncate } from "../tools.js";
 import type { ObjectivesRepository } from "./repository.js";
 import {
 	type AllocEvent,
@@ -22,10 +23,10 @@ import {
 } from "./types.js";
 
 function ok(text: string): ToolResult {
-	return { content: [{ type: "text", text }] };
+	return { content: [{ type: "text", text: truncate(text) }] };
 }
 function err(text: string): ToolResult {
-	return { content: [{ type: "text", text }], isError: true };
+	return { content: [{ type: "text", text: truncate(text) }], isError: true };
 }
 
 const TASK_STATUSES = TaskStatusSchema.options;

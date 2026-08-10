@@ -751,6 +751,112 @@ describe("mission-copilot-tools", () => {
 			const parsed = JSON.parse(result.content[0].text);
 			expect(parsed).toEqual([{ turnNumber: 3 }, { turnNumber: 4 }]);
 		});
+
+		it("clamps a requested limit above the ceiling instead of honoring it verbatim", async () => {
+			const sessions = Array.from({ length: 150 }, (_, i) => ({
+				turnNumber: i,
+			}));
+			fetchMock.mockResolvedValue(
+				new Response(JSON.stringify(sessions), { status: 200 }),
+			);
+			const { tools } = buildTools();
+			const result = await get(tools, "ListAgentSessions").execute("t1", {
+				agentId: "worker",
+				limit: 10_000,
+			});
+			const parsed = JSON.parse(result.content[0].text);
+			expect(parsed).toHaveLength(100);
+		});
+
+		it("parses a large sessions payload correctly instead of falling back to truncated/corrupted JSON (regression: monitorGet must return the raw body, not truncate before the caller's JSON.parse)", async () => {
+			// Each entry padded so the raw JSON body comfortably exceeds truncate()'s
+			// 20,000-char budget — this used to break because monitorGet truncated
+			// the envelope before this tool ever got a chance to parse it.
+			const sessions = Array.from({ length: 800 }, (_, i) => ({
+				turnNumber: i,
+				note: "x".repeat(50),
+			}));
+			fetchMock.mockResolvedValue(
+				new Response(JSON.stringify(sessions), { status: 200 }),
+			);
+			const { tools } = buildTools();
+			const result = await get(tools, "ListAgentSessions").execute("t1", {
+				agentId: "worker",
+				limit: 5,
+			});
+			const parsed = JSON.parse(result.content[0].text);
+			expect(parsed).toHaveLength(5);
+			expect(parsed[4].turnNumber).toBe(799);
+		});
+	});
+
+	describe("ReadSharedFile", () => {
+		it("extracts just the file content, not the raw JSON envelope", async () => {
+			fetchMock.mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						type: "file",
+						name: "notes.md",
+						encoding: "text",
+						content: "hello world",
+					}),
+					{ status: 200 },
+				),
+			);
+			const { tools } = buildTools();
+			const result = await get(tools, "ReadSharedFile").execute("t1", {
+				path: "notes.md",
+			});
+			expect(result.isError).toBeFalsy();
+			expect(result.content[0].text).toContain("hello world");
+			expect(result.content[0].text).not.toContain('"encoding"');
+			expect(result.content[0].text).toContain("TEAMMATE-AUTHORED CONTENT");
+		});
+
+		it("truncates large file content instead of returning a corrupted envelope (regression: monitorGet must not truncate before JSON.parse)", async () => {
+			const bigContent = "a".repeat(25_000);
+			fetchMock.mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						type: "file",
+						name: "big.txt",
+						encoding: "text",
+						content: bigContent,
+					}),
+					{ status: 200 },
+				),
+			);
+			const { tools } = buildTools();
+			const result = await get(tools, "ReadSharedFile").execute("t1", {
+				path: "big.txt",
+			});
+			expect(result.isError).toBeFalsy();
+			expect(result.content[0].text).toContain(
+				"[Output truncated at 20000 chars]",
+			);
+			expect(result.content[0].text).not.toContain('"encoding"');
+		});
+
+		it("passes non-text files through as a placeholder, not raw binary/base64 data", async () => {
+			fetchMock.mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						type: "file",
+						name: "photo.png",
+						encoding: "base64",
+						content: "iVBORw0KGgo".repeat(100),
+					}),
+					{ status: 200 },
+				),
+			);
+			const { tools } = buildTools();
+			const result = await get(tools, "ReadSharedFile").execute("t1", {
+				path: "photo.png",
+			});
+			expect(result.isError).toBeFalsy();
+			expect(result.content[0].text).toContain("not readable as text");
+			expect(result.content[0].text).not.toContain("iVBORw0KGgo");
+		});
 	});
 
 	describe("ListGithubIssues / ReportGithubIssue", () => {

@@ -2,6 +2,7 @@ import type { AgentConfig } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import { JSDOM } from "jsdom";
 import type { MagiTool, ToolResult } from "./tools.js";
+import { truncate } from "./tools.js";
 
 // ---------------------------------------------------------------------------
 // Mental Map HTML template and initialiser
@@ -170,10 +171,10 @@ export function createMentalMapTools(
 	setHtml: (html: string) => void,
 ): MagiTool[] {
 	const ok = (text: string): ToolResult => ({
-		content: [{ type: "text", text }],
+		content: [{ type: "text", text: truncate(text) }],
 	});
 	const err = (text: string): ToolResult => ({
-		content: [{ type: "text", text }],
+		content: [{ type: "text", text: truncate(text) }],
 		isError: true,
 	});
 

@@ -17,7 +17,7 @@ import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { runInnerLoop } from "../loop.js";
 import type { AclPolicy, MagiTool, ToolResult } from "../tools.js";
-import { createBashTool } from "../tools.js";
+import { createBashTool, truncate } from "../tools.js";
 import { tryCreateBrowseWebTool } from "./browse-web.js";
 import { createFetchUrlTool } from "./fetch-url.js";
 import { tryCreateSearchWebTool } from "./search-web.js";
@@ -173,11 +173,11 @@ Your final response (when you stop calling tools) MUST contain:
 // ---------------------------------------------------------------------------
 
 function ok(text: string): ToolResult {
-	return { content: [{ type: "text", text }] };
+	return { content: [{ type: "text", text: truncate(text) }] };
 }
 
 function toolErr(text: string): ToolResult {
-	return { content: [{ type: "text", text }], isError: true };
+	return { content: [{ type: "text", text: truncate(text) }], isError: true };
 }
 
 /** Extract all URLs from the last assistant message's text blocks. */

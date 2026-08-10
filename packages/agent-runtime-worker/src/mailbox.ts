@@ -3,6 +3,7 @@ import type { TeamConfig } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
 import type { MagiTool, ToolResult } from "./tools.js";
+import { truncate } from "./tools.js";
 
 /** Maximum message body length. Shared with monitor-server to keep the cap consistent. */
 export const MAILBOX_MAX_BODY_BYTES = 100_000;
@@ -163,10 +164,10 @@ export function createMailboxTools(
 	opts: MailboxToolOptions = {},
 ): MagiTool[] {
 	function ok(text: string): ToolResult {
-		return { content: [{ type: "text", text }] };
+		return { content: [{ type: "text", text: truncate(text) }] };
 	}
 	function err(text: string): ToolResult {
-		return { content: [{ type: "text", text }], isError: true };
+		return { content: [{ type: "text", text: truncate(text) }], isError: true };
 	}
 
 	/** Valid recipient IDs: every agent in the team plus "user" for the operator. */
@@ -289,7 +290,7 @@ export function createMailboxTools(
 		}),
 		async execute(_id, args) {
 			const messages = await repo.list(fromAgentId, {
-				limit: (args.limit as number | undefined) ?? 20,
+				limit: Math.min((args.limit as number | undefined) ?? 20, 100),
 				since: args.since ? new Date(args.since as string) : undefined,
 				search: args.search as string | undefined,
 			});

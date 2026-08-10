@@ -149,7 +149,17 @@ function checkPath(
 const MAX_LINES = 500;
 const MAX_CHARS = 20_000;
 
-function truncate(text: string): string {
+/**
+ * Cap any tool result to a bounded size before it enters an agent's context —
+ * 500 lines or 20,000 chars, whichever hits first. Deliberately the same
+ * budget for every tool regardless of purpose (a "diagnostic" tool doesn't get
+ * a bigger allowance): the point is that no single tool result should be able
+ * to dominate a turn. Exported so every tool-providing file's own ok()/err()
+ * can route through this one implementation instead of each reinventing (or
+ * omitting) truncation independently — see the tool-output size audit that
+ * found most files had done exactly that.
+ */
+export function truncate(text: string): string {
 	const lines = text.split("\n");
 	if (lines.length > MAX_LINES) {
 		return (

@@ -50,6 +50,7 @@ import type { ObjectivesRepository } from "./objectives/repository.js";
 import { type ObjectiveDef, ObjectiveDefSchema } from "./objectives/types.js";
 import { writeSupervisorNote } from "./supervisor-note.js";
 import type { MagiTool, ToolResult } from "./tools.js";
+import { truncate } from "./tools.js";
 
 // Named import errors on Node 18/22 — see CLAUDE.md's Known Pitfalls.
 const { parseExpression } = cronParser;
@@ -86,10 +87,10 @@ export interface MissionCopilotToolsConfig {
 // ---------------------------------------------------------------------------
 
 function ok(text: string): ToolResult {
-	return { content: [{ type: "text", text }] };
+	return { content: [{ type: "text", text: truncate(text) }] };
 }
 function err(text: string): ToolResult {
-	return { content: [{ type: "text", text }], isError: true };
+	return { content: [{ type: "text", text: truncate(text) }], isError: true };
 }
 function okJson(data: unknown): ToolResult {
 	return ok(JSON.stringify(data, null, 2));
@@ -115,6 +116,29 @@ function escapeRegex(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Shape of monitor-server.ts's serveFilePath response for a single file (subset — only what's needed here). */
+interface FileNodeLike {
+	type: "file" | "dir";
+	name?: string;
+	encoding?: "text" | "base64" | "binary";
+	content?: string;
+}
+
+/**
+ * Extract just a file's actual content for a ReadSharedFile/ReadAgentWorkdirFile
+ * result, instead of returning the raw JSON envelope monitor-server.ts sends
+ * (which wraps content in `{type, name, encoding, content, truncated}` — passing
+ * that whole blob through wastes the tool-result truncation budget on JSON
+ * scaffolding/escaping rather than the content itself, and reads badly).
+ * Non-text files have no meaningful textual content to show — base64 image data
+ * in particular would be a wall of unreadable characters, not a truncation
+ * candidate.
+ */
+function fileNodeToText(node: FileNodeLike): string {
+	if (node.encoding === "text") return node.content ?? "";
+	return `(${node.encoding ?? "binary"} file "${node.name ?? "?"}" — not readable as text; use the cockpit's Files panel to view it)`;
+}
+
 export function createMissionCopilotTools(
 	config: MissionCopilotToolsConfig,
 ): MagiTool[] {
@@ -133,6 +157,15 @@ export function createMissionCopilotTools(
 
 	const missionConfigWriter = createMongoMissionConfigWriter(db);
 
+	/**
+	 * Returns the RAW response body, deliberately untruncated. Most call sites
+	 * JSON.parse() this before re-wrapping through ok()/okJson() (which does
+	 * truncate) — truncating here first would cut the JSON mid-structure,
+	 * break the parse, and fall through to returning mangled JSON instead of
+	 * the clean, properly-processed result. Call sites that pass the body
+	 * straight through without further processing are responsible for their
+	 * own ok()/truncate() call.
+	 */
 	async function monitorGet(path: string): Promise<ToolResult> {
 		try {
 			const res = await fetch(`http://127.0.0.1:${monitorPort}${path}`, {
@@ -141,7 +174,7 @@ export function createMissionCopilotTools(
 			const body = await res.text();
 			if (!res.ok)
 				return err(`Monitor ${path} returned ${res.status}: ${body}`);
-			return ok(body);
+			return { content: [{ type: "text", text: body }] };
 		} catch (e) {
 			return err(`Failed to reach monitor server: ${(e as Error).message}`);
 		}
@@ -405,7 +438,7 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const agentId = args.agentId as string;
-			const limit = (args.limit as number | undefined) ?? 50;
+			const limit = Math.min((args.limit as number | undefined) ?? 50, 100);
 			const result = await monitorGet(
 				`/agents/${encodeURIComponent(agentId)}/sessions`,
 			);
@@ -536,7 +569,7 @@ export function createMissionCopilotTools(
 			),
 		}),
 		async execute(_id, args) {
-			const limit = (args.limit as number | undefined) ?? 20;
+			const limit = Math.min((args.limit as number | undefined) ?? 20, 100);
 			const docs = await db
 				.collection("mailbox")
 				.find({ missionId })
@@ -595,7 +628,7 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const query = args.query as string;
-			const limit = (args.limit as number | undefined) ?? 20;
+			const limit = Math.min((args.limit as number | undefined) ?? 20, 100);
 			const escaped = escapeRegex(query);
 			const docs = await db
 				.collection("conversationMessages")
@@ -640,7 +673,7 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const agentId = args.agentId as string | undefined;
-			const limit = (args.limit as number | undefined) ?? 100;
+			const limit = Math.min((args.limit as number | undefined) ?? 100, 500);
 			const filter: Record<string, unknown> = {
 				missionId,
 				completedAt: { $exists: true },
@@ -957,8 +990,10 @@ export function createMissionCopilotTools(
 			),
 		}),
 		async execute(_id, args) {
-			const lines = (args.lines as number | undefined) ?? 200;
-			return monitorGet(`/log?lines=${lines}`);
+			const lines = Math.min((args.lines as number | undefined) ?? 200, 500);
+			const result = await monitorGet(`/log?lines=${lines}`);
+			if (result.isError) return result;
+			return ok(result.content[0].text);
 		},
 	};
 
@@ -971,7 +1006,11 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const path = args.path as string;
-			return monitorGet(`/files/history?path=${encodeURIComponent(path)}`);
+			const result = await monitorGet(
+				`/files/history?path=${encodeURIComponent(path)}`,
+			);
+			if (result.isError) return result;
+			return ok(result.content[0].text);
 		},
 	};
 
@@ -991,10 +1030,10 @@ export function createMissionCopilotTools(
 			);
 			if (result.isError) return result;
 			try {
-				const parsed = JSON.parse(result.content[0].text) as { type: string };
+				const parsed = JSON.parse(result.content[0].text) as FileNodeLike;
 				if (parsed.type === "file") {
 					return ok(
-						wrapTrustBoundary(`shared file: ${path}`, result.content[0].text),
+						wrapTrustBoundary(`shared file: ${path}`, fileNodeToText(parsed)),
 					);
 				}
 			} catch {
@@ -1023,12 +1062,12 @@ export function createMissionCopilotTools(
 			);
 			if (result.isError) return result;
 			try {
-				const parsed = JSON.parse(result.content[0].text) as { type: string };
+				const parsed = JSON.parse(result.content[0].text) as FileNodeLike;
 				if (parsed.type === "file") {
 					return ok(
 						wrapTrustBoundary(
 							`${agentId}'s file: ${path}`,
-							result.content[0].text,
+							fileNodeToText(parsed),
 						),
 					);
 				}
