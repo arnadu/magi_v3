@@ -7,6 +7,8 @@ import type {
 	FoldedTree,
 } from "./types";
 
+const AGENTS_POLL_MS = 5000;
+
 const fmt = (n: number) => `$${n.toFixed(2)}`;
 type OnAgent = ((agentId: string) => void) | undefined;
 
@@ -221,14 +223,22 @@ export function ObjectivesPanel({
 	const [filterAgent, setFilterAgent] = useState<string | null>(null);
 	const [rosterIds, setRosterIds] = useState<string[]>([]);
 	useEffect(() => {
-		if (missionId) {
+		if (!missionId) {
+			setRosterIds([]);
+			return;
+		}
+		const loadAgents = () =>
 			fetchAgents(missionId).then(
 				(agents) => setRosterIds(agents.map((a) => a.id)),
 				() => setRosterIds([]),
 			);
-		} else {
-			setRosterIds([]);
-		}
+		loadAgents();
+		// Poll rather than fetch once — see ConversationsPanel's identical fix
+		// (github#26): a one-shot fetch landing right after a daemon crash
+		// restart can cache a roster missing the mission-copilot for the rest
+		// of the session.
+		const t = setInterval(loadAgents, AGENTS_POLL_MS);
+		return () => clearInterval(t);
 	}, [missionId]);
 	// Union of "agents with something in the tree" and "agents actually on
 	// the mission's roster" — an agent with zero objectives assigned yet

@@ -15,6 +15,8 @@ import {
 import { JsonNode } from "./JsonTree";
 import { Markdown } from "./Markdown";
 
+const AGENTS_POLL_MS = 5000;
+
 const fmtUsd = (n: number | undefined) => `$${(n ?? 0).toFixed(4)}`;
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString();
 const fmtTok = (n: number | undefined) =>
@@ -216,7 +218,16 @@ export function TranscriptsPanel({
 	const [detail, setDetail] = useState<Record<number, CallDetailState>>({});
 
 	useEffect(() => {
-		if (missionId) fetchAgents(missionId).then(setAgents, () => setAgents([]));
+		if (!missionId) return;
+		const loadAgents = () =>
+			fetchAgents(missionId).then(setAgents, () => setAgents([]));
+		loadAgents();
+		// Poll rather than fetch once — see ConversationsPanel's identical fix
+		// (github#26): a one-shot fetch landing right after a daemon crash
+		// restart can cache a roster missing the mission-copilot for the rest
+		// of the session.
+		const t = setInterval(loadAgents, AGENTS_POLL_MS);
+		return () => clearInterval(t);
 	}, [missionId]);
 
 	useEffect(() => {

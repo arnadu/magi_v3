@@ -107,7 +107,16 @@ export function ConversationsPanel({
 
 	useEffect(() => {
 		if (!missionId) return;
-		fetchAgents(missionId).then(setAgents, () => setAgents([]));
+		const loadAgents = () =>
+			fetchAgents(missionId).then(setAgents, () => setAgents([]));
+		loadAgents();
+		// Poll rather than fetch once: the roster (esp. the in-memory-injected
+		// mission-copilot) can be transiently missing right after a daemon crash
+		// restart, and a one-shot fetch that lands in that window would cache a
+		// stale roster for the rest of the session with nothing to invalidate it
+		// (github#26).
+		const t = setInterval(loadAgents, POLL_MS);
+		return () => clearInterval(t);
 	}, [missionId]);
 
 	const roster: Agent[] = agents;

@@ -71,6 +71,7 @@ const CAT_COLORS = [
 	"var(--cat-8)",
 ];
 
+const AGENTS_POLL_MS = 5000;
 const CHART_W = 760;
 const PAD_L = 56;
 const PAD_R = 16;
@@ -861,10 +862,22 @@ export function TracePanel({
 
 	useEffect(() => {
 		if (!missionId) return;
-		fetchAgents(missionId).then(
-			(as) => setAgents(as.map((a) => a.id)),
-			() => setAgents([]),
-		);
+		const loadAgents = () =>
+			fetchAgents(missionId).then(
+				(as) => setAgents(as.map((a) => a.id)),
+				() => setAgents([]),
+			);
+		loadAgents();
+		// Poll rather than fetch once — see ConversationsPanel's identical fix
+		// (github#26): a one-shot fetch landing right after a daemon crash
+		// restart can cache a roster missing the mission-copilot for the rest
+		// of the session.
+		const t = setInterval(loadAgents, AGENTS_POLL_MS);
+		return () => clearInterval(t);
+	}, [missionId]);
+
+	useEffect(() => {
+		if (!missionId) return;
 		fetchMissionStats(missionId).then(setStats, () => setStats([]));
 		fetchInteractions(missionId).then(setInteractions, () =>
 			setInteractions([]),
