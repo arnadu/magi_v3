@@ -40,8 +40,26 @@ export function initMentalMap(
 // the sanitiser strips `id` and `data-managed` from agent-supplied content, so
 // an agent cannot smuggle in a new id'd element or spoof a managed region — the
 // only id it can introduce is the validated `new_id` of `mental_map_add`.
+//
+// `mental_map_add`'s `parent_id: "root"` sentinel is the one deliberate hole in
+// "act only via an existing id": without it, an agent that removes every id'd
+// element it owns (e.g. restructuring its own notes) has no valid parent left
+// to add to and is permanently stuck, since getElementById can never find one
+// again (github#27). Appending to doc.body directly is safe — it doesn't let
+// the agent reach or spoof anything data-managed, it only gives it a way back
+// into its own id-addressable space.
 
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * Sentinel parent_id meaning "top level of the document body" for
+ * mental_map_add. Without this, an agent that removes every id'd element it
+ * owns (leaving only non-id'd structure and data-managed regions) has no
+ * valid parent_id left to add to and is permanently stuck — getElementById
+ * can never find a parent again. Reserved as a new_id too, so an agent can
+ * never create an id="root" element that would shadow this sentinel.
+ */
+const ROOT_PARENT_ID = "root";
 
 /**
  * Sanitise an agent-supplied HTML fragment: drop scripts and `on*` handlers
@@ -96,6 +114,11 @@ export function addElement(
 			ok: false,
 			error: `invalid new_id "${newId}" — use a slug like "finding-3" (lowercase letters, digits, hyphens; must start with a letter)`,
 		};
+	if (newId === ROOT_PARENT_ID)
+		return {
+			ok: false,
+			error: `"${ROOT_PARENT_ID}" is reserved (it's the special parent_id meaning "top level") — choose another id`,
+		};
 	const dom = new JSDOM(html);
 	const doc = dom.window.document;
 	if (doc.getElementById(newId))
@@ -103,7 +126,8 @@ export function addElement(
 			ok: false,
 			error: `id "${newId}" already exists — choose another`,
 		};
-	const parent = doc.getElementById(parentId);
+	const parent =
+		parentId === ROOT_PARENT_ID ? doc.body : doc.getElementById(parentId);
 	if (!parent)
 		return {
 			ok: false,
@@ -230,14 +254,18 @@ export function createMentalMapTools(
 		description:
 			"Add a NEW id'd element to your mental map as the last child of an existing " +
 			"parent element. Use this to grow your notes within the map's structure. " +
-			'Example: mental_map_add({ new_id: "finding-3", parent_id: "working-notes", content: "<p>NVDA margins up.</p>" }).',
+			'Example: mental_map_add({ new_id: "finding-3", parent_id: "working-notes", content: "<p>NVDA margins up.</p>" }). ' +
+			'Pass parent_id: "root" to add directly at the top level instead of inside an ' +
+			"existing element — use this if you don't have a suitable parent id (e.g. you've " +
+			"removed all your own id'd sections).",
 		parameters: Type.Object({
 			new_id: Type.String({
 				description:
-					"id for the new element (slug: lowercase letters, digits, hyphens). Use it later to update or remove the element.",
+					'id for the new element (slug: lowercase letters, digits, hyphens; "root" is reserved). Use it later to update or remove the element.',
 			}),
 			parent_id: Type.String({
-				description: "id of the existing element to add the new element inside",
+				description:
+					'id of the existing element to add the new element inside, or "root" for the top level',
 			}),
 			content: Type.String({ description: "HTML content of the new element" }),
 		}),

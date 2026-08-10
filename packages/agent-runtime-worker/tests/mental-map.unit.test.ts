@@ -106,6 +106,32 @@ describe("addElement", () => {
 		expect(r.ok).toBe(false);
 	});
 
+	it('adds directly to the body when parent_id is "root" (github#27 recovery path)', () => {
+		const r = addElement(
+			'<section data-managed="my-objectives"></section>',
+			"known-facts",
+			"root",
+			"<p>hi</p>",
+		);
+		expect(r.ok).toBe(true);
+		expect(r.ok && r.html).toContain('id="known-facts"');
+		expect(r.ok && r.html).toContain("hi");
+	});
+
+	it('recovers an agent that has removed every id\'d element (only data-managed sections remain) via parent_id: "root"', () => {
+		const bricked =
+			'<section data-managed="supervisor-note"></section><section data-managed="my-objectives"></section>';
+		const r = addElement(bricked, "known-facts", "root", "<p>notes</p>");
+		expect(r.ok).toBe(true);
+		expect(r.ok && r.html).toContain('id="known-facts"');
+	});
+
+	it('rejects new_id "root" as reserved', () => {
+		const r = addElement(html, "root", "working-notes", "x");
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.error).toContain("reserved");
+	});
+
 	it("strips id/data-managed/script from injected content (anti-spoof)", () => {
 		const r = addElement(
 			html,
