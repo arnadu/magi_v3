@@ -128,7 +128,7 @@ describe("Limits panel backend", () => {
 			const analyst = body.agents.find((a) => a.agentId === "analyst");
 			expect(analyst?.effectiveSoft).toEqual({
 				warnLlmCallsPerTurn: 40,
-				warnPeakContextTokens: 160_000,
+				warnPeakContextTokens: 100_000,
 				warnToolErrorsPerTurn: 8,
 				warnConsecutiveZeroOutputTurns: 3,
 			});

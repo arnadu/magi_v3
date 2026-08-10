@@ -115,7 +115,7 @@ export interface LimitConfig {
  */
 export const DEFAULT_SOFT_LIMITS = {
 	warnLlmCallsPerTurn: 40,
-	warnPeakContextTokens: 160_000, // matches the in-session prune threshold
+	warnPeakContextTokens: 100_000, // matches the in-session prune threshold
 	warnToolErrorsPerTurn: 8,
 	warnConsecutiveZeroOutputTurns: 3,
 } as const;

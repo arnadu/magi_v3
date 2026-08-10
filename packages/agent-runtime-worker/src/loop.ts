@@ -180,8 +180,19 @@ export interface InnerLoopConfig {
 	sessionId?: string;
 }
 
-// Prune ephemeral tool results when context exceeds 80% of the 200k window.
-const MID_SESSION_PRUNE_THRESHOLD = 160_000;
+// Prune ephemeral tool results once context crosses this many tokens.
+// Lowered from 160k (2026-08-10): on a long-running mission (100+ turns,
+// individual turns with 100+ calls), the previously-pruned floor is never
+// touched again within a session — only a whitelisted set of "ephemeral"
+// tool results get stubbed, and only the rounds older than the last
+// keepLastRounds — so context regularly climbed right back toward 160k and
+// stayed there for many consecutive turns rather than returning to a low
+// baseline. A lower threshold triggers pruning more often, keeping typical
+// context (and therefore cost, latency, and llmCallLog size) smaller on
+// average, at the cost of agents needing to re-fetch ephemeral tool output
+// sooner. See docs/operational-resilience.md Layer 9 for the incident this
+// was found investigating.
+const MID_SESSION_PRUNE_THRESHOLD = 100_000;
 
 export interface LoopResult {
 	messages: Message[];
