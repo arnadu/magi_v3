@@ -600,8 +600,19 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
-		// Refresh live machine state from Fly.
-		if (mission.machineId && mission.status !== "destroyed") {
+		// Refresh live machine state from Fly. Skipped for "error": a failed
+		// resume sets status to "error" but deliberately leaves the stale
+		// machineId of the (now possibly-deleted) old machine in place — a live
+		// lookup against that stale id would see it gone and silently overwrite
+		// "error" with "destroyed", misrepresenting a failed-but-retryable
+		// resume as the irreversible DELETE /:id action, which never ran. The
+		// mission stays in "error" until an operator explicitly resumes
+		// (success clears it) or destroys it.
+		if (
+			mission.machineId &&
+			mission.status !== "destroyed" &&
+			mission.status !== "error"
+		) {
 			try {
 				const liveState = await getMachineState(mission.machineId);
 				const mapped = liveStateToStatus(liveState);

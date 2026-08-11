@@ -285,6 +285,40 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 		});
 	});
 
+	describe("GET /:id — live status refresh", () => {
+		it('does not let a stale machineId\'s live state overwrite "error" status (github: failed-resume mislabeled as destroyed)', async () => {
+			const missionId = newMissionId();
+			const createRes = await fetch(baseUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					missionId,
+					name: "Error Status Mission",
+					teamConfig: "inline",
+					mission: { name: "Error Status Mission" },
+					agents: baseAgents(),
+				}),
+			});
+			expect(createRes.status).toBe(201);
+
+			// Simulate the state a failed resume leaves behind: status "error"
+			// with machineId still pointing at a machine (here, still a valid
+			// local- one, but the point is the guard must not touch it either
+			// way once status is "error").
+			await db
+				.collection("missions")
+				.updateOne({ missionId }, { $set: { status: "error" } });
+
+			const getRes = await fetch(`${baseUrl}/${missionId}`);
+			expect(getRes.status).toBe(200);
+			const body = (await getRes.json()) as { status: string };
+			expect(body.status).toBe("error");
+
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc?.status).toBe("error");
+		});
+	});
+
 	describe("GET /:id/objectives", () => {
 		let missionId: string;
 
