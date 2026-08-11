@@ -12,12 +12,21 @@
  * B3: GitHub Issues tools (ListIssues, CreateIssue, CloseIssue, AddIssueComment) —
  *     direct GitHub REST API calls using GH_TOKEN. No operator confirmation required;
  *     GitHub issues are low-risk, fully reversible actions.
+ *
+ * B4: Objectives tools (ReviewObjectives, AssessKpi, SaveObjectiveTree) — direct
+ *     MongoDB writes via the same ObjectivesRepository the in-mission copilot's
+ *     EditObjectiveTree/AssessKpi use (ADR-0019), scoped by {missionId, userId}.
+ *     No operator confirmation required — same trust tier as B3: reversible,
+ *     scoped to the copilot's own data (not an external system or another
+ *     agent's state).
  */
 
 import { randomUUID } from "node:crypto";
 import {
 	createMongoObjectivesRepository,
 	type MagiTool,
+	type ObjectiveDef,
+	ObjectiveDefSchema,
 	type ToolResult,
 } from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
@@ -394,7 +403,11 @@ export function createCopilotTools(
 			"- save_session_config: { missionId, mission?, agents?, missionCopilotLimits?, teamFiles?: [{path, content}], mentalMaps?: {[agentId]: html} } " +
 			"— mission must be suspended first. Structured partial patch (ADR-0021): omit mission/agents/" +
 			"missionCopilotLimits to leave that field untouched; mission is shallow-merged, agents are " +
-			"upserted by id into the current roster, missionCopilotLimits replaces wholesale. " +
+			"upserted by id into the current roster: an existing id is replaced in place, a new id is " +
+			"appended. To RENAME an agent, reuse its existing id and just change name/systemPrompt — " +
+			"submitting a new id creates a SEPARATE agent and leaves the old one in the roster " +
+			"unchanged. To remove an agent, submit it with active: false — omitting an existing agent " +
+			"from this list does NOT delete it. missionCopilotLimits replaces wholesale. " +
 			"Omit teamFiles to preserve the current ones; " +
 			"WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.\n" +
 			"- cancel_schedule: { id }\n" +
@@ -682,6 +695,51 @@ export function createCopilotTools(
 		},
 	};
 
+	const saveObjectiveTree: MagiTool = {
+		name: "SaveObjectiveTree",
+		description:
+			"Replace a mission's objective tree (definitions + KPI definitions — not task/KPI " +
+			"status, which agents update themselves during the mission). This is a full replace, " +
+			"not a merge: call ReviewObjectives first if objectives may already exist, edit the " +
+			"array in memory, and pass the complete updated list back. Use this — not " +
+			"write_mission_file/save_session_config's teamFiles — to set up a mission's objectives: " +
+			"objectives placed in a team file are invisible to the cockpit's Objectives panel, which " +
+			"only reads from this store. Works whether the mission is running or suspended; no " +
+			"operator confirmation required (same trust tier as AssessKpi).",
+		parameters: Type.Object({
+			missionId: Type.String({ description: "Mission ID" }),
+			objectives: Type.Array(Type.Record(Type.String(), Type.Unknown()), {
+				description:
+					"The complete replacement objective tree (flat array, parent field encodes nesting)",
+			}),
+		}),
+		async execute(_id, args) {
+			const missionId = args.missionId as string;
+			const mission = await db
+				.collection<MissionDoc>("missions")
+				.findOne({ missionId, userId });
+			if (!mission) return err(`Mission "${missionId}" not found.`);
+			let parsed: ObjectiveDef[];
+			try {
+				parsed = ObjectiveDefSchema.array().parse(args.objectives);
+			} catch (e) {
+				return err(`Invalid objectives: ${(e as Error).message}`);
+			}
+			try {
+				await objectivesRepo.saveGoals(
+					missionId,
+					{ objectives: parsed },
+					"copilot",
+				);
+				return ok(
+					`Objective tree saved for mission "${missionId}" (${parsed.length} objective(s)).`,
+				);
+			} catch (e) {
+				return err(`Failed to save objectives: ${(e as Error).message}`);
+			}
+		},
+	};
+
 	return [
 		listMissions,
 		getMissionStatus,
@@ -690,6 +748,7 @@ export function createCopilotTools(
 		readMissionFile,
 		reviewObjectives,
 		assessKpi,
+		saveObjectiveTree,
 		listSchedule,
 		listTemplates,
 		getTemplate,

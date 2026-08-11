@@ -133,4 +133,70 @@ describe("copilot ReviewObjectives / AssessKpi — MongoDB-direct (ADR-0019)", (
 		};
 		expect(tree.objectives[0].kpis[0].value).toBe("met");
 	});
+
+	// github#29: the control-plane copilot had no way to write objectives into
+	// the store at all — it fell back to a team file (goals.json), invisible to
+	// the cockpit's Objectives panel, which only reads objectivesGoals.
+	describe("SaveObjectiveTree", () => {
+		it("replaces the objective tree, visible on the next ReviewObjectives", async () => {
+			const res = await tool("SaveObjectiveTree").execute("t1", {
+				missionId,
+				objectives: [
+					{
+						id: "O1",
+						parent: null,
+						title: "New root objective",
+						owner: "steward",
+						status: "active",
+						kpis: [],
+					},
+				],
+			});
+			expect(res.isError).toBeFalsy();
+
+			const reviewRes = await tool("ReviewObjectives").execute("t1", {
+				missionId,
+			});
+			const tree = JSON.parse(reviewRes.content[0].text) as {
+				objectives: Array<{ id: string }>;
+			};
+			expect(tree.objectives).toHaveLength(1);
+			expect(tree.objectives[0].id).toBe("O1");
+		});
+
+		it("rejects a malformed objective instead of writing it", async () => {
+			const res = await tool("SaveObjectiveTree").execute("t1", {
+				missionId,
+				objectives: [{ id: "O1" /* missing required fields */ }],
+			});
+			expect(res.isError).toBe(true);
+
+			// The original seeded objective (OBJ-1) must be untouched.
+			const reviewRes = await tool("ReviewObjectives").execute("t1", {
+				missionId,
+			});
+			const tree = JSON.parse(reviewRes.content[0].text) as {
+				objectives: Array<{ id: string }>;
+			};
+			expect(tree.objectives[0].id).toBe("OBJ-1");
+		});
+
+		it("404s (as an error result) for a mission owned by another user", async () => {
+			const otherUserTools = createCopilotTools(
+				db,
+				() => {},
+				new PendingActionsStore(),
+				`other-${randomUUID()}`,
+			);
+			const saveObjectiveTree = otherUserTools.find(
+				(t) => t.name === "SaveObjectiveTree",
+			);
+			if (!saveObjectiveTree) throw new Error("tool not found");
+			const res = await saveObjectiveTree.execute("t1", {
+				missionId,
+				objectives: [],
+			});
+			expect(res.isError).toBe(true);
+		});
+	});
 });

@@ -78,6 +78,7 @@ export type {
 	GoalsFile,
 	ObjectiveDef,
 } from "./objectives/types.js";
+export { ObjectiveDefSchema } from "./objectives/types.js";
 export type { OpenRouterModelInfo } from "./openrouter-pricing.js";
 export { fetchOpenRouterCatalog } from "./openrouter-pricing.js";
 export type { OrchestratorConfig } from "./orchestrator.js";
