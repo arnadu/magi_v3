@@ -20,14 +20,17 @@ import {
 	type TeamConfig,
 } from "@magi/agent-config";
 import {
+	buildMissionCopilotAgentConfig,
 	createMongoAgentStatsRepository,
 	createMongoMissionConfigWriter,
 	createMongoObjectivesRepository,
 	DEFAULT_SOFT_LIMITS,
+	MISSION_COPILOT_AGENT_ID,
+	managedRegionKeys,
 } from "@magi/agent-runtime-worker";
 import type { Request, Router } from "express";
 import { Router as createRouter } from "express";
-import type { Collection, Db } from "mongodb";
+import type { Collection, Db, ObjectId } from "mongodb";
 import {
 	deleteMachine,
 	destroyLocal,
@@ -875,9 +878,17 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 
+		// Mission copilot's own live mental map lives in the same collection under
+		// its reserved id, even though it's never in mission.agents (injected
+		// in-memory at daemon startup, ADR-0016) — include it here too so the
+		// cockpit's Config panel can show it like any other agent's.
 		const mentalMaps: Record<string, string> = {};
 		const convCol = db.collection("conversationMessages");
-		for (const agentId of mission.agents.map((a) => a.id)) {
+		const agentIds = [
+			...mission.agents.map((a) => a.id),
+			MISSION_COPILOT_AGENT_ID,
+		];
+		for (const agentId of agentIds) {
 			const doc = await convCol.findOne(
 				{
 					agentId,
@@ -891,12 +902,27 @@ export function createMissionsRouter(db: Db): Router {
 			}
 		}
 
+		// The copilot's systemPrompt/initialMentalMap aren't stored fields —
+		// they're synthesized fresh every session from a fixed platform template
+		// + this mission's own name/roster (buildMissionCopilotAgentConfig), so
+		// there's nothing to round-trip on save. Computed here purely for
+		// read-only display.
+		const missionCopilotConfig = buildMissionCopilotAgentConfig({
+			mission: mission.mission,
+			agents: mission.agents,
+			missionCopilotLimits: mission.missionCopilotLimits,
+		});
+
 		res.json({
 			mission: mission.mission,
 			agents: mission.agents,
 			missionCopilotLimits: mission.missionCopilotLimits,
 			teamFiles: mission.teamFiles ?? [],
 			mentalMaps,
+			missionCopilot: {
+				systemPrompt: missionCopilotConfig.systemPrompt,
+				initialMentalMap: missionCopilotConfig.initialMentalMap,
+			},
 		});
 	});
 
@@ -948,6 +974,49 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 
+		// Validate every proposed mental-map edit BEFORE writing anything —
+		// a direct-edit save bypasses addElement/updateElement/removeElement
+		// entirely, so nothing else stops it from silently dropping a
+		// daemon-managed section (#my-objectives, #supervisor-note), which is
+		// only ever re-synced at the next turn start, never recreated from
+		// nothing. Fetching each agent's current latest snapshot here (rather
+		// than in the write loop below) also means the write loop can reuse
+		// the same doc's _id instead of reading it twice.
+		const convCol = db.collection("conversationMessages");
+		const latestByAgent = new Map<
+			string,
+			{ _id: ObjectId; mentalMapHtml: string }
+		>();
+		if (mentalMaps) {
+			for (const [agentId, html] of Object.entries(mentalMaps)) {
+				const latest = await convCol.findOne(
+					{
+						agentId,
+						missionId: req.params.id,
+						mentalMapHtml: { $exists: true },
+					},
+					{ sort: { turnNumber: -1, seqInTurn: -1 } },
+				);
+				if (!latest) continue; // mission never ran; initialMentalMap in the YAML is sufficient
+				latestByAgent.set(agentId, {
+					_id: latest._id,
+					mentalMapHtml: latest.mentalMapHtml as string,
+				});
+				const before = managedRegionKeys(latest.mentalMapHtml as string);
+				const after = managedRegionKeys(html);
+				const missing = [...before].filter((k) => !after.has(k));
+				if (missing.length > 0) {
+					res.status(400).json({
+						error:
+							`Saving ${agentId}'s mental map would remove managed section(s): ${missing.join(", ")}. ` +
+							"These are synced automatically from their real source (objectives, supervisor notes) — " +
+							"restore them (even as an empty placeholder with the same data-managed attribute) rather than deleting them by hand.",
+					});
+					return;
+				}
+			}
+		}
+
 		await createMongoMissionConfigWriter(db).write(
 			req.params.id,
 			{
@@ -962,26 +1031,14 @@ export function createMissionsRouter(db: Db): Router {
 			{ $set: { teamFiles: teamFiles ?? [] } },
 		);
 
-		// Update live mental maps in conversationMessages if provided.
-		if (mentalMaps && Object.keys(mentalMaps).length > 0) {
-			const convCol = db.collection("conversationMessages");
-			for (const [agentId, html] of Object.entries(mentalMaps)) {
-				const latest = await convCol.findOne(
-					{
-						agentId,
-						missionId: req.params.id,
-						mentalMapHtml: { $exists: true },
-					},
-					{ sort: { turnNumber: -1, seqInTurn: -1 } },
-				);
-				if (latest) {
-					await convCol.updateOne(
-						{ _id: latest._id },
-						{ $set: { mentalMapHtml: html } },
-					);
-				}
-				// If no record found: mission never ran; initialMentalMap in the YAML is sufficient.
-			}
+		// Update live mental maps in conversationMessages — validated above.
+		for (const [agentId, html] of Object.entries(mentalMaps ?? {})) {
+			const latest = latestByAgent.get(agentId);
+			if (!latest) continue;
+			await convCol.updateOne(
+				{ _id: latest._id },
+				{ $set: { mentalMapHtml: html } },
+			);
 		}
 
 		res.json({ ok: true });

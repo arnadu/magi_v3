@@ -48,6 +48,7 @@ export {
 	addElement,
 	createMentalMapTools,
 	initMentalMap,
+	managedRegionKeys,
 	removeElement,
 	updateElement,
 	upsertManagedRegion,
@@ -58,7 +59,10 @@ export type {
 	MissionConfigWriter,
 } from "./mission-config-revisions.js";
 export { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
-export { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
+export {
+	buildMissionCopilotAgentConfig,
+	MISSION_COPILOT_AGENT_ID,
+} from "./mission-copilot.js";
 export {
 	anthropicModel,
 	CLAUDE_HAIKU,

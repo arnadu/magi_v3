@@ -1,6 +1,6 @@
 # ADR-0022 — Control-plane vs. mission-plane config editing scope
 
-**Status**: Accepted
+**Status**: Accepted, amended
 **Sprint**: 26c
 **Date**: 2026-07-26
 
@@ -45,7 +45,7 @@ Separately, ADR-0016 already gave every mission a **mission copilot** — a norm
 | `agents[].systemPrompt` | The field that broke. The highest-value, highest-risk field in the schema. An actor that can read the current prompt and flag an obviously-wrong change (e.g. "this removes your objectives-tracking instructions") before writing it is strictly safer than a blind textarea round-trip. |
 | `agents[].supervisor` | Changes the team's actual reporting/escalation structure — a structural decision that benefits from visibility into the *current* team shape (catching a cycle or an orphaned agent). |
 | `agents[].initialMentalMap` (post-launch) | **Inert once an agent has run once** — the live mental map (`conversationMessages`) is what's actually used, and `EditAgentMentalMap` already targets that correctly. Showing this as an editable post-launch field is worse than risky: it looks like it does something and doesn't. Removed from the post-launch editor entirely, not just moved. |
-| Live mental-map content | Same actor, same tool (`EditAgentMentalMap`) — the control-plane editor's CodeMirror mental-map editor is removed; the mental map is shown read-only for visibility. |
+| ~~Live mental-map content~~ | **Superseded — see "Post-ADR-0022 addendum" below.** Originally: same actor, same tool (`EditAgentMentalMap`); the control-plane editor's CodeMirror mental-map editor removed, mental map shown read-only for visibility. |
 | `teamFiles` content (skill/prompt files) | Same risk class as `systemPrompt` — markdown/instructional text shaping behavior. `write_mission_file` (control-plane copilot *and* mission copilot) already exists as the safe, tool-mediated, single-file path. The control-plane editor's Files tab becomes view-only (list + read, no add/edit/remove). |
 
 ### Neither — immutable or infrastructure, not exposed as "editable" anywhere
@@ -80,6 +80,62 @@ Deliberately treated the same. The one asymmetry: pre-launch, no mission copilot
 
 ---
 
+## Post-ADR-0022 addendum — live mental map moved back to control-plane-editable
+
+**Date**: 2026-08-11
+
+The cockpit's Config panel (the Sprint 27 successor to `index.html`, which this ADR already
+anticipated — see Consequences) originally kept the live mental map read-only, matching the
+table above. Reopened for two reasons, neither of which existed when the original decision was
+made:
+
+1. **The panel's own rendering was worse than plain text.** The mental map is HTML, but the
+   read-only view was a bare, unstyled `<textarea>` — hard to read as structure, not even a
+   plain-text improvement over what it replaced. Fixing readability requires a real HTML-aware
+   viewer regardless of whether the field stays read-only, and once that viewer exists (see
+   below), the marginal step to also allow editing through it is small.
+2. **Re-examining why mental maps specifically were grouped with `systemPrompt`.** The bug this
+   ADR fixed was specifically a client-side YAML round-trip losing fields — a risk that doesn't
+   apply to mental maps under the *current* architecture regardless of which UI edits them:
+   `PUT /:id/config`'s `mentalMaps` patch is (and always was, since ADR-0021) a plain JSON string
+   field, no YAML involved, the same mechanism `EditAgentMentalMap`/`save_session_config` already
+   use safely. Grouping it with `systemPrompt` bundled a field with a *mechanically checkable*
+   risk (accidentally deleting a `data-managed` region) in with one that only has a *semantic*
+   risk (a prompt that reads fine but is subtly wrong) — the same mitigation doesn't fit both.
+
+**What changed:**
+- The Config panel's mental-map field now renders via CodeMirror's HTML mode (syntax-highlighted
+  source) with an opt-in "Preview" toggle into a sandboxed iframe (`sandbox="allow-scripts"`, no
+  `allow-same-origin` — same trust boundary the Files panel's `.html` viewer already uses for
+  agent-authored, possibly web-influenced content, TB-8). Read-only or editable depending on
+  `canEdit`, same suspended-only gate as every other field in this panel — both client-side
+  (disabled controls) and server-side (`PUT /:id/config` still 409s unless `status === "suspended"`).
+- New mechanical guard, `managedRegionKeys()` (`mental-map.ts`): before saving, the server compares
+  the `data-managed` attributes present in the current stored snapshot against the submitted
+  version and rejects the save (400, naming the missing section) if any would be silently dropped.
+  This is the piece that didn't exist at the time of the original decision — it directly replaces
+  the "an actor sanity-checks the change" argument with a mechanical one, for the one risk class
+  that has a mechanical answer.
+- `systemPrompt` is deliberately **not** included in this reversal — prose has no equivalent
+  structural invariant to check, so ADR-0022's original reasoning (an actor that reads current
+  state and flags an obviously-wrong change beats a blind form save) still applies there
+  unweakened. It stays mission-copilot-only.
+- The mission copilot's own mental map (previously not visible anywhere in this panel — it isn't
+  in `mission.agents`, injected in-memory only, ADR-0016) is now shown/editable the same way,
+  reusing the same `GET`/`PUT /:id/config` fields keyed by `MISSION_COPILOT_AGENT_ID`. Its
+  `systemPrompt` is shown read-only for visibility only — it isn't a stored field at all
+  (synthesized fresh each session via `buildMissionCopilotAgentConfig`), so there is nothing to
+  save back regardless of this addendum.
+
+**Why this isn't "the bug could still happen a different way":** the corruption ADR-0022 fixed
+was a mechanical one (a lossy format conversion), fixed structurally for every field, editable or
+not, by deleting the conversion layer entirely. What's being reopened here is a policy decision
+made on top of that fix — the split was correct as reasoned at the time, and the reasoning for
+`systemPrompt` still holds. What changed is only that a mechanical check now exists for the other
+half of that decision.
+
+---
+
 ## Related
 
 - [ADR-0021](0021-structured-mission-config-storage.md) — introduced the structured `GET`/`PUT /:id/config` shape this ADR's editor now consumes directly, and the client-side YAML conversion layer this ADR deletes
@@ -87,3 +143,5 @@ Deliberately treated the same. The one asymmetry: pre-launch, no mission copilot
 - `docs/security/threat-model.md` — F-025 (mission copilot raising its own spend cap unconfirmed) — the same reasoning applies in reverse here: a spend cap must stay operator-only, reachable through one path
 - `packages/agent-runtime-worker/src/mission-copilot-tools.ts` — `SaveMissionConfig`, `EditAgentMentalMap`, `write_mission_file`
 - `packages/control-plane/public/index.html` — the editor this ADR scopes down
+- `packages/agent-runtime-worker/src/mental-map.ts` — `managedRegionKeys()`, the mechanical guard the addendum above relies on
+- `packages/cockpit/src/ConfigPanel.tsx` — the cockpit editor implementing the addendum's mental-map viewer/editor and mission-copilot tab

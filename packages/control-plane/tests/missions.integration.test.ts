@@ -285,6 +285,127 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 		});
 	});
 
+	describe("GET/PUT /:id/config — mental maps", () => {
+		let missionId: string;
+
+		beforeEach(async () => {
+			missionId = newMissionId();
+			const res = await fetch(baseUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					missionId,
+					name: "Mental Map Mission",
+					teamConfig: "inline",
+					mission: { name: "Mental Map Mission" },
+					agents: baseAgents(),
+				}),
+			});
+			expect(res.status).toBe(201);
+			await db.collection("conversationMessages").insertMany([
+				{
+					agentId: "analyst",
+					missionId,
+					turnNumber: 1,
+					seqInTurn: 1,
+					mentalMapHtml:
+						'<section data-managed="my-objectives"></section><section id="notes"><p>hi</p></section>',
+					message: { role: "assistant", content: [] },
+				},
+				{
+					agentId: "mission-copilot",
+					missionId,
+					turnNumber: 1,
+					seqInTurn: 1,
+					mentalMapHtml: "<p>copilot notes</p>",
+					message: { role: "assistant", content: [] },
+				},
+			]);
+		});
+
+		afterEach(async () => {
+			await db.collection("conversationMessages").deleteMany({ missionId });
+		});
+
+		it("GET includes the mission copilot's live mental map and synthesized config, keyed separately from the roster", async () => {
+			const res = await fetch(`${baseUrl}/${missionId}/config`);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as {
+				agents: Array<{ id: string }>;
+				mentalMaps: Record<string, string>;
+				missionCopilot: { systemPrompt: string; initialMentalMap: string };
+			};
+			expect(body.agents.map((a) => a.id)).toEqual(["analyst"]);
+			expect(body.mentalMaps.analyst).toContain("hi");
+			expect(body.mentalMaps["mission-copilot"]).toBe("<p>copilot notes</p>");
+			expect(body.missionCopilot.systemPrompt.length).toBeGreaterThan(0);
+			expect(body.missionCopilot.initialMentalMap.length).toBeGreaterThan(0);
+		});
+
+		it("PUT overwrites the latest snapshot in place for both a roster agent and the copilot", async () => {
+			await fetch(`${baseUrl}/${missionId}/suspend`, { method: "POST" });
+			const putRes = await fetch(`${baseUrl}/${missionId}/config`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mission: { name: "Mental Map Mission" },
+					agents: baseAgents(),
+					teamFiles: [],
+					mentalMaps: {
+						analyst:
+							'<section data-managed="my-objectives"></section><section id="notes"><p>edited</p></section>',
+						"mission-copilot": "<p>edited copilot notes</p>",
+					},
+				}),
+			});
+			expect(putRes.status).toBe(200);
+
+			const getRes = await fetch(`${baseUrl}/${missionId}/config`);
+			const body = (await getRes.json()) as {
+				mentalMaps: Record<string, string>;
+			};
+			expect(body.mentalMaps.analyst).toContain("edited");
+			expect(body.mentalMaps["mission-copilot"]).toBe(
+				"<p>edited copilot notes</p>",
+			);
+
+			// Overwritten in place, not appended as a new document.
+			const docs = await db
+				.collection("conversationMessages")
+				.find({ missionId, agentId: "analyst" })
+				.toArray();
+			expect(docs).toHaveLength(1);
+		});
+
+		it("400s and writes nothing if the save would drop a data-managed region", async () => {
+			await fetch(`${baseUrl}/${missionId}/suspend`, { method: "POST" });
+			const putRes = await fetch(`${baseUrl}/${missionId}/config`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mission: { name: "Renamed" },
+					agents: baseAgents(),
+					teamFiles: [],
+					mentalMaps: {
+						// Drops the my-objectives managed section entirely.
+						analyst: '<section id="notes"><p>edited</p></section>',
+					},
+				}),
+			});
+			expect(putRes.status).toBe(400);
+			const body = (await putRes.json()) as { error: string };
+			expect(body.error).toContain("my-objectives");
+
+			// Nothing was written — neither the mental map nor the mission name.
+			const mission = await db.collection("missions").findOne({ missionId });
+			expect(mission?.mission.name).toBe("Mental Map Mission");
+			const doc = await db
+				.collection("conversationMessages")
+				.findOne({ missionId, agentId: "analyst" });
+			expect(doc?.mentalMapHtml).toContain("hi");
+		});
+	});
+
 	describe("GET /:id — live status refresh", () => {
 		it('does not let a stale machineId\'s live state overwrite "error" status (github: failed-resume mislabeled as destroyed)', async () => {
 			const missionId = newMissionId();

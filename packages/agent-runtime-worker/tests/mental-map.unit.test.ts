@@ -12,8 +12,10 @@ import {
 	addElement,
 	createMentalMapTools,
 	initMentalMap,
+	managedRegionKeys,
 	removeElement,
 	updateElement,
+	upsertManagedRegion,
 } from "../src/mental-map.js";
 
 describe("initMentalMap", () => {
@@ -187,5 +189,47 @@ describe("createMentalMapTools", () => {
 		expect(res.isError).toBeUndefined();
 		expect(html).toContain('id="n1"');
 		expect(html).toContain("note");
+	});
+});
+
+describe("managedRegionKeys", () => {
+	it("returns an empty set when no data-managed regions exist", () => {
+		expect(managedRegionKeys('<section id="x"><p>hi</p></section>')).toEqual(
+			new Set(),
+		);
+	});
+
+	it("finds every data-managed key present", () => {
+		const html =
+			'<section data-managed="my-objectives"></section>' +
+			'<section data-managed="supervisor-note"></section>' +
+			'<section id="working-notes"></section>';
+		expect(managedRegionKeys(html)).toEqual(
+			new Set(["my-objectives", "supervisor-note"]),
+		);
+	});
+
+	it("agrees with upsertManagedRegion: a region it creates is found by managedRegionKeys", () => {
+		const html = upsertManagedRegion(
+			"<p>base</p>",
+			"my-objectives",
+			"<p>x</p>",
+		);
+		expect(managedRegionKeys(html)).toEqual(new Set(["my-objectives"]));
+	});
+
+	it("detects a region that would be dropped by a blind overwrite (the cockpit Config-panel save guard's own use case)", () => {
+		const before = upsertManagedRegion(
+			'<section id="working-notes"></section>',
+			"supervisor-note",
+			"<p>note</p>",
+		);
+		// Simulates an operator overwrite that keeps working-notes but drops the
+		// managed section entirely.
+		const after = '<section id="working-notes"></section>';
+		const beforeKeys = managedRegionKeys(before);
+		const afterKeys = managedRegionKeys(after);
+		const missing = [...beforeKeys].filter((k) => !afterKeys.has(k));
+		expect(missing).toEqual(["supervisor-note"]);
 	});
 });

@@ -797,7 +797,10 @@ export async function fetchDaemonLog(
 // systemPrompt, initialMentalMap, limits, linuxUser, teamFiles,
 // missionCopilotLimits) must round-trip unmodified — the PUT is a full
 // replace, not a per-field patch, so omitting any of them silently clears
-// it server-side (missions.ts:1010-1013).
+// it server-side. The live mental map (not initialMentalMap — that's the
+// template, inert after an agent's first run) is the one exception, added
+// after ADR-0022: it's a separate `mentalMaps` patch, not part of `agents`,
+// validated server-side against dropping a data-managed section.
 
 export interface MissionConfigAgent {
 	id: string;
@@ -828,6 +831,15 @@ export interface MissionConfigData {
 	missionCopilotLimits?: unknown;
 	teamFiles: Array<{ path: string; content: string }>;
 	mentalMaps: Record<string, string>;
+	/**
+	 * The mission copilot isn't in `agents` (injected in-memory only, ADR-0016),
+	 * and its systemPrompt/initialMentalMap aren't stored fields — both are
+	 * synthesized fresh every session from a fixed platform template plus this
+	 * mission's own name/roster. Read-only display only; nothing to save back.
+	 * Its live mental map (if it has run) is under `mentalMaps["mission-copilot"]`,
+	 * same as any other agent.
+	 */
+	missionCopilot: { systemPrompt: string; initialMentalMap: string };
 }
 
 export function fetchMissionConfig(
@@ -844,6 +856,8 @@ export async function saveMissionConfig(
 		agents: MissionConfigAgent[];
 		missionCopilotLimits: unknown;
 		teamFiles: Array<{ path: string; content: string }>;
+		/** agentId -> full replacement HTML, including "mission-copilot" if edited. */
+		mentalMaps?: Record<string, string>;
 	},
 ): Promise<void> {
 	const res = await fetch(`/api/missions/${mp(missionId)}/config`, {

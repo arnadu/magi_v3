@@ -2247,6 +2247,27 @@ h2.sec {
 	color: var(--mut);
 	resize: vertical;
 }
+.config-mentalmap {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.config-mentalmap-toolbar {
+	display: flex;
+	justify-content: flex-end;
+}
+.config-mentalmap .cm-editor {
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	font-size: 12px;
+}
+.config-mentalmap-frame {
+	width: 100%;
+	height: 220px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: #fff;
+}
 .config-toggle-grid {
 	display: grid;
 	grid-template-columns: repeat(2, 1fr);

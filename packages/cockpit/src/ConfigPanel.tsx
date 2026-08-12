@@ -1,3 +1,5 @@
+import { html as htmlLang } from "@codemirror/lang-html";
+import CodeMirror from "@uiw/react-codemirror";
 import { useEffect, useState } from "react";
 import {
 	fetchMissionConfig,
@@ -15,7 +17,19 @@ import {
  * the mission is suspended — everything else (id, supervisor, systemPrompt,
  * initialMentalMap, limits, linuxUser, teamFiles, missionCopilotLimits) must
  * round-trip unmodified, since the PUT is a full replace, not a patch.
+ *
+ * The live mental map is the one field ADR-0022 originally scoped out that
+ * this panel now also edits directly (still suspended-only) — see the ADR's
+ * "Post-ADR-0022 addendum" for why: the YAML-round-trip corruption risk that
+ * motivated routing it through the mission copilot instead doesn't apply
+ * here (this editor never touches YAML, for any field), and the remaining
+ * risk — silently dropping a daemon-managed section — is now mechanically
+ * checked server-side (managedRegionKeys) rather than only caught by an
+ * LLM's judgment.
  */
+
+/** Not a real roster entry — injected in-memory at daemon startup (ADR-0016), never in mission.agents. */
+const MISSION_COPILOT_AGENT_ID = "mission-copilot";
 
 const PLATFORM_SKILLS = [
 	"git-provenance",
@@ -58,6 +72,59 @@ function orUndef(v: string): string | undefined {
 	return s === "" ? undefined : s;
 }
 
+/**
+ * Mental map viewer/editor — syntax-highlighted HTML source by default (never
+ * executed, safe regardless of content), with an opt-in "Preview" toggle that
+ * renders it in a sandboxed iframe. Same trust boundary FilesPanel's `.html`
+ * viewer already uses for agent-authored (possibly web-influenced, TB-8)
+ * HTML: no `allow-same-origin` on the sandbox, so even literal `<script>`
+ * content can't read cookies or call the API with the operator's session.
+ * `key={agentId}` at the call site remounts this fresh per agent, so the
+ * view always resets to source when switching tabs.
+ */
+function MentalMapEditor({
+	html,
+	onChange,
+	editable,
+}: {
+	html: string;
+	onChange: (html: string) => void;
+	editable: boolean;
+}) {
+	const [view, setView] = useState<"source" | "rendered">("source");
+	return (
+		<div className="config-mentalmap">
+			<div className="config-mentalmap-toolbar">
+				<button
+					type="button"
+					className="rail-btn"
+					onClick={() =>
+						setView((v) => (v === "rendered" ? "source" : "rendered"))
+					}
+				>
+					{view === "rendered" ? "</> Source" : "👁 Preview"}
+				</button>
+			</div>
+			{view === "rendered" ? (
+				<iframe
+					className="config-mentalmap-frame"
+					title="Mental map preview"
+					srcDoc={html}
+					sandbox="allow-scripts"
+				/>
+			) : (
+				<CodeMirror
+					value={html}
+					extensions={[htmlLang()]}
+					readOnly={!editable}
+					onChange={onChange}
+					height="220px"
+				/>
+			)}
+		</div>
+	);
+}
+
 export function ConfigPanel({ missionId }: { missionId: string | null }) {
 	const [config, setConfig] = useState<MissionConfigData | "error" | null>(
 		null,
@@ -70,6 +137,9 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 		timezone: "",
 	});
 	const [agentsDraft, setAgentsDraft] = useState<MissionConfigAgent[]>([]);
+	const [mentalMapDrafts, setMentalMapDrafts] = useState<
+		Record<string, string>
+	>({});
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
@@ -91,6 +161,7 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 					timezone: c.mission.timezone ?? "",
 				});
 				setAgentsDraft(c.agents);
+				setMentalMapDrafts({ ...c.mentalMaps });
 				setSelectedAgentId(c.agents[0]?.id ?? null);
 			})
 			.catch(() => {
@@ -132,6 +203,10 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 		updateAgent(agent.id, { disabledTools: [...disabled] });
 	}
 
+	function updateMentalMap(agentId: string, html: string) {
+		setMentalMapDrafts((prev) => ({ ...prev, [agentId]: html }));
+	}
+
 	async function handleSave() {
 		if (config === null || config === "error" || !missionId) return;
 		setSaving(true);
@@ -152,6 +227,7 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 				// can't silently clear either one; the API is a full replace.
 				missionCopilotLimits: config.missionCopilotLimits,
 				teamFiles: config.teamFiles,
+				mentalMaps: mentalMapDrafts,
 			});
 			setConfig({ ...config, mission: nextMission, agents: agentsDraft });
 			setSaved(true);
@@ -232,6 +308,13 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 						{a.name || a.id}
 					</button>
 				))}
+				<button
+					type="button"
+					className={`home-tab${selectedAgentId === MISSION_COPILOT_AGENT_ID ? " home-tab-active" : ""}`}
+					onClick={() => setSelectedAgentId(MISSION_COPILOT_AGENT_ID)}
+				>
+					🤖 Mission Copilot
+				</button>
 			</nav>
 
 			{selectedAgent && (
@@ -289,23 +372,27 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 						rows={6}
 					/>
 
-					{config.mentalMaps[selectedAgent.id] && (
+					{selectedAgent.id in mentalMapDrafts ? (
 						<>
 							<div className="config-section-label mut">Mental map</div>
 							<p className="mut config-readonly-note">
-								Read-only — edit via the mission copilot (EditAgentMentalMap)
+								{canEdit
+									? "Editable while suspended — dropping a daemon-managed section (e.g. objectives sync, supervisor note) is blocked on save."
+									: "Read-only while running — suspend the mission to edit, or use the mission copilot (EditAgentMentalMap)."}
 							</p>
-							{/* mentalMapHtml is agent-authored (transitively web-sourced via
-							    FetchUrl/BrowseWeb — same untrusted-content class as TB-8) —
-							    shown as source text, not live-rendered via
-							    dangerouslySetInnerHTML, matching index.html's own read-only
-							    CodeMirror-as-text-viewer behavior for this exact field. */}
-							<textarea
-								className="config-readonly-textarea"
-								value={config.mentalMaps[selectedAgent.id]}
-								disabled
-								rows={6}
+							<MentalMapEditor
+								key={selectedAgent.id}
+								html={mentalMapDrafts[selectedAgent.id]}
+								editable={canEdit}
+								onChange={(next) => updateMentalMap(selectedAgent.id, next)}
 							/>
+						</>
+					) : (
+						<>
+							<div className="config-section-label mut">Mental map</div>
+							<p className="mut config-readonly-note">
+								No live mental map yet — this agent hasn't run this mission.
+							</p>
 						</>
 					)}
 
@@ -338,6 +425,60 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 							</label>
 						))}
 					</div>
+				</div>
+			)}
+
+			{selectedAgentId === MISSION_COPILOT_AGENT_ID && (
+				<div className="config-agent-form">
+					<div className="agent-id-badge mut">
+						id: {MISSION_COPILOT_AGENT_ID}
+					</div>
+					<p className="mut config-readonly-note">
+						Injected automatically at daemon startup (ADR-0016) — not part of
+						the authored roster, so name/model/active/skills/tools don't apply
+						here.
+					</p>
+
+					<div className="config-section-label mut">Supervisor</div>
+					<input value="user" disabled />
+
+					<div className="config-section-label mut">System prompt</div>
+					<p className="mut config-readonly-note">
+						Read-only — generated fresh each session from a fixed platform
+						template plus this mission's name and roster, not a stored field.
+					</p>
+					<textarea
+						className="config-readonly-textarea"
+						value={config.missionCopilot.systemPrompt}
+						disabled
+						rows={6}
+					/>
+
+					{MISSION_COPILOT_AGENT_ID in mentalMapDrafts ? (
+						<>
+							<div className="config-section-label mut">Mental map</div>
+							<p className="mut config-readonly-note">
+								{canEdit
+									? "Editable while suspended — dropping a daemon-managed section is blocked on save."
+									: "Read-only while running — suspend the mission to edit."}
+							</p>
+							<MentalMapEditor
+								key={MISSION_COPILOT_AGENT_ID}
+								html={mentalMapDrafts[MISSION_COPILOT_AGENT_ID]}
+								editable={canEdit}
+								onChange={(next) =>
+									updateMentalMap(MISSION_COPILOT_AGENT_ID, next)
+								}
+							/>
+						</>
+					) : (
+						<>
+							<div className="config-section-label mut">Mental map</div>
+							<p className="mut config-readonly-note">
+								No live mental map yet — the copilot hasn't run this mission.
+							</p>
+						</>
+					)}
 				</div>
 			)}
 
