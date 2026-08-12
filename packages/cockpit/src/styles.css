@@ -958,8 +958,9 @@ h2.sec {
 }
 .compose textarea {
 	flex: 1;
-	resize: none;
-	height: 54px;
+	resize: vertical;
+	min-height: 54px;
+	max-height: 320px;
 	background: var(--bg);
 	border: 1px solid var(--line);
 	color: var(--txt);
@@ -2106,10 +2107,10 @@ h2.sec {
 	font-size: 13px;
 	font-family: inherit;
 	padding: 8px 10px;
-	resize: none;
+	resize: vertical;
 	outline: none;
 	min-height: 36px;
-	max-height: 120px;
+	max-height: 320px;
 }
 .copilot-input-area textarea:focus {
 	border-color: var(--copilot);
