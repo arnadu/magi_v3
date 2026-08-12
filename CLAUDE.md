@@ -135,9 +135,21 @@ is the sprint `MAGI_V3_ROADMAP.md`'s own "Post-MVP (after Sprint 27)" section na
 completion line. See `MAGI_V3_ROADMAP.md`'s Sprint 27 row and `docs/implementation-history.md` for
 full detail.
 
-**Sprint 28 — Operational + security hardening (not started).** Out-of-band alerting (issues #3,
-#4), onboarding flow, usage dashboard, a full `/security-review` pass (issues #7, #21; unblocks
-F-021/F-023/F-026 in `docs/security/findings.md`).
+**Sprint 28a — Structural decomposition of `monitor-server.ts`/`daemon.ts` + file-scoped
+security fixes (not started, see `docs/code-structure.md`).** Characterization/integration test
+coverage for `MonitorServer.handleRequest` (~725 lines) and `daemon.ts`'s `main()` (~745 lines)
+first, then split each into a route table / named bootstrap-phase functions, then land CR-01
+(root escalation), CR-02 (shell-interpolated agent ID), and CR-05 (auth token handling) inside
+the newly decomposed structure so these two files are touched once, not twice. Split out from a
+single Sprint 28 following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`)
+and this project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
+
+**Sprint 28b — Remaining operational + security hardening (not started).** Out-of-band alerting
+(issues #3, #4), onboarding flow, usage dashboard, the rest of `/security-review` — CR-03
+(BrowseWeb SSRF), CR-04 (shared mission secrets), CR-06 (CI/CD supply-chain gates), CR-07
+(external-action confirmation), CR-08 (sensitive-data posture) — (issues #7, #21; unblocks
+F-021/F-023/F-026 in `docs/security/findings.md`). Independent of 28a's file changes; sequenced
+second because 28a is the harder/riskier piece.
 
 **Sprint 29 — Sensitive-data encryption (not started, direction recorded in ADR-0026).**
 Application-level encryption so Fly and MongoDB cannot read mission data at rest, plus
@@ -147,8 +159,8 @@ Needs a dedicated research pass first — KMS provider choice, key custody model
 hot-path latency, OpenRouter ZDR fail-open/fail-closed behavior — before implementation; see
 ADR-0026 for open questions.
 
-Planning 27 and 28 together as one push toward a credible MVP; 29 follows once its own research
-is done.
+Planning 27, 28a, and 28b together as one push toward a credible MVP; 29 follows once its own
+research is done.
 
 ## Code Quality
 
@@ -167,6 +179,24 @@ Quality is applied **continuously during development**, not recovered at sprint 
 **Comments on the non-obvious only.** Well-named identifiers explain the what. Add a comment only for: a hidden constraint, a subtle invariant, a non-obvious workaround, behaviour that would surprise a reader. Never reference the current task or caller — those belong in commit messages.
 
 **Lint after every change session.** Run `npm run lint` before committing. The pre-commit hook enforces this, but earlier is better. Use `npm run lint:fix` for auto-fixable issues, then fix remaining errors manually.
+
+---
+
+## Code Structure
+
+Code structure is maintained **continuously during development**, the same as security and operational resilience below. These are the triggers — moments where you pause and reason about file and function boundaries regardless of what feature you're building.
+
+**A file crossing roughly 500 lines** — Does everything in this file share one responsibility (a flat list of independent route handlers, or one genuinely cohesive class), or does it now mix concerns that could be reasoned about separately — routing, persistence, policy, orchestration? If the concerns are separable, extract before adding more to the file.
+
+**A function crossing roughly 80–100 lines** — Can it be read start to finish and verified in one pass, or does it have several sequential phases (parse → connect → wire → launch; or route match → auth → query → respond) that could each be named and tested on their own? Long is not automatically wrong — a flat dispatch with short bodies is fine — but a function with internal phases and shared mutable state threaded across those phases is a decomposition candidate.
+
+**A new module being created already large** — Before writing one undivided file for a family of related things (tools, routes, handlers), look for the closest existing precedent in the repo (e.g. `packages/agent-runtime-worker/src/tools/` — one file per tool). A file born large from day one is harder to justify than one that grew large under deadline pressure.
+
+**A file accreting features sprint after sprint with no refactor checkpoint** — If a file has been touched in most of the last five sprints purely by addition, that is itself a signal, independent of current size. Ask whether the next feature is another such addition or a forcing function to extract a module.
+
+Code structure is a judgment call, not a hard gate — a long file made of many small, independent pieces does not need splitting; a short file that already tangles unrelated concerns does. When in doubt, extract.
+
+See `docs/code-structure.md` for the current inventory of oversized files/functions and their decomposition status, and `/code-structure-review` for the periodic audit.
 
 ---
 
@@ -230,6 +260,7 @@ Documentation updates go in the **same commit as the code change**. Documentatio
 | New agent capability, tool, or inter-agent protocol | `MAGI_V3_SPEC.md` (relevant section) |
 | Subtle code invariant that would surprise a reader | Inline comment in the source |
 | Superseded design or technology | Mark the ADR `SUPERSEDED`; update `CLAUDE.md` if the section is stale |
+| New file/function crossing a Code Structure threshold, or a decomposition decision | `docs/code-structure.md` |
 
 Aim for: **top-down architecture** (mental model before implementation detail), **subtleties surfaced** (non-obvious constraints and invariants), **operations covered** (install, run, debug, scale). A new person should understand _why_ first, then _what_, then _how_.
 
@@ -243,8 +274,9 @@ Sprint close is a **confirmation pass** — this work should already be done. If
 2. **Security review confirmed** — `/security-review` was run for any new external surface during the sprint; CRITICAL/HIGH findings are fixed; others are logged in `docs/security/findings.md`
 3. **Threat model current** — any new external HTTP call, `sudo` rule, process user, or IPC port was documented in `docs/security/threat-model.md` in the same commit as the code
 4. **Operational resilience current** — run `/operational-resilience`; any new component's failure modes are documented in `docs/operational-resilience.md`; any closed gaps are removed from the gap table
-5. **ADRs written** — any decision between concrete alternatives has an ADR in `docs/adr/`; superseded ADRs are marked
-6. **CLAUDE.md sprint table** — mark `✅ Done` with a one-line summary
+5. **Code structure current** — run `/code-structure-review`; new files/functions crossing the thresholds in the Code Structure section are logged in `docs/code-structure.md`
+6. **ADRs written** — any decision between concrete alternatives has an ADR in `docs/adr/`; superseded ADRs are marked
+7. **CLAUDE.md sprint table** — mark `✅ Done` with a one-line summary
 
 Use `/sprint-close` to run checks 1–2 automatically.
 

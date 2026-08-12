@@ -1,6 +1,6 @@
 ---
 allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(npm run lint:*), Bash(npm test:*), Read, Glob, Grep
-description: Sprint closure checklist — verify quality gates, identify missing ADRs and threat model updates
+description: Sprint closure checklist — verify quality gates, identify missing ADRs, threat model updates, and code structure drift
 ---
 
 You are a senior engineer running the sprint closure confirmation pass for MAGI V3.
@@ -77,7 +77,20 @@ For each match: confirm whether `docs/security/threat-model.md` was updated in t
 If threat model is stale: "⚠️ Threat model update needed — run /threat-model"
 If current: "✅ Threat model is current"
 
-## Check 5 — ADR coverage
+## Check 5 — Code structure currency
+
+Scan the sprint diff for:
+- Files that grew past the thresholds in CLAUDE.md's "Code Structure" section (~500 lines) or
+  newly created already large
+- Functions that grew past ~80–100 lines
+
+For each match: confirm whether `docs/code-structure.md` was updated in the same sprint (new row,
+or updated line count/status for an existing row).
+
+If coverage is missing: "⚠️ Code structure review needed — run /code-structure-review"
+If current: "✅ Code structure is current"
+
+## Check 6 — ADR coverage
 
 Scan the sprint diff for significant architectural decisions:
 - New infrastructure dependencies (databases, cloud services, runtimes, protocols)
@@ -87,7 +100,7 @@ Scan the sprint diff for significant architectural decisions:
 For each candidate: check whether an ADR exists in `docs/adr/`. If not, suggest a title and the key decision/alternatives.
 If a superseded design was removed: check whether the relevant ADR is marked SUPERSEDED.
 
-## Check 6 — CLAUDE.md sprint table
+## Check 7 — CLAUDE.md sprint table
 
 Read the Sprint Roadmap table in CLAUDE.md. Identify the highest-numbered sprint not yet marked `✅ Done`. Confirm whether it should now be marked done based on the diff, and give the one-line summary to use.
 
@@ -96,4 +109,4 @@ Read the Sprint Roadmap table in CLAUDE.md. Identify the highest-numbered sprint
 Print a concise punch list:
 - ✅ items already done (most items should be here)
 - ⚠️ PROCESS GAP items that need catch-up work, with the exact command or file to update
-- For each gap: note which habit (lint discipline, security trigger, threat model trigger, ADR discipline) should have caught it earlier
+- For each gap: note which habit (lint discipline, security trigger, threat model trigger, code structure trigger, ADR discipline) should have caught it earlier
