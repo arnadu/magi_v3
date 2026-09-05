@@ -9,7 +9,7 @@ authoritative reference for everything security-related in the codebase.
 
 | Layer | What it catches | When to run |
 |-------|----------------|-------------|
-| **Automated SAST** (`npm run security`) | Dangerous code patterns, exposed secrets, dependency CVEs | On every PR; `security:sast` and `security:secrets` run as pre-commit hooks |
+| **Automated SAST** (`npm run security`) | Dangerous code patterns, exposed secrets, dependency CVEs | Intended on every PR and as pre-commit hooks; **currently CI/manual only** — `.githooks/pre-commit` runs `npm run lint` alone, `security:sast`/`security:secrets` are not yet wired into it (tracked under CR-06, Sprint 28b) |
 | **AI review** (`/security-review`) | Business logic flaws, novel attack vectors, architectural weaknesses | Before each sprint completion; on any new external integration or sudo rule |
 | **Threat model** (`docs/security/threat-model.md`) | Living DFD + STRIDE — drives what the automated tools check for | Update whenever a new trust boundary, external service, or privilege level is added |
 
@@ -29,7 +29,7 @@ Individual checks:
 ```bash
 npm run security:sast      # semgrep: dangerous patterns in packages/
 npm run security:secrets   # gitleaks: secrets in files and staged changes
-npm run security:deps      # npm audit + pip-audit
+npm run security:deps      # npm audit only — pip-audit not yet wired in (tracked under CR-06, Sprint 28b)
 ```
 
 ### Tool installation (one-time)

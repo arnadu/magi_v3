@@ -3,7 +3,9 @@
  *
  * - Loads .env from the project root so integration tests can read ANTHROPIC_API_KEY etc.
  * - Polyfills the `File` global for Node 18 compatibility with undici v7.
- *   (Remove polyfill once we upgrade to Node >= 20.)
+ *   package.json now requires Node >=20.0.0, so this is legacy compatibility, not a live
+ *   requirement — kept for now since some contributors' local environments may lag; safe to
+ *   remove in a follow-up once nobody needs it.
  */
 import { config } from "dotenv";
 

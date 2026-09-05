@@ -14,7 +14,7 @@ The abilities of agents are increased through a library of 'skills'. These are w
 
 LLM token consumption is monitored through a number of hard and soft limits.
 
-For security reasons, teams are deployed on virtual machines in the cloud (one machine per team + one machine for the control plane to manage all the missions). Agents do not have access to your personal computer. Agents do not have access to API secrets.
+For security reasons, teams are deployed on virtual machines in the cloud (one machine per team + one machine for the control plane to manage all the missions). Agents do not have access to your personal computer, and do not have access to the platform's own LLM or database credentials. Background data-fetch jobs do receive read-only third-party market-data API keys (FRED, FMP, NewsAPI) needed to pull data — these are separate from, and narrower than, the platform's own secrets.
 
 ---
 

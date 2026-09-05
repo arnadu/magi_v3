@@ -378,7 +378,7 @@ graph TB
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
 | SSRF via FetchUrl — fetch internal RFC-1918 or cloud-metadata services | I / E | ✅ F-001 | Fixed Sprint 13: `ssrf.ts` `isPrivateHost()` validates hostname + post-DNS-resolution IP |
-| SSRF via BrowseWeb post-navigation redirect | I / E | ✅ F-002 | Fixed Sprint 16: `page.route("**/*", handler)` intercepts document/xhr/fetch requests during `agent().execute()`; known gap: new tab/popup pages do not inherit handler |
+| SSRF via BrowseWeb post-navigation redirect | I / E | ⚠️ F-002 (reopened) | The Sprint 16 fix relied on `page.route("**/*", handler)`, which no longer exists — a later Stagehand V3 upgrade removed `route()` support (see `browse-web.ts`). Pre-navigation `isPrivateHost()` and post-redirect checks are the only remaining defenses; `agent().execute()` can still reach arbitrary hosts via clicks/JS redirects, unchecked. Scheduled: CR-03, Sprint 28b. |
 | DNS rebinding — IP changes between check and connect | I | ~ | Post-redirect check in `fetch-url.ts` partially mitigates; fully resolved when F-002 is fixed |
 | Oversized response — OOM crash | D | ✅ | 50 MB response cap; Content-Length checked before read |
 | Malicious content injected into agent context | T | ~ | Trust boundary markers on BrowseWeb; FetchUrl result injected as plain markdown (see TB-8) |

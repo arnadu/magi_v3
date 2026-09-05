@@ -237,6 +237,7 @@ open — watch for a recurrence.
 | G-5 | No out-of-band alerting for LLM auth failure | 🟠 Operator must notice dashboard banner | Moderate — POST to a webhook / send email |
 | ~~G-6~~ | ~~Orphaned background jobs not cleaned on restart~~ | ~~🟠 `jobs/running/` accumulates stale entries~~ | **Closed (Sprint 12)** — `recoverOrphanedJobs()` in `daemon.ts` scans on startup |
 | ~~G-7~~ | ~~`sharedDir/objectives/*`'s two-copy architecture (Fly volume + MongoDB `teamFiles` snapshot)~~ | ~~🔴 Data loss (mitigated, not eliminated, by the interim fix)~~ | **Closed Sprint 26c** — objectives moved fully into MongoDB (`objectivesGoals`/`objectivesEvents`); the Fly-volume copy no longer exists, existing missions self-migrate on next resume. See ADR-0019 |
+| G-8 | No backup/point-in-time-recovery capability (MongoDB Atlas M0 free tier, currently in use, has no backup feature at all); no stated RTO/RPO | 🔴 Data loss on Atlas-side corruption/accidental deletion, or a catastrophic Atlas outage — beyond what app-level bugs already risk | **Accepted for now**, given the current single-tenant/pre-revenue posture — closing this requires a paid Atlas tier (M10+), not application code. Revisit before any production/paying-customer commitment. |
 
 ---
 
@@ -263,13 +264,6 @@ Wait for Atlas to recover, then restart the daemon. All state is in MongoDB; not
 2. Fix the underlying issue (top up credits, rotate API key)
 3. Click **Resume** — this posts a wakeup message to the affected agent
 4. The agent will re-read its mental map and continue
-
-### Missed daily brief (daemon was down when cron fired — G-3 unmitigated)
-Until G-3 is fixed, manually post a wakeup message to the lead agent:
-```bash
-MISSION_ID=... npm run cli:post -w packages/agent-runtime-worker -- \
-  --to lead "Scheduled wakeup missed — please run today's brief now"
-```
 
 ### Context window near limit (>75% — amber tab)
 Send the lead agent a message asking it to compact its mental map before the next session. The reflection system will handle the rest at the next session boundary.

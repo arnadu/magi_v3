@@ -145,7 +145,9 @@ single Sprint 28 following the 2026-08-09 audit (`docs/code-review-audit-respons
 and this project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
 
 **Sprint 28b — Remaining operational + security hardening (not started).** Out-of-band alerting
-(issues #3, #4), onboarding flow, usage dashboard, the rest of `/security-review` — CR-03
+(issues #3, #4); G-4 disk monitoring (Fly Volume usage in the daemon heartbeat, surfaced in the
+dashboard — highest-severity unscheduled operational gap, likely shares G-5's alert plumbing);
+onboarding flow, usage dashboard, the rest of `/security-review` — CR-03
 (BrowseWeb SSRF), CR-04 (shared mission secrets), CR-06 (CI/CD supply-chain gates), CR-07
 (external-action confirmation), CR-08 (sensitive-data posture) — (issues #7, #21; unblocks
 F-021/F-023/F-026 in `docs/security/findings.md`). Independent of 28a's file changes; sequenced
@@ -289,11 +291,11 @@ Three tiers:
 - **Unit tests** — pure, deterministic logic only (config validation, ACL policy, HTML patching). `npm test`, no LLM calls, no network.
 - **Integration tests** — real LLM calls with deterministic-outcome prompts. Full stack including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` and `MONGODB_URI`. Each test uses a unique `missionId`; `afterEach` cleans up with `deleteMany({ missionId })`.
 - **Dashboard UI test** (`tests/dashboard.integration.test.ts`) — headless Playwright test that spins up a real `MonitorServer` + orchestration loop on a free port and drives the full operator-message → agent-reply round-trip through the browser UI. Run with `npm run test:integration -- "dashboard"`. Also requires pool users (`setup-dev.sh`). Use this when debugging or changing the dashboard to confirm the SSE message flow end-to-end without a running daemon.
-- **Evaluation tests** (`eval/`) — golden scenarios for structural/policy outcomes. Run on demand, not in CI.
+- **Evaluation tests** (`eval/`, **planned — not yet implemented**, see [issue #45](https://github.com/arnadu/magi_v3/issues/45)) — golden scenarios for structural/policy outcomes, run on demand, not in CI. Until this exists, do not claim eval coverage for research quality, citations, agent collaboration, or operator workload.
 
 Test runner: **vitest** — native ESM, no build step. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.
 
-Do not write tests for prompt wording, LLM tool selection choices, or report content quality — those belong in the evaluation harness.
+Do not write tests for prompt wording, LLM tool selection choices, or report content quality — until the evaluation harness above exists, judge those manually.
 
 ## Bug and Issue Tracking
 
