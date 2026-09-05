@@ -135,23 +135,44 @@ is the sprint `MAGI_V3_ROADMAP.md`'s own "Post-MVP (after Sprint 27)" section na
 completion line. See `MAGI_V3_ROADMAP.md`'s Sprint 27 row and `docs/implementation-history.md` for
 full detail.
 
-**Sprint 28a — Structural decomposition of `monitor-server.ts`/`daemon.ts` + file-scoped
-security fixes (not started, see `docs/code-structure.md`).** Characterization/integration test
-coverage for `MonitorServer.handleRequest` (~725 lines) and `daemon.ts`'s `main()` (~745 lines)
-first, then split each into a route table / named bootstrap-phase functions, then land CR-01
-(root escalation), CR-02 (shell-interpolated agent ID), and CR-05 (auth token handling) inside
-the newly decomposed structure so these two files are touched once, not twice. Split out from a
+**Sprint 28a — Reliability fixes from three weeks of live usage (not started).** Small,
+independent patches filed directly by the mission copilots on `gold-digest-v2` and
+`meteo-textbook`: issue #38 (transient non-429 LLM errors aren't retried — one incident lost 38K
+tokens of work), #41 (no operator notification on spend-cap breach — caused a real 5-day
+outage), #37 (agent crash on duplicate key — non-atomic `seqInTurn`), #40 (`parseModel` wrongly
+assumes only `anthropic/*` supports vision), #30 (deactivated agents still shown in cockpit), and
+F-024 (`ListSchedule` cross-user scope, bumped up from `findings.md`'s stale "Backlog"). Bundles
+#25 (configurable VM memory) with #31 (investigate suspected OOM-driven daemon crashes). Land
+before 28c's characterization tests since #30/#41 touch `daemon.ts`/`monitor-server.ts`.
+
+**Sprint 28b — Mission-prep v1 + beta environment (not started).** Add a `"draft"` mission
+status; a control-plane-copilot tool reusing `SaveMissionConfig`'s patch mechanics to iterate on
+a draft config via chat; one `ProposeAction`-confirmed "Launch" action. Then stand up a fully
+separate, single-tenant beta deployment (`bash scripts/bootstrap.sh --suffix beta`) for a second,
+trusted user — chosen over adding them to the existing deployment because CR-04's shared-secret
+exposure needs no privilege escalation to reach. Sidesteps CR-04/F-024 by isolation rather than
+requiring either fixed first. The structured draft-review cockpit panel (mission-prep v2) is a
+fast-follow, not a beta precondition.
+
+**Sprint 28c — Structural decomposition of `monitor-server.ts`/`daemon.ts` + file-scoped
+security fixes (not started, see `docs/code-structure.md`).** Renumbered from 28a on 2026-09-05
+to make room for 28a/28b above — no content change. Characterization/integration test coverage
+for `MonitorServer.handleRequest` (~725 lines) and `daemon.ts`'s `main()` (~745 lines) first,
+then split each into a route table / named bootstrap-phase functions, then land CR-01 (root
+escalation), CR-02 (shell-interpolated agent ID), and CR-05 (auth token handling) inside the
+newly decomposed structure so these two files are touched once, not twice. Split out from a
 single Sprint 28 following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`)
 and this project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
 
-**Sprint 28b — Remaining operational + security hardening (not started).** Out-of-band alerting
-(issues #3, #4); G-4 disk monitoring (Fly Volume usage in the daemon heartbeat, surfaced in the
-dashboard — highest-severity unscheduled operational gap, likely shares G-5's alert plumbing);
-onboarding flow, usage dashboard, the rest of `/security-review` — CR-03
-(BrowseWeb SSRF), CR-04 (shared mission secrets), CR-06 (CI/CD supply-chain gates), CR-07
-(external-action confirmation), CR-08 (sensitive-data posture) — (issues #7, #21; unblocks
-F-021/F-023/F-026 in `docs/security/findings.md`). Independent of 28a's file changes; sequenced
-second because 28a is the harder/riskier piece.
+**Sprint 28d — Remaining operational + security hardening (not started).** Renumbered from 28b
+on 2026-09-05 — no content change. Out-of-band alerting (issues #3, #4); G-4 disk monitoring
+(Fly Volume usage in the daemon heartbeat, surfaced in the dashboard — highest-severity
+unscheduled operational gap, likely shares G-5's alert plumbing); onboarding flow, usage
+dashboard, the rest of `/security-review` — CR-03 (BrowseWeb SSRF), **CR-04 (shared mission
+secrets — the real architectural fix, not just 28b's isolation workaround)**, CR-06 (CI/CD
+supply-chain gates), CR-07 (external-action confirmation), CR-08 (sensitive-data posture) —
+(issues #7, #21; unblocks F-021/F-023/F-026 in `docs/security/findings.md`). Independent of
+28c's file changes; sequenced after because 28c is the harder/riskier piece.
 
 **Sprint 29 — Sensitive-data encryption (not started, direction recorded in ADR-0026).**
 Application-level encryption so Fly and MongoDB cannot read mission data at rest, plus
@@ -161,8 +182,8 @@ Needs a dedicated research pass first — KMS provider choice, key custody model
 hot-path latency, OpenRouter ZDR fail-open/fail-closed behavior — before implementation; see
 ADR-0026 for open questions.
 
-Planning 27, 28a, and 28b together as one push toward a credible MVP; 29 follows once its own
-research is done.
+Planning 27 and the 28a–28d series together as one push toward a credible MVP; 29 follows once
+its own research is done.
 
 ## Code Quality
 
