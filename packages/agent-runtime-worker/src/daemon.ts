@@ -1066,11 +1066,13 @@ async function main(): Promise<void> {
 		);
 		process.exit(1);
 	}
-	const agents = teamConfig.agents.map((a) => ({
-		id: a.id,
-		name: a.name ?? a.id,
-		role: a.role ?? a.id,
-	}));
+	const agents = teamConfig.agents
+		.filter((a) => a.active !== false)
+		.map((a) => ({
+			id: a.id,
+			name: a.name ?? a.id,
+			role: a.role ?? a.id,
+		}));
 	const sharedDir = join(workdir, "missions", missionId, "shared");
 	// Shared between the orchestrator (agent turn-end commits) and MonitorServer
 	// (operator file-edit commits) — one serialized queue, so the two can never

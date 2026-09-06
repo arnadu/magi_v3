@@ -714,7 +714,9 @@ export function createMissionsRouter(db: Db): Router {
 			}
 		}
 		res.json(
-			(mission.agents ?? []).map((a) => ({ id: a.id, name: a.name ?? a.id })),
+			(mission.agents ?? [])
+				.filter((a) => a.active !== false)
+				.map((a) => ({ id: a.id, name: a.name ?? a.id })),
 		);
 	});
 
