@@ -195,34 +195,48 @@ export function createMongoConversationRepository(
 		async append(agentId, missionId, messages) {
 			if (messages.length === 0) return;
 			// seqInTurn is computed by counting existing documents for the turn, then
-			// inserting. This count-then-insert is non-atomic, but correctness relies
-			// on the invariant that append() is never called concurrently for the same
-			// (agentId, missionId, turnNumber). The inner loop serialises all onMessage
-			// callbacks, so this invariant holds. The unique index on
-			// (agentId, missionId, turnNumber, seqInTurn) provides a safety net: a
-			// concurrent duplicate would fail loudly rather than silently corrupt order.
+			// inserting. This count-then-insert is non-atomic: correctness normally
+			// relies on append() never being called concurrently for the same
+			// (agentId, missionId, turnNumber), which the inner loop's serialised
+			// onMessage callbacks maintain — but a turn retried after a transient LLM
+			// error can re-enter the same turn while an earlier append is still in
+			// flight. The unique index on (agentId, missionId, turnNumber, seqInTurn)
+			// catches that as a duplicate-key error (11000); retry with a freshly
+			// recomputed seqInTurn instead of crashing the agent.
+			const MAX_ATTEMPTS = 5;
 			for (const sm of messages) {
-				const seqInTurn = await col.countDocuments({
-					agentId,
-					missionId,
-					turnNumber: sm.turnNumber,
-				});
-				await col.insertOne({
-					agentId,
-					missionId,
-					turnNumber: sm.turnNumber,
-					seqInTurn,
-					message: sm.message,
-					savedAt: new Date(),
-					...(sm.isReflection ? { isReflection: true } : {}),
-					...(sm.callSeq !== undefined ? { callSeq: sm.callSeq } : {}),
-					...(sm.mentalMapHtml !== undefined
-						? { mentalMapHtml: sm.mentalMapHtml }
-						: {}),
-					...(sm.parentToolUseId !== undefined
-						? { parentToolUseId: sm.parentToolUseId }
-						: {}),
-				});
+				let inserted = false;
+				let lastError: unknown;
+				for (let attempt = 1; attempt <= MAX_ATTEMPTS && !inserted; attempt++) {
+					const seqInTurn = await col.countDocuments({
+						agentId,
+						missionId,
+						turnNumber: sm.turnNumber,
+					});
+					try {
+						await col.insertOne({
+							agentId,
+							missionId,
+							turnNumber: sm.turnNumber,
+							seqInTurn,
+							message: sm.message,
+							savedAt: new Date(),
+							...(sm.isReflection ? { isReflection: true } : {}),
+							...(sm.callSeq !== undefined ? { callSeq: sm.callSeq } : {}),
+							...(sm.mentalMapHtml !== undefined
+								? { mentalMapHtml: sm.mentalMapHtml }
+								: {}),
+							...(sm.parentToolUseId !== undefined
+								? { parentToolUseId: sm.parentToolUseId }
+								: {}),
+						});
+						inserted = true;
+					} catch (e: unknown) {
+						lastError = e;
+						if ((e as { code?: number }).code !== 11000) throw e;
+					}
+				}
+				if (!inserted) throw lastError;
 			}
 		},
 
