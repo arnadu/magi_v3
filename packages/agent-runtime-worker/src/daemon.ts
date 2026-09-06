@@ -519,6 +519,18 @@ async function runPendingJobs(
  *
  * Returns a cleanup function that stops the interval.
  */
+// Diagnostic only (issue #31) — does not confirm or fix the suspected
+// OOM-driven crash correlation with concurrent scheduled wakeups, but gives
+// future crashes a memory trend to correlate against. Piggybacks on the job
+// runner's existing 60s tick rather than adding a second interval.
+function logMemoryUsage(missionId: string): void {
+	const mem = process.memoryUsage();
+	const mb = (bytes: number) => Math.round(bytes / (1024 * 1024));
+	console.log(
+		`[daemon] memory { missionId: "${missionId}", rssMb: ${mb(mem.rss)}, heapUsedMb: ${mb(mem.heapUsed)}, externalMb: ${mb(mem.external)} }`,
+	);
+}
+
 function startJobRunner(
 	sharedDir: string,
 	workdir: string,
@@ -529,6 +541,7 @@ function startJobRunner(
 	teamConfig: TeamConfig,
 ): () => void {
 	function tick(): void {
+		logMemoryUsage(missionId);
 		runPendingJobs(
 			sharedDir,
 			workdir,
