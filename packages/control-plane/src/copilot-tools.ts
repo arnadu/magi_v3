@@ -326,10 +326,28 @@ export function createCopilotTools(
 		}),
 		async execute(_id, args) {
 			const missionId = args.missionId as string | undefined;
-			// TODO(F-024): not userId-scoped — omitting missionId returns every
-			// user's schedule. Same bug class as the five B1 tools fixed for #19,
-			// but out of #19's named scope; tracked separately in findings.md.
-			const filter = missionId ? { missionId } : {};
+			// F-024 fix: scope by the caller's own missions either way — a single
+			// mission is verified via ownership lookup first (matching
+			// ReviewObjectives/ReadMissionMailbox), and the "all missions" case
+			// queries only the caller's own mission IDs (matching ListMissions),
+			// since ScheduledMessageDoc itself carries no userId to filter on
+			// directly.
+			let filter: Record<string, unknown>;
+			if (missionId) {
+				const mission = await db
+					.collection<MissionDoc>("missions")
+					.findOne({ missionId, userId });
+				if (!mission) return err(`Mission "${missionId}" not found`);
+				filter = { missionId };
+			} else {
+				const ownedMissionIds = (
+					await db
+						.collection<MissionDoc>("missions")
+						.find({ userId }, { projection: { missionId: 1 } })
+						.toArray()
+				).map((m) => m.missionId);
+				filter = { missionId: { $in: ownedMissionIds } };
+			}
 			const docs = await db
 				.collection<ScheduledMessageDoc>("scheduled_messages")
 				.find(filter, { sort: { deliverAt: 1 } })

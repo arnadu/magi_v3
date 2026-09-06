@@ -70,6 +70,21 @@ describe("copilot B1 tools — userId scoping", () => {
 				timestamp: now,
 			},
 		]);
+
+		await db.collection("scheduled_messages").insertMany([
+			{
+				missionId: missionA,
+				status: "pending",
+				deliverAt: now,
+				subject: "daily brief A",
+			},
+			{
+				missionId: missionB,
+				status: "pending",
+				deliverAt: now,
+				subject: "daily brief B",
+			},
+		]);
 	});
 
 	afterEach(async () => {
@@ -78,6 +93,9 @@ describe("copilot B1 tools — userId scoping", () => {
 			.deleteMany({ missionId: { $in: [missionA, missionB] } });
 		await db
 			.collection("mailbox")
+			.deleteMany({ missionId: { $in: [missionA, missionB] } });
+		await db
+			.collection("scheduled_messages")
 			.deleteMany({ missionId: { $in: [missionA, missionB] } });
 		await client.close();
 	});
@@ -154,5 +172,30 @@ describe("copilot B1 tools — userId scoping", () => {
 		expect(cross.isError).toBe(true);
 		expect(cross.content[0].text).toContain(missionB);
 		expect(cross.content[0].text).toContain("no private IP");
+	});
+
+	// F-024 regression test — ListSchedule previously had no userId scope at
+	// all: omitting missionId returned every user's schedule.
+	it("ListSchedule with no missionId only returns the caller's own schedule", async () => {
+		const toolsA = toolsFor(userA);
+		const result = await get(toolsA, "ListSchedule").execute("t1", {});
+		expect(result.isError).toBeFalsy();
+		expect(result.content[0].text).toContain("daily brief A");
+		expect(result.content[0].text).not.toContain("daily brief B");
+	});
+
+	it("ListSchedule rejects a cross-user missionId", async () => {
+		const toolsA = toolsFor(userA);
+		const own = await get(toolsA, "ListSchedule").execute("t1", {
+			missionId: missionA,
+		});
+		expect(own.isError).toBeFalsy();
+		expect(own.content[0].text).toContain("daily brief A");
+
+		const cross = await get(toolsA, "ListSchedule").execute("t2", {
+			missionId: missionB,
+		});
+		expect(cross.isError).toBe(true);
+		expect(cross.content[0].text).not.toContain("daily brief B");
 	});
 });
