@@ -3,7 +3,8 @@ name: mission-leadership
 description: |
   Operational playbook for the mission copilot: how to read cheaply, write
   good objectives, understand the two-tier budget model, author a teammate's
-  prompt or mental-map note well, and create a new skill. Your system prompt
+  prompt well and suggest a mental-map correction well, and create a new
+  skill. Your system prompt
   already covers who you are, your responsibilities, the investigation
   method, and the alignment-check procedure — this skill is the "how", not
   the "why".
@@ -69,11 +70,10 @@ Two genuinely different concepts, both called "budget" — don't conflate them:
   it's self-referential: raising it also funds your own further calls, which is exactly why it's
   audit-posted every time.
 
-## Authoring a teammate's system prompt or mental-map note well
+## Authoring a teammate's system prompt well, and suggesting a mental-map correction
 
-When you edit a teammate's `systemPrompt` via `SaveMissionConfig`, or leave them a
-`#supervisor-note` via `EditAgentMentalMap`, favor the same shape your own system prompt already
-models:
+When you edit a teammate's `systemPrompt` via `SaveMissionConfig`, favor the same shape your own
+system prompt already models:
 
 - **A clear role statement** — what this agent is *for*, in one or two sentences, before any list
   of responsibilities.
@@ -83,17 +83,21 @@ models:
   diagnosis — state the actual steps, the way your own "Investigate before you conclude" section
   does.
 
-A `#supervisor-note` is not the same kind of document as a system prompt, though — it's read once
-on the target's next turn, not a persistent reference the way their own `#working-notes` are.
-Keep it short, dated (the render already timestamps it, so you don't need to restate that), and
-focused on one thing. If you find yourself writing several paragraphs, the content probably
-belongs in a corrected objective or a config change instead.
+You cannot write a teammate's mental map directly — agents run in parallel, and an out-of-band
+write from you risks colliding with the target agent's own in-flight turn. When you notice a
+teammate's mental map holds something stale or wrong, `ReadAgentMentalMap` its current content
+first — quote the exact section and its current text, don't paraphrase from memory — then
+`PostMessage` the user a specific, minimal suggested correction: which agent, which section, the
+current text, your suggested replacement, and why. That's enough for them to act on directly in
+the cockpit's Config panel mental-map editor (suspended missions only) without reconstructing the
+diff themselves. A vague "this seems off" isn't a suggestion the operator can act on — be
+specific, every time.
 
 ### Which surface: prompt, skill, or mental map?
 
-Before you edit a teammate's system prompt, write them a skill, or leave a mental-map note,
-decide which one actually fits — mixing these up is a common way advice gets stale or costs
-context it doesn't need to.
+Before you edit a teammate's system prompt, write them a skill, or suggest a mental-map
+correction, decide which one actually fits — mixing these up is a common way advice gets stale or
+costs context it doesn't need to.
 
 - **Skill** — true regardless of the mission, worth fixing once and having it reach everyone
   automatically. Skills are re-copied fresh into `shared/skills` on every provision (including
@@ -102,12 +106,13 @@ context it doesn't need to.
   paragraphs of "how to do X" is almost always this — see "Creating a new skill" below.
 - **Mental map** — specific to *this* agent's own unfolding history, expected to keep changing
   as the mission runs. It's the only surface that's fully visible every turn with no on-demand
-  step, so keep entries short and factual (what happened, what you did), not reference material.
+  step. You can only suggest a change here (see above), never write it yourself.
 - **System prompt** — role, boundaries, and standing behavior that's always relevant regardless
   of history, and that the agent needs without having to think to go check somewhere else.
   Capability details ("how do I diagnose X") belong in a skill instead — see
   `magi-template-design`'s System prompt design section for the fuller version of this rule,
-  written for whoever's designing a brand-new agent from scratch.
+  written for whoever's designing a brand-new agent from scratch. Unlike a mental map, you can
+  write this directly, via `SaveMissionConfig`.
 
 ## Creating a new skill for the team
 

@@ -48,7 +48,6 @@ import { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
 import { type ObjectiveDef, ObjectiveDefSchema } from "./objectives/types.js";
-import { writeSupervisorNote } from "./supervisor-note.js";
 import type { MagiTool, ToolResult } from "./tools.js";
 import { truncate } from "./tools.js";
 
@@ -64,8 +63,6 @@ export interface MissionCopilotToolsConfig {
 	monitorPort: number;
 	/** Empty string in local dev, matching MonitorServer's own fail-open convention for that case. */
 	monitorToken: string;
-	/** The mission's current agent roster (from teamConfig at daemon startup) — for EditAgentMentalMap's existence check. */
-	teamAgentIds: string[];
 	/**
 	 * Kill a running background job's process group. Reaches daemon.ts's
 	 * module-level job registry directly (same process, no HTTP needed) —
@@ -150,7 +147,6 @@ export function createMissionCopilotTools(
 		mailboxRepo,
 		monitorPort,
 		monitorToken,
-		teamAgentIds,
 		cancelBackgroundJob,
 		controlPlaneUrl,
 	} = config;
@@ -783,36 +779,6 @@ export function createMissionCopilotTools(
 		},
 	};
 
-	const editAgentMentalMap: MagiTool = {
-		name: "EditAgentMentalMap",
-		description:
-			"Write a signed note into a teammate's mental map (a distinguished #supervisor-note region — never a raw overwrite of their own working sections). Visible to them starting their next turn. This is the one mutating tool with no resume-delay grace period at all — it's live as soon as they next wake — so it always posts an audit message to the user's mailbox with the note's exact text, same turn.",
-		parameters: Type.Object({
-			agentId: Type.String({ description: "Teammate to leave a note for" }),
-			note: Type.String({ description: "The note's exact text" }),
-		}),
-		async execute(_id, args) {
-			const agentId = args.agentId as string;
-			const note = args.note as string;
-			if (!teamAgentIds.includes(agentId)) {
-				return err(
-					`"${agentId}" is not a current member of this mission's team (known agents: ${teamAgentIds.join(", ")})`,
-				);
-			}
-			await writeSupervisorNote(
-				sharedDir,
-				agentId,
-				note,
-				MISSION_COPILOT_AGENT_ID,
-			);
-			await auditPost(
-				`Left a note for "${agentId}"`,
-				`I wrote this note into "${agentId}"'s mental map (#supervisor-note), visible to them next turn:\n\n${note}`,
-			);
-			return okJson({ ok: true });
-		},
-	};
-
 	const createScheduledMessage: MagiTool = {
 		name: "CreateScheduledMessage",
 		description:
@@ -1246,7 +1212,6 @@ export function createMissionCopilotTools(
 		setMissionSpendCap,
 		pauseAgent,
 		resumeAgent,
-		editAgentMentalMap,
 		createScheduledMessage,
 		cancelScheduledMessage,
 		cancelBackgroundJobTool,

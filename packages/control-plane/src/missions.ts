@@ -979,8 +979,8 @@ export function createMissionsRouter(db: Db): Router {
 		// Validate every proposed mental-map edit BEFORE writing anything —
 		// a direct-edit save bypasses addElement/updateElement/removeElement
 		// entirely, so nothing else stops it from silently dropping a
-		// daemon-managed section (#my-objectives, #supervisor-note), which is
-		// only ever re-synced at the next turn start, never recreated from
+		// daemon-managed section (#my-objectives), which is only ever
+		// re-synced at the next turn start, never recreated from
 		// nothing. Fetching each agent's current latest snapshot here (rather
 		// than in the write loop below) also means the write loop can reuse
 		// the same doc's _id instead of reading it twice.
@@ -1034,6 +1034,8 @@ export function createMissionsRouter(db: Db): Router {
 		);
 
 		// Update live mental maps in conversationMessages — validated above.
+		// Notify the target agent (issue #39) — previously silent, so the agent
+		// had no way to learn its own memory changed or why between turns.
 		for (const [agentId, html] of Object.entries(mentalMaps ?? {})) {
 			const latest = latestByAgent.get(agentId);
 			if (!latest) continue;
@@ -1041,6 +1043,16 @@ export function createMissionsRouter(db: Db): Router {
 				{ _id: latest._id },
 				{ $set: { mentalMapHtml: html } },
 			);
+			await db.collection("mailbox").insertOne({
+				id: randomUUID(),
+				missionId: req.params.id,
+				from: "user",
+				to: [agentId],
+				subject: "Your mental map was edited directly",
+				body: "The operator edited your mental map directly while the mission was suspended. Review the current content.",
+				timestamp: new Date(),
+				readBy: [],
+			});
 		}
 
 		res.json({ ok: true });

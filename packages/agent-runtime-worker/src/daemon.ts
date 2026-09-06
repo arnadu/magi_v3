@@ -1240,7 +1240,6 @@ async function main(): Promise<void> {
 				mailboxRepo,
 				monitorPort,
 				monitorToken: process.env.MONITOR_TOKEN ?? "",
-				teamAgentIds: teamConfig.agents.map((a) => a.id),
 				cancelBackgroundJob,
 				controlPlaneUrl: process.env.CONTROL_PLANE_URL ?? "",
 			})

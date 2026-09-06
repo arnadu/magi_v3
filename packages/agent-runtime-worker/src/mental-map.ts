@@ -155,8 +155,8 @@ export function removeElement(html: string, targetId: string): EditResult {
  * Return the `data-managed` region keys present in a mental map's HTML.
  * A direct-edit save (e.g. the cockpit's Config panel) bypasses addElement/
  * updateElement/removeElement entirely — nothing else stops it from silently
- * dropping a daemon-managed section (#my-objectives, #supervisor-note),
- * which is otherwise only ever re-synced by upsertManagedRegion at the next
+ * dropping a daemon-managed section (#my-objectives), which is otherwise
+ * only ever re-synced by upsertManagedRegion at the next
  * turn start, never recreated from nothing. Comparing this before/after a
  * proposed save is the guard against that.
  */

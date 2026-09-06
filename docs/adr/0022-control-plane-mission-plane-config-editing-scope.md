@@ -16,7 +16,7 @@ Isolating the failure with the mission's real data (two agents, ~6,000-character
 - An **"Advanced" free-text YAML box** (both mission- and agent-level) is the escape hatch for any field the editor doesn't have a dedicated widget for — which today includes `mission.maxCostUsd`, `missionCopilotLimits`, `agents[].limits`, and `agents[].disabledTools`. This is a second, independent way to write exactly the fields that already have (or should have) a dedicated, safe, structured write path elsewhere.
 - This editor is explicitly interim: Sprint 27 already plans to retire `index.html` once the cockpit SPA gets full config-editing feature parity. The current fragility is a symptom of code that was never meant to be the long-term editing surface, not a one-off defect worth hardening in place.
 
-Separately, ADR-0016 already gave every mission a **mission copilot** — a normal team member with `SaveMissionConfig` (structured JSON partial patch, no client-side YAML parsing at all) and `EditAgentMentalMap` tools. It can read the mission's current state before writing, explain a change, and — because it is itself one of the agents whose prompt shapes this exact behavior — has a natural interest in getting it right. This capability already exists and is unaffected by any of the above; the question this ADR answers is which surface *should* own which fields, not how to build a new one.
+Separately, ADR-0016 already gave every mission a **mission copilot** — a normal team member with a `SaveMissionConfig` tool (structured JSON partial patch, no client-side YAML parsing at all). It can read the mission's current state before writing, explain a change, and — because it is itself one of the agents whose prompt shapes this exact behavior — has a natural interest in getting it right. This capability already exists and is unaffected by any of the above; the question this ADR answers is which surface *should* own which fields, not how to build a new one.
 
 ---
 
@@ -38,14 +38,14 @@ Separately, ADR-0016 already gave every mission a **mission copilot** — a norm
 
 `mission.maxCostUsd`, `missionCopilotLimits`, and `agents[].limits` are **control-plane-owned but not part of this editor** — they already have a dedicated, purpose-built, always-live-applying path (the cockpit's Limits panel, `PATCH /:id/limits/*`, ADR-0018) and must not be reachable through a second, less-validated route. This is a stronger claim than "also fine here": a mission (or a compromised one) must not be able to raise its own spending ceiling unchecked (see threat-model F-025), so these fields being *only* operator-writable, through *one* code path, is itself the security property, not an implementation detail.
 
-### Mission plane only (`SaveMissionConfig` / `EditAgentMentalMap`)
+### Mission plane only (`SaveMissionConfig`)
 
 | Field | Why |
 |---|---|
 | `agents[].systemPrompt` | The field that broke. The highest-value, highest-risk field in the schema. An actor that can read the current prompt and flag an obviously-wrong change (e.g. "this removes your objectives-tracking instructions") before writing it is strictly safer than a blind textarea round-trip. |
 | `agents[].supervisor` | Changes the team's actual reporting/escalation structure — a structural decision that benefits from visibility into the *current* team shape (catching a cycle or an orphaned agent). |
-| `agents[].initialMentalMap` (post-launch) | **Inert once an agent has run once** — the live mental map (`conversationMessages`) is what's actually used, and `EditAgentMentalMap` already targets that correctly. Showing this as an editable post-launch field is worse than risky: it looks like it does something and doesn't. Removed from the post-launch editor entirely, not just moved. |
-| ~~Live mental-map content~~ | **Superseded — see "Post-ADR-0022 addendum" below.** Originally: same actor, same tool (`EditAgentMentalMap`); the control-plane editor's CodeMirror mental-map editor removed, mental map shown read-only for visibility. |
+| `agents[].initialMentalMap` (post-launch) | **Inert once an agent has run once** — the live mental map (`conversationMessages`) is what's actually used, and the operator's own direct edit (Config panel, suspended-only) targets that correctly. Showing this as an editable post-launch field is worse than risky: it looks like it does something and doesn't. Removed from the post-launch editor entirely, not just moved. |
+| ~~Live mental-map content~~ | **Superseded — see "Post-ADR-0022 addendum" below.** Originally mission-plane-only; the control-plane editor's CodeMirror mental-map editor was removed, mental map shown read-only for visibility. |
 | `teamFiles` content (skill/prompt files) | Same risk class as `systemPrompt` — markdown/instructional text shaping behavior. `write_mission_file` (control-plane copilot *and* mission copilot) already exists as the safe, tool-mediated, single-file path. The control-plane editor's Files tab becomes view-only (list + read, no add/edit/remove). |
 
 ### Neither — immutable or infrastructure, not exposed as "editable" anywhere
@@ -98,8 +98,8 @@ made:
    ADR fixed was specifically a client-side YAML round-trip losing fields — a risk that doesn't
    apply to mental maps under the *current* architecture regardless of which UI edits them:
    `PUT /:id/config`'s `mentalMaps` patch is (and always was, since ADR-0021) a plain JSON string
-   field, no YAML involved, the same mechanism `EditAgentMentalMap`/`save_session_config` already
-   use safely. Grouping it with `systemPrompt` bundled a field with a *mechanically checkable*
+   field, no YAML involved, the same mechanism `save_session_config` already uses safely.
+   Grouping it with `systemPrompt` bundled a field with a *mechanically checkable*
    risk (accidentally deleting a `data-managed` region) in with one that only has a *semantic*
    risk (a prompt that reads fine but is subtly wrong) — the same mitigation doesn't fit both.
 
@@ -141,7 +141,7 @@ half of that decision.
 - [ADR-0021](0021-structured-mission-config-storage.md) — introduced the structured `GET`/`PUT /:id/config` shape this ADR's editor now consumes directly, and the client-side YAML conversion layer this ADR deletes
 - [ADR-0018](0018-limit-configuration-single-source-fresh-reads.md) — the Limits panel path `mission.maxCostUsd`/`missionCopilotLimits`/`agents[].limits` must stay confined to
 - `docs/security/threat-model.md` — F-025 (mission copilot raising its own spend cap unconfirmed) — the same reasoning applies in reverse here: a spend cap must stay operator-only, reachable through one path
-- `packages/agent-runtime-worker/src/mission-copilot-tools.ts` — `SaveMissionConfig`, `EditAgentMentalMap`, `write_mission_file`
+- `packages/agent-runtime-worker/src/mission-copilot-tools.ts` — `SaveMissionConfig`, `write_mission_file`
 - `packages/control-plane/public/index.html` — the editor this ADR scopes down
 - `packages/agent-runtime-worker/src/mental-map.ts` — `managedRegionKeys()`, the mechanical guard the addendum above relies on
 - `packages/cockpit/src/ConfigPanel.tsx` — the cockpit editor implementing the addendum's mental-map viewer/editor and mission-copilot tab

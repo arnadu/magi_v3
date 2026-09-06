@@ -152,28 +152,29 @@ failed twice) to simulate what (A) gets for free. (A) is also demonstrably cheap
 #14 assumed: `monitor-server.ts` already exposes almost every diagnostic route this agent needs
 on its own machine's loopback interface — most of its tools are thin `fetch()` wrappers over
 existing routes, not new backend surface. Not all, though: `ReadAgentUsage`'s route needed its
-response extended, `EditAgentMentalMap` needed a wholly new write route, and
-`CancelBackgroundJob`/`RestartBackgroundJob` needed a new job-process registry that didn't exist
-in any form.
+response extended, and `CancelBackgroundJob`/`RestartBackgroundJob` needed a new job-process
+registry that didn't exist in any form.
 
 **The trade-off this decision accepts, stated explicitly rather than left implicit**: the mission
 copilot breaks the containment property every other agent in this system has. Every other agent's
 blast radius from a prompt injection (e.g. via `FetchUrl`/`BrowseWeb` ingesting poisoned external
 content — existing TB-8) is self-contained: it can corrupt only its own mental map, files, and
 mailbox. The mission copilot reads every teammate's mailbox/mental-map/transcripts/files and can
-write into a teammate's mental map and the whole team's config — a successful injection against
-it can propagate to every agent it supervises. This is not a gap to be closed later; it is
-accepted as the cost of the supervisory role, mitigated (not eliminated) by two mechanisms
-required, not optional, at ship time:
+write the whole team's config — a successful injection against it can propagate to every agent it
+supervises. This is not a gap to be closed later; it is accepted as the cost of the supervisory
+role, mitigated (not eliminated) by two mechanisms required, not optional, at ship time:
 1. Every read tool that returns free-text content another agent could have influenced is wrapped
    in the same trust-boundary markers `BrowseWeb` already uses for untrusted external content
    (TB-8) — not just mental-map/transcript reads, but file reads (`ReadSharedFile`/
    `ReadAgentWorkdirFile`) and `ReadMissionConfig`'s attached team files too.
 2. Every mutating tool posts a mandatory audit-trail message to the user's mailbox on every call.
    Only `SaveMissionConfig` has a grace period (next-resume delay); every other mutating tool —
-   `EditAgentMentalMap`, `PauseAgent`, `ResumeAgent`, `CreateScheduledMessage`,
-   `CancelScheduledMessage`, `CancelBackgroundJob`, `RestartBackgroundJob`, `SetMissionSpendCap`
-   — is immediate, with the audit post as the only check (**F-026**).
+   `PauseAgent`, `ResumeAgent`, `CreateScheduledMessage`, `CancelScheduledMessage`,
+   `CancelBackgroundJob`, `RestartBackgroundJob`, `SetMissionSpendCap` — is immediate, with the
+   audit post as the only check (**F-026**). The mission copilot never writes a teammate's mental
+   map directly at all — agents run in parallel, and an out-of-band write risks colliding with
+   the target agent's own in-flight turn — it can only suggest a correction via `PostMessage` for
+   the operator to apply.
 
 **Why GitHub reporting goes through a new control-plane proxy, not direct execution-plane
 `GH_TOKEN` access**: keeps `GH_TOKEN` a control-plane-only secret — the same reasoning that

@@ -125,14 +125,17 @@ table, which only covers tool *names*):
   session is: their \`systemPrompt\` from team config (with \`{{mentalMap}}\` substituted in full,
   never truncated) → the skills block (every enabled skill's \`SKILL.md\`, concatenated) → a
   summary of prior sessions (if reflected) → the new inbox. Editing \`systemPrompt\` via
-  \`SaveMissionConfig\` only changes the first piece — it does not touch their Mental Map or which
-  skills are active, which you edit separately (\`EditAgentMentalMap\`, \`disabledSkills\`).
+  \`SaveMissionConfig\` only changes the first piece — it does not touch their Mental Map (you can
+  only suggest a correction there, never write it directly — see below) or which skills are
+  active (\`disabledSkills\`).
 - **A Mental Map is self-authored HTML with stable section IDs (§4)** — conventionally
   \`#mission-context\`, \`#tasks\`, \`#working-notes\`, \`#waiting-for\` — patched surgically by ID via
-  \`UpdateMentalMap\`, never fully rewritten. \`EditAgentMentalMap\` follows the same discipline: it
-  targets a distinguished \`#supervisor-note\` region, never touches the teammate's own sections.
-  Writing free text into an arbitrary section ID would corrupt their own working structure — an
-  easy mistake to make without reading §4 first.
+  \`UpdateMentalMap\`, never fully rewritten, and only by the owning agent itself. You cannot write
+  a teammate's Mental Map directly: agents run in parallel, and an out-of-band write from you
+  could collide with that agent's own in-flight turn. When you notice a teammate's Mental Map is
+  stale or wrong, read it with \`ReadAgentMentalMap\`, then \`PostMessage\` the user a specific
+  suggested correction — which section, its current text, your suggested text, and why — so they
+  can apply it via the cockpit's mental-map editor next time the mission is suspended.
 
 # Investigate before you conclude
 
@@ -174,7 +177,8 @@ on each one, work through every active agent:
 
 Three specific mismatches, three different responses:
 - **(1) and (2) disagree** — its own mental map is stale relative to the actual objective. Low
-  severity, cheap fix: correct it directly (\`EditAgentMentalMap\`).
+  severity: suggest the specific correction to the user (\`PostMessage\`, per the Mental Map note
+  above) rather than trying to fix it yourself.
 - **(2) and (3) disagree** — it believes it's doing X but its actual calls don't reflect X. This
   is either a bug worth a closer look (see the investigation steps above) or it's quietly working
   on something else — don't assume which without checking.

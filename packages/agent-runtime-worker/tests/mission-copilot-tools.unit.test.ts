@@ -12,7 +12,6 @@ import { ObjectId } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MISSION_COPILOT_AGENT_ID } from "../src/mission-copilot.js";
 import { createMissionCopilotTools } from "../src/mission-copilot-tools.js";
-import { readSupervisorNote } from "../src/supervisor-note.js";
 import type { MagiTool } from "../src/tools.js";
 
 // ---------------------------------------------------------------------------
@@ -163,7 +162,6 @@ describe("mission-copilot-tools", () => {
 			mailboxRepo: mailboxRepo as any,
 			monitorPort: 4000,
 			monitorToken: "test-token",
-			teamAgentIds: ["lead", "worker", MISSION_COPILOT_AGENT_ID],
 			cancelBackgroundJob: cancelBackgroundJobImpl,
 			controlPlaneUrl,
 		});
@@ -402,36 +400,6 @@ describe("mission-copilot-tools", () => {
 				}),
 			);
 			expect(mailboxPosts).toHaveLength(1);
-		});
-	});
-
-	describe("EditAgentMentalMap", () => {
-		it("rejects an agentId not in the current team roster", async () => {
-			const { tools } = buildTools();
-			const result = await get(tools, "EditAgentMentalMap").execute("t1", {
-				agentId: "not-a-real-agent",
-				note: "hello",
-			});
-			expect(result.isError).toBe(true);
-			expect(
-				await readSupervisorNote(sharedDir, "not-a-real-agent"),
-			).toBeNull();
-		});
-
-		it("writes the note file and posts an audit message with the note's exact text", async () => {
-			const { tools } = buildTools();
-			const result = await get(tools, "EditAgentMentalMap").execute("t1", {
-				agentId: "worker",
-				note: "You've drifted from OBJ-1 — please re-read it.",
-			});
-			expect(result.isError).toBeFalsy();
-			const note = await readSupervisorNote(sharedDir, "worker");
-			expect(note?.note).toBe("You've drifted from OBJ-1 — please re-read it.");
-			expect(note?.by).toBe(MISSION_COPILOT_AGENT_ID);
-			expect(mailboxPosts).toHaveLength(1);
-			expect(mailboxPosts[0].body).toContain(
-				"You've drifted from OBJ-1 — please re-read it.",
-			);
 		});
 	});
 

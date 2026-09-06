@@ -377,8 +377,8 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 							<div className="config-section-label mut">Mental map</div>
 							<p className="mut config-readonly-note">
 								{canEdit
-									? "Editable while suspended — dropping a daemon-managed section (e.g. objectives sync, supervisor note) is blocked on save."
-									: "Read-only while running — suspend the mission to edit, or use the mission copilot (EditAgentMentalMap)."}
+									? "Editable while suspended — dropping a daemon-managed section (e.g. objectives sync) is blocked on save."
+									: "Read-only while running — suspend the mission to edit yourself, or ask the mission copilot for a suggested correction."}
 							</p>
 							<MentalMapEditor
 								key={selectedAgent.id}

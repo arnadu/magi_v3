@@ -41,11 +41,6 @@ import {
 	formatMessages,
 } from "./prompt.js";
 import { convertToLlm, runReflection } from "./reflection.js";
-import {
-	readSupervisorNote,
-	renderSupervisorNote,
-	SUPERVISOR_NOTE_KEY,
-} from "./supervisor-note.js";
 import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
@@ -487,29 +482,6 @@ export async function runAgent(
 				error: (e as Error).message,
 			});
 		}
-	}
-
-	// Sync the daemon-managed #supervisor-note mental-map section (ADR-0016) —
-	// the same lazy-render-at-turn-start pattern as #my-objectives above.
-	// Written by the mission copilot's EditAgentMentalMap tool; read fresh
-	// every turn rather than pushed, so there's no out-of-band write into this
-	// agent's own conversation history to get wrong.
-	try {
-		const entry = await readSupervisorNote(sharedDir, agentId);
-		if (entry !== null) {
-			currentMentalMapHtml = upsertManagedRegion(
-				currentMentalMapHtml,
-				SUPERVISOR_NOTE_KEY,
-				renderSupervisorNote(entry),
-			);
-			ctx.onMentalMapUpdate?.(agentId, currentMentalMapHtml);
-		}
-	} catch (e) {
-		console.error("[agent-runner] supervisor-note sync failed", {
-			missionId,
-			agentId,
-			error: (e as Error).message,
-		});
 	}
 
 	const previousMessages = convertToLlm(history);

@@ -325,6 +325,7 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 
 		afterEach(async () => {
 			await db.collection("conversationMessages").deleteMany({ missionId });
+			await db.collection("mailbox").deleteMany({ missionId });
 		});
 
 		it("GET includes the mission copilot's live mental map and synthesized config, keyed separately from the roster", async () => {
@@ -375,6 +376,14 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 				.find({ missionId, agentId: "analyst" })
 				.toArray();
 			expect(docs).toHaveLength(1);
+
+			// Issue #39: the target agent is notified it was edited directly.
+			const notice = await db
+				.collection("mailbox")
+				.findOne({ missionId, to: "analyst" });
+			expect(notice).not.toBeNull();
+			expect(notice?.from).toBe("user");
+			expect(notice?.subject).toContain("edited directly");
 		});
 
 		it("400s and writes nothing if the save would drop a data-managed region", async () => {
