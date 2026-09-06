@@ -125,6 +125,19 @@ export const TeamConfigSchema = z.object({
 		 * fresh from the execution-plane machine's env at every boot).
 		 */
 		maxCostUsd: z.number().positive().optional(),
+		/**
+		 * Fly Machines guest memory in MB for this mission's execution-plane
+		 * machine. Falls back to fly-machines.ts's 1024 MB default when unset.
+		 * Capped at 4096 — this field is writable by the mission copilot's own
+		 * SaveMissionConfig/save_session_config tools with no confirmation gate
+		 * (same trust tier as SetMissionSpendCap, F-025), so the cap is defense
+		 * in depth against an unconfirmed cost-increasing config change, not
+		 * just a sanity bound. Takes effect on the next provision (fresh launch
+		 * or resume), not on a running machine.
+		 */
+		memoryMb: z.number().int().positive().max(4096).optional(),
+		/** Fly Machines guest CPU count. Same trust/effect caveats as memoryMb. */
+		cpus: z.number().int().positive().max(4).optional(),
 	}),
 	agents: z.array(AgentSchema).min(1),
 	/**

@@ -62,6 +62,10 @@ export interface ProvisionOptions {
 	 *  Used when re-provisioning a machine whose Fly machine was deleted but
 	 *  whose workspace volume is still intact. */
 	existingVolumeId?: string;
+	/** Guest memory in MB. Defaults to 1024 (issue #25 — was hardcoded). */
+	memoryMb?: number;
+	/** Guest CPU count. Defaults to 1. */
+	cpus?: number;
 }
 
 /**
@@ -171,12 +175,14 @@ export async function provisionMission(
 				mounts: [{ volume: volumeId, path: "/missions" }],
 				restart: { policy: "on-failure", max_retries: 3 },
 				// No services — internal access only via WireGuard.
-				// 1 GB RAM: Node + MongoDB driver + agent pool need ~600 MB at idle;
-				// Playwright/Chromium adds another ~400 MB under load.
+				// 1 GB RAM default: Node + MongoDB driver + agent pool need ~600 MB at
+				// idle; Playwright/Chromium adds another ~400 MB under load. Heavier
+				// missions (multiple agents, Python data-science stack) can override
+				// via mission.memoryMb (issue #25) — see ProvisionOptions.
 				guest: {
 					cpu_kind: "shared",
-					cpus: 1,
-					memory_mb: 1024,
+					cpus: opts.cpus ?? 1,
+					memory_mb: opts.memoryMb ?? 1024,
 				},
 			},
 			region,

@@ -101,6 +101,32 @@ describe("provisionMission (ADR-0021: no config payload)", () => {
 		expect(env.ANTHROPIC_API_KEY).toBe("test-anthropic-key");
 		expect(env.MONGODB_URI).toBe("mongodb://test");
 	});
+
+	it("defaults guest memory/cpu to 1024 MB / 1 cpu when unset (issue #25)", async () => {
+		await provisionMission("mission-1");
+		const machineCall = fetchMock.mock.calls.find((c) =>
+			(c[0] as string).includes("/machines"),
+		);
+		const body = JSON.parse((machineCall?.[1] as RequestInit).body as string);
+		expect(body.config.guest).toEqual({
+			cpu_kind: "shared",
+			cpus: 1,
+			memory_mb: 1024,
+		});
+	});
+
+	it("uses opts.memoryMb/opts.cpus for the guest config when provided (issue #25)", async () => {
+		await provisionMission("mission-1", { memoryMb: 2048, cpus: 2 });
+		const machineCall = fetchMock.mock.calls.find((c) =>
+			(c[0] as string).includes("/machines"),
+		);
+		const body = JSON.parse((machineCall?.[1] as RequestInit).body as string);
+		expect(body.config.guest).toEqual({
+			cpu_kind: "shared",
+			cpus: 2,
+			memory_mb: 2048,
+		});
+	});
 });
 
 describe("provisionLocal (ADR-0021: no team.yaml written)", () => {

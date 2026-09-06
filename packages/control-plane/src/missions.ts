@@ -1192,7 +1192,10 @@ export function createMissionsRouter(db: Db): Router {
 			// Local: write to disk since the developer's daemon reads from the local path.
 			const handle = isLocalExecution()
 				? provisionLocal(missionId, { teamFiles: resolvedFiles })
-				: await provisionMission(missionId, {});
+				: await provisionMission(missionId, {
+						memoryMb: doc.mission?.memoryMb,
+						cpus: doc.mission?.cpus,
+					});
 			await col.updateOne(
 				{ missionId },
 				{
@@ -1299,6 +1302,8 @@ export function createMissionsRouter(db: Db): Router {
 				const handle = await provisionMission(missionId, {
 					existingVolumeId: mission.volumeId,
 					// teamFiles omitted: daemon fetches from missions collection at startup
+					memoryMb: mission.mission?.memoryMb,
+					cpus: mission.mission?.cpus,
 				});
 				await col.updateOne(
 					{ missionId },

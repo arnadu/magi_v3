@@ -83,6 +83,41 @@ describe("parseTeamConfigYaml — mission.timezone", () => {
 	});
 });
 
+describe("parseTeamConfigYaml — mission.memoryMb/cpus (issue #25)", () => {
+	it("accepts a valid memoryMb/cpus pair", () => {
+		const config = parseTeamConfigYaml(
+			baseYaml("lead").replace(
+				"name: Test Mission",
+				"name: Test Mission\n  memoryMb: 2048\n  cpus: 2",
+			),
+		);
+		expect(config.mission.memoryMb).toBe(2048);
+		expect(config.mission.cpus).toBe(2);
+	});
+
+	it("is optional — omitting it leaves memoryMb/cpus undefined", () => {
+		const config = parseTeamConfigYaml(baseYaml("lead"));
+		expect(config.mission.memoryMb).toBeUndefined();
+		expect(config.mission.cpus).toBeUndefined();
+	});
+
+	it("rejects memoryMb above the 4096 cap", () => {
+		const yaml = baseYaml("lead").replace(
+			"name: Test Mission",
+			"name: Test Mission\n  memoryMb: 8192",
+		);
+		expect(() => parseTeamConfigYaml(yaml)).toThrow();
+	});
+
+	it("rejects a non-integer memoryMb", () => {
+		const yaml = baseYaml("lead").replace(
+			"name: Test Mission",
+			"name: Test Mission\n  memoryMb: 512.5",
+		);
+		expect(() => parseTeamConfigYaml(yaml)).toThrow();
+	});
+});
+
 describe("parseTeamConfigYaml — agent name/role defaulting (ADR-0021)", () => {
 	it("defaults name and role to id when both are omitted", () => {
 		const config = parseTeamConfigYaml(baseYaml("lead"));
