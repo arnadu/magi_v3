@@ -277,9 +277,7 @@ function buildRosterText(teamConfig: TeamConfig): string {
  * (mental-map.ts) substitutes them once, at agent-creation time, the same fix
  * this plan made for every agent (see ADR-0016 context).
  */
-const INITIAL_MENTAL_MAP = `<section id="my-objectives"><!-- managed — synced from the objectives store; do not hand-edit --></section>
-
-<h2>Useful paths</h2>
+const INITIAL_MENTAL_MAP = `<h2>Useful paths</h2>
 <ul>
   <li>Mission shared workspace: {{sharedDir}}</li>
   <li>My own workspace: {{workdir}}</li>
@@ -289,14 +287,21 @@ const INITIAL_MENTAL_MAP = `<section id="my-objectives"><!-- managed — synced 
   <li>Skill catalog — platform skills (every agent's potential skill set, whether or not currently enabled): {{sharedDir}}/skills/_platform/; team skills: {{sharedDir}}/skills/_team/; mission-authored skills: {{sharedDir}}/skills/mission/</li>
 </ul>
 
-<h2>Observations</h2>
-<p><!-- filled in over time as I learn things specific to this mission --></p>
+<section id="mission-state">
+<h2>Mission state</h2>
+<p><!-- Replace this paragraph in place each time you update it (mental_map_update, mode:
+"replace") — a snapshot of the mission right now, not a growing log. Include: each active
+agent's current status, spend/budget headroom, and any near-term deadline or scheduled event
+worth having front-of-mind next session. Overwrite stale content rather than appending to it. --></p>
+</section>
 
+<section id="anomaly-log">
 <h2>Anomaly log</h2>
 <p>System-generated anomalies (crashes, limit breaches, failed jobs, stuck schedules) arrive as
 mailbox messages from "system" — see the incident-triage skill for how to investigate each
-category. After I resolve one, I append a line here: category, what I found, what I did.
-(Empty until the first one happens.)</p>`;
+category, and for exactly when to append a new paragraph here versus update an existing
+recurring-pattern counter in place instead. (Empty until the first one happens.)</p>
+</section>`;
 
 // ---------------------------------------------------------------------------
 // Agent config

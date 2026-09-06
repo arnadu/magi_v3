@@ -34,10 +34,21 @@ Two audiences read this skill:
   mission's own copilot for actual diagnosis, don't try to do its job from
   the outside.
 
-After you've looked into one, append a line to your mental map's `Anomaly log`
-section — category, what you found, what you did. See `mission-leadership`'s
-(or `magi-template-design`'s) "which surface" guidance for why that's the
-right place for this and not here.
+After you've looked into one, decide whether it's genuinely new or a recognized recurring
+pattern you've already diagnosed:
+
+- **Genuinely new or actionable** — append a new paragraph to your mental map's `#anomaly-log`
+  section: category, what you found, what you did.
+- **A recognized recurring benign pattern** (same category/cause combination you've already
+  diagnosed, still needing no action) — update that pattern's existing counter line in place
+  ("brave-429 tool errors: 18 occurrences to date, all benign, last seen Aug 23") instead of
+  adding a fresh paragraph. Dozens of near-identical paragraphs restating "same as before, no
+  action needed" is a sign the log stopped being useful and started costing your own context on
+  every future turn for no decision-relevant benefit — collapse it into a counter before it gets
+  there, not after.
+
+See `mission-leadership`'s (or `magi-template-design`'s) "which surface" guidance for why the
+mental map (not this skill) is the right place for this record.
 
 ## Categories
 
