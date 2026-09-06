@@ -106,6 +106,30 @@ export function resolveModel(id: string): Model<string> {
 	return parseModel(id);
 }
 
+// Vendor/family patterns known to support image input, for OpenRouter model IDs
+// not yet in the generated registry (very recent releases). The registry
+// (providers/data/openrouter.json, refreshed via pi-ai) is the real source of
+// truth for any model already listed — this table only covers the miss path.
+// Maintain as new vision-capable families ship. A false negative here silently
+// disables image auto-description (issue #40); a false positive sends an image
+// to a model that rejects it — err toward well-established families only.
+const VISION_CAPABLE_ID_PATTERNS: RegExp[] = [
+	/^anthropic\//,
+	/^google\/gemini-/,
+	/^openai\/gpt-4o/,
+	/^openai\/gpt-4-turbo/,
+	/^openai\/o1/,
+	/^meta-llama\/llama-3\.2-(11b|90b)-vision/,
+	/^mistralai\/pixtral/,
+	/^qwen\/qwen2(\.5)?-vl/,
+	/^x-ai\/grok-4/,
+	/^amazon\/nova/,
+];
+
+function supportsVisionFallback(id: string): boolean {
+	return VISION_CAPABLE_ID_PATTERNS.some((pattern) => pattern.test(id));
+}
+
 /**
  * Resolve a model ID string to a Model object.
  * IDs containing "/" are treated as OpenRouter models (e.g. "deepseek/deepseek-v3.2",
@@ -114,8 +138,8 @@ export function resolveModel(id: string): Model<string> {
  * For OpenRouter IDs in the pi-ai generated registry, the pre-computed cost and
  * capability data is used. For IDs not in the registry (newly released models or any
  * valid OpenRouter model slug), a descriptor is constructed with default costs
- * ($3/$15 per MTok, 128k context). anthropic/* IDs are assumed to support images;
- * all others default to text-only. Add an explicit constant above to override.
+ * ($3/$15 per MTok, 128k context) and image support inferred from
+ * VISION_CAPABLE_ID_PATTERNS above. Add an explicit constant above to override.
  */
 export function parseModel(id: string): Model<string> {
 	if (id.includes("/")) {
@@ -130,7 +154,7 @@ export function parseModel(id: string): Model<string> {
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
 			reasoning: false,
-			input: id.startsWith("anthropic/") ? ["text", "image"] : ["text"],
+			input: supportsVisionFallback(id) ? ["text", "image"] : ["text"],
 			cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 128_000,
 			maxTokens: 8_096,

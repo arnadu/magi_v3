@@ -38,3 +38,38 @@ describe("OpenRouter models carry sendSessionAffinityHeaders", () => {
 		expect(model.compat).toBeUndefined();
 	});
 });
+
+describe("parseModel: vision-capable fallback for unregistered OpenRouter ids (issue #40)", () => {
+	it("a registry-hit model keeps its real capability data, not the fallback", () => {
+		// deepseek-v3.2 is text-only in the registry — confirms the fallback
+		// logic below is not accidentally short-circuiting registry hits.
+		const model = parseModel("deepseek/deepseek-v3.2");
+		expect(model.input).not.toContain("image");
+	});
+
+	it("grants image support to unregistered anthropic/* ids (still, for back-compat)", () => {
+		const model = parseModel("anthropic/claude-9000-hypothetical");
+		expect(model.input).toContain("image");
+	});
+
+	it("grants image support to unregistered known-vision-family ids", () => {
+		expect(parseModel("google/gemini-9.9-hypothetical").input).toContain(
+			"image",
+		);
+		expect(parseModel("openai/gpt-4o-hypothetical").input).toContain("image");
+		expect(parseModel("mistralai/pixtral-hypothetical").input).toContain(
+			"image",
+		);
+	});
+
+	it("does not grant image support to an unregistered text-only-family id", () => {
+		// The exact bug from issue #40: an unregistered non-Anthropic model
+		// used to always fall back to text-only, silently disabling image
+		// auto-description even for a real vision model. This case (a
+		// genuinely unlisted, unknown vendor) should still default to
+		// text-only — the fix is precision (known families), not a blanket
+		// default of true.
+		const model = parseModel("some-new-vendor/text-model-v1");
+		expect(model.input).not.toContain("image");
+	});
+});
