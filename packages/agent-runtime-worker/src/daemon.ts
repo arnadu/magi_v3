@@ -1297,6 +1297,25 @@ async function main(): Promise<void> {
 								`[daemon] failed to record limit-breach anomaly: ${e.message}`,
 							),
 						);
+					// Also notify the operator directly (issue #41) — the copilot
+					// relay above is not a substitute: a hard breach on every agent,
+					// including the mission copilot itself, previously left no one
+					// able to surface it, and the operator only found out days later.
+					if (rule.severity === "hard") {
+						mailboxRepo
+							.post({
+								missionId,
+								from: "system",
+								to: ["user"],
+								subject: `Spend limit hit — "${agentId}"`,
+								body,
+							})
+							.catch((e: Error) =>
+								console.error(
+									`[daemon] failed to notify operator of limit breach { missionId: "${missionId}", agentId: "${agentId}" }: ${e.message}`,
+								),
+							);
+					}
 				},
 				// Whole-turn crash (runAgent rejected). This is purely the SSE
 				// dashboard signal — orchestrator.ts's own dispatch-error handler
@@ -1388,6 +1407,36 @@ async function main(): Promise<void> {
 								const missionTotal = missionLifetimeCostUsd(snapshot);
 								if (missionTotal >= effectiveCap) {
 									await monitor.notifyCostPause(missionTotal, effectiveCap);
+									// This path previously never woke the copilot or the
+									// operator (issue #41) — only a dashboard-only SSE event,
+									// unlike the per-agent path above. A silent mission-wide
+									// pause cost 5 days of unattended operation in production.
+									const pauseBody = `Mission-wide spend cap reached: $${missionTotal.toFixed(2)} of $${effectiveCap.toFixed(2)}. All agents are paused until the cap is raised or cleared.`;
+									anomalyRecorder
+										.record({
+											missionId,
+											category: "limit-breach",
+											severity: "hard",
+											message: pauseBody,
+										})
+										.catch((e: Error) =>
+											console.error(
+												`[daemon] failed to record mission-cap anomaly { missionId: "${missionId}" }: ${e.message}`,
+											),
+										);
+									mailboxRepo
+										.post({
+											missionId,
+											from: "system",
+											to: ["user"],
+											subject: "Mission spend cap reached",
+											body: pauseBody,
+										})
+										.catch((e: Error) =>
+											console.error(
+												`[daemon] failed to notify operator of mission-cap pause { missionId: "${missionId}" }: ${e.message}`,
+											),
+										);
 								}
 							}
 						} catch (e) {
