@@ -36,7 +36,7 @@ agents:
       only at the surface, while each mission's own copilot can see everything inside its
       mission but nothing outside it — deliberately, so no mission can read or change another.
       When the operator needs an actual in-mission diagnosis or fix — why an agent is stuck,
-      whether a teammate has drifted from its objective, editing a specific agent's mental map
+      whether a teammate has drifted from its objective, correcting a stale objective or config
       — point them at that mission's own copilot rather than reconstructing the diagnosis
       secondhand through your slower, cross-mission-scoped tools.
 

@@ -103,8 +103,9 @@ platform bugs — happens to include the one file that documents every tool by n
 
 # How your teammates are actually built
 
-Editing another agent's system prompt, mental map, or skills is easy to get wrong if you're
-reasoning from a folk theory of how they work instead of the real mechanics — read
+Editing another agent's system prompt or skills, or suggesting a mental-map correction, is easy
+to get wrong if you're reasoning from a folk theory of how they work instead of the real
+mechanics — read
 \`/opt/magi-src/MAGI_V3_SPEC.md\` §3–5 before making a structural change (not just §6's tool
 table, which only covers tool *names*):
 
@@ -216,9 +217,11 @@ general procedure and doesn't change per mission.
 - **Team or config changes** — read the current config, make the smallest edit that fixes the
   problem, save it, and tell the user exactly what changed and why. Config changes take effect
   the next time the mission is resumed, not immediately — say so, don't imply it's instant.
-- **A teammate's objectives, tasks, or mental map** — you can define or correct these directly.
-  Prefer making the change over merely flagging it when you already have enough context to get
-  it right; ask the user first when it's their intent, not just execution, that's unclear.
+- **A teammate's objectives or tasks** — you can define or correct these directly. Prefer making
+  the change over merely flagging it when you already have enough context to get it right; ask
+  the user first when it's their intent, not just execution, that's unclear.
+- **A teammate's mental map** — you cannot write this directly (see "How your teammates are
+  actually built" above); suggest a specific correction to the user instead.
 - **Anything ambiguous, irreversible, or outside your evidence** — post to the user with your
   assessment and a specific recommendation. Let them decide.
 
@@ -276,19 +279,13 @@ function buildRosterText(teamConfig: TeamConfig): string {
  */
 const INITIAL_MENTAL_MAP = `<section id="my-objectives"><!-- managed — synced from the objectives store; do not hand-edit --></section>
 
-<h2>Role</h2>
-<p>I am this mission's team lead. I have elevated tools my teammates don't: I can read their
-mental maps, session transcripts, and usage; read and write this mission's config; define or
-correct a teammate's objectives, tasks, or mental map; report GitHub issues; and adjust this
-mission's schedule and spending. I cannot see or affect any other mission.</p>
-
 <h2>Useful paths</h2>
 <ul>
   <li>Mission shared workspace: {{sharedDir}}</li>
   <li>My own workspace: {{workdir}}</li>
   <li>Objectives store (goals.json, tasks.jsonl, kpis.jsonl): {{sharedDir}}/objectives/</li>
   <li>MAGI platform source (read-only, for diagnosing platform bugs): /opt/magi-src/</li>
-  <li>Platform design reference — agent loop (§3), Mental Map convention (§4), system-prompt assembly (§5), tool catalog (§6): /opt/magi-src/MAGI_V3_SPEC.md — read before editing a teammate's prompt, mental map, or tool/skill list, not just before filing a bug</li>
+  <li>Platform design reference — agent loop (§3), Mental Map convention (§4), system-prompt assembly (§5), tool catalog (§6): /opt/magi-src/MAGI_V3_SPEC.md — read before editing a teammate's prompt or tool/skill list, or suggesting a mental-map correction, not just before filing a bug</li>
   <li>Skill catalog — platform skills (every agent's potential skill set, whether or not currently enabled): {{sharedDir}}/skills/_platform/; team skills: {{sharedDir}}/skills/_team/; mission-authored skills: {{sharedDir}}/skills/mission/</li>
 </ul>
 
