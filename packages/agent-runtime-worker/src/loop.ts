@@ -14,10 +14,32 @@ import type { MagiTool } from "./tools.js";
 // ---------------------------------------------------------------------------
 // Helpers
 
-function is429(msg: AssistantMessage): boolean {
+export function is429(msg: AssistantMessage): boolean {
 	return (
 		msg.stopReason === "error" && (msg.errorMessage?.includes("429") ?? false)
 	);
+}
+
+// Substrings of known-transient provider errors (stream interruptions, upstream
+// timeouts, connection drops) that recover within seconds — observed repeatedly
+// in production (issue #38) ending a turn and losing in-progress work for no
+// reason, since the provider itself was back within the same session.
+const TRANSIENT_ERROR_PATTERNS = [
+	"stream ended",
+	"idle timeout",
+	"connection error",
+	"connection reset",
+	"econnreset",
+];
+
+export function isTransientError(msg: AssistantMessage): boolean {
+	if (msg.stopReason !== "error" || !msg.errorMessage) return false;
+	const lower = msg.errorMessage.toLowerCase();
+	return TRANSIENT_ERROR_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+function isRetryable(msg: AssistantMessage): boolean {
+	return is429(msg) || isTransientError(msg);
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -317,11 +339,20 @@ export async function runInnerLoop(
 			}
 		}
 		let assistantMessage = await callWithDeadline();
-		// Retry on 429 (upstream rate-limit) with exponential backoff.
-		for (let attempt = 1; attempt <= 3 && is429(assistantMessage); attempt++) {
+		// Retry on 429 (upstream rate-limit) or a known-transient provider error
+		// with exponential backoff — both recover within seconds and shouldn't
+		// end the turn.
+		for (
+			let attempt = 1;
+			attempt <= 3 && isRetryable(assistantMessage);
+			attempt++
+		) {
 			const delayMs = 5_000 * 2 ** (attempt - 1); // 5s, 10s, 20s
+			const reason = is429(assistantMessage)
+				? "429 rate-limit"
+				: `transient error (${assistantMessage.errorMessage})`;
 			console.warn(
-				`[loop] 429 rate-limit from ${model.id} — retrying in ${delayMs / 1000}s (attempt ${attempt}/3)`,
+				`[loop] ${reason} from ${model.id} — retrying in ${delayMs / 1000}s (attempt ${attempt}/3)`,
 			);
 			await sleep(delayMs, signal);
 			if (signal?.aborted) break;
