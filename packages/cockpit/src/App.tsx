@@ -586,15 +586,17 @@ export function App() {
 			<div className="app-shell">
 				<div className="app">
 					<Header subtitle="editing draft" />
-					<DraftEditor
-						missionId={view.missionId}
-						onBack={() => {
-							window.location.search = "";
-						}}
-						onLaunched={(id) => {
-							window.location.search = `?mission=${encodeURIComponent(id)}`;
-						}}
-					/>
+					<main className="tab-body">
+						<DraftEditor
+							missionId={view.missionId}
+							onBack={() => {
+								window.location.search = "";
+							}}
+							onLaunched={(id) => {
+								window.location.search = `?mission=${encodeURIComponent(id)}`;
+							}}
+						/>
+					</main>
 				</div>
 				<CopilotPanel />
 			</div>
