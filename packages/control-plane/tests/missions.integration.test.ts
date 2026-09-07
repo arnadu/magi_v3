@@ -449,6 +449,198 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 		});
 	});
 
+	describe("POST /draft — create a draft mission", () => {
+		it("creates a blank draft with no machine and an empty roster", async () => {
+			const missionId = newMissionId();
+			const res = await fetch(`${baseUrl}/draft`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ missionId, name: "Blank Draft" }),
+			});
+			expect(res.status).toBe(201);
+			const body = (await res.json()) as {
+				status: string;
+				agents: unknown[];
+			};
+			expect(body.status).toBe("draft");
+			expect(body.agents).toEqual([]);
+
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc?.status).toBe("draft");
+			expect(doc?.machineId).toBeUndefined();
+		});
+
+		it("creates a draft cloned from a template's config", async () => {
+			const missionId = newMissionId();
+			const res = await fetch(`${baseUrl}/draft`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					missionId,
+					name: "Cloned Draft",
+					teamConfig: "equity-research",
+				}),
+			});
+			expect(res.status).toBe(201);
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc?.status).toBe("draft");
+			expect(doc?.machineId).toBeUndefined();
+			expect((doc?.agents as unknown[]).length).toBeGreaterThan(0);
+			expect(doc?.mission.id).toBe(missionId);
+		});
+
+		it("404s for an unknown template", async () => {
+			const missionId = newMissionId();
+			const res = await fetch(`${baseUrl}/draft`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					missionId,
+					name: "Bad Template Draft",
+					teamConfig: "not-a-real-template",
+				}),
+			});
+			expect(res.status).toBe(404);
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc).toBeNull();
+		});
+
+		it("409s when the missionId already exists", async () => {
+			const missionId = newMissionId();
+			const payload = { missionId, name: "Dup Draft" };
+			const first = await fetch(`${baseUrl}/draft`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(payload),
+			});
+			expect(first.status).toBe(201);
+
+			const second = await fetch(`${baseUrl}/draft`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(payload),
+			});
+			expect(second.status).toBe(409);
+		});
+	});
+
+	describe("PUT /:id/draft — permissive save (no parseTeamConfig gate)", () => {
+		let missionId: string;
+
+		beforeEach(async () => {
+			missionId = newMissionId();
+			const res = await fetch(`${baseUrl}/draft`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ missionId, name: "Draft Under Edit" }),
+			});
+			expect(res.status).toBe(201);
+		});
+
+		it("writes an incomplete agent (missing systemPrompt) that would fail parseTeamConfig", async () => {
+			const res = await fetch(`${baseUrl}/${missionId}/draft`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mission: { name: "Draft Under Edit" },
+					agents: [{ id: "half-built", supervisor: "user" }],
+					teamFiles: [],
+				}),
+			});
+			expect(res.status).toBe(200);
+
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc?.status).toBe("draft");
+			expect(doc?.agents).toHaveLength(1);
+			expect(doc?.agents[0].id).toBe("half-built");
+		});
+
+		it("409s once the mission is no longer a draft", async () => {
+			await db
+				.collection("missions")
+				.updateOne({ missionId }, { $set: { status: "running" } });
+			const res = await fetch(`${baseUrl}/${missionId}/draft`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mission: { name: "Draft Under Edit" },
+					agents: baseAgents(),
+					teamFiles: [],
+				}),
+			});
+			expect(res.status).toBe(409);
+		});
+
+		it("400s when mission or agents are missing from the payload", async () => {
+			const res = await fetch(`${baseUrl}/${missionId}/draft`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ mission: { name: "x" } }),
+			});
+			expect(res.status).toBe(400);
+		});
+	});
+
+	describe("POST /:id/launch — validate + provision a draft", () => {
+		let missionId: string;
+
+		beforeEach(async () => {
+			missionId = newMissionId();
+			const res = await fetch(`${baseUrl}/draft`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ missionId, name: "Launchable Draft" }),
+			});
+			expect(res.status).toBe(201);
+		});
+
+		it("400s with a descriptive error on an empty roster, and leaves the draft untouched", async () => {
+			const res = await fetch(`${baseUrl}/${missionId}/launch`, {
+				method: "POST",
+			});
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: string };
+			expect(body.error).toContain("Invalid team config");
+
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc?.status).toBe("draft");
+		});
+
+		it("provisions and flips status to running once the roster is valid", async () => {
+			const putRes = await fetch(`${baseUrl}/${missionId}/draft`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mission: { name: "Launchable Draft" },
+					agents: baseAgents(),
+					teamFiles: [],
+				}),
+			});
+			expect(putRes.status).toBe(200);
+
+			const launchRes = await fetch(`${baseUrl}/${missionId}/launch`, {
+				method: "POST",
+			});
+			expect(launchRes.status).toBe(200);
+			const body = (await launchRes.json()) as { status: string };
+			expect(body.status).toBe("running");
+
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc?.status).toBe("running");
+			expect(doc?.machineId).toMatch(/^local-/);
+		});
+
+		it("409s when the mission is not a draft", async () => {
+			await db
+				.collection("missions")
+				.updateOne({ missionId }, { $set: { status: "running" } });
+			const res = await fetch(`${baseUrl}/${missionId}/launch`, {
+				method: "POST",
+			});
+			expect(res.status).toBe(409);
+		});
+	});
+
 	describe("GET /:id/objectives", () => {
 		let missionId: string;
 

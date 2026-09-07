@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+	createDraft,
 	createMission,
 	deleteMission,
 	fetchMissionsStats,
@@ -24,6 +25,7 @@ function relativeTime(iso: string): string {
 }
 
 const STATUS_LABEL: Record<MissionStatusValue, string> = {
+	draft: "draft",
 	provisioning: "provisioning",
 	running: "running",
 	suspended: "suspended",
@@ -186,6 +188,132 @@ function CreateMissionForm({
 	);
 }
 
+/**
+ * Alternative to CreateMissionForm's instant-launch flow: clones a template
+ * (or starts blank) into a `status: "draft"` doc with no machine and no
+ * validation gate, then hands off to the Draft Editor instead of the live
+ * dashboard. Today's "New mission" flow is untouched — this is a second,
+ * slower-but-editable entry point next to it.
+ */
+function CreateDraftForm({
+	onClose,
+	onCreated,
+}: {
+	onClose: () => void;
+	onCreated: (missionId: string) => void;
+}) {
+	const [templates, setTemplates] = useState<
+		TemplateSummary[] | "error" | null
+	>(null);
+	const [templateId, setTemplateId] = useState("");
+	const [name, setName] = useState("");
+	const [missionIdTouched, setMissionIdTouched] = useState(false);
+	const [missionId, setMissionId] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		fetchTemplates()
+			.then((t) => {
+				if (!cancelled) setTemplates(t);
+			})
+			.catch(() => {
+				if (!cancelled) setTemplates("error");
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	async function handleCreate() {
+		if (!name.trim()) {
+			setError("Enter a mission name.");
+			return;
+		}
+		const id = missionId.trim() || slugify(name);
+		setBusy(true);
+		setError(null);
+		try {
+			await createDraft(id, name.trim(), templateId || undefined);
+			onCreated(id);
+		} catch (e) {
+			setError((e as Error).message);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	return (
+		<div className="create-mission-box">
+			<div className="create-mission-row">
+				<label htmlFor="new-draft-template">Start from</label>
+				{templates === null && <span className="mut">Loading templates…</span>}
+				{templates === "error" && (
+					<span className="error-msg">Could not load templates.</span>
+				)}
+				{Array.isArray(templates) && (
+					<select
+						id="new-draft-template"
+						value={templateId}
+						onChange={(e) => setTemplateId(e.target.value)}
+					>
+						<option value="">Start blank</option>
+						{templates.map((t) => (
+							<option key={t.id} value={t.id}>
+								{t.name}
+							</option>
+						))}
+					</select>
+				)}
+			</div>
+			<div className="create-mission-row">
+				<label htmlFor="new-draft-name">Name</label>
+				<input
+					id="new-draft-name"
+					value={name}
+					onChange={(e) => {
+						setName(e.target.value);
+						if (!missionIdTouched) setMissionId(slugify(e.target.value));
+					}}
+					placeholder="e.g. Q3 Sector Report"
+				/>
+			</div>
+			<div className="create-mission-row">
+				<label htmlFor="new-draft-id">Mission ID</label>
+				<input
+					id="new-draft-id"
+					value={missionId}
+					onChange={(e) => {
+						setMissionIdTouched(true);
+						setMissionId(e.target.value);
+					}}
+					placeholder="auto-derived from name"
+				/>
+			</div>
+			{error && <p className="error-msg">{error}</p>}
+			<div className="create-mission-actions">
+				<button
+					type="button"
+					className="btn-primary"
+					disabled={busy || templates === null}
+					onClick={handleCreate}
+				>
+					{busy ? "Creating…" : "Create draft"}
+				</button>
+				<button
+					type="button"
+					className="rail-btn"
+					disabled={busy}
+					onClick={onClose}
+				>
+					Cancel
+				</button>
+			</div>
+		</div>
+	);
+}
+
 function StatsLine({
 	s,
 	maxCostUsd,
@@ -227,6 +355,7 @@ export function MissionsPanel({
 	initialTemplateId?: string | null;
 }) {
 	const [creating, setCreating] = useState(!!initialTemplateId);
+	const [creatingDraft, setCreatingDraft] = useState(false);
 	const [busyId, setBusyId] = useState<string | null>(null);
 	const [confirmDestroyId, setConfirmDestroyId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -269,14 +398,23 @@ export function MissionsPanel({
 		<main>
 			<div className="missions-toolbar">
 				<h2 className="sec">Your missions</h2>
-				{!creating && (
-					<button
-						type="button"
-						className="btn-primary"
-						onClick={() => setCreating(true)}
-					>
-						New mission
-					</button>
+				{!creating && !creatingDraft && (
+					<>
+						<button
+							type="button"
+							className="btn-primary"
+							onClick={() => setCreating(true)}
+						>
+							New mission
+						</button>
+						<button
+							type="button"
+							className="rail-btn"
+							onClick={() => setCreatingDraft(true)}
+						>
+							Customize first
+						</button>
+					</>
 				)}
 			</div>
 			{error && <p className="error-msg">{error}</p>}
@@ -290,6 +428,14 @@ export function MissionsPanel({
 					}}
 				/>
 			)}
+			{creatingDraft && (
+				<CreateDraftForm
+					onClose={() => setCreatingDraft(false)}
+					onCreated={(id) => {
+						window.location.search = `?draft=${encodeURIComponent(id)}`;
+					}}
+				/>
+			)}
 			{missions.length === 0 && !creating && (
 				<p className="mut">No missions yet — launch one from a template.</p>
 			)}
@@ -300,7 +446,11 @@ export function MissionsPanel({
 						<li key={m.missionId} className="mission-row">
 							<div className="mission-row-main">
 								<a
-									href={`?mission=${encodeURIComponent(m.missionId)}`}
+									href={
+										m.status === "draft"
+											? `?draft=${encodeURIComponent(m.missionId)}`
+											: `?mission=${encodeURIComponent(m.missionId)}`
+									}
 									className="mission-name"
 								>
 									{m.name || m.missionId}

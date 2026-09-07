@@ -199,3 +199,162 @@ describe("copilot B1 tools — userId scoping", () => {
 		expect(cross.content[0].text).not.toContain("daily brief B");
 	});
 });
+
+describe("copilot B5 tool — EditDraftConfig", () => {
+	// biome-ignore lint/style/noNonNullAssertion: required env var; vitest.setup.ts validates presence
+	const MONGODB_URI = process.env.MONGODB_URI!;
+
+	let client: MongoClient;
+	let db: Db;
+	const userA = `user-a-${randomUUID()}`;
+	const userB = `user-b-${randomUUID()}`;
+	const draftId = `draft-${randomUUID()}`;
+	const runningId = `running-${randomUUID()}`;
+
+	beforeEach(async () => {
+		({ client, db } = await connectMongo(MONGODB_URI, "magi-test"));
+
+		const now = new Date();
+		await db.collection("missions").insertMany([
+			{
+				missionId: draftId,
+				userId: userA,
+				name: "Draft Mission",
+				teamConfig: "blank",
+				mission: { id: draftId, name: "Draft Mission" },
+				agents: [],
+				status: "draft",
+				createdAt: now,
+				updatedAt: now,
+			},
+			{
+				missionId: runningId,
+				userId: userA,
+				name: "Running Mission",
+				teamConfig: "blank",
+				mission: { id: runningId, name: "Running Mission" },
+				agents: [],
+				status: "running",
+				createdAt: now,
+				updatedAt: now,
+			},
+		]);
+	});
+
+	afterEach(async () => {
+		await db
+			.collection("missions")
+			.deleteMany({ missionId: { $in: [draftId, runningId] } });
+		await db
+			.collection("missionConfigRevisions")
+			.deleteMany({ missionId: { $in: [draftId, runningId] } });
+		await client.close();
+	});
+
+	function toolsFor(userId: string) {
+		return createCopilotTools(db, () => {}, new PendingActionsStore(), userId);
+	}
+
+	function get(tools: ReturnType<typeof toolsFor>, name: string) {
+		const tool = tools.find((t) => t.name === name);
+		if (!tool) throw new Error(`tool ${name} not found`);
+		return tool;
+	}
+
+	it("adds an agent to an empty roster", async () => {
+		const tools = toolsFor(userA);
+		const result = await get(tools, "EditDraftConfig").execute("t1", {
+			missionId: draftId,
+			agents: [
+				{
+					id: "analyst",
+					supervisor: "user",
+					systemPrompt: "You are a helpful agent.",
+					initialMentalMap: "<h1>Role</h1>",
+				},
+			],
+		});
+		expect(result.isError).toBeFalsy();
+
+		const doc = await db.collection("missions").findOne({ missionId: draftId });
+		expect(doc?.agents).toHaveLength(1);
+		expect(doc?.agents[0].id).toBe("analyst");
+	});
+
+	it("upserts by id — a repeated id replaces the existing agent instead of duplicating it", async () => {
+		const tools = toolsFor(userA);
+		await get(tools, "EditDraftConfig").execute("t1", {
+			missionId: draftId,
+			agents: [
+				{
+					id: "analyst",
+					supervisor: "user",
+					systemPrompt: "First version",
+					initialMentalMap: "<h1>Role</h1>",
+				},
+			],
+		});
+		await get(tools, "EditDraftConfig").execute("t2", {
+			missionId: draftId,
+			agents: [
+				{
+					id: "analyst",
+					supervisor: "user",
+					systemPrompt: "Second version",
+					initialMentalMap: "<h1>Role</h1>",
+				},
+			],
+		});
+
+		const doc = await db.collection("missions").findOne({ missionId: draftId });
+		expect(doc?.agents).toHaveLength(1);
+		expect(doc?.agents[0].systemPrompt).toBe("Second version");
+	});
+
+	it("removeAgentIds deletes an agent outright, not active:false", async () => {
+		const tools = toolsFor(userA);
+		await get(tools, "EditDraftConfig").execute("t1", {
+			missionId: draftId,
+			agents: [
+				{
+					id: "analyst",
+					supervisor: "user",
+					systemPrompt: "You are a helpful agent.",
+					initialMentalMap: "<h1>Role</h1>",
+				},
+			],
+		});
+		const result = await get(tools, "EditDraftConfig").execute("t2", {
+			missionId: draftId,
+			removeAgentIds: ["analyst"],
+		});
+		expect(result.isError).toBeFalsy();
+
+		const doc = await db.collection("missions").findOne({ missionId: draftId });
+		expect(doc?.agents).toHaveLength(0);
+	});
+
+	it("rejects a mission that is not a draft", async () => {
+		const tools = toolsFor(userA);
+		const result = await get(tools, "EditDraftConfig").execute("t1", {
+			missionId: runningId,
+			agents: [{ id: "analyst", supervisor: "user" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("not a draft");
+	});
+
+	it("rejects a cross-user draft missionId without leaking its existence", async () => {
+		const tools = toolsFor(userB);
+		const result = await get(tools, "EditDraftConfig").execute("t1", {
+			missionId: draftId,
+			agents: [{ id: "analyst", supervisor: "user" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("not found");
+
+		// Confirm userB's call really made no change to userA's draft.
+		const doc = await db.collection("missions").findOne({ missionId: draftId });
+		expect(doc?.agents).toHaveLength(0);
+	});
+});

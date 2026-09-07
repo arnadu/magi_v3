@@ -33,6 +33,8 @@ import {
 import { readCopilotFileNode } from "./copilot-files.js";
 import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
 import {
+	isLocalExecution,
+	provisionLocal,
 	provisionMission,
 	resumeMission,
 	suspendMission,
@@ -462,6 +464,7 @@ interface MissionDoc {
 	privateIp?: string;
 	volumeId?: string;
 	status: string;
+	errorMessage?: string;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -509,6 +512,57 @@ export async function executeAction(
 				updatedAt: now,
 			});
 			return `Mission "${missionId}" launched (machine: ${handle.machineId})`;
+		}
+
+		case "launch_draft": {
+			const missionId = payload.missionId as string;
+			const draft = await missions.findOne({ missionId, userId });
+			if (!draft) throw new Error(`Mission "${missionId}" not found`);
+			if (draft.status !== "draft")
+				throw new Error(`Mission "${missionId}" is not a draft`);
+
+			let validated: TeamConfig;
+			try {
+				validated = parseTeamConfig({
+					mission: draft.mission,
+					agents: draft.agents,
+					missionCopilotLimits: draft.missionCopilotLimits,
+				});
+			} catch (e) {
+				return `Invalid team config: ${(e as Error).message}`;
+			}
+
+			try {
+				const handle = isLocalExecution()
+					? provisionLocal(missionId, { teamFiles: draft.teamFiles ?? [] })
+					: await provisionMission(missionId, {
+							memoryMb: validated.mission.memoryMb,
+							cpus: validated.mission.cpus,
+						});
+				await missions.updateOne(
+					{ missionId },
+					{
+						$set: {
+							machineId: handle.machineId,
+							privateIp: handle.privateIp,
+							volumeId: handle.volumeId,
+							status: "running",
+							updatedAt: now,
+						},
+					},
+				);
+				return `Mission "${missionId}" launched (machine: ${handle.machineId})`;
+			} catch (e) {
+				const errorMessage = (e as Error).message;
+				console.error(
+					`[copilot-router] draft launch failed { missionId: "${missionId}", error: "${errorMessage}" }`,
+				);
+				await missions.updateOne(
+					{ missionId },
+					{ $set: { status: "error", errorMessage, updatedAt: now } },
+				);
+				return `Launch failed for mission "${missionId}": ${errorMessage}`;
+			}
 		}
 
 		case "suspend_mission": {

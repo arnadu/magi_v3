@@ -9,8 +9,11 @@
  * (see scheduler.unit.test.ts).
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentConfig, Limits, TeamConfig } from "@magi/agent-config";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { executeAction } from "../src/copilot-router.js";
 import type { PendingAction } from "../src/copilot-tools.js";
 
@@ -325,5 +328,83 @@ describe("executeAction: save_session_config", () => {
 			"<p>updated</p>",
 		);
 		expect(conv.find((c) => c._id === "c1")?.mentalMapHtml).toBe("<p>old</p>");
+	});
+});
+
+describe("executeAction: launch_draft", () => {
+	const ORIGINAL_ENV = { ...process.env };
+	let localMissionsDir: string;
+
+	beforeAll(() => {
+		localMissionsDir = mkdtempSync(join(tmpdir(), "magi-launch-draft-test-"));
+		process.env.LOCAL_EXECUTION = "true";
+		process.env.LOCAL_MISSIONS_DIR = localMissionsDir;
+	});
+
+	afterAll(() => {
+		rmSync(localMissionsDir, { recursive: true, force: true });
+		process.env = { ...ORIGINAL_ENV };
+	});
+
+	function draftAction(payload: unknown): PendingAction {
+		return {
+			id: "action-1",
+			userId: "user1",
+			type: "launch_draft",
+			label: "Launch draft",
+			payload,
+			createdAt: new Date(),
+		};
+	}
+
+	function draftMission(overrides: Partial<MissionDoc> = {}): MissionDoc {
+		return {
+			missionId: "m1",
+			userId: "user1",
+			status: "draft",
+			mission: { ...BASE_MISSION },
+			agents: [],
+			...overrides,
+		};
+	}
+
+	it("throws when the draft is not found (or not owned by the caller)", async () => {
+		const db = fakeDb({ missions: [] });
+		await expect(
+			executeAction(db, draftAction({ missionId: "m1" }), "user1"),
+		).rejects.toThrow('Mission "m1" not found');
+	});
+
+	it("throws when the mission is not a draft", async () => {
+		const db = fakeDb({ missions: [draftMission({ status: "running" })] });
+		await expect(
+			executeAction(db, draftAction({ missionId: "m1" }), "user1"),
+		).rejects.toThrow('Mission "m1" is not a draft');
+	});
+
+	it("returns a validation error string (does not throw) on an empty roster, leaving status as draft", async () => {
+		const missions = [draftMission()];
+		const db = fakeDb({ missions });
+		const result = await executeAction(
+			db,
+			draftAction({ missionId: "m1" }),
+			"user1",
+		);
+		expect(result).toContain("Invalid team config:");
+		expect(missions[0].status).toBe("draft");
+	});
+
+	it("provisions and flips status to running once the roster is valid", async () => {
+		const missions = [
+			draftMission({ agents: BASE_AGENTS.map((a) => ({ ...a })) }),
+		];
+		const db = fakeDb({ missions });
+		const result = await executeAction(
+			db,
+			draftAction({ missionId: "m1" }),
+			"user1",
+		);
+		expect(result).toContain('Mission "m1" launched');
+		expect(missions[0].status).toBe("running");
 	});
 });

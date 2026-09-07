@@ -19,10 +19,19 @@
  *     No operator confirmation required — same trust tier as B3: reversible,
  *     scoped to the copilot's own data (not an external system or another
  *     agent's state).
+ *
+ * B5: EditDraftConfig — direct write to a draft mission's config (mission-prep).
+ *     No operator confirmation required: unlike a live mission, a draft has no
+ *     running agent to collide with and no spend at risk, so an errant edit can
+ *     only leave the stored doc in a state the operator notices before Launch.
+ *     Launch itself (the actual cost-incurring, state-changing step) stays a B2
+ *     ProposeAction (`launch_draft`), same confirmation tier as `launch_mission`.
  */
 
 import { randomUUID } from "node:crypto";
+import type { AgentConfig, Limits, TeamConfig } from "@magi/agent-config";
 import {
+	createMongoMissionConfigWriter,
 	createMongoObjectivesRepository,
 	type MagiTool,
 	type ObjectiveDef,
@@ -79,6 +88,10 @@ interface MissionDoc {
 	userId: string;
 	name: string;
 	teamConfig: string;
+	mission?: TeamConfig["mission"];
+	agents?: AgentConfig[];
+	missionCopilotLimits?: Limits;
+	teamFiles?: Array<{ path: string; content: string }>;
 	machineId?: string;
 	privateIp?: string;
 	volumeId?: string;
@@ -415,6 +428,10 @@ export function createCopilotTools(
 			"This tool returns immediately — execution happens when the operator confirms.\n\n" +
 			"Valid types and required payload fields:\n" +
 			"- launch_mission: { missionId, name?, templateId }\n" +
+			"- launch_draft: { missionId } — validate a draft's stored config (full TeamConfig " +
+			"rules, unlike EditDraftConfig's permissive writes) and provision it, flipping status " +
+			"from draft to running. Stays operator-confirmed because it's the one step that " +
+			"actually spins up a paid machine.\n" +
 			"- suspend_mission: { missionId }\n" +
 			"- resume_mission: { missionId }\n" +
 			"- write_mission_file: { missionId, path, content, agentId? }\n" +
@@ -453,6 +470,7 @@ export function createCopilotTools(
 
 			const VALID_TYPES = new Set([
 				"launch_mission",
+				"launch_draft",
 				"suspend_mission",
 				"resume_mission",
 				"write_mission_file",
@@ -758,6 +776,113 @@ export function createCopilotTools(
 		},
 	};
 
+	const editDraftConfig: MagiTool = {
+		name: "EditDraftConfig",
+		description:
+			"Directly edit a draft mission's config — mission-level fields and agents (add, " +
+			"update, or remove). Unlike SaveMissionConfig/save_session_config on a live mission, " +
+			"this needs no operator confirmation and no full config validity: a draft has no " +
+			"running agent to collide with and no spend at risk, so you can build up an " +
+			"incomplete roster over several calls. Full validation only happens at launch " +
+			"(ProposeAction type launch_draft). Agents are upserted by id — an existing id " +
+			"replaces that agent, a new id adds one; use removeAgentIds to delete agents outright " +
+			"(a real delete, not the active:false convention live missions are stuck with).",
+		parameters: Type.Object({
+			missionId: Type.String({ description: "Draft mission ID" }),
+			mission: Type.Optional(
+				Type.Record(Type.String(), Type.Unknown(), {
+					description:
+						"Partial mission-level fields to merge in (name, model, visionModel, " +
+						"timezone, maxCostUsd, memoryMb, cpus)",
+				}),
+			),
+			agents: Type.Optional(
+				Type.Array(Type.Record(Type.String(), Type.Unknown()), {
+					description:
+						"Agents to add or update (upserted by id) — id, name, role, supervisor, " +
+						"systemPrompt, initialMentalMap, limits, disabledSkills, disabledTools",
+				}),
+			),
+			removeAgentIds: Type.Optional(
+				Type.Array(Type.String(), {
+					description: "Agent ids to remove from the roster entirely",
+				}),
+			),
+			missionCopilotLimits: Type.Optional(
+				Type.Record(Type.String(), Type.Unknown()),
+			),
+			teamFiles: Type.Optional(
+				Type.Array(
+					Type.Object({ path: Type.String(), content: Type.String() }),
+				),
+			),
+		}),
+		async execute(_id, args) {
+			const missionId = args.missionId as string;
+			const mission = await db
+				.collection<MissionDoc>("missions")
+				.findOne({ missionId, userId });
+			if (!mission) return err(`Mission "${missionId}" not found.`);
+			if (mission.status !== "draft") {
+				return err(
+					`Mission "${missionId}" is not a draft (current status: ${mission.status}).`,
+				);
+			}
+
+			const missionPatch = args.mission as
+				| Partial<TeamConfig["mission"]>
+				| undefined;
+			const agentsPatch = args.agents as AgentConfig[] | undefined;
+			const removeAgentIds = new Set(
+				(args.removeAgentIds as string[] | undefined) ?? [],
+			);
+			const missionCopilotLimitsPatch = args.missionCopilotLimits as
+				| Limits
+				| undefined;
+			const teamFiles = args.teamFiles as
+				| Array<{ path: string; content: string }>
+				| undefined;
+
+			const currentAgents = mission.agents ?? [];
+			const nextAgents = [
+				...currentAgents.filter(
+					(a) =>
+						!removeAgentIds.has(a.id) &&
+						!(agentsPatch ?? []).some((p) => p.id === a.id),
+				),
+				...(agentsPatch ?? []).filter((a) => !removeAgentIds.has(a.id)),
+			];
+			const nextMission = {
+				...(mission.mission ?? { id: missionId, name: mission.name }),
+				...missionPatch,
+				id: missionId,
+			};
+			const nextMissionCopilotLimits =
+				missionCopilotLimitsPatch ?? mission.missionCopilotLimits;
+
+			await createMongoMissionConfigWriter(db).write(
+				missionId,
+				{
+					mission: nextMission,
+					agents: nextAgents,
+					missionCopilotLimits: nextMissionCopilotLimits,
+				},
+				"copilot",
+			);
+			if (teamFiles !== undefined) {
+				await db
+					.collection<MissionDoc>("missions")
+					.updateOne(
+						{ missionId },
+						{ $set: { teamFiles, updatedAt: new Date() } },
+					);
+			}
+			return ok(
+				`Draft "${missionId}" updated — ${nextAgents.length} agent(s) in roster.`,
+			);
+		},
+	};
+
 	return [
 		listMissions,
 		getMissionStatus,
@@ -767,6 +892,7 @@ export function createCopilotTools(
 		reviewObjectives,
 		assessKpi,
 		saveObjectiveTree,
+		editDraftConfig,
 		listSchedule,
 		listTemplates,
 		getTemplate,

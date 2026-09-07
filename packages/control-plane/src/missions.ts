@@ -2,10 +2,13 @@
  * Mission CRUD + lifecycle routes.
  *
  * POST   /api/missions              — provision a new mission
+ * POST   /api/missions/draft        — create a draft mission (no machine, no validation gate)
  * GET    /api/missions              — list all missions
  * GET    /api/missions/:id          — get one mission
  * GET    /api/missions/:id/config   — get structured config + live mental maps
  * PUT    /api/missions/:id/config   — update structured config + mental maps (suspended only)
+ * PUT    /api/missions/:id/draft    — update a draft's config (draft only, permissive)
+ * POST   /api/missions/:id/launch   — validate + provision a draft, flips it to running
  * POST   /api/missions/:id/suspend  — stop execution machine
  * POST   /api/missions/:id/resume   — start execution machine
  * DELETE /api/missions/:id          — destroy machine + volume (irreversible)
@@ -65,7 +68,13 @@ interface MissionDoc {
 	machineId?: string;
 	privateIp?: string;
 	volumeId?: string;
-	status: "provisioning" | "running" | "suspended" | "destroyed" | "error";
+	status:
+		| "draft"
+		| "provisioning"
+		| "running"
+		| "suspended"
+		| "destroyed"
+		| "error";
 	/** Set when status === "error"; cleared on successful resume. */
 	errorMessage?: string;
 	createdAt: Date;
@@ -1058,6 +1067,123 @@ export function createMissionsRouter(db: Db): Router {
 		res.json({ ok: true });
 	});
 
+	// Save a draft's config — permissive, no parseTeamConfig gate. A draft is allowed to be
+	// incomplete while it's being built up (e.g. zero agents, an agent mid-edit with an empty
+	// systemPrompt) — full validation only runs at Launch (POST /:id/launch). Full-replace,
+	// same shape as PUT /:id/config, but skips the mental-map/managed-region/notify machinery
+	// entirely: a draft has no conversationMessages history, so none of that applies — its
+	// initialMentalMap lives directly on the agent object, not in a separate mentalMaps record.
+	router.put("/:id/draft", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		if (mission.status !== "draft") {
+			res.status(409).json({ error: "Mission is not a draft" });
+			return;
+		}
+
+		const {
+			mission: nextMission,
+			agents,
+			missionCopilotLimits,
+			teamFiles,
+		} = req.body as {
+			mission?: TeamConfig["mission"];
+			agents?: AgentConfig[];
+			missionCopilotLimits?: Limits;
+			teamFiles?: Array<{ path: string; content: string }>;
+		};
+		if (!nextMission || !agents) {
+			res.status(400).json({ error: "mission and agents are required" });
+			return;
+		}
+
+		await createMongoMissionConfigWriter(db).write(
+			req.params.id,
+			{
+				mission: { ...nextMission, id: req.params.id },
+				agents,
+				missionCopilotLimits,
+			},
+			"user",
+		);
+		await col.updateOne(
+			{ missionId: req.params.id },
+			{ $set: { teamFiles: teamFiles ?? [] } },
+		);
+
+		res.json({ ok: true });
+	});
+
+	// Validate and launch a draft — the only point at which a draft's config must be fully
+	// valid (parseTeamConfig). Provisions a real machine on success, mirroring POST /'s
+	// provisioning try/catch exactly.
+	router.post("/:id/launch", async (req, res) => {
+		const mission = await col.findOne({
+			missionId: req.params.id,
+			...userFilter(req),
+		});
+		if (!mission) {
+			res.status(404).json({ error: "Not found" });
+			return;
+		}
+		if (mission.status !== "draft") {
+			res.status(409).json({ error: "Mission is not a draft" });
+			return;
+		}
+
+		let validated: TeamConfig;
+		try {
+			validated = parseTeamConfig({
+				mission: mission.mission,
+				agents: mission.agents,
+				missionCopilotLimits: mission.missionCopilotLimits,
+			});
+		} catch (e) {
+			res
+				.status(400)
+				.json({ error: `Invalid team config: ${(e as Error).message}` });
+			return;
+		}
+
+		try {
+			const handle = isLocalExecution()
+				? provisionLocal(req.params.id, { teamFiles: mission.teamFiles ?? [] })
+				: await provisionMission(req.params.id, {
+						memoryMb: validated.mission.memoryMb,
+						cpus: validated.mission.cpus,
+					});
+			await col.updateOne(
+				{ missionId: req.params.id },
+				{
+					$set: {
+						machineId: handle.machineId,
+						privateIp: handle.privateIp,
+						volumeId: handle.volumeId,
+						status: "running",
+						updatedAt: new Date(),
+					},
+				},
+			);
+			res.status(200).json({ ...mission, ...handle, status: "running" });
+		} catch (e) {
+			const errorMessage = (e as Error).message;
+			console.error(
+				`[missions] draft launch failed { missionId: "${req.params.id}", error: "${errorMessage}" }`,
+			);
+			await col.updateOne(
+				{ missionId: req.params.id },
+				{ $set: { status: "error", errorMessage, updatedAt: new Date() } },
+			);
+			res.status(500).json({ error: errorMessage });
+		}
+	});
+
 	// ── Limits (cockpit Limits panel) ─────────────────────────────────────────
 
 	router.get("/:id/limits", async (req, res) => {
@@ -1232,6 +1358,66 @@ export function createMissionsRouter(db: Db): Router {
 			);
 			res.status(500).json({ error: errorMessage });
 		}
+	});
+
+	// Create a draft mission — no machine, no validation gate. Cloned from a template
+	// (already-validated config) or blank (no agents yet). A blank draft intentionally
+	// fails TeamConfigSchema until filled in — full validation only runs at Launch
+	// (POST /:id/launch), not here, so the operator/copilot can build it up incrementally.
+	router.post("/draft", async (req, res) => {
+		const { missionId, name, teamConfig } = req.body as {
+			missionId?: string;
+			name?: string;
+			/** Template id to clone from; omit for a blank draft. */
+			teamConfig?: string;
+		};
+		if (!missionId || !name) {
+			res.status(400).json({ error: "missionId and name are required" });
+			return;
+		}
+
+		const existing = await col.findOne({ missionId });
+		if (existing) {
+			res.status(409).json({ error: "Mission already exists" });
+			return;
+		}
+
+		let mission: TeamConfig["mission"];
+		let agents: AgentConfig[];
+		let missionCopilotLimits: Limits | undefined;
+		let teamFiles: Array<{ path: string; content: string }>;
+
+		if (teamConfig) {
+			const template = getTemplate(teamConfig);
+			if (!template) {
+				res.status(404).json({ error: `Unknown template "${teamConfig}"` });
+				return;
+			}
+			mission = { ...template.config.mission, id: missionId, name };
+			agents = template.config.agents;
+			missionCopilotLimits = template.config.missionCopilotLimits;
+			teamFiles = template.teamFiles;
+		} else {
+			mission = { id: missionId, name };
+			agents = [];
+			teamFiles = [];
+		}
+
+		const doc: MissionDoc = {
+			missionId,
+			userId: req.userId,
+			name,
+			teamConfig: teamConfig ?? "blank",
+			mission,
+			agents,
+			missionCopilotLimits,
+			teamFiles,
+			status: "draft",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		};
+		await col.insertOne(doc);
+		res.status(201).json(doc);
 	});
 
 	// Suspend.

@@ -446,6 +446,10 @@ a {
 	background: var(--chip);
 	color: var(--dim);
 }
+.mission-status-draft {
+	background: var(--chip);
+	color: var(--mut);
+}
 .create-mission-box {
 	max-width: 420px;
 	background: var(--panel);

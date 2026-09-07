@@ -31,7 +31,7 @@ import {
 /** Not a real roster entry — injected in-memory at daemon startup (ADR-0016), never in mission.agents. */
 const MISSION_COPILOT_AGENT_ID = "mission-copilot";
 
-const PLATFORM_SKILLS = [
+export const PLATFORM_SKILLS = [
 	"git-provenance",
 	"skill-creator",
 	"postmessage-conventions",
@@ -40,7 +40,7 @@ const PLATFORM_SKILLS = [
 	"objectives",
 ];
 
-const TIER_A_TOOLS = [
+export const TIER_A_TOOLS = [
 	"Bash",
 	"WriteFile",
 	"EditFile",
@@ -57,7 +57,7 @@ const TIER_A_TOOLS = [
 	"AnalyzeMemories",
 ];
 
-function availableSkills(teamFiles: Array<{ path: string }>): string[] {
+export function availableSkills(teamFiles: Array<{ path: string }>): string[] {
 	const team = teamFiles
 		.map((f) => {
 			const m = f.path.match(/^skills\/([^/]+)\/SKILL\.md$/);
@@ -82,7 +82,7 @@ function orUndef(v: string): string | undefined {
  * `key={agentId}` at the call site remounts this fresh per agent, so the
  * view always resets to source when switching tabs.
  */
-function MentalMapEditor({
+export function MentalMapEditor({
 	html,
 	onChange,
 	editable,

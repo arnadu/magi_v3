@@ -6,6 +6,7 @@ import { CopilotFilesPanel } from "./CopilotFilesPanel";
 import { CopilotLimitsPanel } from "./CopilotLimitsPanel";
 import { CopilotPanel } from "./CopilotPanel";
 import { CopilotTranscriptsPanel } from "./CopilotTranscriptsPanel";
+import { DraftEditor } from "./DraftEditor";
 import {
 	AuthError,
 	fetchMissionName,
@@ -67,6 +68,7 @@ type View =
 			updatedAt: number;
 	  }
 	| { kind: "picker"; missions: MissionSummary[] }
+	| { kind: "draft"; missionId: string }
 	| { kind: "auth" }
 	| { kind: "error"; message: string };
 
@@ -88,8 +90,18 @@ function useView(refreshKey: number, authStatus: AuthState["status"]): View {
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is a deliberate manual-refetch trigger, not a value read inside the effect
 	useEffect(() => {
 		if (authStatus !== "signed-in") return;
-		const mission = new URLSearchParams(window.location.search).get("mission");
+		const params = new URLSearchParams(window.location.search);
+		const mission = params.get("mission");
+		const draft = params.get("draft");
 		let cancelled = false;
+
+		if (draft) {
+			// A draft has no machine and no objectives to poll — the editor fetches
+			// its own config directly (fetchMissionConfig), so this view is a
+			// static routing decision, not a data load.
+			setView({ kind: "draft", missionId: draft });
+			return;
+		}
 
 		if (mission) {
 			// Live mission: load once, then poll. Transient (network) poll
@@ -565,6 +577,23 @@ export function App() {
 				<main>
 					<p className="mut">Could not load objectives: {view.message}</p>
 				</main>
+			</div>
+		);
+	}
+
+	if (view.kind === "draft") {
+		return (
+			<div className="app">
+				<Header subtitle="editing draft" />
+				<DraftEditor
+					missionId={view.missionId}
+					onBack={() => {
+						window.location.search = "";
+					}}
+					onLaunched={(id) => {
+						window.location.search = `?mission=${encodeURIComponent(id)}`;
+					}}
+				/>
 			</div>
 		);
 	}
