@@ -2260,16 +2260,27 @@ h2.sec {
 	display: flex;
 	justify-content: flex-end;
 }
-.config-mentalmap .cm-editor {
+/* Drag the bottom-right corner to grow/shrink — same resize: vertical
+   pattern as the chat compose textareas, applied here to a plain div since
+   CodeMirror/the preview iframe aren't real <textarea> elements. */
+.config-mentalmap-resizable {
+	resize: vertical;
+	overflow: auto;
+	height: 220px;
+	min-height: 120px;
+	max-height: 70vh;
 	border: 1px solid var(--line);
 	border-radius: 6px;
+}
+.config-mentalmap .cm-editor {
+	height: 100%;
 	font-size: 12px;
 }
 .config-mentalmap-frame {
+	display: block;
 	width: 100%;
-	height: 220px;
-	border: 1px solid var(--line);
-	border-radius: 6px;
+	height: 100%;
+	border: none;
 	background: #fff;
 }
 .config-toggle-grid {

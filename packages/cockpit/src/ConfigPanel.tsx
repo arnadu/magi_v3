@@ -105,22 +105,24 @@ export function MentalMapEditor({
 					{view === "rendered" ? "</> Source" : "👁 Preview"}
 				</button>
 			</div>
-			{view === "rendered" ? (
-				<iframe
-					className="config-mentalmap-frame"
-					title="Mental map preview"
-					srcDoc={html}
-					sandbox="allow-scripts"
-				/>
-			) : (
-				<CodeMirror
-					value={html}
-					extensions={[htmlLang()]}
-					readOnly={!editable}
-					onChange={onChange}
-					height="220px"
-				/>
-			)}
+			<div className="config-mentalmap-resizable">
+				{view === "rendered" ? (
+					<iframe
+						className="config-mentalmap-frame"
+						title="Mental map preview"
+						srcDoc={html}
+						sandbox="allow-scripts"
+					/>
+				) : (
+					<CodeMirror
+						value={html}
+						extensions={[htmlLang()]}
+						readOnly={!editable}
+						onChange={onChange}
+						height="100%"
+					/>
+				)}
+			</div>
 		</div>
 	);
 }
