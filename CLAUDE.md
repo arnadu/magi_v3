@@ -73,6 +73,7 @@ provisioned missions — the daemon reads its structured config directly from Mo
 - `GH_TOKEN` (control plane only; GitHub personal access token with `repo` scope — used by copilot's `ListIssues`/`CreateIssue`/`CloseIssue`/`AddIssueComment` tools; optional but required for issue tracking)
 - `GITHUB_REPO` (control plane only; GitHub repo in `owner/repo` format; default `arnadu/magi_v3`)
 - `FLY_MISSIONS_IMAGE` (control plane only; overrides the default `registry.fly.io/<missions-app>:latest` image used when provisioning execution plane machines — set to a specific deployment tag when `:latest` hasn't been updated yet)
+- `TEMPLATE_ALLOWLIST` (control plane only; comma-separated template ids — restricts which `config/teams/*.yaml` templates this deployment loads/offers, e.g. a single-tenant beta environment that should only ever offer one starting point. Unset = every template on disk, unchanged from before this existed)
 - `MISSION_COPILOT_ENABLED` (execution plane; `"false"` opts a mission out of the mission copilot agent, ADR-0016 — default on since Sprint 26)
 - `MONITOR_TOKEN` (execution plane; per-mission auth token for MonitorServer's mutating routes and the mission copilot's own tool calls to it — derived from `MONITOR_SIGNING_KEY` and injected by the control plane at machine creation; empty = no auth, local dev only)
 - `CONTROL_PLANE_URL` (execution plane; base URL the mission copilot's GitHub-proxy tools call — injected by the control plane at machine creation from its own `FLY_APP_NAME`; empty in local dev, where the proxy isn't reachable)

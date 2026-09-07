@@ -256,6 +256,24 @@ MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/magi-prod     # producti
 These are the same Atlas cluster — just different databases. Atlas M0 free tier handles this
 without issue for development-scale workloads.
 
+### Restricting which templates an environment offers
+
+All environments load every `config/teams/*.yaml` file by default — there is one `config/teams/`
+directory, shared by the same git commit across every deployment. To offer a single-tenant
+environment (a named beta tester, say) only one specific starting point rather than the full
+template catalog, set `TEMPLATE_ALLOWLIST` (comma-separated template ids) as a Fly secret on that
+environment's control plane:
+
+```bash
+flyctl secrets set -a magi-control-prod-beta TEMPLATE_ALLOWLIST=tutor
+```
+
+This filters at template-load time, so it's the one place to change — `GET /api/templates`,
+`POST /api/missions`/`POST /api/missions/draft` (with an unlisted `teamConfig` id), and the
+copilot's `ListTemplates`/`GetTemplate` tools all read from the same filtered in-memory store and
+never see a disallowed template. Leave unset for every other environment (dev included) — the
+default is every template on disk, exactly as before this existed.
+
 ### Reusing the dev worker image in test environments
 
 Building a separate Docker image for every test environment wastes time. Test environments

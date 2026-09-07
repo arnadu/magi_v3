@@ -123,6 +123,55 @@ describe("templates.ts (ADR-0021 disk-only templates)", () => {
 		});
 	});
 
+	describe("TEMPLATE_ALLOWLIST", () => {
+		const ORIGINAL = process.env.TEMPLATE_ALLOWLIST;
+
+		afterEach(() => {
+			if (ORIGINAL === undefined) delete process.env.TEMPLATE_ALLOWLIST;
+			else process.env.TEMPLATE_ALLOWLIST = ORIGINAL;
+		});
+
+		it("unset loads every template, unchanged from default behavior", () => {
+			delete process.env.TEMPLATE_ALLOWLIST;
+			writeFileSync(join(teamsDir, "alpha.yaml"), validYaml("alpha", "Alpha"));
+			writeFileSync(join(teamsDir, "beta.yaml"), validYaml("beta", "Beta"));
+
+			loadTemplates(repoRoot);
+
+			expect(
+				listTemplates()
+					.map((t) => t.id)
+					.sort(),
+			).toEqual(["alpha", "beta"]);
+		});
+
+		it("set to a single id, only that template loads — others are skipped, not errored", () => {
+			process.env.TEMPLATE_ALLOWLIST = "alpha";
+			writeFileSync(join(teamsDir, "alpha.yaml"), validYaml("alpha", "Alpha"));
+			writeFileSync(join(teamsDir, "beta.yaml"), validYaml("beta", "Beta"));
+
+			loadTemplates(repoRoot);
+
+			expect(listTemplates().map((t) => t.id)).toEqual(["alpha"]);
+			expect(getTemplate("beta")).toBeNull();
+		});
+
+		it("accepts a comma-separated list with surrounding whitespace", () => {
+			process.env.TEMPLATE_ALLOWLIST = " alpha , gamma ";
+			writeFileSync(join(teamsDir, "alpha.yaml"), validYaml("alpha", "Alpha"));
+			writeFileSync(join(teamsDir, "beta.yaml"), validYaml("beta", "Beta"));
+			writeFileSync(join(teamsDir, "gamma.yaml"), validYaml("gamma", "Gamma"));
+
+			loadTemplates(repoRoot);
+
+			expect(
+				listTemplates()
+					.map((t) => t.id)
+					.sort(),
+			).toEqual(["alpha", "gamma"]);
+		});
+	});
+
 	describe("createTemplatesRouter (read-only)", () => {
 		let server: Server;
 		let baseUrl: string;

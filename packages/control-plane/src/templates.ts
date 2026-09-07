@@ -71,6 +71,24 @@ function collectFiles(dir: string, rootDir: string): TeamFile[] {
 }
 
 /**
+ * Optional comma-separated allowlist of template ids to expose (control plane
+ * only) — e.g. a single-tenant beta deployment that should only ever offer
+ * one starting point, without maintaining a separate `config/teams/` per
+ * environment. Unset (the default) exposes every template on disk, matching
+ * every deployment's behavior before this existed.
+ */
+function allowedTemplateIds(): Set<string> | null {
+	const raw = process.env.TEMPLATE_ALLOWLIST;
+	if (!raw?.trim()) return null;
+	return new Set(
+		raw
+			.split(",")
+			.map((s) => s.trim())
+			.filter(Boolean),
+	);
+}
+
+/**
  * Parse every config/teams/*.yaml file (excluding copilot.yaml and test/)
  * into the in-memory template store. Called once at control-plane startup.
  * A file that fails to parse is logged and skipped — one bad template must
@@ -91,9 +109,17 @@ export function loadTemplates(repoRoot: string): void {
 		return;
 	}
 
+	const allowlist = allowedTemplateIds();
+
 	for (const file of files) {
 		const templateId = basename(file, ".yaml");
 		if (templateId.startsWith("test/") || file.includes("/test/")) continue;
+		if (allowlist && !allowlist.has(templateId)) {
+			console.log(
+				`[templates] Skipping ${templateId} — not in TEMPLATE_ALLOWLIST`,
+			);
+			continue;
+		}
 
 		let yaml: string;
 		try {
