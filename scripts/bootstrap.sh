@@ -232,6 +232,17 @@ if [[ "$SKIP_DOCKER" == false ]]; then
     info "Pushing image…"
     docker push "$IMAGE"
     success "Image pushed: $IMAGE"
+
+    # This path never needs fly.missions-${SUFFIX}.toml itself (docker build/push
+    # doesn't touch it), but deploy-missions.sh — the documented way to promote a
+    # later update to this environment — requires the file to already exist on
+    # disk. Generate it now so a long-lived non-dev environment (a named beta/
+    # prod deployment, not a throwaway test one) isn't missing it on day one.
+    MISSIONS_TOML="fly.missions-${SUFFIX:-dev}.toml"
+    if [[ "$MISSIONS_TOML" != "fly.missions-dev.toml" && ! -f "$MISSIONS_TOML" ]]; then
+      sed "s/^app = .*/app = \"${MISSIONS_APP}\"/" fly.missions-dev.toml > "$MISSIONS_TOML"
+      info "Generated $MISSIONS_TOML (kept — needed by deploy-missions.sh --suffix ${SUFFIX:-dev})"
+    fi
   else
     # No local Docker — use Fly remote builders via fly deploy.
     # IMPORTANT: fly deploy does NOT update :latest in the registry. It creates a
@@ -246,7 +257,8 @@ if [[ "$SKIP_DOCKER" == false ]]; then
 
     flyctl deploy --config "$MISSIONS_TOML" --app "$MISSIONS_APP" --remote-only
 
-    [[ "$MISSIONS_TOML" != "fly.missions-dev.toml" ]] && rm -f "$MISSIONS_TOML"
+    # Kept (not deleted) — deploy-missions.sh --suffix ${SUFFIX:-dev} needs this
+    # file to exist for any later promotion to this environment.
 
     # Extract the deployment image tag from the latest release.
     DEPLOY_IMAGE="$(flyctl releases --app "$MISSIONS_APP" --json 2>/dev/null \
@@ -299,8 +311,9 @@ if [[ "$SKIP_DEPLOY" == false ]]; then
 
   flyctl deploy --config "$DEPLOY_TOML" --app "$CONTROL_APP"
 
-  # Remove the generated toml unless it's the dev one (CI uses that).
-  [[ "$DEPLOY_TOML" != "fly.control-dev.toml" ]] && rm -f "$DEPLOY_TOML"
+  # Kept (not deleted, except the dev one which is already checked in) — useful
+  # for a later manual `flyctl deploy --config` against this specific environment.
+  [[ "$DEPLOY_TOML" != "fly.control-dev.toml" ]] && info "Generated $DEPLOY_TOML (kept)"
 
   success "Control plane deployed: https://${CONTROL_APP}.fly.dev"
 else

@@ -273,6 +273,18 @@ from the dev image.
 This means a test environment's execution plane runs in the `magi-missions-dev` app but under
 the test control plane's supervision, using the test control plane's MongoDB database.
 
+### Promoting updates to a long-lived non-dev environment
+
+`bootstrap.sh` generates `fly.control-{suffix}.toml`/`fly.missions-{suffix}.toml` from the dev
+templates and now keeps them (gitignored, not committed except the checked-in `-dev` ones) — a
+prior version deleted them right after first use, which quietly broke
+`deploy-missions.sh --suffix {suffix}` for any environment other than `dev`, since that script
+requires the missions toml to already exist. For a genuinely long-lived environment (a named
+beta or `prod-*` deployment, as opposed to a throwaway `test-*` one you'll tear down), just run
+`bootstrap.sh` once to create it, then use `deploy-missions.sh --suffix {suffix}` /
+`flyctl deploy --config fly.control-{suffix}.toml` whenever you want to push a later update —
+neither is wired into CI, so nothing here happens automatically on a `main` push.
+
 ---
 
 ## 5. Firebase Authentication setup
