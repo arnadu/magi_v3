@@ -277,13 +277,33 @@ the test control plane's supervision, using the test control plane's MongoDB dat
 
 `bootstrap.sh` generates `fly.control-{suffix}.toml`/`fly.missions-{suffix}.toml` from the dev
 templates and now keeps them (gitignored, not committed except the checked-in `-dev` ones) — a
-prior version deleted them right after first use, which quietly broke
-`deploy-missions.sh --suffix {suffix}` for any environment other than `dev`, since that script
-requires the missions toml to already exist. For a genuinely long-lived environment (a named
-beta or `prod-*` deployment, as opposed to a throwaway `test-*` one you'll tear down), just run
-`bootstrap.sh` once to create it, then use `deploy-missions.sh --suffix {suffix}` /
-`flyctl deploy --config fly.control-{suffix}.toml` whenever you want to push a later update —
-neither is wired into CI, so nothing here happens automatically on a `main` push.
+prior version deleted them right after first use, which quietly broke promotion for any
+environment other than `dev`. For a genuinely long-lived environment (a named beta or `prod-*`
+deployment, as opposed to a throwaway `test-*` one you'll tear down), run `bootstrap.sh` once to
+create it, then use `promote.sh` (below) whenever you want to push a later update. Neither
+`bootstrap.sh` nor `promote.sh` is wired into CI, so nothing here happens automatically on a
+`main` push — only `-dev` deploys on its own.
+
+### `promote.sh` — versioned promotion to a named environment
+
+```bash
+bash scripts/promote.sh --suffix prod-beta
+```
+
+There's no build-once-deploy-everywhere release pipeline here (deliberately — that's real
+process overhead this project doesn't need yet for a single beta tester) — CI still builds and
+tags every image by git SHA, and `promote.sh` just gives a non-dev environment a human-readable
+answer to "what version is this running" instead of that answer only living in Fly's release
+history:
+
+1. Refuses to run against a dirty working tree — the tag has to name an exact, reproducible commit.
+2. Tags `HEAD` (default `promote/{suffix}/{timestamp}-{short-sha}`, or pass `--tag` for a custom
+   label) and pushes the tag.
+3. Runs `deploy-missions.sh --suffix {suffix}` (execution plane image + `FLY_MISSIONS_IMAGE` pin).
+4. Runs `flyctl deploy --config fly.control-{suffix}.toml` (control plane).
+
+To roll a bad promotion back: `git checkout <previous tag>` and re-run `promote.sh` from there
+(it refuses a dirty tree, so `checkout` cleanly rather than reverting commits on `main`).
 
 ---
 

@@ -29,6 +29,9 @@ bash scripts/deploy-missions.sh       # ALWAYS use this to deploy the execution 
                                       # missions use the fresh image (not a stale :latest tag).
                                       # Never use bare `flyctl deploy` for the missions app alone.
 flyctl deploy --config fly.control-dev.toml  # deploy control plane only
+bash scripts/promote.sh --suffix <name>      # tag HEAD + deploy both planes to a named non-dev
+                                      # environment (e.g. a beta tester's prod-beta) — refuses a
+                                      # dirty tree; not wired into CI, only -dev auto-deploys
 
 # Reconcile MongoDB mission state against real Fly.io machines/volumes — report-only by default;
 # --fix-status corrects Mongo drift, --purge-orphans destroys untracked Fly resources (destructive).
