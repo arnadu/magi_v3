@@ -583,17 +583,20 @@ export function App() {
 
 	if (view.kind === "draft") {
 		return (
-			<div className="app">
-				<Header subtitle="editing draft" />
-				<DraftEditor
-					missionId={view.missionId}
-					onBack={() => {
-						window.location.search = "";
-					}}
-					onLaunched={(id) => {
-						window.location.search = `?mission=${encodeURIComponent(id)}`;
-					}}
-				/>
+			<div className="app-shell">
+				<div className="app">
+					<Header subtitle="editing draft" />
+					<DraftEditor
+						missionId={view.missionId}
+						onBack={() => {
+							window.location.search = "";
+						}}
+						onLaunched={(id) => {
+							window.location.search = `?mission=${encodeURIComponent(id)}`;
+						}}
+					/>
+				</div>
+				<CopilotPanel />
 			</div>
 		);
 	}
