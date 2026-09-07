@@ -259,12 +259,21 @@ ${roster}
 {{mentalMap}}`;
 }
 
+/**
+ * Also called for a "draft" mission's not-yet-validated config (GET /:id/config
+ * serves both the live ConfigPanel and the pre-launch DraftEditor) — a draft is
+ * deliberately allowed to have an agent mid-edit with no systemPrompt yet
+ * (PUT /:id/draft skips parseTeamConfig), so this must tolerate that rather
+ * than assume every AgentConfig field is populated.
+ */
 function buildRosterText(teamConfig: TeamConfig): string {
 	return teamConfig.agents
-		.map(
-			(a) =>
-				`- ${a.id}${a.name ? ` (${a.name})` : ""}: ${a.systemPrompt.split("\n")[0].slice(0, 120)}`,
-		)
+		.map((a) => {
+			const summary = a.systemPrompt
+				? a.systemPrompt.split("\n")[0].slice(0, 120)
+				: "(no system prompt yet)";
+			return `- ${a.id}${a.name ? ` (${a.name})` : ""}: ${summary}`;
+		})
 		.join("\n");
 }
 

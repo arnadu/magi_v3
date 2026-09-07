@@ -305,7 +305,7 @@ export function DraftEditor({
 						Agent id this one reports to — "user" for a top-level agent.
 					</p>
 					<input
-						value={selectedAgent.supervisor}
+						value={selectedAgent.supervisor ?? ""}
 						onChange={(e) =>
 							updateAgent(selectedAgent.id, { supervisor: e.target.value })
 						}
@@ -314,7 +314,7 @@ export function DraftEditor({
 					<div className="config-section-label mut">System prompt</div>
 					<textarea
 						className="config-readonly-textarea"
-						value={selectedAgent.systemPrompt}
+						value={selectedAgent.systemPrompt ?? ""}
 						onChange={(e) =>
 							updateAgent(selectedAgent.id, { systemPrompt: e.target.value })
 						}
@@ -324,7 +324,7 @@ export function DraftEditor({
 					<div className="config-section-label mut">Initial mental map</div>
 					<MentalMapEditor
 						key={selectedAgent.id}
-						html={selectedAgent.initialMentalMap}
+						html={selectedAgent.initialMentalMap ?? ""}
 						editable
 						onChange={(next) =>
 							updateAgent(selectedAgent.id, { initialMentalMap: next })

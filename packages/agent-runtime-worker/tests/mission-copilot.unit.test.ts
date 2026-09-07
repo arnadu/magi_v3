@@ -113,6 +113,30 @@ describe("buildMissionCopilotAgentConfig", () => {
 			]),
 		);
 	});
+
+	// Regression: GET /:id/config (missions.ts) calls this to synthesize the
+	// copilot's preview config for BOTH a launched mission (always validated
+	// via parseTeamConfig) and a pre-launch "draft" (permissively saved via
+	// EditDraftConfig/PUT :id/draft, deliberately allowed to have an agent
+	// mid-edit with no systemPrompt yet). A live incident: the control-plane
+	// copilot added an agent to a draft with no systemPrompt, and the roster
+	// line's `a.systemPrompt.split("\n")` threw, 500ing the Draft Editor's
+	// config load for the whole mission.
+	it("tolerates an agent with no systemPrompt yet (draft mid-edit) instead of throwing", () => {
+		const config: TeamConfig = {
+			mission: { id: "m1", name: "Test Mission" },
+			agents: [
+				// Simulates an unvalidated draft agent — AgentConfig's type doesn't
+				// allow a missing systemPrompt, but PUT /:id/draft's permissive save
+				// does in practice.
+				// biome-ignore lint/suspicious/noExplicitAny: see comment above
+				{ id: "tutor", initialMentalMap: "<section></section>" } as any,
+			],
+		};
+		expect(() => buildMissionCopilotAgentConfig(config)).not.toThrow();
+		const cfg = buildMissionCopilotAgentConfig(config);
+		expect(cfg.systemPrompt).toContain("- tutor: (no system prompt yet)");
+	});
 });
 
 describe("injectMissionCopilot", () => {
