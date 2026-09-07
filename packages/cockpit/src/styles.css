@@ -2191,7 +2191,7 @@ h2.sec {
 
 /* Config panel — ported from index.html's renderConfigForm/renderAgentPane */
 .config-panel {
-	max-width: 640px;
+	max-width: 960px;
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
@@ -2259,6 +2259,7 @@ h2.sec {
 .config-mentalmap-toolbar {
 	display: flex;
 	justify-content: flex-end;
+	gap: 6px;
 }
 /* Drag the bottom-right corner to grow/shrink — same resize: vertical
    pattern as the chat compose textareas, applied here to a plain div since
@@ -2271,6 +2272,14 @@ h2.sec {
 	max-height: 70vh;
 	border: 1px solid var(--line);
 	border-radius: 6px;
+}
+/* @uiw/react-codemirror renders its own wrapper div (class cm-theme[-*])
+   around .cm-editor — a percentage height on .cm-editor alone resolves
+   against THIS wrapper, not the real .config-mentalmap-resizable ancestor,
+   so the wrapper needs height:100% too or the editor collapses to its
+   content height regardless of how tall the resizable box actually is. */
+.config-mentalmap-resizable > div {
+	height: 100%;
 }
 .config-mentalmap .cm-editor {
 	height: 100%;

@@ -1,6 +1,6 @@
 import { html as htmlLang } from "@codemirror/lang-html";
 import CodeMirror from "@uiw/react-codemirror";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	fetchMissionConfig,
 	fetchMissionStatus,
@@ -92,9 +92,28 @@ export function MentalMapEditor({
 	editable: boolean;
 }) {
 	const [view, setView] = useState<"source" | "rendered">("source");
+	// Applied imperatively on the DOM node, not via a React style prop — the
+	// native resize handle (below) also sets this element's inline height
+	// directly on drag, and a React-controlled style prop would fight it,
+	// snapping back to whatever this component last rendered on the very next
+	// keystroke's re-render.
+	const [expanded, setExpanded] = useState(false);
+	const wrapperRef = useRef<HTMLDivElement>(null);
+
+	function toggleExpanded() {
+		const next = !expanded;
+		setExpanded(next);
+		if (wrapperRef.current) {
+			wrapperRef.current.style.height = next ? "600px" : "220px";
+		}
+	}
+
 	return (
 		<div className="config-mentalmap">
 			<div className="config-mentalmap-toolbar">
+				<button type="button" className="rail-btn" onClick={toggleExpanded}>
+					{expanded ? "⤡ Collapse" : "⤢ Expand"}
+				</button>
 				<button
 					type="button"
 					className="rail-btn"
@@ -105,7 +124,7 @@ export function MentalMapEditor({
 					{view === "rendered" ? "</> Source" : "👁 Preview"}
 				</button>
 			</div>
-			<div className="config-mentalmap-resizable">
+			<div className="config-mentalmap-resizable" ref={wrapperRef}>
 				{view === "rendered" ? (
 					<iframe
 						className="config-mentalmap-frame"

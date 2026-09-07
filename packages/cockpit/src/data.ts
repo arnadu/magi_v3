@@ -966,6 +966,18 @@ export async function fetchMissionStatus(
 	return m.status;
 }
 
+/**
+ * Cheap staleness check for the Draft Editor's poll — a draft has no
+ * machineId, so GET /:id never attempts a live Fly lookup for one, making
+ * this call fast enough to poll every few seconds.
+ */
+export async function fetchMissionUpdatedAt(
+	missionId: string,
+): Promise<string> {
+	const m = await api<{ updatedAt: string }>(`/api/missions/${mp(missionId)}`);
+	return m.updatedAt;
+}
+
 /** The mission's display name, for the per-mission dashboard header. */
 export async function fetchMissionName(missionId: string): Promise<string> {
 	const m = await api<{ name: string }>(`/api/missions/${mp(missionId)}`);

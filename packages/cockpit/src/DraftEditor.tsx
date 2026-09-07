@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { availableSkills, MentalMapEditor, TIER_A_TOOLS } from "./ConfigPanel";
 import {
 	fetchMissionConfig,
+	fetchMissionUpdatedAt,
 	launchDraft,
 	type MissionConfigAgent,
 	type MissionConfigData,
 	saveDraftConfig,
 } from "./data";
+
+/** How often to check whether the copilot changed this draft while the operator has it open. */
+const POLL_MS = 5000;
 
 /**
  * Pre-launch config editor for a "draft" mission — visually modeled on
@@ -65,21 +69,46 @@ export function DraftEditor({
 	const [launching, setLaunching] = useState(false);
 	const [launchError, setLaunchError] = useState<string | null>(null);
 
+	// Tracks whether the copilot may have changed this draft out from under an
+	// operator who has unsaved local edits open — EditDraftConfig gives it
+	// direct, unconfirmed write access (ADR: safe pre-launch, no live agent to
+	// collide with), so silently polling and overwriting the form would just
+	// trade one kind of data loss (stale view) for a worse one (destroying
+	// edits in progress). `dirty` gates whether a poll can auto-apply a
+	// server-side change or must instead surface it as a banner.
+	const [dirty, setDirty] = useState(false);
+	const [remoteUpdateAvailable, setRemoteUpdateAvailable] = useState(false);
+	const lastLoadedUpdatedAtRef = useRef<string | null>(null);
+
+	const applyConfig = useCallback((c: MissionConfigData) => {
+		setConfig(c);
+		setMissionDraft({
+			name: c.mission.name ?? "",
+			model: c.mission.model ?? "",
+			visionModel: c.mission.visionModel ?? "",
+			timezone: c.mission.timezone ?? "",
+		});
+		setAgentsDraft(c.agents);
+		setSelectedAgentId((prev) =>
+			prev && c.agents.some((a) => a.id === prev)
+				? prev
+				: (c.agents[0]?.id ?? null),
+		);
+		setDirty(false);
+		setRemoteUpdateAvailable(false);
+	}, []);
+
 	useEffect(() => {
 		let cancelled = false;
 		setConfig(null);
-		fetchMissionConfig(missionId)
-			.then((c) => {
+		Promise.all([
+			fetchMissionConfig(missionId),
+			fetchMissionUpdatedAt(missionId),
+		])
+			.then(([c, updatedAt]) => {
 				if (cancelled) return;
-				setConfig(c);
-				setMissionDraft({
-					name: c.mission.name ?? "",
-					model: c.mission.model ?? "",
-					visionModel: c.mission.visionModel ?? "",
-					timezone: c.mission.timezone ?? "",
-				});
-				setAgentsDraft(c.agents);
-				setSelectedAgentId(c.agents[0]?.id ?? null);
+				applyConfig(c);
+				lastLoadedUpdatedAtRef.current = updatedAt;
 			})
 			.catch(() => {
 				if (!cancelled) setConfig("error");
@@ -87,7 +116,45 @@ export function DraftEditor({
 		return () => {
 			cancelled = true;
 		};
-	}, [missionId]);
+	}, [missionId, applyConfig]);
+
+	useEffect(() => {
+		const timer = setInterval(async () => {
+			if (saving || launching) return;
+			let updatedAt: string;
+			try {
+				updatedAt = await fetchMissionUpdatedAt(missionId);
+			} catch {
+				return; // Transient poll failure — try again next tick.
+			}
+			if (updatedAt === lastLoadedUpdatedAtRef.current) return;
+			if (dirty) {
+				setRemoteUpdateAvailable(true);
+				return;
+			}
+			try {
+				const c = await fetchMissionConfig(missionId);
+				applyConfig(c);
+				lastLoadedUpdatedAtRef.current = updatedAt;
+			} catch {
+				// Transient — the next tick will retry.
+			}
+		}, POLL_MS);
+		return () => clearInterval(timer);
+	}, [missionId, dirty, saving, launching, applyConfig]);
+
+	async function handleReloadFromServer() {
+		try {
+			const [c, updatedAt] = await Promise.all([
+				fetchMissionConfig(missionId),
+				fetchMissionUpdatedAt(missionId),
+			]);
+			applyConfig(c);
+			lastLoadedUpdatedAtRef.current = updatedAt;
+		} catch (e) {
+			setSaveError((e as Error).message);
+		}
+	}
 
 	if (config === null) return <p className="mut">Loading…</p>;
 	if (config === "error")
@@ -96,7 +163,13 @@ export function DraftEditor({
 	const skills = availableSkills(config.teamFiles);
 	const selectedAgent = agentsDraft.find((a) => a.id === selectedAgentId);
 
+	function updateMissionField(patch: Partial<typeof missionDraft>) {
+		setDirty(true);
+		setMissionDraft((d) => ({ ...d, ...patch }));
+	}
+
 	function updateAgent(id: string, patch: Partial<MissionConfigAgent>) {
+		setDirty(true);
 		setAgentsDraft((prev) =>
 			prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
 		);
@@ -117,6 +190,7 @@ export function DraftEditor({
 	}
 
 	function handleAddAgent() {
+		setDirty(true);
 		const id = `new-agent-${nextAgentSeq}`;
 		setNextAgentSeq((n) => n + 1);
 		setAgentsDraft((prev) => [...prev, blankAgent(id)]);
@@ -124,6 +198,7 @@ export function DraftEditor({
 	}
 
 	function handleRemoveAgent(id: string) {
+		setDirty(true);
 		setAgentsDraft((prev) => {
 			const next = prev.filter((a) => a.id !== id);
 			if (selectedAgentId === id) {
@@ -153,6 +228,18 @@ export function DraftEditor({
 				teamFiles: config.teamFiles,
 			});
 			setConfig({ ...config, mission: nextMission, agents: agentsDraft });
+			setDirty(false);
+			setRemoteUpdateAvailable(false);
+			// This save itself just changed the server's updatedAt — refetch it so
+			// the next poll doesn't mistake our own write for a copilot change.
+			fetchMissionUpdatedAt(missionId)
+				.then((updatedAt) => {
+					lastLoadedUpdatedAtRef.current = updatedAt;
+				})
+				.catch(() => {
+					// Non-fatal — worst case, the next poll re-reads a config that
+					// already matches what's on screen and reloads it silently.
+				});
 			setSaved(true);
 			setTimeout(() => setSaved(false), 3000);
 		} catch (e) {
@@ -188,6 +275,19 @@ export function DraftEditor({
 				Nothing is running yet — edit freely, save as often as you like, and
 				click Launch when the roster is ready.
 			</p>
+			{remoteUpdateAvailable && (
+				<p className="config-hint">
+					The copilot updated this draft while you were editing it.{" "}
+					<button
+						type="button"
+						className="rail-btn"
+						onClick={handleReloadFromServer}
+					>
+						Reload
+					</button>{" "}
+					— this replaces your unsaved changes with the copilot's version.
+				</p>
+			)}
 
 			<div className="config-mission-fields">
 				<div className="create-mission-row">
@@ -195,9 +295,7 @@ export function DraftEditor({
 					<input
 						id="draft-mission-name"
 						value={missionDraft.name}
-						onChange={(e) =>
-							setMissionDraft((d) => ({ ...d, name: e.target.value }))
-						}
+						onChange={(e) => updateMissionField({ name: e.target.value })}
 					/>
 				</div>
 				<div className="create-mission-row">
@@ -206,9 +304,7 @@ export function DraftEditor({
 						id="draft-mission-model"
 						value={missionDraft.model}
 						placeholder="(deployment default)"
-						onChange={(e) =>
-							setMissionDraft((d) => ({ ...d, model: e.target.value }))
-						}
+						onChange={(e) => updateMissionField({ model: e.target.value })}
 					/>
 				</div>
 				<div className="create-mission-row">
@@ -218,7 +314,7 @@ export function DraftEditor({
 						value={missionDraft.visionModel}
 						placeholder="(deployment default)"
 						onChange={(e) =>
-							setMissionDraft((d) => ({ ...d, visionModel: e.target.value }))
+							updateMissionField({ visionModel: e.target.value })
 						}
 					/>
 				</div>
@@ -228,9 +324,7 @@ export function DraftEditor({
 						id="draft-mission-tz"
 						value={missionDraft.timezone}
 						placeholder="e.g. America/New_York"
-						onChange={(e) =>
-							setMissionDraft((d) => ({ ...d, timezone: e.target.value }))
-						}
+						onChange={(e) => updateMissionField({ timezone: e.target.value })}
 					/>
 				</div>
 			</div>
@@ -259,6 +353,7 @@ export function DraftEditor({
 							id="draft-agent-id"
 							value={selectedAgent.id}
 							onChange={(e) => {
+								setDirty(true);
 								const nextId = e.target.value;
 								const prevId = selectedAgent.id;
 								setAgentsDraft((prev) =>
