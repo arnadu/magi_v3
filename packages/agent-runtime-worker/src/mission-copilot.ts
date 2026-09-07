@@ -503,7 +503,7 @@ function buildSeedTasks(now: string): TaskEvent[] {
 			at: now,
 			by: MISSION_COPILOT_AGENT_ID,
 			title:
-				"Review the mission's stated goals, current team composition, and each agent's mental map — assess fit against OBJ-MISSION-FIT",
+				"Review the mission's stated goals, current team composition, and each agent's system prompt and mental map — assess fit against OBJ-MISSION-FIT",
 			objective: "OBJ-MISSION-FIT",
 			assignee: MISSION_COPILOT_AGENT_ID,
 			status: "open",
