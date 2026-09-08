@@ -293,9 +293,9 @@ export function CopilotPanel() {
 		scrollBottom();
 		try {
 			await sendCopilotMessage(text);
-		} catch {
+		} catch (e) {
 			setThinking(false);
-			push({ kind: "system", text: "Failed to send message." });
+			push({ kind: "system", text: (e as Error).message });
 		}
 	}
 

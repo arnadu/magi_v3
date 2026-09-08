@@ -724,6 +724,7 @@ export async function saveCopilotSettings(model: string | null): Promise<void> {
 	}
 }
 
+/** Throws with the server's real error text on failure (e.g. a 402 naming the exact spend cap reached). */
 export async function sendCopilotMessage(body: string): Promise<void> {
 	const res = await fetch("/api/copilot/message", {
 		method: "POST",
@@ -734,7 +735,12 @@ export async function sendCopilotMessage(body: string): Promise<void> {
 	if (res.status === 401 || res.status === 403) {
 		throw new AuthError("not signed in");
 	}
-	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	if (!res.ok) {
+		const errBody = await res.json().catch(() => null);
+		throw new Error(
+			(errBody as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
+		);
+	}
 }
 
 export async function confirmCopilotAction(
