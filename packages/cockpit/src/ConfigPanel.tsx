@@ -19,14 +19,14 @@ import {
  * teamFiles, missionCopilotLimits) must round-trip unmodified, since the PUT
  * is a full replace, not a patch.
  *
- * supervisor/systemPrompt were mission-copilot-only under ADR-0022 (the
- * rationale: an actor that reads current state before writing catches a
+ * supervisor/systemPrompt were mission-copilot-only under ADR-0022's original
+ * decision (an actor that reads current state before writing catches a
  * prompt regression or a supervisor cycle that a blind form save can't) —
- * reopened by explicit operator decision (2026-09-10 addendum) rather than a
- * new technical mitigation, unlike the mental map below. The safety net is
- * the same one every other field in this panel already relies on:
- * server-side `parseTeamConfig` validation and the suspended-only gate, not
- * a copilot's judgment.
+ * the ADR now gives the operator direct control instead, by explicit product
+ * decision rather than a new technical mitigation like the mental map below.
+ * The safety net is the same one every other field in this panel already
+ * relies on: server-side `parseTeamConfig` validation and the suspended-only
+ * gate, not a copilot's judgment.
  *
  * The live mental map is the other field ADR-0022 originally scoped out that
  * this panel also edits directly (still suspended-only) — see the ADR's

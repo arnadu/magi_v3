@@ -884,10 +884,10 @@ export async function fetchDaemonLog(
 // missionCopilotLimits) must round-trip unmodified — the PUT is a full
 // replace, not a per-field patch, so omitting any of them silently clears it
 // server-side. supervisor/systemPrompt were mission-copilot-only under
-// ADR-0022, reopened by explicit operator decision (2026-09-10 addendum) —
-// see the ADR for the accepted tradeoff. The live mental map is a separate
-// `mentalMaps` patch, not part of `agents`, validated server-side against
-// dropping a data-managed section (ADR-0022's first addendum).
+// ADR-0022's original decision; the ADR now gives the operator direct
+// control instead. The live mental map is a separate `mentalMaps` patch, not
+// part of `agents`, validated server-side against dropping a data-managed
+// section (ADR-0022's "Post-ADR-0022 addendum").
 
 export interface MissionConfigAgent {
 	id: string;
