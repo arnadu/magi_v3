@@ -136,6 +136,43 @@ half of that decision.
 
 ---
 
+## Post-ADR-0022 addendum (2) — `systemPrompt`/`supervisor` moved back to control-plane-editable
+
+**Date**: 2026-09-10
+
+Unlike the mental-map addendum above, this one is **not** triggered by a new mechanical
+mitigation removing a risk — it's the operator's explicit decision that they should be able to
+edit these fields themselves, full stop, rather than being required to go through the mission
+copilot. ADR-0022's original reasoning for keeping them mission-copilot-only (an actor that reads
+current state before writing catches a prompt regression or a supervisor cycle that a blind form
+save can't) is not being disputed as a real, present risk — it's being accepted and traded away
+for direct operator control over their own mission's config.
+
+**What changed:**
+- The Config panel's per-agent `Supervisor` input and `System prompt` textarea are now editable
+  whenever `canEdit` is true (suspended), same gate as every other field in this panel — both
+  client-side (`disabled={!canEdit}`) and server-side (`PUT /:id/config` still 409s unless
+  `status === "suspended"`).
+- No backend change was needed: `PUT /:id/config` already wrote whatever `agents` array was
+  submitted, validated wholesale via `parseTeamConfig` — the restriction was purely a UI-layer
+  choice not to expose an `onChange` handler for these two fields. The safety net for a bad edit
+  is the same generic one every other field here already relies on (schema validation on save,
+  not an actor sanity-checking the specific change) — this is exactly the safety property being
+  given up, deliberately.
+- `agents[].initialMentalMap` (post-launch) is unaffected — still not shown as editable, for the
+  unrelated reason given above (it's inert once an agent has run once; the live mental map is
+  the field that matters, and that's already separately editable per the first addendum).
+- The mission copilot's own synthesized system prompt (the pseudo-tab keyed by
+  `MISSION_COPILOT_AGENT_ID`) stays read-only — it still isn't a stored field, so there is
+  nothing for an edit here to save back to regardless of this decision.
+
+**Consequence of note**: an operator can now make exactly the kind of one-shot, unreviewed
+system-prompt edit ADR-0022 was originally written to move away from. That tradeoff is accepted
+here as a product decision about who should control a mission's own config, not a re-litigation
+of whether the original risk was real.
+
+---
+
 ## Related
 
 - [ADR-0021](0021-structured-mission-config-storage.md) — introduced the structured `GET`/`PUT /:id/config` shape this ADR's editor now consumes directly, and the client-side YAML conversion layer this ADR deletes

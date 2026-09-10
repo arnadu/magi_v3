@@ -19,10 +19,11 @@ const POLL_MS = 5000;
  * suspended-only gate, since there's no live agent to collide with), and it
  * adds the one piece of editing that has never existed anywhere else in this
  * codebase — a true agent-roster editor (add/remove agents, freely rename
- * ids). systemPrompt/initialMentalMap/supervisor are real inputs here instead
- * of ConfigPanel's hardcoded read-only ("edit via the mission copilot") —
- * that restriction is a live-mission safety rule (ADR-0022) that doesn't
- * apply before a mission has ever been provisioned.
+ * ids). initialMentalMap is a real input here where ConfigPanel keeps it
+ * read-only post-launch (there it's inert once an agent has run once — the
+ * live mental map is what matters, ADR-0022); systemPrompt/supervisor are
+ * editable in both, gated by suspended-only in ConfigPanel vs. always-on
+ * here, since a draft has no live agent to collide with.
  *
  * Saves are permissive (PUT /:id/draft skips parseTeamConfig — a draft is
  * allowed to be incomplete while it's being built). Full validation happens

@@ -876,16 +876,18 @@ export async function fetchDaemonLog(
 }
 
 // ── Mission/agent config editor — ported from index.html's renderConfigForm.
-// ADR-0022: only mission name/model/visionModel/timezone and per-agent
-// name/model/active/disabledSkills/disabledTools are editable, and only
-// while the mission is suspended. Every other field (id, supervisor,
-// systemPrompt, initialMentalMap, limits, linuxUser, teamFiles,
+// Editable, only while the mission is suspended: mission
+// name/model/visionModel/timezone, per-agent name/model/active/
+// disabledSkills/disabledTools/supervisor/systemPrompt, and the live mental
+// map. Every other field (id, initialMentalMap post-launch — that's the
+// template, inert after an agent's first run — limits, linuxUser, teamFiles,
 // missionCopilotLimits) must round-trip unmodified — the PUT is a full
-// replace, not a per-field patch, so omitting any of them silently clears
-// it server-side. The live mental map (not initialMentalMap — that's the
-// template, inert after an agent's first run) is the one exception, added
-// after ADR-0022: it's a separate `mentalMaps` patch, not part of `agents`,
-// validated server-side against dropping a data-managed section.
+// replace, not a per-field patch, so omitting any of them silently clears it
+// server-side. supervisor/systemPrompt were mission-copilot-only under
+// ADR-0022, reopened by explicit operator decision (2026-09-10 addendum) —
+// see the ADR for the accepted tradeoff. The live mental map is a separate
+// `mentalMaps` patch, not part of `agents`, validated server-side against
+// dropping a data-managed section (ADR-0022's first addendum).
 
 export interface MissionConfigAgent {
 	id: string;

@@ -11,15 +11,25 @@ import {
 } from "./data";
 
 /**
- * Ported from index.html's renderConfigForm/renderAgentPane/saveConfig. Per
- * ADR-0022, only mission name/model/visionModel/timezone and per-agent
- * name/model/active/disabledSkills/disabledTools are editable, only while
- * the mission is suspended — everything else (id, supervisor, systemPrompt,
- * initialMentalMap, limits, linuxUser, teamFiles, missionCopilotLimits) must
- * round-trip unmodified, since the PUT is a full replace, not a patch.
+ * Ported from index.html's renderConfigForm/renderAgentPane/saveConfig.
+ * Editable, only while the mission is suspended: mission
+ * name/model/visionModel/timezone; per-agent name/model/active/
+ * disabledSkills/disabledTools/supervisor/systemPrompt; the live mental map.
+ * Everything else (id, initialMentalMap post-launch, limits, linuxUser,
+ * teamFiles, missionCopilotLimits) must round-trip unmodified, since the PUT
+ * is a full replace, not a patch.
  *
- * The live mental map is the one field ADR-0022 originally scoped out that
- * this panel now also edits directly (still suspended-only) — see the ADR's
+ * supervisor/systemPrompt were mission-copilot-only under ADR-0022 (the
+ * rationale: an actor that reads current state before writing catches a
+ * prompt regression or a supervisor cycle that a blind form save can't) —
+ * reopened by explicit operator decision (2026-09-10 addendum) rather than a
+ * new technical mitigation, unlike the mental map below. The safety net is
+ * the same one every other field in this panel already relies on:
+ * server-side `parseTeamConfig` validation and the suspended-only gate, not
+ * a copilot's judgment.
+ *
+ * The live mental map is the other field ADR-0022 originally scoped out that
+ * this panel also edits directly (still suspended-only) — see the ADR's
  * "Post-ADR-0022 addendum" for why: the YAML-round-trip corruption risk that
  * motivated routing it through the mission copilot instead doesn't apply
  * here (this editor never touches YAML, for any field), and the remaining
@@ -378,18 +388,31 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 
 					<div className="config-section-label mut">Supervisor</div>
 					<p className="mut config-readonly-note">
-						Read-only — edit via the mission copilot (structural team change)
+						Agent id this one reports to — "user" for a top-level agent.
+						{!canEdit &&
+							" Suspend the mission to edit yourself, or ask the mission copilot for a suggested change."}
 					</p>
-					<input value={selectedAgent.supervisor} disabled />
+					<input
+						value={selectedAgent.supervisor}
+						disabled={!canEdit}
+						onChange={(e) =>
+							updateAgent(selectedAgent.id, { supervisor: e.target.value })
+						}
+					/>
 
 					<div className="config-section-label mut">System prompt</div>
 					<p className="mut config-readonly-note">
-						Read-only — edit via the mission copilot (SaveMissionConfig)
+						{canEdit
+							? "Editable while suspended."
+							: "Read-only while running — suspend the mission to edit yourself, or ask the mission copilot for a suggested change."}
 					</p>
 					<textarea
 						className="config-readonly-textarea"
 						value={selectedAgent.systemPrompt}
-						disabled
+						disabled={!canEdit}
+						onChange={(e) =>
+							updateAgent(selectedAgent.id, { systemPrompt: e.target.value })
+						}
 						rows={6}
 					/>
 
