@@ -98,11 +98,17 @@ export const DEFAULT_LIMITS: ProcessLimits = {
 	maxZipFiles: 20,
 };
 
-/** Injected vision call. Returns a short description, or undefined on failure / no capability. */
+/** Injected vision call. Returns text (a description, or a transcription), or undefined on failure / no capability. */
 export type DescribeImageFn = (
 	bytes: Buffer,
 	mimeType: string,
 ) => Promise<string | undefined>;
+
+/** Injected OCR call — same shape as `DescribeImageFn`, kept as a distinct name at
+ * call sites since it means something different (verbatim transcription, not a
+ * caption) even though today's production implementation is the same kind of
+ * vision-model call underneath (see `createOcrPage`). */
+export type OcrPageFn = DescribeImageFn;
 
 /**
  * Prompt for the brief auto-description embedded in content.md. Kept short so the
@@ -114,13 +120,25 @@ const AUTO_DESCRIBE_PROMPT =
 	"Two to four sentences.";
 
 /**
- * Build the production `describeImage` from a vision-capable model — the single
- * captioner shared by the document processor (uploads) and FetchUrl (web). Returns
- * undefined when the model lacks image input or the MIME type is unsupported, so
- * callers degrade gracefully to InspectImage pointers.
+ * Prompt for OCR transcription (issue #50) — deliberately the opposite instruction
+ * from AUTO_DESCRIBE_PROMPT: verbatim text recovery, not a caption. Asks for LaTeX
+ * math and Markdown tables because the motivating case (scanned academic PDFs) is
+ * exactly the content a plain-text transcription mangles worst.
  */
-export function createDescribeImage(
+const OCR_TRANSCRIBE_PROMPT =
+	"This image is a scanned document page with no embedded text layer. Transcribe " +
+	"the text on this page EXACTLY as it appears — do not summarize or describe it. " +
+	"Preserve paragraph breaks. Render tables as Markdown tables. Render mathematical " +
+	"formulae as LaTeX ($...$ inline, $$...$$ display). If a region is illegible, " +
+	"write [illegible] rather than guessing. Output only the transcribed text, no " +
+	"commentary before or after it.";
+
+/** Shared implementation behind `createDescribeImage`/`createOcrPage` — same vision
+ * call, different prompt. Returns undefined when the model lacks image input or the
+ * MIME type is unsupported, so callers degrade gracefully to InspectImage pointers. */
+function createVisionTextCall(
 	model: Model<string>,
+	prompt: string,
 	signal?: AbortSignal,
 ): DescribeImageFn {
 	return async (bytes, mimeType) => {
@@ -132,7 +150,7 @@ export function createDescribeImage(
 				role: "user",
 				timestamp: Date.now(),
 				content: [
-					{ type: "text", text: AUTO_DESCRIBE_PROMPT },
+					{ type: "text", text: prompt },
 					{ type: "image", data: bytes.toString("base64"), mimeType: mime },
 				],
 			};
@@ -159,12 +177,40 @@ export function createDescribeImage(
 	};
 }
 
+/**
+ * Build the production `describeImage` from a vision-capable model — the single
+ * captioner shared by the document processor (uploads) and FetchUrl (web).
+ */
+export function createDescribeImage(
+	model: Model<string>,
+	signal?: AbortSignal,
+): DescribeImageFn {
+	return createVisionTextCall(model, AUTO_DESCRIBE_PROMPT, signal);
+}
+
+/**
+ * Build the production `ocrPage` from a vision-capable model (issue #50). Not a
+ * dedicated OCR provider (no new API key/dependency) — reuses whichever vision
+ * model is already configured (VISION_MODEL / OPENROUTER_API_KEY), prompted for
+ * verbatim transcription instead of a caption. Swap this factory's implementation
+ * for a dedicated OCR API later if quality here proves insufficient; no call site
+ * (processPdf) needs to change, since it only depends on the `OcrPageFn` shape.
+ */
+export function createOcrPage(
+	model: Model<string>,
+	signal?: AbortSignal,
+): OcrPageFn {
+	return createVisionTextCall(model, OCR_TRANSCRIBE_PROMPT, signal);
+}
+
 export interface ProcessOptions {
 	filename: string;
 	mimeType?: string;
 	/** Directory under which `artifacts/{id}/` is written. */
 	artifactsDir: string;
 	describeImage?: DescribeImageFn;
+	/** OCR fallback for scanned PDF pages with no embedded text layer (issue #50). */
+	ocrPage?: OcrPageFn;
 	limits?: Partial<ProcessLimits>;
 	signal?: AbortSignal;
 	/**
@@ -189,6 +235,9 @@ export interface ProcessResult {
 // ---------------------------------------------------------------------------
 
 const PDF_SCALE = 1.5; // ≈108 DPI — good enough for vision, modest file size
+
+/** A page's extracted text shorter than this is treated as scanned (no text layer) — issue #50. */
+const SCANNED_TEXT_THRESHOLD = 50;
 
 /** Magic-byte sniff for the formats we route on. Cheap, no dependency. */
 function sniff(bytes: Buffer): DocFormat | undefined {
@@ -412,6 +461,7 @@ async function processPdf(
 	filename: string,
 	limits: ProcessLimits,
 	describeImage: DescribeImageFn | undefined,
+	ocrPage: OcrPageFn | undefined,
 	signal?: AbortSignal,
 ): Promise<Handled> {
 	let doc: mupdf.Document;
@@ -461,6 +511,7 @@ async function processPdf(
 		if (signal?.aborted) break;
 		const page = doc.loadPage(i);
 		const text = page.toStructuredText().asText().trim();
+		const isScanned = text.length < SCANNED_TEXT_THRESHOLD;
 		let section = `## Page ${i + 1}`;
 		if (text) section += `\n\n${text}`;
 
@@ -471,7 +522,15 @@ async function processPdf(
 				const png = Buffer.from(pixmap.asPNG());
 				files.push({ name: fileName, content: png });
 
-				if (describeSet.has(i) && describeImage) {
+				if (isScanned && ocrPage) {
+					const transcribed = await ocrPage(png, "image/png");
+					if (transcribed) {
+						section += `\n\n*(No embedded text layer — transcribed via OCR.)*\n\n${transcribed}`;
+					} else {
+						section += `\n\n*(Scanned page, OCR failed — InspectImage("artifacts/<id>/${fileName}") to transcribe manually.)*`;
+						unprocessed.push({ item: fileName, reason: "ocr-failed" });
+					}
+				} else if (describeSet.has(i) && describeImage) {
 					const desc = await describeImage(png, "image/png");
 					if (desc) {
 						section += `\n\n**Page visual:** ${desc}`;
@@ -838,6 +897,7 @@ export async function processBuffer(
 				opts.filename,
 				limits,
 				opts.describeImage,
+				opts.ocrPage,
 				opts.signal,
 			);
 			break;

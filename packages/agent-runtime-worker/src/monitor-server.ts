@@ -20,7 +20,11 @@ import type { Model } from "@mariozechner/pi-ai";
 import JSZip from "jszip";
 import type { Db } from "mongodb";
 import type { StatsCollector } from "./agent-stats.js";
-import { createDescribeImage, processBuffer } from "./document-processor.js";
+import {
+	createDescribeImage,
+	createOcrPage,
+	processBuffer,
+} from "./document-processor.js";
 import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
@@ -1198,11 +1202,17 @@ export class MonitorServer {
 			const describeImage = this.visionModel
 				? createDescribeImage(this.visionModel)
 				: undefined;
+			// Issue #50: scanned PDFs (no embedded text layer) reuse the same
+			// vision model, prompted for verbatim transcription instead of a caption.
+			const ocrPage = this.visionModel
+				? createOcrPage(this.visionModel)
+				: undefined;
 			const result = await processBuffer(bytes, {
 				filename: safeName,
 				mimeType,
 				artifactsDir: this.sharedDir,
 				describeImage,
+				ocrPage,
 			});
 
 			const body = [

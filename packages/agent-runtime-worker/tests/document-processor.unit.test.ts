@@ -8,6 +8,7 @@ import {
 	DEFAULT_LIMITS,
 	type DescribeImageFn,
 	detectFormat,
+	type OcrPageFn,
 	processBuffer,
 	selectImages,
 } from "../src/document-processor.js";
@@ -182,6 +183,83 @@ describe("processBuffer", () => {
 		await expect(
 			readFile(join(dir, "artifacts", r.artifactId, "test-pdf.pdf")),
 		).resolves.toBeInstanceOf(Buffer);
+	});
+
+	// Issue #50: scanned PDFs (no embedded text layer) fall back to OCR instead
+	// of a vision-model description of the page. scanned-page.pdf is a single
+	// page containing only an image (dog.png) — mupdf's toStructuredText()
+	// extracts zero text from it, same as a real scanned page.
+	it("OCRs a scanned page (no text layer) via the injected ocrPage fn, not a description", async () => {
+		const pdf = readFileSync(join(DOCS, "scanned-page.pdf"));
+		let ocrCalls = 0;
+		let describeCalls = 0;
+		const ocrPage: OcrPageFn = async () => {
+			ocrCalls++;
+			return "Transcribed: the quick brown fox.";
+		};
+		const describeImage: DescribeImageFn = async () => {
+			describeCalls++;
+			return "a photo of a dog";
+		};
+		const r = await processBuffer(pdf, {
+			filename: "scanned-page.pdf",
+			mimeType: "application/pdf",
+			artifactsDir: dir,
+			ocrPage,
+			describeImage,
+		});
+		expect(r.format).toBe("pdf");
+		expect(r.processingStatus).toBe("complete"); // fully resolved via OCR, not deferred
+		const content = await readContent(r.contentPath);
+		expect(content).toContain("Transcribed: the quick brown fox.");
+		expect(content).toContain("transcribed via OCR");
+		expect(content).not.toContain("a photo of a dog");
+		expect(ocrCalls).toBe(1);
+		expect(describeCalls).toBe(0);
+	});
+
+	it("falls back to the old described/deferred pointer when no ocrPage is injected", async () => {
+		const pdf = readFileSync(join(DOCS, "scanned-page.pdf"));
+		const describeImage: DescribeImageFn = async () => "a photo of a dog";
+		const r = await processBuffer(pdf, {
+			filename: "scanned-page.pdf",
+			mimeType: "application/pdf",
+			artifactsDir: dir,
+			describeImage,
+			// ocrPage omitted — must degrade to the pre-existing behavior, not fail.
+		});
+		const content = await readContent(r.contentPath);
+		expect(content).toContain("a photo of a dog");
+	});
+
+	it("marks the page unprocessed (partial) when OCR is attempted but fails", async () => {
+		const pdf = readFileSync(join(DOCS, "scanned-page.pdf"));
+		const ocrPage: OcrPageFn = async () => undefined;
+		const r = await processBuffer(pdf, {
+			filename: "scanned-page.pdf",
+			mimeType: "application/pdf",
+			artifactsDir: dir,
+			ocrPage,
+		});
+		expect(r.processingStatus).toBe("partial");
+		const content = await readContent(r.contentPath);
+		expect(content).toContain("OCR failed");
+	});
+
+	it("does not attempt OCR on a page that already has a real text layer", async () => {
+		const pdf = readFileSync(join(DOCS, "test-pdf.pdf"));
+		let ocrCalls = 0;
+		const ocrPage: OcrPageFn = async () => {
+			ocrCalls++;
+			return "should not be called";
+		};
+		await processBuffer(pdf, {
+			filename: "test-pdf.pdf",
+			mimeType: "application/pdf",
+			artifactsDir: dir,
+			ocrPage,
+		});
+		expect(ocrCalls).toBe(0);
 	});
 
 	it("saves the raw file and marks unsupported for unknown formats", async () => {

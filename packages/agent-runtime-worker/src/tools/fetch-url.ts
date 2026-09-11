@@ -11,6 +11,7 @@ import {
 } from "../artifacts.js";
 import {
 	createDescribeImage,
+	createOcrPage,
 	type ProcessResult,
 	processBuffer,
 } from "../document-processor.js";
@@ -250,6 +251,9 @@ export function createFetchUrlTool(
 
 			// Single captioner shared with the document processor (and uploads).
 			const describeImage = createDescribeImage(model, signal);
+			// Issue #50: a scanned PDF found on the web gets the same OCR fallback
+			// as an uploaded one.
+			const ocrPage = createOcrPage(model, signal);
 
 			// --- Route by content type -----------------------------------------
 			// PDF and direct images go through the shared document processor so
@@ -261,6 +265,7 @@ export function createFetchUrlTool(
 					mimeType,
 					artifactsDir,
 					describeImage,
+					ocrPage,
 					sourceUrl: rawUrl,
 					// Mirror the old FetchUrl knob: render + describe up to max_pages.
 					limits: { maxRenderPages: maxPages, maxAutoDescribe: maxPages },
