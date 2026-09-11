@@ -142,8 +142,16 @@ set_secrets_if_needed() {
   if [[ "$RESET_SECRETS" == true ]]; then
     info "Setting secrets on $app (--reset-secrets)…"
   else
-    # Check if secrets are already set by looking for any known key
-    local first_key="${!pairs[*]%% *}"
+    # Check if secrets are already set by looking for any known key.
+    # NOT "${!pairs[*]%% *}" — combining indirect-keys expansion with a
+    # nameref AND a %% modifier is a bash gotcha: it evaluates to the
+    # array's *values* space-joined, then tries to use that whole string as
+    # a variable name, dying with "invalid variable name" (found live,
+    # 2026-09-11, on a fresh bootstrap). Plain "${!pairs[@]}" is unaffected —
+    # used correctly a few lines down — so loop-and-break instead of adding
+    # a modifier onto the nameref'd indirect expansion.
+    local first_key=""
+    for first_key in "${!pairs[@]}"; do break; done
     if flyctl secrets list -a "$app" --json 2>/dev/null | grep -q "\"$first_key\""; then
       info "Secrets already set on $app — skipping (use --reset-secrets to overwrite)."
       return 0
