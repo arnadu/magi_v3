@@ -139,7 +139,7 @@ fi
 
 # ── Generate FLY_API_TOKEN_MACHINES ───────────────────────────────────────────
 info "Generating scoped Fly API token for Machines API (1-year expiry)…"
-MACHINES_TOKEN="$(flyctl tokens create deploy -a "$MISSIONS_APP" --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+MACHINES_TOKEN="$(flyctl tokens create deploy -a "$MISSIONS_APP" --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])' 2>/dev/null)" || true
 [[ -n "$MACHINES_TOKEN" ]] || die "Failed to generate FLY_API_TOKEN_MACHINES."
 success "FLY_API_TOKEN_MACHINES generated."
 
@@ -279,7 +279,7 @@ if [[ "$SKIP_DOCKER" == false ]]; then
 
     # Extract the deployment image tag from the latest release.
     DEPLOY_IMAGE="$(flyctl releases --app "$MISSIONS_APP" --json 2>/dev/null \
-      | python3 -c "import json,sys; rs=json.load(sys.stdin); print(rs[0]['ImageRef'])" 2>/dev/null)"
+      | python3 -c "import json,sys; rs=json.load(sys.stdin); print(rs[0]['ImageRef'])" 2>/dev/null)" || true
     if [[ -n "$DEPLOY_IMAGE" ]]; then
       FLY_MISSIONS_IMAGE_OVERRIDE="$DEPLOY_IMAGE"
       IMAGE="$DEPLOY_IMAGE"
@@ -343,7 +343,18 @@ if [[ "$GH_AVAILABLE" == true ]]; then
   # The CI token must cover both apps: control-plane deploys to registry.fly.io/CONTROL_APP
   # and the execution plane builds push to registry.fly.io/MISSIONS_APP.
   # Use an org-level token so a single secret covers all apps in the org.
-  CI_TOKEN="$(flyctl tokens create org --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+  # `-o` is required — "flyctl tokens create org" refuses to guess the org
+  # slug when not running interactively, even with just one org on the
+  # account (found live: "org slug argument must be specified when not
+  # running interactively"). `flyctl orgs list --json` returns
+  # {"<slug>": "<name>", ...}; take the first key.
+  ORG_SLUG="$(flyctl orgs list --json 2>/dev/null | python3 -c 'import json,sys; print(next(iter(json.load(sys.stdin))))' 2>/dev/null)" || true
+  if [[ -n "$ORG_SLUG" ]]; then
+    CI_TOKEN="$(flyctl tokens create org -o "$ORG_SLUG" --expiry 8760h --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])' 2>/dev/null)" || true
+  else
+    CI_TOKEN=""
+    warn "Could not determine Fly.io org slug — skipping automatic CI token generation."
+  fi
   if [[ -n "$CI_TOKEN" ]]; then
     gh secret set FLY_API_TOKEN_CI --body "$CI_TOKEN" 2>/dev/null && \
       success "GitHub secret FLY_API_TOKEN_CI set." || \
