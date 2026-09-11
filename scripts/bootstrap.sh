@@ -197,6 +197,11 @@ set_secrets_if_needed() {
 declare -A CONTROL_SECRETS=(
   [MONGODB_URI]="${MONGODB_URI}"
   [CONTROL_API_KEY]="${CONTROL_API_KEY}"
+  # Control plane only (templates.ts) — unset = every template on disk.
+  # Was read from the secrets file but never forwarded as a Fly secret,
+  # so a single-template beta deployment silently offered every template
+  # (found live, 2026-09-11).
+  [TEMPLATE_ALLOWLIST]="${TEMPLATE_ALLOWLIST:-}"
   [MONITOR_SIGNING_KEY]="${MONITOR_SIGNING_KEY}"
   [FLY_API_TOKEN_MACHINES]="${MACHINES_TOKEN}"
   [FLY_MISSIONS_APP_NAME]="${MISSIONS_APP}"
