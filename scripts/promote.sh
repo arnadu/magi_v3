@@ -68,6 +68,18 @@ success "Tag pushed: $TAG"
 info "Deploying execution plane…"
 bash scripts/deploy-missions.sh --suffix "$SUFFIX"
 
+# packages/control-plane/public/ is gitignored — for -dev, CI's own workflow
+# builds it fresh before every deploy (see packages/control-plane/Dockerfile's
+# comment). A named non-dev environment has no such CI step (promote.sh is the
+# whole point — see the top-of-file comment), so this is the only place that
+# ever rebuilds it for one: skipping it silently ships whatever cockpit build
+# happens to already be sitting on disk, which found live as a real user-
+# visible bug (2026-09-11: a stale build masked a routing fix already merged
+# to the source).
+info "Building cockpit…"
+npm run build --workspace=packages/cockpit
+success "Cockpit built."
+
 info "Deploying control plane…"
 flyctl deploy --config "$CONTROL_TOML" --app "$CONTROL_APP"
 success "Control plane deployed: https://${CONTROL_APP}.fly.dev"

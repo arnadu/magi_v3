@@ -317,6 +317,16 @@ fi
 
 # ── Deploy control plane ───────────────────────────────────────────────────────
 if [[ "$SKIP_DEPLOY" == false ]]; then
+  # packages/control-plane/public/ is gitignored — CI's own -dev workflow
+  # builds it fresh before every deploy (see packages/control-plane/Dockerfile's
+  # comment), but bootstrap.sh runs outside CI, so nothing else ever builds it
+  # for a brand-new environment. Skipping this ships whatever cockpit build
+  # happens to already be on disk — found live as a real bug (2026-09-11: a
+  # fresh single-tenant beta's first login showed a stale cockpit build).
+  info "Building cockpit…"
+  npm run build --workspace=packages/cockpit
+  success "Cockpit built."
+
   info "Deploying control plane to $CONTROL_APP…"
 
   # flyctl needs the toml at the repo root so the build context is correct.
