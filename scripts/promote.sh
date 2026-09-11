@@ -49,7 +49,11 @@ MISSIONS_TOML="fly.missions-${SUFFIX}.toml"
 [[ -f "$CONTROL_TOML" ]] || die "$CONTROL_TOML not found — run 'bash scripts/bootstrap.sh --suffix $SUFFIX' once first."
 [[ -f "$MISSIONS_TOML" ]] || die "$MISSIONS_TOML not found — run 'bash scripts/bootstrap.sh --suffix $SUFFIX' once first."
 
-[[ -z "$(git status --porcelain)" ]] || die "Working tree has uncommitted changes — commit or stash them first. A promote tag must name an exact, reproducible commit."
+# --untracked-files=no: a tag only ever captures tracked, committed content —
+# stray untracked scratch files (e.g. an experimental/ dir) don't affect what
+# gets built or deployed, so they shouldn't block a promote (found live: a
+# repo with long-lived untracked scratch files couldn't promote at all).
+[[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "Working tree has uncommitted changes to tracked files — commit or stash them first. A promote tag must name an exact, reproducible commit."
 
 if [[ -z "$TAG" ]]; then
   TAG="promote/${SUFFIX}/$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD)"
