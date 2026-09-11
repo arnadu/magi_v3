@@ -1,11 +1,12 @@
 /**
- * Shared document processor — Sprint 25 phase 2.
+ * Shared document processor — Sprint 25 phase 2; OCR fallback, image-text
+ * transcription, and table reconstruction added 2026-09-11 (ADR-0028).
  *
  * Turns an uploaded file (raw bytes + filename) into an LLM-readable artifact:
  * a `content.md` plus extracted assets (page renders, the raw data file) under
  * `{artifactsDir}/artifacts/{id}/`, with a `meta.json` partial-processing marker.
  *
- * Design notes (see the Sprint 25 plan):
+ * Design notes (ADR-0028 has the full pipeline walkthrough + rationale):
  *   - **No text truncation.** All text from every page/row is preserved; agents
  *     read slices with Bash. Only the expensive VISION step is budgeted.
  *   - **Image describe-now vs defer.** Auto-describing every image in a large
@@ -13,12 +14,25 @@
  *     per-document budget, largest first) or deferred with an `InspectImage(path,
  *     question)` pointer in the markdown — the agent processes it on demand. There
  *     is no new tool: deferral rides on the existing InspectImage.
+ *   - **A described image also gets its legible text transcribed**, not just
+ *     captioned — one shared prompt/call asks for both (AUTO_DESCRIBE_PROMPT), so
+ *     a screenshot or whiteboard photo's real text lands in content.md instead of
+ *     a vague paraphrase, at no extra vision-call cost.
+ *   - **A PDF page with no usable extracted text (a scan) gets OCR'd**, not just
+ *     described — SCANNED_TEXT_THRESHOLD decides per page, and this runs
+ *     independently of the describe-now/defer budget above: a page with zero
+ *     real text is a correctness gap, not a nice-to-have caption.
+ *   - **Table structure is reconstructed from PDF geometry**, not left as mupdf's
+ *     flat per-cell text dump — see pdf-tables.ts.
  *   - **Partial-processing is first-class.** `meta.json.processingStatus` is
  *     `complete | partial | unsupported`, and `content.md` opens with a visible
  *     status line so the agent knows what is and isn't narrated.
  *
- * The vision call is injected as `describeImage` so this module has no LLM
- * dependency and is fully unit-testable; production wires it to the vision model.
+ * The vision call is injected as `describeImage`/`ocrPage` so this module has no
+ * LLM dependency and is fully unit-testable; production wires both to the vision
+ * model already configured for the mission (VISION_MODEL / OPENROUTER_API_KEY) —
+ * see createDescribeImage/createOcrPage, and their call sites in
+ * monitor-server.ts (uploads) and tools/fetch-url.ts (web fetches).
  *
  * Formats: plain text / Markdown, CSV, single images, PDF (mupdf), XLSX (exceljs →
  * one CSV per sheet), DOCX (mammoth → markdown + embedded-image policy), and ZIP

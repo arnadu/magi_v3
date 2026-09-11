@@ -1,6 +1,7 @@
 /**
  * Reconstructs a PDF page's text as Markdown, upgrading tabular regions into real
- * Markdown tables instead of mupdf's flat reading-order dump.
+ * Markdown tables instead of mupdf's flat reading-order dump. ADR-0028 has the
+ * full rationale and how this fits alongside OCR/image-text transcription.
  *
  * Investigated live: `page.toStructuredText().asText()` returns table cells as a
  * linear sequence ("Variable Definition Average Online advertisingt Total
