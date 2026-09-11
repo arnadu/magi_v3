@@ -12,6 +12,7 @@ import {
 import {
 	createDescribeImage,
 	createOcrPage,
+	createPageVisualDescribe,
 	type ProcessResult,
 	processBuffer,
 } from "../document-processor.js";
@@ -251,6 +252,10 @@ export function createFetchUrlTool(
 
 			// Single captioner shared with the document processor (and uploads).
 			const describeImage = createDescribeImage(model, signal);
+			// A PDF page's "Page visual" note gets a description-only prompt — its
+			// real text is already captured by mupdf, so transcribing it again in
+			// the caption just duplicates it (found live, see document-processor.ts).
+			const describePageVisual = createPageVisualDescribe(model, signal);
 			// Issue #50: a scanned PDF found on the web gets the same OCR fallback
 			// as an uploaded one.
 			const ocrPage = createOcrPage(model, signal);
@@ -265,6 +270,7 @@ export function createFetchUrlTool(
 					mimeType,
 					artifactsDir,
 					describeImage,
+					describePageVisual,
 					ocrPage,
 					sourceUrl: rawUrl,
 					// Mirror the old FetchUrl knob: render + describe up to max_pages.

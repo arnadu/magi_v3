@@ -23,6 +23,7 @@ import type { StatsCollector } from "./agent-stats.js";
 import {
 	createDescribeImage,
 	createOcrPage,
+	createPageVisualDescribe,
 	processBuffer,
 } from "./document-processor.js";
 import { missionLifetimeCostUsd } from "./limits.js";
@@ -1202,6 +1203,12 @@ export class MonitorServer {
 			const describeImage = this.visionModel
 				? createDescribeImage(this.visionModel)
 				: undefined;
+			// A PDF page's "Page visual" note gets a description-only prompt, not
+			// describeImage's — that page's real text is already captured by mupdf,
+			// so asking for a transcription too just duplicates it (found live).
+			const describePageVisual = this.visionModel
+				? createPageVisualDescribe(this.visionModel)
+				: undefined;
 			// Issue #50: scanned PDFs (no embedded text layer) reuse the same
 			// vision model, prompted for verbatim transcription instead of a caption.
 			const ocrPage = this.visionModel
@@ -1212,6 +1219,7 @@ export class MonitorServer {
 				mimeType,
 				artifactsDir: this.sharedDir,
 				describeImage,
+				describePageVisual,
 				ocrPage,
 			});
 

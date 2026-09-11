@@ -180,7 +180,7 @@ describe("processBuffer", () => {
 	it("extracts all PDF text and renders pages, respecting the describe budget", async () => {
 		const pdf = readFileSync(join(DOCS, "test-pdf.pdf"));
 		let describeCalls = 0;
-		const describeImage: DescribeImageFn = async () => {
+		const describePageVisual: DescribeImageFn = async () => {
 			describeCalls++;
 			return "page summary";
 		};
@@ -188,7 +188,7 @@ describe("processBuffer", () => {
 			filename: "test-pdf.pdf",
 			mimeType: "application/pdf",
 			artifactsDir: dir,
-			describeImage,
+			describePageVisual,
 			limits: { maxAutoDescribe: 1 }, // force defer if >1 page
 		});
 		expect(r.format).toBe("pdf");
@@ -214,12 +214,12 @@ describe("processBuffer", () => {
 	// real Markdown tables with the exact reported values, not just prose.
 	it("reconstructs real tables (not a flat dump) from an actual exam PDF", async () => {
 		const pdf = readFileSync(join(DOCS, "exam-with-tables.pdf"));
-		const describeImage: DescribeImageFn = async () => "page caption";
+		const describePageVisual: DescribeImageFn = async () => "page caption";
 		const r = await processBuffer(pdf, {
 			filename: "exam-with-tables.pdf",
 			mimeType: "application/pdf",
 			artifactsDir: dir,
-			describeImage,
+			describePageVisual,
 		});
 		expect(r.processingStatus).toBe("complete");
 		const content = await readContent(r.contentPath);
@@ -228,6 +228,41 @@ describe("processBuffer", () => {
 		);
 		expect(content).toContain("| Regular pricet (β3) | -1.35 | <.01 |");
 		expect(content).toContain("| Coupon × Shopping_cart | -2.45 | 0.01 |");
+	});
+
+	// Real-world regression, part 2: found live after the table fix shipped —
+	// a page with real extracted text ALSO got a "Page visual" description
+	// call using describeImage's describe-AND-transcribe prompt, which
+	// reliably re-transcribed the page's own already-correct text a second
+	// time, doubling every non-scanned page's content. The fix is structural
+	// (a separate describePageVisual injection point, never describeImage,
+	// for a PDF page's visual note) rather than a prompt tweak, so this
+	// verifies the wiring, not prompt wording: describeImage must never be
+	// invoked for a PDF's page-visual step, only describePageVisual.
+	it("never calls describeImage for a PDF page's visual note (describePageVisual only)", async () => {
+		const pdf = readFileSync(join(DOCS, "exam-with-tables.pdf"));
+		let describeImageCalls = 0;
+		const describeImage: DescribeImageFn = async () => {
+			describeImageCalls++;
+			return "describeImage must never run against a PDF page visual";
+		};
+		let pageVisualCalls = 0;
+		const describePageVisual: DescribeImageFn = async () => {
+			pageVisualCalls++;
+			return "brief caption only";
+		};
+		const r = await processBuffer(pdf, {
+			filename: "exam-with-tables.pdf",
+			mimeType: "application/pdf",
+			artifactsDir: dir,
+			describeImage,
+			describePageVisual,
+		});
+		expect(describeImageCalls).toBe(0);
+		expect(pageVisualCalls).toBeGreaterThan(0);
+		const content = await readContent(r.contentPath);
+		expect(content).toContain("brief caption only");
+		expect(content).not.toContain("describeImage must never run");
 	});
 
 	// Issue #50: scanned PDFs (no embedded text layer) fall back to OCR instead
@@ -265,12 +300,12 @@ describe("processBuffer", () => {
 
 	it("falls back to the old described/deferred pointer when no ocrPage is injected", async () => {
 		const pdf = readFileSync(join(DOCS, "scanned-page.pdf"));
-		const describeImage: DescribeImageFn = async () => "a photo of a dog";
+		const describePageVisual: DescribeImageFn = async () => "a photo of a dog";
 		const r = await processBuffer(pdf, {
 			filename: "scanned-page.pdf",
 			mimeType: "application/pdf",
 			artifactsDir: dir,
-			describeImage,
+			describePageVisual,
 			// ocrPage omitted — must degrade to the pre-existing behavior, not fail.
 		});
 		const content = await readContent(r.contentPath);

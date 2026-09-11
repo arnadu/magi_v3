@@ -17,7 +17,18 @@
  *   - **A described image also gets its legible text transcribed**, not just
  *     captioned — one shared prompt/call asks for both (AUTO_DESCRIBE_PROMPT), so
  *     a screenshot or whiteboard photo's real text lands in content.md instead of
- *     a vague paraphrase, at no extra vision-call cost.
+ *     a vague paraphrase, at no extra vision-call cost. Standalone/DOCX-embedded
+ *     images only — deliberately NOT used for a PDF page's own visual note (see
+ *     next bullet): that page's text is already extracted by mupdf, so asking a
+ *     vision model to transcribe the same rendered page's text again doesn't
+ *     recover anything, it reliably duplicates it (found live).
+ *   - **A PDF page's rendered image is still worth a vision call even when the
+ *     page already has real extracted text** — but only for what mupdf's text
+ *     extraction structurally cannot see: embedded photos, charts, diagrams, a
+ *     logo. `describePageVisual` (`PAGE_VISUAL_PROMPT`) is a separate,
+ *     description-only prompt for exactly that, kept apart from `describeImage`
+ *     at the type level so a page's visual note can never trigger a text
+ *     transcription of content already sitting right above it in content.md.
  *   - **A PDF page with no usable extracted text (a scan) gets OCR'd**, not just
  *     described — SCANNED_TEXT_THRESHOLD decides per page, and this runs
  *     independently of the describe-now/defer budget above: a page with zero
@@ -28,10 +39,11 @@
  *     `complete | partial | unsupported`, and `content.md` opens with a visible
  *     status line so the agent knows what is and isn't narrated.
  *
- * The vision call is injected as `describeImage`/`ocrPage` so this module has no
- * LLM dependency and is fully unit-testable; production wires both to the vision
- * model already configured for the mission (VISION_MODEL / OPENROUTER_API_KEY) —
- * see createDescribeImage/createOcrPage, and their call sites in
+ * The vision call is injected as `describeImage`/`describePageVisual`/`ocrPage`
+ * so this module has no LLM dependency and is fully unit-testable; production
+ * wires all three to the vision model already configured for the mission
+ * (VISION_MODEL / OPENROUTER_API_KEY) — see createDescribeImage/
+ * createPageVisualDescribe/createOcrPage, and their call sites in
  * monitor-server.ts (uploads) and tools/fetch-url.ts (web fetches).
  *
  * Formats: plain text / Markdown, CSV, single images, PDF (mupdf), XLSX (exceljs →
@@ -131,10 +143,14 @@ export type OcrPageFn = DescribeImageFn;
  *
  * Also asks for a verbatim text transcription when the image contains legible text
  * (a screenshot, whiteboard photo, sign, chart with data labels, etc.) — the same
- * class of loss issue #50 fixed for whole scanned PDF pages, but here the image is
- * a supplementary asset alongside real extracted text, not the page's only content,
- * so this stays one shared prompt/call rather than a second OCR pass: the model
- * decides whether transcription is warranted, and omits the section when it isn't.
+ * class of loss issue #50 fixed for whole scanned PDF pages. This prompt is for
+ * images where that text ISN'T already captured some other way: a standalone
+ * upload, or an image embedded in a DOCX. Deliberately NOT used for a PDF page's
+ * "Page visual" note (see PAGE_VISUAL_PROMPT) — there, the "image" is a render of
+ * a page whose real text mupdf already extracted, so asking for transcription
+ * here would be a second, less reliable pass over content already captured
+ * accurately (found live: it does not just risk this, it reliably reproduces the
+ * same paragraphs verbatim a second time, doubling every non-scanned page).
  */
 const AUTO_DESCRIBE_PROMPT =
 	"Briefly describe what this image shows. " +
@@ -145,6 +161,17 @@ const AUTO_DESCRIBE_PROMPT =
 	"section below your description — render tables as Markdown tables and " +
 	"mathematical notation as LaTeX ($...$ inline, $$...$$ display). Omit the " +
 	"'Text:' section entirely if there is no legible text worth transcribing.";
+
+/**
+ * Prompt for a PDF page's supplementary "Page visual" note, used only when the
+ * page already has its own separately-extracted real text (mupdf) sitting right
+ * above this note in content.md — description only, no transcription request.
+ * Splitting this from AUTO_DESCRIBE_PROMPT is the fix for the duplication above.
+ */
+const PAGE_VISUAL_PROMPT =
+	"Briefly describe what this image shows. " +
+	"Focus on key information, charts, diagrams, or notable visual elements not " +
+	"already conveyed by the page's text. Two to four sentences.";
 
 /**
  * Prompt for OCR transcription (issue #50) — deliberately the opposite instruction
@@ -215,6 +242,15 @@ export function createDescribeImage(
 	return createVisionTextCall(model, AUTO_DESCRIBE_PROMPT, signal);
 }
 
+/** Build the production describer for a PDF page's "Page visual" note — see
+ * PAGE_VISUAL_PROMPT for why this is a separate prompt from createDescribeImage. */
+export function createPageVisualDescribe(
+	model: Model<string>,
+	signal?: AbortSignal,
+): DescribeImageFn {
+	return createVisionTextCall(model, PAGE_VISUAL_PROMPT, signal);
+}
+
 /**
  * Build the production `ocrPage` from a vision-capable model (issue #50). Not a
  * dedicated OCR provider (no new API key/dependency) — reuses whichever vision
@@ -236,6 +272,11 @@ export interface ProcessOptions {
 	/** Directory under which `artifacts/{id}/` is written. */
 	artifactsDir: string;
 	describeImage?: DescribeImageFn;
+	/** Describer for a PDF page's "Page visual" note specifically — a different,
+	 * description-only prompt from `describeImage` (see PAGE_VISUAL_PROMPT). Not
+	 * used for scanned pages (those go through `ocrPage`) or for standalone/
+	 * DOCX-embedded images (those use `describeImage`). */
+	describePageVisual?: DescribeImageFn;
 	/** OCR fallback for scanned PDF pages with no embedded text layer (issue #50). */
 	ocrPage?: OcrPageFn;
 	limits?: Partial<ProcessLimits>;
@@ -546,7 +587,7 @@ async function processPdf(
 	bytes: Buffer,
 	filename: string,
 	limits: ProcessLimits,
-	describeImage: DescribeImageFn | undefined,
+	describePageVisual: DescribeImageFn | undefined,
 	ocrPage: OcrPageFn | undefined,
 	artifactsDir: string,
 	signal?: AbortSignal,
@@ -618,8 +659,8 @@ async function processPdf(
 						section += `\n\n*(Scanned page, OCR failed — InspectImage("${inspectImageHint(artifactsDir, fileName)}") to transcribe manually.)*`;
 						unprocessed.push({ item: fileName, reason: "ocr-failed" });
 					}
-				} else if (describeSet.has(i) && describeImage) {
-					const desc = await describeImage(png, "image/png");
+				} else if (describeSet.has(i) && describePageVisual) {
+					const desc = await describePageVisual(png, "image/png");
 					if (desc) {
 						section += `\n\n**Page visual:** ${desc}`;
 					} else {
@@ -986,7 +1027,7 @@ export async function processBuffer(
 				bytes,
 				opts.filename,
 				limits,
-				opts.describeImage,
+				opts.describePageVisual,
 				opts.ocrPage,
 				opts.artifactsDir,
 				opts.signal,

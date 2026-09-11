@@ -36,15 +36,26 @@ problems needing two different fixes, discovered back to back on the same real d
 
 ## Decision
 
-### 1. Every image-description call also attempts verbatim text transcription
+### 1. Every image-description call also attempts verbatim text transcription — except a PDF page's own visual note
 
 One shared prompt/call (`AUTO_DESCRIBE_PROMPT`, built by `createDescribeImage`) now asks for a
 2–4 sentence description **and**, if the image contains legible text (a screenshot, whiteboard
 photo, sign, chart with data labels), a verbatim `Text:` section — Markdown tables, LaTeX for
 math. The model decides whether transcription applies and omits the section when it doesn't, so
-this adds no new vision calls. It applies uniformly everywhere `describeImage` is already called:
-standalone image uploads, DOCX-embedded images, and a PDF page's "Page visual" note when the page
-already has a real text layer.
+this adds no new vision calls. Applies to standalone image uploads and DOCX-embedded images —
+cases where the image's content isn't captured anywhere else.
+
+**Revised after shipping**: this was originally applied to a PDF page's "Page visual" note too
+(the caption added when a page already has real extracted text). Found live, immediately: this
+reliably re-transcribed the page's own already-correct text a second time — not a rare
+mistranscription risk, a near-certain duplication, since the model faithfully does what the
+prompt asks (transcribe legible text) and the whole rendered page *is* legible text it can see.
+Fixed structurally, not by tweaking prompt wording: a PDF page's visual note now goes through a
+separate injection point, `describePageVisual` (`createPageVisualDescribe`,
+`PAGE_VISUAL_PROMPT`) — description only, no transcription instruction at all — kept fully
+separate from `describeImage` at the type level (`ProcessOptions` has both fields; `processPdf`
+only ever receives `describePageVisual`, never `describeImage`) so this can't regress by a future
+caller accidentally wiring the wrong one back in.
 
 ### 2. A PDF page with no usable extracted text gets OCR'd, not just described
 
@@ -103,8 +114,9 @@ because the new joining logic is more compact, with no change in how much real t
 ## The full pipeline, end to end
 
 Both entry points — an operator upload (`monitor-server.ts`'s `/upload` route) and an agent's
-`FetchUrl` call on a `.pdf`/image URL — construct the same `describeImage`/`ocrPage` pair from
-whatever vision model is configured, and hand bytes to the one shared `processBuffer()`:
+`FetchUrl` call on a `.pdf`/image URL — construct the same `describeImage` /
+`describePageVisual` / `ocrPage` trio from whatever vision model is configured, and hand bytes to
+the one shared `processBuffer()`:
 
 1. **Format detection** (`detectFormat`): extension first, then a magic-byte sniff, then the
    supplied MIME type.
@@ -118,12 +130,12 @@ whatever vision model is configured, and hand bytes to the one shared `processBu
      configured: render the page, OCR it (decision 2), and use the transcription as the page's
      real content — not subject to the describe-now/defer budget.
    - Otherwise, if the page is within the render budget: render it and, budget permitting
-     (`maxAutoDescribe`, largest-area-first via `selectImages`), auto-caption it — now also
-     attempting text transcription in the same call (decision 1) — or leave an `InspectImage`
+     (`maxAutoDescribe`, largest-area-first via `selectImages`), auto-caption it via
+     `describePageVisual` (description-only, decision 1's revision) — or leave an `InspectImage`
      pointer for the agent to pull on demand.
 4. **Standalone/embedded images** (a direct image upload, or an image embedded in a DOCX): same
-   describe-now/defer budget and the same caption-plus-transcription prompt as a PDF page's
-   visual note (decision 1) — one shared captioner, `createDescribeImage`, for every case.
+   describe-now/defer budget, but via `describeImage` — the caption-plus-transcription prompt,
+   since here (unlike a PDF page) nothing else has already captured the image's own content.
 5. **Assembly**: `content.md` opens with a status line (`complete`/`partial`/`unsupported`) and
    the reconstructed Markdown; page renders, embedded images, and the original file are all saved
    alongside it as artifacts.
@@ -158,7 +170,7 @@ whatever vision model is configured, and hand bytes to the one shared `processBu
 - `packages/agent-runtime-worker/src/document-processor.ts` — the pipeline itself
 - `packages/agent-runtime-worker/src/pdf-tables.ts` — table reconstruction (decision 3)
 - `packages/agent-runtime-worker/src/monitor-server.ts` — upload entry point, wires
-  `describeImage`/`ocrPage`
+  `describeImage`/`describePageVisual`/`ocrPage`
 - `packages/agent-runtime-worker/src/tools/fetch-url.ts` — web-fetch entry point, same wiring
 - `packages/agent-runtime-worker/tests/pdf-tables.unit.test.ts`,
   `packages/agent-runtime-worker/tests/document-processor.unit.test.ts` — including a real exam
