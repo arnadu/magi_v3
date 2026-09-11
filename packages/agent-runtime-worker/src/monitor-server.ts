@@ -1226,13 +1226,21 @@ export class MonitorServer {
 			// Issue #51: artifacts live under sharedDir, but the agent's Bash tool
 			// runs with cwd set to its own workdir — a bare "artifacts/..." path
 			// silently resolves nowhere. $SHARED_DIR is already injected into every
-			// Bash subprocess (tools.ts), so the shell resolves it correctly.
+			// Bash subprocess (tools.ts), so the shell resolves it there. But
+			// mission-copilot has no Bash-only recipients guarantee: it reads
+			// artifacts via the `ReadSharedFile` tool, a direct (non-shell) tool
+			// call whose `path` argument is never shell-expanded — pasting the
+			// `$SHARED_DIR`-prefixed hint into it resolves to a literal, nonexistent
+			// "$SHARED_DIR" subdirectory (found live). Give the sharedDir-relative
+			// path as the primary reference (correct for ReadSharedFile) and the
+			// Bash form as an explicit second option, so neither tool is misled.
+			const relPath = `artifacts/${result.artifactId}/content.md`;
 			const body = [
 				message.trim(),
 				"",
 				`📎 Uploaded file: ${safeName}`,
-				`Processed → \`$SHARED_DIR/artifacts/${result.artifactId}/content.md\` (${result.summary}, ${result.processingStatus}).`,
-				`Read it with: \`cat $SHARED_DIR/artifacts/${result.artifactId}/content.md\``,
+				`Processed → \`${relPath}\` (path relative to the shared dir; ${result.summary}, ${result.processingStatus}).`,
+				`Bash: \`cat $SHARED_DIR/${relPath}\`  ·  ReadSharedFile tool: path = \`${relPath}\``,
 			]
 				.join("\n")
 				.trim();

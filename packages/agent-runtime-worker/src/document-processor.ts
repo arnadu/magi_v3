@@ -983,8 +983,13 @@ async function processZip(
 			filename: entry.name.split("/").pop() ?? entry.name,
 		});
 		processed++;
+		// Same $SHARED_DIR ambiguity as the upload notification (issue #51 /
+		// mission-copilot's ReadSharedFile follow-up): give the sharedDir-relative
+		// path plainly, plus the Bash form, so a non-shell tool isn't handed a
+		// literal "$SHARED_DIR" prefix it can't expand.
+		const subRelPath = `artifacts/${sub.artifactId}/content.md`;
 		lines.push(
-			`- \`${entry.name}\` → artifact \`${sub.artifactId}\` (${sub.format}, ${sub.summary}) — \`cat $SHARED_DIR/artifacts/${sub.artifactId}/content.md\``,
+			`- \`${entry.name}\` → artifact \`${sub.artifactId}\` (${sub.format}, ${sub.summary}) — path \`${subRelPath}\` (Bash: \`cat $SHARED_DIR/${subRelPath}\`)`,
 		);
 	}
 
