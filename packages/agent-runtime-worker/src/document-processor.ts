@@ -41,6 +41,7 @@ import {
 } from "./artifacts.js";
 import { MIME_TO_EXT, VISION_MIMES } from "./mime-types.js";
 import { piModels } from "./models.js";
+import { reconstructPageText, type StextLine } from "./pdf-tables.js";
 
 // ---------------------------------------------------------------------------
 // Types + limits
@@ -468,6 +469,48 @@ async function processImage(
 	};
 }
 
+/** mupdf's own JSON shape (undocumented in its .d.ts, which only types asJSON()
+ * as returning a string) — only the fields reconstructPageText() needs. */
+interface StextJson {
+	blocks: Array<{
+		type: string;
+		lines?: Array<{
+			text: string;
+			bbox: { x: number; y: number; w: number; h: number };
+		}>;
+	}>;
+}
+
+/** Extracts a page's text via mupdf's structured JSON rather than `.asText()`,
+ * upgrading tabular regions into real Markdown tables (see pdf-tables.ts).
+ * `rawLength` — the sum of trimmed line lengths before Markdown formatting —
+ * is what the scanned-page check (SCANNED_TEXT_THRESHOLD) should measure, not
+ * `text.length`: the formatted/joined output's length depends on incidental
+ * choices (blank-line collapsing, `| --- |` table overhead) that have nothing
+ * to do with how much real text mupdf actually found on the page. */
+function extractPageText(page: mupdf.Page): {
+	text: string;
+	rawLength: number;
+} {
+	const json = JSON.parse(page.toStructuredText().asJSON()) as StextJson;
+	const lines: StextLine[] = [];
+	let rawLength = 0;
+	for (const block of json.blocks) {
+		if (block.type !== "text") continue;
+		for (const l of block.lines ?? []) {
+			lines.push({
+				text: l.text,
+				x: l.bbox.x,
+				y: l.bbox.y,
+				w: l.bbox.w,
+				h: l.bbox.h,
+			});
+			rawLength += l.text.trim().length;
+		}
+	}
+	return { text: reconstructPageText(lines), rawLength };
+}
+
 async function processPdf(
 	bytes: Buffer,
 	filename: string,
@@ -522,8 +565,9 @@ async function processPdf(
 	for (let i = 0; i < pageCount; i++) {
 		if (signal?.aborted) break;
 		const page = doc.loadPage(i);
-		const text = page.toStructuredText().asText().trim();
-		const isScanned = text.length < SCANNED_TEXT_THRESHOLD;
+		const { text: pageText, rawLength } = extractPageText(page);
+		const text = pageText.trim();
+		const isScanned = rawLength < SCANNED_TEXT_THRESHOLD;
 		let section = `## Page ${i + 1}`;
 		if (text) section += `\n\n${text}`;
 
