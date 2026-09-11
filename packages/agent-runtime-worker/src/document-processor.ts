@@ -29,6 +29,13 @@
  *     description-only prompt for exactly that, kept apart from `describeImage`
  *     at the type level so a page's visual note can never trigger a text
  *     transcription of content already sitting right above it in content.md.
+ *   - **...and skipped entirely when there's provably nothing there to see.**
+ *     `pageHasVisualContent()` checks the page's own Resources/XObject
+ *     dictionary directly — mupdf's text extraction never reports a non-text
+ *     visual element as an "image" (verified live: a real logo turned out to
+ *     be a Form XObject, invisible to StructuredText even with
+ *     "preserve-images"). A page with no XObject at all — most pages, in most
+ *     documents — gets zero vision calls, not a wasted one.
  *   - **A PDF page with no usable extracted text (a scan) gets OCR'd**, not just
  *     described — SCANNED_TEXT_THRESHOLD decides per page, and this runs
  *     independently of the describe-now/defer budget above: a page with zero
@@ -452,6 +459,35 @@ function inspectImageHint(artifactsDir: string, relPath: string): string {
 	return `${artifactsDir}/artifacts/<id>/${relPath}`;
 }
 
+/**
+ * Whether a page has any embedded graphical content (an Image or Form
+ * XObject) at all — used to skip an unnecessary describePageVisual vision
+ * call on a page that is provably pure text.
+ *
+ * mupdf's text extraction does NOT report non-text visual content as an
+ * "image" the way one might expect: verified live against a real PDF whose
+ * visible logo turned out to be a Form XObject (a self-contained nested
+ * content stream — common for vector-drawn graphics), not an Image XObject.
+ * `StructuredText.asJSON()` reported zero "image"-type blocks for that page
+ * even with the `"preserve-images"` option, because the logo was never in a
+ * shape that mode surfaces at all. This checks the page's own
+ * Resources/XObject dictionary directly instead of inferring from text
+ * extraction, which structurally cannot see this content.
+ */
+function pageHasVisualContent(page: mupdf.Page): boolean {
+	if (!page.isPDF()) return true; // not a page shape we can inspect this way — err toward describing it
+	const resources = (page as mupdf.PDFPage)
+		.getObject()
+		.getInheritable("Resources");
+	const xobjects = resources.get("XObject");
+	if (!xobjects || xobjects.isNull()) return false;
+	let found = false;
+	xobjects.forEach(() => {
+		found = true;
+	});
+	return found;
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -613,12 +649,35 @@ async function processPdf(
 	const pageCount = doc.countPages();
 	const renderCount = Math.min(pageCount, limits.maxRenderPages);
 
+	// Pre-pass: load each page once, extract its text, and decide whether it
+	// needs a vision call at all — scanned (needs OCR) or provably has some
+	// non-text visual content (pageHasVisualContent). A page that is neither
+	// (the common case: a page of plain typed text) never competes for the
+	// describe-now/defer budget, and never gets a vision call — there is
+	// nothing on it a caption could add. This also stops a scanned page from
+	// occupying a budget slot that a real logo/chart elsewhere in the document
+	// could have used instead — a scanned page's own fate is decided by the
+	// OCR branch below regardless of describeSet membership.
+	const pages: mupdf.Page[] = [];
+	const pageInfo: { text: string; isScanned: boolean }[] = [];
+	const needsVisionCall: boolean[] = [];
+	for (let i = 0; i < pageCount; i++) {
+		const page = doc.loadPage(i);
+		pages.push(page);
+		const { text, rawLength } = extractPageText(page);
+		const isScanned = rawLength < SCANNED_TEXT_THRESHOLD;
+		pageInfo.push({ text: text.trim(), isScanned });
+		needsVisionCall.push(
+			i < renderCount && (isScanned || pageHasVisualContent(page)),
+		);
+	}
+
 	// Page renders are full-page → all substantive; the budget caps how many we
 	// describe (dimensionless items keep document order via selectImages).
-	const renderItems: RankableImage[] = Array.from(
-		{ length: renderCount },
-		(_, i) => ({ index: i }),
-	);
+	const renderItems: RankableImage[] = [];
+	for (let i = 0; i < renderCount; i++) {
+		if (needsVisionCall[i]) renderItems.push({ index: i });
+	}
 	const selection = selectImages(renderItems, limits);
 	const describeSet = new Set(selection.describe);
 
@@ -637,10 +696,8 @@ async function processPdf(
 
 	for (let i = 0; i < pageCount; i++) {
 		if (signal?.aborted) break;
-		const page = doc.loadPage(i);
-		const { text: pageText, rawLength } = extractPageText(page);
-		const text = pageText.trim();
-		const isScanned = rawLength < SCANNED_TEXT_THRESHOLD;
+		const page = pages[i];
+		const { text, isScanned } = pageInfo[i];
 		let section = `## Page ${i + 1}`;
 		if (text) section += `\n\n${text}`;
 
@@ -659,6 +716,10 @@ async function processPdf(
 						section += `\n\n*(Scanned page, OCR failed — InspectImage("${inspectImageHint(artifactsDir, fileName)}") to transcribe manually.)*`;
 						unprocessed.push({ item: fileName, reason: "ocr-failed" });
 					}
+				} else if (!needsVisionCall[i]) {
+					// Provably nothing here a vision call could add (no text-layer
+					// concern, no Image/Form XObject on the page at all) — no note
+					// needed, and not "unprocessed": this page is fully processed.
 				} else if (describeSet.has(i) && describePageVisual) {
 					const desc = await describePageVisual(png, "image/png");
 					if (desc) {

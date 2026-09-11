@@ -98,6 +98,36 @@ numeric value routinely lands in a different block than its text label, in the r
 this was built against) — which is why detection works on the flat set of lines across the whole
 page, not mupdf's block boundaries.
 
+### 4. A page's visual note is skipped entirely when the page provably has no visual content
+
+Raised directly by a question worth recording: *if mupdf already gives us structured text, why
+are we also processing a rendered image of the whole page?* The answer is that mupdf's text
+extraction has no visibility into non-text page content — an embedded photo, chart, diagram, or
+logo — so rendering the page and running it through `describePageVisual` (decision 1) is how that
+content gets seen at all, when it exists. The bug was assuming it's worth checking on *every*
+rendered page regardless of whether anything like that is actually there.
+
+Checked directly against the real exam PDF's own PDF object graph (not inferred from text
+extraction, which can't tell you this): page 1 has exactly one `XObject`, `Subtype: Form` — a
+self-contained nested content stream, the common shape for a vector-drawn logo — and pages 2–4
+have **no `XObject` dictionary at all**. Also confirmed live that `StructuredText.asJSON()` never
+reports this Form XObject as an `"image"`-type block, even with the `"preserve-images"` option —
+because it isn't an `Image` XObject, so structured-text extraction (a text/glyph API) was never
+going to surface it regardless of options. mupdf does not hand back "text plus a list of images"
+as two clean, separate things the way one might expect from a PDF library; getting a real answer
+required inspecting the page's `Resources`/`XObject` dictionary directly, one level below
+`StructuredText`.
+
+New `pageHasVisualContent(page)`: true if the page's `Resources/XObject` dictionary has any entry
+at all (`Image` or `Form` — a Form XObject can itself contain anything, including nested raster
+images, so its mere presence is treated as "worth a look," not decoded further). A page that is
+neither scanned nor has any XObject at all is excluded from the describe-now/defer budget
+entirely — no vision call, and no note in content.md (its absence is self-explanatory once you
+know why, not a gap to flag as "unprocessed"). Confirmed on the real exam PDF: `describePageVisual`
+calls for a 4-page document dropped from 4 to 1. The page render + PNG save is unaffected — this
+only skips the vision *call*, per this file's existing principle that only the vision step is
+worth budgeting, not local rendering.
+
 ### Scanned-page detection measures raw extraction, not the final formatted string
 
 `SCANNED_TEXT_THRESHOLD` compares against the sum of trimmed per-line character counts
@@ -129,6 +159,9 @@ the one shared `processBuffer()`:
    - If the page's raw extracted text is under `SCANNED_TEXT_THRESHOLD` **and** an `ocrPage` is
      configured: render the page, OCR it (decision 2), and use the transcription as the page's
      real content — not subject to the describe-now/defer budget.
+   - Otherwise, if the page has no `Image`/`Form` XObject at all (`pageHasVisualContent`,
+     decision 4): nothing further — the page is rendered and saved as usual, but never competes
+     for the describe budget and gets no vision call or note.
    - Otherwise, if the page is within the render budget: render it and, budget permitting
      (`maxAutoDescribe`, largest-area-first via `selectImages`), auto-caption it via
      `describePageVisual` (description-only, decision 1's revision) — or leave an `InspectImage`
@@ -147,6 +180,10 @@ the one shared `processBuffer()`:
 - Every PDF/DOCX/image processed through this pipeline now recovers more real content and less
   lossy paraphrase, at no new cost for the (common) non-scanned case, and a bounded new cost (one
   OCR call per scanned page, within the existing render-page limit) for the scanned case.
+- Decision 4 is a net cost *reduction*, not just a wash: a page with plain typed text and nothing
+  else — the common case for most documents — now gets zero vision calls at all instead of one.
+  On the real exam PDF, `describePageVisual` calls dropped from 4 (one per page) to 1 (only the
+  page with an actual embedded Form XObject).
 - No new secrets, external dependencies, or trust boundaries — everything reuses the vision model
   this pipeline already calls; nothing in `docs/security/threat-model.md` changes.
 - **Known, accepted limitation — not addressed here**: a "sandwich" PDF (one where the original

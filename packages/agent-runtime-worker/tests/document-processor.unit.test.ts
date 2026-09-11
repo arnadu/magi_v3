@@ -265,6 +265,52 @@ describe("processBuffer", () => {
 		expect(content).not.toContain("describeImage must never run");
 	});
 
+	// Real-world regression, part 3: the exam PDF has one Form XObject (a
+	// vector-drawn logo) on page 1 and literally no XObject dictionary at all
+	// on pages 2-4 — confirmed directly against the PDF's own object graph.
+	// Before this fix, all 4 pages competed for the describe-now budget and
+	// got a vision call regardless; only page 1 has anything a vision call
+	// could possibly add.
+	it("skips the page-visual vision call entirely for pages with no embedded visual content", async () => {
+		const pdf = readFileSync(join(DOCS, "exam-with-tables.pdf"));
+		let pageVisualCalls = 0;
+		const describePageVisual: DescribeImageFn = async () => {
+			pageVisualCalls++;
+			return "a caption";
+		};
+		const r = await processBuffer(pdf, {
+			filename: "exam-with-tables.pdf",
+			mimeType: "application/pdf",
+			artifactsDir: dir,
+			describePageVisual,
+		});
+		expect(pageVisualCalls).toBe(1); // only page 1 (the logo), not all 4 pages
+		expect(r.processingStatus).toBe("complete"); // skipped pages aren't "unprocessed"
+		const content = await readContent(r.contentPath);
+		expect(content).not.toContain("not auto-described");
+	});
+
+	// Same optimization, the other real embedded-image shape: test-pdf.pdf has
+	// a genuine raster Image XObject on pages 1/2/4 ("First/Second Image",
+	// "Chart") but none at all on page 3 ("Data Table" — pure text + a table,
+	// confirmed directly against the PDF's own object graph).
+	it("still describes pages with a real embedded Image XObject, but not the text-only table page", async () => {
+		const pdf = readFileSync(join(DOCS, "test-pdf.pdf"));
+		const described: string[] = [];
+		const describePageVisual: DescribeImageFn = async (bytes) => {
+			described.push(bytes.subarray(0, 8).toString("hex"));
+			return "a caption";
+		};
+		await processBuffer(pdf, {
+			filename: "test-pdf.pdf",
+			mimeType: "application/pdf",
+			artifactsDir: dir,
+			describePageVisual,
+			limits: { maxAutoDescribe: 10 }, // no budget pressure — isolate the XObject check
+		});
+		expect(described).toHaveLength(3); // pages 1, 2, 4 — not page 3
+	});
+
 	// Issue #50: scanned PDFs (no embedded text layer) fall back to OCR instead
 	// of a vision-model description of the page. scanned-page.pdf is a single
 	// page containing only an image (dog.png) — mupdf's toStructuredText()
