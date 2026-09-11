@@ -143,22 +143,18 @@ function useView(refreshKey: number, authStatus: AuthState["status"]): View {
 			};
 		}
 
-		// No mission selected — offer a picker, or fall back to demo data.
+		// No mission selected — offer the picker (creation flow lives there, so
+		// a signed-in user with zero missions must land there too, not on demo
+		// data with no path out — found live, 2026-09-11: a brand-new user's
+		// first login had no missions yet, got the demo dashboard instead of
+		// the picker, and had no way to reach "New mission"/"Customize first").
+		// Demo data is reserved for the fetch *failing* below, not for a
+		// legitimately empty list.
 		(async () => {
 			try {
 				const missions = await fetchMissions();
 				if (cancelled) return;
-				setView(
-					missions.length > 0
-						? { kind: "picker", missions }
-						: {
-								kind: "ready",
-								tree: SAMPLE_TREE,
-								mission: null,
-								demo: true,
-								updatedAt: Date.now(),
-							},
-				);
+				setView({ kind: "picker", missions });
 			} catch (e) {
 				if (cancelled) return;
 				// An expired/missing session must surface the login screen, not
