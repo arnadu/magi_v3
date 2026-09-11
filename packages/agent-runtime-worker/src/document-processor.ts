@@ -395,6 +395,22 @@ function statusLine(status: ProcessingStatus, detail?: string): string {
 	}
 }
 
+/**
+ * Absolute-path hint for an `InspectImage("<path>")` call embedded in
+ * generated content.md text (issue #51). InspectImage resolves a relative
+ * path against the agent's `workdir`, not `sharedDir` — where every artifact
+ * actually lives — so a bare `artifacts/<id>/...` hint silently fails to
+ * resolve. Unlike a Bash `cat` hint, `$SHARED_DIR` doesn't help here either:
+ * InspectImage is a direct tool call, not a shell command, so nothing
+ * expands `$SHARED_DIR` in its `path` argument — it needs a real absolute
+ * path, matching the convention the tool's own description already uses.
+ * The artifact id itself is still a literal `<id>` placeholder: it isn't
+ * assigned until after these handlers return (see processBuffer).
+ */
+function inspectImageHint(artifactsDir: string, relPath: string): string {
+	return `${artifactsDir}/artifacts/<id>/${relPath}`;
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -461,6 +477,7 @@ async function processImage(
 	filename: string,
 	mimeType: string,
 	describeImage: DescribeImageFn | undefined,
+	artifactsDir: string,
 ): Promise<Handled> {
 	const cleanMime = mimeType.split(";")[0].trim() || "image/jpeg";
 	const ext = MIME_TO_EXT[cleanMime] ?? filename.split(".").pop() ?? "jpg";
@@ -470,7 +487,7 @@ async function processImage(
 		: undefined;
 	const body = description
 		? `${description}`
-		: `(Not described automatically — InspectImage("artifacts/<id>/${imageName}", "your question") to analyze.)`;
+		: `(Not described automatically — InspectImage("${inspectImageHint(artifactsDir, imageName)}", "your question") to analyze.)`;
 	const content = `${statusLine("complete")}\n\n# ${filename}\n\n${body}`;
 	return {
 		format: "image",
@@ -531,6 +548,7 @@ async function processPdf(
 	limits: ProcessLimits,
 	describeImage: DescribeImageFn | undefined,
 	ocrPage: OcrPageFn | undefined,
+	artifactsDir: string,
 	signal?: AbortSignal,
 ): Promise<Handled> {
 	let doc: mupdf.Document;
@@ -597,7 +615,7 @@ async function processPdf(
 					if (transcribed) {
 						section += `\n\n*(No embedded text layer — transcribed via OCR.)*\n\n${transcribed}`;
 					} else {
-						section += `\n\n*(Scanned page, OCR failed — InspectImage("artifacts/<id>/${fileName}") to transcribe manually.)*`;
+						section += `\n\n*(Scanned page, OCR failed — InspectImage("${inspectImageHint(artifactsDir, fileName)}") to transcribe manually.)*`;
 						unprocessed.push({ item: fileName, reason: "ocr-failed" });
 					}
 				} else if (describeSet.has(i) && describeImage) {
@@ -605,10 +623,10 @@ async function processPdf(
 					if (desc) {
 						section += `\n\n**Page visual:** ${desc}`;
 					} else {
-						section += `\n\n*(Page ${i + 1} visual: InspectImage("artifacts/<id>/${fileName}") to analyze.)*`;
+						section += `\n\n*(Page ${i + 1} visual: InspectImage("${inspectImageHint(artifactsDir, fileName)}") to analyze.)*`;
 					}
 				} else {
-					section += `\n\n*(Page ${i + 1} rendered but not auto-described — InspectImage("artifacts/<id>/${fileName}", "your question") to analyze.)*`;
+					section += `\n\n*(Page ${i + 1} rendered but not auto-described — InspectImage("${inspectImageHint(artifactsDir, fileName)}", "your question") to analyze.)*`;
 					unprocessed.push({ item: fileName, reason: "over-budget" });
 				}
 			} catch {
@@ -720,6 +738,7 @@ async function processDocx(
 	filename: string,
 	limits: ProcessLimits,
 	describeImage: DescribeImageFn | undefined,
+	artifactsDir: string,
 ): Promise<Handled> {
 	// Collect embedded images during conversion; describe/defer them afterward
 	// using the same policy as PDF/HTML.
@@ -775,11 +794,11 @@ async function processDocx(
 		if (describeSet.has(i) && describeImage) {
 			const desc = await describeImage(c.bytes, c.mime);
 			imageNotes.push(
-				`- \`${c.name}\`: ${desc ?? `(InspectImage("artifacts/<id>/${c.name}") to analyze)`}`,
+				`- \`${c.name}\`: ${desc ?? `(InspectImage("${inspectImageHint(artifactsDir, c.name)}") to analyze)`}`,
 			);
 		} else {
 			imageNotes.push(
-				`- \`${c.name}\`: not auto-described — InspectImage("artifacts/<id>/${c.name}", "your question") to analyze`,
+				`- \`${c.name}\`: not auto-described — InspectImage("${inspectImageHint(artifactsDir, c.name)}", "your question") to analyze`,
 			);
 			unprocessed.push({ item: c.name, reason: "over-budget" });
 		}
@@ -863,7 +882,7 @@ async function processZip(
 		});
 		processed++;
 		lines.push(
-			`- \`${entry.name}\` → artifact \`${sub.artifactId}\` (${sub.format}, ${sub.summary}) — \`cat artifacts/${sub.artifactId}/content.md\``,
+			`- \`${entry.name}\` → artifact \`${sub.artifactId}\` (${sub.format}, ${sub.summary}) — \`cat $SHARED_DIR/artifacts/${sub.artifactId}/content.md\``,
 		);
 	}
 
@@ -959,6 +978,7 @@ export async function processBuffer(
 				opts.filename,
 				mime,
 				opts.describeImage,
+				opts.artifactsDir,
 			);
 			break;
 		case "pdf":
@@ -968,6 +988,7 @@ export async function processBuffer(
 				limits,
 				opts.describeImage,
 				opts.ocrPage,
+				opts.artifactsDir,
 				opts.signal,
 			);
 			break;
@@ -980,6 +1001,7 @@ export async function processBuffer(
 				opts.filename,
 				limits,
 				opts.describeImage,
+				opts.artifactsDir,
 			);
 			break;
 		case "zip":

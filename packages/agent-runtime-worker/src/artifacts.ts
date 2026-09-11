@@ -114,20 +114,29 @@ async function writeDirectory(
 // ---------------------------------------------------------------------------
 
 /**
- * Write `files` + `meta.json` under `{workdir}/artifacts/{id}/`.
+ * Write `files` + `meta.json` under `{artifactsDir}/artifacts/{id}/`.
  * Returns the absolute path to the artifact directory.
  *
+ * `artifactsDir` is always the mission's `sharedDir` at every current call
+ * site (document-processor.ts, fetch-url.ts, browse-web.ts) — named for what
+ * it is, not "workdir": an agent's Bash tool runs with cwd set to its own
+ * private workdir, not sharedDir, so a bare relative `artifacts/<id>/...`
+ * path silently resolves nowhere for the agent (issue #51). Generated
+ * content.md text that points back at an artifact must account for this —
+ * see inspectImageHint() in document-processor.ts and the `$SHARED_DIR`
+ * env var (injected into every Bash subprocess, tools.ts) for the two ways
+ * that's actually done.
+ *
  * Convention: pass `{ name: "content.md", content: markdownText }` as the
- * primary file so agents can `cat artifacts/<id>/content.md` directly.
- * Additional files (extracted images, raw data) can follow.
+ * primary file. Additional files (extracted images, raw data) can follow.
  */
 export async function saveArtifact(
-	workdir: string,
+	artifactsDir: string,
 	id: string,
 	files: FileEntry[],
 	meta: ArtifactMeta,
 ): Promise<string> {
-	return writeDirectory(join(workdir, "artifacts", id), files, meta);
+	return writeDirectory(join(artifactsDir, "artifacts", id), files, meta);
 }
 
 // ---------------------------------------------------------------------------

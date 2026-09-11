@@ -160,6 +160,23 @@ describe("processBuffer", () => {
 		).resolves.toBeInstanceOf(Buffer);
 	});
 
+	// Issue #51: InspectImage resolves a relative path against the agent's own
+	// workdir, not sharedDir (where artifacts actually live) — a bare
+	// "artifacts/<id>/..." hint silently resolves nowhere. Every generated
+	// InspectImage hint must embed the real artifactsDir prefix.
+	it("embeds the real artifactsDir (not a bare relative path) in an undescribed image's InspectImage hint", async () => {
+		const png = readFileSync(join(DOCS, "dog.png"));
+		const r = await processBuffer(png, {
+			filename: "dog.png",
+			mimeType: "image/png",
+			artifactsDir: dir,
+			// describeImage omitted — exercises the "not described" hint text.
+		});
+		const content = await readContent(r.contentPath);
+		expect(content).toContain(`InspectImage("${dir}/artifacts/<id>/image.png"`);
+		expect(content).not.toMatch(/InspectImage\("artifacts\//);
+	});
+
 	it("extracts all PDF text and renders pages, respecting the describe budget", async () => {
 		const pdf = readFileSync(join(DOCS, "test-pdf.pdf"));
 		let describeCalls = 0;
@@ -183,6 +200,10 @@ describe("processBuffer", () => {
 		await expect(
 			readFile(join(dir, "artifacts", r.artifactId, "test-pdf.pdf")),
 		).resolves.toBeInstanceOf(Buffer);
+		// Issue #51: the over-budget page's InspectImage hint must be
+		// artifactsDir-absolute, not a bare "artifacts/..." path.
+		expect(content).toContain(`InspectImage("${dir}/artifacts/<id>/`);
+		expect(content).not.toMatch(/InspectImage\("artifacts\//);
 	});
 
 	// Real-world regression: an exam PDF whose data tables were reported as

@@ -1215,12 +1215,16 @@ export class MonitorServer {
 				ocrPage,
 			});
 
+			// Issue #51: artifacts live under sharedDir, but the agent's Bash tool
+			// runs with cwd set to its own workdir — a bare "artifacts/..." path
+			// silently resolves nowhere. $SHARED_DIR is already injected into every
+			// Bash subprocess (tools.ts), so the shell resolves it correctly.
 			const body = [
 				message.trim(),
 				"",
 				`📎 Uploaded file: ${safeName}`,
-				`Processed → \`artifacts/${result.artifactId}/content.md\` (${result.summary}, ${result.processingStatus}).`,
-				`Read it with: \`cat artifacts/${result.artifactId}/content.md\``,
+				`Processed → \`$SHARED_DIR/artifacts/${result.artifactId}/content.md\` (${result.summary}, ${result.processingStatus}).`,
+				`Read it with: \`cat $SHARED_DIR/artifacts/${result.artifactId}/content.md\``,
 			]
 				.join("\n")
 				.trim();

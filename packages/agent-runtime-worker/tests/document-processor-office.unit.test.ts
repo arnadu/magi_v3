@@ -73,6 +73,10 @@ describe("processBuffer — ZIP", () => {
 		expect(md).toContain("data.csv");
 		expect(md).toMatch(/artifact `.+` \(text/);
 		expect(md).toMatch(/artifact `.+` \(csv/);
+		// Issue #51: the "cat" hint for a nested artifact must resolve inside a
+		// Bash subprocess — $SHARED_DIR is injected there; a bare "artifacts/..."
+		// path resolves against the agent's workdir instead, where it doesn't exist.
+		expect(md).toContain("cat $SHARED_DIR/artifacts/");
 	});
 
 	it("does not expand nested zips (one level deep)", async () => {
