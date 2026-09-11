@@ -59,7 +59,16 @@ for cmd in flyctl git; do
   command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found. Install it and try again."
 done
 DOCKER_AVAILABLE=false
-command -v docker >/dev/null 2>&1 && DOCKER_AVAILABLE=true || warn "docker not found — execution plane image will be built on Fly remote builders."
+# `command -v docker` alone isn't enough: WSL2 with Docker Desktop installed
+# but its WSL integration disabled for this distro has a `docker` binary on
+# PATH that fails on every invocation (found live) — `docker info` actually
+# reaches the daemon, so a stub-but-broken `docker` correctly falls through
+# to the remote-builder path below instead of crashing on `flyctl auth docker`.
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  DOCKER_AVAILABLE=true
+else
+  warn "docker not available (missing, or its daemon is unreachable — e.g. WSL2 without Docker Desktop's WSL integration enabled) — execution plane image will be built on Fly remote builders."
+fi
 GH_AVAILABLE=false
 command -v gh >/dev/null 2>&1 && GH_AVAILABLE=true || warn "'gh' CLI not found — GitHub secret will not be set automatically."
 
