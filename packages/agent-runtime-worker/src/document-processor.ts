@@ -113,11 +113,23 @@ export type OcrPageFn = DescribeImageFn;
 /**
  * Prompt for the brief auto-description embedded in content.md. Kept short so the
  * vision model returns a 2–4 sentence summary; agents use InspectImage for depth.
+ *
+ * Also asks for a verbatim text transcription when the image contains legible text
+ * (a screenshot, whiteboard photo, sign, chart with data labels, etc.) — the same
+ * class of loss issue #50 fixed for whole scanned PDF pages, but here the image is
+ * a supplementary asset alongside real extracted text, not the page's only content,
+ * so this stays one shared prompt/call rather than a second OCR pass: the model
+ * decides whether transcription is warranted, and omits the section when it isn't.
  */
 const AUTO_DESCRIBE_PROMPT =
 	"Briefly describe what this image shows. " +
-	"Focus on key information, visible text, charts, diagrams, or notable visual elements. " +
-	"Two to four sentences.";
+	"Focus on key information, charts, diagrams, or notable visual elements. " +
+	"Two to four sentences.\n\n" +
+	"If the image contains legible text (a document, screenshot, whiteboard, sign, " +
+	"handwritten note, or similar), also transcribe that text verbatim in a 'Text:' " +
+	"section below your description — render tables as Markdown tables and " +
+	"mathematical notation as LaTeX ($...$ inline, $$...$$ display). Omit the " +
+	"'Text:' section entirely if there is no legible text worth transcribing.";
 
 /**
  * Prompt for OCR transcription (issue #50) — deliberately the opposite instruction
