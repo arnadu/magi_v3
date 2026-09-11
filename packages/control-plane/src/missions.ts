@@ -628,7 +628,7 @@ export function createMissionsRouter(db: Db): Router {
 			try {
 				const liveState = await getMachineState(mission.machineId);
 				const mapped = liveStateToStatus(liveState);
-				if (mapped !== mission.status) {
+				if (mapped !== null && mapped !== mission.status) {
 					await col.updateOne(
 						{ missionId: req.params.id },
 						{ $set: { status: mapped, updatedAt: new Date() } },
@@ -1575,7 +1575,32 @@ export function createMissionsRouter(db: Db): Router {
 	return router;
 }
 
-function liveStateToStatus(flyState: string): MissionDoc["status"] {
+/**
+ * Maps a live Fly machine state to a mission status, or `null` when the state
+ * doesn't confidently indicate one (leave the mission's current status alone).
+ *
+ * `null` for "created"/"replacing" — not `"error"` — matters because
+ * `provisionMission`/`resumeMission` return as soon as Fly accepts the
+ * create/start call, without waiting for the machine to reach "started".
+ * A mission doc is written as "running" immediately after that, making it
+ * eligible for this live-refresh check on the very next `GET /:id` — which
+ * the cockpit fires within milliseconds via a mount-only effect right after
+ * navigating to the new mission. Mapping the machine's still-transient state
+ * to "error" flipped brand-new, fully-provisioned missions to error within
+ * seconds (found live, 2026-09-11 — twice, both with machineId/volumeId/
+ * privateIp all set and no errorMessage, the fingerprint of this path rather
+ * than a real provisioning failure).
+ *
+ * The `default` case gets the same treatment: Fly has no first-class "failed"
+ * machine state (a crash surfaces as "stopped" with a nonzero exit code in a
+ * separate events field, not here), so an unrecognized state is ambiguous,
+ * not evidence of failure — overwriting a known-good status with "error" and
+ * no explanation is worse than leaving it stale until the next successful
+ * refresh.
+ */
+export function liveStateToStatus(
+	flyState: string,
+): MissionDoc["status"] | null {
 	switch (flyState) {
 		case "started":
 		case "starting":
@@ -1586,7 +1611,13 @@ function liveStateToStatus(flyState: string): MissionDoc["status"] {
 		case "destroyed":
 		case "destroying":
 			return "destroyed";
+		case "created":
+		case "replacing":
+			return null;
 		default:
-			return "error";
+			console.warn(
+				`[missions] unrecognized Fly machine state "${flyState}" — leaving mission status unchanged`,
+			);
+			return null;
 	}
 }
