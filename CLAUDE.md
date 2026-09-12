@@ -139,24 +139,25 @@ is the sprint `MAGI_V3_ROADMAP.md`'s own "Post-MVP (after Sprint 27)" section na
 completion line. See `MAGI_V3_ROADMAP.md`'s Sprint 27 row and `docs/implementation-history.md` for
 full detail.
 
-**Sprint 28a — Reliability fixes from three weeks of live usage (not started).** Small,
-independent patches filed directly by the mission copilots on `gold-digest-v2` and
-`meteo-textbook`: issue #38 (transient non-429 LLM errors aren't retried — one incident lost 38K
-tokens of work), #41 (no operator notification on spend-cap breach — caused a real 5-day
-outage), #37 (agent crash on duplicate key — non-atomic `seqInTurn`), #40 (`parseModel` wrongly
+**Sprint 28a — Reliability fixes from three weeks of live usage — ✅ Done.** Small, independent
+patches filed directly by the mission copilots on `gold-digest-v2` and `meteo-textbook`: issue #38
+(transient non-429 LLM errors aren't retried), #41 (no operator notification on spend-cap
+breach), #37 (agent crash on duplicate key — non-atomic `seqInTurn`), #40 (`parseModel` wrongly
 assumes only `anthropic/*` supports vision), #30 (deactivated agents still shown in cockpit), and
-F-024 (`ListSchedule` cross-user scope, bumped up from `findings.md`'s stale "Backlog"). Bundles
-#25 (configurable VM memory) with #31 (investigate suspected OOM-driven daemon crashes). Land
-before 28c's characterization tests since #30/#41 touch `daemon.ts`/`monitor-server.ts`.
+F-024 (`ListSchedule` cross-user scope) all closed/fixed. #25 (configurable VM memory) closed.
+**#31 (investigate suspected OOM-driven daemon crashes), bundled alongside #25, remains open** —
+tracked independently, not a 28a blocker since it was scoped as an open-ended investigation, not
+a discrete fix.
 
-**Sprint 28b — Mission-prep v1 + beta environment (not started).** Add a `"draft"` mission
-status; a control-plane-copilot tool reusing `SaveMissionConfig`'s patch mechanics to iterate on
-a draft config via chat; one `ProposeAction`-confirmed "Launch" action. Then stand up a fully
-separate, single-tenant beta deployment (`bash scripts/bootstrap.sh --suffix beta`) for a second,
-trusted user — chosen over adding them to the existing deployment because CR-04's shared-secret
-exposure needs no privilege escalation to reach. Sidesteps CR-04/F-024 by isolation rather than
-requiring either fixed first. The structured draft-review cockpit panel (mission-prep v2) is a
-fast-follow, not a beta precondition.
+**Sprint 28b — Mission-prep v1 + beta environment — ✅ Done.** `"draft"` mission status; the
+control-plane copilot's `EditDraftConfig` tool (direct, unconfirmed writes — safe pre-launch,
+unlike a live mission) plus `ProposeAction`-gated `launch_draft`; cockpit `DraftEditor` panel
+("Customize first" alongside instant "New mission"). A fully separate, single-tenant beta
+deployment (`bash scripts/bootstrap.sh --suffix prod-beta`, `TEMPLATE_ALLOWLIST`) is live for a
+second, trusted user — chosen over adding them to the existing deployment because CR-04's
+shared-secret exposure needs no privilege escalation to reach. Sidesteps CR-04/F-024 by isolation
+rather than requiring either fixed first. The structured draft-review cockpit panel (mission-prep
+v2) remains a fast-follow, not shipped.
 
 **Sprint 28c — Structural decomposition of `monitor-server.ts`/`daemon.ts` + file-scoped
 security fixes (not started, see `docs/code-structure.md`).** Renumbered from 28a on 2026-09-05
@@ -167,6 +168,8 @@ escalation), CR-02 (shell-interpolated agent ID), and CR-05 (auth token handling
 newly decomposed structure so these two files are touched once, not twice. Split out from a
 single Sprint 28 following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`)
 and this project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
+**Priority raised 2026-09-12**: with 28b's beta deployment now live, a second real external user
+now runs agent code on the same shared execution image CR-01/CR-02 describe — next up.
 
 **Sprint 28d — Remaining operational + security hardening (not started).** Renumbered from 28b
 on 2026-09-05 — no content change. Out-of-band alerting (issues #3, #4); G-4 disk monitoring
