@@ -449,6 +449,33 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 		});
 	});
 
+	describe("DELETE /:id — disabled", () => {
+		it("returns 403 and leaves the mission untouched (2026-09-12: real accidental destroy, zero confirmation)", async () => {
+			const missionId = newMissionId();
+			const createRes = await fetch(baseUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					missionId,
+					name: "Destroy Disabled Mission",
+					teamConfig: "inline",
+					mission: { name: "Destroy Disabled Mission" },
+					agents: baseAgents(),
+				}),
+			});
+			expect(createRes.status).toBe(201);
+
+			const deleteRes = await fetch(`${baseUrl}/${missionId}`, {
+				method: "DELETE",
+			});
+			expect(deleteRes.status).toBe(403);
+
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc?.status).toBe("running");
+			expect(doc?.machineId).toBeTruthy();
+		});
+	});
+
 	describe("POST /draft — create a draft mission", () => {
 		it("creates a blank draft with no machine and an empty roster", async () => {
 			const missionId = newMissionId();

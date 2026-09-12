@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
 	createDraft,
 	createMission,
-	deleteMission,
 	fetchMissionsStats,
 	fetchTemplates,
 	type MissionStatsEntry,
@@ -357,7 +356,6 @@ export function MissionsPanel({
 	const [creating, setCreating] = useState(!!initialTemplateId);
 	const [creatingDraft, setCreatingDraft] = useState(false);
 	const [busyId, setBusyId] = useState<string | null>(null);
-	const [confirmDestroyId, setConfirmDestroyId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [stats, setStats] = useState<Record<string, MissionStatsEntry>>({});
 
@@ -390,7 +388,6 @@ export function MissionsPanel({
 			setError((e as Error).message);
 		} finally {
 			setBusyId(null);
-			setConfirmDestroyId(null);
 		}
 	}
 
@@ -464,60 +461,32 @@ export function MissionsPanel({
 								<span className="mut mission-date">
 									{new Date(m.createdAt).toLocaleDateString()}
 								</span>
+								{/* Destroy is intentionally removed for now — the confirmation
+								flow (one inline "Confirm" click, generic wording, shown even
+								for a running mission) was thin enough to cause a real
+								accidental destroy (2026-09-11). Re-add only with a typed-
+								confirmation step; the backend route is disabled too
+								(missions.ts DELETE /:id). */}
 								<div className="mission-actions">
-									{confirmDestroyId === m.missionId ? (
-										<>
-											<span className="mut">Destroy permanently?</span>
-											<button
-												type="button"
-												className="rail-btn mission-danger"
-												disabled={busyId === m.missionId}
-												onClick={() => runAction(m.missionId, deleteMission)}
-											>
-												Confirm
-											</button>
-											<button
-												type="button"
-												className="rail-btn"
-												disabled={busyId === m.missionId}
-												onClick={() => setConfirmDestroyId(null)}
-											>
-												Cancel
-											</button>
-										</>
-									) : (
-										<>
-											{m.status === "running" && (
-												<button
-													type="button"
-													className="rail-btn"
-													disabled={busyId === m.missionId}
-													onClick={() => runAction(m.missionId, suspendMission)}
-												>
-													Suspend
-												</button>
-											)}
-											{m.status === "suspended" && (
-												<button
-													type="button"
-													className="rail-btn"
-													disabled={busyId === m.missionId}
-													onClick={() => runAction(m.missionId, resumeMission)}
-												>
-													Resume
-												</button>
-											)}
-											{m.status !== "destroyed" && (
-												<button
-													type="button"
-													className="rail-btn"
-													disabled={busyId === m.missionId}
-													onClick={() => setConfirmDestroyId(m.missionId)}
-												>
-													Destroy
-												</button>
-											)}
-										</>
+									{m.status === "running" && (
+										<button
+											type="button"
+											className="rail-btn"
+											disabled={busyId === m.missionId}
+											onClick={() => runAction(m.missionId, suspendMission)}
+										>
+											Suspend
+										</button>
+									)}
+									{m.status === "suspended" && (
+										<button
+											type="button"
+											className="rail-btn"
+											disabled={busyId === m.missionId}
+											onClick={() => runAction(m.missionId, resumeMission)}
+										>
+											Resume
+										</button>
 									)}
 								</div>
 							</div>

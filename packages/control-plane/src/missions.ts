@@ -31,7 +31,7 @@ import {
 	MISSION_COPILOT_AGENT_ID,
 	managedRegionKeys,
 } from "@magi/agent-runtime-worker";
-import type { Request, Router } from "express";
+import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Collection, Db, ObjectId } from "mongodb";
 import {
@@ -1543,8 +1543,22 @@ export function createMissionsRouter(db: Db): Router {
 		}
 	});
 
-	// Destroy (irreversible).
-	router.delete("/:id", async (req, res) => {
+	// Destroy (irreversible) — DISABLED 2026-09-12 after a real accidental
+	// destruction with zero server-side confirmation of any kind (no token, no
+	// grace period, no distinction by mission status — see the matching removal
+	// of the cockpit's "Destroy" button in MissionsPanel.tsx for the full
+	// rationale). Returns 403 unconditionally. The real logic lives in
+	// performDestroy() below, kept callable (not inlined) so it stays normally
+	// type-checked instead of sitting as unreachable dead code — re-enable by
+	// replacing this handler's body with `await performDestroy(req, res);`.
+	router.delete("/:id", async (_req, res) => {
+		res.status(403).json({
+			error:
+				"Mission destruction is temporarily disabled — see CLAUDE.md's Sprint Roadmap.",
+		});
+	});
+
+	async function performDestroy(req: Request, res: Response): Promise<void> {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -1570,7 +1584,8 @@ export function createMissionsRouter(db: Db): Router {
 			);
 			res.status(500).json({ error: (e as Error).message });
 		}
-	});
+	}
+	void performDestroy; // referenced only to re-enable later; not wired to a route
 
 	return router;
 }
