@@ -48,10 +48,12 @@ mission:
   visionModel: claude-haiku-4-5-20251001
 
 agents:
-  - id: agent-id
+  - id: agent-id               # also becomes this agent's OS username — keep it
+                                # a safe slug (lowercase letters/digits/hyphens);
+                                # omit linuxUser entirely, it's resolved at
+                                # runtime (pool user in dev, per-agent in prod)
     name: "Agent Name"
     role: one-line description
-    linuxUser: magi-w1          # pool user in dev, per-agent user in prod
     supervisor: user            # who this agent reports to; "user" = operator
     model: override-if-needed   # omit to inherit mission model
     active: true                # set false to disable without removing

@@ -39,12 +39,7 @@
  *                                 set by the control plane at machine creation; empty in local dev
  */
 
-import {
-	type ChildProcess,
-	execFileSync,
-	execSync,
-	spawn,
-} from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
 	createWriteStream,
 	existsSync,
@@ -120,6 +115,7 @@ import { createMongoAnomalyRecorder } from "./anomaly.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
 import { missionLifetimeCostUsd } from "./limits.js";
+import { resolveLinuxUsers } from "./linux-user.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
@@ -298,7 +294,16 @@ async function runPendingJobs(
 			} catch {}
 			continue;
 		}
-		const linuxUser = agentCfg.linuxUser ?? agentCfg.id;
+		const linuxUser = resolveLinuxUsers(teamConfig.agents).get(agentCfg.id);
+		if (!linuxUser) {
+			console.error(
+				`[daemon:jobs] Could not resolve a Linux user for agentId "${spec.agentId}" in job ${spec.id} — skipping`,
+			);
+			try {
+				unlinkSync(runningPath);
+			} catch {}
+			continue;
+		}
 		const agentWorkdir = join(
 			workdir,
 			"home",
@@ -565,32 +570,39 @@ function startJobRunner(
 // ---------------------------------------------------------------------------
 
 /**
- * Ensure every agent in the team config has a corresponding Linux OS user.
+ * Ensure every agent in the team config has a corresponding Linux OS user,
+ * per resolveLinuxUsers() (linux-user.ts) — pool users in local dev, a
+ * dedicated per-agent user derived from agent.id in production Docker.
  *
- * In dev/test environments, pool users (magi-w1..magi-w5) are created by
- * setup-dev.sh and already exist — execSync("id ...") succeeds and this
- * function is a no-op for each such agent.
+ * In dev/test environments the resolved pool users are created by
+ * setup-dev.sh and already exist — execFileSync("id", [...]) succeeds and
+ * this function is a no-op for each such agent.
  *
- * In production Docker, agents omit linuxUser and the username defaults to
- * agent.id. The Dockerfile only creates the magi-shared group; this function
- * creates per-agent OS users at first startup.
+ * In production Docker, the Dockerfile only creates the magi-shared group;
+ * this function creates per-agent OS users at first startup.
  *
  * Idempotent: if the user already exists, the step is skipped silently.
  */
 function ensureAgentUsers(
 	agents: Array<{ id: string; linuxUser?: string }>,
 ): void {
-	for (const agent of agents) {
-		const linuxUser = agent.linuxUser ?? agent.id;
+	// execFileSync, not execSync: agent.id (CR-02) reaches this function
+	// unvalidated beyond Zod's charset check (agent-config/src/loader.ts), and
+	// execSync's template-string form runs through a shell — an id containing
+	// shell metacharacters could inject arbitrary commands there. execFileSync
+	// passes each argument directly to the OS, never through a shell, so
+	// there's nothing for an id to inject into (found live during the 28c
+	// security pass, 2026-09-13).
+	for (const linuxUser of resolveLinuxUsers(agents).values()) {
 		try {
-			execSync(`id ${linuxUser}`, { stdio: "ignore" });
+			execFileSync("id", [linuxUser], { stdio: "ignore" });
 		} catch {
 			// User does not exist — create it.
-			// In Docker (production) we use sudo magi-create-user which runs as root
-			// and also writes the sudoers rule. In local dev environments without the
-			// helper the pool users already exist, so this path is rarely reached.
+			// In Docker (production) we use sudo magi-create-user which runs as root.
+			// In local dev, resolveLinuxUsers() only ever returns existing pool
+			// users, so this path is rarely reached there.
 			try {
-				execSync(`sudo /usr/local/bin/magi-create-user ${linuxUser}`, {
+				execFileSync("sudo", ["/usr/local/bin/magi-create-user", linuxUser], {
 					stdio: "inherit",
 				});
 				console.log(`[daemon] Created OS user: ${linuxUser}`);
@@ -853,13 +865,11 @@ async function main(): Promise<void> {
 	// Must run after ensureAgentUsers — the copilot's OS user needs to exist
 	// before it can be granted an ACL entry.
 	if (missionCopilotEnabled) {
-		const copilotAgent = teamConfig.agents.find(
-			(a) => a.id === MISSION_COPILOT_AGENT_ID,
+		const copilotLinuxUser = resolveLinuxUsers(teamConfig.agents).get(
+			MISSION_COPILOT_AGENT_ID,
 		);
-		if (copilotAgent) {
-			grantMissionCopilotSourceAccess(
-				copilotAgent.linuxUser ?? copilotAgent.id,
-			);
+		if (copilotLinuxUser) {
+			grantMissionCopilotSourceAccess(copilotLinuxUser);
 		}
 	}
 

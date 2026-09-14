@@ -6,6 +6,7 @@ import type { StatsCollector } from "./agent-stats.js";
 import type { AnomalyRecorder } from "./anomaly.js";
 import type { ConversationRepository } from "./conversation-repository.js";
 import type { LimitAlert } from "./limits.js";
+import { resolveLinuxUsers } from "./linux-user.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
@@ -232,13 +233,18 @@ export async function runOrchestrationLoop(
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config must have at least one agent");
 
-	// Provision workspace for all agents.
-	// linuxUser falls back to agent.id when omitted (production Docker — ensureAgentUsers
-	// creates the OS user from agent.id at daemon startup).
-	const agentDefs = teamConfig.agents.map((a) => ({
-		id: a.id,
-		linuxUser: a.linuxUser ?? a.id,
-	}));
+	// Provision workspace for all agents. See linux-user.ts's resolveLinuxUsers
+	// for the derivation: agent.id in production Docker (ensureAgentUsers
+	// creates the OS user at daemon startup), a fail-loud pool-slot mapping in
+	// local dev.
+	const resolvedLinuxUsers = resolveLinuxUsers(teamConfig.agents);
+	const agentDefs = teamConfig.agents.map((a) => {
+		const linuxUser = resolvedLinuxUsers.get(a.id);
+		if (!linuxUser) {
+			throw new Error(`No Linux user resolved for agent "${a.id}"`);
+		}
+		return { id: a.id, linuxUser };
+	});
 	const identities = workspaceManager.provision(missionId, agentDefs);
 	console.log(
 		`[orchestrator] Workspace provisioned for ${identities.size} agent(s)`,

@@ -9,7 +9,6 @@ agents:
   - id: macro-analyst
     name: "Alex"
     role: macro-analyst
-    linuxUser: magi-w1
     supervisor: user
     systemPrompt: |
       You are Alex, Gold Macro Analyst. You report to the operator (user).
@@ -121,7 +120,6 @@ agents:
   - id: data-scientist
     name: "Lin"
     role: data-scientist
-    linuxUser: magi-w2
     supervisor: macro-analyst
     systemPrompt: |
       You are Lin, Data Scientist on the Gold Digest team. You report to Alex (macro-analyst).

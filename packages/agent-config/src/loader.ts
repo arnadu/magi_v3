@@ -27,7 +27,22 @@ export const LimitsSchema = z
 	.strict();
 
 const AgentInputSchema = z.object({
-	id: z.string().trim().min(1),
+	/**
+	 * Also this agent's Linux OS username by default (linux-user.ts's
+	 * resolveLinuxUsers(), when linuxUser below is omitted, which every
+	 * shipped template now does) — reaches daemon.ts's ensureAgentUsers()
+	 * and, from there, an `execFileSync` OS-user-creation call. Constrained
+	 * to the same safe charset as linuxUser itself so a hostile id can never
+	 * reach that call with anything an OS username / shell argument / file
+	 * path segment couldn't already safely be (CR-02, 2026-08-09 audit).
+	 */
+	id: z
+		.string()
+		.trim()
+		.regex(
+			/^[a-z_][a-z0-9_-]{0,31}$/,
+			'must be a valid Linux username-safe slug (e.g. "lead-analyst") — this id doubles as the agent\'s OS username',
+		),
 	/** Display name — optional on input, defaulted to id below (ADR-0021: the
 	 * disk-YAML authoring format may omit it; every downstream consumer — the
 	 * in-memory template cache, every `missions` document, every tool payload —

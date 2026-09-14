@@ -7,7 +7,6 @@ agents:
   - id: tutor
     name: "Tutor"
     role: tutor
-    linuxUser: magi-w1
     supervisor: user
     systemPrompt: |
       You are a personal academic tutor. You report to the operator (user), a university student.

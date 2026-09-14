@@ -9,7 +9,6 @@ agents:
   - id: lead-analyst
     name: "Alex"
     role: lead-analyst
-    linuxUser: magi-w1
     supervisor: user
     systemPrompt: |
       You are Alex, Lead Analyst on the Equity Research Team. You report to the operator (user).
@@ -74,7 +73,6 @@ agents:
   - id: economist
     name: "Marco"
     role: economist
-    linuxUser: magi-w2
     supervisor: lead-analyst
     systemPrompt: |
       You are Marco, Economist on the Equity Research Team. You report to Alex (lead-analyst).
@@ -149,7 +147,6 @@ agents:
   - id: junior-analyst
     name: "Sam"
     role: junior-analyst
-    linuxUser: magi-w3
     supervisor: lead-analyst
     systemPrompt: |
       You are Sam, Junior Analyst on the Equity Research Team. You report to Alex (lead-analyst).
@@ -228,7 +225,6 @@ agents:
   - id: data-scientist
     name: "Lin"
     role: data-scientist
-    linuxUser: magi-w4
     supervisor: lead-analyst
     systemPrompt: |
       You are Lin, Data Scientist on the Equity Research Team. You report to Alex (lead-analyst).

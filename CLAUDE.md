@@ -92,12 +92,25 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 
 ### Agent identity and workspace
 
-- `agent_id` — semantic identity (e.g. `lead-analyst`), stable across missions
-- `linux_user` — OS user; pool users (`magi-w1..w5`) in dev, per-agent in production
+- `agent_id` — semantic identity (e.g. `lead-analyst`), stable across missions; also the default
+  source of `linux_user` (see below) — constrained by Zod to a Linux-username-safe slug
+- `linux_user` — OS user, resolved by `resolveLinuxUsers()` (`agent-runtime-worker/src/linux-user.ts`):
+  derived directly from `agent_id` in production Docker (`ensureAgentUsers()` creates a dedicated
+  per-agent user); in local dev (no `magi-create-user` helper — `setup-dev.sh` never installs it,
+  to avoid permanently growing real OS users on a developer's own machine) deterministically mapped
+  onto the small fixed pool `magi-w1..magi-wN` instead, sorted and assigned in order so the same
+  team config always lands on the same users — fails loudly rather than reusing a slot if a team
+  has more agents needing one than the pool has room for. No shipped template sets `linuxUser`
+  explicitly anymore (it's a legacy override field, kept for flexibility).
 - Private workdir: `$AGENT_WORKDIR/home/{linux_user}/missions/{id}/`
 - Shared mission folder: `$AGENT_WORKDIR/missions/{id}/shared/`
 - ACL enforcement: `setfacl` + `sudo -u <linuxUser>` subprocess isolation (no secrets in child env)
 - Shell tools fork `sudo -u <linuxUser> node tool-executor.js`; child process receives only `PATH` and `HOME`
+- Sudo boundary (CR-01, fixed 2026-09-13): only the daemon identity (`magi-operator`) can invoke
+  `sudo`, scoped to `(%magi-shared)` — any current agent identity, never root or an unrelated user.
+  No agent/pool user holds a sudo grant of its own; none has ever needed one, since sudo is only
+  ever invoked by the trusted daemon on an agent's behalf. See `docs/security/threat-model.md`'s
+  TB-3 for the incident this replaced and how it was live-verified.
 
 ### Storage (MongoDB collections)
 
@@ -160,16 +173,22 @@ rather than requiring either fixed first. The structured draft-review cockpit pa
 v2) remains a fast-follow, not shipped.
 
 **Sprint 28c — Structural decomposition of `monitor-server.ts`/`daemon.ts` + file-scoped
-security fixes (not started, see `docs/code-structure.md`).** Renumbered from 28a on 2026-09-05
-to make room for 28a/28b above — no content change. Characterization/integration test coverage
-for `MonitorServer.handleRequest` (~725 lines) and `daemon.ts`'s `main()` (~745 lines) first,
-then split each into a route table / named bootstrap-phase functions, then land CR-01 (root
-escalation), CR-02 (shell-interpolated agent ID), and CR-05 (auth token handling) inside the
-newly decomposed structure so these two files are touched once, not twice. Split out from a
-single Sprint 28 following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`)
-and this project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
-**Priority raised 2026-09-12**: with 28b's beta deployment now live, a second real external user
-now runs agent code on the same shared execution image CR-01/CR-02 describe — next up.
+security fixes (CR-01/CR-02 done 2026-09-13; decomposition + CR-05 not started, see
+`docs/code-structure.md`).** Renumbered from 28a on 2026-09-05 to make room for 28a/28b above —
+no content change at the time. **CR-01 (root escalation) and CR-02 (shell-interpolated agent ID)
+were landed ahead of the file decomposition** — the beta deployment going live raised the
+urgency past the point of waiting on the (larger, riskier) decomposition first; see
+`docs/security/threat-model.md`'s TB-3 for the fix detail and live sudoers verification. Folded
+in during the same pass: every shipped template hardcoded `linuxUser` to a dev-only pool
+username (`agent-config/src/loader.ts`'s doc comment describes the intended
+derive-from-`agent.id` production behavior, which no template actually used) — fixed via a new
+`resolveLinuxUsers()` (`agent-runtime-worker/src/linux-user.ts`) that derives from `agent.id` in
+production and fails loudly (never silently double-assigns) onto a fixed local-dev pool
+otherwise; `linuxUser` removed from every template. Still open: characterization/integration test
+coverage for `MonitorServer.handleRequest` (~725 lines) and `daemon.ts`'s `main()` (~745 lines),
+the route-table/bootstrap-phase split, and CR-05 (auth token handling). Split out from a single
+Sprint 28 following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`) and
+this project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
 
 **Sprint 28d — Remaining operational + security hardening (not started).** Renumbered from 28b
 on 2026-09-05 — no content change. Out-of-band alerting (issues #3, #4); G-4 disk monitoring

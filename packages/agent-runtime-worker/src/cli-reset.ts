@@ -32,6 +32,7 @@ dotenvConfig({
 	quiet: true,
 });
 
+import { resolveLinuxUsers } from "./linux-user.js";
 import { injectMissionCopilot } from "./mission-copilot.js";
 import { connectMongo } from "./mongo.js";
 
@@ -72,9 +73,13 @@ async function main(): Promise<void> {
 	const workdir = process.env.AGENT_WORKDIR ?? process.cwd();
 
 	const sharedDir = join(workdir, "missions", missionId);
-	const agentDirs = teamConfig.agents.map((a) =>
-		join(workdir, "home", a.linuxUser ?? a.id, "missions", missionId),
-	);
+	const resolvedLinuxUsers = resolveLinuxUsers(teamConfig.agents);
+	const agentDirs = teamConfig.agents.map((a) => {
+		const linuxUser = resolvedLinuxUsers.get(a.id);
+		if (!linuxUser)
+			throw new Error(`No Linux user resolved for agent "${a.id}"`);
+		return join(workdir, "home", linuxUser, "missions", missionId);
+	});
 
 	console.log(`\nMission: ${missionId}`);
 	console.log(`\nMongoDB data to delete (missionId = "${missionId}"):`);

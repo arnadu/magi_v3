@@ -6,7 +6,6 @@ agents:
   - id: officer
     name: "DPO Officer"
     role: worker-agent
-    linuxUser: magi-w1
     supervisor: user
     systemPrompt: |
       You are the DPO Officer. This mission uses the objectives system: your

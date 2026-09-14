@@ -66,24 +66,32 @@ RUN git config --system safe.directory /missions && \
 # magi-create-user: root helper invoked via sudo by magi-operator to create
 # per-agent OS users at daemon startup. Validates the username format to
 # prevent unexpected input; idempotent (skips if user already exists).
-RUN printf '#!/bin/bash\nset -e\nif [[ ! "$1" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then\n  echo "magi-create-user: invalid username" >&2; exit 1\nfi\nif id "$1" >/dev/null 2>&1; then exit 0; fi\nuseradd -m -s /bin/bash -G magi-shared "$1"\necho "$1 ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi\necho "$1 ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi\n' \
+# Does NOT touch sudoers (CR-01, 2026-08-09 audit) — no agent identity ever
+# needs its own sudo grant, since sudo is only ever invoked by the trusted
+# daemon (magi-operator) to spawn a subprocess AS an agent, never by an
+# agent's own subprocess. Membership in magi-shared is what makes the new
+# user a valid sudo target of magi-operator's own group-scoped grant below.
+RUN printf '#!/bin/bash\nset -e\nif [[ ! "$1" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then\n  echo "magi-create-user: invalid username" >&2; exit 1\nfi\nif id "$1" >/dev/null 2>&1; then exit 0; fi\nuseradd -m -s /bin/bash -G magi-shared "$1"\n' \
     > /usr/local/bin/magi-create-user && chmod +x /usr/local/bin/magi-create-user
 
-# sudoers: magi-operator and pool users may run magi-node and magi-job without
-# a password. The wrappers point to fixed paths — changing Node versions does
-# not require updating sudoers rules.
+# sudoers: ONLY magi-operator (the daemon) may invoke sudo, and only to become
+# a member of magi-shared (every pool/per-agent user, never root or any other
+# system identity) — CR-01's fix. Previously every pool/per-agent user held
+# its own "ALL=(ALL)" grant (any target user, including root) directly, so an
+# agent's own Bash tool could `sudo -u root magi-job /bin/bash` for a trivial
+# container-root escalation; no agent identity has ever had a legitimate
+# reason to invoke sudo itself (only the daemon does, to spawn each agent's
+# isolated subprocess or create its OS user — daemon.ts/tools.ts). The
+# `(%magi-shared)` group-based runas target means a newly created per-agent
+# user is automatically a valid target the moment magi-create-user adds it to
+# the group, with no sudoers file edit at runtime.
 # env_keep for magi-job: sudo's default env_reset strips all custom vars before
 # exec. Background jobs need MAGI_TOOL_* for the Tool API and data keys for
 # adapters (FRED, FMP, NewsAPI). Must match DATA_KEY_NAMES in daemon.ts.
-RUN echo "Defaults:%magi-shared !authenticate" > /etc/sudoers.d/magi && \
-    echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API_KEY\"" >> /etc/sudoers.d/magi && \
+RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API_KEY\"" > /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(root) NOPASSWD: /usr/local/bin/magi-create-user" >> /etc/sudoers.d/magi && \
-    echo "magi-operator ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
-    echo "magi-operator ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
-    for i in 1 2 3 4 5; do \
-      echo "magi-w$i ALL=(ALL) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi; \
-      echo "magi-w$i ALL=(ALL) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi; \
-    done && \
+    echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
+    echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
     chmod 440 /etc/sudoers.d/magi
 
 # magi-node wrapper — exec's the real Node binary at a stable path.

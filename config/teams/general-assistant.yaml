@@ -8,7 +8,6 @@ agents:
   - id: assistant
     name: "Assistant"
     role: general-assistant
-    linuxUser: magi-w1
     supervisor: user
     systemPrompt: |
       You are a general-purpose AI assistant. You report to the operator (user).
