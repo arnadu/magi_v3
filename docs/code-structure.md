@@ -20,8 +20,8 @@ for the full analysis. This document is the durable tracking artifact that verif
 
 | File | Lines | Concerns mixed | Decomposition risk | Status | Tracking issue |
 |---|---|---|---|---|---|
-| `packages/agent-runtime-worker/src/monitor-server.ts` | 1876 | HTTP routing + auth + SSE + raw Mongo queries + file/git operations, almost entirely concentrated in one method: `handleRequest` (~725 lines, ~34 routes as a single if/else chain) | High | Planned — Sprint 28c | [#32](https://github.com/arnadu/magi_v3/issues/32) |
-| `packages/agent-runtime-worker/src/daemon.ts` | 1455 | Full process bootstrap in `main()` (~745 lines): env parsing, Mongo/repo construction, workspace provisioning, signal handling, monitor/tool-server startup, job-runner startup, mailbox watching, orchestration launch — ~30 closure-captured locals threaded through sequentially | High | Planned — Sprint 28c | [#33](https://github.com/arnadu/magi_v3/issues/33) |
+| `packages/agent-runtime-worker/src/monitor-server.ts` | 1906 | HTTP routing + auth + SSE + raw Mongo queries + file/git operations, almost entirely concentrated in one method: `handleRequest` (~719 lines, 34 routes as a single if/else chain over raw `node:http`) | High | In progress — Sprint 28c (route-table extraction starting 2026-09-14) | [#32](https://github.com/arnadu/magi_v3/issues/32) |
+| `packages/agent-runtime-worker/src/daemon.ts` | 1528 | Full process bootstrap in `main()` (~792 lines): env parsing, Mongo/repo construction, workspace provisioning, signal handling, monitor/tool-server startup, job-runner startup, mailbox watching, orchestration launch — ~34 closure-captured locals threaded through 20 sequential phases | High | In progress — Sprint 28c (CR-01/CR-02 already landed 2026-09-13; bootstrap-phase extraction not yet started) | [#33](https://github.com/arnadu/magi_v3/issues/33) |
 | `packages/agent-runtime-worker/src/mission-copilot-tools.ts` | 1263 | Already partitioned into 7 labeled "Family" sections (ADR-0016) sharing 3 small helper closures; no individual tool body exceeds ~40 lines | Low | Backlog | [#34](https://github.com/arnadu/magi_v3/issues/34) |
 | `packages/control-plane/src/missions.ts` | 1387 | Policy/persistence already extracted into separately exported, reused functions (`readLimits`, `writeMissionCap`, `writeAgentLimits`); only the router-registration function and a few individual handlers (`/stats`, `POST /`, `PUT /:id/config`, ~80–120 lines each) remain large | Medium | Backlog | [#35](https://github.com/arnadu/magi_v3/issues/35) |
 | `packages/agent-runtime-worker/src/agent-runner.ts` | 972 | Not yet characterized | Unknown | Backlog — needs triage | [#36](https://github.com/arnadu/magi_v3/issues/36) |
@@ -29,7 +29,8 @@ for the full analysis. This document is the durable tracking artifact that verif
 | `packages/control-plane/src/copilot-router.ts` | 799 | Not yet characterized | Unknown | Backlog — needs triage | [#36](https://github.com/arnadu/magi_v3/issues/36) |
 | `packages/control-plane/src/copilot-tools.ts` | 761 | Not yet characterized | Unknown | Backlog — needs triage | [#36](https://github.com/arnadu/magi_v3/issues/36) |
 
-Line counts as of 2026-08-12 (`find packages -name "*.ts" -o -name "*.tsx" | xargs wc -l`, excluding
+Line counts as of 2026-08-12, except `monitor-server.ts`/`daemon.ts` re-measured 2026-09-14 ahead of
+their Sprint 28c decomposition (`find packages -name "*.ts" -o -name "*.tsx" | xargs wc -l`, excluding
 `node_modules`/`dist`/tests). Re-measure at each `/code-structure-review` pass — this table is a
 snapshot, not a live query.
 
