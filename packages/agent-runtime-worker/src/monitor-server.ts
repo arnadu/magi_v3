@@ -33,14 +33,14 @@ import type { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
 
 /** Body cap for file uploads (base64-encoded). ~22 MB raw file. */
-const UPLOAD_MAX_BODY_BYTES = 30 * 1024 * 1024;
+export const UPLOAD_MAX_BODY_BYTES = 30 * 1024 * 1024;
 
 /**
  * Cap for a text file's preview content and — since a truncated file must
  * never be editable, editing would silently discard the un-fetched remainder
  * on save — the same figure gates whether the cockpit's Edit button appears.
  */
-const TEXT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+export const TEXT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * Cap for the raw POST body of a file-edit request — must exceed
@@ -50,7 +50,7 @@ const TEXT_FILE_MAX_BYTES = 10 * 1024 * 1024;
  * ever runs. readBody()'s default (MAILBOX_MAX_BODY_BYTES, sized for mailbox
  * messages) is far too small for this route.
  */
-const FILE_EDIT_MAX_BODY_BYTES = TEXT_FILE_MAX_BYTES * 2;
+export const FILE_EDIT_MAX_BODY_BYTES = TEXT_FILE_MAX_BYTES * 2;
 
 // Default public/ dir: next to the compiled JS (dist/public/).
 // Tests running from src/ via Vitest pass an explicit publicDir to the constructor.
@@ -59,13 +59,13 @@ const DEFAULT_PUBLIC_DIR = join(
 	"public",
 );
 
-const MIME: Record<string, string> = {
+export const MIME: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
 	".css": "text/css",
 	".js": "application/javascript",
 };
 
-const TEXT_EXTENSIONS = new Set([
+export const TEXT_EXTENSIONS = new Set([
 	".txt",
 	".md",
 	".markdown",
@@ -91,7 +91,7 @@ const TEXT_EXTENSIONS = new Set([
 
 const pexec = promisify(execFile);
 
-const IMAGE_MIME: Record<string, string> = {
+export const IMAGE_MIME: Record<string, string> = {
 	".png": "image/png",
 	".jpg": "image/jpeg",
 	".jpeg": "image/jpeg",
@@ -1867,10 +1867,10 @@ export class MonitorServer {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const MAX_BODY_BYTES = MAILBOX_MAX_BODY_BYTES;
+export const MAX_BODY_BYTES = MAILBOX_MAX_BODY_BYTES;
 
 /** Recursively add a file or directory subtree to a zip, paths relative to `base`. */
-function addToZip(zip: JSZip, abs: string, base: string): void {
+export function addToZip(zip: JSZip, abs: string, base: string): void {
 	const stat = statSync(abs);
 	if (stat.isDirectory()) {
 		for (const name of readdirSync(abs)) {
@@ -1884,7 +1884,7 @@ function addToZip(zip: JSZip, abs: string, base: string): void {
 	}
 }
 
-function readBody(
+export function readBody(
 	req: IncomingMessage,
 	maxBytes: number = MAX_BODY_BYTES,
 ): Promise<string> {
