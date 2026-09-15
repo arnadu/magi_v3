@@ -13,6 +13,7 @@ import { StatsCollector } from "../src/agent-stats.js";
 import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
 import { parseDaemonEnv } from "../src/daemon-boot/env.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
+import { constructAnomalyRecorder } from "../src/daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
@@ -366,6 +367,60 @@ describe("syncTeamFiles", () => {
 		await expect(
 			syncTeamFiles({ db, missionId: "m1", teamDir: "/tmp/unused" }),
 		).resolves.toEqual({});
+	});
+});
+
+describe("constructAnomalyRecorder", () => {
+	const teamConfigWithCopilot = {
+		mission: { id: "m1", name: "Test" },
+		agents: [{ id: "mission-copilot" }],
+	} as Parameters<typeof constructAnomalyRecorder>[0]["teamConfig"];
+	const teamConfigNoCopilot = {
+		mission: { id: "m1", name: "Test" },
+		agents: [{ id: "analyst" }],
+	} as Parameters<typeof constructAnomalyRecorder>[0]["teamConfig"];
+	const mailboxRepo = {} as Parameters<
+		typeof constructAnomalyRecorder
+	>[0]["mailboxRepo"];
+
+	it("warns and builds a recorder with no control-plane relay when the mission has no userId", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const db = fakeDbWithMissionDoc({});
+		try {
+			const { anomalyRecorder } = await constructAnomalyRecorder(
+				{ db, missionId: "m1", teamConfig: teamConfigNoCopilot, mailboxRepo },
+				true,
+			);
+			expect(anomalyRecorder).toBeDefined();
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining("has no userId on its mission document"),
+			);
+		} finally {
+			warnSpy.mockRestore();
+		}
+	});
+
+	it("does not warn when the mission has a userId", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const db = fakeDbWithMissionDoc({ userId: "u1" });
+		try {
+			await constructAnomalyRecorder(
+				{ db, missionId: "m1", teamConfig: teamConfigWithCopilot, mailboxRepo },
+				true,
+			);
+			expect(warnSpy).not.toHaveBeenCalled();
+		} finally {
+			warnSpy.mockRestore();
+		}
+	});
+
+	it("builds without error when missionCopilotEnabled is false, even with a copilot agent present", async () => {
+		const db = fakeDbWithMissionDoc({});
+		const { anomalyRecorder } = await constructAnomalyRecorder(
+			{ db, missionId: "m1", teamConfig: teamConfigWithCopilot, mailboxRepo },
+			false,
+		);
+		expect(anomalyRecorder).toBeDefined();
 	});
 });
 

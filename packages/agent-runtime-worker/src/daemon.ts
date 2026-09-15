@@ -102,12 +102,12 @@ import type {
 	Usage,
 } from "@mariozechner/pi-ai";
 import { ObjectId } from "mongodb";
-import { createMongoAnomalyRecorder } from "./anomaly.js";
 import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import { provisionAgentIdentities } from "./daemon-boot/agent-identity.js";
 import type { BootContext } from "./daemon-boot/context.js";
 import { parseDaemonEnv } from "./daemon-boot/env.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
+import { constructAnomalyRecorder } from "./daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { connectToMongo } from "./daemon-boot/mongo-connect.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
@@ -119,7 +119,6 @@ import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
 import { missionLifetimeCostUsd } from "./limits.js";
 import { resolveLinuxUsers } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
-import { createMongoMailboxRepository } from "./mailbox.js";
 import {
 	MISSION_COPILOT_AGENT_ID,
 	seedMissionCopilotObjectives,
@@ -671,44 +670,11 @@ async function main(): Promise<void> {
 		objectivesRepo,
 	} = repos;
 
-	// Owning user's control-plane copilot mailbox (copilot-{userId}), for
-	// relaying hard-severity anomalies. Previously gated by a COPILOT_MISSION_ID
-	// env var that was never actually set on execution-plane machines (dead
-	// code) and, even set, would have routed every mission's alerts into one
-	// global "copilot" mailbox shared across all users — a leftover from
-	// before the Sprint 23 multi-user pivot to per-user copilot-{uid}. Reading
-	// the mission's own userId directly (same collection this daemon already
-	// reads for teamFiles) routes correctly per-user with no env var at all.
-	const missionUserId = (
-		await db
-			.collection("missions")
-			.findOne({ missionId }, { projection: { userId: 1 } })
-	)?.userId as string | undefined;
-	if (!missionUserId) {
-		console.warn(
-			`[daemon] Mission ${missionId} has no userId on its mission document — hard anomalies will not be relayed to a control-plane copilot.`,
-		);
-	}
-
-	const missionCopilotAgentIdForAnomalies =
-		missionCopilotEnabled &&
-		teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
-			? MISSION_COPILOT_AGENT_ID
-			: undefined;
-	const anomalyRecorder = createMongoAnomalyRecorder(
-		db,
-		mailboxRepo,
-		missionCopilotAgentIdForAnomalies,
-		missionUserId
-			? {
-					mailboxRepo: createMongoMailboxRepository(
-						db,
-						`copilot-${missionUserId}`,
-					),
-					missionId: `copilot-${missionUserId}`,
-				}
-			: undefined,
+	const { anomalyRecorder } = await constructAnomalyRecorder(
+		{ db, missionId, teamConfig, mailboxRepo },
+		missionCopilotEnabled,
 	);
+	Object.assign(ctx, { anomalyRecorder });
 
 	const { modelId, model, visionModel } = await resolveModelsAndPricing({
 		teamConfig,

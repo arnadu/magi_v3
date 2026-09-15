@@ -2,6 +2,7 @@ import type { TeamConfig } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
 import type { Db, MongoClient } from "mongodb";
 import type { StatsCollector } from "../agent-stats.js";
+import type { AnomalyRecorder } from "../anomaly.js";
 import type { ConversationRepository } from "../conversation-repository.js";
 import type { LlmCallLogRepository } from "../llm-call-log.js";
 import type { MailboxRepository } from "../mailbox.js";
@@ -35,6 +36,7 @@ export interface BootContext {
 	statsCollector: StatsCollector;
 	missionConfigRepo: MissionConfigRepository;
 	objectivesRepo: ObjectivesRepository;
+	anomalyRecorder: AnomalyRecorder;
 	workdir: string;
 	teamDir: string;
 	teamConfig: TeamConfig;
