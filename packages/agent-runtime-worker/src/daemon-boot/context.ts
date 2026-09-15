@@ -46,6 +46,7 @@ export interface BootContext {
 	visionModel: Model<string>;
 	ac: AbortController;
 	signal: AbortSignal;
+	pidFile: string;
 	usageAccumulator: UsageAccumulator;
 	maxCostUsd: number | null;
 }

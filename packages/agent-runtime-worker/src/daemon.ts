@@ -110,6 +110,7 @@ import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { constructAnomalyRecorder } from "./daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { connectToMongo } from "./daemon-boot/mongo-connect.js";
+import { lockPidFile } from "./daemon-boot/pid-lock.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "./daemon-boot/team-config.js";
 import { syncTeamFiles } from "./daemon-boot/team-files-sync.js";
@@ -694,57 +695,8 @@ async function main(): Promise<void> {
 	const { ac, signal } = wireAbortSignal();
 	Object.assign(ctx, { ac, signal });
 
-	// PID file — enables cli:stop and guards against duplicate daemons.
-	const missionDir = join(workdir, "missions", missionId);
-	mkdirSync(missionDir, { recursive: true });
-	const pidFile = join(missionDir, "daemon.pid");
-
-	// Check for a running instance before writing our own PID.
-	try {
-		const existingPid = Number.parseInt(
-			readFileSync(pidFile, "utf8").trim(),
-			10,
-		);
-		if (!Number.isNaN(existingPid) && existingPid !== process.pid) {
-			try {
-				// Signal 0 tests liveness without sending a real signal.
-				process.kill(existingPid, 0);
-				// If we reach here the process is alive — refuse to start.
-				console.error(
-					`[daemon] Already running as PID ${existingPid} (mission: ${missionId}).`,
-				);
-				console.error(`[daemon] Run: MISSION_ID=${missionId} npm run cli:stop`);
-				process.exit(1);
-			} catch {
-				// ESRCH — process is gone; stale PID file, safe to continue.
-				console.warn(
-					`[daemon] Stale PID file (PID ${existingPid} not found) — starting fresh.`,
-				);
-				// A live PID with no matching process means the prior run never
-				// reached graceful shutdown (SIGKILL, OOM kill, machine crash).
-				// This can't identify the cause (that would need polling the Fly
-				// Machines API — deliberately out of scope here), but "the process
-				// died abnormally" is a real, cheap signal worth recording rather
-				// than silently swallowing into a console.warn no one reads.
-				anomalyRecorder
-					.record({
-						missionId,
-						category: "unclean-restart",
-						severity: "soft",
-						message: `Daemon restarted after an unclean shutdown (stale PID ${existingPid} with no matching live process) — the prior run did not exit gracefully.`,
-					})
-					.catch((e: Error) =>
-						console.error(
-							`[daemon] Failed to record unclean-restart anomaly: ${e.message}`,
-						),
-					);
-			}
-		}
-	} catch {
-		// PID file missing or unreadable — first start, proceed normally.
-	}
-
-	writeFileSync(pidFile, String(process.pid));
+	const { pidFile } = lockPidFile({ workdir, missionId, anomalyRecorder });
+	Object.assign(ctx, { pidFile });
 
 	const { usageAccumulator, maxCostUsd } = resolveUsageAndCap({ teamConfig });
 	Object.assign(ctx, { usageAccumulator, maxCostUsd });

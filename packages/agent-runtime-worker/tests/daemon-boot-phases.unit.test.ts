@@ -5,7 +5,14 @@
  * all planned phases.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +23,7 @@ import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { constructAnomalyRecorder } from "../src/daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
+import { lockPidFile } from "../src/daemon-boot/pid-lock.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
 import { syncTeamFiles } from "../src/daemon-boot/team-files-sync.js";
@@ -421,6 +429,88 @@ describe("constructAnomalyRecorder", () => {
 			false,
 		);
 		expect(anomalyRecorder).toBeDefined();
+	});
+});
+
+describe("lockPidFile", () => {
+	let dir: string | undefined;
+	const fakeAnomalyRecorder = { record: vi.fn(async () => {}) };
+
+	afterEach(() => {
+		if (dir) rmSync(dir, { recursive: true, force: true });
+		fakeAnomalyRecorder.record.mockClear();
+	});
+
+	it("writes the current PID when no PID file exists yet", () => {
+		dir = mkdtempSync(join(tmpdir(), "magi-pid-lock-"));
+		const { pidFile } = lockPidFile({
+			workdir: dir,
+			missionId: "m1",
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake, matches AnomalyRecorder's one used method
+			anomalyRecorder: fakeAnomalyRecorder as any,
+		});
+		expect(readFileSync(pidFile, "utf8")).toBe(String(process.pid));
+	});
+
+	it("refuses to start (exits 1) when the PID file names a live process", () => {
+		dir = mkdtempSync(join(tmpdir(), "magi-pid-lock-"));
+		const missionDir = join(dir, "missions", "m1");
+		mkdirSync(missionDir, { recursive: true });
+		writeFileSync(join(missionDir, "daemon.pid"), "999999");
+
+		// process.kill(pid, 0) not throwing means "process is alive" to the
+		// source code. process.exit is stubbed as a no-op (not a throw) since
+		// the source's try/catch here would otherwise swallow a thrown mock
+		// exception as if it were process.kill's own ESRCH — a real
+		// process.exit(1) never returns, so that ambiguity can't arise outside
+		// a test; the meaningful assertion is just that exit(1) was reached.
+		const killSpy = vi
+			.spyOn(process, "kill")
+			.mockImplementation(() => true as never);
+		const exitSpy = vi
+			.spyOn(process, "exit")
+			.mockImplementation(() => undefined as never);
+		try {
+			lockPidFile({
+				workdir: dir as string,
+				missionId: "m1",
+				// biome-ignore lint/suspicious/noExplicitAny: minimal fake
+				anomalyRecorder: fakeAnomalyRecorder as any,
+			});
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			killSpy.mockRestore();
+			exitSpy.mockRestore();
+		}
+	});
+
+	it("records a soft anomaly and starts fresh when the PID file is stale", () => {
+		dir = mkdtempSync(join(tmpdir(), "magi-pid-lock-"));
+		const missionDir = join(dir, "missions", "m1");
+		mkdirSync(missionDir, { recursive: true });
+		writeFileSync(join(missionDir, "daemon.pid"), "999999");
+
+		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => {
+			throw new Error("ESRCH");
+		});
+		try {
+			const { pidFile } = lockPidFile({
+				workdir: dir,
+				missionId: "m1",
+				// biome-ignore lint/suspicious/noExplicitAny: minimal fake
+				anomalyRecorder: fakeAnomalyRecorder as any,
+			});
+			expect(readFileSync(pidFile, "utf8")).toBe(String(process.pid));
+			expect(fakeAnomalyRecorder.record).toHaveBeenCalledWith(
+				expect.objectContaining({
+					missionId: "m1",
+					category: "unclean-restart",
+					severity: "soft",
+				}),
+			);
+		} finally {
+			killSpy.mockRestore();
+		}
 	});
 });
 
