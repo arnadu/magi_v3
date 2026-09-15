@@ -30,6 +30,7 @@ import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
+import { createLogRoutes } from "./monitor-routes/log.js";
 import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
@@ -284,6 +285,7 @@ export class MonitorServer {
 				missionId: this.missionId,
 				mailboxRepo: this.mailboxRepo,
 			}),
+			...createLogRoutes({ workdir: this.workdir }),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -460,27 +462,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── GET /log
-		if (url === "/log" && req.method === "GET") {
-			const logPath = join(this.workdir, "daemon.log");
-			const maxLines = Math.min(
-				Number.parseInt(
-					new URL(rawUrl, "http://x").searchParams.get("lines") ?? "200",
-					10,
-				) || 200,
-				2000,
-			);
-			let body = "";
-			if (existsSync(logPath)) {
-				const content = readFileSync(logPath, "utf8");
-				const lines = content.split("\n");
-				body = lines.slice(-maxLines).join("\n");
-			}
-			res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-			res.end(body);
-			return;
 		}
 
 		// ── GET /agents/:id/mental-map
