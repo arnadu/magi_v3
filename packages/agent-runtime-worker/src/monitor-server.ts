@@ -30,6 +30,7 @@ import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
+import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
 import type { UsageAccumulator } from "./usage.js";
@@ -278,6 +279,11 @@ export class MonitorServer {
 				agents: this.agents,
 			}),
 			...createStaticAssetsRoutes({ publicDir: this.publicDir }),
+			...createMailboxRoutes({
+				db: this.db,
+				missionId: this.missionId,
+				mailboxRepo: this.mailboxRepo,
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -454,39 +460,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── GET /mailbox
-		if (url === "/mailbox" && req.method === "GET") {
-			const msgs = await this.db
-				.collection("mailbox")
-				.find({ missionId: this.missionId })
-				.sort({ timestamp: 1 })
-				.limit(500)
-				.toArray();
-			const payload = msgs.map((doc) => {
-				const d = doc as {
-					_id: unknown;
-					from: string;
-					to: string[];
-					subject: string;
-					body: string;
-					timestamp?: Date;
-				};
-				return {
-					id: String(d._id),
-					from: d.from,
-					to: d.to,
-					subject: d.subject,
-					bodyPreview:
-						d.body.length > 400 ? `${d.body.slice(0, 400)}…` : d.body,
-					body: d.body,
-					timestamp: (d.timestamp ?? new Date()).toISOString(),
-				};
-			});
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(payload));
-			return;
 		}
 
 		// ── GET /log
@@ -881,47 +854,6 @@ export class MonitorServer {
 			}
 			const body = await readBody(req);
 			this.writeFilePath(root, body, res);
-			return;
-		}
-
-		// ── POST /send-message
-		if (url === "/send-message" && req.method === "POST") {
-			const body = await readBody(req);
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(body);
-			} catch {
-				res.writeHead(400, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: "Invalid JSON" }));
-				return;
-			}
-			const { to, subject, message } = parsed as Record<string, unknown>;
-			if (
-				!Array.isArray(to) ||
-				to.length === 0 ||
-				!to.every((r) => typeof r === "string") ||
-				typeof subject !== "string" ||
-				typeof message !== "string" ||
-				message.trim() === ""
-			) {
-				res.writeHead(400, { "Content-Type": "application/json" });
-				res.end(
-					JSON.stringify({
-						error:
-							"to (non-empty string[]), subject (string), and message (string) are required",
-					}),
-				);
-				return;
-			}
-			await this.mailboxRepo.post({
-				missionId: this.missionId,
-				from: "user",
-				to: to as string[],
-				subject: subject || "Operator message",
-				body: message,
-			});
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true }));
 			return;
 		}
 
