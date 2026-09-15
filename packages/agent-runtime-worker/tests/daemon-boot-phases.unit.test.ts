@@ -16,6 +16,7 @@ import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
+import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
 import { resolveUsageAndCap } from "../src/daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "../src/daemon-boot/workspace.js";
 import { UsageAccumulator } from "../src/usage.js";
@@ -27,6 +28,35 @@ const mockConnectMongo = vi.fn();
 vi.mock("../src/mongo.js", () => ({
 	connectMongo: (...args: unknown[]) => mockConnectMongo(...args),
 }));
+
+// loadTeamConfig reads a real YAML file from disk — faked here so the
+// standalone-path branch doesn't need a fixture file; parseTeamConfig etc.
+// pass through to the real implementation.
+const mockLoadTeamConfig = vi.fn();
+vi.mock("@magi/agent-config", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@magi/agent-config")>();
+	return {
+		...actual,
+		loadTeamConfig: (...args: unknown[]) => mockLoadTeamConfig(...args),
+	};
+});
+
+/** Minimal fakeDb() extended with a stubbable findOne for the missions collection. */
+function fakeDbWithMissionDoc(doc: Record<string, unknown> | null) {
+	return {
+		collection() {
+			return {
+				async createIndex() {
+					return "ok";
+				},
+				async findOne() {
+					return doc;
+				},
+			};
+		},
+		// biome-ignore lint/suspicious/noExplicitAny: minimal fake, not a real Db
+	} as any;
+}
 
 /** Matches the fakeDb() pattern in anomaly.unit.test.ts / mission-copilot-tools.unit.test.ts. */
 function fakeDb() {
@@ -211,6 +241,83 @@ describe("parseDaemonEnv", () => {
 			mongoUri: "mongodb://test",
 			agentWorkdir: "/tmp/magi-agent-workdir-test",
 		});
+	});
+});
+
+describe("loadDaemonTeamConfig", () => {
+	const validAgent = {
+		id: "lead",
+		supervisor: "user",
+		systemPrompt: "You are the lead.",
+		initialMentalMap: "<section></section>",
+	};
+
+	it("MongoDB branch: missing structured config", async () => {
+		const db = fakeDbWithMissionDoc(null);
+		const result = await loadDaemonTeamConfig({
+			db,
+			missionIdEnv: "m1",
+			teamConfigPath: undefined,
+			agentWorkdir: "/tmp/magi-agent-workdir",
+		});
+		expect(result).toEqual({
+			ok: false,
+			exitMessage: "Error: no structured config stored for mission m1",
+		});
+	});
+
+	it("MongoDB branch: invalid stored config", async () => {
+		const db = fakeDbWithMissionDoc({
+			mission: { id: "m1" /* missing required name */ },
+			agents: [validAgent],
+		});
+		const result = await loadDaemonTeamConfig({
+			db,
+			missionIdEnv: "m1",
+			teamConfigPath: undefined,
+			agentWorkdir: "/tmp/magi-agent-workdir",
+		});
+		expect(result.ok).toBe(false);
+		expect((result as { exitMessage: string }).exitMessage).toContain(
+			"Error: stored config for mission m1 is invalid",
+		);
+	});
+
+	it("MongoDB branch: valid stored config resolves teamDir under agentWorkdir/team", async () => {
+		const db = fakeDbWithMissionDoc({
+			mission: { id: "m1", name: "Test Mission" },
+			agents: [validAgent],
+		});
+		const result = await loadDaemonTeamConfig({
+			db,
+			missionIdEnv: "m1",
+			teamConfigPath: undefined,
+			agentWorkdir: "/tmp/magi-agent-workdir",
+		});
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error("expected ok:true");
+		expect(result.missionId).toBe("m1");
+		expect(result.teamDir).toBe("/tmp/magi-agent-workdir/team");
+		expect(result.teamConfig.mission.name).toBe("Test Mission");
+	});
+
+	it("YAML branch: derives missionId from teamConfig and teamDir from the file path", async () => {
+		mockLoadTeamConfig.mockReturnValueOnce({
+			mission: { id: "yaml-mission", name: "YAML Mission" },
+			agents: [validAgent],
+		});
+		const db = fakeDbWithMissionDoc(null);
+		const result = await loadDaemonTeamConfig({
+			db,
+			missionIdEnv: undefined,
+			teamConfigPath: "/some/dir/my-team.yaml",
+			agentWorkdir: "/tmp/magi-agent-workdir",
+		});
+		expect(mockLoadTeamConfig).toHaveBeenCalledWith("/some/dir/my-team.yaml");
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error("expected ok:true");
+		expect(result.missionId).toBe("yaml-mission");
+		expect(result.teamDir).toBe("/some/dir/my-team");
 	});
 });
 

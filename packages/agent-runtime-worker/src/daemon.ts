@@ -50,13 +50,9 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	loadTeamConfig,
-	parseTeamConfig,
-	type TeamConfig,
-} from "@magi/agent-config";
+import type { TeamConfig } from "@magi/agent-config";
 
 import { config as dotenvConfig } from "dotenv";
 
@@ -115,6 +111,7 @@ import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { connectToMongo } from "./daemon-boot/mongo-connect.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
+import { loadDaemonTeamConfig } from "./daemon-boot/team-config.js";
 import { resolveUsageAndCap } from "./daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "./daemon-boot/workspace.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
@@ -739,56 +736,18 @@ async function main(): Promise<void> {
 	const { client, db } = await connectToMongo({ mongoUri });
 	Object.assign(ctx, { client, db });
 
-	let teamConfig: TeamConfig;
-	let missionId: string;
-	// Where this boot's team files (skills, playbooks, etc.) live on disk —
-	// resolved per-path below, used for both the MongoDB teamFiles fetch and
-	// the TEAM_SKILLS_PATH default further down.
-	let teamDir: string;
-
-	if (missionIdEnv) {
-		// Control-plane-provisioned path (ADR-0021) — read the mission's own
-		// structured config directly. No YAML file, no baked-image fallback:
-		// a missing or invalid document is a hard failure, not a silent
-		// default a real config bug could hide behind.
-		process.stdout.write("[daemon] Loading team config from MongoDB…\n");
-		missionId = missionIdEnv;
-		const missionDoc = await db.collection("missions").findOne({ missionId });
-		if (!missionDoc?.mission || !missionDoc.agents) {
-			process.stderr.write(
-				`Error: no structured config stored for mission ${missionId}\n`,
-			);
-			process.exitCode = 1;
-			return;
-		}
-		try {
-			teamConfig = parseTeamConfig({
-				mission: missionDoc.mission,
-				agents: missionDoc.agents,
-				missionCopilotLimits: missionDoc.missionCopilotLimits,
-			});
-		} catch (e) {
-			process.stderr.write(
-				`Error: stored config for mission ${missionId} is invalid: ${(e as Error).message}\n`,
-			);
-			process.exitCode = 1;
-			return;
-		}
-		teamDir = join(agentWorkdir, "team");
-	} else {
-		// Standalone local/dev path — boot directly against a hand-authored
-		// YAML file, no MongoDB `missions` document required.
-		process.stdout.write("[daemon] Loading team config from file…\n");
-		// biome-ignore lint/style/noNonNullAssertion: checked above — missionIdEnv is falsy here, so teamConfigPath must be set
-		teamConfig = loadTeamConfig(teamConfigPath!);
-		missionId = teamConfig.mission.id;
-		teamDir = join(
-			// biome-ignore lint/style/noNonNullAssertion: same as above
-			dirname(teamConfigPath!),
-			// biome-ignore lint/style/noNonNullAssertion: same as above
-			basename(teamConfigPath!, ".yaml"),
-		);
+	const teamConfigResult = await loadDaemonTeamConfig({
+		db,
+		missionIdEnv,
+		teamConfigPath,
+		agentWorkdir,
+	});
+	if (!teamConfigResult.ok) {
+		process.stderr.write(`${teamConfigResult.exitMessage}\n`);
+		process.exitCode = 1;
+		return;
 	}
+	const { teamConfig, missionId, teamDir } = teamConfigResult;
 	Object.assign(ctx, { missionId, teamDir, teamConfig });
 
 	// Mission copilot injection (ADR-0016) — in-memory only, must run before
