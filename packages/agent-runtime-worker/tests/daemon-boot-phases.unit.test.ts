@@ -8,8 +8,9 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { StatsCollector } from "../src/agent-stats.js";
+import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
@@ -127,5 +128,46 @@ describe("resolveModelsAndPricing", () => {
 
 		expect(result.modelId).toBe("claude-haiku-4-5-20251001");
 		expect(result.visionModel.id).toBe("claude-sonnet-4-6");
+	});
+});
+
+describe("wireAbortSignal", () => {
+	// process.on("SIGTERM"/"SIGINT", ...) is a permanent global registration
+	// with no return handle exposed by wireAbortSignal() — remove everything
+	// this test adds so repeated runs (and other test files sharing this
+	// process) never accumulate listeners.
+	afterEach(() => {
+		process.removeAllListeners("SIGTERM");
+		process.removeAllListeners("SIGINT");
+	});
+
+	it("registers exactly one SIGTERM and one SIGINT listener", () => {
+		expect(process.listenerCount("SIGTERM")).toBe(0);
+		expect(process.listenerCount("SIGINT")).toBe(0);
+		wireAbortSignal();
+		expect(process.listenerCount("SIGTERM")).toBe(1);
+		expect(process.listenerCount("SIGINT")).toBe(1);
+	});
+
+	it("aborts the signal on the first shutdown request", () => {
+		const { signal, initiateShutdown } = wireAbortSignal();
+		expect(signal.aborted).toBe(false);
+		initiateShutdown("test");
+		expect(signal.aborted).toBe(true);
+	});
+
+	it("force-exits with code 1 on a second shutdown request", () => {
+		class ExitCalled extends Error {}
+		const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new ExitCalled();
+		});
+		try {
+			const { initiateShutdown } = wireAbortSignal();
+			initiateShutdown("first");
+			expect(() => initiateShutdown("second")).toThrow(ExitCalled);
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
+		}
 	});
 });

@@ -108,6 +108,7 @@ import type {
 } from "@mariozechner/pi-ai";
 import { ObjectId } from "mongodb";
 import { createMongoAnomalyRecorder } from "./anomaly.js";
+import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import type { BootContext } from "./daemon-boot/context.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
@@ -940,23 +941,8 @@ async function main(): Promise<void> {
 	Object.assign(ctx, { workspaceManager });
 
 	// Abort controller — fired by SIGTERM / SIGINT / cost cap / monitor stop.
-	const ac = new AbortController();
-	const { signal } = ac;
-	let shutdownInitiated = false;
-	function initiateShutdown(reason: string): void {
-		if (shutdownInitiated) {
-			// Second signal — force exit immediately.
-			console.log("\n[daemon] Force exit");
-			process.exit(1);
-		}
-		shutdownInitiated = true;
-		console.log(
-			`\n[daemon] ${reason} — shutting down… (Ctrl-C again to force)`,
-		);
-		ac.abort();
-	}
-	process.on("SIGTERM", () => initiateShutdown("SIGTERM"));
-	process.on("SIGINT", () => initiateShutdown("Interrupted"));
+	const { ac, signal } = wireAbortSignal();
+	Object.assign(ctx, { ac, signal });
 
 	// PID file — enables cli:stop and guards against duplicate daemons.
 	const missionDir = join(workdir, "missions", missionId);

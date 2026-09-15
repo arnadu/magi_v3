@@ -39,4 +39,6 @@ export interface BootContext {
 	modelId: string;
 	model: Model<string>;
 	visionModel: Model<string>;
+	ac: AbortController;
+	signal: AbortSignal;
 }
