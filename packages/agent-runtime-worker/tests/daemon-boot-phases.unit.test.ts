@@ -12,6 +12,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { StatsCollector } from "../src/agent-stats.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
+import { constructWorkspaceManager } from "../src/daemon-boot/workspace.js";
+import { WorkspaceManager } from "../src/workspace-manager.js";
 
 /** Matches the fakeDb() pattern in anomaly.unit.test.ts / mission-copilot-tools.unit.test.ts. */
 function fakeDb() {
@@ -83,5 +85,16 @@ describe("constructRepositories", () => {
 		expect(repos.statsCollector).toBeInstanceOf(StatsCollector);
 		expect(repos.missionConfigRepo).toBeDefined();
 		expect(repos.objectivesRepo).toBeDefined();
+	});
+});
+
+describe("constructWorkspaceManager", () => {
+	it("builds a WorkspaceManager from workdir/teamDir/repoRoot", () => {
+		const { workspaceManager } = constructWorkspaceManager({
+			workdir: "/tmp/magi-workdir-test",
+			teamDir: "/tmp/magi-team-test",
+			repoRoot: "/tmp/magi-repo-test",
+		});
+		expect(workspaceManager).toBeInstanceOf(WorkspaceManager);
 	});
 });

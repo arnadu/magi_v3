@@ -5,6 +5,7 @@ import type { LlmCallLogRepository } from "../llm-call-log.js";
 import type { MailboxRepository } from "../mailbox.js";
 import type { MissionConfigRepository } from "../mission-config.js";
 import type { ObjectivesRepository } from "../objectives/repository.js";
+import type { WorkspaceManager } from "../workspace-manager.js";
 
 /**
  * Progressively-widened boot state, threaded by value through daemon.ts's
@@ -20,6 +21,7 @@ import type { ObjectivesRepository } from "../objectives/repository.js";
  * a Pick<>-typed phase function. The type only declares the eventual shape.
  */
 export interface BootContext {
+	repoRoot: string;
 	db: Db;
 	missionId: string;
 	mailboxRepo: MailboxRepository;
@@ -28,4 +30,7 @@ export interface BootContext {
 	statsCollector: StatsCollector;
 	missionConfigRepo: MissionConfigRepository;
 	objectivesRepo: ObjectivesRepository;
+	workdir: string;
+	teamDir: string;
+	workspaceManager: WorkspaceManager;
 }

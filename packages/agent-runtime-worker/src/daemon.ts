@@ -111,6 +111,7 @@ import { createMongoAnomalyRecorder } from "./anomaly.js";
 import type { BootContext } from "./daemon-boot/context.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
+import { constructWorkspaceManager } from "./daemon-boot/workspace.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
 import { missionLifetimeCostUsd } from "./limits.js";
 import { resolveLinuxUsers } from "./linux-user.js";
@@ -133,7 +134,6 @@ import type { AclPolicy } from "./tools.js";
 import { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
 import type { AgentIdentity } from "./workspace-manager.js";
-import { WorkspaceManager } from "./workspace-manager.js";
 
 /**
  * Mission copilot (ADR-0016): default-on as of Sprint 26, validated end-to-end
@@ -723,7 +723,7 @@ async function main(): Promise<void> {
 	// Widens to a full BootContext by the end of main() as more phases are
 	// extracted (Sprint 28c, issue #33); Partial<> during the transition since
 	// not every field's producing phase has been pulled out yet.
-	const ctx: Partial<BootContext> = {};
+	const ctx: Partial<BootContext> = { repoRoot: REPO_ROOT };
 	Object.assign(ctx, setupLogTee());
 
 	const teamConfigPath = process.env.TEAM_CONFIG;
@@ -818,6 +818,7 @@ async function main(): Promise<void> {
 			basename(teamConfigPath!, ".yaml"),
 		);
 	}
+	Object.assign(ctx, { missionId, teamDir });
 
 	// Mission copilot injection (ADR-0016) — in-memory only, must run before
 	// ensureAgentUsers so the copilot gets a real per-agent OS user and
@@ -943,16 +944,13 @@ async function main(): Promise<void> {
 	]);
 
 	const workdir = agentWorkdir;
-	const teamSkillsPath =
-		process.env.TEAM_SKILLS_PATH ?? join(teamDir, "skills");
-	const workspaceManager = new WorkspaceManager({
-		layout: {
-			homeBase: join(workdir, "home"),
-			missionsBase: join(workdir, "missions"),
-		},
-		platformSkillsPath: join(REPO_ROOT, "packages", "skills"),
-		teamSkillsPath,
+	Object.assign(ctx, { workdir });
+	const { workspaceManager } = constructWorkspaceManager({
+		workdir,
+		teamDir,
+		repoRoot: REPO_ROOT,
 	});
+	Object.assign(ctx, { workspaceManager });
 
 	// Abort controller — fired by SIGTERM / SIGINT / cost cap / monitor stop.
 	const ac = new AbortController();
