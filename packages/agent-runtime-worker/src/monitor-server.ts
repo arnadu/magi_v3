@@ -43,6 +43,7 @@ import { createScheduleRoutes } from "./monitor-routes/schedule.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import { createTraceRoutes } from "./monitor-routes/trace.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
+import { createUploadDownloadRoutes } from "./monitor-routes/upload-download.js";
 import type { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
 
@@ -365,6 +366,10 @@ export class MonitorServer {
 				push: (type, payload) => this.push(type, payload),
 				onStop: () => this.onStop(),
 			}),
+			...createUploadDownloadRoutes({
+				handleUpload: (req, res) => this.handleUpload(req, res),
+				handleDownload: (rawUrl, res) => this.handleDownload(rawUrl, res),
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -524,9 +529,7 @@ export class MonitorServer {
 			return;
 		}
 
-		// Route table (Sprint 28c, issue #32) — checked first; routes not yet
-		// migrated fall through to the legacy if/else chain below. The two
-		// never overlap: a route lives in exactly one of the two places.
+		// Route table (Sprint 28c, issue #32).
 		for (const route of this.routes) {
 			if (route.method !== req.method) continue;
 			const ctx = { req, res, rawUrl, url };
@@ -541,19 +544,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── POST /upload — operator uploads a file; it is processed and a mailbox
-		//     message is posted to the target agent. (Sprint 25 Slice C.)
-		if (url === "/upload" && req.method === "POST") {
-			await this.handleUpload(req, res);
-			return;
-		}
-
-		// ── GET /download — stream a file, or a folder subtree as a zip.
-		if (url === "/download" && req.method === "GET") {
-			this.handleDownload(rawUrl, res);
-			return;
 		}
 
 		res.writeHead(404).end();
