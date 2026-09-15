@@ -283,3 +283,91 @@ describe("POST /files/shared/edit", () => {
 		expect(json.error).toContain("MB edit limit");
 	});
 });
+
+// Characterization tests written as part of the Sprint 28c route-table
+// extraction (issue #32) — these routes had no direct test before this.
+describe("GET /files/shared, GET /files/history, /files/workdir/:agentId", () => {
+	let agentWorkdir: string;
+
+	beforeAll(() => {
+		agentWorkdir = mkdtempSync(join(tmpdir(), "magi-monfiles-workdir-"));
+		writeFileSync(join(agentWorkdir, "notes.txt"), "agent notes");
+		monitor.setAgentWorkdirs(new Map([["echo", agentWorkdir]]));
+		writeFileSync(join(sharedDir, "shared-note.txt"), "shared content");
+	});
+
+	afterAll(() => {
+		rmSync(agentWorkdir, { recursive: true, force: true });
+	});
+
+	it("GET /files/shared reads a text file under sharedDir", async () => {
+		const res = await fetch(
+			`${base}/files/shared?path=${encodeURIComponent("shared-note.txt")}`,
+		);
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as {
+			type: string;
+			encoding: string;
+			content: string;
+		};
+		expect(json.type).toBe("file");
+		expect(json.encoding).toBe("text");
+		expect(json.content).toBe("shared content");
+	});
+
+	it("GET /files/history returns provenance for a sharedDir path", async () => {
+		const res = await fetch(
+			`${base}/files/history?path=${encodeURIComponent("shared-note.txt")}`,
+		);
+		expect(res.status).toBe(200);
+		const json = await res.json();
+		expect(Array.isArray(json)).toBe(true);
+	});
+
+	it("GET /files/workdir/:agentId reads a file from a registered agent's workdir", async () => {
+		const res = await fetch(
+			`${base}/files/workdir/echo?path=${encodeURIComponent("notes.txt")}`,
+		);
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as { content: string };
+		expect(json.content).toBe("agent notes");
+	});
+
+	it("GET /files/workdir/:agentId 404s for an unregistered agent", async () => {
+		const res = await fetch(`${base}/files/workdir/nonexistent-agent`);
+		expect(res.status).toBe(404);
+		const json = (await res.json()) as { error: string };
+		expect(json.error).toBe("Agent workdir not found");
+	});
+
+	it("POST /files/shared/write creates a file under sharedDir without committing", async () => {
+		const res = await fetch(`${base}/files/shared/write`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ path: "written.txt", content: "hello" }),
+		});
+		expect(res.status).toBe(200);
+		expect(readFileSync(join(sharedDir, "written.txt"), "utf8")).toBe("hello");
+	});
+
+	it("POST /files/workdir/:agentId/write writes into a registered agent's workdir", async () => {
+		const res = await fetch(`${base}/files/workdir/echo/write`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ path: "written.txt", content: "workdir hello" }),
+		});
+		expect(res.status).toBe(200);
+		expect(readFileSync(join(agentWorkdir, "written.txt"), "utf8")).toBe(
+			"workdir hello",
+		);
+	});
+
+	it("POST /files/workdir/:agentId/write 404s for an unregistered agent", async () => {
+		const res = await fetch(`${base}/files/workdir/nonexistent-agent/write`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ path: "x.txt", content: "y" }),
+		});
+		expect(res.status).toBe(404);
+	});
+});

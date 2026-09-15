@@ -30,6 +30,7 @@ import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
+import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
 import { createLogRoutes } from "./monitor-routes/log.js";
 import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
@@ -286,6 +287,16 @@ export class MonitorServer {
 				mailboxRepo: this.mailboxRepo,
 			}),
 			...createLogRoutes({ workdir: this.workdir }),
+			...createFileBrowsingRoutes({
+				sharedDir: this.sharedDir,
+				getAgentWorkdirs: () => this.agentWorkdirs,
+				serveFilePath: (root, userPath, res) =>
+					this.serveFilePath(root, userPath, res),
+				serveFileHistory: (userPath, res) =>
+					this.serveFileHistory(userPath, res),
+				writeFilePath: (root, rawBody, res) =>
+					this.writeFilePath(root, rawBody, res),
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -672,22 +683,6 @@ export class MonitorServer {
 			return;
 		}
 
-		// ── GET /files/shared
-		if (url === "/files/shared" && req.method === "GET") {
-			const userPath =
-				new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
-			this.serveFilePath(this.sharedDir, userPath, res);
-			return;
-		}
-
-		// ── GET /files/history?path=  (provenance: who last touched this file)
-		if (url === "/files/history" && req.method === "GET") {
-			const userPath =
-				new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
-			await this.serveFileHistory(userPath, res);
-			return;
-		}
-
 		// ── GET /mission-stats  (Trace: lifetime cost/calls/turns per agent)
 		if (url === "/mission-stats" && req.method === "GET") {
 			const docs = await this.db
@@ -791,50 +786,12 @@ export class MonitorServer {
 			return;
 		}
 
-		// ── GET /files/workdir/:agentId
-		const workdirFileMatch = url.match(/^\/files\/workdir\/([^/]+)$/);
-		if (workdirFileMatch && req.method === "GET") {
-			const agentId = decodeURIComponent(workdirFileMatch[1]);
-			const root = this.agentWorkdirs.get(agentId);
-			if (!root) {
-				res.writeHead(404, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: "Agent workdir not found" }));
-				return;
-			}
-			const userPath =
-				new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
-			this.serveFilePath(root, userPath, res);
-			return;
-		}
-
-		// ── POST /files/shared/write  (copilot: write a file to sharedDir)
-		if (url === "/files/shared/write" && req.method === "POST") {
-			const body = await readBody(req);
-			this.writeFilePath(this.sharedDir, body, res);
-			return;
-		}
-
 		// ── POST /files/shared/edit  (cockpit: operator edits a text file —
 		// unlike /files/shared/write above, this commits immediately and
 		// notifies the file's last-touching agent; see handleFileEdit's doc
 		// comment for why the two routes are deliberately separate.)
 		if (url === "/files/shared/edit" && req.method === "POST") {
 			await this.handleFileEdit(req, res);
-			return;
-		}
-
-		// ── POST /files/workdir/:agentId/write  (copilot: write a file to agent workdir)
-		const workdirWriteMatch = url.match(/^\/files\/workdir\/([^/]+)\/write$/);
-		if (workdirWriteMatch && req.method === "POST") {
-			const agentId = decodeURIComponent(workdirWriteMatch[1]);
-			const root = this.agentWorkdirs.get(agentId);
-			if (!root) {
-				res.writeHead(404, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: "Agent workdir not found" }));
-				return;
-			}
-			const body = await readBody(req);
-			this.writeFilePath(root, body, res);
 			return;
 		}
 
