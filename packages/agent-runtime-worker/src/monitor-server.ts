@@ -29,6 +29,8 @@ import {
 import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
+import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
+import type { RouteEntry } from "./monitor-routes/types.js";
 import type { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
 
@@ -193,6 +195,13 @@ const SSE_HEARTBEAT_MS = 20_000;
 export class MonitorServer {
 	private readonly clients = new Set<ServerResponse>();
 	private readonly server;
+	/**
+	 * Route table (Sprint 28c, issue #32) — grows one cluster at a time as
+	 * `handleRequest`'s legacy if/else chain is migrated. Checked before the
+	 * legacy chain; the two never overlap since a route is only ever migrated
+	 * once (see handleRequest's dispatch loop).
+	 */
+	private readonly routes: RouteEntry[];
 	private readonly workspaceGit: WorkspaceGit;
 	private heartbeatTimer: NodeJS.Timeout | null = null;
 
@@ -261,6 +270,13 @@ export class MonitorServer {
 		workspaceGit?: WorkspaceGit,
 	) {
 		this.workspaceGit = workspaceGit ?? new WorkspaceGit(this.sharedDir);
+		this.routes = [
+			...createDashboardShellRoutes({
+				statusPayload: () => this.statusPayload(),
+				clients: this.clients,
+				agents: this.agents,
+			}),
+		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
 				console.error("[monitor] Request error:", e);
@@ -419,6 +435,25 @@ export class MonitorServer {
 			return;
 		}
 
+		// Route table (Sprint 28c, issue #32) — checked first; routes not yet
+		// migrated fall through to the legacy if/else chain below. The two
+		// never overlap: a route lives in exactly one of the two places.
+		for (const route of this.routes) {
+			if (route.method !== req.method) continue;
+			const ctx = { req, res, rawUrl, url };
+			if (typeof route.path === "string" || Array.isArray(route.path)) {
+				const paths = Array.isArray(route.path) ? route.path : [route.path];
+				if (!paths.includes(url)) continue;
+				await route.handler(ctx);
+				return;
+			}
+			const m = url.match(route.path);
+			if (m) {
+				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
+				return;
+			}
+		}
+
 		// ── Static files
 		if (url === "/" || url === "/index.html") {
 			res.writeHead(200, {
@@ -435,36 +470,6 @@ export class MonitorServer {
 				"Cache-Control": "no-store",
 			});
 			res.end(readFileSync(join(this.publicDir, url)));
-			return;
-		}
-
-		// ── GET /events
-		if (url === "/events" && req.method === "GET") {
-			res.writeHead(200, {
-				"Content-Type": "text/event-stream",
-				"Cache-Control": "no-cache",
-				Connection: "keep-alive",
-			});
-			res.write("retry: 3000\n\n");
-			res.write(
-				`event: status\ndata: ${JSON.stringify(await this.statusPayload())}\n\n`,
-			);
-			this.clients.add(res);
-			req.on("close", () => this.clients.delete(res));
-			return;
-		}
-
-		// ── GET /team
-		if (url === "/team" && req.method === "GET") {
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(this.agents));
-			return;
-		}
-
-		// ── GET /status
-		if (url === "/status" && req.method === "GET") {
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(await this.statusPayload()));
 			return;
 		}
 
