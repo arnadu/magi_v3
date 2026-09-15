@@ -39,10 +39,9 @@
  *                                 set by the control plane at machine creation; empty in local dev
  */
 
-import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import {
 	createWriteStream,
-	existsSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
@@ -105,6 +104,7 @@ import type {
 import { ObjectId } from "mongodb";
 import { createMongoAnomalyRecorder } from "./anomaly.js";
 import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
+import { provisionAgentIdentities } from "./daemon-boot/agent-identity.js";
 import type { BootContext } from "./daemon-boot/context.js";
 import { parseDaemonEnv } from "./daemon-boot/env.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
@@ -120,7 +120,6 @@ import { resolveLinuxUsers } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
 import {
-	injectMissionCopilot,
 	MISSION_COPILOT_AGENT_ID,
 	seedMissionCopilotObjectives,
 } from "./mission-copilot.js";
@@ -559,100 +558,6 @@ function startJobRunner(
 }
 
 // ---------------------------------------------------------------------------
-// OS user provisioning (production Docker)
-// ---------------------------------------------------------------------------
-
-/**
- * Ensure every agent in the team config has a corresponding Linux OS user,
- * per resolveLinuxUsers() (linux-user.ts) — pool users in local dev, a
- * dedicated per-agent user derived from agent.id in production Docker.
- *
- * In dev/test environments the resolved pool users are created by
- * setup-dev.sh and already exist — execFileSync("id", [...]) succeeds and
- * this function is a no-op for each such agent.
- *
- * In production Docker, the Dockerfile only creates the magi-shared group;
- * this function creates per-agent OS users at first startup.
- *
- * Idempotent: if the user already exists, the step is skipped silently.
- */
-function ensureAgentUsers(
-	agents: Array<{ id: string; linuxUser?: string }>,
-): void {
-	// execFileSync, not execSync: agent.id (CR-02) reaches this function
-	// unvalidated beyond Zod's charset check (agent-config/src/loader.ts), and
-	// execSync's template-string form runs through a shell — an id containing
-	// shell metacharacters could inject arbitrary commands there. execFileSync
-	// passes each argument directly to the OS, never through a shell, so
-	// there's nothing for an id to inject into (found live during the 28c
-	// security pass, 2026-09-13).
-	for (const linuxUser of resolveLinuxUsers(agents).values()) {
-		try {
-			execFileSync("id", [linuxUser], { stdio: "ignore" });
-		} catch {
-			// User does not exist — create it.
-			// In Docker (production) we use sudo magi-create-user which runs as root.
-			// In local dev, resolveLinuxUsers() only ever returns existing pool
-			// users, so this path is rarely reached there.
-			try {
-				execFileSync("sudo", ["/usr/local/bin/magi-create-user", linuxUser], {
-					stdio: "inherit",
-				});
-				console.log(`[daemon] Created OS user: ${linuxUser}`);
-			} catch (e) {
-				// Non-fatal in local dev: pool users cover the common dev agents.
-				// Fatal in Docker because setfacl will fail on the missing user.
-				console.warn(
-					`[daemon] Could not create OS user ${linuxUser}: ${(e as Error).message}`,
-				);
-			}
-		}
-	}
-}
-
-const MISSION_COPILOT_SRC_PATH = "/opt/magi-src";
-
-/**
- * Grant the mission copilot's specific OS user read access to the bundled
- * platform source (ADR-0016).
- *
- * Why this can't be a Dockerfile permission alone: Bash has no software
- * checkPath — path enforcement for Bash is delegated entirely to OS Linux
- * ACLs (accepted finding A-002). AgentRunContext.permittedPaths (extended
- * for the copilot in agent-runner.ts) only gates WriteFile/EditFile. If
- * /opt/magi-src/ were world-or-group readable at the OS level, *any* agent
- * could read it via Bash regardless of permittedPaths — the actual
- * restriction has to be an OS-level ACL grant scoped to one specific Linux
- * user, the same setfacl-per-agent pattern WorkspaceManager already uses for
- * sharedDir/workdir. That user (agent id "mission-copilot") doesn't exist until
- * ensureAgentUsers() creates it, so this must run at daemon startup, not at
- * image build time — the Dockerfile only makes the directory readable by
- * magi-operator itself (mode 750, owned by magi-operator's own dedicated
- * group — confirmed via a real image build), not by any other user.
- *
- * Best-effort: /opt/magi-src/ only exists in the built execution-plane
- * image, never in local dev — skip silently when absent, matching every
- * other ACL call's tolerance for unsupported/missing environments.
- */
-function grantMissionCopilotSourceAccess(linuxUser: string): void {
-	if (!existsSync(MISSION_COPILOT_SRC_PATH)) return;
-	try {
-		execFileSync(
-			"setfacl",
-			["-R", "-m", `u:${linuxUser}:rX`, MISSION_COPILOT_SRC_PATH],
-			{ stdio: "ignore" },
-		);
-		console.log(
-			`[daemon] Granted ${linuxUser} read access to ${MISSION_COPILOT_SRC_PATH}`,
-		);
-	} catch (e) {
-		console.error(
-			`[daemon] Failed to grant ${linuxUser} access to ${MISSION_COPILOT_SRC_PATH}: ${(e as Error).message}`,
-		);
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Message logging
 // ---------------------------------------------------------------------------
 
@@ -750,33 +655,7 @@ async function main(): Promise<void> {
 	const { teamConfig, missionId, teamDir } = teamConfigResult;
 	Object.assign(ctx, { missionId, teamDir, teamConfig });
 
-	// Mission copilot injection (ADR-0016) — in-memory only, must run before
-	// ensureAgentUsers so the copilot gets a real per-agent OS user and
-	// workspace ACL through the exact same path every other agent goes
-	// through.
-	if (missionCopilotEnabled) {
-		injectMissionCopilot(teamConfig);
-	}
-
-	process.stdout.write(
-		`[daemon] Mission: ${missionId} (${teamConfig.agents.length} agents)\n`,
-	);
-
-	// Ensure every agent has a Linux OS user. No-op for existing pool users
-	// (dev/test); creates per-agent users in production Docker.
-	process.stdout.write("[daemon] Ensuring agent OS users…\n");
-	ensureAgentUsers(teamConfig.agents);
-
-	// Must run after ensureAgentUsers — the copilot's OS user needs to exist
-	// before it can be granted an ACL entry.
-	if (missionCopilotEnabled) {
-		const copilotLinuxUser = resolveLinuxUsers(teamConfig.agents).get(
-			MISSION_COPILOT_AGENT_ID,
-		);
-		if (copilotLinuxUser) {
-			grantMissionCopilotSourceAccess(copilotLinuxUser);
-		}
-	}
+	provisionAgentIdentities({ teamConfig, missionId }, missionCopilotEnabled);
 
 	// Fetch team files from the mission document and write to teamDir on every
 	// boot. Stored in MongoDB before machine provisioning so they survive
