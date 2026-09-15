@@ -110,6 +110,7 @@ import { ObjectId } from "mongodb";
 import { createMongoAnomalyRecorder } from "./anomaly.js";
 import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import type { BootContext } from "./daemon-boot/context.js";
+import { parseDaemonEnv } from "./daemon-boot/env.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { connectToMongo } from "./daemon-boot/mongo-connect.js";
@@ -726,43 +727,13 @@ async function main(): Promise<void> {
 	const ctx: Partial<BootContext> = { repoRoot: REPO_ROOT };
 	Object.assign(ctx, setupLogTee());
 
-	const teamConfigPath = process.env.TEAM_CONFIG;
-	const missionIdEnv = process.env.MISSION_ID;
-	const mongoUri = process.env.MONGODB_URI;
-	const agentWorkdir = process.env.AGENT_WORKDIR ?? process.cwd();
-
-	process.stdout.write(`[daemon] MISSION_ID=${missionIdEnv ?? "(unset)"}\n`);
-	process.stdout.write(`[daemon] TEAM_CONFIG=${teamConfigPath ?? "(unset)"}\n`);
-	process.stdout.write(
-		`[daemon] MONGODB_URI=${mongoUri ? "(set)" : "(unset)"}\n`,
-	);
-	process.stdout.write(
-		`[daemon] ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY ? "(set)" : "(unset)"}\n`,
-	);
-	process.stdout.write(
-		`[daemon] BRAVE_SEARCH_API_KEY=${process.env.BRAVE_SEARCH_API_KEY ? "(set)" : "(unset)"}\n`,
-	);
-	for (const key of DATA_KEY_NAMES) {
-		process.stdout.write(
-			`[daemon] ${key}=${process.env[key] ? "(set)" : "(unset)"}\n`,
-		);
-	}
-
-	if (!mongoUri) {
-		process.stderr.write("Error: MONGODB_URI is required\n");
+	const envResult = parseDaemonEnv(DATA_KEY_NAMES);
+	if (!envResult.ok) {
+		process.stderr.write(`${envResult.exitMessage}\n`);
 		process.exitCode = 1;
 		return;
 	}
-	if (!missionIdEnv && !teamConfigPath) {
-		process.stderr.write("Error: MISSION_ID or TEAM_CONFIG is required\n");
-		process.exitCode = 1;
-		return;
-	}
-	if (!process.env.ANTHROPIC_API_KEY) {
-		process.stderr.write("Error: ANTHROPIC_API_KEY is required\n");
-		process.exitCode = 1;
-		return;
-	}
+	const { teamConfigPath, missionIdEnv, mongoUri, agentWorkdir } = envResult;
 
 	Object.assign(ctx, { mongoUri });
 	const { client, db } = await connectToMongo({ mongoUri });

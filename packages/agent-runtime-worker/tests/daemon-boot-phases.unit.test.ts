@@ -8,9 +8,10 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatsCollector } from "../src/agent-stats.js";
 import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
+import { parseDaemonEnv } from "../src/daemon-boot/env.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
@@ -138,6 +139,78 @@ describe("resolveModelsAndPricing", () => {
 
 		expect(result.modelId).toBe("claude-haiku-4-5-20251001");
 		expect(result.visionModel.id).toBe("claude-sonnet-4-6");
+	});
+});
+
+describe("parseDaemonEnv", () => {
+	const ENV_KEYS = [
+		"TEAM_CONFIG",
+		"MISSION_ID",
+		"MONGODB_URI",
+		"AGENT_WORKDIR",
+		"ANTHROPIC_API_KEY",
+		"BRAVE_SEARCH_API_KEY",
+	] as const;
+	const orig: Record<string, string | undefined> = {};
+
+	beforeEach(() => {
+		for (const key of ENV_KEYS) orig[key] = process.env[key];
+	});
+
+	afterEach(() => {
+		for (const key of ENV_KEYS) {
+			if (orig[key] === undefined) delete process.env[key];
+			else process.env[key] = orig[key];
+		}
+	});
+
+	it("fails when MONGODB_URI is missing", () => {
+		delete process.env.MONGODB_URI;
+		process.env.MISSION_ID = "m1";
+		process.env.ANTHROPIC_API_KEY = "key";
+		const result = parseDaemonEnv([]);
+		expect(result).toEqual({
+			ok: false,
+			exitMessage: "Error: MONGODB_URI is required",
+		});
+	});
+
+	it("fails when neither MISSION_ID nor TEAM_CONFIG is set", () => {
+		process.env.MONGODB_URI = "mongodb://test";
+		delete process.env.MISSION_ID;
+		delete process.env.TEAM_CONFIG;
+		process.env.ANTHROPIC_API_KEY = "key";
+		const result = parseDaemonEnv([]);
+		expect(result).toEqual({
+			ok: false,
+			exitMessage: "Error: MISSION_ID or TEAM_CONFIG is required",
+		});
+	});
+
+	it("fails when ANTHROPIC_API_KEY is missing", () => {
+		process.env.MONGODB_URI = "mongodb://test";
+		process.env.MISSION_ID = "m1";
+		delete process.env.ANTHROPIC_API_KEY;
+		const result = parseDaemonEnv([]);
+		expect(result).toEqual({
+			ok: false,
+			exitMessage: "Error: ANTHROPIC_API_KEY is required",
+		});
+	});
+
+	it("succeeds and returns the parsed values when all required vars are set", () => {
+		process.env.MONGODB_URI = "mongodb://test";
+		process.env.MISSION_ID = "m1";
+		process.env.ANTHROPIC_API_KEY = "key";
+		process.env.AGENT_WORKDIR = "/tmp/magi-agent-workdir-test";
+		const result = parseDaemonEnv([]);
+		expect(result).toEqual({
+			ok: true,
+			teamConfigPath: undefined,
+			missionIdEnv: "m1",
+			mongoUri: "mongodb://test",
+			agentWorkdir: "/tmp/magi-agent-workdir-test",
+		});
 	});
 });
 
