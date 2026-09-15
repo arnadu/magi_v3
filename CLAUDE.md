@@ -173,22 +173,26 @@ rather than requiring either fixed first. The structured draft-review cockpit pa
 v2) remains a fast-follow, not shipped.
 
 **Sprint 28c — Structural decomposition of `monitor-server.ts`/`daemon.ts` + file-scoped
-security fixes (CR-01/CR-02 done 2026-09-13; decomposition + CR-05 not started, see
-`docs/code-structure.md`).** Renumbered from 28a on 2026-09-05 to make room for 28a/28b above —
-no content change at the time. **CR-01 (root escalation) and CR-02 (shell-interpolated agent ID)
-were landed ahead of the file decomposition** — the beta deployment going live raised the
-urgency past the point of waiting on the (larger, riskier) decomposition first; see
-`docs/security/threat-model.md`'s TB-3 for the fix detail and live sudoers verification. Folded
-in during the same pass: every shipped template hardcoded `linuxUser` to a dev-only pool
-username (`agent-config/src/loader.ts`'s doc comment describes the intended
-derive-from-`agent.id` production behavior, which no template actually used) — fixed via a new
-`resolveLinuxUsers()` (`agent-runtime-worker/src/linux-user.ts`) that derives from `agent.id` in
-production and fails loudly (never silently double-assigns) onto a fixed local-dev pool
-otherwise; `linuxUser` removed from every template. Still open: characterization/integration test
-coverage for `MonitorServer.handleRequest` (~725 lines) and `daemon.ts`'s `main()` (~745 lines),
-the route-table/bootstrap-phase split, and CR-05 (auth token handling). Split out from a single
-Sprint 28 following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`) and
-this project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
+security fixes (CR-01/CR-02 done 2026-09-13; `monitor-server.ts` decomposition done 2026-09-14;
+`daemon.ts` decomposition + CR-05 not started, see `docs/code-structure.md`).** Renumbered from
+28a on 2026-09-05 to make room for 28a/28b above — no content change at the time. **CR-01 (root
+escalation) and CR-02 (shell-interpolated agent ID) were landed ahead of the file decomposition**
+— the beta deployment going live raised the urgency past the point of waiting on the (larger,
+riskier) decomposition first; see `docs/security/threat-model.md`'s TB-3 for the fix detail and
+live sudoers verification. Folded in during the same pass: every shipped template hardcoded
+`linuxUser` to a dev-only pool username (`agent-config/src/loader.ts`'s doc comment describes the
+intended derive-from-`agent.id` production behavior, which no template actually used) — fixed via
+a new `resolveLinuxUsers()` (`agent-runtime-worker/src/linux-user.ts`) that derives from
+`agent.id` in production and fails loudly (never silently double-assigns) onto a fixed local-dev
+pool otherwise; `linuxUser` removed from every template. **`MonitorServer.handleRequest`'s
+route-table extraction is done**: all 34 routes moved from a single ~719-line if/else chain into
+15 files under `agent-runtime-worker/src/monitor-routes/` (one per cluster, factory functions
+taking an explicit `deps` object), each with new/extended integration test coverage;
+`handleRequest` itself is now a 36-line auth-gate + dispatch loop. Still open:
+`daemon.ts`'s `main()` (~792 lines) bootstrap-phase split and CR-05 (auth token handling), the
+latter scoped once the new route-table structure is in place. Split out from a single Sprint 28
+following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`) and this
+project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
 
 **Sprint 28d — Remaining operational + security hardening (not started).** Renumbered from 28b
 on 2026-09-05 — no content change. Out-of-band alerting (issues #3, #4); G-4 disk monitoring
