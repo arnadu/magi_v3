@@ -110,6 +110,7 @@ import { ObjectId } from "mongodb";
 import { createMongoAnomalyRecorder } from "./anomaly.js";
 import type { BootContext } from "./daemon-boot/context.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
+import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
 import { constructWorkspaceManager } from "./daemon-boot/workspace.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
@@ -123,11 +124,9 @@ import {
 	seedMissionCopilotObjectives,
 } from "./mission-copilot.js";
 import { createMissionCopilotTools } from "./mission-copilot-tools.js";
-import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer } from "./monitor-server.js";
 import { migrateLegacyObjectivesStore } from "./objectives/migrate-legacy-store.js";
-import { enrichModelPricing } from "./openrouter-pricing.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
@@ -818,7 +817,7 @@ async function main(): Promise<void> {
 			basename(teamConfigPath!, ".yaml"),
 		);
 	}
-	Object.assign(ctx, { missionId, teamDir });
+	Object.assign(ctx, { missionId, teamDir, teamConfig });
 
 	// Mission copilot injection (ADR-0016) — in-memory only, must run before
 	// ensureAgentUsers so the copilot gets a real per-agent OS user and
@@ -926,22 +925,10 @@ async function main(): Promise<void> {
 			: undefined,
 	);
 
-	const modelId =
-		teamConfig.mission.model ?? process.env.MODEL ?? "claude-sonnet-4-6";
-	const model = resolveModel(modelId);
-
-	const visionModelId =
-		teamConfig.mission.visionModel ??
-		process.env.VISION_MODEL ??
-		"claude-haiku-4-5-20251001";
-	const visionModel = resolveModel(visionModelId);
-
-	// Overwrite OpenRouter models' static cost with live list pricing (no-op for
-	// first-party Anthropic models, whose cost is already exact). See issue #10.
-	await Promise.all([
-		enrichModelPricing(model),
-		enrichModelPricing(visionModel),
-	]);
+	const { modelId, model, visionModel } = await resolveModelsAndPricing({
+		teamConfig,
+	});
+	Object.assign(ctx, { modelId, model, visionModel });
 
 	const workdir = agentWorkdir;
 	Object.assign(ctx, { workdir });

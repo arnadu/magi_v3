@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { StatsCollector } from "../src/agent-stats.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
+import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { constructWorkspaceManager } from "../src/daemon-boot/workspace.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
@@ -96,5 +97,35 @@ describe("constructWorkspaceManager", () => {
 			repoRoot: "/tmp/magi-repo-test",
 		});
 		expect(workspaceManager).toBeInstanceOf(WorkspaceManager);
+	});
+});
+
+describe("resolveModelsAndPricing", () => {
+	it("resolves model/visionModel ids from teamConfig, falling back to defaults", async () => {
+		const teamConfig = {
+			mission: { id: "m1", name: "Test" },
+		} as Parameters<typeof resolveModelsAndPricing>[0]["teamConfig"];
+
+		const result = await resolveModelsAndPricing({ teamConfig });
+
+		expect(result.modelId).toBe("claude-sonnet-4-6");
+		expect(result.model.id).toBe("claude-sonnet-4-6");
+		expect(result.visionModel.id).toBe("claude-haiku-4-5-20251001");
+	});
+
+	it("prefers teamConfig.mission.model/visionModel over the built-in default", async () => {
+		const teamConfig = {
+			mission: {
+				id: "m1",
+				name: "Test",
+				model: "claude-haiku-4-5-20251001",
+				visionModel: "claude-sonnet-4-6",
+			},
+		} as Parameters<typeof resolveModelsAndPricing>[0]["teamConfig"];
+
+		const result = await resolveModelsAndPricing({ teamConfig });
+
+		expect(result.modelId).toBe("claude-haiku-4-5-20251001");
+		expect(result.visionModel.id).toBe("claude-sonnet-4-6");
 	});
 });

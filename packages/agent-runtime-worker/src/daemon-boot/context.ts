@@ -1,3 +1,5 @@
+import type { TeamConfig } from "@magi/agent-config";
+import type { Model } from "@mariozechner/pi-ai";
 import type { Db } from "mongodb";
 import type { StatsCollector } from "../agent-stats.js";
 import type { ConversationRepository } from "../conversation-repository.js";
@@ -32,5 +34,9 @@ export interface BootContext {
 	objectivesRepo: ObjectivesRepository;
 	workdir: string;
 	teamDir: string;
+	teamConfig: TeamConfig;
 	workspaceManager: WorkspaceManager;
+	modelId: string;
+	model: Model<string>;
+	visionModel: Model<string>;
 }
