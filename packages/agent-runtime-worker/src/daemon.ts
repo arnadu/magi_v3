@@ -107,21 +107,15 @@ import type {
 	Usage,
 } from "@mariozechner/pi-ai";
 import { ObjectId } from "mongodb";
-import {
-	createMongoAgentStatsRepository,
-	StatsCollector,
-} from "./agent-stats.js";
 import { createMongoAnomalyRecorder } from "./anomaly.js";
-import { createMongoConversationRepository } from "./conversation-repository.js";
 import type { BootContext } from "./daemon-boot/context.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
+import { constructRepositories } from "./daemon-boot/repositories.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
 import { missionLifetimeCostUsd } from "./limits.js";
 import { resolveLinuxUsers } from "./linux-user.js";
-import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
-import { createMongoMissionConfigRepository } from "./mission-config.js";
 import {
 	injectMissionCopilot,
 	MISSION_COPILOT_AGENT_ID,
@@ -132,7 +126,6 @@ import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
 import { MonitorServer } from "./monitor-server.js";
 import { migrateLegacyObjectivesStore } from "./objectives/migrate-legacy-store.js";
-import { createMongoObjectivesRepository } from "./objectives/repository.js";
 import { enrichModelPricing } from "./openrouter-pricing.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
@@ -727,7 +720,10 @@ function logMessage(msg: Message, agentId?: string): void {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-	const ctx: BootContext = {};
+	// Widens to a full BootContext by the end of main() as more phases are
+	// extracted (Sprint 28c, issue #33); Partial<> during the transition since
+	// not every field's producing phase has been pulled out yet.
+	const ctx: Partial<BootContext> = {};
 	Object.assign(ctx, setupLogTee());
 
 	const teamConfigPath = process.env.TEAM_CONFIG;
@@ -879,14 +875,16 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const mailboxRepo = createMongoMailboxRepository(db, missionId);
-	const conversationRepo = createMongoConversationRepository(db);
-	const llmCallLog = createMongoLlmCallLogRepository(db);
-	const statsCollector = new StatsCollector(
-		createMongoAgentStatsRepository(db),
-	);
-	const missionConfigRepo = createMongoMissionConfigRepository(db);
-	const objectivesRepo = createMongoObjectivesRepository(db);
+	const repos = constructRepositories({ db, missionId });
+	Object.assign(ctx, repos);
+	const {
+		mailboxRepo,
+		conversationRepo,
+		llmCallLog,
+		statsCollector,
+		missionConfigRepo,
+		objectivesRepo,
+	} = repos;
 
 	// Owning user's control-plane copilot mailbox (copilot-{userId}), for
 	// relaying hard-severity anomalies. Previously gated by a COPILOT_MISSION_ID

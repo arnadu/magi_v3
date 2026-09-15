@@ -1,10 +1,31 @@
+import type { Db } from "mongodb";
+import type { StatsCollector } from "../agent-stats.js";
+import type { ConversationRepository } from "../conversation-repository.js";
+import type { LlmCallLogRepository } from "../llm-call-log.js";
+import type { MailboxRepository } from "../mailbox.js";
+import type { MissionConfigRepository } from "../mission-config.js";
+import type { ObjectivesRepository } from "../objectives/repository.js";
+
 /**
  * Progressively-widened boot state, threaded by value through daemon.ts's
  * main(). Each extracted phase is typed via Pick<BootContext, ...> on its
  * input and output — an at-a-glance, enforced list of exactly what it reads
  * and produces — and main() merges each phase's return into this object via
  * Object.assign. Grows one field group per phase as main() is decomposed
- * (Sprint 28c, issue #33); this file has no fields yet since the first
- * extracted phase (log tee) needs none.
+ * (Sprint 28c, issue #33).
+ *
+ * A field appearing here does not imply its producing phase has been
+ * extracted yet — during the transition, some fields (e.g. db, missionId)
+ * are still assigned directly by still-inline code in main() rather than by
+ * a Pick<>-typed phase function. The type only declares the eventual shape.
  */
-export type BootContext = Record<string, never>;
+export interface BootContext {
+	db: Db;
+	missionId: string;
+	mailboxRepo: MailboxRepository;
+	conversationRepo: ConversationRepository;
+	llmCallLog: LlmCallLogRepository;
+	statsCollector: StatsCollector;
+	missionConfigRepo: MissionConfigRepository;
+	objectivesRepo: ObjectivesRepository;
+}
