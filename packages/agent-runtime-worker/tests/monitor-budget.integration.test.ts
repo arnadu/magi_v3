@@ -196,4 +196,24 @@ describe("budget pause / resume", () => {
 		};
 		expect(resumed.budgetPaused).toBe(false);
 	});
+
+	it("/extend-budget unconditionally clears the pause, unlike /set-budget's spend-check gate", async () => {
+		await monitor.notifyCostPause(60, 100);
+		const paused = (await (await fetch(`${base}/status`)).json()) as {
+			budgetPaused: boolean;
+		};
+		expect(paused.budgetPaused).toBe(true);
+
+		const res = await fetch(`${base}/extend-budget`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ addUsd: 1 }),
+		});
+		expect(res.ok).toBe(true);
+
+		const resumed = (await (await fetch(`${base}/status`)).json()) as {
+			budgetPaused: boolean;
+		};
+		expect(resumed.budgetPaused).toBe(false);
+	});
 });

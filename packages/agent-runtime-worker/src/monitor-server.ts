@@ -30,6 +30,7 @@ import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import { createAgentSessionsRoutes } from "./monitor-routes/agent-sessions.js";
+import { createBudgetRoutes } from "./monitor-routes/budget.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
 import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
 import { createFileEditRoutes } from "./monitor-routes/file-edit.js";
@@ -344,6 +345,21 @@ export class MonitorServer {
 				statusPayload: () => this.statusPayload(),
 				readAgentId: (req, res) => this.readAgentId(req, res),
 			}),
+			...createBudgetRoutes({
+				missionId: this.missionId,
+				missionConfig: this.missionConfig,
+				statsCollector: this.statsCollector,
+				getBudgetPaused: () => this.budgetPaused,
+				setBudgetPaused: (paused) => {
+					this.budgetPaused = paused;
+				},
+				getBudgetResolve: () => this.budgetResolve,
+				setBudgetResolve: (fn) => {
+					this.budgetResolve = fn;
+				},
+				push: (type, payload) => this.push(type, payload),
+				statusPayload: () => this.statusPayload(),
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -520,96 +536,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── POST /extend-budget
-		if (url === "/extend-budget" && req.method === "POST") {
-			const body = await readBody(req);
-			let addUsd = 5;
-			try {
-				const parsed = JSON.parse(body) as Record<string, unknown>;
-				if (typeof parsed.addUsd === "number" && parsed.addUsd > 0) {
-					addUsd = parsed.addUsd;
-				}
-			} catch {
-				// Malformed JSON — use default $5
-			}
-			// Read the current persisted cap fresh — never a locally-cached value
-			// (ADR-0018) — so this adds on top of whatever the cap actually is,
-			// including a value set by another writer (cockpit, mission copilot)
-			// since this process last checked.
-			const live = await this.missionConfig.readTeamConfig(this.missionId);
-			const previousCap = live?.mission.maxCostUsd ?? 0;
-			const newCapUsd = previousCap + addUsd;
-			try {
-				await this.missionConfig.writeMissionCap(this.missionId, newCapUsd);
-			} catch (e) {
-				res.writeHead(500, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ ok: false, error: (e as Error).message }));
-				return;
-			}
-			this.budgetPaused = false;
-			console.log(
-				`[monitor] Budget extended by $${addUsd.toFixed(2)} — new cap: $${newCapUsd.toFixed(2)}`,
-			);
-			if (this.budgetResolve) {
-				this.budgetResolve();
-				this.budgetResolve = null;
-			}
-			this.push("cost-resumed", { addUsd, newCapUsd, budgetPaused: false });
-			this.push("status", await this.statusPayload());
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, newCapUsd }));
-			return;
-		}
-
-		// ── POST /set-budget — set an absolute spending cap (cf. /extend-budget which adds)
-		if (url === "/set-budget" && req.method === "POST") {
-			const body = await readBody(req);
-			let capUsd: number | null = null;
-			try {
-				const parsed = JSON.parse(body) as Record<string, unknown>;
-				if (typeof parsed.capUsd === "number" && parsed.capUsd > 0) {
-					capUsd = parsed.capUsd;
-				}
-			} catch {
-				// fall through to validation error below
-			}
-			if (capUsd === null) {
-				res.writeHead(400, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ ok: false, error: "capUsd must be > 0" }));
-				return;
-			}
-			// Persist first — this IS the source of truth from here on (ADR-0018);
-			// there is no local cap value to also update.
-			try {
-				await this.missionConfig.writeMissionCap(this.missionId, capUsd);
-			} catch (e) {
-				res.writeHead(500, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ ok: false, error: (e as Error).message }));
-				return;
-			}
-			// Lift the pause if the new cap is above what has actually been spent —
-			// read fresh from missionStats (safety-critical: decides whether a
-			// paused mission resumes), never from the session-only accumulator.
-			if (this.budgetPaused) {
-				const snapshot = await this.statsCollector.readMissionSnapshot(
-					this.missionId,
-				);
-				if (capUsd > missionLifetimeCostUsd(snapshot)) {
-					this.budgetPaused = false;
-					if (this.budgetResolve) {
-						this.budgetResolve();
-						this.budgetResolve = null;
-					}
-					this.push("cost-resumed", { newCapUsd: capUsd, budgetPaused: false });
-				}
-			}
-			console.log(`[monitor] Budget cap set to $${capUsd.toFixed(2)}`);
-			this.push("status", await this.statusPayload());
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, newCapUsd: capUsd }));
-			return;
 		}
 
 		// ── POST /stop
