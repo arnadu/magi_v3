@@ -29,6 +29,7 @@ import {
 import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
+import { createAgentSessionsRoutes } from "./monitor-routes/agent-sessions.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
 import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
 import { createFileEditRoutes } from "./monitor-routes/file-edit.js";
@@ -301,6 +302,10 @@ export class MonitorServer {
 			...createFileEditRoutes({
 				handleFileEdit: (req, res) => this.handleFileEdit(req, res),
 			}),
+			...createAgentSessionsRoutes({
+				db: this.db,
+				missionId: this.missionId,
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -477,162 +482,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── GET /agents/:id/mental-map
-		const mentalMapMatch = url.match(/^\/agents\/([^/]+)\/mental-map$/);
-		if (mentalMapMatch && req.method === "GET") {
-			const agentId = decodeURIComponent(mentalMapMatch[1]);
-			const doc = await this.db.collection("conversationMessages").findOne(
-				{
-					agentId,
-					missionId: this.missionId,
-					mentalMapHtml: { $exists: true },
-				},
-				{ sort: { turnNumber: -1, seqInTurn: -1 } },
-			);
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify({
-					agentId,
-					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB document
-					html: (doc as any)?.mentalMapHtml ?? "",
-				}),
-			);
-			return;
-		}
-
-		// ── GET /agents/:id/sessions
-		const sessionsMatch = url.match(/^\/agents\/([^/]+)\/sessions$/);
-		if (sessionsMatch && req.method === "GET") {
-			const agentId = decodeURIComponent(sessionsMatch[1]);
-
-			const llmDocs = await this.db
-				.collection("llmCallLog")
-				.find({ agentId, missionId: this.missionId })
-				.sort({ turnNumber: 1, savedAt: 1 })
-				.toArray();
-
-			const byTurn = new Map<number, typeof llmDocs>();
-			for (const d of llmDocs) {
-				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB document
-				const t = (d as any).turnNumber ?? 0;
-				if (!byTurn.has(t)) byTurn.set(t, []);
-				byTurn.get(t)?.push(d);
-			}
-
-			const toolCounts = await this.db
-				.collection("conversationMessages")
-				.aggregate([
-					{
-						$match: {
-							agentId,
-							missionId: this.missionId,
-							"message.role": "toolResult",
-							parentToolUseId: { $exists: false },
-						},
-					},
-					{ $group: { _id: "$turnNumber", count: { $sum: 1 } } },
-				])
-				.toArray();
-			const toolCountMap = new Map(
-				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB aggregate result
-				toolCounts.map((t: any) => [t._id, t.count]),
-			);
-
-			const sessions = Array.from(byTurn.entries()).map(([turn, docs]) => {
-				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
-				const isReflection = (docs[0] as any)?.isReflection ?? false;
-				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
-				const startTime = (docs[0] as any)?.savedAt;
-				// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
-				const endTime = (docs[docs.length - 1] as any)?.savedAt;
-				const durationMs =
-					startTime && endTime
-						? new Date(endTime).getTime() - new Date(startTime).getTime()
-						: 0;
-				const totals = docs.reduce(
-					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
-					(acc: any, d: any) => ({
-						inputTokens: acc.inputTokens + (d.usage?.inputTokens ?? 0),
-						outputTokens: acc.outputTokens + (d.usage?.outputTokens ?? 0),
-						cacheReadTokens:
-							acc.cacheReadTokens + (d.usage?.cacheReadTokens ?? 0),
-						costUsd: acc.costUsd + (d.usage?.cost?.total ?? 0),
-					}),
-					{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 },
-				);
-				return {
-					turnNumber: turn,
-					isReflection,
-					startTime,
-					endTime,
-					durationMs,
-					llmCalls: docs.length,
-					toolCalls: toolCountMap.get(turn) ?? 0,
-					...totals,
-				};
-			});
-
-			sessions.sort((a, b) => a.turnNumber - b.turnNumber);
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(sessions));
-			return;
-		}
-
-		// ── GET /agents/:id/sessions/:turn
-		const sessionDetailMatch = url.match(
-			/^\/agents\/([^/]+)\/sessions\/(\d+)$/,
-		);
-		if (sessionDetailMatch && req.method === "GET") {
-			const agentId = decodeURIComponent(sessionDetailMatch[1]);
-			const turnNumber = parseInt(sessionDetailMatch[2], 10);
-
-			const msgs = await this.db
-				.collection("conversationMessages")
-				.find({ agentId, missionId: this.missionId, turnNumber })
-				.sort({ seqInTurn: 1 })
-				.toArray();
-
-			const llmCalls = await this.db
-				.collection("llmCallLog")
-				.find({ agentId, missionId: this.missionId, turnNumber })
-				.sort({ savedAt: 1 })
-				.toArray();
-
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ turnNumber, messages: msgs, llmCalls }));
-			return;
-		}
-
-		// ── GET /agents/:id/usage
-		const usageMatch = url.match(/^\/agents\/([^/]+)\/usage$/);
-		if (usageMatch && req.method === "GET") {
-			const agentId = decodeURIComponent(usageMatch[1]);
-			const docs = await this.db
-				.collection("llmCallLog")
-				.find({ missionId: this.missionId, agentId })
-				.sort({ turnNumber: 1, savedAt: 1 })
-				.toArray();
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify(
-					docs.map((d) => ({
-						turnNumber: d.turnNumber ?? 0,
-						isReflection: d.isReflection ?? false,
-						savedAt: d.savedAt,
-						model: d.model ?? null,
-						// input is absent after the 7-day retention window — same
-						// window that governs d.output; toolNames degrades to
-						// undefined for older calls rather than an empty array, so
-						// callers can distinguish "no tools available" from "no
-						// longer known".
-						toolNames: d.input?.toolNames,
-						usage: d.usage ?? null,
-					})),
-				),
-			);
-			return;
 		}
 
 		// ── GET /schedule
