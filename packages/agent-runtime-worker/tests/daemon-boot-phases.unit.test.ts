@@ -17,6 +17,7 @@ import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
+import { syncTeamFiles } from "../src/daemon-boot/team-files-sync.js";
 import { resolveUsageAndCap } from "../src/daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "../src/daemon-boot/workspace.js";
 import { UsageAccumulator } from "../src/usage.js";
@@ -318,6 +319,53 @@ describe("loadDaemonTeamConfig", () => {
 		if (!result.ok) throw new Error("expected ok:true");
 		expect(result.missionId).toBe("yaml-mission");
 		expect(result.teamDir).toBe("/some/dir/my-team");
+	});
+});
+
+describe("syncTeamFiles", () => {
+	let dir: string | undefined;
+
+	afterEach(() => {
+		if (dir) rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("writes teamFiles from the mission doc into teamDir", async () => {
+		dir = mkdtempSync(join(tmpdir(), "magi-team-files-"));
+		const db = fakeDbWithMissionDoc({
+			teamFiles: [
+				{ path: "skills/foo.md", content: "# Foo" },
+				{ path: "playbooks/bar.yaml", content: "bar: 1" },
+			],
+		});
+		await syncTeamFiles({ db, missionId: "m1", teamDir: dir });
+
+		expect(readFileSync(join(dir, "skills/foo.md"), "utf8")).toBe("# Foo");
+		expect(readFileSync(join(dir, "playbooks/bar.yaml"), "utf8")).toBe(
+			"bar: 1",
+		);
+	});
+
+	it("is a no-op when the mission doc has no teamFiles", async () => {
+		dir = mkdtempSync(join(tmpdir(), "magi-team-files-"));
+		const db = fakeDbWithMissionDoc({});
+		await syncTeamFiles({ db, missionId: "m1", teamDir: dir });
+		expect(existsSync(join(dir, "skills"))).toBe(false);
+	});
+
+	it("does not throw when the Mongo read fails", async () => {
+		const db = {
+			collection() {
+				return {
+					async findOne() {
+						throw new Error("boom");
+					},
+				};
+			},
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake, not a real Db
+		} as any;
+		await expect(
+			syncTeamFiles({ db, missionId: "m1", teamDir: "/tmp/unused" }),
+		).resolves.toEqual({});
 	});
 });
 

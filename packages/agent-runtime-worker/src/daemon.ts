@@ -112,6 +112,7 @@ import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { connectToMongo } from "./daemon-boot/mongo-connect.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "./daemon-boot/team-config.js";
+import { syncTeamFiles } from "./daemon-boot/team-files-sync.js";
 import { resolveUsageAndCap } from "./daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "./daemon-boot/workspace.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
@@ -657,33 +658,7 @@ async function main(): Promise<void> {
 
 	provisionAgentIdentities({ teamConfig, missionId }, missionCopilotEnabled);
 
-	// Fetch team files from the mission document and write to teamDir on every
-	// boot. Stored in MongoDB before machine provisioning so they survive
-	// restarts without requiring a size-limited env var payload.
-	try {
-		const missionDoc = await db
-			.collection("missions")
-			.findOne({ missionId }, { projection: { teamFiles: 1 } });
-		const dbFiles = missionDoc?.teamFiles as
-			| Array<{ path: string; content: string }>
-			| undefined;
-		if (dbFiles && dbFiles.length > 0) {
-			let written = 0;
-			for (const { path: relPath, content } of dbFiles) {
-				const dest = join(teamDir, relPath);
-				mkdirSync(dirname(dest), { recursive: true });
-				writeFileSync(dest, content);
-				written++;
-			}
-			process.stdout.write(
-				`[daemon] Wrote ${written} team files from MongoDB to ${teamDir}\n`,
-			);
-		}
-	} catch (e) {
-		process.stderr.write(
-			`[daemon] Failed to write team files from MongoDB: ${(e as Error).message}\n`,
-		);
-	}
+	await syncTeamFiles({ db, missionId, teamDir });
 
 	const repos = constructRepositories({ db, missionId });
 	Object.assign(ctx, repos);
