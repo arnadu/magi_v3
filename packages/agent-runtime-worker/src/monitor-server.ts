@@ -34,6 +34,7 @@ import { createBudgetRoutes } from "./monitor-routes/budget.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
 import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
 import { createFileEditRoutes } from "./monitor-routes/file-edit.js";
+import { createLifecycleRoutes } from "./monitor-routes/lifecycle.js";
 import { createLogRoutes } from "./monitor-routes/log.js";
 import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
 import { createPauseResumeRoutes } from "./monitor-routes/pause-resume.js";
@@ -360,6 +361,10 @@ export class MonitorServer {
 				push: (type, payload) => this.push(type, payload),
 				statusPayload: () => this.statusPayload(),
 			}),
+			...createLifecycleRoutes({
+				push: (type, payload) => this.push(type, payload),
+				onStop: () => this.onStop(),
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -536,16 +541,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── POST /stop
-		if (url === "/stop" && req.method === "POST") {
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true }));
-			console.log("[monitor] Stop requested via dashboard");
-			this.push("shutdown", { reason: "operator-stop" });
-			this.onStop();
-			return;
 		}
 
 		// ── POST /upload — operator uploads a file; it is processed and a mailbox
