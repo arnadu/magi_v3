@@ -35,6 +35,7 @@ import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
 import { createFileEditRoutes } from "./monitor-routes/file-edit.js";
 import { createLogRoutes } from "./monitor-routes/log.js";
 import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
+import { createPauseResumeRoutes } from "./monitor-routes/pause-resume.js";
 import { createRunControlRoutes } from "./monitor-routes/run-control.js";
 import { createScheduleRoutes } from "./monitor-routes/schedule.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
@@ -337,6 +338,12 @@ export class MonitorServer {
 				},
 				push: (type, payload) => this.push(type, payload),
 			}),
+			...createPauseResumeRoutes({
+				pausedAgents: this.pausedAgents,
+				push: (type, payload) => this.push(type, payload),
+				statusPayload: () => this.statusPayload(),
+				readAgentId: (req, res) => this.readAgentId(req, res),
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -602,32 +609,6 @@ export class MonitorServer {
 			this.push("status", await this.statusPayload());
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: true, newCapUsd: capUsd }));
-			return;
-		}
-
-		// ── POST /pause-agent — halt one agent at the next dispatch boundary
-		if (url === "/pause-agent" && req.method === "POST") {
-			const agentId = await this.readAgentId(req, res);
-			if (agentId === null) return;
-			this.pausedAgents.add(agentId);
-			console.log(`[monitor] Agent "${agentId}" paused`);
-			this.push("agent-paused", { agentId });
-			this.push("status", await this.statusPayload());
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, paused: [...this.pausedAgents] }));
-			return;
-		}
-
-		// ── POST /resume-agent — lift a per-agent pause
-		if (url === "/resume-agent" && req.method === "POST") {
-			const agentId = await this.readAgentId(req, res);
-			if (agentId === null) return;
-			this.pausedAgents.delete(agentId);
-			console.log(`[monitor] Agent "${agentId}" resumed`);
-			this.push("agent-resumed", { agentId });
-			this.push("status", await this.statusPayload());
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, paused: [...this.pausedAgents] }));
 			return;
 		}
 
