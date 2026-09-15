@@ -37,6 +37,7 @@ import { createLogRoutes } from "./monitor-routes/log.js";
 import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
 import { createScheduleRoutes } from "./monitor-routes/schedule.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
+import { createTraceRoutes } from "./monitor-routes/trace.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
 import type { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
@@ -312,6 +313,10 @@ export class MonitorServer {
 				missionId: this.missionId,
 				cancelSchedule: this.cancelSchedule,
 			}),
+			...createTraceRoutes({
+				db: this.db,
+				missionId: this.missionId,
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -488,109 +493,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── GET /mission-stats  (Trace: lifetime cost/calls/turns per agent)
-		if (url === "/mission-stats" && req.method === "GET") {
-			const docs = await this.db
-				.collection("missionStats")
-				.find(
-					{ missionId: this.missionId },
-					{
-						projection: {
-							agentId: 1,
-							lifetimeCostUsd: 1,
-							lifetimeLlmCallCount: 1,
-							lifetimeTurnCount: 1,
-							_id: 0,
-						},
-					},
-				)
-				.toArray();
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(docs));
-			return;
-		}
-
-		// ── GET /cost-series  (Trace: per-agent per-turn stats, for the
-		// cost-over-time chart and its turn/file/anomaly markers — only
-		// finalized turns have a settled cost and duration).
-		if (url === "/cost-series" && req.method === "GET") {
-			const docs = await this.db
-				.collection("agentTurnStats")
-				.find(
-					{ missionId: this.missionId, completedAt: { $exists: true } },
-					{
-						projection: {
-							agentId: 1,
-							turnNumber: 1,
-							startedAt: 1,
-							completedAt: 1,
-							costUsd: 1,
-							llmCallCount: 1,
-							peakContextTokens: 1,
-							status: 1,
-							gitChangedFiles: 1,
-							_id: 0,
-						},
-					},
-				)
-				.sort({ completedAt: 1 })
-				.toArray();
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(docs));
-			return;
-		}
-
-		// ── GET /interactions  (Trace: message counts between agent pairs)
-		if (url === "/interactions" && req.method === "GET") {
-			const docs = await this.db
-				.collection("mailbox")
-				.aggregate([
-					{ $match: { missionId: this.missionId } },
-					{ $unwind: "$to" },
-					{ $group: { _id: { from: "$from", to: "$to" }, count: { $sum: 1 } } },
-				])
-				.toArray();
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify(
-					docs.map((d) => ({
-						from: (d._id as { from: string; to: string }).from,
-						to: (d._id as { from: string; to: string }).to,
-						count: d.count as number,
-					})),
-				),
-			);
-			return;
-		}
-
-		// ── GET /message-events  (Trace: per-message timestamps, for the
-		// message/scheduled-wakeup markers on the timeline. Scheduler-delivered
-		// messages are written with `createdAt` instead of `timestamp` — see
-		// scheduler.ts — so both are folded here rather than fixed at the
-		// write site, to avoid touching the read-status semantics of the
-		// existing mailbox/scheduler code for an unrelated visualization.)
-		if (url === "/message-events" && req.method === "GET") {
-			const docs = await this.db
-				.collection("mailbox")
-				.aggregate([
-					{ $match: { missionId: this.missionId } },
-					{
-						$project: {
-							_id: 0,
-							from: 1,
-							to: 1,
-							subject: 1,
-							timestamp: { $ifNull: ["$timestamp", "$createdAt"] },
-						},
-					},
-					{ $sort: { timestamp: 1 } },
-				])
-				.toArray();
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify(docs));
-			return;
 		}
 
 		// ── POST /step
