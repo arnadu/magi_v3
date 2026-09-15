@@ -13,11 +13,19 @@ import { StatsCollector } from "../src/agent-stats.js";
 import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
+import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { resolveUsageAndCap } from "../src/daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "../src/daemon-boot/workspace.js";
 import { UsageAccumulator } from "../src/usage.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
+
+// connectMongo makes a real network connection — faked here so this stays a
+// unit test (no network, per CLAUDE.md's Testing Approach).
+const mockConnectMongo = vi.fn();
+vi.mock("../src/mongo.js", () => ({
+	connectMongo: (...args: unknown[]) => mockConnectMongo(...args),
+}));
 
 /** Matches the fakeDb() pattern in anomaly.unit.test.ts / mission-copilot-tools.unit.test.ts. */
 function fakeDb() {
@@ -130,6 +138,23 @@ describe("resolveModelsAndPricing", () => {
 
 		expect(result.modelId).toBe("claude-haiku-4-5-20251001");
 		expect(result.visionModel.id).toBe("claude-sonnet-4-6");
+	});
+});
+
+describe("connectToMongo", () => {
+	it("passes mongoUri through and returns the client/db pair", async () => {
+		const fakeClient = { close: vi.fn() };
+		const fakeDbInstance = { collection: vi.fn() };
+		mockConnectMongo.mockResolvedValueOnce({
+			client: fakeClient,
+			db: fakeDbInstance,
+		});
+
+		const result = await connectToMongo({ mongoUri: "mongodb://test" });
+
+		expect(mockConnectMongo).toHaveBeenCalledWith("mongodb://test");
+		expect(result.client).toBe(fakeClient);
+		expect(result.db).toBe(fakeDbInstance);
 	});
 });
 

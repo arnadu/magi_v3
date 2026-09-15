@@ -1,6 +1,6 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
-import type { Db } from "mongodb";
+import type { Db, MongoClient } from "mongodb";
 import type { StatsCollector } from "../agent-stats.js";
 import type { ConversationRepository } from "../conversation-repository.js";
 import type { LlmCallLogRepository } from "../llm-call-log.js";
@@ -25,6 +25,8 @@ import type { WorkspaceManager } from "../workspace-manager.js";
  */
 export interface BootContext {
 	repoRoot: string;
+	mongoUri: string;
+	client: MongoClient;
 	db: Db;
 	missionId: string;
 	mailboxRepo: MailboxRepository;

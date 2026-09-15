@@ -112,6 +112,7 @@ import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import type { BootContext } from "./daemon-boot/context.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
+import { connectToMongo } from "./daemon-boot/mongo-connect.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
 import { resolveUsageAndCap } from "./daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "./daemon-boot/workspace.js";
@@ -126,7 +127,6 @@ import {
 	seedMissionCopilotObjectives,
 } from "./mission-copilot.js";
 import { createMissionCopilotTools } from "./mission-copilot-tools.js";
-import { connectMongo } from "./mongo.js";
 import { MonitorServer } from "./monitor-server.js";
 import { migrateLegacyObjectivesStore } from "./objectives/migrate-legacy-store.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
@@ -764,9 +764,9 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	process.stdout.write("[daemon] Connecting to MongoDB…\n");
-	const { client, db } = await connectMongo(mongoUri);
-	process.stdout.write("[daemon] MongoDB connected.\n");
+	Object.assign(ctx, { mongoUri });
+	const { client, db } = await connectToMongo({ mongoUri });
+	Object.assign(ctx, { client, db });
 
 	let teamConfig: TeamConfig;
 	let missionId: string;
