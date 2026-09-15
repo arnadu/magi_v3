@@ -35,6 +35,7 @@ import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
 import { createFileEditRoutes } from "./monitor-routes/file-edit.js";
 import { createLogRoutes } from "./monitor-routes/log.js";
 import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
+import { createScheduleRoutes } from "./monitor-routes/schedule.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
 import type { UsageAccumulator } from "./usage.js";
@@ -306,6 +307,11 @@ export class MonitorServer {
 				db: this.db,
 				missionId: this.missionId,
 			}),
+			...createScheduleRoutes({
+				db: this.db,
+				missionId: this.missionId,
+				cancelSchedule: this.cancelSchedule,
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -482,58 +488,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── GET /schedule
-		if (url === "/schedule" && req.method === "GET") {
-			// Field names must match ScheduledMessageDoc (scheduler.ts) exactly:
-			// pending/delivered/cancelled/failed status, deliverAt (Date, doubles
-			// as "next fire time" for cron entries too — scheduler.ts re-arms a
-			// delivered cron doc by writing its next occurrence back into this
-			// same field), optional cron expression string. The previous version
-			// read cronExpression/scheduledFor and filtered on deliveredAt — none
-			// of which are real fields on this collection, so every row always
-			// came back with a blank "when" column.
-			const docs = await this.db
-				.collection("scheduled_messages")
-				.find({ missionId: this.missionId, status: "pending" })
-				.sort({ deliverAt: 1 })
-				.limit(50)
-				.toArray();
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify(
-					docs.map((d) => ({
-						id: String(d._id),
-						to: d.to ?? [],
-						subject: d.subject ?? "",
-						cronExpression: d.cron ?? null,
-						scheduledFor: d.deliverAt
-							? new Date(d.deliverAt).toISOString()
-							: null,
-					})),
-				),
-			);
-			return;
-		}
-
-		// ── DELETE /schedule/:id
-		const scheduleDeleteMatch = url.match(/^\/schedule\/([^/]+)$/);
-		if (scheduleDeleteMatch && req.method === "DELETE") {
-			if (!this.cancelSchedule) {
-				res.writeHead(501, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: "cancelSchedule not configured" }));
-				return;
-			}
-			try {
-				await this.cancelSchedule(scheduleDeleteMatch[1]);
-				res.writeHead(200, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ ok: true }));
-			} catch (e) {
-				res.writeHead(500, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: (e as Error).message }));
-			}
-			return;
 		}
 
 		// ── GET /mission-stats  (Trace: lifetime cost/calls/turns per agent)
