@@ -31,6 +31,7 @@ import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
 import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
+import { createFileEditRoutes } from "./monitor-routes/file-edit.js";
 import { createLogRoutes } from "./monitor-routes/log.js";
 import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
@@ -296,6 +297,9 @@ export class MonitorServer {
 					this.serveFileHistory(userPath, res),
 				writeFilePath: (root, rawBody, res) =>
 					this.writeFilePath(root, rawBody, res),
+			}),
+			...createFileEditRoutes({
+				handleFileEdit: (req, res) => this.handleFileEdit(req, res),
 			}),
 		];
 		this.server = createServer((req, res) =>
@@ -783,15 +787,6 @@ export class MonitorServer {
 				.toArray();
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify(docs));
-			return;
-		}
-
-		// ── POST /files/shared/edit  (cockpit: operator edits a text file —
-		// unlike /files/shared/write above, this commits immediately and
-		// notifies the file's last-touching agent; see handleFileEdit's doc
-		// comment for why the two routes are deliberately separate.)
-		if (url === "/files/shared/edit" && req.method === "POST") {
-			await this.handleFileEdit(req, res);
 			return;
 		}
 
