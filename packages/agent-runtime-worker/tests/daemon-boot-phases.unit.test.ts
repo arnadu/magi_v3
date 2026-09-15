@@ -14,7 +14,9 @@ import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
+import { resolveUsageAndCap } from "../src/daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "../src/daemon-boot/workspace.js";
+import { UsageAccumulator } from "../src/usage.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
 
 /** Matches the fakeDb() pattern in anomaly.unit.test.ts / mission-copilot-tools.unit.test.ts. */
@@ -165,6 +167,58 @@ describe("wireAbortSignal", () => {
 			const { initiateShutdown } = wireAbortSignal();
 			initiateShutdown("first");
 			expect(() => initiateShutdown("second")).toThrow(ExitCalled);
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
+		}
+	});
+});
+
+describe("resolveUsageAndCap", () => {
+	const origMaxCostUsd = process.env.MAX_COST_USD;
+
+	afterEach(() => {
+		if (origMaxCostUsd === undefined) delete process.env.MAX_COST_USD;
+		else process.env.MAX_COST_USD = origMaxCostUsd;
+	});
+
+	function teamConfigWith(maxCostUsd?: number) {
+		return {
+			mission: { id: "m1", name: "Test", maxCostUsd },
+		} as Parameters<typeof resolveUsageAndCap>[0]["teamConfig"];
+	}
+
+	it("prefers the mission config's maxCostUsd over the env var", () => {
+		process.env.MAX_COST_USD = "5";
+		const { maxCostUsd, usageAccumulator } = resolveUsageAndCap({
+			teamConfig: teamConfigWith(42),
+		});
+		expect(maxCostUsd).toBe(42);
+		expect(usageAccumulator).toBeInstanceOf(UsageAccumulator);
+	});
+
+	it("falls back to MAX_COST_USD when the mission has no cap configured", () => {
+		process.env.MAX_COST_USD = "17.5";
+		const { maxCostUsd } = resolveUsageAndCap({ teamConfig: teamConfigWith() });
+		expect(maxCostUsd).toBe(17.5);
+	});
+
+	it("returns null when neither is configured", () => {
+		delete process.env.MAX_COST_USD;
+		const { maxCostUsd } = resolveUsageAndCap({ teamConfig: teamConfigWith() });
+		expect(maxCostUsd).toBeNull();
+	});
+
+	it("exits with code 1 on a non-positive MAX_COST_USD", () => {
+		process.env.MAX_COST_USD = "-3";
+		class ExitCalled extends Error {}
+		const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new ExitCalled();
+		});
+		try {
+			expect(() =>
+				resolveUsageAndCap({ teamConfig: teamConfigWith() }),
+			).toThrow(ExitCalled);
 			expect(exitSpy).toHaveBeenCalledWith(1);
 		} finally {
 			exitSpy.mockRestore();

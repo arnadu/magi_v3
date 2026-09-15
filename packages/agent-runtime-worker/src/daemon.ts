@@ -113,6 +113,7 @@ import type { BootContext } from "./daemon-boot/context.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
+import { resolveUsageAndCap } from "./daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "./daemon-boot/workspace.js";
 import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
 import { missionLifetimeCostUsd } from "./limits.js";
@@ -131,7 +132,6 @@ import { migrateLegacyObjectivesStore } from "./objectives/migrate-legacy-store.
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
-import { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
 import type { AgentIdentity } from "./workspace-manager.js";
 
@@ -996,29 +996,8 @@ async function main(): Promise<void> {
 
 	writeFileSync(pidFile, String(process.pid));
 
-	// Usage accumulator + spending cap fallback. The mission's own persisted
-	// config is the live source of truth (ADR-0018 — read fresh from MongoDB
-	// on every check, in onAgentMessage below); this boot-time value is used
-	// ONLY as a fallback when a live read transiently fails.
-	const usageAccumulator = new UsageAccumulator();
-	let maxCostUsd: number | null = teamConfig.mission.maxCostUsd ?? null;
-	let maxCostUsdSource = "mission config";
-	if (maxCostUsd === null && process.env.MAX_COST_USD) {
-		const v = Number.parseFloat(process.env.MAX_COST_USD);
-		if (!Number.isFinite(v) || v <= 0) {
-			console.error(
-				`Error: MAX_COST_USD must be a positive number, got: ${process.env.MAX_COST_USD}`,
-			);
-			process.exit(1);
-		}
-		maxCostUsd = v;
-		maxCostUsdSource = "MAX_COST_USD env var";
-	}
-	if (maxCostUsd !== null) {
-		console.log(
-			`[daemon] Spending cap: $${maxCostUsd.toFixed(2)} (from ${maxCostUsdSource})`,
-		);
-	}
+	const { usageAccumulator, maxCostUsd } = resolveUsageAndCap({ teamConfig });
+	Object.assign(ctx, { usageAccumulator, maxCostUsd });
 
 	// Monitor server — SSE dashboard on MONITOR_PORT (default 4000).
 	const monitorPort = Number.parseInt(process.env.MONITOR_PORT ?? "4000", 10);
