@@ -30,6 +30,7 @@ import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
+import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
 import type { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
@@ -276,6 +277,7 @@ export class MonitorServer {
 				clients: this.clients,
 				agents: this.agents,
 			}),
+			...createStaticAssetsRoutes({ publicDir: this.publicDir }),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -452,25 +454,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── Static files
-		if (url === "/" || url === "/index.html") {
-			res.writeHead(200, {
-				"Content-Type": "text/html; charset=utf-8",
-				"Cache-Control": "no-store",
-			});
-			res.end(readFileSync(join(this.publicDir, "index.html")));
-			return;
-		}
-		if (url === "/style.css" || url === "/app.js") {
-			const ext = url.slice(url.lastIndexOf(".")) as keyof typeof MIME;
-			res.writeHead(200, {
-				"Content-Type": MIME[ext],
-				"Cache-Control": "no-store",
-			});
-			res.end(readFileSync(join(this.publicDir, url)));
-			return;
 		}
 
 		// ── GET /mailbox
