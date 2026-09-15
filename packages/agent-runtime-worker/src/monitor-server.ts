@@ -35,6 +35,7 @@ import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
 import { createFileEditRoutes } from "./monitor-routes/file-edit.js";
 import { createLogRoutes } from "./monitor-routes/log.js";
 import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
+import { createRunControlRoutes } from "./monitor-routes/run-control.js";
 import { createScheduleRoutes } from "./monitor-routes/schedule.js";
 import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import { createTraceRoutes } from "./monitor-routes/trace.js";
@@ -317,6 +318,25 @@ export class MonitorServer {
 				db: this.db,
 				missionId: this.missionId,
 			}),
+			...createRunControlRoutes({
+				getStepResolve: () => this.stepResolve,
+				setStepResolve: (fn) => {
+					this.stepResolve = fn;
+				},
+				getStepEnabled: () => this.stepEnabled,
+				setStepEnabled: (enabled) => {
+					this.stepEnabled = enabled;
+				},
+				getStarted: () => this.started,
+				setStarted: (started) => {
+					this.started = started;
+				},
+				getStartResolve: () => this.startResolve,
+				setStartResolve: (fn) => {
+					this.startResolve = fn;
+				},
+				push: (type, payload) => this.push(type, payload),
+			}),
 		];
 		this.server = createServer((req, res) =>
 			this.handleRequest(req, res).catch((e) => {
@@ -493,49 +513,6 @@ export class MonitorServer {
 				await route.handler(ctx, ...m.slice(1).map(decodeURIComponent));
 				return;
 			}
-		}
-
-		// ── POST /step
-		if (url === "/step" && req.method === "POST") {
-			if (this.stepResolve) {
-				this.stepResolve();
-				this.stepResolve = null;
-				this.push("step-resumed", {});
-				console.log("[monitor] Step advanced via dashboard");
-			}
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, stepEnabled: this.stepEnabled }));
-			return;
-		}
-
-		// ── POST /toggle-step
-		if (url === "/toggle-step" && req.method === "POST") {
-			this.stepEnabled = !this.stepEnabled;
-			if (!this.stepEnabled && this.stepResolve) {
-				this.stepResolve();
-				this.stepResolve = null;
-				this.push("step-resumed", {});
-			}
-			console.log(`[monitor] Step mode: ${this.stepEnabled ? "ON" : "OFF"}`);
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, stepEnabled: this.stepEnabled }));
-			return;
-		}
-
-		// ── POST /start
-		if (url === "/start" && req.method === "POST") {
-			if (!this.started) {
-				this.started = true;
-				if (this.startResolve) {
-					this.startResolve();
-					this.startResolve = null;
-				}
-				this.push("started", {});
-				console.log("[monitor] Mission started via dashboard");
-			}
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true }));
-			return;
 		}
 
 		// ── POST /extend-budget
