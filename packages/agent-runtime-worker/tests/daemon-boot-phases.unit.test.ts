@@ -30,6 +30,7 @@ import {
 	startMonitorServer,
 	startToolApiServer,
 } from "../src/daemon-boot/monitor-tool-servers.js";
+import { createOnAgentMessage } from "../src/daemon-boot/orchestration-callbacks.js";
 import { lockPidFile } from "../src/daemon-boot/pid-lock.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
@@ -787,6 +788,187 @@ describe("buildMissionCopilotTools", () => {
 			cancelBackgroundJob,
 		);
 		expect(missionCopilotTools?.length).toBeGreaterThan(0);
+	});
+});
+
+describe("createOnAgentMessage", () => {
+	function fakeUsage() {
+		return {
+			input: 100,
+			output: 50,
+			cacheRead: 0,
+			cacheWrite: 0,
+			cost: {
+				total: 0.01,
+				input: 0.005,
+				output: 0.005,
+				cacheRead: 0,
+				cacheWrite: 0,
+			},
+		};
+	}
+
+	function fakeAssistantMessage(opts: {
+		stopReason?: string;
+		errorMessage?: string;
+	}): Parameters<ReturnType<typeof createOnAgentMessage>>[1] {
+		return {
+			role: "assistant",
+			content: [],
+			usage: fakeUsage(),
+			stopReason: opts.stopReason ?? "end_turn",
+			errorMessage: opts.errorMessage,
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake message, cast once here rather than at every call site
+		} as any;
+	}
+
+	function buildCtx() {
+		const monitor = { push: vi.fn(), notifyCostPause: vi.fn(async () => {}) };
+		const statsCollector = {
+			readMissionSnapshot: vi.fn(async () => [] as never[]),
+		};
+		const missionConfigRepo = {
+			readTeamConfig: vi.fn(async () => null),
+		};
+		const anomalyRecorder = { record: vi.fn(async () => {}) };
+		const mailboxRepo = { post: vi.fn(async () => ({}) as never) };
+		const usageAccumulator = new UsageAccumulator();
+		return {
+			usageAccumulator,
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes, matching only the methods called
+			monitor: monitor as any,
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes
+			statsCollector: statsCollector as any,
+			missionId: "m1",
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes
+			missionConfigRepo: missionConfigRepo as any,
+			maxCostUsd: null as number | null,
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes
+			anomalyRecorder: anomalyRecorder as any,
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes
+			mailboxRepo: mailboxRepo as any,
+			mocks: {
+				monitor,
+				statsCollector,
+				missionConfigRepo,
+				anomalyRecorder,
+				mailboxRepo,
+			},
+		};
+	}
+
+	it("does nothing for a non-assistant message", async () => {
+		const { mocks, ...ctx } = buildCtx();
+		const onAgentMessage = createOnAgentMessage(ctx);
+		await onAgentMessage("analyst", {
+			role: "toolResult",
+			toolName: "Bash",
+			isError: false,
+			content: [],
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake message
+		} as any);
+		expect(mocks.monitor.push).not.toHaveBeenCalled();
+	});
+
+	it("tracks usage and pushes an llm-call event for an assistant message", async () => {
+		const { mocks, ...ctx } = buildCtx();
+		const onAgentMessage = createOnAgentMessage(ctx);
+		await onAgentMessage("analyst", fakeAssistantMessage({}));
+		expect(mocks.monitor.push).toHaveBeenCalledWith(
+			"llm-call",
+			expect.objectContaining({ agentId: "analyst", input: 100, output: 50 }),
+		);
+	});
+
+	it("does not pause when under the mission cap", async () => {
+		const { mocks, ...ctx } = buildCtx();
+		ctx.maxCostUsd = 100;
+		mocks.statsCollector.readMissionSnapshot.mockResolvedValue([
+			{ lifetimeCostUsd: 1, turnCostUsd: 0 },
+		]);
+		const onAgentMessage = createOnAgentMessage(ctx);
+		await onAgentMessage("analyst", fakeAssistantMessage({}));
+		expect(mocks.monitor.notifyCostPause).not.toHaveBeenCalled();
+	});
+
+	it("pauses, records a hard anomaly, and notifies the operator when the mission cap is reached", async () => {
+		const { mocks, ...ctx } = buildCtx();
+		ctx.maxCostUsd = 10;
+		mocks.statsCollector.readMissionSnapshot.mockResolvedValue([
+			{ lifetimeCostUsd: 10, turnCostUsd: 0.5 },
+		]);
+		const onAgentMessage = createOnAgentMessage(ctx);
+		await onAgentMessage("analyst", fakeAssistantMessage({}));
+		expect(mocks.monitor.notifyCostPause).toHaveBeenCalledWith(10.5, 10);
+		expect(mocks.anomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({ category: "limit-breach", severity: "hard" }),
+		);
+		expect(mocks.mailboxRepo.post).toHaveBeenCalledWith(
+			expect.objectContaining({ subject: "Mission spend cap reached" }),
+		);
+	});
+
+	it("prefers the live-config cap over the boot-time fallback", async () => {
+		const { mocks, ...ctx } = buildCtx();
+		ctx.maxCostUsd = 1000; // boot-time fallback — should be ignored
+		mocks.missionConfigRepo.readTeamConfig.mockResolvedValue({
+			mission: { maxCostUsd: 5 },
+		});
+		mocks.statsCollector.readMissionSnapshot.mockResolvedValue([
+			{ lifetimeCostUsd: 5, turnCostUsd: 0 },
+		]);
+		const onAgentMessage = createOnAgentMessage(ctx);
+		await onAgentMessage("analyst", fakeAssistantMessage({}));
+		expect(mocks.monitor.notifyCostPause).toHaveBeenCalledWith(5, 5);
+	});
+
+	it("fails open (logs, does not throw) when the cap check itself errors", async () => {
+		const { mocks, ...ctx } = buildCtx();
+		mocks.statsCollector.readMissionSnapshot.mockRejectedValue(
+			new Error("mongo down"),
+		);
+		const onAgentMessage = createOnAgentMessage(ctx);
+		await expect(
+			onAgentMessage("analyst", fakeAssistantMessage({})),
+		).resolves.toBeUndefined();
+	});
+
+	it("classifies an overloaded/rate-limit error as transient (soft anomaly)", async () => {
+		const { mocks, ...ctx } = buildCtx();
+		const onAgentMessage = createOnAgentMessage(ctx);
+		await onAgentMessage(
+			"analyst",
+			fakeAssistantMessage({
+				stopReason: "error",
+				errorMessage: "overloaded",
+			}),
+		);
+		expect(mocks.monitor.push).toHaveBeenCalledWith(
+			"agent-error",
+			expect.objectContaining({ transient: true }),
+		);
+		expect(mocks.anomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({ category: "llm-error", severity: "soft" }),
+		);
+	});
+
+	it("classifies a non-transient LLM error as hard", async () => {
+		const { mocks, ...ctx } = buildCtx();
+		const onAgentMessage = createOnAgentMessage(ctx);
+		await onAgentMessage(
+			"analyst",
+			fakeAssistantMessage({
+				stopReason: "error",
+				errorMessage: "invalid api key",
+			}),
+		);
+		expect(mocks.monitor.push).toHaveBeenCalledWith(
+			"agent-error",
+			expect.objectContaining({ transient: false }),
+		);
+		expect(mocks.anomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({ category: "llm-error", severity: "hard" }),
+		);
 	});
 });
 
