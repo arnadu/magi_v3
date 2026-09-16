@@ -101,7 +101,6 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "@mariozechner/pi-ai";
-import { ObjectId } from "mongodb";
 import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import { provisionAgentIdentities } from "./daemon-boot/agent-identity.js";
 import type { BootContext } from "./daemon-boot/context.js";
@@ -110,6 +109,7 @@ import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { constructAnomalyRecorder } from "./daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { connectToMongo } from "./daemon-boot/mongo-connect.js";
+import { startMonitorServer } from "./daemon-boot/monitor-tool-servers.js";
 import { lockPidFile } from "./daemon-boot/pid-lock.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "./daemon-boot/team-config.js";
@@ -125,12 +125,10 @@ import {
 	seedMissionCopilotObjectives,
 } from "./mission-copilot.js";
 import { createMissionCopilotTools } from "./mission-copilot-tools.js";
-import { MonitorServer } from "./monitor-server.js";
 import { migrateLegacyObjectivesStore } from "./objectives/migrate-legacy-store.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
-import { WorkspaceGit } from "./workspace-git.js";
 import type { AgentIdentity } from "./workspace-manager.js";
 
 /**
@@ -701,66 +699,27 @@ async function main(): Promise<void> {
 	const { usageAccumulator, maxCostUsd } = resolveUsageAndCap({ teamConfig });
 	Object.assign(ctx, { usageAccumulator, maxCostUsd });
 
-	// Monitor server — SSE dashboard on MONITOR_PORT (default 4000).
-	const monitorPort = Number.parseInt(process.env.MONITOR_PORT ?? "4000", 10);
-	if (!Number.isFinite(monitorPort) || monitorPort < 1 || monitorPort > 65535) {
-		console.error(
-			`Error: MONITOR_PORT must be 1–65535, got: ${process.env.MONITOR_PORT}`,
-		);
-		process.exit(1);
-	}
-
-	const toolPort = Number.parseInt(process.env.TOOL_PORT ?? "4001", 10);
-	if (!Number.isFinite(toolPort) || toolPort < 1 || toolPort > 65535) {
-		console.error(
-			`Error: TOOL_PORT must be 1–65535, got: ${process.env.TOOL_PORT}`,
-		);
-		process.exit(1);
-	}
-	const agents = teamConfig.agents
-		.filter((a) => a.active !== false)
-		.map((a) => ({
-			id: a.id,
-			name: a.name ?? a.id,
-			role: a.role ?? a.id,
-		}));
-	const sharedDir = join(workdir, "missions", missionId, "shared");
-	// Shared between the orchestrator (agent turn-end commits) and MonitorServer
-	// (operator file-edit commits) — one serialized queue, so the two can never
-	// race each other on .git/index.lock.
-	const workspaceGit = new WorkspaceGit(sharedDir);
-	const monitor = new MonitorServer(
-		db,
-		missionId,
-		teamConfig.mission.name,
-		modelId,
-		usageAccumulator,
-		statsCollector,
-		missionConfigRepo,
-		mailboxRepo,
-		agents,
-		() => ac.abort(),
-		new Date(),
-		workdir,
+	const { monitorPort, toolPort, sharedDir, workspaceGit, monitor } =
+		await startMonitorServer({
+			db,
+			missionId,
+			teamConfig,
+			modelId,
+			usageAccumulator,
+			statsCollector,
+			missionConfigRepo,
+			mailboxRepo,
+			ac,
+			workdir,
+			visionModel,
+		});
+	Object.assign(ctx, {
+		monitorPort,
+		toolPort,
 		sharedDir,
-		async (id) => {
-			// missionId-scoped: without it, any valid ObjectId (guessed or
-			// leaked from another mission) could cancel a different mission's
-			// scheduled message — the same missing-scope bug class Track 1
-			// fixed for the control-plane copilot's B1 tools, found here too.
-			await db
-				.collection("scheduled_messages")
-				.deleteOne({ _id: new ObjectId(id), missionId });
-		},
-		undefined, // publicDir — use the default
 		workspaceGit,
-	);
-	// Vision model for the upload pipeline's image captioning (Sprint 25).
-	monitor.visionModel = visionModel;
-	await monitor.start(monitorPort);
-	process.stdout.write(
-		`[daemon] Monitor server listening on port ${monitorPort}\n`,
-	);
+		monitor,
+	});
 
 	// Tool API server — exposes LLM tools to background job scripts.
 	const toolApiServer = new ToolApiServer(

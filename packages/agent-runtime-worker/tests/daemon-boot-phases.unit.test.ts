@@ -23,6 +23,7 @@ import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { constructAnomalyRecorder } from "../src/daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
+import { startMonitorServer } from "../src/daemon-boot/monitor-tool-servers.js";
 import { lockPidFile } from "../src/daemon-boot/pid-lock.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
@@ -510,6 +511,58 @@ describe("lockPidFile", () => {
 			);
 		} finally {
 			killSpy.mockRestore();
+		}
+	});
+});
+
+describe("startMonitorServer", () => {
+	// Only the port-validation logic is unit-tested here: constructing a real
+	// MonitorServer requires a real Mongo connection for its background
+	// watchMailbox()/watchConversations() change streams (started fire-and-
+	// forget inside .start()), which the existing monitor-*.integration.test.ts
+	// suite and daemon-job.integration.test.ts's real end-to-end daemon boot
+	// already cover — re-run after this extraction per the plan's
+	// characterization-test strategy, rather than duplicated with a fake db
+	// here. Neither port-validation branch reads any ctx field before
+	// throwing, so an empty ctx is safe to pass.
+	const origMonitorPort = process.env.MONITOR_PORT;
+	const origToolPort = process.env.TOOL_PORT;
+
+	afterEach(() => {
+		if (origMonitorPort === undefined) delete process.env.MONITOR_PORT;
+		else process.env.MONITOR_PORT = origMonitorPort;
+		if (origToolPort === undefined) delete process.env.TOOL_PORT;
+		else process.env.TOOL_PORT = origToolPort;
+	});
+
+	it("exits 1 on an invalid MONITOR_PORT", async () => {
+		process.env.MONITOR_PORT = "0";
+		class ExitCalled extends Error {}
+		const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new ExitCalled();
+		});
+		try {
+			// biome-ignore lint/suspicious/noExplicitAny: never dereferenced before the throw
+			await expect(startMonitorServer({} as any)).rejects.toThrow(ExitCalled);
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
+		}
+	});
+
+	it("exits 1 on an invalid TOOL_PORT", async () => {
+		delete process.env.MONITOR_PORT;
+		process.env.TOOL_PORT = "-1";
+		class ExitCalled extends Error {}
+		const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new ExitCalled();
+		});
+		try {
+			// biome-ignore lint/suspicious/noExplicitAny: never dereferenced before the throw
+			await expect(startMonitorServer({} as any)).rejects.toThrow(ExitCalled);
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
 		}
 	});
 });

@@ -7,8 +7,10 @@ import type { ConversationRepository } from "../conversation-repository.js";
 import type { LlmCallLogRepository } from "../llm-call-log.js";
 import type { MailboxRepository } from "../mailbox.js";
 import type { MissionConfigRepository } from "../mission-config.js";
+import type { MonitorServer } from "../monitor-server.js";
 import type { ObjectivesRepository } from "../objectives/repository.js";
 import type { UsageAccumulator } from "../usage.js";
+import type { WorkspaceGit } from "../workspace-git.js";
 import type { WorkspaceManager } from "../workspace-manager.js";
 
 /**
@@ -49,4 +51,9 @@ export interface BootContext {
 	pidFile: string;
 	usageAccumulator: UsageAccumulator;
 	maxCostUsd: number | null;
+	monitorPort: number;
+	toolPort: number;
+	sharedDir: string;
+	workspaceGit: WorkspaceGit;
+	monitor: MonitorServer;
 }
