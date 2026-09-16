@@ -109,7 +109,10 @@ import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { constructAnomalyRecorder } from "./daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { connectToMongo } from "./daemon-boot/mongo-connect.js";
-import { startMonitorServer } from "./daemon-boot/monitor-tool-servers.js";
+import {
+	startMonitorServer,
+	startToolApiServer,
+} from "./daemon-boot/monitor-tool-servers.js";
 import { lockPidFile } from "./daemon-boot/pid-lock.js";
 import { constructRepositories } from "./daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "./daemon-boot/team-config.js";
@@ -127,7 +130,7 @@ import {
 import { createMissionCopilotTools } from "./mission-copilot-tools.js";
 import { migrateLegacyObjectivesStore } from "./objectives/migrate-legacy-store.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
-import { ToolApiServer } from "./tool-api-server.js";
+import type { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
 import type { AgentIdentity } from "./workspace-manager.js";
 
@@ -721,15 +724,15 @@ async function main(): Promise<void> {
 		monitor,
 	});
 
-	// Tool API server — exposes LLM tools to background job scripts.
-	const toolApiServer = new ToolApiServer(
+	const { toolApiServer } = startToolApiServer({
 		model,
 		visionModel,
 		sharedDir,
 		mailboxRepo,
 		teamConfig,
-	);
-	toolApiServer.listen(toolPort);
+		toolPort,
+	});
+	Object.assign(ctx, { toolApiServer });
 
 	// F-010: Recover jobs that were left in running/ by a prior daemon run.
 	// They have no live token, so their magi-tool calls would fail with 401.

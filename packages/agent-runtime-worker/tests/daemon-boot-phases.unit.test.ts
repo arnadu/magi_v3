@@ -23,13 +23,17 @@ import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { constructAnomalyRecorder } from "../src/daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
-import { startMonitorServer } from "../src/daemon-boot/monitor-tool-servers.js";
+import {
+	startMonitorServer,
+	startToolApiServer,
+} from "../src/daemon-boot/monitor-tool-servers.js";
 import { lockPidFile } from "../src/daemon-boot/pid-lock.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
 import { syncTeamFiles } from "../src/daemon-boot/team-files-sync.js";
 import { resolveUsageAndCap } from "../src/daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "../src/daemon-boot/workspace.js";
+import { CLAUDE_SONNET } from "../src/models.js";
 import { UsageAccumulator } from "../src/usage.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
 
@@ -564,6 +568,29 @@ describe("startMonitorServer", () => {
 		} finally {
 			exitSpy.mockRestore();
 		}
+	});
+});
+
+describe("startToolApiServer", () => {
+	it("constructs and listens on an ephemeral port without a real Mongo connection", () => {
+		const teamConfig = {
+			mission: { id: "m1", name: "Test" },
+			agents: [],
+		} as Parameters<typeof startToolApiServer>[0]["teamConfig"];
+		const mailboxRepo = {} as Parameters<
+			typeof startToolApiServer
+		>[0]["mailboxRepo"];
+
+		const { toolApiServer } = startToolApiServer({
+			model: CLAUDE_SONNET,
+			visionModel: CLAUDE_SONNET,
+			sharedDir: "/tmp/magi-tool-api-test",
+			mailboxRepo,
+			teamConfig,
+			toolPort: 0, // OS assigns a free port
+		});
+		expect(toolApiServer).toBeDefined();
+		toolApiServer.stop();
 	});
 });
 

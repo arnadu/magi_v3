@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { ObjectId } from "mongodb";
 import { MonitorServer } from "../monitor-server.js";
+import { ToolApiServer } from "../tool-api-server.js";
 import { WorkspaceGit } from "../workspace-git.js";
 import type { BootContext } from "./context.js";
 
@@ -98,4 +99,31 @@ export async function startMonitorServer(
 	);
 
 	return { monitorPort, toolPort, sharedDir, workspaceGit, monitor };
+}
+
+/**
+ * Tool API server — exposes LLM tools to background job scripts. Split from
+ * startMonitorServer() above per the plan, given this area's size/fan-in;
+ * independent of it at runtime (toolPort is already validated there).
+ */
+export function startToolApiServer(
+	ctx: Pick<
+		BootContext,
+		| "model"
+		| "visionModel"
+		| "sharedDir"
+		| "mailboxRepo"
+		| "teamConfig"
+		| "toolPort"
+	>,
+): Pick<BootContext, "toolApiServer"> {
+	const toolApiServer = new ToolApiServer(
+		ctx.model,
+		ctx.visionModel,
+		ctx.sharedDir,
+		ctx.mailboxRepo,
+		ctx.teamConfig,
+	);
+	toolApiServer.listen(ctx.toolPort);
+	return { toolApiServer };
 }
