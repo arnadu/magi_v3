@@ -107,6 +107,7 @@ import type { BootContext } from "./daemon-boot/context.js";
 import { parseDaemonEnv } from "./daemon-boot/env.js";
 import { startBackgroundJobs } from "./daemon-boot/job-runner-start.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
+import { createMailWaiter } from "./daemon-boot/mail-waiter.js";
 import { constructAnomalyRecorder } from "./daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
 import { connectToMongo } from "./daemon-boot/mongo-connect.js";
@@ -754,68 +755,8 @@ async function main(): Promise<void> {
 
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.
 	const mailboxCol = db.collection("mailbox");
-
-	// Open a single Change Stream and resolve when a matching insert arrives.
-	// Rejects on stream error so the caller can retry.
-	function openChangeStream(): Promise<void> {
-		return new Promise<void>((resolve, reject) => {
-			const stream = mailboxCol.watch(
-				[
-					{
-						$match: {
-							operationType: "insert",
-							"fullDocument.missionId": missionId,
-						},
-					},
-				],
-				{ fullDocument: "updateLookup" },
-			);
-			const onAbort = () => {
-				stream.close().catch(() => {});
-				resolve();
-			};
-			signal.addEventListener("abort", onAbort, { once: true });
-			stream.once("change", () => {
-				signal.removeEventListener("abort", onAbort);
-				stream.close().catch(() => {});
-				resolve();
-			});
-			stream.once("error", (err) => {
-				signal.removeEventListener("abort", onAbort);
-				reject(err);
-			});
-		});
-	}
-
-	// Wraps openChangeStream with exponential backoff so a transient MongoDB
-	// network error does not crash the daemon.
-	async function waitForMail(): Promise<void> {
-		if (signal.aborted) return;
-		let backoffMs = 1_000;
-		while (!signal.aborted) {
-			try {
-				await openChangeStream();
-				return;
-			} catch (e) {
-				if (signal.aborted) return;
-				console.error(
-					`[daemon] Change Stream error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
-				);
-				await new Promise<void>((res) => {
-					const timer = setTimeout(res, backoffMs);
-					signal.addEventListener(
-						"abort",
-						() => {
-							clearTimeout(timer);
-							res();
-						},
-						{ once: true },
-					);
-				});
-				backoffMs = Math.min(backoffMs * 2, 30_000);
-			}
-		}
-	}
+	const waitForMail = createMailWaiter(mailboxCol, missionId, signal);
+	Object.assign(ctx, { waitForMail });
 
 	console.log(`[daemon] Mission: ${teamConfig.mission.name} (${missionId})`);
 	console.log(`[daemon] Dashboard: http://localhost:${monitorPort}`);

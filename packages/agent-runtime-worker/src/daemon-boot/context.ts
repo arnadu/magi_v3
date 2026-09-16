@@ -59,4 +59,5 @@ export interface BootContext {
 	monitor: MonitorServer;
 	toolApiServer: ToolApiServer;
 	stopJobRunner: () => void;
+	waitForMail: () => Promise<void>;
 }

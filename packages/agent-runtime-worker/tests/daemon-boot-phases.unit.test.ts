@@ -21,6 +21,7 @@ import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
 import { parseDaemonEnv } from "../src/daemon-boot/env.js";
 import { startBackgroundJobs } from "../src/daemon-boot/job-runner-start.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
+import { createMailWaiter } from "../src/daemon-boot/mail-waiter.js";
 import { constructAnomalyRecorder } from "../src/daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
 import { connectToMongo } from "../src/daemon-boot/mongo-connect.js";
@@ -661,6 +662,83 @@ describe("startBackgroundJobs", () => {
 		);
 		expect(callOrder).toEqual(["recover", "start"]);
 		expect(stopJobRunner).toBe(stopFn);
+	});
+});
+
+describe("createMailWaiter", () => {
+	function fakeChangeStream(behavior: "change" | "error" | "hang") {
+		const closeFn = vi.fn(async () => {});
+		return {
+			close: closeFn,
+			once(event: string, cb: (arg?: unknown) => void) {
+				if (event === "change" && behavior === "change") {
+					queueMicrotask(() => cb());
+				}
+				if (event === "error" && behavior === "error") {
+					queueMicrotask(() => cb(new Error("stream boom")));
+				}
+			},
+		};
+	}
+
+	it("resolves immediately without watching when the signal is already aborted", async () => {
+		const ac = new AbortController();
+		ac.abort();
+		const watch = vi.fn();
+		const mailboxCol = { watch } as unknown as Parameters<
+			typeof createMailWaiter
+		>[0];
+		await createMailWaiter(mailboxCol, "m1", ac.signal)();
+		expect(watch).not.toHaveBeenCalled();
+	});
+
+	it("resolves and closes the stream when a change event fires", async () => {
+		const ac = new AbortController();
+		const stream = fakeChangeStream("change");
+		const watch = vi.fn(() => stream);
+		const mailboxCol = { watch } as unknown as Parameters<
+			typeof createMailWaiter
+		>[0];
+		await createMailWaiter(mailboxCol, "m1", ac.signal)();
+		expect(stream.close).toHaveBeenCalled();
+	});
+
+	it("resolves and closes the stream when aborted mid-wait", async () => {
+		const ac = new AbortController();
+		const stream = fakeChangeStream("hang");
+		const watch = vi.fn(() => stream);
+		const mailboxCol = { watch } as unknown as Parameters<
+			typeof createMailWaiter
+		>[0];
+		const promise = createMailWaiter(mailboxCol, "m1", ac.signal)();
+		ac.abort();
+		await promise;
+		expect(stream.close).toHaveBeenCalled();
+	});
+
+	it("retries with a new watch() after a stream error", async () => {
+		vi.useFakeTimers();
+		try {
+			const ac = new AbortController();
+			const errorStream = fakeChangeStream("error");
+			const secondStream = fakeChangeStream("hang");
+			const watch = vi
+				.fn()
+				.mockReturnValueOnce(errorStream)
+				.mockReturnValueOnce(secondStream);
+			const mailboxCol = { watch } as unknown as Parameters<
+				typeof createMailWaiter
+			>[0];
+
+			const promise = createMailWaiter(mailboxCol, "m1", ac.signal)();
+			await vi.advanceTimersByTimeAsync(1000); // the 1s initial backoff
+			expect(watch).toHaveBeenCalledTimes(2);
+
+			ac.abort();
+			await promise;
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 
