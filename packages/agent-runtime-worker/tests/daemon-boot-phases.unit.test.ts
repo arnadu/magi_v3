@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatsCollector } from "../src/agent-stats.js";
 import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
 import { parseDaemonEnv } from "../src/daemon-boot/env.js";
+import { startBackgroundJobs } from "../src/daemon-boot/job-runner-start.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
 import { constructAnomalyRecorder } from "../src/daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "../src/daemon-boot/model-pricing.js";
@@ -42,6 +43,15 @@ import { WorkspaceManager } from "../src/workspace-manager.js";
 const mockConnectMongo = vi.fn();
 vi.mock("../src/mongo.js", () => ({
 	connectMongo: (...args: unknown[]) => mockConnectMongo(...args),
+}));
+
+// recoverOrphanedJobs touches the real filesystem (jobs/running,
+// jobs/pending, etc.) — faked here so startBackgroundJobs's test doesn't
+// need a real sharedDir with a jobs/ tree; it already has its own dedicated
+// job-recovery.unit.test.ts coverage.
+const mockRecoverOrphanedJobs = vi.fn(async () => {});
+vi.mock("../src/job-recovery.js", () => ({
+	recoverOrphanedJobs: (...args: unknown[]) => mockRecoverOrphanedJobs(...args),
 }));
 
 // loadTeamConfig reads a real YAML file from disk — faked here so the
@@ -591,6 +601,66 @@ describe("startToolApiServer", () => {
 		});
 		expect(toolApiServer).toBeDefined();
 		toolApiServer.stop();
+	});
+});
+
+describe("startBackgroundJobs", () => {
+	it("recovers orphaned jobs before starting the job runner, and threads stopJobRunner through", async () => {
+		mockRecoverOrphanedJobs.mockClear();
+		const callOrder: string[] = [];
+		mockRecoverOrphanedJobs.mockImplementationOnce(async () => {
+			callOrder.push("recover");
+		});
+		const stopFn = vi.fn();
+		const fakeStartJobRunner = vi.fn(() => {
+			callOrder.push("start");
+			return stopFn;
+		});
+
+		const mailboxRepo = {} as Parameters<
+			typeof startBackgroundJobs
+		>[0]["mailboxRepo"];
+		const anomalyRecorder = {} as Parameters<
+			typeof startBackgroundJobs
+		>[0]["anomalyRecorder"];
+		const toolApiServer = {} as Parameters<
+			typeof startBackgroundJobs
+		>[0]["toolApiServer"];
+		const teamConfig = {} as Parameters<
+			typeof startBackgroundJobs
+		>[0]["teamConfig"];
+
+		const { stopJobRunner } = await startBackgroundJobs(
+			{
+				sharedDir: "/tmp/magi-shared-test",
+				workdir: "/tmp/magi-workdir-test",
+				missionId: "m1",
+				mailboxRepo,
+				anomalyRecorder,
+				toolApiServer,
+				toolPort: 4001,
+				teamConfig,
+			},
+			fakeStartJobRunner,
+		);
+
+		expect(mockRecoverOrphanedJobs).toHaveBeenCalledWith(
+			"/tmp/magi-shared-test",
+			"m1",
+			mailboxRepo,
+			anomalyRecorder,
+		);
+		expect(fakeStartJobRunner).toHaveBeenCalledWith(
+			"/tmp/magi-shared-test",
+			"/tmp/magi-workdir-test",
+			"m1",
+			toolApiServer,
+			4001,
+			mailboxRepo,
+			teamConfig,
+		);
+		expect(callOrder).toEqual(["recover", "start"]);
+		expect(stopJobRunner).toBe(stopFn);
 	});
 });
 

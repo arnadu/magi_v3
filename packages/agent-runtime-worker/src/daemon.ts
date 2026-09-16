@@ -105,6 +105,7 @@ import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import { provisionAgentIdentities } from "./daemon-boot/agent-identity.js";
 import type { BootContext } from "./daemon-boot/context.js";
 import { parseDaemonEnv } from "./daemon-boot/env.js";
+import { startBackgroundJobs } from "./daemon-boot/job-runner-start.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
 import { constructAnomalyRecorder } from "./daemon-boot/mission-owner.js";
 import { resolveModelsAndPricing } from "./daemon-boot/model-pricing.js";
@@ -119,7 +120,7 @@ import { loadDaemonTeamConfig } from "./daemon-boot/team-config.js";
 import { syncTeamFiles } from "./daemon-boot/team-files-sync.js";
 import { resolveUsageAndCap } from "./daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "./daemon-boot/workspace.js";
-import { type JobSpec, recoverOrphanedJobs } from "./job-recovery.js";
+import type { JobSpec } from "./job-recovery.js";
 import { missionLifetimeCostUsd } from "./limits.js";
 import { resolveLinuxUsers } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
@@ -734,23 +735,22 @@ async function main(): Promise<void> {
 	});
 	Object.assign(ctx, { toolApiServer });
 
-	// F-010: Recover jobs that were left in running/ by a prior daemon run.
-	// They have no live token, so their magi-tool calls would fail with 401.
-	// Moving them back to pending/ allows the next heartbeat to retry them —
-	// unless a job has already caused too many crashes, in which case it is
-	// failed out permanently instead (see recoverOrphanedJobs' doc comment).
-	await recoverOrphanedJobs(sharedDir, missionId, mailboxRepo, anomalyRecorder);
 	// Scheduled message delivery has moved to the control plane (Sprint 14).
 	// The daemon only runs background job files written to jobs/pending/.
-	const stopJobRunner = startJobRunner(
-		sharedDir,
-		workdir,
-		missionId,
-		toolApiServer,
-		toolPort,
-		mailboxRepo,
-		teamConfig,
+	const { stopJobRunner } = await startBackgroundJobs(
+		{
+			sharedDir,
+			workdir,
+			missionId,
+			mailboxRepo,
+			anomalyRecorder,
+			toolApiServer,
+			toolPort,
+			teamConfig,
+		},
+		startJobRunner,
 	);
+	Object.assign(ctx, { stopJobRunner });
 
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.
 	const mailboxCol = db.collection("mailbox");

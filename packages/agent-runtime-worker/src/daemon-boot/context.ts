@@ -58,4 +58,5 @@ export interface BootContext {
 	workspaceGit: WorkspaceGit;
 	monitor: MonitorServer;
 	toolApiServer: ToolApiServer;
+	stopJobRunner: () => void;
 }
