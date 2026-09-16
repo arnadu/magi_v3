@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatsCollector } from "../src/agent-stats.js";
 import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
+import { buildMissionCopilotTools } from "../src/daemon-boot/copilot-tools.js";
 import { parseDaemonEnv } from "../src/daemon-boot/env.js";
 import { startBackgroundJobs } from "../src/daemon-boot/job-runner-start.js";
 import { setupLogTee } from "../src/daemon-boot/log-tee.js";
@@ -739,6 +740,53 @@ describe("createMailWaiter", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe("buildMissionCopilotTools", () => {
+	it("returns undefined when the mission copilot is disabled", () => {
+		const db = fakeDb();
+		const ctx = {
+			db,
+			missionId: "m1",
+			sharedDir: "/tmp/magi-shared-test",
+			objectivesRepo: {} as Parameters<
+				typeof buildMissionCopilotTools
+			>[0]["objectivesRepo"],
+			mailboxRepo: {} as Parameters<
+				typeof buildMissionCopilotTools
+			>[0]["mailboxRepo"],
+			monitorPort: 4000,
+		};
+		const { missionCopilotTools } = buildMissionCopilotTools(
+			ctx,
+			false,
+			() => false,
+		);
+		expect(missionCopilotTools).toBeUndefined();
+	});
+
+	it("returns a non-empty tool array when the mission copilot is enabled", () => {
+		const db = fakeDb();
+		const ctx = {
+			db,
+			missionId: "m1",
+			sharedDir: "/tmp/magi-shared-test",
+			objectivesRepo: {} as Parameters<
+				typeof buildMissionCopilotTools
+			>[0]["objectivesRepo"],
+			mailboxRepo: {} as Parameters<
+				typeof buildMissionCopilotTools
+			>[0]["mailboxRepo"],
+			monitorPort: 4000,
+		};
+		const cancelBackgroundJob = vi.fn(() => false);
+		const { missionCopilotTools } = buildMissionCopilotTools(
+			ctx,
+			true,
+			cancelBackgroundJob,
+		);
+		expect(missionCopilotTools?.length).toBeGreaterThan(0);
 	});
 });
 

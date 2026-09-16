@@ -10,6 +10,7 @@ import type { MissionConfigRepository } from "../mission-config.js";
 import type { MonitorServer } from "../monitor-server.js";
 import type { ObjectivesRepository } from "../objectives/repository.js";
 import type { ToolApiServer } from "../tool-api-server.js";
+import type { MagiTool } from "../tools.js";
 import type { UsageAccumulator } from "../usage.js";
 import type { WorkspaceGit } from "../workspace-git.js";
 import type { WorkspaceManager } from "../workspace-manager.js";
@@ -60,4 +61,5 @@ export interface BootContext {
 	toolApiServer: ToolApiServer;
 	stopJobRunner: () => void;
 	waitForMail: () => Promise<void>;
+	missionCopilotTools: MagiTool[] | undefined;
 }

@@ -104,6 +104,7 @@ import type {
 import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import { provisionAgentIdentities } from "./daemon-boot/agent-identity.js";
 import type { BootContext } from "./daemon-boot/context.js";
+import { buildMissionCopilotTools } from "./daemon-boot/copilot-tools.js";
 import { parseDaemonEnv } from "./daemon-boot/env.js";
 import { startBackgroundJobs } from "./daemon-boot/job-runner-start.js";
 import { setupLogTee } from "./daemon-boot/log-tee.js";
@@ -129,7 +130,6 @@ import {
 	MISSION_COPILOT_AGENT_ID,
 	seedMissionCopilotObjectives,
 } from "./mission-copilot.js";
-import { createMissionCopilotTools } from "./mission-copilot-tools.js";
 import { migrateLegacyObjectivesStore } from "./objectives/migrate-legacy-store.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import type { ToolApiServer } from "./tool-api-server.js";
@@ -763,28 +763,12 @@ async function main(): Promise<void> {
 
 	console.log("[daemon] Entering orchestration loop");
 
-	// Mission copilot elevated tools (ADR-0016). Built once (not per-dispatch)
-	// since everything it closes over — db, mailboxRepo, sharedDir, the
-	// monitor's own port/token, and the team roster — is stable for the
-	// lifetime of this process; config changes only take effect on next
-	// resume, so the roster snapshot here is correct for the whole run.
-	// getAdditionalTools is keyed on the literal agent id "mission-copilot" —
-	// never on anything from teamConfig — so a compromised copilot cannot
-	// escalate a different agent to elevated status via SaveMissionConfig
-	// (Phase 3).
-	const missionCopilotTools = missionCopilotEnabled
-		? createMissionCopilotTools({
-				db,
-				missionId,
-				sharedDir,
-				objectivesRepo,
-				mailboxRepo,
-				monitorPort,
-				monitorToken: process.env.MONITOR_TOKEN ?? "",
-				cancelBackgroundJob,
-				controlPlaneUrl: process.env.CONTROL_PLANE_URL ?? "",
-			})
-		: undefined;
+	const { missionCopilotTools } = buildMissionCopilotTools(
+		{ db, missionId, sharedDir, objectivesRepo, mailboxRepo, monitorPort },
+		missionCopilotEnabled,
+		cancelBackgroundJob,
+	);
+	Object.assign(ctx, { missionCopilotTools });
 
 	try {
 		await runOrchestrationLoop(
@@ -806,6 +790,8 @@ async function main(): Promise<void> {
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
 				isAgentPaused: (agentId) => monitor.isAgentPaused(agentId),
+				// Keyed on the literal agent id, never on anything from teamConfig —
+				// see buildMissionCopilotTools' doc comment (daemon-boot/copilot-tools.ts).
 				getAdditionalTools: (agentId) =>
 					agentId === MISSION_COPILOT_AGENT_ID
 						? missionCopilotTools
