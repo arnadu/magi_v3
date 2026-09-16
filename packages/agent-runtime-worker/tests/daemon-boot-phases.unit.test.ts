@@ -30,7 +30,10 @@ import {
 	startMonitorServer,
 	startToolApiServer,
 } from "../src/daemon-boot/monitor-tool-servers.js";
-import { createOnAgentMessage } from "../src/daemon-boot/orchestration-callbacks.js";
+import {
+	createOnAgentMessage,
+	createRemainingOrchestrationCallbacks,
+} from "../src/daemon-boot/orchestration-callbacks.js";
 import { lockPidFile } from "../src/daemon-boot/pid-lock.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
@@ -969,6 +972,111 @@ describe("createOnAgentMessage", () => {
 		expect(mocks.anomalyRecorder.record).toHaveBeenCalledWith(
 			expect.objectContaining({ category: "llm-error", severity: "hard" }),
 		);
+	});
+});
+
+describe("createRemainingOrchestrationCallbacks", () => {
+	function buildCtx() {
+		const monitor = {
+			push: vi.fn(),
+			notifyAgentStart: vi.fn(),
+			setAgentWorkdirs: vi.fn(),
+			notifyAgentDone: vi.fn(),
+			notifyIdle: vi.fn(),
+			notifyMentalMapUpdate: vi.fn(),
+		};
+		const anomalyRecorder = { record: vi.fn(async () => {}) };
+		const mailboxRepo = { post: vi.fn(async () => ({}) as never) };
+		const objectivesRepo = {};
+		return {
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes, matching only the methods called
+			monitor: monitor as any,
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes
+			anomalyRecorder: anomalyRecorder as any,
+			missionId: "m1",
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes
+			mailboxRepo: mailboxRepo as any,
+			sharedDir: "/tmp/magi-shared-test",
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fakes
+			objectivesRepo: objectivesRepo as any,
+			mocks: { monitor, anomalyRecorder, mailboxRepo },
+		};
+	}
+
+	function fakeLimitAlert(severity: "soft" | "hard") {
+		return {
+			agentId: "analyst",
+			turnNumber: 3,
+			breach: {
+				rule: {
+					id: "r1",
+					severity,
+					metric: "costUsd",
+					threshold: 5,
+					label: "cost",
+				},
+				value: 6,
+			},
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake LimitAlert
+		} as any;
+	}
+
+	it("onLimitAlert pushes a dashboard event and records the anomaly for a soft breach, without notifying the operator", () => {
+		const { mocks, ...ctx } = buildCtx();
+		const callbacks = createRemainingOrchestrationCallbacks(ctx, true);
+		callbacks.onLimitAlert(fakeLimitAlert("soft"));
+		expect(mocks.monitor.push).toHaveBeenCalledWith(
+			"limit-alert",
+			expect.objectContaining({ severity: "soft" }),
+		);
+		expect(mocks.anomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({ category: "limit-breach", severity: "soft" }),
+		);
+		expect(mocks.mailboxRepo.post).not.toHaveBeenCalled();
+	});
+
+	it("onLimitAlert also notifies the operator directly for a hard breach", () => {
+		const { mocks, ...ctx } = buildCtx();
+		const callbacks = createRemainingOrchestrationCallbacks(ctx, true);
+		callbacks.onLimitAlert(fakeLimitAlert("hard"));
+		expect(mocks.mailboxRepo.post).toHaveBeenCalledWith(
+			expect.objectContaining({ subject: 'Spend limit hit — "analyst"' }),
+		);
+	});
+
+	it("onAgentError pushes a non-transient agent-error event", () => {
+		const { mocks, ...ctx } = buildCtx();
+		const callbacks = createRemainingOrchestrationCallbacks(ctx, true);
+		callbacks.onAgentError("analyst", "boom");
+		expect(mocks.monitor.push).toHaveBeenCalledWith("agent-error", {
+			agentId: "analyst",
+			errorMessage: "boom",
+			transient: false,
+		});
+	});
+
+	it("onAgentStart/onAgentDone/onIdle/onMentalMapUpdate delegate to the monitor", () => {
+		const { mocks, ...ctx } = buildCtx();
+		const callbacks = createRemainingOrchestrationCallbacks(ctx, true);
+		callbacks.onAgentStart("analyst");
+		callbacks.onAgentDone("analyst");
+		callbacks.onIdle();
+		callbacks.onMentalMapUpdate("analyst", "<p>hi</p>");
+		expect(mocks.monitor.notifyAgentStart).toHaveBeenCalledWith("analyst");
+		expect(mocks.monitor.notifyAgentDone).toHaveBeenCalledWith("analyst");
+		expect(mocks.monitor.notifyIdle).toHaveBeenCalled();
+		expect(mocks.monitor.notifyMentalMapUpdate).toHaveBeenCalledWith(
+			"analyst",
+			"<p>hi</p>",
+		);
+	});
+
+	it("onWorkspaceReady registers workdirs with the monitor", () => {
+		const { mocks, ...ctx } = buildCtx();
+		const callbacks = createRemainingOrchestrationCallbacks(ctx, false);
+		const workdirs = new Map([["analyst", "/tmp/agent-workdir"]]);
+		callbacks.onWorkspaceReady(workdirs);
+		expect(mocks.monitor.setAgentWorkdirs).toHaveBeenCalledWith(workdirs);
 	});
 });
 

@@ -4,7 +4,13 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "@mariozechner/pi-ai";
+import type { LimitAlert } from "../limits.js";
 import { missionLifetimeCostUsd } from "../limits.js";
+import {
+	MISSION_COPILOT_AGENT_ID,
+	seedMissionCopilotObjectives,
+} from "../mission-copilot.js";
+import { migrateLegacyObjectivesStore } from "../objectives/migrate-legacy-store.js";
 import type { BootContext } from "./context.js";
 
 function logMessage(msg: Message, agentId?: string): void {
@@ -191,5 +197,146 @@ export function createOnAgentMessage(
 					),
 				);
 		}
+	};
+}
+
+export interface RemainingOrchestrationCallbacks {
+	onLimitAlert: (alert: LimitAlert) => void;
+	onAgentError: (agentId: string, errorMessage: string) => void;
+	onAgentStart: (agentId: string) => void;
+	onWorkspaceReady: (workdirs: Map<string, string>) => void;
+	onAgentDone: (agentId: string) => void;
+	onIdle: () => void;
+	onMentalMapUpdate: (agentId: string, html: string) => void;
+}
+
+/**
+ * The rest of runOrchestrationLoop's callbacks, bundled into one extraction
+ * since each is small on its own — onLimitAlert and onWorkspaceReady are the
+ * only two with any real logic; the other four are one-line delegations to
+ * the monitor.
+ */
+export function createRemainingOrchestrationCallbacks(
+	ctx: Pick<
+		BootContext,
+		| "monitor"
+		| "anomalyRecorder"
+		| "missionId"
+		| "mailboxRepo"
+		| "sharedDir"
+		| "objectivesRepo"
+	>,
+	missionCopilotEnabled: boolean,
+): RemainingOrchestrationCallbacks {
+	return {
+		onLimitAlert: (alert) => {
+			const { agentId, turnNumber, breach } = alert;
+			const { rule, value } = breach;
+			// Surface on the dashboard immediately.
+			ctx.monitor.push("limit-alert", {
+				agentId,
+				turnNumber,
+				severity: rule.severity,
+				ruleId: rule.id,
+				metric: rule.metric,
+				value,
+				threshold: rule.threshold,
+				label: rule.label,
+			});
+			console.warn(
+				`[daemon] limit ${rule.severity} ${rule.id}: ${agentId} turn ${turnNumber} — ${rule.metric}=${value} > ${rule.threshold} (${rule.label})`,
+			);
+			const body =
+				`Agent "${agentId}" breached a ${rule.severity} limit on turn ${turnNumber}: ` +
+				`${rule.metric}=${value} exceeded threshold ${rule.threshold} (${rule.label}).` +
+				(rule.severity === "hard"
+					? " The turn was aborted."
+					: " The turn continued; assess whether intervention is warranted.");
+			// Persist + wake this mission's own copilot (and, for hard
+			// breaches, relay to the control-plane copilot) — both handled
+			// internally by anomalyRecorder (ADR-0020).
+			ctx.anomalyRecorder
+				.record({
+					missionId: ctx.missionId,
+					category: "limit-breach",
+					severity: rule.severity,
+					agentId,
+					turnNumber,
+					message: body,
+				})
+				.catch((e: Error) =>
+					console.error(
+						`[daemon] failed to record limit-breach anomaly: ${e.message}`,
+					),
+				);
+			// Also notify the operator directly (issue #41) — the copilot
+			// relay above is not a substitute: a hard breach on every agent,
+			// including the mission copilot itself, previously left no one
+			// able to surface it, and the operator only found out days later.
+			if (rule.severity === "hard") {
+				ctx.mailboxRepo
+					.post({
+						missionId: ctx.missionId,
+						from: "system",
+						to: ["user"],
+						subject: `Spend limit hit — "${agentId}"`,
+						body,
+					})
+					.catch((e: Error) =>
+						console.error(
+							`[daemon] failed to notify operator of limit breach { missionId: "${ctx.missionId}", agentId: "${agentId}" }: ${e.message}`,
+						),
+					);
+			}
+		},
+		// Whole-turn crash (runAgent rejected). This is purely the SSE
+		// dashboard signal — orchestrator.ts's own dispatch-error handler
+		// (which has the errMsg first-hand) records the anomaly and relays
+		// it; recording it again here from the same event would double it.
+		onAgentError: (agentId, errorMessage) =>
+			ctx.monitor.push("agent-error", {
+				agentId,
+				errorMessage,
+				transient: false,
+			}),
+		onAgentStart: (agentId) => ctx.monitor.notifyAgentStart(agentId),
+		onWorkspaceReady: (workdirs) => {
+			ctx.monitor.setAgentWorkdirs(workdirs);
+			// Migrate any legacy file-based objectives (ADR-0019) after
+			// provisioning, not at injection time — provision() is what
+			// creates sharedDir/objectives/ on disk for a fresh-from-template
+			// mission. Idempotent (no-ops once a mission has an
+			// objectivesGoals doc), so a resume_mission reprovision (which
+			// re-runs this whole path) never re-imports. Chained (not fired
+			// in parallel) before the copilot seed so a legacy
+			// OBJ-MISSION-FIT is picked up first and the seed correctly
+			// no-ops on it.
+			migrateLegacyObjectivesStore(
+				ctx.sharedDir,
+				ctx.missionId,
+				ctx.objectivesRepo,
+			)
+				.catch((e: Error) =>
+					console.error(
+						`[daemon] failed to migrate legacy objectives store: ${e.message}`,
+					),
+				)
+				.then(() => {
+					if (missionCopilotEnabled && workdirs.has(MISSION_COPILOT_AGENT_ID)) {
+						return seedMissionCopilotObjectives(
+							ctx.objectivesRepo,
+							ctx.missionId,
+						).catch((e: Error) =>
+							console.error(
+								`[daemon] failed to seed mission copilot objectives: ${e.message}`,
+							),
+						);
+					}
+				});
+		},
+		onAgentDone: (agentId) => ctx.monitor.notifyAgentDone(agentId),
+		onIdle: () => ctx.monitor.notifyIdle(),
+		onMentalMapUpdate: (agentId, html) =>
+			ctx.monitor.notifyMentalMapUpdate(agentId, html),
 	};
 }
