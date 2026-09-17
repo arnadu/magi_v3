@@ -197,15 +197,41 @@ scoped now that both files' new structure is in place. Split out from a single S
 following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`) and this
 project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
 
-**Sprint 28d — Remaining operational + security hardening (not started).** Renumbered from 28b
-on 2026-09-05 — no content change. Out-of-band alerting (issues #3, #4); G-4 disk monitoring
-(Fly Volume usage in the daemon heartbeat, surfaced in the dashboard — highest-severity
-unscheduled operational gap, likely shares G-5's alert plumbing); onboarding flow, usage
-dashboard, the rest of `/security-review` — CR-03 (BrowseWeb SSRF), **CR-04 (shared mission
-secrets — the real architectural fix, not just 28b's isolation workaround)**, CR-06 (CI/CD
-supply-chain gates), CR-07 (external-action confirmation), CR-08 (sensitive-data posture) —
-(issues #7, #21; unblocks F-021/F-023/F-026 in `docs/security/findings.md`). Independent of
-28c's file changes; sequenced after because 28c is the harder/riskier piece.
+**Sprint 28d — Live-bug fixes from mission-copilot-filed reports (not started).** Inserted
+2026-09-17, ahead of the original 28d (renumbered to 28e below), after sizing up the open issue
+backlog: these four are small, have live production evidence, and — being self-filed by the
+mission copilots that hit them — already carry a root-cause analysis and a drafted fix in the
+issue body, unlike the broader hardening sprint's more open-ended items. **#49 (mission-copilot
+unilaterally raised a mission's spend cap $190→$250 with no operator confirmation)** — ship the
+containment half only: an operator-only `maxCostCeilingUsd` that `/set-budget`/`/extend-budget`
+reject (never silently clamp) above, settable only through the cockpit's Firebase-authenticated
+Limits route, never from any execution-plane path or tool. The larger half — a real
+confirmation-gate for the mission-copilot's tools generally (this copilot has no `ProposeAction`-
+equivalent at all today, unlike the control-plane copilot) — is deliberately deferred into 28e's
+CR-07, since it's real new infrastructure, not a same-sprint fix. **#46** (daemon hard-crashes on
+any uncaught exception/rejection — no `process.on('uncaughtException'/'unhandledRejection')`
+anywhere; observed live twice in 3 minutes via Stagehand). **#48** (daemon-mode orchestrator gap:
+a message delivered to an agent mid-turn is never processed until an unrelated later message
+happens to trigger the next Change Stream wakeup — observed live losing 16 hours; `checkIdle()`
+needs the same re-dispatch-on-unread-mail check CLI mode already has). **#52** (cosmetic mission-
+status flicker — already fixed in code, `liveStateToStatus` already returns `null` for transient
+Fly states rather than assuming `"error"`; this item is just closing the issue).
+
+**Sprint 28e — Remaining operational + security hardening (not started).** Renumbered from 28d
+on 2026-09-17 to make room for 28d's live-bug fixes above — no content change to this sprint's
+own scope. Renumbered from 28b on 2026-09-05 before that — no content change either time. Out-
+of-band alerting (issues #3, #4); G-4 disk monitoring (Fly Volume usage in the daemon heartbeat,
+surfaced in the dashboard — highest-severity unscheduled operational gap, likely shares G-5's
+alert plumbing); onboarding flow, usage dashboard, the rest of `/security-review` — CR-03
+(BrowseWeb SSRF), **CR-04 (shared mission secrets — the real architectural fix, not just 28b's
+isolation workaround)**, CR-06 (CI/CD supply-chain gates), **CR-07 (external-action
+confirmation — now includes 28d's deferred mission-copilot confirmation-gate infrastructure)**,
+CR-08 (sensitive-data posture) — (issues #7, #21; unblocks F-021/F-023/F-026 in
+`docs/security/findings.md`). Also **#31** (suspected OOM-driven daemon crash-loop, open since
+28a) — investigate at the start of this sprint once 28d's #46 has shipped (an uncaught-exception
+crash can otherwise masquerade as the same "unclean restart" log pattern #31 describes) and more
+`logMemoryUsage()` data has accumulated. Independent of 28c's file changes; sequenced after
+because 28c was the harder/riskier piece.
 
 **Sprint 29 — Sensitive-data encryption (not started, direction recorded in ADR-0026).**
 Application-level encryption so Fly and MongoDB cannot read mission data at rest, plus
@@ -215,7 +241,7 @@ Needs a dedicated research pass first — KMS provider choice, key custody model
 hot-path latency, OpenRouter ZDR fail-open/fail-closed behavior — before implementation; see
 ADR-0026 for open questions.
 
-Planning 27 and the 28a–28d series together as one push toward a credible MVP; 29 follows once
+Planning 27 and the 28a–28e series together as one push toward a credible MVP; 29 follows once
 its own research is done.
 
 ## Code Quality
