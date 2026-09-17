@@ -343,16 +343,63 @@ export async function runOrchestrationLoop(
 		return false;
 	}
 
+	/**
+	 * Called from each agent's own .finally() block when its turn ends. In
+	 * daemon mode, the main loop only re-dispatches when waitForMail()'s
+	 * Change Stream fires on a *new* insert — a message that arrived while
+	 * this agent was active and is still unread now that it's finished would
+	 * otherwise sit unprocessed until an unrelated later insert happens to
+	 * wake the loop (issue #48, observed live losing a message for ~16
+	 * hours). dispatchReady() is safe to call repeatedly — it skips agents
+	 * with no unread mail or already active — so re-dispatching here whenever
+	 * unread mail exists is the correct general fix, not daemon-mode-only.
+	 */
 	async function checkIdle(): Promise<void> {
 		if (active.size > 0 || signal?.aborted) return;
-		if (!(await anyAgentHasUnreadMail())) config.onIdle?.();
+		if (await anyAgentHasUnreadMail()) {
+			await dispatchReady();
+		} else {
+			config.onIdle?.();
+		}
+	}
+
+	// dispatchReady() itself already tolerates being called while a previous
+	// call is still mid-flight *for the same agent* (the active.has() re-check
+	// after the step/budget gate, see the comment below) — but issue #48's
+	// checkIdle() fix adds a new call site that can fire while an existing
+	// dispatchReady() call is still parked inside a step/budget gate for a
+	// *later* agent in its own for-loop. Without this guard, both calls would
+	// independently reach that later agent's own gate and call
+	// waitForStep()/waitForBudget() twice for one real dispatch opportunity —
+	// found live via TC-4's existing "exactly 2 step calls" assertion failing
+	// once checkIdle() started calling dispatchReady(). A concurrent call
+	// while one is in flight is coalesced into one more pass after the
+	// in-flight call finishes its current pass, rather than starting a second,
+	// independent pass through the agent list.
+	let dispatchInFlight = false;
+	let dispatchAgainRequested = false;
+
+	async function dispatchReady(): Promise<void> {
+		if (dispatchInFlight) {
+			dispatchAgainRequested = true;
+			return;
+		}
+		dispatchInFlight = true;
+		try {
+			do {
+				dispatchAgainRequested = false;
+				await dispatchOnePass();
+			} while (dispatchAgainRequested);
+		} finally {
+			dispatchInFlight = false;
+		}
 	}
 
 	/**
 	 * Dispatch all agents that have unread mail and are not already running or
 	 * paused. Agents run concurrently — no await on runAgent.
 	 */
-	async function dispatchReady(): Promise<void> {
+	async function dispatchOnePass(): Promise<void> {
 		if (signal?.aborted) return;
 
 		await flushInputBuffer();

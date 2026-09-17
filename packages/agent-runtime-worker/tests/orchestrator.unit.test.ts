@@ -689,3 +689,68 @@ describe("TC-9: mission-copilot alert routing", () => {
 		);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// TC-10: daemon mode — mid-turn mail is processed without an unrelated
+// mailbox insert to trigger it (issue #48)
+// ---------------------------------------------------------------------------
+
+describe("TC-10: daemon mode processes mid-turn mail without an unrelated waitForMail trigger", () => {
+	it("re-dispatches agent-a via checkIdle() once its turn ends, even though waitForMail() never resolves on its own", async () => {
+		// TC-2 covers this exact "mail arrives mid-run" scenario in CLI mode
+		// (no waitForMail configured), where it already worked correctly. Issue
+		// #48 was specific to daemon mode: the main loop only re-dispatches when
+		// waitForMail()'s Change Stream fires on a *new* insert, so a message
+		// that arrived while the target agent was active and is still unread
+		// once it finishes was never processed until an unrelated later insert
+		// happened to wake the loop — observed live losing a message for ~16h.
+		const tc = makeTeamConfig(["agent-a"]);
+		const { repo, addMail } = makeMockMailbox({ "agent-a": ["first-task"] });
+
+		const runCount: Record<string, number> = { "agent-a": 0 };
+		mockRunAgent.mockImplementation(async (agentId: string) => {
+			runCount[agentId]++;
+			if (runCount[agentId] === 1) {
+				// Simulate a teammate's reply arriving while agent-a is still
+				// mid-turn on its first task.
+				addMail("agent-a", "second-task");
+			}
+		});
+
+		const ac = new AbortController();
+		// Never resolves on its own — simulating "no unrelated mailbox insert
+		// ever arrives" — except on abort, matching the real
+		// daemon-boot/mail-waiter.ts's own contract (resolves on abort so the
+		// main loop can exit cleanly). If checkIdle() didn't re-dispatch,
+		// agent-a's second task would never run, since nothing else can wake
+		// the main loop in this test.
+		const waitForMail = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					ac.signal.addEventListener("abort", () => resolve(), {
+						once: true,
+					});
+				}),
+		);
+
+		const donePromise = runOrchestrationLoop(
+			buildConfig(tc, repo, { waitForMail, maxRuns: 2 }),
+			ac.signal,
+		);
+
+		const start = Date.now();
+		while (runCount["agent-a"] < 2) {
+			if (Date.now() - start > 2000) {
+				ac.abort();
+				throw new Error(
+					"agent-a was never re-dispatched for its mid-turn mail",
+				);
+			}
+			await new Promise((r) => setTimeout(r, 5));
+		}
+		ac.abort();
+		await donePromise;
+
+		expect(runCount["agent-a"]).toBe(2);
+	});
+});
