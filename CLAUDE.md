@@ -149,16 +149,26 @@ handlers, #48 mid-turn dispatch gap, #52), 28c (CR-01/CR-02 fixes + `monitor-ser
 `daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 + beta deployment), 28a
 (live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
 
-**Sprint 28e — Remaining operational + security hardening (in progress).** G-4 disk monitoring
-(highest-severity unscheduled operational gap — Fly Volume usage in the daemon heartbeat,
-surfaced in the dashboard) + G-5 out-of-band alerting (issues #3, #4, likely shares G-4's alert
-plumbing); onboarding flow; usage dashboard; the rest of `/security-review` — CR-03 (BrowseWeb
-SSRF), CR-04 (shared mission secrets — the real architectural fix, not just 28b's isolation
-workaround), CR-06 (CI/CD supply-chain gates), CR-07 (external-action confirmation — now includes
-28d's deferred mission-copilot confirmation-gate infrastructure), CR-08 (sensitive-data posture);
-issues #7, #21; unblocks F-021/F-023/F-026 in `docs/security/findings.md`. Also revisit #31
-(suspected OOM-driven daemon crash-loop) now that 28d's #46 crash handlers have shipped and more
-`logMemoryUsage()` data has accumulated.
+**Sprint 28e — Critical security fixes (in progress).** Re-scoped 2026-09-17 to isolate the two
+remaining **High**-severity, currently-live findings from the 2026-08-09 audit: **CR-03**
+(BrowseWeb SSRF — Stagehand V3 removed the request interceptor the threat model assumed still
+exists; agent browser navigation is unconstrained past the initial URL) and **CR-04** (shared
+mission secrets — every mission machine gets the real, cluster-wide MongoDB/LLM credentials, so a
+compromised or prompt-injected agent on any one mission, including the beta tenant, can reach
+every other mission's data). Neither is preventive hardening. Everything else that was in the
+original 28e bucket — G-4/G-5, onboarding, usage dashboard, CR-06/CR-07-remainder/CR-08, #7,
+#21, #31 — moved to **Sprint 28f**, genuinely lower-urgency and to be weighed against feature
+work rather than treated as a blocker.
+
+**Sprint 28f — Remaining operational hardening (backlog, not started).** G-4 disk monitoring
+(highest-severity operational gap — Fly Volume usage in the daemon heartbeat, surfaced in the
+dashboard) + G-5 out-of-band alerting (issues #3, #4, likely shares G-4's alert plumbing);
+onboarding flow; usage dashboard; CR-06 (CI/CD supply-chain gates), CR-07 remainder
+(confirmation gates for pause/resume/schedule-cancel — the acute spend-cap case is already fixed,
+28d), CR-08 (sensitive-data posture, blocked on Sprint 29 anyway); issues #7, #21; unblocks
+F-021/F-023/F-026 in `docs/security/findings.md`. Also revisit #31 (suspected OOM-driven daemon
+crash-loop) now that 28d's #46 crash handlers have shipped and more `logMemoryUsage()` data has
+accumulated.
 
 **Sprint 29 — Sensitive-data encryption (not started, direction recorded in ADR-0026).**
 Application-level encryption so Fly and MongoDB cannot read mission data at rest, plus OpenRouter

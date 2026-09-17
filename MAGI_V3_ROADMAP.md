@@ -17,10 +17,12 @@ architectural decisions.
 
 ## Status
 
-**MVP milestone hit at Sprint 27** (cockpit UI consolidation). Sprints 0–28d are done. Currently
-starting **Sprint 28e** (remaining operational + security hardening) — see its row below for scope.
-Sprint 29 (sensitive-data encryption) is planned but not started, and needs its own research pass
-before implementation.
+**MVP milestone hit at Sprint 27** (cockpit UI consolidation). Sprints 0–28d are done. 28e was
+re-scoped 2026-09-17 to isolate the two remaining **High**-severity security findings from the
+2026-08-09 audit — CR-03 and CR-04, both live exposures, not preventive hardening — from the rest
+of the original 28e bucket, which is genuinely lower-urgency and now deferred to **28f**, to be
+weighed against feature work rather than treated as a security blocker. Sprint 29 (sensitive-data
+encryption) is planned but not started, and needs its own research pass before implementation.
 
 ---
 
@@ -62,7 +64,8 @@ before implementation.
 | 28b | ✅ | Mission-prep v1 (draft/launch flow) + a fully separate beta deployment for a second, trusted user |
 | 28c | ✅ (except CR-05) | CR-01/CR-02 security fixes; structural decomposition of `monitor-server.ts`/`daemon.ts` ([#32](https://github.com/arnadu/magi_v3/issues/32)/[#33](https://github.com/arnadu/magi_v3/issues/33), ADR-0029/ADR-0030) |
 | 28d | ✅ | Live-bug fixes from mission-copilot reports — [#49](https://github.com/arnadu/magi_v3/issues/49) spend-cap ceiling (F-025 fixed), [#46](https://github.com/arnadu/magi_v3/issues/46) crash handlers, [#48](https://github.com/arnadu/magi_v3/issues/48) mid-turn dispatch gap, [#52](https://github.com/arnadu/magi_v3/issues/52) |
-| **28e** | ⬜ **Next** | **Remaining operational + security hardening.** G-4 disk monitoring + G-5 out-of-band alerting ([#3](https://github.com/arnadu/magi_v3/issues/3)/[#4](https://github.com/arnadu/magi_v3/issues/4)); onboarding flow; usage dashboard; CR-03 (BrowseWeb SSRF), CR-04 (shared mission secrets — real fix), CR-06 (CI/CD supply chain), CR-07 (external-action confirmation, now including 28d's deferred mission-copilot confirmation gate), CR-08 (sensitive-data posture); [#7](https://github.com/arnadu/magi_v3/issues/7)/[#21](https://github.com/arnadu/magi_v3/issues/21); revisit [#31](https://github.com/arnadu/magi_v3/issues/31) (OOM) now that more crash-log data has accumulated; unblocks F-021/F-023/F-026 |
+| **28e** | ⬜ **Next** | **Critical security fixes.** **CR-03** (BrowseWeb SSRF — Stagehand V3 removed the interceptor the threat model assumed still exists; agent browser navigation is currently unconstrained past the initial URL) and **CR-04** (shared mission secrets — every mission machine gets the real, cluster-wide MongoDB/LLM credentials; a compromised or prompt-injected agent on any one mission, including the beta tenant, can reach every other mission's data). Both High severity, both live today, neither preventive. |
+| 28f | ⬜ Backlog | **Remaining operational hardening — nice-to-have, arbitrate against feature work.** G-4 disk monitoring + G-5 out-of-band alerting ([#3](https://github.com/arnadu/magi_v3/issues/3)/[#4](https://github.com/arnadu/magi_v3/issues/4)); onboarding flow; usage dashboard; CR-06 (CI/CD supply chain), CR-07 remainder (confirmation gates for pause/resume/schedule-cancel — the acute spend-cap case is already fixed, 28d), CR-08 (sensitive-data posture, blocked on Sprint 29 anyway); [#7](https://github.com/arnadu/magi_v3/issues/7)/[#21](https://github.com/arnadu/magi_v3/issues/21); revisit [#31](https://github.com/arnadu/magi_v3/issues/31) (OOM) once more crash-log data has accumulated; unblocks F-021/F-023/F-026 |
 | 29 | ⬜ Planned | Sensitive-data encryption — direction recorded in [ADR-0026](docs/adr/0026-sensitive-data-encryption-direction.md); needs a dedicated research pass (KMS choice, key custody, migration path) before implementation |
 
 ---
@@ -70,8 +73,8 @@ before implementation.
 ## Operational resilience gaps
 
 Tracked in [docs/operational-resilience.md](docs/operational-resilience.md), not duplicated here.
-Currently open: **G-4** (disk monitoring, 🔴, candidate 28e), **G-5** (out-of-band alerting, 🟠,
-candidate 28e), **G-2** (inbox two-phase ack, 🟠), **G-8** (no MongoDB backup/PITR on the free
+Currently open: **G-4** (disk monitoring, 🔴, candidate 28f), **G-5** (out-of-band alerting, 🟠,
+candidate 28f), **G-2** (inbox two-phase ack, 🟠), **G-8** (no MongoDB backup/PITR on the free
 Atlas tier, 🔴, accepted for now pre-revenue).
 
 ---
