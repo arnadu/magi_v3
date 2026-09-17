@@ -10,7 +10,10 @@ import { randomUUID } from "node:crypto";
 import type { AgentConfig, TeamConfig } from "@magi/agent-config";
 import type { Db, MongoClient } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createMongoMissionConfigRepository } from "../src/mission-config.js";
+import {
+	createMongoMissionConfigRepository,
+	SpendCapCeilingExceededError,
+} from "../src/mission-config.js";
 import { connectMongo } from "../src/mongo.js";
 
 function baseConfig(): {
@@ -43,7 +46,7 @@ describe("MissionConfigRepository against real MongoDB", () => {
 
 	beforeEach(async () => {
 		({ client, db } = await connectMongo(MONGODB_URI, "magi-test"));
-	});
+	}, 30_000);
 
 	afterEach(async () => {
 		await db.collection("missions").deleteMany({ missionId });
@@ -120,5 +123,63 @@ describe("MissionConfigRepository against real MongoDB", () => {
 		});
 		const repo = createMongoMissionConfigRepository(db);
 		await expect(repo.writeMissionCap(missionId, 10)).rejects.toThrow();
+	});
+
+	// ── Spend-cap ceiling (issue #49 / finding F-025) ──────────────────────
+
+	it("readMaxCostCeiling returns null when no ceiling is configured", async () => {
+		await db.collection("missions").insertOne({ missionId, ...baseConfig() });
+		const repo = createMongoMissionConfigRepository(db);
+		expect(await repo.readMaxCostCeiling(missionId)).toBeNull();
+	});
+
+	it("readMaxCostCeiling reads the ceiling fresh, reflecting an edit by another writer", async () => {
+		await db.collection("missions").insertOne({ missionId, ...baseConfig() });
+		const repo = createMongoMissionConfigRepository(db);
+		await db
+			.collection("missions")
+			.updateOne({ missionId }, { $set: { maxCostCeilingUsd: 100 } });
+		expect(await repo.readMaxCostCeiling(missionId)).toBe(100);
+	});
+
+	it("writeMissionCap succeeds at or below the ceiling", async () => {
+		await db.collection("missions").insertOne({
+			missionId,
+			...baseConfig(),
+			maxCostCeilingUsd: 100,
+		});
+		const repo = createMongoMissionConfigRepository(db);
+		await repo.writeMissionCap(missionId, 100);
+		const live = await repo.readTeamConfig(missionId);
+		expect(live?.mission.maxCostUsd).toBe(100);
+	});
+
+	it("writeMissionCap rejects a cap above the ceiling, without persisting anything", async () => {
+		await db.collection("missions").insertOne({
+			missionId,
+			...baseConfig(),
+			maxCostCeilingUsd: 100,
+		});
+		const repo = createMongoMissionConfigRepository(db);
+
+		await expect(repo.writeMissionCap(missionId, 150)).rejects.toThrow(
+			SpendCapCeilingExceededError,
+		);
+
+		const live = await repo.readTeamConfig(missionId);
+		expect(live?.mission.maxCostUsd).toBeUndefined();
+		const revisions = await db
+			.collection("missionConfigRevisions")
+			.find({ missionId })
+			.toArray();
+		expect(revisions).toHaveLength(0);
+	});
+
+	it("writeMissionCap is unbounded when no ceiling is configured (legacy/opt-in behavior)", async () => {
+		await db.collection("missions").insertOne({ missionId, ...baseConfig() });
+		const repo = createMongoMissionConfigRepository(db);
+		await repo.writeMissionCap(missionId, 1_000_000);
+		const live = await repo.readTeamConfig(missionId);
+		expect(live?.mission.maxCostUsd).toBe(1_000_000);
 	});
 });

@@ -624,6 +624,10 @@ export interface LimitsData {
 		maxCostUsd: number | null;
 		missionTotalUsd: number | null;
 		budgetPaused: boolean | null;
+		/** Issue #49 / F-025 — operator-only ceiling on the spend cap above;
+		 * null means none configured (unbounded, legacy default). No mission
+		 * tool can ever raise this — only the cockpit Limits panel can. */
+		maxCostCeilingUsd: number | null;
 	};
 	agents: AgentLimitsRow[];
 	/** False when suspended/provisioning/etc — live numbers are unavailable then. */
@@ -649,6 +653,25 @@ export async function saveMissionCap(
 	});
 	if (!res.ok) throw new Error(`HTTP ${res.status} saving mission cap`);
 	return (await res.json()) as { liveUpdateApplied: boolean };
+}
+
+/** Issue #49 / F-025 — sets the operator-only spend-cap ceiling. No mission
+ * tool (SetMissionSpendCap, SaveMissionConfig) can ever call this route or
+ * raise this value; only the cockpit Limits panel can, matching the fact
+ * that maxCostCeilingUsd is a structurally separate field from the writer
+ * those tools share (see missions.ts's writeMissionCostCeiling). */
+export async function saveMissionCostCeiling(
+	missionId: string,
+	ceilingUsd: number,
+): Promise<{ maxCostCeilingUsd: number }> {
+	const res = await fetch(`/api/missions/${mp(missionId)}/limits/ceiling`, {
+		method: "PATCH",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ ceilingUsd }),
+	});
+	if (!res.ok) throw new Error(`HTTP ${res.status} saving spend-cap ceiling`);
+	return (await res.json()) as { maxCostCeilingUsd: number };
 }
 
 /** `limits: null` clears every configured limit for that agent. Takes effect

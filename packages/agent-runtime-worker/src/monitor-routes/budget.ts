@@ -1,9 +1,24 @@
 import type { StatsCollector } from "../agent-stats.js";
 import { missionLifetimeCostUsd } from "../limits.js";
-import type { MissionConfigRepository } from "../mission-config.js";
+import {
+	type MissionConfigRepository,
+	SpendCapCeilingExceededError,
+} from "../mission-config.js";
 import type { MonitorEventType } from "../monitor-server.js";
 import { readBody } from "../monitor-server.js";
 import type { RouteEntry } from "./types.js";
+
+/**
+ * Both routes below funnel through MissionConfigRepository.writeMissionCap(),
+ * which throws SpendCapCeilingExceededError (issue #49 / F-025) when the
+ * requested cap exceeds the mission's maxCostCeilingUsd — a 403, not the
+ * generic 500 any other write failure gets, so the caller (including the
+ * mission-copilot's own SetMissionSpendCap tool) can tell "rejected by a
+ * real containment boundary" apart from "something broke."
+ */
+function writeMissionCapErrorStatus(e: unknown): number {
+	return e instanceof SpendCapCeilingExceededError ? 403 : 500;
+}
 
 /**
  * Accessor functions, not plain values: budgetPaused/budgetResolve are
@@ -50,7 +65,9 @@ export function createBudgetRoutes(deps: BudgetDeps): RouteEntry[] {
 				try {
 					await deps.missionConfig.writeMissionCap(deps.missionId, newCapUsd);
 				} catch (e) {
-					res.writeHead(500, { "Content-Type": "application/json" });
+					res.writeHead(writeMissionCapErrorStatus(e), {
+						"Content-Type": "application/json",
+					});
 					res.end(JSON.stringify({ ok: false, error: (e as Error).message }));
 					return;
 				}
@@ -94,7 +111,9 @@ export function createBudgetRoutes(deps: BudgetDeps): RouteEntry[] {
 				try {
 					await deps.missionConfig.writeMissionCap(deps.missionId, capUsd);
 				} catch (e) {
-					res.writeHead(500, { "Content-Type": "application/json" });
+					res.writeHead(writeMissionCapErrorStatus(e), {
+						"Content-Type": "application/json",
+					});
 					res.end(JSON.stringify({ ok: false, error: (e as Error).message }));
 					return;
 				}

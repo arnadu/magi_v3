@@ -217,3 +217,104 @@ describe("budget pause / resume", () => {
 		expect(resumed.budgetPaused).toBe(false);
 	});
 });
+
+// ── Spend-cap ceiling (issue #49 / finding F-025) — own mission + monitor,
+// isolated from the sequential cap-value assertions above.
+describe("spend-cap ceiling", () => {
+	const ceilingMissionId = `monitor-budget-ceiling-${randomUUID()}`;
+	let ceilingClient: Awaited<ReturnType<typeof connectMongo>>["client"];
+	let ceilingMonitor: MonitorServer;
+	let ceilingBase: string;
+
+	beforeAll(async () => {
+		const conn = await connectMongo(MONGODB_URI as string, "magi-test");
+		ceilingClient = conn.client;
+		await conn.db.collection("missions").insertOne({
+			missionId: ceilingMissionId,
+			...baseConfig(ceilingMissionId),
+			maxCostCeilingUsd: 100,
+		});
+
+		const mailboxRepo = createMongoMailboxRepository(conn.db, ceilingMissionId);
+		const agents: AgentInfo[] = [
+			{ id: "analyst", name: "Analyst", role: "assistant" },
+		];
+		const statsCollector = new StatsCollector(
+			createMongoAgentStatsRepository(conn.db),
+		);
+		const missionConfigRepo = createMongoMissionConfigRepository(conn.db);
+		const port = await freePort();
+		ceilingMonitor = new MonitorServer(
+			conn.db,
+			ceilingMissionId,
+			"Test",
+			CLAUDE_SONNET,
+			new UsageAccumulator(),
+			statsCollector,
+			missionConfigRepo,
+			mailboxRepo,
+			agents,
+			() => {},
+		);
+		await ceilingMonitor.start(port);
+		ceilingBase = `http://127.0.0.1:${port}`;
+	}, 60_000);
+
+	afterAll(async () => {
+		ceilingMonitor?.stop();
+		for (const col of ["missions", "missionConfigRevisions"]) {
+			await ceilingClient
+				?.db("magi-test")
+				.collection(col)
+				.deleteMany({ missionId: ceilingMissionId });
+		}
+		await ceilingClient?.close();
+	});
+
+	it("POST /set-budget returns 403 and persists nothing when the requested cap exceeds the ceiling", async () => {
+		const res = await fetch(`${ceilingBase}/set-budget`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ capUsd: 150 }),
+		});
+		expect(res.status).toBe(403);
+		const body = (await res.json()) as { ok: boolean; error: string };
+		expect(body.ok).toBe(false);
+		expect(body.error).toContain("ceiling");
+
+		const doc = await ceilingClient
+			.db("magi-test")
+			.collection("missions")
+			.findOne({ missionId: ceilingMissionId });
+		expect((doc?.mission as TeamConfig["mission"]).maxCostUsd).toBeUndefined();
+	});
+
+	it("POST /set-budget succeeds at exactly the ceiling", async () => {
+		const res = await fetch(`${ceilingBase}/set-budget`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ capUsd: 100 }),
+		});
+		expect(res.status).toBe(200);
+	});
+
+	it("POST /extend-budget returns 403 and persists nothing when the resulting cap exceeds the ceiling", async () => {
+		// Current cap is 100 (set by the previous test) — adding anything
+		// positive now exceeds the 100 ceiling.
+		const res = await fetch(`${ceilingBase}/extend-budget`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ addUsd: 1 }),
+		});
+		expect(res.status).toBe(403);
+
+		const doc = await ceilingClient
+			.db("magi-test")
+			.collection("missions")
+			.findOne({ missionId: ceilingMissionId });
+		expect((doc?.mission as TeamConfig["mission"]).maxCostUsd).toBeCloseTo(
+			100,
+			8,
+		);
+	});
+});

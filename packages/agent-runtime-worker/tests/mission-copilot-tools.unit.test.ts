@@ -288,6 +288,89 @@ describe("mission-copilot-tools", () => {
 			expect(mailboxPosts[0].to).toEqual(["user"]);
 		});
 
+		// ── Spend-cap ceiling (issue #49 / finding F-025) ───────────────────
+
+		it("rejects a maxCostUsd patch above the mission's ceiling, without writing anything", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{
+						missionId: "m1",
+						mission: BASE_MISSION,
+						agents: BASE_AGENTS,
+						maxCostCeilingUsd: 100,
+					},
+				],
+			});
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				mission: { maxCostUsd: 150 },
+			});
+			expect(result.isError).toBe(true);
+			expect(result.content[0].text).toContain("ceiling");
+			expect(
+				fake.updateOneCalls.filter((c) => c.collection === "missions"),
+			).toHaveLength(0);
+			expect(
+				fake.insertOneCalls.filter(
+					(c) => c.collection === "missionConfigRevisions",
+				),
+			).toHaveLength(0);
+		});
+
+		it("allows a maxCostUsd patch at or below the ceiling", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{
+						missionId: "m1",
+						mission: BASE_MISSION,
+						agents: BASE_AGENTS,
+						maxCostCeilingUsd: 100,
+					},
+				],
+			});
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				mission: { maxCostUsd: 100 },
+			});
+			expect(result.isError).toBeFalsy();
+			expect(
+				fake.updateOneCalls.filter((c) => c.collection === "missions"),
+			).toHaveLength(1);
+		});
+
+		it("allows any maxCostUsd when no ceiling is configured (legacy/opt-in)", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{ missionId: "m1", mission: BASE_MISSION, agents: BASE_AGENTS },
+				],
+			});
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				mission: { maxCostUsd: 1_000_000 },
+			});
+			expect(result.isError).toBeFalsy();
+		});
+
+		it("does not re-check the ceiling when maxCostUsd is unchanged from the current value", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{
+						missionId: "m1",
+						mission: { ...BASE_MISSION, maxCostUsd: 50 },
+						agents: BASE_AGENTS,
+						maxCostCeilingUsd: 10, // already inconsistent with the stored cap
+					},
+				],
+			});
+			const { tools } = buildTools(fake.db);
+			// Patches something unrelated — maxCostUsd is carried over unchanged
+			// via the shallow-merge, not newly "set" by this call.
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				mission: { name: "Renamed" },
+			});
+			expect(result.isError).toBeFalsy();
+		});
+
 		it("upserts an agent by id into the current roster (patch semantics)", async () => {
 			const fake = makeFakeDb({
 				missions: [

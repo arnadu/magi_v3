@@ -63,6 +63,15 @@ interface MissionDoc {
 	mission?: TeamConfig["mission"];
 	agents?: AgentConfig[];
 	missionCopilotLimits?: Limits;
+	/**
+	 * Operator-only spend-cap ceiling (issue #49 / F-025) — deliberately a
+	 * top-level field, never part of `mission`/`agents`/`missionCopilotLimits`,
+	 * so no execution-plane tool (SaveMissionConfig, SetMissionSpendCap) can
+	 * ever read or write it; only writeMissionCostCeiling() below touches it,
+	 * gated by this router's own requireAuth. undefined means no ceiling is
+	 * configured (legacy/opt-in) — writeMissionCap imposes no upper bound.
+	 */
+	maxCostCeilingUsd?: number;
 	/** Team files (skills, etc.) stored at provision time; updated on config edit. */
 	teamFiles?: Array<{ path: string; content: string }>;
 	machineId?: string;
@@ -125,6 +134,8 @@ export interface LimitsData {
 		maxCostUsd: number | null;
 		missionTotalUsd: number | null;
 		budgetPaused: boolean | null;
+		/** Issue #49 / F-025 — operator-only ceiling; null means none configured. */
+		maxCostCeilingUsd: number | null;
 	};
 	agents: AgentLimitsRow[];
 	missionRunning: boolean;
@@ -316,6 +327,7 @@ export async function readLimits(
 			maxCostUsd: teamConfig.mission.maxCostUsd ?? null,
 			missionTotalUsd,
 			budgetPaused,
+			maxCostCeilingUsd: mission.maxCostCeilingUsd ?? null,
 		},
 		agents,
 		missionRunning,
@@ -357,6 +369,23 @@ export async function writeMissionCap(
 		return {
 			status: 404,
 			body: { error: "No config stored for this mission" },
+		};
+	}
+
+	// Issue #49 / F-025: the operator's own cap-raise is bound by the same
+	// ceiling as the mission-copilot's SetMissionSpendCap/SaveMissionConfig
+	// paths (mission-config.ts, mission-copilot-tools.ts) — one consistent
+	// rule regardless of caller, so raising the cap above the ceiling always
+	// means raising the ceiling first via writeMissionCostCeiling below.
+	if (
+		mission.maxCostCeilingUsd !== undefined &&
+		maxCostUsd > mission.maxCostCeilingUsd
+	) {
+		return {
+			status: 403,
+			body: {
+				error: `Requested cap $${maxCostUsd.toFixed(2)} exceeds this mission's spend-cap ceiling of $${mission.maxCostCeilingUsd.toFixed(2)} — raise the ceiling first.`,
+			},
 		};
 	}
 
@@ -420,6 +449,43 @@ export async function writeMissionCap(
 	);
 
 	return { status: 200, body: { ok: true, maxCostUsd, liveUpdateApplied } };
+}
+
+/**
+ * Issue #49 / F-025: the operator-only spend-cap ceiling. Writes directly to
+ * the top-level maxCostCeilingUsd field — deliberately NOT through
+ * createMongoMissionConfigWriter (the mission/agents/missionCopilotLimits
+ * writer SaveMissionConfig/EditDraftConfig/PUT /:id/config also use) — so
+ * this stays a structurally separate write path no execution-plane tool can
+ * ever reach, regardless of what future tool gets added to that shared
+ * writer's surface.
+ */
+export async function writeMissionCostCeiling(
+	col: Collection<MissionDoc>,
+	db: Db,
+	missionId: string,
+	filter: Partial<MissionDoc>,
+	ceilingUsd: number,
+): Promise<RouteResult> {
+	if (!(ceilingUsd > 0)) {
+		return { status: 400, body: { error: "ceilingUsd must be > 0" } };
+	}
+	const mission = await col.findOne({ missionId, ...filter });
+	if (!mission) return { status: 404, body: { error: "Not found" } };
+
+	await col.updateOne(
+		{ missionId },
+		{ $set: { maxCostCeilingUsd: ceilingUsd, updatedAt: new Date() } },
+	);
+
+	await postLimitsAudit(
+		db,
+		missionId,
+		"Spend-cap ceiling changed",
+		`Operator set this mission's spend-cap ceiling to $${ceilingUsd.toFixed(2)} via the cockpit Limits panel. The mission-wide spend cap can never be raised above this value by any mission tool.`,
+	);
+
+	return { status: 200, body: { ok: true, maxCostCeilingUsd: ceilingUsd } };
 }
 
 export async function writeAgentLimits(
@@ -1215,6 +1281,22 @@ export function createMissionsRouter(db: Db): Router {
 			req.params.id,
 			userFilter(req),
 			maxCostUsd,
+		);
+		res.status(result.status).json(result.body);
+	});
+
+	router.patch("/:id/limits/ceiling", async (req, res) => {
+		const ceilingUsd = req.body?.ceilingUsd;
+		if (typeof ceilingUsd !== "number") {
+			res.status(400).json({ error: "ceilingUsd (number) is required" });
+			return;
+		}
+		const result = await writeMissionCostCeiling(
+			col,
+			db,
+			req.params.id,
+			userFilter(req),
+			ceilingUsd,
 		);
 		res.status(result.status).json(result.body);
 	});

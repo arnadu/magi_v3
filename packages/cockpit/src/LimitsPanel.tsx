@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import type { AgentLimits, AgentLimitsRow, LimitsData } from "./data";
-import { fetchLimits, saveAgentLimits, saveMissionCap } from "./data";
+import {
+	fetchLimits,
+	saveAgentLimits,
+	saveMissionCap,
+	saveMissionCostCeiling,
+} from "./data";
 
 const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
 
@@ -230,6 +235,68 @@ function AgentCard({
 	);
 }
 
+function CeilingField({
+	missionId,
+	maxCostCeilingUsd,
+	onSaved,
+}: {
+	missionId: string;
+	maxCostCeilingUsd: number | null;
+	onSaved: () => void;
+}) {
+	const [draft, setDraft] = useState<number | undefined>(
+		maxCostCeilingUsd ?? undefined,
+	);
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [note, setNote] = useState<string | null>(null);
+
+	async function save() {
+		if (draft === undefined || draft <= 0) {
+			setError("Enter a positive amount.");
+			return;
+		}
+		setSaving(true);
+		setError(null);
+		setNote(null);
+		try {
+			await saveMissionCostCeiling(missionId, draft);
+			setNote("Saved.");
+			onSaved();
+		} catch (e) {
+			setError((e as Error).message);
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	return (
+		<div className="limits-section">
+			<span className="kpilbl">
+				Spend-cap ceiling (operator only — issue #49)
+			</span>
+			<p className="mut">
+				{maxCostCeilingUsd != null
+					? `The spend cap above can never be raised past ${fmtUsd(maxCostCeilingUsd)} by any mission tool.`
+					: "No ceiling set — the spend cap above is unbounded, including by the mission copilot's own tools."}
+			</p>
+			<LimitField label="Ceiling ($)" value={draft} onChange={setDraft} />
+			{error && <p className="mut limits-error">{error}</p>}
+			{note && <p className="mut">{note}</p>}
+			<div className="limits-actions">
+				<button
+					type="button"
+					className="rail-btn"
+					disabled={saving}
+					onClick={save}
+				>
+					{saving ? "Saving…" : "Save ceiling"}
+				</button>
+			</div>
+		</div>
+	);
+}
+
 function MissionSection({
 	data,
 	missionId,
@@ -317,6 +384,11 @@ function MissionSection({
 					{saving ? "Saving…" : "Save cap"}
 				</button>
 			</div>
+			<CeilingField
+				missionId={missionId}
+				maxCostCeilingUsd={data.mission.maxCostCeilingUsd}
+				onSaved={onSaved}
+			/>
 		</div>
 	);
 }

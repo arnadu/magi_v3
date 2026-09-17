@@ -14,6 +14,7 @@ import {
 	readLimits,
 	writeAgentLimits,
 	writeMissionCap,
+	writeMissionCostCeiling,
 } from "../src/missions.js";
 
 function baseMission(): TeamConfig["mission"] {
@@ -52,6 +53,10 @@ describe("Limits panel backend", () => {
 	const userB = `user-b-${randomUUID()}`;
 	const missionId = `mission-limits-${randomUUID()}`;
 
+	// 30s, not vitest's 10s default — this Atlas cluster's connect time has been
+	// observed at 11-17s+ under normal load; a hook timeout mid-connect leaves
+	// `client`/`db` in an inconsistent state for the rest of the run, not just
+	// this one test (matches the same fix in mission-config.integration.test.ts).
 	beforeEach(async () => {
 		({ client, db } = await connectMongo(MONGODB_URI, "magi-test"));
 
@@ -100,7 +105,7 @@ describe("Limits panel backend", () => {
 			toolErrors: { Bash: 2, WriteFile: 1 },
 			status: "complete",
 		});
-	});
+	}, 30_000);
 
 	afterEach(async () => {
 		await db.collection("missions").deleteMany({ missionId });
@@ -109,7 +114,7 @@ describe("Limits panel backend", () => {
 		await db.collection("mailbox").deleteMany({ missionId });
 		await db.collection("missionConfigRevisions").deleteMany({ missionId });
 		await client.close();
-	});
+	}, 30_000);
 
 	const col = () => db.collection("missions");
 
@@ -347,6 +352,111 @@ describe("Limits panel backend", () => {
 				0,
 			);
 			expect(result.status).toBe(400);
+		});
+
+		it("rejects a cap above the mission's spend-cap ceiling (issue #49 / F-025)", async () => {
+			await col().updateOne(
+				{ missionId },
+				{ $set: { maxCostCeilingUsd: 100 } },
+			);
+			const result = await writeMissionCap(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				150,
+			);
+			expect(result.status).toBe(403);
+			const after = await col().findOne({ missionId });
+			expect(
+				(after?.mission as TeamConfig["mission"]).maxCostUsd,
+			).toBeUndefined();
+		});
+
+		it("allows a cap exactly at the ceiling", async () => {
+			await col().updateOne(
+				{ missionId },
+				{ $set: { maxCostCeilingUsd: 100 } },
+			);
+			const result = await writeMissionCap(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				100,
+			);
+			expect(result.status).toBe(200);
+		});
+
+		it("is unbounded when no ceiling is configured", async () => {
+			const result = await writeMissionCap(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				1_000_000,
+			);
+			expect(result.status).toBe(200);
+		});
+	});
+
+	describe("writeMissionCostCeiling", () => {
+		it("persists maxCostCeilingUsd and posts an audit mailbox message", async () => {
+			const result = await writeMissionCostCeiling(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				75,
+			);
+			expect(result.status).toBe(200);
+			expect(result.body).toEqual({ ok: true, maxCostCeilingUsd: 75 });
+
+			const after = await col().findOne({ missionId });
+			expect(after?.maxCostCeilingUsd).toBe(75);
+
+			const msgs = await db.collection("mailbox").find({ missionId }).toArray();
+			expect(msgs).toHaveLength(1);
+			expect(msgs[0].from).toBe("user");
+			expect(msgs[0].to).toEqual(["mission-copilot"]);
+			expect(msgs[0].subject).toContain("ceiling");
+		});
+
+		it("is reflected in readLimits' mission.maxCostCeilingUsd", async () => {
+			await writeMissionCostCeiling(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				60,
+			);
+			const result = await readLimits(col(), db, missionId, { userId: userA });
+			const body = result.body as {
+				mission: { maxCostCeilingUsd: number | null };
+			};
+			expect(body.mission.maxCostCeilingUsd).toBe(60);
+		});
+
+		it("rejects a non-positive ceiling", async () => {
+			const result = await writeMissionCostCeiling(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				0,
+			);
+			expect(result.status).toBe(400);
+		});
+
+		it("rejects a cross-user missionId", async () => {
+			const result = await writeMissionCostCeiling(
+				col(),
+				db,
+				missionId,
+				{ userId: userB },
+				50,
+			);
+			expect(result.status).toBe(404);
 		});
 	});
 });

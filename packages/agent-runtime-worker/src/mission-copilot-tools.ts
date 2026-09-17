@@ -44,6 +44,7 @@ import cronParser from "cron-parser";
 import { type Db, ObjectId } from "mongodb";
 import type { JobSpec } from "./job-recovery.js";
 import type { MailboxRepository } from "./mailbox.js";
+import { createMongoMissionConfigRepository } from "./mission-config.js";
 import { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
@@ -318,6 +319,29 @@ export function createMissionCopilotTools(
 				});
 			} catch (e) {
 				return err(`Invalid team config: ${(e as Error).message}`);
+			}
+
+			// Issue #49 / F-025: SetMissionSpendCap enforces this via
+			// writeMissionCap(), but mission.maxCostUsd is also a plain field
+			// SaveMissionConfig can shallow-merge — without this check, that
+			// would be a second, unguarded path to the exact same unilateral
+			// cap raise. maxCostCeilingUsd itself is a top-level field on the
+			// mission doc, never part of `mission`/`agents`/`missionCopilotLimits`,
+			// so nothing reaching this function (this patch's own missionPatch
+			// included) can ever change it.
+			if (
+				validated.mission.maxCostUsd !== undefined &&
+				validated.mission.maxCostUsd !== current.mission.maxCostUsd
+			) {
+				const ceiling =
+					await createMongoMissionConfigRepository(db).readMaxCostCeiling(
+						missionId,
+					);
+				if (ceiling !== null && validated.mission.maxCostUsd > ceiling) {
+					return err(
+						`Requested cap $${validated.mission.maxCostUsd.toFixed(2)} exceeds this mission's spend-cap ceiling of $${ceiling.toFixed(2)} — raise the ceiling first via the cockpit Limits panel (an operator-only action no mission tool can perform).`,
+					);
+				}
 			}
 
 			await missionConfigWriter.write(
