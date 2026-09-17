@@ -17,12 +17,13 @@ architectural decisions.
 
 ## Status
 
-**MVP milestone hit at Sprint 27** (cockpit UI consolidation). Sprints 0–28d are done. 28e was
-re-scoped 2026-09-17 to isolate the two remaining **High**-severity security findings from the
-2026-08-09 audit — CR-03 and CR-04, both live exposures, not preventive hardening — from the rest
-of the original 28e bucket, which is genuinely lower-urgency and now deferred to **28f**, to be
-weighed against feature work rather than treated as a security blocker. Sprint 29 (sensitive-data
-encryption) is planned but not started, and needs its own research pass before implementation.
+**MVP milestone hit at Sprint 27** (cockpit UI consolidation). Sprints 0–28e are done — 28e was
+re-scoped 2026-09-17 to isolate the two closable **High**-severity security findings from the
+2026-08-09 audit (CR-03, CR-04's job-env half) from the rest of the original 28e bucket, which is
+genuinely lower-urgency and deferred to **28f** (not started), to be weighed against feature work
+rather than treated as a security blocker. Sprint 29 (sensitive-data encryption + the harder,
+per-tenant-credential half of CR-04) is planned but not started, and needs its own research pass
+before implementation.
 
 ---
 
@@ -64,8 +65,8 @@ encryption) is planned but not started, and needs its own research pass before i
 | 28b | ✅ | Mission-prep v1 (draft/launch flow) + a fully separate beta deployment for a second, trusted user |
 | 28c | ✅ (except CR-05) | CR-01/CR-02 security fixes; structural decomposition of `monitor-server.ts`/`daemon.ts` ([#32](https://github.com/arnadu/magi_v3/issues/32)/[#33](https://github.com/arnadu/magi_v3/issues/33), ADR-0029/ADR-0030) |
 | 28d | ✅ | Live-bug fixes from mission-copilot reports — [#49](https://github.com/arnadu/magi_v3/issues/49) spend-cap ceiling (F-025 fixed), [#46](https://github.com/arnadu/magi_v3/issues/46) crash handlers, [#48](https://github.com/arnadu/magi_v3/issues/48) mid-turn dispatch gap, [#52](https://github.com/arnadu/magi_v3/issues/52) |
-| **28e** | ⬜ **Next** | **Critical security fixes — the two pieces closable without a multi-tenant credential redesign.** **CR-03** (BrowseWeb SSRF — Stagehand V3 removed the interceptor the threat model assumed still exists; fix is a local egress-filtering proxy in front of Chromium, checking every request the browser makes, not just top-level navigation). **CR-04, job-env half only** (background jobs — agent-authored code — currently get the raw `FRED_API_KEY`/`FMP_API_KEY`/`NEWSAPIORG_API_KEY` in their env, no privilege escalation needed; fix is the same proxy pattern — job code gets a scoped, revocable capability, never the reusable key). Both High severity, both live today, neither preventive. |
-| 28f | ⬜ Backlog | **Remaining operational hardening — nice-to-have, arbitrate against feature work.** G-4 disk monitoring + G-5 out-of-band alerting ([#3](https://github.com/arnadu/magi_v3/issues/3)/[#4](https://github.com/arnadu/magi_v3/issues/4)); onboarding flow; usage dashboard; CR-06 (CI/CD supply chain), CR-07 remainder (confirmation gates for pause/resume/schedule-cancel — the acute spend-cap case is already fixed, 28d), CR-08 (sensitive-data posture, blocked on Sprint 29 anyway); [#7](https://github.com/arnadu/magi_v3/issues/7)/[#21](https://github.com/arnadu/magi_v3/issues/21); revisit [#31](https://github.com/arnadu/magi_v3/issues/31) (OOM) once more crash-log data has accumulated; unblocks F-021/F-023/F-026 |
+| 28e | ✅ | **Critical security fixes — the two pieces closable without a multi-tenant credential redesign.** **CR-03/F-002** (BrowseWeb SSRF, reopened a second time after Stagehand V3 removed the interceptor the threat model assumed still existed) fixed via a loopback egress-filtering proxy in front of Chromium, checking every request the browser makes, not just top-level navigation — caught and fixed two real bugs empirically along the way (Chromium's implicit loopback proxy-bypass; a CONNECT-tunnel socket leak that hung teardown indefinitely). **CR-04/F-030, job-env half** (background jobs got the raw `FRED_API_KEY`/`FMP_API_KEY`/`NEWSAPIORG_API_KEY` in their env, no privilege escalation needed) fixed via the same scoped-proxy pattern — job code now gets a capability through the existing ToolApiServer, never the reusable key. Both were High severity and live today, not preventive hardening. |
+| **28f** | ⬜ **Next** | **Remaining operational hardening — nice-to-have, arbitrate against feature work.** G-4 disk monitoring + G-5 out-of-band alerting ([#3](https://github.com/arnadu/magi_v3/issues/3)/[#4](https://github.com/arnadu/magi_v3/issues/4)); onboarding flow; usage dashboard; CR-06 (CI/CD supply chain), CR-07 remainder (confirmation gates for pause/resume/schedule-cancel — the acute spend-cap case is already fixed, 28d), CR-08 (sensitive-data posture, blocked on Sprint 29 anyway); [#7](https://github.com/arnadu/magi_v3/issues/7)/[#21](https://github.com/arnadu/magi_v3/issues/21); revisit [#31](https://github.com/arnadu/magi_v3/issues/31) (OOM) once more crash-log data has accumulated; unblocks F-021/F-023/F-026 |
 | 29 | ⬜ Planned | **Sensitive-data encryption + tenant credential isolation** — direction recorded in [ADR-0026](docs/adr/0026-sensitive-data-encryption-direction.md); needs a dedicated research pass (KMS choice, key custody, migration path) before implementation. Now also scoped to absorb **CR-04's harder half**: every mission machine currently gets the same cluster-wide `MONGODB_URI`/LLM API keys, so any full machine compromise (not just the CR-01 privilege-escalation path, already closed) exposes every other tenant's data — the real fix is per-tenant database isolation or a scoped Mongo/LLM gateway, not something to bolt on superficially alongside 28e's contained fixes. |
 
 ---

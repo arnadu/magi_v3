@@ -141,30 +141,16 @@ Full guide (app naming, GitHub Actions, integration test environments, operation
 ## Sprint Roadmap
 
 Full history and per-sprint detail: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) (status table) and
-[docs/implementation-history.md](docs/implementation-history.md) (full build log). Sprints 1–28d
+[docs/implementation-history.md](docs/implementation-history.md) (full build log). Sprints 1–28e
 are done — this section tracks only what's active now, not a running log of what shipped.
 
-**Done, most recent first:** 28d (live-bug fixes — #49 spend-cap ceiling/F-025, #46 crash
+**Done, most recent first:** 28e (critical security fixes — CR-03/F-002 BrowseWeb SSRF re-fix via
+a Chromium egress-filtering proxy; CR-04/F-030 job-env half, removing raw data-provider keys from
+background-job env in favor of scoped ToolApiServer tools; CR-04's harder cluster-wide-credential
+half deferred to Sprint 29), 28d (live-bug fixes — #49 spend-cap ceiling/F-025, #46 crash
 handlers, #48 mid-turn dispatch gap, #52), 28c (CR-01/CR-02 fixes + `monitor-server.ts`/
 `daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 + beta deployment), 28a
 (live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
-
-**Sprint 28e — Critical security fixes (in progress).** Re-scoped 2026-09-17, then narrowed again
-2026-09-17 to the two pieces closable without a multi-tenant credential redesign: **CR-03**
-(BrowseWeb SSRF — Stagehand V3 removed the request interceptor the threat model assumed still
-exists; fix is a local egress-filtering proxy in front of Chromium checking every request, not
-just top-level navigation) and **CR-04's job-env half** (background jobs — agent-authored code —
-currently get the raw `FRED_API_KEY`/`FMP_API_KEY`/`NEWSAPIORG_API_KEY` in their env, no privilege
-escalation needed; same proxy pattern, job code gets a scoped revocable capability instead of the
-reusable key). Both High severity, both live today, neither preventive. **CR-04's harder half**
-(every mission machine shares the same cluster-wide `MONGODB_URI`/LLM credentials, so any full
-machine compromise exposes every tenant's data, not just the already-closed CR-01 privilege-
-escalation path) needs per-tenant database isolation or a scoped gateway — genuinely a multi-
-sprint redesign, not a same-sprint fix — and moved to **Sprint 29**, paired with its own
-tenant-isolation research rather than left half-fixed alongside 28e's contained pieces.
-Everything else that was in the original 28e bucket — G-4/G-5, onboarding, usage dashboard,
-CR-06/CR-07-remainder/CR-08, #7, #21, #31 — moved to **Sprint 28f**, genuinely lower-urgency and
-to be weighed against feature work rather than treated as a blocker.
 
 **Sprint 28f — Remaining operational hardening (backlog, not started).** G-4 disk monitoring
 (highest-severity operational gap — Fly Volume usage in the daemon heartbeat, surfaced in the
