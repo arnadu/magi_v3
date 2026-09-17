@@ -149,16 +149,22 @@ handlers, #48 mid-turn dispatch gap, #52), 28c (CR-01/CR-02 fixes + `monitor-ser
 `daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 + beta deployment), 28a
 (live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
 
-**Sprint 28e — Critical security fixes (in progress).** Re-scoped 2026-09-17 to isolate the two
-remaining **High**-severity, currently-live findings from the 2026-08-09 audit: **CR-03**
+**Sprint 28e — Critical security fixes (in progress).** Re-scoped 2026-09-17, then narrowed again
+2026-09-17 to the two pieces closable without a multi-tenant credential redesign: **CR-03**
 (BrowseWeb SSRF — Stagehand V3 removed the request interceptor the threat model assumed still
-exists; agent browser navigation is unconstrained past the initial URL) and **CR-04** (shared
-mission secrets — every mission machine gets the real, cluster-wide MongoDB/LLM credentials, so a
-compromised or prompt-injected agent on any one mission, including the beta tenant, can reach
-every other mission's data). Neither is preventive hardening. Everything else that was in the
-original 28e bucket — G-4/G-5, onboarding, usage dashboard, CR-06/CR-07-remainder/CR-08, #7,
-#21, #31 — moved to **Sprint 28f**, genuinely lower-urgency and to be weighed against feature
-work rather than treated as a blocker.
+exists; fix is a local egress-filtering proxy in front of Chromium checking every request, not
+just top-level navigation) and **CR-04's job-env half** (background jobs — agent-authored code —
+currently get the raw `FRED_API_KEY`/`FMP_API_KEY`/`NEWSAPIORG_API_KEY` in their env, no privilege
+escalation needed; same proxy pattern, job code gets a scoped revocable capability instead of the
+reusable key). Both High severity, both live today, neither preventive. **CR-04's harder half**
+(every mission machine shares the same cluster-wide `MONGODB_URI`/LLM credentials, so any full
+machine compromise exposes every tenant's data, not just the already-closed CR-01 privilege-
+escalation path) needs per-tenant database isolation or a scoped gateway — genuinely a multi-
+sprint redesign, not a same-sprint fix — and moved to **Sprint 29**, paired with its own
+tenant-isolation research rather than left half-fixed alongside 28e's contained pieces.
+Everything else that was in the original 28e bucket — G-4/G-5, onboarding, usage dashboard,
+CR-06/CR-07-remainder/CR-08, #7, #21, #31 — moved to **Sprint 28f**, genuinely lower-urgency and
+to be weighed against feature work rather than treated as a blocker.
 
 **Sprint 28f — Remaining operational hardening (backlog, not started).** G-4 disk monitoring
 (highest-severity operational gap — Fly Volume usage in the daemon heartbeat, surfaced in the
@@ -170,11 +176,20 @@ F-021/F-023/F-026 in `docs/security/findings.md`. Also revisit #31 (suspected OO
 crash-loop) now that 28d's #46 crash handlers have shipped and more `logMemoryUsage()` data has
 accumulated.
 
-**Sprint 29 — Sensitive-data encryption (not started, direction recorded in ADR-0026).**
-Application-level encryption so Fly and MongoDB cannot read mission data at rest, plus OpenRouter
-ZDR routing to reduce LLM-provider retention. Needs a dedicated research pass first (KMS provider
-choice, key custody model, migration path, hot-path latency, ZDR fail-open/fail-closed behavior)
-before implementation — see ADR-0026 for open questions.
+**Sprint 29 — Sensitive-data encryption + tenant credential isolation (not started, direction
+recorded in ADR-0026).** Application-level encryption so Fly and MongoDB cannot read mission data
+at rest, plus OpenRouter ZDR routing to reduce LLM-provider retention. Needs a dedicated research
+pass first (KMS provider choice, key custody model, migration path, hot-path latency, ZDR
+fail-open/fail-closed behavior) before implementation — see ADR-0026 for open questions. Now also
+scoped to absorb CR-04's harder half (see 28e above) — per-tenant database isolation or a scoped
+Mongo/LLM gateway shares the same "who can read what at rest / in transit" research, not a
+separate design track.
+
+**Post-MVP, after Sprint 29:** a generic operator-managed secret registry, generalizing 28e's
+CR-04 job-env proxy fix from three hardcoded data-provider keys to any operator-editable named
+secret a future skill needs — so a skill calling a new key-protected API never needs the raw key
+in agent-authored code. Sequenced after 29 because storing arbitrary operator secrets raises the
+same at-rest-encryption question. See `MAGI_V3_ROADMAP.md`'s Post-MVP table.
 
 ## Code Quality
 
