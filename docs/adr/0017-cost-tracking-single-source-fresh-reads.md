@@ -8,8 +8,8 @@
 
 ## Context
 
-Sprint 24 (ADR-adjacent design notes in `MAGI_V3_ROADMAP.md`, "Agent Alignment and Efficiency —
-Design Notes") set out an explicit goal for cost tracking: a **single source of truth and
+Sprint 24 (ADR-adjacent design notes in `docs/implementation-history.md`, "Design Notes — Agent
+Alignment and Efficiency") set out an explicit goal for cost tracking: a **single source of truth and
 computation of cost metrics**, and separately a **single verification of these cost metrics
 against a set of limits**. What actually shipped in Sprint 24/25 had four independent
 cost-tracking paths instead:
@@ -165,8 +165,8 @@ failure self-heals rather than aborting a turn or blocking a mission.
 
 ## Related
 
-- `MAGI_V3_ROADMAP.md` — "Agent Alignment and Efficiency — Design Notes" (the original Sprint 24
-  single-source-of-truth intent this ADR restores)
+- `docs/implementation-history.md` — "Design Notes — Agent Alignment and Efficiency" (the original
+  Sprint 24 single-source-of-truth intent this ADR restores)
 - `docs/operational-resilience.md` — Layer 4 (`waitForBudget`), Layer 6 (statistics read/write
   failure modes), "Recently fixed" table
 - `docs/implementation-history.md` — Sprint 26b "Cost-tracking correctness rewrite" section (full

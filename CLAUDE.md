@@ -140,111 +140,31 @@ Full guide (app naming, GitHub Actions, integration test environments, operation
 
 ## Sprint Roadmap
 
-Full history and per-sprint detail: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md). Sprints 1–27 are
-done — this section tracks only what's active now, not a running log of what shipped.
+Full history and per-sprint detail: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) (status table) and
+[docs/implementation-history.md](docs/implementation-history.md) (full build log). Sprints 1–28d
+are done — this section tracks only what's active now, not a running log of what shipped.
 
-**Sprint 27 — UI consolidation — ✅ Done, MVP milestone.** Cockpit feature parity (auth/login,
-mission CRUD, template browser, standalone copilot chat, agent-error banner; legacy
-`packages/control-plane/public/index.html` retired), plus a Copilot visibility tab
-(Transcripts/Files/Limits, ADR-0027), the PostMessage math/mermaid fix, inline image embedding,
-a touch/Pointer-Events fix for the cockpit, and recovery from a MongoDB Atlas quota incident. This
-is the sprint `MAGI_V3_ROADMAP.md`'s own "Post-MVP (after Sprint 27)" section names as the
-completion line. See `MAGI_V3_ROADMAP.md`'s Sprint 27 row and `docs/implementation-history.md` for
-full detail.
+**Done, most recent first:** 28d (live-bug fixes — #49 spend-cap ceiling/F-025, #46 crash
+handlers, #48 mid-turn dispatch gap, #52), 28c (CR-01/CR-02 fixes + `monitor-server.ts`/
+`daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 + beta deployment), 28a
+(live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
 
-**Sprint 28a — Reliability fixes from three weeks of live usage — ✅ Done.** Small, independent
-patches filed directly by the mission copilots on `gold-digest-v2` and `meteo-textbook`: issue #38
-(transient non-429 LLM errors aren't retried), #41 (no operator notification on spend-cap
-breach), #37 (agent crash on duplicate key — non-atomic `seqInTurn`), #40 (`parseModel` wrongly
-assumes only `anthropic/*` supports vision), #30 (deactivated agents still shown in cockpit), and
-F-024 (`ListSchedule` cross-user scope) all closed/fixed. #25 (configurable VM memory) closed.
-**#31 (investigate suspected OOM-driven daemon crashes), bundled alongside #25, remains open** —
-tracked independently, not a 28a blocker since it was scoped as an open-ended investigation, not
-a discrete fix.
-
-**Sprint 28b — Mission-prep v1 + beta environment — ✅ Done.** `"draft"` mission status; the
-control-plane copilot's `EditDraftConfig` tool (direct, unconfirmed writes — safe pre-launch,
-unlike a live mission) plus `ProposeAction`-gated `launch_draft`; cockpit `DraftEditor` panel
-("Customize first" alongside instant "New mission"). A fully separate, single-tenant beta
-deployment (`bash scripts/bootstrap.sh --suffix prod-beta`, `TEMPLATE_ALLOWLIST`) is live for a
-second, trusted user — chosen over adding them to the existing deployment because CR-04's
-shared-secret exposure needs no privilege escalation to reach. Sidesteps CR-04/F-024 by isolation
-rather than requiring either fixed first. The structured draft-review cockpit panel (mission-prep
-v2) remains a fast-follow, not shipped.
-
-**Sprint 28c — Structural decomposition of `monitor-server.ts`/`daemon.ts` + file-scoped
-security fixes — ✅ Done except CR-05 (see `docs/code-structure.md`).** Renumbered from
-28a on 2026-09-05 to make room for 28a/28b above — no content change at the time. **CR-01 (root
-escalation) and CR-02 (shell-interpolated agent ID) were landed ahead of the file decomposition**
-(2026-09-13) — the beta deployment going live raised the urgency past the point of waiting on the
-(larger, riskier) decomposition first; see `docs/security/threat-model.md`'s TB-3 for the fix
-detail and live sudoers verification. Folded in during the same pass: every shipped template
-hardcoded `linuxUser` to a dev-only pool username (`agent-config/src/loader.ts`'s doc comment
-describes the intended derive-from-`agent.id` production behavior, which no template actually
-used) — fixed via a new `resolveLinuxUsers()` (`agent-runtime-worker/src/linux-user.ts`) that
-derives from `agent.id` in production and fails loudly (never silently double-assigns) onto a
-fixed local-dev pool otherwise; `linuxUser` removed from every template. **`MonitorServer.handleRequest`'s
-route-table extraction is done** (2026-09-14): all 34 routes moved from a single ~719-line if/else
-chain into 15 files under `agent-runtime-worker/src/monitor-routes/` (one per cluster, factory
-functions taking an explicit `deps` object), each with new/extended integration test coverage;
-`handleRequest` itself is now a 36-line auth-gate + dispatch loop. **`daemon.ts`'s `main()`
-bootstrap-phase split is done** (2026-09-15): `main()` goes from ~792 lines to ~213 — a
-`BootContext` threaded by value through 19 extracted phases (`agent-runtime-worker/src/daemon-boot/`,
-19 files), each `Pick<BootContext,...>`-typed and unit-tested, `main()` itself now a top-to-bottom
-sequence of named phase calls; re-verified against `daemon-job.integration.test.ts`'s real
-end-to-end daemon boot after every risk-bearing step. Still open: CR-05 (auth token handling),
-scoped now that both files' new structure is in place. Split out from a single Sprint 28
-following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`) and this
-project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
-
-**Sprint 28d — Live-bug fixes from mission-copilot-filed reports — ✅ Done.** #49/#46/#48/#52
-all closed (containment half of #49 shipped; the confirmation-gate half deferred to 28e's CR-07
-as planned). Inserted 2026-09-17, ahead of the original 28d (renumbered to 28e below), after
-sizing up the open issue
-backlog: these four are small, have live production evidence, and — being self-filed by the
-mission copilots that hit them — already carry a root-cause analysis and a drafted fix in the
-issue body, unlike the broader hardening sprint's more open-ended items. **#49 (mission-copilot
-unilaterally raised a mission's spend cap $190→$250 with no operator confirmation)** — ship the
-containment half only: an operator-only `maxCostCeilingUsd` that `/set-budget`/`/extend-budget`
-reject (never silently clamp) above, settable only through the cockpit's Firebase-authenticated
-Limits route, never from any execution-plane path or tool. The larger half — a real
-confirmation-gate for the mission-copilot's tools generally (this copilot has no `ProposeAction`-
-equivalent at all today, unlike the control-plane copilot) — is deliberately deferred into 28e's
-CR-07, since it's real new infrastructure, not a same-sprint fix. **#46** (daemon hard-crashes on
-any uncaught exception/rejection — no `process.on('uncaughtException'/'unhandledRejection')`
-anywhere; observed live twice in 3 minutes via Stagehand). **#48** (daemon-mode orchestrator gap:
-a message delivered to an agent mid-turn is never processed until an unrelated later message
-happens to trigger the next Change Stream wakeup — observed live losing 16 hours; `checkIdle()`
-needs the same re-dispatch-on-unread-mail check CLI mode already has). **#52** (cosmetic mission-
-status flicker — already fixed in code, `liveStateToStatus` already returns `null` for transient
-Fly states rather than assuming `"error"`; this item is just closing the issue).
-
-**Sprint 28e — Remaining operational + security hardening (not started).** Renumbered from 28d
-on 2026-09-17 to make room for 28d's live-bug fixes above — no content change to this sprint's
-own scope. Renumbered from 28b on 2026-09-05 before that — no content change either time. Out-
-of-band alerting (issues #3, #4); G-4 disk monitoring (Fly Volume usage in the daemon heartbeat,
-surfaced in the dashboard — highest-severity unscheduled operational gap, likely shares G-5's
-alert plumbing); onboarding flow, usage dashboard, the rest of `/security-review` — CR-03
-(BrowseWeb SSRF), **CR-04 (shared mission secrets — the real architectural fix, not just 28b's
-isolation workaround)**, CR-06 (CI/CD supply-chain gates), **CR-07 (external-action
-confirmation — now includes 28d's deferred mission-copilot confirmation-gate infrastructure)**,
-CR-08 (sensitive-data posture) — (issues #7, #21; unblocks F-021/F-023/F-026 in
-`docs/security/findings.md`). Also **#31** (suspected OOM-driven daemon crash-loop, open since
-28a) — investigate at the start of this sprint once 28d's #46 has shipped (an uncaught-exception
-crash can otherwise masquerade as the same "unclean restart" log pattern #31 describes) and more
-`logMemoryUsage()` data has accumulated. Independent of 28c's file changes; sequenced after
-because 28c was the harder/riskier piece.
+**Sprint 28e — Remaining operational + security hardening (in progress).** G-4 disk monitoring
+(highest-severity unscheduled operational gap — Fly Volume usage in the daemon heartbeat,
+surfaced in the dashboard) + G-5 out-of-band alerting (issues #3, #4, likely shares G-4's alert
+plumbing); onboarding flow; usage dashboard; the rest of `/security-review` — CR-03 (BrowseWeb
+SSRF), CR-04 (shared mission secrets — the real architectural fix, not just 28b's isolation
+workaround), CR-06 (CI/CD supply-chain gates), CR-07 (external-action confirmation — now includes
+28d's deferred mission-copilot confirmation-gate infrastructure), CR-08 (sensitive-data posture);
+issues #7, #21; unblocks F-021/F-023/F-026 in `docs/security/findings.md`. Also revisit #31
+(suspected OOM-driven daemon crash-loop) now that 28d's #46 crash handlers have shipped and more
+`logMemoryUsage()` data has accumulated.
 
 **Sprint 29 — Sensitive-data encryption (not started, direction recorded in ADR-0026).**
-Application-level encryption so Fly and MongoDB cannot read mission data at rest, plus
-OpenRouter ZDR routing to reduce LLM-provider retention (Anthropic direct calls keep standard
-7-day retention — self-serve ZDR isn't available at this scale). Opt-in per mission, not global.
-Needs a dedicated research pass first — KMS provider choice, key custody model, migration path,
-hot-path latency, OpenRouter ZDR fail-open/fail-closed behavior — before implementation; see
-ADR-0026 for open questions.
-
-Planning 27 and the 28a–28e series together as one push toward a credible MVP; 29 follows once
-its own research is done.
+Application-level encryption so Fly and MongoDB cannot read mission data at rest, plus OpenRouter
+ZDR routing to reduce LLM-provider retention. Needs a dedicated research pass first (KMS provider
+choice, key custody model, migration path, hot-path latency, ZDR fail-open/fail-closed behavior)
+before implementation — see ADR-0026 for open questions.
 
 ## Code Quality
 

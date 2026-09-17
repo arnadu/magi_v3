@@ -205,6 +205,136 @@ Goal: prevent context from growing unboundedly within a single session by stubbi
 
 **`tests/context-pruning.unit.test.ts` (new):** 9 unit tests covering tool classification, stub behavior for old rounds, durable-tool preservation, idempotency, thinking-block stripping, thinking retention in the last round, finished-conversation behavior (all thinking stripped when last message is a no-tool assistant response), not-enough-rounds no-op, and empty array.
 
+## Sprint 22 — Copilot unification + config-driven tool library
+
+Copilot execution unified onto the same `runAgent` path every mission agent uses, via a new
+`additionalTools` hook rather than a parallel bespoke loop. Per-agent `disabledTools` added to
+the team YAML schema, checked against a new Tier A/B tool-library classification (A = always
+safe to disable per-agent; B = load-bearing, disabling logged as a warning but still honored).
+`LlmCallLogRepository` exported from `agent-runtime-worker` for the control plane's own use
+(the copilot's calls need the same audit trail as any mission agent's).
+
+## Sprint 23 — Auth + multi-user
+
+Firebase Auth (Google OAuth) replaces the single shared `CONTROL_API_KEY` as the primary control-
+plane login path (the API key remains, admin-scoped). `userId` added to every mission document;
+all mission list/read/write routes scope by `userId` unless `req.isAdmin`. One copilot daemon per
+Firebase UID (`copilot-{uid}`) rather than one shared instance — the earlier single-copilot design
+predates multi-user and had no per-tenant isolation story. `/api/usage` added, per-user and
+admin-aggregate views. `magi_session` cookie added so a new browser tab opened from a mission's
+dashboard link inherits the operator's existing auth instead of prompting again. Control-plane VM
+raised to 512 MB (auth + Firebase Admin SDK overhead). Structured error logging introduced;
+`errorMessage` persisted on the mission document so a failed resume/launch is visible in the UI,
+not just in server logs. `MONITOR_TOKEN` (HMAC, derived from `MONITOR_SIGNING_KEY`) added as
+per-mission auth for `MonitorServer`'s mutating routes and the mission copilot's own calls to it.
+Closed in the same pass: F-008 (unauthenticated mutating monitor routes), F-009 (unauthenticated
+SSE), F-016 (no rate limiting on API-key auth), F-019 (proxy route IDOR), F-020 (pending-action
+store not userId-scoped).
+
+## Design Notes — Agent Alignment and Efficiency (Sprints 24–26c)
+
+Sprints 24–26c share a unified goal: equip the copilot and operator with the instruments needed
+to keep agents aligned with mission intent — delivering what is required without wasting tokens.
+
+**The throughline**: Sprint 24 builds the *measurement* (StatsCollector), Sprint 25 builds the
+*outputs* (file tracking), Sprint 26 composes both into *outcome-oriented supervision* (the
+cockpit). Each sprint's data feeds the next, so 26 is mostly composition, not new instrumentation.
+Sprint 26c is this arc's deliberate closing sprint — see its sections below for what actually
+shipped (the file-based objectives store described here was superseded by a MongoDB-backed one
+partway through; that migration is documented in its own Sprint 26c section).
+
+### The feedback loop
+
+```
+Agent acts → StatsCollector persists (per call) → limits evaluated → copilot assesses/intervenes → operator supervises via cockpit
+```
+
+Hard limits fire mechanically in real time (mid-turn, via `onLlmCall`); soft limits and all
+copilot/operator supervision act at turn (wakeup) boundaries.
+
+### Three-layer statistics (Sprint 24)
+
+A stateful `StatsCollector` (one per agent) maintains the picture via three hooks —
+`onLlmCall`, `onToolResult` (new hook in `loop.ts`), `onTurnEnd` (sleep boundary). Persistence
+is **incremental on every inner-loop iteration**, not only at sleep, so a paused or crashed
+machine loses nothing and a running turn is visible live.
+
+- **Per call** — `llmCallLog` (existing): raw audit trail; trace drill-down only
+- **Per turn** — `agentTurnStats` (new): upserted with `$set` each iteration, finalized at turn
+  end. Fields: `llmCallCount`, `peakContextTokens`, `costUsd`, `toolCalls{}`, `toolErrors{}`,
+  `filesWritten[]`, `messagesSent[]`, `urlsVisited[]`, `reflectionTriggered`, `status`, `gitCommit?`
+- **Mission level** — `missionStats` (new): `$inc` at turn end only (avoids double-count on
+  restart-replay). Lifetime totals + cross-turn state (`consecutiveZeroOutputTurns`)
+
+The limits module reads the in-memory collector — **no DB query in the enforcement hot path**.
+On wakeup start, `missionStats` is reloaded so totals survive daemon restart.
+
+### Limits framework (Sprint 24)
+
+A configurable `LimitRule[]` table (metric × window × threshold × scope × action; `hard` flag)
+decouples *what is measured* from *what to do about it*. Candidate triggers: mission cost cap
+(hard, pause all), LLM-calls-per-turn ceiling (hard, abort turn) and warning (soft), turn cost,
+peak context, consecutive tool errors, BrowseWeb/FetchUrl loop, consecutive zero-output turns.
+**Hard = enforced mechanically; soft = routed to the copilot**, which reads context
+(`ReadMissionLog`) before acting — automated rules without assessment produce false positives.
+Interventions: `PostMessage` (exists), `PauseAgent`/`ResumeAgent`, `SetMissionBudget`, `NotifyUser`.
+
+### File content tracking (Sprint 25)
+
+Bash-written files are invisible to the tool-call interface, so file tracking is git-based:
+the daemon commits the shared workspace at each turn end (serialized via an async mutex for
+concurrent agents), stores the hash in `agentTurnStats.gitCommit`, and derives `filesWritten`
+from `git diff`. **Volumes persist across suspend/resume** — history is lost only on
+`destroyMission` (acceptable; extract-before-destroy deferred). No remote push needed.
+Uploads and all document formats flow through one shared `document-processor.ts` with no text
+truncation and first-class partial-processing markers.
+
+### Outcome-oriented cockpit (Sprint 26)
+
+The pivot from **transcript** to **state + exceptions**, grounded in Endsley Situation
+Awareness (Perception → Comprehension → Projection), Management by Objectives/Exception, and
+OODA. The new spine is the **`objectives` platform skill** (promoted from the DPO `dpo-tasks`
+skill) — a file-based, git-versioned store at `sharedDir/objectives/` holding an **objective
+tree → tasks + KPIs + budget**: objectives nest via `parent` and are owned by a supervisor
+agent; tasks are leaves assigned to a worker with a status; KPIs hang off objectives with an
+`owner` + `source` (`auto-stat` ← StatsCollector, `task-rollup`, `agent-reported`,
+`copilot-assessment`, `manual`). **Budget**: `budgetUsd`/`costUsd` on every node; cost is
+**attributed automatically** at the `StatsCollector.endTurn` hook — the turn's cost is split
+across the tasks the agent updated this turn (relative `--effort` weights, default even), with
+carry-over when no task is updated, a staleness-triggered `allocate` timesheet fallback, and
+supervisor overhead landing on owned objectives. Delivered as a **skill** (SKILL.md discipline +
+Bash scripts writing the store, mirroring git-provenance) — **no MongoDB collections**; the
+store was the single source of truth at the time, and the daemon mirrored each agent's owned
+tasks/KPIs/budget into a managed `#my-objectives` **mental-map section** every turn (the bridge —
+agents read in working memory, write via scripts). This whole file-based design (Sprint 26a) was
+replaced by a MongoDB-backed one in Sprint 26c (ADR-0019) — see that section for why and what
+changed; the concepts (tree, tasks, KPIs, automatic cost attribution) carried over unchanged. The
+copilot ran an `objectives-kpi` skill computing cross-cutting auto KPIs into the same store. The
+**UI is a pure reader** of this store. KPIs and tasks are **facets of one objective tree** — the
+primary panel is that tree (KPI/budget status + tasks per node); the by-agent kanban is a
+secondary lens. Goals/KPIs/budget are co-authored by user+copilot at template design time and
+editable live. Panels map to SA levels: Objectives (KPI+task), Messages-to-user, Deliverables,
+Trace chart, Chat/explore.
+
+**The managerial↔conversational pivot is essential**: agents interview the user (e.g. DPO
+privacy assessment) via `AskUser` — the agent posts a `requiresResponse` message and **sleeps**,
+waking on the reply (no blocking compute); an "awaiting user input" agent is a first-class
+exception surfaced in the cockpit. The user drops into a focused bidirectional chat with any
+agent in one click. Built in React/Next.js (SPA rewrite pulled forward); split 26a (spine) / 26b
+(trace + chat + rendering). **Deferred (additive, per original design):** a dedicated
+`AskUser`/`requiresResponse`/awaiting-input state machine — an unread message from an agent
+already serves as the "look at this" signal; not worth the extra state for the MVP.
+
+### Live vs historical trace (Sprint 26b)
+
+Two modes, one viewer, built on the `experimental/dump-trace.mjs` prototype:
+- **Live** (ongoing): subscribe to `agentTurnStats` Change Stream — O(turns), renders each turn
+  as it completes; the `status: 'running'` doc shows the current turn updating in real time
+- **Historical** (drill-down): lazy-load `llmCallLog` for a selected turn — O(calls in turn), on
+  demand — for the within-turn context curve and tool sequence
+
+`agentTurnStats` is the primary rendering unit; `llmCallLog` is fetched only on drill-down.
+
 ## Sprint 24 (Phase 1) — Statistics collector (alignment-signal foundation)
 
 Goal: build the three-layer statistics foundation that later Sprint 24 work (budget limits, copilot anomaly alerts) and Sprints 25–26 (file tracking, trace viewer) consume. This phase is **instrumentation only** — it collects and persists, it does not yet enforce limits. One `runAgent` call == one turn == one wakeup.
@@ -1255,6 +1385,62 @@ Atlas storage monitoring or alerting exists yet, so sustained high call volume c
 quota before the shorter window prunes it — documented as an open gap in
 `docs/operational-resilience.md`'s Layer 9.
 
+## Sprint 28a — Reliability fixes from live usage
+
+Six small, independent patches, all filed directly by the mission copilots running on
+`gold-digest-v2` and `meteo-textbook` after three weeks of live, unattended operation. [#38](https://github.com/arnadu/magi_v3/issues/38)
+— transient non-429 LLM errors weren't retried (one incident lost 38K tokens of generated work);
+extended the existing 429-retry pattern in `loop.ts` to cover them. [#41](https://github.com/arnadu/magi_v3/issues/41)
+— no operator notification on spend-cap breach, which caused a real 5-day operational outage
+(mission silently paused, nobody noticed); wired a mailbox post to `["user"]` through the existing
+`anomalyRecorder` plumbing. [#37](https://github.com/arnadu/magi_v3/issues/37) — agent crash on
+duplicate key from a non-atomic `seqInTurn` count-then-insert race in `conversation-repository.ts`;
+fixed with catch-and-retry. [#40](https://github.com/arnadu/magi_v3/issues/40) — `parseModel`
+wrongly assumed only `anthropic/*` models support vision, so non-Anthropic OpenRouter vision
+models silently lost image description. [#30](https://github.com/arnadu/magi_v3/issues/30) —
+deactivated agents still shown in the cockpit roster, from a missing `active` filter on `/team`.
+**F-024** (`ListSchedule` had no `userId` scope) also closed here, bumped up from
+`findings.md`'s stale "Backlog" priority. Bundled alongside: [#25](https://github.com/arnadu/magi_v3/issues/25)
+(configurable per-mission VM memory, previously hardcoded 1024 MB) closed; [#31](https://github.com/arnadu/magi_v3/issues/31)
+(suspected OOM-driven daemon crashes correlated with concurrent scheduled wakeups) stayed open,
+scoped from the start as an open-ended investigation rather than a discrete fix — it needs Fly
+metrics to confirm root cause before it can even be sized.
+
+## Sprint 28b — Mission-prep v1 + beta environment
+
+Two independent deliverables. **Mission-prep v1** (chat-only draft-and-launch): a `"draft"`
+mission status; the control-plane copilot's `EditDraftConfig` tool (direct, unconfirmed writes —
+safe pre-launch, unlike editing a live mission, since nothing is running yet to disrupt) reusing
+`SaveMissionConfig`'s exact validate/upsert-by-id/shallow-merge mechanics but gated on
+`status === "draft"` instead of `"suspended"`; one explicit `ProposeAction`-confirmed `launch_draft`
+action reusing the existing provisioning call (`draft → provisioning → running`). No new
+collection, no new validation logic. Cockpit gained a `DraftEditor` panel ("Customize first"
+alongside instant "New mission"). The structured draft-review panel (mission-prep v2 — view a
+draft's full agent/prompt/mental-map structure without asking the copilot to read it back) was
+scoped as an explicit fast-follow and was not shipped.
+
+**Beta environment**: a fully separate, single-tenant deployment (`bash scripts/bootstrap.sh
+--suffix prod-beta`, own Fly apps, own MongoDB database on the shared free-tier Atlas cluster, own
+secrets, `TEMPLATE_ALLOWLIST` restricting it to one template) for a second, trusted external user
+— chosen over adding them to the existing deployment because CR-04's shared-secret exposure (any
+agent's plain `env` access reaches the real `MONGODB_URI`/LLM keys) needs no privilege escalation
+to reach, so isolation-by-separate-deployment was the safe default until CR-04's real architectural
+fix (Sprint 28e) lands. Standing it up surfaced a cluster of real, previously-latent bugs, all
+fixed and live-verified the same window: zero server-side confirmation existed on mission destroy
+(an accidental one happened; the "Destroy" button/route was removed entirely pending a real
+confirmation flow, not just a prompt patch); `bootstrap.sh` broke on unquoted secrets
+(`FIREBASE_SERVICE_ACCOUNT_KEY`'s embedded quotes/spaces, `MONGODB_URI`'s unquoted `&` silently
+truncating under bash's own `source`), a nameref+`%%`-modifier gotcha in its "secrets already set"
+check, a Docker-availability check that only tested `command -v docker` and not daemon
+reachability (broke on a WSL2 Docker Desktop stub), `flyctl tokens create org` needing an explicit
+org slug non-interactively, and `TEMPLATE_ALLOWLIST` being read from the secrets file but never
+forwarded as a Fly secret; `promote.sh`'s dirty-tree check counted harmless untracked scratch
+files as blocking; neither deploy script rebuilt the cockpit outside CI, so a non-dev deploy
+could silently ship a stale bundle; a cockpit routing bug sent any brand-new user with zero
+missions to demo sample data with no path to actual mission creation — exactly what the new beta
+user hit; and Google Sign-In had simply never been enabled on the reused `magi-prod-b9403`
+Firebase project.
+
 ## Sprint 28c — CR-01/CR-02 security fixes + structural decomposition of `monitor-server.ts`/`daemon.ts`
 
 An independent audit (2026-08-09) flagged two files as god-functions hard to review safely:
@@ -1328,3 +1514,87 @@ confirming the mission copilot was correctly auto-injected by the new `provision
 phase. **Still open**: CR-05 (auth token handling), now explicitly scoped against the decomposed
 structure rather than the god-functions it replaces (tracked separately, not blocking this
 sprint's closure).
+
+## Sprint 28d — Live-bug fixes from mission-copilot-filed reports (#49/#46/#48/#52)
+
+Inserted 2026-09-17 ahead of the original 28d (renumbered to 28e), after sizing up the open-issue
+backlog: all four had live production evidence and — being self-filed by the mission copilots
+that hit them — already carried a root-cause writeup and a drafted fix in the issue body.
+
+**[#49](https://github.com/arnadu/magi_v3/issues/49)** — the `gold-digest-v2` mission-copilot
+unilaterally raised the mission's spend cap $190→$250 with no operator confirmation, presenting it
+as a fait accompli in its audit message. This is finding **F-025** in `docs/security/findings.md`,
+previously left undecided pending real usage data — it now existed. Fixed by adding
+`maxCostCeilingUsd`, a new top-level field on the `missions` document deliberately outside the
+`mission`/`agents`/`missionCopilotLimits` fields every execution-plane write path
+(`SaveMissionConfig`, `EditDraftConfig`, `PUT /:id/config`) can touch — structurally unreachable by
+any mission tool, not merely unconfirmed-but-possible. All three independent code paths that can
+write `mission.maxCostUsd` now check it and reject (never silently clamp) a request above it:
+`MissionConfigRepository.writeMissionCap()` (daemon's `/set-budget`/`/extend-budget`, throwing a
+new `SpendCapCeilingExceededError` mapped to HTTP 403), `SaveMissionConfig`'s own direct write, and
+the control plane's own `writeMissionCap()` — including the *operator's own* cockpit-triggered cap
+raise, so there is no privileged bypass of the rule. A new operator-only route (`PATCH
+/:id/limits/ceiling`) and a cockpit Limits panel field are the only way to raise the ceiling
+itself; no ceiling configured means unbounded (opt-in, not a mandatory default — existing missions
+keep prior behavior until an operator sets one). This ships the containment half only; a general
+confirmation-gate for the mission-copilot's mutating tools (F-026 — this copilot has no
+`ProposeAction`-equivalent at all today) is deliberately deferred into Sprint 28e's CR-07, since
+it's genuinely new infrastructure (pending-action store, a proxied confirm route, cockpit UI), not
+a same-sprint fix.
+
+**[#46](https://github.com/arnadu/magi_v3/issues/46)** — the daemon hard-crashed on any uncaught
+exception or unhandled rejection; no `process.on('uncaughtException'/'unhandledRejection')` existed
+anywhere in the codebase, observed live twice in 3 minutes via a Stagehand (BrowseWeb) internal
+throw. Fixed by wiring both event types to the existing `initiateShutdown()` path inside
+`wireAbortSignal()`, so a crash now at least attempts graceful cleanup (PID file, AbortController)
+instead of an unclean exit. Needed care in the matching test file: vitest itself registers an
+`unhandledRejection` listener before any test runs, so a blanket
+`process.removeAllListeners(...)` would have silently broken vitest's own reporting — fixed with a
+baseline-snapshot-diff cleanup pattern (capture `process.listeners(event)` in `beforeEach`, remove
+only the new ones in `afterEach`).
+
+**[#48](https://github.com/arnadu/magi_v3/issues/48)** — a daemon-mode orchestrator gap: a message
+delivered to an agent while it's mid-turn was never processed until an unrelated *later* message
+happened to trigger the next MongoDB Change Stream wakeup — observed live losing a message for
+~16 hours. Fixed by having `checkIdle()` call `dispatchReady()` when unread mail exists (previously
+a no-op there), matching the re-dispatch-on-unread-mail check CLI mode's loop already had. This
+exposed a real concurrency race — `checkIdle()`'s new call site can land while an earlier
+`dispatchReady()` call is already in flight inside a `waitForStep`/`waitForBudget` gate — fixed by
+refactoring `dispatchReady()` into a coalescing wrapper (`dispatchInFlight`/`dispatchAgainRequested`
+flags) around the original per-agent loop body, renamed `dispatchOnePass()`.
+
+**[#52](https://github.com/arnadu/magi_v3/issues/52)** — cosmetic: new/resumed missions briefly
+flashed status `"error"` right after provisioning. Confirmed already fixed in the current code
+(`liveStateToStatus()` already returns `null`, not `"error"`, for transient/unrecognized Fly
+machine states) — closed with no code change.
+
+All four closed on GitHub; F-025 moved to Fixed in `docs/security/findings.md`.
+
+## Deferred design — Interactive HTML preview in Files
+
+Not yet built; designed post-26b as a candidate for whenever an agent needs to present something
+better as an interactive page (a dashboard, a chart built with a JS library) than a static
+Markdown/CSV artifact. The Files panel (built in 26b, read-only) could support this with the same
+sandboxed-iframe pattern CodePen/JSFiddle/CodeSandbox use for untrusted live previews:
+
+- **Mechanism**: `<iframe sandbox="allow-scripts">` — deliberately **no** `allow-same-origin`.
+  That combination forces the iframe into a unique, opaque origin regardless of where the HTML
+  came from: no cookies, no control-plane session, no parent DOM access — but full JS execution,
+  so a CDN-loaded charting library (Chart.js/D3/Plotly via absolute `https://` URLs) still works.
+  No `allow-popups`/`allow-top-navigation`/`allow-forms` unless a concrete need appears.
+- **Serving**: `srcdoc`, not a new endpoint — reuse the Files panel's existing text-content fetch
+  (`/files/shared`) and pass it straight into `srcdoc`. `srcdoc` content has no real URL, so
+  relative-path asset loading (`<script src="app.js">`) does **not** resolve — scope is therefore
+  **self-contained single HTML files** (inline `<style>`/`<script>` + absolute CDN URLs), not
+  multi-file mini-apps.
+- **UX**: `.html`/`.htm` in the Files panel gets a **Preview / Source** toggle (Preview = the
+  sandboxed iframe, default; Source = the existing text view, for debugging).
+- **Residual risk (accepted, same as any "run untrusted HTML" tool)**: sandboxed script can still
+  make outbound `fetch()` calls to third parties — it just can't reach the control plane with
+  credentials or read the operator's session.
+- **Natural follow-up, if multi-file apps are ever needed**: a `GET /files/shared/raw?path=`
+  endpoint serving real bytes with correct `Content-Type` (reusing the existing path-validation
+  pattern from `/files/shared`/`/download`), with the iframe's `src=` pointing at it directly
+  instead of `srcdoc` — lets relative asset paths resolve against a real URL. Bigger lift
+  (content-type sniffing, more SSRF/path-traversal surface to review); only build if single-file
+  HTML genuinely isn't enough.
