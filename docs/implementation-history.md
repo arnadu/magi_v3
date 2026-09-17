@@ -1254,3 +1254,77 @@ full-body data accumulates before the nightly prune reclaims it going forward. N
 Atlas storage monitoring or alerting exists yet, so sustained high call volume can still exceed
 quota before the shorter window prunes it — documented as an open gap in
 `docs/operational-resilience.md`'s Layer 9.
+
+## Sprint 28c — CR-01/CR-02 security fixes + structural decomposition of `monitor-server.ts`/`daemon.ts`
+
+An independent audit (2026-08-09) flagged two files as god-functions hard to review safely:
+`MonitorServer.handleRequest` (~719 lines, 34 routes as a flat if/else chain) and `daemon.ts`'s
+`main()` (~792 lines, the entire process bootstrap threaded through ~34 closure-captured locals).
+The same audit found two Critical security findings living inside those files — CR-01 (every
+agent/pool OS user held its own unrestricted `sudo` grant) and CR-02 (agent IDs reached shell
+interpolation via `execSync` in OS-user creation) — plus, discovered while reviewing the fix,
+a third gap: every shipped template hardcoded `linuxUser` to a dev-only pool username, so
+production Docker's intended derive-from-`agent.id` path had never actually run for a real
+template.
+
+**Security fixes landed first, ahead of the file decomposition** (2026-09-13) — 28b's beta launch
+had just put a second real external user on the same shared execution image these findings
+describe, raising the urgency past the point of waiting on the larger, riskier refactor. CR-01:
+removed every agent/pool user's own sudoers entry; only the daemon identity (`magi-operator`) can
+invoke `sudo` now, scoped to `(%magi-shared)` — group-based runas, so a target must be a current
+agent identity, never root or an unrelated system user. CR-02: `ensureAgentUsers()`'s `execSync`
+template-string shell calls replaced with `execFileSync` argument arrays (no shell, nothing for a
+hostile ID to inject into), plus a tightened Zod schema restricting `agent.id` to the same safe
+Linux-username charset `linuxUser` already required. The `linuxUser` gap: a new
+`resolveLinuxUsers()` (`linux-user.ts`) derives the OS username from `agent.id` in production
+(`hasMagiCreateUser()` true) and falls back to a deterministic, sorted-index assignment onto the
+fixed local-dev pool (`magi-w1..magi-wN`) otherwise, failing loudly on pool overflow rather than
+silently double-assigning a username; `linuxUser` was stripped from every shipped template. All
+three verified live — a throwaway user/group/sudoers rule outside the container for CR-01's
+sudoers logic, and a real freshly-deployed dev mission for CR-01/CR-02/linuxUser together (an
+agent's own `sudo -n -l` and `sudo -u root whoami` both correctly refused; the agent's actual OS
+username matched its `agent.id`, not a pool slot).
+
+**`MonitorServer.handleRequest` decomposition** (2026-09-14, issue #32): a strangler-fig migration
+to a route table, one file per route cluster under a new `monitor-routes/` directory, each a
+factory function (`createFooRoutes(deps): RouteEntry[]`) taking an explicit `deps` object rather
+than closing over `this` — chosen over minimal cut-and-paste into private methods specifically for
+independent unit-testability, confirmed with the user before starting. All 34 routes moved across
+15 commits, each with new or extended integration test coverage against a real MongoDB and a real
+`MonitorServer` instance; several routes (static assets beyond `/`, `/log`, agent
+sessions/transcripts, `DELETE /schedule/:id`, all four trace/analytics routes, run control's SSE
+side effects, pause/resume, `/stop`) had no direct test before this at all. `handleRequest` itself
+ends at 36 lines: the global auth gate, a loop over the route table, a 404 fallback. Full design
+rationale, including the mutable-field-capture getter/setter pattern needed for fields like
+`stepEnabled`/`budgetPaused` that routes both read and write: [ADR-0029](adr/0029-monitor-server-route-table.md).
+
+**`daemon.ts`'s `main()` decomposition** (2026-09-15, issue #33): a `BootContext` type threaded by
+value through 19 extracted phases under a new `daemon-boot/` directory — chosen over a `Daemon`
+class (which would relocate the god-object problem one level up, forcing ~34 fields typed
+`T | undefined` until their producing phase ran) and over fully independent per-phase parameter
+lists (unworkable once a phase like the orchestration callbacks needs ten-plus same-typed prior
+locals). Each phase is typed `Pick<BootContext, ...>` on input and output — an enforced, exact
+list of what it reads and produces — and `main()` merges each result into a running `ctx` via
+`Object.assign` while keeping local `const` bindings for the rest of its still-inline body
+unchanged, so the migration never forces an invasive `x` → `ctx.x` rewrite across untouched code.
+`main()` goes from ~792 lines to ~213. The riskiest single extraction — mission-copilot injection,
+OS-user provisioning, and the copilot's ACL grant — was deliberately bundled into one
+`provisionAgentIdentities()` commit rather than split three ways, since it's the file's clearest
+load-bearing ordering dependency and splitting it risked a later commit silently reordering the
+sequence. `daemon-job.integration.test.ts` (a real daemon, real Mongo, real LLM calls, real
+background-job execution) was re-run after every risk-bearing extraction and passed each time.
+Full design rationale, including how each of `daemon.ts`'s three pre-existing error-handling
+patterns was preserved exactly rather than unified: [ADR-0030](adr/0030-daemon-boot-context.md).
+
+**Final verification, beyond the test suite**: a mechanical diff of every console/stdout/stderr
+log-message template and top-level export between the pristine pre-decomposition copy of each file
+and the final structure confirmed nothing was silently dropped. Both files' 40-step combined
+extraction checklist landed as 34 independently-revertable commits. Pushed to dev (real CI Docker
+build + control-plane deploy) and live-smoke-tested against a real provisioned mission on a fresh
+Fly machine: the mailbox Change Stream wake-up, the full agent turn loop, spend-cap telemetry, and
+the decomposed `monitor-server.ts` routes (`/status`, `/team`, `/mission-stats`, all reachable
+through the control-plane proxy) all confirmed working together end to end — `/team` additionally
+confirming the mission copilot was correctly auto-injected by the new `provisionAgentIdentities`
+phase. **Still open**: CR-05 (auth token handling), now explicitly scoped against the decomposed
+structure rather than the god-functions it replaces (tracked separately, not blocking this
+sprint's closure).
