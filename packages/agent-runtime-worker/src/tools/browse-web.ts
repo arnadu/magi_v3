@@ -14,6 +14,10 @@ import {
 } from "../artifacts.js";
 import { isPrivateHost, PRIVATE_HOST_RE } from "../ssrf.js";
 import type { MagiTool, ToolResult } from "../tools.js";
+import {
+	createEgressFilterProxy,
+	type EgressProxyHandle,
+} from "./browse-web-egress-proxy.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -156,6 +160,8 @@ function createBrowseWebHandle(
 	// Hoisted so close() can delete the profile dir after the browser exits.
 	// Null until getStagehand() runs for the first time.
 	let profileDir: string | null = null;
+	// Hoisted so close() can shut the proxy down alongside the browser (CR-03 / F-002).
+	let egressProxy: EgressProxyHandle | null = null;
 
 	async function getStagehand(): Promise<Stagehand> {
 		if (stagehand) return stagehand;
@@ -178,6 +184,16 @@ function createBrowseWebHandle(
 			mkdirSync(dir, { recursive: true });
 			profileDir = dir;
 
+			// CR-03 / F-002: Stagehand V3 replaced Playwright's Page with a custom
+			// CDP-based Page that does not expose route(), so the pre-navigation and
+			// post-redirect isPrivateHost() checks below (execute()) only cover
+			// page.goto() — once agent() takes over (clicks, JS redirects, form
+			// submits, popups), nothing else checked where it went. Routing all of
+			// Chromium's traffic through this loopback proxy closes that gap: it
+			// runs the same isPrivateHost() check on every CONNECT/request the
+			// browser makes, not just top-level navigation.
+			egressProxy = await createEgressFilterProxy(allowedHosts);
+
 			const sh = new StagehandClass({
 				env: "LOCAL",
 				model: stagehandModel,
@@ -185,6 +201,15 @@ function createBrowseWebHandle(
 					executablePath: chromiumPath,
 					headless: true,
 					userDataDir: dir,
+					// Chromium's default proxy config implicitly bypasses the proxy
+					// for loopback destinations (localhost/127.0.0.1) regardless of
+					// --proxy-server — verified empirically via the CR-03 regression
+					// test below, which failed against a 127.0.0.2 target until this
+					// was added. "<-loopback>" is Chromium's own bypass-list token for
+					// removing that implicit exemption, so loopback targets go through
+					// the filter like everything else (isPrivateHost() already treats
+					// all of 127.0.0.0/8 as private — the enforcement must match).
+					proxy: { server: egressProxy.url, bypass: "<-loopback>" },
 				},
 				verbose: 2, // capture all log lines (written to session log file)
 				disablePino: true,
@@ -196,12 +221,10 @@ function createBrowseWebHandle(
 				// Clear initPromise so the next execute() call can retry init
 				// rather than re-throwing the stale rejection forever.
 				initPromise = null;
+				await egressProxy?.close().catch(() => {});
+				egressProxy = null;
 				throw e;
 			}
-			// Stagehand V3 replaced Playwright's Page with a custom CDP-based Page
-			// that does not expose route(). Pre-navigation (isPrivateHost before goto)
-			// and post-redirect checks remain the primary SSRF defences; JS-initiated
-			// request interception is not available in this Stagehand version.
 			stagehand = sh;
 			return sh;
 		})();
@@ -307,10 +330,12 @@ function createBrowseWebHandle(
 			// --- Run Stagehand agent for interactive task completion ---
 			// The agent() mode lets the MAGI agent provide high-level intent while
 			// Stagehand handles low-level browser actions (act/observe/extract).
-			// Security note: SSRF protection above covers the initial page.goto()
-			// redirect chain only. Once agent() takes control it may click links or
-			// follow JS redirects to arbitrary URLs — those are NOT checked against
-			// the private-host block list. Tracked for Sprint 9 hardening.
+			// Once agent() takes control it may click links, follow JS redirects,
+			// submit forms, or open popups — none of that is checked by the
+			// pre-navigation/post-redirect isPrivateHost() calls above. The egress
+			// proxy set up in getStagehand() (CR-03 / F-002) is what actually
+			// covers this: it checks every CONNECT/request the browser process
+			// makes, regardless of what triggered it.
 			writeLog({
 				ts: new Date().toISOString(),
 				event: "task_start",
@@ -449,7 +474,17 @@ function createBrowseWebHandle(
 		tool,
 		close: async () => {
 			if (stagehand) {
-				await stagehand.close().catch(() => {});
+				// Guarded by a timeout: Stagehand's close() can take unpredictably
+				// long to tear down Chromium after a busy session — this must never
+				// hang the caller's cleanup indefinitely (agent-runner.ts awaits
+				// this in a finally block). The egress proxy below force-drops its
+				// own lingering connections either way, so an abandoned Chromium
+				// process here leaks at most until the OS reclaims it, not a stuck
+				// turn.
+				await Promise.race([
+					stagehand.close().catch(() => {}),
+					new Promise((res) => setTimeout(res, 15_000)),
+				]);
 				stagehand = null;
 				initPromise = null;
 			}
@@ -460,6 +495,10 @@ function createBrowseWebHandle(
 					// Non-fatal: stale profile dirs are just disk waste, not a correctness issue.
 				}
 				profileDir = null;
+			}
+			if (egressProxy) {
+				await egressProxy.close().catch(() => {});
+				egressProxy = null;
 			}
 		},
 	};

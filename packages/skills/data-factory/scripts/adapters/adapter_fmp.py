@@ -16,7 +16,9 @@ via a REST API.  This adapter uses two FMP endpoints:
      SEC EDGAR.  Agents call FetchUrl on-demand for filings they want to read;
      we do NOT download or cache the documents themselves.
 
-Requires: FMP_API_KEY environment variable.
+Requires: FMP_API_KEY configured on the daemon (CR-04 — this adapter never
+sees the key itself; it calls the "data-fmp" tool via magi-tool, which the
+daemon serves using its own copy of the key).
 Free tier: ~250 API calls/day.  The catalog budget guard (DEFAULT_FMP_BUDGET=200)
 reserves 50 calls for ad-hoc agent use.
 
@@ -40,7 +42,8 @@ Type "sec_filings" (JSON):
 
 DEPENDENCY
 ----------
-None (stdlib only: urllib.request, json).
+None (stdlib only: subprocess, json) — calls the daemon-installed `magi-tool`
+CLI rather than the FMP API directly (CR-04).
 
 USAGE
 -----
@@ -53,16 +56,34 @@ USAGE
 
 import argparse
 import json
-import os
+import subprocess
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 
-# FMP v3 base URL
-FMP_API = "https://financialmodelingprep.com/api/v3"
+def _call_magi_tool(tool_name: str, params: dict) -> dict:
+    """
+    Call a daemon-side tool via the magi-tool CLI (CR-04 job-env half) and
+    return its parsed JSON response.
+
+    Background jobs no longer receive raw provider API keys in their own
+    env — the daemon holds them and serves scoped tools (data-fred,
+    data-fmp, data-newsapi) over the loopback ToolApiServer instead. This
+    mirrors magi_tool.py's call_tool(), reimplemented via the CLI (not a
+    cross-skill Python import) so this adapter stays self-contained.
+
+    Raises RuntimeError on a non-zero exit or a {"error": ...} response.
+    """
+    result = subprocess.run(
+        ["magi-tool", tool_name, "--params", json.dumps(params)],
+        capture_output=True, text=True, timeout=35,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "magi-tool call failed").strip())
+    response = json.loads(result.stdout)
+    if "error" in response:
+        raise RuntimeError(response["error"])
+    return response
 
 
 def discover() -> None:
@@ -98,15 +119,9 @@ def fetch(output_path: str, series_id: str, params: dict) -> None:
     """
     Dispatch to the correct fetch function based on the 'type' param.
 
-    Reads FMP_API_KEY from the environment.  Exits with code 1 if the key
-    is missing or the 'type' param is unrecognised, so the catalog can mark
-    the entry as "error" and move on.
+    Exits with code 1 if the 'type' param is unrecognised, so the catalog
+    can mark the entry as "error" and move on.
     """
-    api_key = os.environ.get("FMP_API_KEY")
-    if not api_key:
-        print("Error: FMP_API_KEY environment variable not set", file=sys.stderr)
-        sys.exit(1)
-
     ticker    = params.get("ticker")
     data_type = params.get("type", "daily")
 
@@ -115,16 +130,16 @@ def fetch(output_path: str, series_id: str, params: dict) -> None:
         sys.exit(1)
 
     if data_type == "daily":
-        _fetch_ohlcv(output_path, ticker, api_key)
+        _fetch_ohlcv(output_path, ticker)
     elif data_type == "sec_filings":
-        _fetch_filings(output_path, ticker, api_key)
+        _fetch_filings(output_path, ticker)
     else:
         print(f"Error: unknown type '{data_type}' (expected 'daily' or 'sec_filings')",
               file=sys.stderr)
         sys.exit(1)
 
 
-def _fetch_ohlcv(output_path: str, ticker: str, api_key: str) -> None:
+def _fetch_ohlcv(output_path: str, ticker: str) -> None:
     """
     Fetch the full historical price series for a ticker and write a CSV.
 
@@ -135,8 +150,7 @@ def _fetch_ohlcv(output_path: str, ticker: str, api_key: str) -> None:
     Columns written: date, open, high, low, close, volume
     All price values are as returned by FMP (split-adjusted on free tier).
     """
-    url = f"{FMP_API}/historical-price-full/{ticker}?apikey={api_key}"
-    data = _get_json(url)
+    data = _get_json(ticker, "daily")
     historical = data.get("historical", [])
 
     out = Path(output_path)
@@ -152,7 +166,7 @@ def _fetch_ohlcv(output_path: str, ticker: str, api_key: str) -> None:
     print(f"[fmp] {ticker} OHLCV: {len(historical)} rows → {output_path}")
 
 
-def _fetch_filings(output_path: str, ticker: str, api_key: str) -> None:
+def _fetch_filings(output_path: str, ticker: str) -> None:
     """
     Fetch the SEC filing index for a ticker and write a JSON file.
 
@@ -165,8 +179,7 @@ def _fetch_filings(output_path: str, ticker: str, api_key: str) -> None:
     be very large (10-K filings are often 200–400 pages).  Agents use the
     index to identify the filing they need and then call FetchUrl on-demand.
     """
-    url = f"{FMP_API}/sec_filings/{ticker}?type=&apikey={api_key}"
-    data = _get_json(url)
+    data = _get_json(ticker, "sec_filings")
 
     filings = [
         {
@@ -184,21 +197,25 @@ def _fetch_filings(output_path: str, ticker: str, api_key: str) -> None:
     print(f"[fmp] {ticker} filings: {len(filings)} entries → {output_path}")
 
 
-def _get_json(url: str) -> dict | list:
+def _get_json(ticker: str, data_type: str) -> dict | list:
     """
-    Perform a GET request to a FMP URL and return the parsed JSON body.
+    Call the data-fmp tool for a ticker/type and return the parsed JSON body.
 
-    Exits with code 1 on network errors or invalid JSON so the catalog can
-    record the failure without crashing the entire refresh run.
+    Exits with code 1 on a magi-tool failure or invalid JSON so the catalog
+    can record the failure without crashing the entire refresh run.
     """
     try:
-        with urllib.request.urlopen(url, timeout=30) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL constructed from hardcoded base + API params; no user input reaches the scheme or host
-            return json.loads(resp.read().decode())
-    except urllib.error.URLError as exc:
-        print(f"Error: FMP request failed: {exc}", file=sys.stderr)
-        sys.exit(1)
+        response = _call_magi_tool("data-fmp", {"ticker": ticker, "type": data_type})
+        return json.loads(response["result"]["content"][0]["text"])
     except json.JSONDecodeError as exc:
         print(f"Error: invalid JSON from FMP: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as exc:
+        # Broad catch deliberate: includes FileNotFoundError (magi-tool not on
+        # PATH) as well as RuntimeError (non-zero exit or {"error": ...}
+        # response) — both should fail the same clean way, not an uncaught
+        # traceback.
+        print(f"Error: FMP request failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
 

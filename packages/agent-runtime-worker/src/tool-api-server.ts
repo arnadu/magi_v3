@@ -40,6 +40,11 @@ import type { TeamConfig } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
+import {
+	tryCreateDataFmpTool,
+	tryCreateDataFredTool,
+	tryCreateDataNewsapiTool,
+} from "./tools/data-provider-proxy.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
 import { createInspectImageTool } from "./tools/inspect-image.js";
 import { createResearchTool } from "./tools/research.js";
@@ -242,6 +247,13 @@ export class ToolApiServer {
 			);
 			return tools[0]; // PostMessage
 		}
+
+		// CR-04 (job-env half): internal, not agent-facing — only the
+		// data-factory Python adapters call these, via the loopback ToolApiServer
+		// they already use, instead of holding the real provider key themselves.
+		if (normalised === "data-fred") return tryCreateDataFredTool();
+		if (normalised === "data-fmp") return tryCreateDataFmpTool();
+		if (normalised === "data-newsapi") return tryCreateDataNewsapiTool();
 
 		return null;
 	}

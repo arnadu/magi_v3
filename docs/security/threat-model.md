@@ -1,13 +1,27 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 27 — Control-plane copilot visibility (Transcripts/Files/Limits): new
+**Last updated:** Sprint 28e — Two critical security fixes from the 2026-08-09 audit, both closing
+live exposures rather than preventive hardening. **F-002 re-fixed** (BrowseWeb SSRF, CR-03):
+Stagehand V3's removal of `page.route()` had silently reopened this a second time; fixed with a
+new loopback-only egress-filtering proxy (`browse-web-egress-proxy.ts`) that Chromium is launched
+through, checking every request/CONNECT the browser makes rather than just top-level navigation —
+see TB-1's new IPC-surface row. Caught and fixed two real bugs empirically during testing:
+Chromium's implicit loopback proxy-bypass, and a CONNECT-tunnel socket leak that hung the whole
+`close()` indefinitely if a tunnel was still open at teardown. **F-030 added and fixed** (raw
+data-provider keys in background-job env, CR-04's job-env half): `FRED_API_KEY`/`FMP_API_KEY`/
+`NEWSAPIORG_API_KEY` no longer reach agent-authored job code at all — new `data-fred`/`data-fmp`/
+`data-newsapi` tools on the existing bearer-token-scoped ToolApiServer (TB-5) replace them, see
+TB-4's new STRIDE row. CR-04's other half (cluster-wide-shared `MONGODB_URI`/LLM keys across every
+mission machine) needs a genuine per-tenant credential redesign and is deferred to Sprint 29,
+not fixed here.
+**Previously:** Sprint 27 — Control-plane copilot visibility (Transcripts/Files/Limits): new
 trust boundary TB-21. `GET /api/copilot/files` reads directly off the control-plane process's own
 local filesystem (the copilot runs in-process, not on a separate machine) — first route of its
 kind, guarded by the same resolve+realpath symlink-safe boundary check as the F-003 fix. Not a
 finding — designed safe from the start, but the copilot's workdir is one shared OS identity across
 all users (TB-15), so this route currently has no per-user file scoping; accepted for the current
 solo-operator deployment.
-**Previously:** Sprint 27 — Files panel HTML/JS preview: new trust boundary TB-20. Agent-authored
+**Earlier:** Sprint 27 — Files panel HTML/JS preview: new trust boundary TB-20. Agent-authored
 `.html`/`.htm` files render live (script execution included) in a sandboxed `<iframe
 sandbox="allow-scripts">` with `allow-same-origin` deliberately omitted, giving the frame an opaque
 origin with no access to the `magi_session` cookie, the control-plane API, or the parent DOM. Not a
@@ -255,13 +269,14 @@ graph TB
 
 ### TB-1: External HTTP requests (FetchUrl, BrowseWeb, data adapters, LLM providers)
 - `packages/agent-runtime-worker/src/tools/fetch-url.ts` — HTTP GET, HTML/PDF extraction, image download
-- `packages/agent-runtime-worker/src/tools/browse-web.ts` — Playwright/Stagehand, SSRF check (initial nav only)
+- `packages/agent-runtime-worker/src/tools/browse-web.ts` — Playwright/Stagehand; SSRF enforced by the egress-filtering proxy below on every request, not just initial nav (F-002, Sprint 28e)
+- `packages/agent-runtime-worker/src/tools/browse-web-egress-proxy.ts` — loopback-only forward proxy Chromium is launched through; `isPrivateHost()` on every CONNECT/request (F-002, Sprint 28e)
 - `packages/agent-runtime-worker/src/tools/research.ts` — Research sub-loop; calls FetchUrl and SearchWeb
 - `packages/agent-runtime-worker/src/tools/search-web.ts` — Brave Search API call
 - `packages/agent-runtime-worker/src/ssrf.ts` — `isPrivateHost()` regex + post-DNS-resolution check
 - `packages/agent-runtime-worker/src/models.ts` — `parseModel()`: routes `/`-delimited IDs to OpenRouter; bare IDs to Anthropic
 - `packages/agent-runtime-worker/src/openrouter-pricing.ts` — unauthenticated `GET https://openrouter.ai/api/v1/models` (Sprint 24, live cost pricing); no request body, no secrets sent; process-lifetime cache, single-flight
-- `packages/skills/data-factory/scripts/adapters/` — all 7 Python adapters (fmp, fred, yfinance, newsapi, gdelt, imf, worldbank)
+- `packages/skills/data-factory/scripts/adapters/` — all 7 Python adapters (fmp, fred, yfinance, newsapi, gdelt, imf, worldbank); fmp/fred/newsapi call the daemon's `data-fred`/`data-fmp`/`data-newsapi` tools (TB-5) rather than the provider directly (F-030, Sprint 28e) — see TB-4
 
 ### TB-2: MonitorServer (local dev — operator interface)
 - `packages/agent-runtime-worker/src/monitor-server.ts` — HTTP server + SSE; binds `127.0.0.1:4000`; mutating routes lack auth; `GET /log` returns daemon log file tail
@@ -277,6 +292,7 @@ graph TB
 
 ### TB-5: ToolApiServer — magi-job → daemon IPC
 - `packages/agent-runtime-worker/src/tool-api-server.ts` — HTTP server `127.0.0.1:4001`; bearer token auth; tool dispatch
+- `packages/agent-runtime-worker/src/tools/data-provider-proxy.ts` — `data-fred`/`data-fmp`/`data-newsapi` (F-030, Sprint 28e): server-side-only, not agent-facing; the daemon's own copy of the provider key never leaves this process
 - `packages/agent-runtime-worker/src/cli-tool.ts` — `magi-tool` CLI (Node.js client)
 - `packages/skills/run-background/scripts/magi_tool.py` — Python SDK client (stdlib only)
 
@@ -383,13 +399,14 @@ graph TB
 | Threat | Category | Status | Notes |
 |--------|----------|--------|-------|
 | SSRF via FetchUrl — fetch internal RFC-1918 or cloud-metadata services | I / E | ✅ F-001 | Fixed Sprint 13: `ssrf.ts` `isPrivateHost()` validates hostname + post-DNS-resolution IP |
-| SSRF via BrowseWeb post-navigation redirect | I / E | ⚠️ F-002 (reopened) | The Sprint 16 fix relied on `page.route("**/*", handler)`, which no longer exists — a later Stagehand V3 upgrade removed `route()` support (see `browse-web.ts`). Pre-navigation `isPrivateHost()` and post-redirect checks are the only remaining defenses; `agent().execute()` can still reach arbitrary hosts via clicks/JS redirects, unchecked. Scheduled: CR-03, Sprint 28b. |
-| DNS rebinding — IP changes between check and connect | I | ~ | Post-redirect check in `fetch-url.ts` partially mitigates; fully resolved when F-002 is fixed |
+| SSRF via BrowseWeb post-navigation redirect | I / E | ✅ F-002 (fixed Sprint 28e) | The Sprint 16 fix relied on `page.route("**/*", handler)`, which no longer exists — a later Stagehand V3 upgrade removed `route()` support. Fixed by launching Chromium through a new loopback-only egress-filtering proxy (`browse-web-egress-proxy.ts` — see the new IPC-surface row below) instead — it checks every CONNECT/request the browser makes against `isPrivateHost()`, not just top-level navigation, so `agent().execute()`-driven clicks/JS redirects/popups are covered too. |
+| New IPC surface: BrowseWeb's egress-filtering proxy (`browse-web-egress-proxy.ts`) | E | ✅ | Loopback-only (`127.0.0.1`, ephemeral port), no bearer-token auth — deliberately, unlike ToolApiServer/MonitorServer: this proxy is reachable only by the Chromium child process this same `BrowseWebHandle` spawns, never by another agent-controlled process, so it isn't a privilege boundary crossing the way those two are. Started and torn down per `BrowseWebHandle` lifetime (one per `runAgent()` call); explicitly destroys every CONNECT-tunnel socket on close() rather than relying on Node's own connection tracking (verified empirically: a lingering tunnel would otherwise hang teardown indefinitely). |
+| DNS rebinding — IP changes between check and connect | I | ✅ | Resolved: the egress proxy resolves DNS once, immediately before connecting, for every request/CONNECT — never the browser itself, which delegates resolution to the proxy when a `--proxy-server` is configured |
 | Oversized response — OOM crash | D | ✅ | 50 MB response cap; Content-Length checked before read |
 | Malicious content injected into agent context | T | ~ | Trust boundary markers on BrowseWeb; FetchUrl result injected as plain markdown (see TB-8) |
 | Full conversation context sent to OpenRouter third-party proxy | I | ~ | OpenRouter has separate data-retention policy; `OPENROUTER_API_KEY` is daemon-only, never forwarded to subprocesses |
 | `OPENROUTER_API_KEY` leaked into tool-executor child env | I | ✅ F-017 | Clean-env spawn is the primary control; `verifyIsolation()` now checks both `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY` |
-| Fly.io WireGuard range (`fdaa::/8`) reachable via FetchUrl/BrowseWeb from execution plane | I / E | ~ | `ssrf.ts` blocks ULA prefix `fd[0-9a-f]{2}:` which covers `fdaa::`; verify after any `ssrf.ts` change |
+| Fly.io WireGuard range (`fdaa::/8`) reachable via FetchUrl/BrowseWeb from execution plane | I / E | ✅ | `ssrf.ts` blocks ULA prefix `fd[0-9a-f]{2}:` which covers `fdaa::`; for BrowseWeb this is now enforced by the egress proxy on every request (not just the app-level pre-navigation check), including Chromium's default loopback-bypass override (`bypass: "<-loopback>"`) so `127.0.0.1`/`localhost` targets are checked too, not silently exempted; verify after any `ssrf.ts` change |
 | OpenRouter pricing fetch (`openrouter-pricing.ts`) is not SSRF-relevant (fixed public URL, no agent input) but still an outbound daemon call | I | ✅ | No request body, no auth header, no secrets in the request; response only affects internal cost display, never executed or interpreted as instructions |
 
 ### TB-2: Operator → MonitorServer (local dev)
@@ -419,6 +436,7 @@ graph TB
 | scriptPath traversal via symlink | T / E | ✅ F-013 | Fixed Sprint 13: `realpathSync()` after `join()`; real path checked against `permittedPaths` |
 | `MAGI_TOOL_TOKEN` not revoked if `spawn()` throws | I | ✅ F-014 | Fixed Sprint 13: token issued inside try; catch revokes immediately |
 | `MAGI_TOOL_TOKEN` exposed in job log files | I | A | Token short-lived (revoked on exit); logs within sharedDir only (A-003) |
+| Raw `FRED_API_KEY`/`FMP_API_KEY`/`NEWSAPIORG_API_KEY` spread into job env (`dataKeysEnv()`) — agent-authored job code could read and exfiltrate a reusable third-party credential, no privilege escalation needed | I | ✅ F-030 (fixed Sprint 28e) | Removed entirely — `runPendingJobs`'s spawn env no longer includes these. Jobs call new `data-fred`/`data-fmp`/`data-newsapi` tools on the existing bearer-token-scoped ToolApiServer instead (TB-5); the daemon holds the real keys and performs the provider call itself, so job code only ever gets a capability, never the credential. |
 | No wall-clock timeout — hung job holds concurrency slot | D | ✅ F-006 | Fixed Sprint 13: `DEFAULT_JOB_TIMEOUT_MS = 30 min`; SIGKILL to process group on expiry |
 | Orphaned `jobs/running/` on daemon restart | D | ✅ F-010 | Fixed Sprint 13: `recoverOrphanedJobs()` at startup moves running → pending |
 

@@ -82,7 +82,44 @@ const ACCESS_DENIED_PAGE = `<!DOCTYPE html>
 <html><head><title>Access Denied</title></head>
 <body><p>Access denied. Please log in first.</p></body></html>`;
 
-function startTestServer(): Promise<{
+// CR-03 / F-002 regression: a page whose only link points at a *different*
+// private-range target than the one allowlisted for this test's own server
+// (see startPrivateTargetServer below) — proves agent()-driven navigation
+// (not just the initial page.goto()) is blocked from reaching it.
+function pivotPage(privateTargetUrl: string): string {
+	return `<!DOCTYPE html>
+<html><head><title>Dashboard</title></head>
+<body>
+  <p>Welcome to the dashboard.</p>
+  <a href="${privateTargetUrl}" id="internal-link">Internal Admin Panel</a>
+</body></html>`;
+}
+
+const SECRET_MARKER = "SECRET-DO-NOT-DISCLOSE-4f8c9a";
+const SECRET_PAGE = `<!DOCTYPE html>
+<html><head><title>Internal Admin Panel</title></head>
+<body><p>${SECRET_MARKER}</p></body></html>`;
+
+/** 127.0.0.2 — still loopback, but never allowlisted, so isPrivateHost() must
+ * block it while 127.0.0.1 (allowlisted for the test's own server) still
+ * works. Simulates "a link on an allowed page pointing somewhere private." */
+function startPrivateTargetServer(): Promise<{
+	baseUrl: string;
+	server: ReturnType<typeof createServer>;
+}> {
+	return new Promise((resolve) => {
+		const server = createServer((_req, res) => {
+			res.writeHead(200, { "Content-Type": "text/html" });
+			res.end(SECRET_PAGE);
+		});
+		server.listen(0, "127.0.0.2", () => {
+			const addr = server.address() as { port: number };
+			resolve({ baseUrl: `http://127.0.0.2:${addr.port}`, server });
+		});
+	});
+}
+
+function startTestServer(privateTargetUrl: string): Promise<{
 	baseUrl: string;
 	server: ReturnType<typeof createServer>;
 }> {
@@ -95,6 +132,9 @@ function startTestServer(): Promise<{
 			if (url === "/" || url === "/earnings") {
 				res.writeHead(200, { "Content-Type": "text/html" });
 				res.end(JS_PAGE);
+			} else if (url === "/pivot") {
+				res.writeHead(200, { "Content-Type": "text/html" });
+				res.end(pivotPage(privateTargetUrl));
 			} else if (url === "/login" && req.method === "GET") {
 				res.writeHead(200, { "Content-Type": "text/html" });
 				res.end(LOGIN_PAGE);
@@ -139,11 +179,17 @@ function startTestServer(): Promise<{
 describe("BrowseWeb integration", () => {
 	let baseUrl: string;
 	let server: ReturnType<typeof createServer>;
+	let privateTargetUrl: string;
+	let privateTargetServer: ReturnType<typeof createServer>;
 	let tmpDir: string;
 	let handle: BrowseWebHandle | undefined;
 
 	beforeAll(async () => {
-		const srv = await startTestServer();
+		const privateSrv = await startPrivateTargetServer();
+		privateTargetUrl = privateSrv.baseUrl;
+		privateTargetServer = privateSrv.server;
+
+		const srv = await startTestServer(privateTargetUrl);
 		baseUrl = srv.baseUrl;
 		server = srv.server;
 
@@ -151,6 +197,7 @@ describe("BrowseWeb integration", () => {
 		chmodSync(tmpDir, 0o755);
 
 		// Allow 127.0.0.1 so the test can reach its own local HTTP server.
+		// 127.0.0.2 (privateTargetUrl) is deliberately NOT allowlisted.
 		handle = tryCreateBrowseWebTool(CLAUDE_SONNET, tmpDir, ["127.0.0.1"]);
 		if (!handle) {
 			console.log(
@@ -163,6 +210,7 @@ describe("BrowseWeb integration", () => {
 	afterAll(async () => {
 		await handle?.close();
 		server?.close();
+		privateTargetServer?.close();
 		// Copy the session log to a fixed path before tmpDir is deleted so it
 		// survives the test run and can be inspected afterwards.
 		if (tmpDir) {
@@ -184,7 +232,7 @@ describe("BrowseWeb integration", () => {
 			}
 			rmSync(tmpDir, { recursive: true, force: true });
 		}
-	});
+	}, 20_000); // handle.close()'s own 15s stagehand.close() race + margin for teardown
 
 	it("renders JS-injected content that FetchUrl cannot see", async () => {
 		if (!handle) return; // skip gracefully
@@ -247,5 +295,28 @@ describe("BrowseWeb integration", () => {
 		// "$42 million" and "session-revenue" appear only on the authenticated page.
 		expect(newsText).not.toMatch(/access denied/i);
 		expect(newsText).toMatch(/42\s*million|session-revenue/i);
+	}, 300_000); // 5 min
+
+	it("CR-03 / F-002: blocks agent()-driven navigation to a private target reached via a link click, not just the initial URL", async () => {
+		if (!handle) return; // skip gracefully
+
+		// The initial page.goto() target (baseUrl/pivot) IS allowlisted — this
+		// proves the block is specifically on where agent() navigates *next*,
+		// not a blanket failure of the allowlisted page itself.
+		const result = await handle.tool.execute(
+			"test-ssrf-pivot",
+			{
+				url: `${baseUrl}/pivot`,
+				task: 'Click the link labeled "Internal Admin Panel" and report exactly what text appears on the resulting page.',
+				screenshot: false,
+			},
+			undefined,
+		);
+
+		const text = result.content.map((b) => b.text).join(" ");
+		// The secret only exists on the private-target page (127.0.0.2, not
+		// allowlisted) — it must never reach the agent's result or the saved
+		// content.md, regardless of how the agent phrases its (failed) attempt.
+		expect(text).not.toContain(SECRET_MARKER);
 	}, 300_000); // 5 min
 });

@@ -70,30 +70,17 @@ dotenvConfig({ path: join(REPO_ROOT, ".env"), quiet: true });
 dotenvConfig({ path: join(REPO_ROOT, ".env.data-keys"), quiet: true });
 
 /**
- * Environment variables from .env.data-keys that are safe to forward to
- * background job subprocesses (refresh.py, adapters, etc.).
- * These keys only authorize calls to external data APIs; they have no
- * privilege over the MAGI system itself.
+ * Names of the data-provider API keys loaded from .env.data-keys — logged
+ * (presence only) at boot via parseDaemonEnv(). Never forwarded to
+ * background job subprocesses (CR-04, job-env half): the daemon holds these
+ * itself and job code reaches them only through the data-fred/data-fmp/
+ * data-newsapi tools on the loopback ToolApiServer, never as raw env values.
  */
 export const DATA_KEY_NAMES = [
 	"FRED_API_KEY",
 	"FMP_API_KEY",
 	"NEWSAPIORG_API_KEY",
 ] as const;
-
-/**
- * Build the env block to pass when spawning a background job.
- * Includes only DATA_KEY_NAMES that are actually set — missing keys are omitted
- * rather than forwarded as empty strings, so adapters see a clean "not set" error.
- */
-export function dataKeysEnv(): Record<string, string> {
-	const env: Record<string, string> = {};
-	for (const key of DATA_KEY_NAMES) {
-		const val = process.env[key];
-		if (val) env[key] = val;
-	}
-	return env;
-}
 
 import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import { provisionAgentIdentities } from "./daemon-boot/agent-identity.js";
@@ -367,12 +354,19 @@ async function runPendingJobs(
 					...spec.args,
 				],
 				{
+					// CR-04 (job-env half): the raw FRED_API_KEY/FMP_API_KEY/
+					// NEWSAPIORG_API_KEY used to be spread here directly — this is
+					// agent-authored code, and a reusable third-party credential in
+					// its env could be read and exfiltrated with no privilege
+					// escalation needed. The data-factory adapters now call the
+					// data-fred/data-fmp/data-newsapi tools through MAGI_TOOL_URL
+					// instead (tool-api-server.ts, tools/data-provider-proxy.ts) —
+					// the daemon holds the real keys, the job gets a capability.
 					env: {
 						PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
 						HOME: `/home/${linuxUser}`,
 						MAGI_TOOL_URL: `http://127.0.0.1:${toolPort}`,
 						MAGI_TOOL_TOKEN: token,
-						...dataKeysEnv(),
 					},
 					stdio: ["ignore", "pipe", "pipe"],
 				},

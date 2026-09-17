@@ -9,7 +9,9 @@ series: interest rates, inflation, unemployment, yield curves, and more.
 This adapter fetches individual series by their FRED series ID and writes
 them as two-column CSVs (date, value) for use by Marco (Economist) and Sam.
 
-Requires: FRED_API_KEY environment variable.
+Requires: FRED_API_KEY configured on the daemon (CR-04 — this adapter never
+sees the key itself; it calls the "data-fred" tool via magi-tool, which the
+daemon serves using its own copy of the key).
 Free registration: https://fred.stlouisfed.org/docs/api/api_key.html
 Rate limit: 120 requests/minute, which far exceeds daily refresh needs.
 
@@ -36,7 +38,8 @@ filtered out so agents always get clean numeric data.
 
 DEPENDENCY
 ----------
-None (stdlib only: urllib.request, json).
+None (stdlib only: subprocess, json) — calls the daemon-installed `magi-tool`
+CLI rather than the FRED API directly (CR-04).
 
 USAGE
 -----
@@ -49,16 +52,34 @@ USAGE
 
 import argparse
 import json
-import os
+import subprocess
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 
-# FRED observations endpoint
-FRED_API = "https://api.stlouisfed.org/fred/series/observations"
+def _call_magi_tool(tool_name: str, params: dict) -> dict:
+    """
+    Call a daemon-side tool via the magi-tool CLI (CR-04 job-env half) and
+    return its parsed JSON response.
+
+    Background jobs no longer receive raw provider API keys in their own
+    env — the daemon holds them and serves scoped tools (data-fred,
+    data-fmp, data-newsapi) over the loopback ToolApiServer instead. This
+    mirrors magi_tool.py's call_tool(), reimplemented via the CLI (not a
+    cross-skill Python import) so this adapter stays self-contained.
+
+    Raises RuntimeError on a non-zero exit or a {"error": ...} response.
+    """
+    result = subprocess.run(
+        ["magi-tool", tool_name, "--params", json.dumps(params)],
+        capture_output=True, text=True, timeout=35,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "magi-tool call failed").strip())
+    response = json.loads(result.stdout)
+    if "error" in response:
+        raise RuntimeError(response["error"])
+    return response
 
 
 def discover() -> None:
@@ -89,9 +110,6 @@ def fetch(output_path: str, series_id: str, params: dict) -> None:
     """
     Fetch a FRED series and write it to a date,value CSV.
 
-    Reads the FRED_API_KEY from the environment — the key is never passed as
-    a CLI argument to avoid it appearing in process lists or shell history.
-
     The default lookback window is 2 years (730 days), which is sufficient
     for daily and monthly series used in short-term equity analysis.  Agents
     can extend this via the observation_start param.
@@ -99,11 +117,6 @@ def fetch(output_path: str, series_id: str, params: dict) -> None:
     FRED returns "." for missing observations (e.g. non-business days for
     daily series); these rows are filtered out before writing.
     """
-    api_key = os.environ.get("FRED_API_KEY")
-    if not api_key:
-        print("Error: FRED_API_KEY environment variable not set", file=sys.stderr)
-        sys.exit(1)
-
     fred_series = params.get("series_id")
     if not fred_series:
         print("Error: params must include 'series_id'", file=sys.stderr)
@@ -116,23 +129,16 @@ def fetch(output_path: str, series_id: str, params: dict) -> None:
         (date.today() - timedelta(days=730)).isoformat(),
     )
 
-    api_params = {
-        "series_id":         fred_series,
-        "api_key":           api_key,
-        "file_type":         "json",
-        "observation_start": start,
-        "sort_order":        "asc",   # oldest-first to match yfinance/FMP conventions
-    }
-
-    url = f"{FRED_API}?{urllib.parse.urlencode(api_params)}"
-
     try:
-        with urllib.request.urlopen(url, timeout=30) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL constructed from hardcoded base + API params; no user input reaches the scheme or host
-            raw = json.loads(resp.read().decode())
-    except urllib.error.URLError as exc:
+        response = _call_magi_tool("data-fred", {
+            "seriesId": fred_series,
+            "observationStart": start,
+        })
+    except Exception as exc:
         print(f"Error: FRED request failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    raw = json.loads(response["result"]["content"][0]["text"])
     observations = raw.get("observations", [])
     # Filter out "." which FRED uses to represent missing/non-applicable values
     rows = [
