@@ -1098,21 +1098,88 @@ describe("connectToMongo", () => {
 });
 
 describe("wireAbortSignal", () => {
-	// process.on("SIGTERM"/"SIGINT", ...) is a permanent global registration
-	// with no return handle exposed by wireAbortSignal() — remove everything
-	// this test adds so repeated runs (and other test files sharing this
-	// process) never accumulate listeners.
-	afterEach(() => {
-		process.removeAllListeners("SIGTERM");
-		process.removeAllListeners("SIGINT");
+	const EVENTS = [
+		"SIGTERM",
+		"SIGINT",
+		"uncaughtException",
+		"unhandledRejection",
+	] as const;
+
+	// process.on(...) is a permanent global registration with no return handle
+	// exposed by wireAbortSignal(). vitest itself already holds an
+	// unhandledRejection listener before this test file ever runs, so a
+	// blanket removeAllListeners() would silently break vitest's own
+	// unhandled-rejection reporting for the rest of the suite — snapshot each
+	// event's pre-existing listeners and restore exactly that set instead.
+	let baseline: Partial<Record<(typeof EVENTS)[number], unknown[]>>;
+
+	beforeEach(() => {
+		baseline = {};
+		for (const event of EVENTS) baseline[event] = [...process.listeners(event)];
 	});
 
-	it("registers exactly one SIGTERM and one SIGINT listener", () => {
-		expect(process.listenerCount("SIGTERM")).toBe(0);
-		expect(process.listenerCount("SIGINT")).toBe(0);
+	afterEach(() => {
+		for (const event of EVENTS) {
+			for (const listener of process.listeners(event)) {
+				if (!baseline[event]?.includes(listener)) {
+					// biome-ignore lint/suspicious/noExplicitAny: EventEmitter's own listener type isn't exported per-event
+					process.removeListener(event, listener as any);
+				}
+			}
+		}
+	});
+
+	/** The listener wireAbortSignal() just added, i.e. not present in baseline. */
+	function newListener(
+		event: (typeof EVENTS)[number],
+	): (...args: unknown[]) => void {
+		const added = process
+			.listeners(event)
+			.find((l) => !baseline[event]?.includes(l));
+		if (!added) throw new Error(`no new ${event} listener found`);
+		return added as (...args: unknown[]) => void;
+	}
+
+	it("registers exactly one new listener for each of SIGTERM/SIGINT/uncaughtException/unhandledRejection", () => {
+		const before = Object.fromEntries(
+			EVENTS.map((e) => [e, process.listenerCount(e)]),
+		);
 		wireAbortSignal();
-		expect(process.listenerCount("SIGTERM")).toBe(1);
-		expect(process.listenerCount("SIGINT")).toBe(1);
+		for (const event of EVENTS) {
+			expect(process.listenerCount(event)).toBe(before[event] + 1);
+		}
+	});
+
+	it("issue #46: an uncaughtException triggers the same graceful shutdown as SIGTERM", () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const { signal } = wireAbortSignal();
+			expect(signal.aborted).toBe(false);
+			// Invoke the registered handler directly rather than actually
+			// throwing an uncaught exception inside the test runner's own process.
+			newListener("uncaughtException")(new Error("boom"));
+			expect(signal.aborted).toBe(true);
+			expect(errorSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Uncaught exception"),
+			);
+		} finally {
+			errorSpy.mockRestore();
+		}
+	});
+
+	it("issue #46: an unhandledRejection triggers the same graceful shutdown as SIGTERM", () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const { signal } = wireAbortSignal();
+			expect(signal.aborted).toBe(false);
+			newListener("unhandledRejection")(new Error("boom"));
+			expect(signal.aborted).toBe(true);
+			expect(errorSpy).toHaveBeenCalledWith(
+				expect.stringContaining("Unhandled rejection"),
+			);
+		} finally {
+			errorSpy.mockRestore();
+		}
 	});
 
 	it("aborts the signal on the first shutdown request", () => {
