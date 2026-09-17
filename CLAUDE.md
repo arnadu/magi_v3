@@ -197,8 +197,10 @@ scoped now that both files' new structure is in place. Split out from a single S
 following the 2026-08-09 audit (`docs/code-review-audit-response-2026-08-12.md`) and this
 project's own Sprint 26a/26b/26c precedent for splitting one theme across sub-sprints.
 
-**Sprint 28d — Live-bug fixes from mission-copilot-filed reports (not started).** Inserted
-2026-09-17, ahead of the original 28d (renumbered to 28e below), after sizing up the open issue
+**Sprint 28d — Live-bug fixes from mission-copilot-filed reports — ✅ Done.** #49/#46/#48/#52
+all closed (containment half of #49 shipped; the confirmation-gate half deferred to 28e's CR-07
+as planned). Inserted 2026-09-17, ahead of the original 28d (renumbered to 28e below), after
+sizing up the open issue
 backlog: these four are small, have live production evidence, and — being self-filed by the
 mission copilots that hit them — already carry a root-cause analysis and a drafted fix in the
 issue body, unlike the broader hardening sprint's more open-ended items. **#49 (mission-copilot
