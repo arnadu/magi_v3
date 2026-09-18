@@ -217,7 +217,22 @@ expected to manage timing; see Alternatives.
   reserved for a genuinely exceptional pattern (excessive renewals, prolonged upgraded-tier runtime),
   which is ADR-0032's concern, not this ADR's. See ADR-0032's Decision 4.
 
-**5. Extend `GetMissionStatus`** to include current machine tier (`memoryMb`/`cpus`/`cpu_kind`) and
+**5. The upgrade request automatically schedules its own renewal reminder** — not left to the
+copilot to remember. `CreateScheduledMessage`'s underlying mechanism already supports exactly this:
+a one-off `deliverAt` timestamp (not just recurring `cron`), delivered by the control plane's
+existing `scheduler.ts` tick, addressed to `to: ["mission-copilot"]` — which requires zero new
+plumbing, since the copilot is a normal entry in the runtime `teamConfig.agents` array (injected
+in-memory at boot, not persisted to the on-disk YAML) and is picked up by the exact same
+unread-mail dispatch loop as any other agent. `RequestResourceUpgrade`'s own `execute()` inserts one
+`scheduled_messages` document at `expiry − bufferMinutes` (default TBD, e.g. 10–15 min) reminding
+the copilot its upgrade is about to lapse; a renewal call cancels that reminder (same mechanic as
+`CancelScheduledMessage` — `deleteOne({_id, missionId})`) and schedules a fresh one against the new
+expiry. This means Decision 1's tracking record needs one more field: the reminder's own
+`scheduled_messages` `_id`, so a renewal can find and replace it. The reminder is a courtesy nudge
+only — if ignored, expiry still proceeds exactly as Decision 3 describes (hard, immediate revert);
+this doesn't reopen the "wait for something before reverting" question already settled there.
+
+**6. Extend `GetMissionStatus`** to include current machine tier (`memoryMb`/`cpus`/`cpu_kind`) and
 how long the mission has been at that tier, so the control-plane copilot can answer a direct
 question about it, and so ADR-0032's alerts and daily report have a single existing tool to read
 from.
@@ -258,6 +273,9 @@ from.
 - **Default and maximum upgrade window length** — not designed yet; needs a concrete default
   (2 hours was used as an illustrative placeholder above, not a decision) and whether a maximum
   total upgraded duration should exist independent of renewal count.
+- **Renewal-reminder buffer** (Decision 5) — how far before expiry the automatic reminder fires
+  (10–15 min was illustrative, not decided); too short risks the copilot not getting a turn dispatched
+  in time to act on it, too long makes it fire well before the copilot would naturally reconsider.
 - **Which tiers are selectable** — the full Fly catalog, or a curated subset (e.g. just
   performance-1x/2x/4x) to bound complexity and cost exposure per request.
 - **Confirmation requirement — now more open than before, not less.** Because machine runtime is
@@ -295,6 +313,10 @@ from.
   existing cost tracking. **Existing mission spend caps keep their current meaning unchanged** —
   this was a real risk in an earlier draft of this ADR and is now avoided by design.
 - `GetMissionStatus`'s tool output grows by one field group (tier + duration-at-tier).
+- No new scheduling infrastructure for the renewal reminder — reuses `CreateScheduledMessage`'s
+  existing one-off `deliverAt` mechanism and `scheduler.ts`'s existing delivery path unchanged; the
+  only new code is `RequestResourceUpgrade` calling that same underlying write itself instead of
+  leaving it to the copilot.
 
 ## Related
 
@@ -303,6 +325,11 @@ from.
 - `packages/agent-runtime-worker/src/monitor-routes/budget.ts`,
   `packages/agent-runtime-worker/src/mission-copilot-tools.ts` (`SetMissionSpendCap`) — the
   renew/extend mechanic this feature's renewal step mirrors
+- `packages/agent-runtime-worker/src/mission-copilot-tools.ts` (`CreateScheduledMessage`/
+  `CancelScheduledMessage`), `packages/control-plane/src/scheduler.ts` (`ScheduledMessageDoc`,
+  `deliver()`) — the exact mechanism Decision 5's automatic renewal reminder reuses unchanged;
+  confirmed a one-off `deliverAt` timestamp (not just `cron`) and a `to: ["mission-copilot"]`
+  recipient both already work today with zero new plumbing
 - `packages/agent-runtime-worker/src/anomaly.ts` (`AnomalyRecorder.record()`'s `missionAnomalies`
   vs. mailbox-relay split) — the precedent for "silent queryable data" this ADR's Decision 4 follows
   for the routine case; the `copilot-{userId}` mailbox-relay half is ADR-0032's concern, not reused
