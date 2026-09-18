@@ -1,4 +1,7 @@
-# ADR-0031 — Temporary mission-machine resource upgrades + VM cost accounting
+# ADR-0031 — Temporary mission-machine resource upgrades + machine-runtime reporting
+
+*(Filename kept as `0031-temporary-resource-upgrades-vm-cost.md` for link stability; the design
+inside deliberately does not do $ cost accounting for machine time — see Decision 1.)*
 
 **Status**: Proposed — records a direction and the research behind it; several open questions
 below need to be settled before implementation starts. Not yet assigned to a numbered sprint.
@@ -55,15 +58,17 @@ MongoDB, workspace lives on the Fly Volume, neither touches the machine itself. 
 the low-level mechanism already exists; what's missing is the orchestration and safety wrapper
 around calling it mid-mission.
 
-**Cost tracking today is LLM-only.** Verified directly: `computeCost()`
+**Cost tracking today is LLM-only, and stays that way.** Verified directly: `computeCost()`
 (`agent-runtime-worker/src/llm-call-log.ts:160-183`) derives cost purely from token counts;
 `MissionStats` (`agent-stats.ts:111-123`) has no machine-cost field; `missionLifetimeCostUsd()`
-(`limits.ts:289-296`) sums only LLM cost; `fly-machines.ts` has no cost-related fields at all. **This
-means the mission-wide spend cap (and its #49/F-025 ceiling) currently cannot see or bound VM
-compute cost at all** — an important correction to an earlier assumption in this design
-conversation that the existing cap already contained the financial risk of a resource upgrade. It
-doesn't, as implemented today. VM cost accounting is therefore a prerequisite of this feature, not
-an optional nice-to-have alongside it.
+(`limits.ts:289-296`) sums only LLM cost; `fly-machines.ts` has no cost-related fields at all. An
+earlier draft of this ADR proposed folding machine compute cost into this same $ figure so the
+existing spend cap would bound it. **That's deliberately rejected** (see Decision) — LLM $ spend
+and machine wall-clock runtime are different signals answering different questions, and merging
+them would mean the maintained Fly price table (see below) has to be *authoritative for
+enforcement*, not just a friendly display estimate. The mission-wide spend cap therefore still does
+**not** bound the cost risk of a resource upgrade — that risk is managed instead through the
+bounded-window-plus-renewal mechanic and visibility (Decisions 3-4), not a dollar ceiling.
 
 **The control-plane copilot is purely reactive today**, not periodic. Its only wakeup mechanism is
 a MongoDB Change Stream on the `mailbox` collection (`copilot-daemon.ts:204-429`); the daemon is
@@ -95,18 +100,31 @@ a "renew an allowance rather than force an expiry" mechanic: `/extend-budget`
 (`monitor-routes/budget.ts:44-88`) reads the current persisted cap fresh, adds a delta, re-persists;
 `SetMissionSpendCap` (`mission-copilot-tools.ts:745-761`) is the mission-copilot's tool wrapper
 around the equivalent absolute-set route. Both are unconfirmed, single-call actions bounded only by
-the operator-set ceiling from #49 — the same trust tier this ADR proposes for resource-upgrade
-requests, now that VM cost will actually count against that ceiling (see Decision).
+the operator-set ceiling from #49. Resource-upgrade requests mirror the *mechanic* (read the current
+window fresh, extend it) but — since VM runtime deliberately isn't folded into that $ ceiling — sit
+outside the trust boundary #49 actually enforces; see the Confirmation open question below.
+
+**The cockpit has no existing view for machine-config or runtime data at all** — the closest
+precedent is the per-user `/api/missions/stats` route (`missions.ts`, unread/spend/lastActivity per
+mission) and the already-planned "usage dashboard" backlog item (Sprint 28f, per-user spend
+history). Neither currently has any notion of machine tier or wall-clock runtime — this ADR's
+reporting surface is a new capability, not an extension of an existing one, though it likely belongs
+alongside the usage dashboard rather than as a fully separate feature.
 
 ## Decision
 
-**1. Add VM cost accounting**, as a prerequisite, not a follow-on. Log machine-tier changes
-(`{missionId, guestConfig, startedAt}`); compute cost from wall-clock duration at each tier × a
-maintained static rate table (sourced from Fly's published pricing, refreshed manually — there is
-no live pricing API to refresh it from automatically). Fold this into `missionLifetimeCostUsd()` so
-the existing mission-wide spend cap and its #49 ceiling reflect **total** cost (LLM + compute), not
-just LLM. This changes what an already-configured spend cap effectively means for existing
-missions — worth flagging to the operator explicitly when this ships, not a silent semantic change.
+**1. Track machine-config runtime as its own dataset, decoupled from the $ spend cap entirely.**
+Log machine-tier-change events (`{missionId, guestConfig, startedAt, endedAt}` — a segment per
+tier the mission has run at) and surface them as a **new cockpit tab showing runtime (wall-clock
+time, not dollars) per mission, broken down by time horizon (e.g. today / 7d / 30d / lifetime) and
+by machine config** (which tier, how long). This is deliberately *not* merged into
+`missionLifetimeCostUsd()` or the #49 spend-cap ceiling — LLM $ spend and machine runtime answer
+different operator questions ("what am I being billed for LLM calls" vs. "how much compute time is
+this mission actually using, at what tier"), and keeping them separate means the existing spend cap
+keeps its current, already-understood meaning for every existing mission — no silent semantic
+change to flag. The maintained Fly price table (see Context) is only ever a *display* convenience
+here (an optional "~$X estimated" annotation on the runtime tab), never something enforcement
+depends on being exactly correct.
 
 **2. A new mission-copilot tool requests a temporary upgrade for a bounded initial window**
 (default TBD, e.g. 2 hours — see Open Questions), not an open-ended one. Orchestration requires a
@@ -136,8 +154,8 @@ how long the mission has been at that tier, so the control-plane copilot can ans
 question about it — and, combined with (4)'s alerts, has something concrete to react to.
 
 **6. Proactive rightsizing review ("is this mission overprovisioned") is explicitly *not* solved by
-this ADR** — it's a distinct, ongoing governance capability that needs the cost data from (1) to
-exist before it can be meaningful, and very likely needs the periodic self-wake mechanism the
+this ADR** — it's a distinct, ongoing governance capability that needs the runtime-by-tier data from
+(1) to exist before it can be meaningful, and very likely needs the periodic self-wake mechanism the
 control-plane copilot doesn't have today (see Open Questions). Reactive alerting via (4) is the
 near-term answer to "keep an eye on the VMs"; a genuine periodic report is deferred.
 
@@ -145,9 +163,10 @@ near-term answer to "keep an eye on the VMs"; a genuine periodic report is defer
 
 - **Fixed auto-revert timer, no renewal.** Rejected per the operator's own objection: a hard
   timer can fire mid-computation and kill real work. The safe-boundary-revert-unless-renewed design
-  (Decision 3) gets the same cost-bounding property without that failure mode.
-- **Fully open-ended upgrade, no expiry at all.** Rejected: unbounded cost risk with no natural
-  check-in point, and no mechanism to notice a forgotten upgrade.
+  (Decision 3) gets the same "doesn't run at the expensive tier forever unnoticed" property without
+  that failure mode.
+- **Fully open-ended upgrade, no expiry at all.** Rejected: unbounded runtime-at-expensive-tier
+  risk with no natural check-in point, and no mechanism to notice a forgotten upgrade.
 - **A new periodic cron self-wake for the control-plane copilot**, to satisfy the "regular report"
   half of the request directly. Deferred, not rejected outright — real new infrastructure the
   control-plane copilot doesn't have today (see Context), and the reactive alert path (Decision 4)
@@ -156,6 +175,11 @@ near-term answer to "keep an eye on the VMs"; a genuine periodic report is defer
 - **Live-querying Fly for pricing.** Not available — no such API exists (verified: nothing under
   `flyctl platform`, no pricing fields in the Machines API). A maintained static table is the only
   option, with the acknowledged staleness risk that implies.
+- **Folding machine runtime into `missionLifetimeCostUsd()` and the #49 spend-cap ceiling.**
+  Rejected (this ADR's original direction, revised after review) — entangles two different signals
+  (LLM $ spend vs. machine wall-clock time) and forces the maintained price table to be correct for
+  *enforcement*, not just a display estimate. A runtime-by-tier report, decoupled entirely from the
+  $ cap, is simpler and answers the actual operator question more directly.
 
 ## Open questions
 
@@ -164,16 +188,25 @@ near-term answer to "keep an eye on the VMs"; a genuine periodic report is defer
   total upgraded duration should exist independent of renewal count.
 - **Which tiers are selectable** — the full Fly catalog, or a curated subset (e.g. just
   performance-1x/2x/4x) to bound complexity and cost exposure per request.
-- **Confirmation requirement.** Now that VM cost genuinely counts against the spend cap (Decision
-  1), should requesting an upgrade require `ProposeAction`-style confirmation, or stay unconfirmed
-  like `SetMissionSpendCap` (bounded only by the existing ceiling)? The mission-copilot has no
-  `ProposeAction`-equivalent today (same gap CR-07/Sprint 28f tracks) — building one just for this
-  feature would be scope creep; staying unconfirmed-but-capped is the pragmatic default unless a
-  reason emerges to prioritize CR-07 sooner.
+- **Confirmation requirement — now more open than before, not less.** Because machine runtime is
+  deliberately *not* folded into the $ spend cap (Decision 1), an unconfirmed upgrade request has
+  **no dollar ceiling bounding it at all** — a materially different risk profile than
+  `SetMissionSpendCap`, which at least answers to the #49 ceiling. Candidates: (a) stay unconfirmed
+  but add a dedicated, operator-settable ceiling on cumulative upgraded-tier runtime or renewal
+  count, mirroring the #49 ceiling pattern but denominated in time, not dollars — smaller lift than
+  full `ProposeAction` infra; (b) require confirmation on the *first* request only, not each
+  renewal; (c) rely on the dual-notification visibility (Decision 4) alone and revisit if that
+  proves insufficient in practice. Leaning toward (a) as the pragmatic default, but this needs a
+  decision before implementation, not an assumption.
 - **Rate-table maintenance process** — how staleness gets noticed (no automated signal exists);
-  likely a periodic manual check against Fly's pricing docs.
-- **Proactive periodic rightsizing review** (Decision 6) — needs its own design pass once VM cost
-  data exists and once/if the control-plane copilot gets a genuine periodic self-wake mechanism.
+  likely a periodic manual check against Fly's pricing docs. Lower stakes now that the table is
+  display-only, not enforcement-critical.
+- **Proactive periodic rightsizing review** (Decision 6) — needs its own design pass once the
+  runtime-by-tier data exists and once/if the control-plane copilot gets a genuine periodic
+  self-wake mechanism.
+- **New cockpit tab's exact shape** — per-mission drill-down, a cross-mission summary table, or
+  both; likely worth designing alongside the existing "usage dashboard" backlog item (28f) rather
+  than as a fully independent panel.
 
 ## Consequences
 
@@ -181,12 +214,13 @@ near-term answer to "keep an eye on the VMs"; a genuine periodic report is defer
   new entry when this is actually implemented (matches the existing GitHub-proxy TB-16 pattern, not
   a new trust-boundary shape).
 - A new `AnomalyCategory` and its relay wiring.
-- **Existing mission spend caps change meaning** once VM cost counts toward them — an operator who
-  set a cap under the old LLM-only assumption may find it binds sooner than expected. Needs
-  explicit callout in release notes / the cockpit, not a silent behavior change.
+- A new data model for machine-tier-change segments (`{missionId, guestConfig, startedAt,
+  endedAt}`) and a new cockpit tab to display it — genuinely new surface, not an extension of
+  existing cost tracking. **Existing mission spend caps keep their current meaning unchanged** —
+  this was a real risk in an earlier draft of this ADR and is now avoided by design.
 - `GetMissionStatus`'s tool output grows by one field group (tier + duration-at-tier).
 - Sized as its own sprint, not folded into 28f — different shape of work (new orchestration route,
-  new cost-accounting subsystem) than 28f's operational-hardening items.
+  new runtime-tracking subsystem) than 28f's operational-hardening items.
 
 ## Related
 
@@ -197,9 +231,10 @@ near-term answer to "keep an eye on the VMs"; a genuine periodic report is defer
   renew/extend mechanic this feature's renewal step mirrors
 - `packages/agent-runtime-worker/src/anomaly.ts`, `daemon-boot/mission-owner.ts` — the existing
   `copilot-{userId}` relay pipeline this feature's notifications reuse (ADR-0020, F-028)
-- `packages/agent-runtime-worker/src/limits.ts` (`missionLifetimeCostUsd`),
-  `packages/agent-runtime-worker/src/agent-stats.ts` (`MissionStats`) — where VM cost accounting
-  needs to be folded in
+- `packages/control-plane/src/missions.ts` (`/api/missions/stats`) and the Sprint 28f "usage
+  dashboard" backlog item — closest existing precedent for the new runtime-reporting cockpit tab;
+  `packages/agent-runtime-worker/src/limits.ts` (`missionLifetimeCostUsd`) is explicitly *not*
+  touched by this feature, by design (Decision 1)
 - `packages/control-plane/src/copilot-tools.ts` (`GetMissionStatus`) — to be extended with tier info
 - Issue #31 (suspected OOM crash-loop) — likely closes, or is substantially reframed, once
   default/on-demand memory sizing exists
