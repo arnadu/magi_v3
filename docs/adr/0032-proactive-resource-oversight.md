@@ -111,10 +111,17 @@ figure — and posts it as a single structured mailbox message, then ensures the
 running to read it.
 
 **4. Add intra-day threshold alerts for all four resources**, reusing the *existing*
-`AnomalyRecorder` → `copilot-{userId}` relay (the same pipe ADR-0031's Decision 4 uses) rather than
-inventing a second alerting mechanism: new categories for disk-usage-high, atlas-storage-high, and
-prolonged-VM-upgrade (LLM cost already has an equivalent path via the existing limit-breach
-category). Thresholds are operator-configurable, default TBD (see Open Questions).
+`AnomalyRecorder` → `copilot-{userId}` relay rather than inventing a second alerting mechanism: new
+categories for disk-usage-high, atlas-storage-high, and prolonged-VM-upgrade (LLM cost already has
+an equivalent path via the existing limit-breach category). Thresholds are operator-configurable,
+default TBD (see Open Questions). **This ADR is the only user of this relay for VM-tier events** —
+ADR-0031 deliberately does *not* relay every routine request/renewal (see its Decision 4); this
+ADR's `prolonged-VM-upgrade` category is a periodic *pattern* check against ADR-0031's Decision-1
+dataset (e.g. "renewed more than N times" or "cumulative upgraded-tier runtime exceeds X hours" for
+one mission), not a live trigger fired on each request. It's the only thing standing in for a
+dedicated cost/runtime ceiling on the upgrade mechanism itself — see ADR-0031's Confirmation open
+question, which currently leans toward *also* wanting a hard ceiling rather than relying on this
+alone.
 
 **5. Drive the copilot's response through its existing conventions, not new ones**: extend
 `config/teams/copilot.yaml`'s system prompt with a "Resource Oversight" responsibility section
