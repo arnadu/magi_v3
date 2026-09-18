@@ -80,6 +80,18 @@ Atlas tier, 🔴, accepted for now pre-revenue).
 
 ---
 
+## Near-term candidates (not yet sequenced)
+
+Sized up but not yet assigned a sprint number — candidates for right after 28f, ahead of the
+general Post-MVP backlog below.
+
+| Item | Notes |
+|------|-------|
+| Interactive service exposure (Jupyter, other web apps on a mission machine) | Issue [#42](https://github.com/arnadu/magi_v3/issues/42), filed by the mission-copilot on `meteo-textbook-20260730`. Path-based reverse proxy through the existing monitor-server connection (reuses the CR-03 egress-proxy's raw-socket-tunneling technique), config-declared allowed ports (not agent-openable at runtime) — needs its own ADR before implementation. |
+| Temporary mission-machine resource upgrades + VM cost accounting | [ADR-0031](docs/adr/0031-temporary-resource-upgrades-vm-cost.md). Cheap-by-default machine, mission-copilot-requested temporary upgrade to a bigger tier (e.g. `performance-1x`) for genuine compute bursts, bounded window with explicit renewal (never a forced mid-computation revert), relayed to the owning user's control-plane copilot via the existing anomaly pipeline. Requires adding VM cost accounting first — today's spend cap tracks LLM cost only, not machine compute cost. Likely closes or reframes issue #31 (suspected OOM crash-loop). |
+
+---
+
 ## Post-MVP (after Sprint 27)
 
 | Item | Notes |
