@@ -106,8 +106,9 @@ const requestResourceUpgrade: MagiTool = {
 ```
 
 The control-plane route (authenticated like the GitHub-proxy routes) **first validates the requested
-shape** — against the Fly validity rules in Context and an operator-set ceiling on CPUs and RAM,
-rejecting (never silently clamping) with the list of valid options — then performs stop →
+shape** — against the Fly validity rules in Context and a **maximum machine size** (initially a
+control-plane constant, default 4 CPUs / 16 GB; no agent tool can change it), rejecting (never
+silently clamping) with the list of valid options — then performs stop →
 `provisionMission(existingVolumeId, ...)` as `resumeMission()` does, and writes the Decision-1
 segment. The ceiling applies no matter how the agent phrased the request, so it bounds cost
 exposure per request (see the Confirmation open question). Renewal is the same tool called again against the current window (cancels and replaces the
@@ -211,15 +212,17 @@ tier, for ADR-0032 and for direct questions to the control-plane copilot.
 
 ## Open questions
 
-- **Confirmation / ceiling.** No dollar ceiling bounds upgrade cost, and the mission-copilot can
-  request/renew indefinitely without operator confirmation (the mediation is a judgment layer, not
-  a gate; no execution-plane agent has `ProposeAction` today — CR-07). The per-request CPU/RAM
-  ceiling (Decision 2) bounds the *size* of one request but not how long or how often. Candidates
-  for the rest: (a) an operator-set ceiling on cumulative upgraded runtime or renewal count, like
-  #49 but in time (leaning); (b) confirm the first request only; (c) rely on ADR-0032's alert alone.
-  Decide before implementation. Also open: where the operator sets the CPU/RAM ceiling and its
-  default (a per-mission setting like #49's `maxCostCeilingUsd`, set only via the cockpit's
-  authenticated Limits route, never from an execution-plane path).
+- **Limiting duration and frequency.** The maximum machine size (Decision 2) bounds one request,
+  but nothing bounds how long a big machine stays up or how often it is renewed, and the
+  mission-copilot can request/renew without operator confirmation (the mediation is a judgment
+  layer, not a gate; no execution-plane agent has `ProposeAction` today — CR-07). Candidates:
+  (a) a cap on cumulative upgraded runtime or renewal count, like #49 but in time (leaning);
+  (b) confirm the first request only; (c) rely on ADR-0032's alert alone. Decide before
+  implementation.
+- **Making the maximum size operator-editable.** Deferred: start with the constant. If a mission
+  legitimately needs more, add a per-mission field on the cockpit Limits panel (like #49's
+  `maxCostCeilingUsd`), settable only through the Firebase-authenticated Limits route, never from an
+  execution-plane path.
 - **Default and maximum window length**, and whether total upgraded duration has a cap independent
   of renewals.
 - **Reminder buffer** — how long before expiry (10–15 min is illustrative).
@@ -234,7 +237,7 @@ tier, for ADR-0032 and for direct questions to the control-plane copilot.
 - One new execution-plane → control-plane route: add a `docs/security/threat-model.md` entry
   (same shape as the GitHub-proxy boundary, not a new one).
 - Touchpoints: new Tier B tool (`mission-copilot-tools.ts`); new control-plane route with a
-  shape-validity table and operator CPU/RAM ceiling, plus a tier-segment collection and cockpit
+  shape-validity table and maximum-size constant, plus a tier-segment collection and cockpit
   tab; `GetMissionStatus` extension; new `request-resources` skill (with the shape menu generated
   from the price table) plus a pointer in `run-background`. No change to Tier A tools, spend-cap
   accounting, or the scheduler.
