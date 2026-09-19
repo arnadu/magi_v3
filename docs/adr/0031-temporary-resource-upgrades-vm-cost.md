@@ -79,29 +79,32 @@ not introduce a new interruption risk, it reuses the existing one, and pushes th
 avoiding a bad-timing suspend onto whichever agent calls the tool (see Decision 3), not new
 platform orchestration.
 
-**This tool must be available to every mission agent, not just the mission-copilot** — the operator's
-own framing: it's the worker agents actually writing and running large jobs (a data-science
-transform, a big Python computation) who know when they're about to need more headroom, not the
-copilot on their behalf. This changes where it lives. Verified directly
-(`agent-runner.ts:577-618`): every agent's tool list is built from a **Tier A** baseline array
-(`Bash`, `WriteFile`, `PostMessage`, `Research`, etc. — assembled once per dispatch, filtered by
-that agent's own `disabledTools` YAML list) with **Tier B** tools appended afterward via
-`getAdditionalTools(agentId)`, gated `agentId === MISSION_COPILOT_AGENT_ID` (`daemon.ts:721-724`) —
-Tier B is copilot-exclusive by construction and, per `agent-runner.ts:610`'s own comment, "never
-filtered by `disabledTools`." `SetMissionSpendCap`, `CreateScheduledMessage`, and the GitHub-proxy
-tools are all Tier B — copilot-only was the right call for those (budget authority, GitHub write
-access). This tool is different: it needs to join the **Tier A** baseline in `agent-runner.ts`
-instead, so every agent gets it by default and an operator/template designer can still exclude it
-per-agent via the existing `disabledTools` mechanism if desired — registering it as Tier B would
-make it copilot-exclusive and un-disable-able, the opposite of what's needed here.
+**Revised again: any agent must be able to *ask* for an upgrade, but the mission-copilot is the one
+who decides and executes it — a two-step, mediated flow, not direct Tier A access.** An earlier
+revision of this ADR gave every agent a new Tier A tool calling straight through to the control
+plane. On reflection this put the disruptive decision (a hard suspend, per Decision 3, that
+interrupts every other agent's and job's current work) in the hands of whichever single agent
+happened to want more memory — with no visibility into what anyone *else* on the team was doing at
+that moment. The mission-copilot already has (or can gather) that cross-agent mission awareness;
+an individual worker agent generally doesn't. Routing the actual decision through the copilot also
+supplies, for free, the judgment/approval layer the earlier direct-access design lacked, without
+needing new `ProposeAction`-style confirmation infrastructure (see the Confirmation open question,
+now softened but not eliminated by this).
 
-**`SetMissionSpendCap`'s exact shape is still the concrete template for the tool's mechanics**
-(verified, `mission-copilot-tools.ts:745-761`) — a single-purpose `Type.Object` parameter schema,
-an `execute()` that calls a route and posts an audit message — just not for *where the tool lives*.
-Its `auditPost(subject, body)` helper (`:198-206`) hardcodes `from: MISSION_COPILOT_AGENT_ID` since
-only the copilot ever calls it; a Tier A tool instead needs `from: <the calling agent's own id>`,
-already available to any tool's `execute()` via its `AgentIdentity`/ACL context (see Decision 4).
-`SetMissionSpendCap` also calls its own mission's loopback monitor server
+**Mechanically, this needs no new capability for the requesting agent at all.** It asks via
+`PostMessage(to: ["mission-copilot"], ...)` — a tool every agent already has (Tier A,
+`mailbox.ts:183`). Only the mission-copilot needs a new tool, and it belongs exactly where every
+other mutating mission-copilot tool already lives: **Tier B**, in `mission-copilot-tools.ts`,
+appended via `getAdditionalTools(agentId)` gated on `agentId === MISSION_COPILOT_AGENT_ID`
+(`daemon.ts:721-724`), verified alongside `agent-runner.ts:577-618`'s Tier A/B split. This reverts
+the tool's location back to matching `SetMissionSpendCap`/`CreateScheduledMessage`'s own precedent
+exactly — the earlier Tier A revision is recorded under Alternatives rather than silently dropped.
+
+**`SetMissionSpendCap`'s exact shape is the concrete template for the tool's mechanics** (verified,
+`mission-copilot-tools.ts:745-761`): a single-purpose `Type.Object` parameter schema, an `execute()`
+that calls a route and posts an audit message via the shared `auditPost(subject, body)` helper
+(`:198-206`), which posts `{ from: MISSION_COPILOT_AGENT_ID, to: ["user"] }` — accurate again now
+that only the copilot calls it. `SetMissionSpendCap` calls its own mission's loopback monitor server
 (`monitorPost("/set-budget", ...)`) — that never leaves the execution plane. A machine resize can't:
 only the control plane holds `FLY_API_TOKEN_MACHINES`. The closest working precedent for an
 execution-plane call that *does* reach the control plane is the GitHub-proxy tools
@@ -109,11 +112,8 @@ execution-plane call that *does* reach the control plane is the GitHub-proxy too
 sends the same per-mission `MONITOR_TOKEN` (`x-monitor-token` header) already used for loopback
 calls to `${controlPlaneUrl}/api/mission-copilot/...`; the control-plane side
 (`mission-copilot-router.ts:31-55`, `verifyMissionToken`) re-derives the expected token from its own
-`MONITOR_SIGNING_KEY` + the claimed `missionId` and rejects (401) on any mismatch — it never trusts
-the `missionId` in the request body/query on its own, and doesn't care which agent within the
-mission is calling, only that the mission itself is who it claims to be. No new auth mechanism
-needed; just a new route under this same middleware, callable from a Tier A tool the same way a
-Tier B one would call it.
+`MONITOR_SIGNING_KEY` + the claimed `missionId` and rejects (401) on any mismatch. No new auth
+mechanism needed; just a new route under this same middleware.
 
 **Cost tracking today is LLM-only, and stays that way.** Verified directly: `computeCost()`
 (`agent-runtime-worker/src/llm-call-log.ts:160-183`) derives cost purely from token counts;
@@ -187,68 +187,76 @@ here (an optional "~$X estimated" annotation on the runtime tab), never somethin
 depends on being exactly correct. **This dataset is also ADR-0032's foundation** — its daily report
 and VM-tier alert both read it.
 
-**2. Concrete tool signature — a Tier A tool, available to every agent**, modeled on
-`SetMissionSpendCap`'s mechanics but registered in `agent-runner.ts`'s baseline list, not
-`mission-copilot-tools.ts`:
+**2. Two-step flow: a requesting agent asks via `PostMessage`; the mission-copilot decides and calls
+the actual tool.** Step 1 needs no new capability — any agent uses its existing `PostMessage` tool:
+
+```
+PostMessage(to: ["mission-copilot"], subject: "Resource upgrade request",
+  body: "Requesting performance-2x for ~3h to process a 10GB in-memory transform.")
+```
+
+Step 2 is the new Tier B tool, copilot-only, modeled on `SetMissionSpendCap`:
 
 ```ts
-// agent-runner.ts, added to the Tier A `tools` array — available to every agent,
-// individually excludable per-agent via the existing `disabledTools` mechanism.
+// mission-copilot-tools.ts, Tier B — copilot-exclusive, matching SetMissionSpendCap's own
+// registration. The copilot fills requestedByAgentId from whichever agent asked (if any);
+// omitted when the copilot is requesting for the mission's own general needs, not on
+// behalf of a specific teammate.
 const requestResourceUpgrade: MagiTool = {
   name: "RequestResourceUpgrade",
   description:
-    "Request a temporary upgrade to a bigger machine tier for a genuine compute burst " +
-    "(e.g. a large in-memory data transform) you are about to run yourself. Interrupts any " +
-    "currently-running agent turns and background jobs on this mission (same as a manual " +
-    "suspend) — do not call this while a job you or a teammate need to complete is running; " +
-    "wait for it, or accept it will be retried from scratch. Must be renewed before it " +
-    "expires or the mission reverts to its default tier.",
+    "Request a temporary upgrade to a bigger machine tier for a genuine compute burst. " +
+    "Interrupts every currently-running agent turn and background job on this mission " +
+    "(same as a manual suspend) — check whether anyone is mid-task before calling this. " +
+    "Must be renewed before it expires or the mission reverts to its default tier; both " +
+    "you and the requesting agent (if any) are reminded shortly before expiry.",
   parameters: Type.Object({
     tier: Type.Union([
       Type.Literal("performance-1x"), Type.Literal("performance-2x"), Type.Literal("performance-4x"),
     ]),
     durationHours: Type.Number({ description: "Hours to hold this tier before auto-revert unless renewed (max: TBD)" }),
     reason: Type.String({ description: "Why this is needed — shown to the operator" }),
+    requestedByAgentId: Type.Optional(Type.String({ description: "Agent id who asked for this, if any" })),
   }),
-  // agentId (the caller) is already in scope here, same as every other Tier A tool's
-  // execute() closure — needed for Decision 4's audit message and Decision 5's reminder target.
   async execute(_id, args) { /* controlPlaneFetch("/api/mission-copilot/resources/upgrade", ...) */ },
 };
 ```
 
 Orchestration is the new execution-plane → control-plane route this signature implies: authenticated
 exactly like the GitHub-proxy tools (see Context), performing the same stop →
-`provisionMission(existingVolumeId, ...)` sequence `resumeMission()` already established. The route
-itself doesn't need to know or care which agent called it — the mission-level `MONITOR_TOKEN` auth
-is the same regardless. (The `mission-copilot-router.ts`/`/api/mission-copilot/*` naming is now a
-minor misnomer for this route specifically — it's really "the generic execution-plane → control-
-plane proxy," historically named for its original sole use case. Not worth renaming the whole
-router over one new route; worth a one-line comment at the new route's definition so a future reader
-isn't confused about why a general-agent-callable endpoint lives under that path.)
+`provisionMission(existingVolumeId, ...)` sequence `resumeMission()` already established. Unchanged
+from before: this route doesn't need to know or care which agent originated the request, only that
+the mission itself is who it claims to be.
 
 **3. Suspend is hard and immediate — no idle-wait, no new safety orchestration.** Both the upgrade
 itself and the eventual revert use the plain existing stop/recreate mechanism, with the exact same
-interruption risk profile a manual operator suspend already has today (see Context). **Whichever
-agent calls this tool is responsible for judging its own timing** — when to request the upgrade,
-and when to let a renewal lapse — via prompt/skill guidance, not a platform-enforced idle-wait. This
-guidance can't live solely in ADR-0032's `resource-oversight` skill — that skill is provisioned only
-for the control-plane copilot (`provisionCopilotSkills`, a different skill-loading mechanism
-entirely from mission agents' `discoverSkills()` platform/team/mission/agent tiering) and wouldn't
-reach a regular worker agent at all. The tool's own `description` field (Decision 2) carries the
-core warning directly, since every agent sees that regardless of skill availability; whether a
-dedicated platform skill is also worth authoring for richer guidance is an open question. Building a
+interruption risk profile a manual operator suspend already has today (see Context). **The
+mission-copilot is responsible for judging timing** — whether to act on a request now, ask the
+requester to wait, or decline — via prompt/skill guidance, not a platform-enforced idle-wait. Unlike
+the earlier direct-access design, the copilot is well-placed for this: it has (or can gather via its
+own team-status awareness, `ReadMissionLog`, etc.) visibility across all of a mission's agents that
+a single requesting agent lacks. **This guidance still can't live in ADR-0032's `resource-oversight`
+skill** — that skill is provisioned only for the *control-plane* copilot (`provisionCopilotSkills`,
+`copilot-daemon.ts`), a completely different agent from the *mission*-copilot this ADR is about.
+The mission-copilot is an ordinary mission agent as far as skills go — `buildMissionCopilotAgentConfig`
+(`mission-copilot.ts:319-368`) gives it a normal `AgentConfig` with `disabledSkills`, discovered via
+the standard platform/team/mission/agent `discoverSkills()` tiering every other agent uses. The
+right home for this guidance is either its own new platform skill under `packages/skills/`
+(discoverable the normal way) or directly in `buildSystemPromptTemplate()`
+(`mission-copilot.ts:39`), the function that already synthesizes the mission-copilot's system prompt
+fresh each session — not a skill file shared with the unrelated control-plane copilot. Building a
 live idle-wait mechanism instead (exporting a queryable "is this mission idle" signal, polling for
 `runningJobs === 0`, bounding a wait with a timeout) was explored and rejected as unnecessary
-complexity once individual agents are expected to manage their own timing; see Alternatives.
+complexity once the copilot itself is expected to manage timing (see Alternatives) — this was true
+under both the direct-access and mediated designs, for slightly different reasons each time.
 
 **4. Notifications, three distinct things, not two:**
 - **Mission-cockpit visibility** — the request/renewal posts a mission-scoped audit message,
-  mirroring `SetMissionSpendCap`'s `auditPost` mechanic but stamped with the *calling* agent's own
-  id (`from: <callingAgentId>`, not a hardcoded copilot constant), `to: ["user"]` — visible in that
-  mission's own Conversations panel. When the caller isn't the mission-copilot itself, `to` also
-  includes `"mission-copilot"`, so the mission's own copilot — which has oversight responsibility
-  within its mission — learns a teammate changed the machine tier, the same way it's already
-  informed of other operator-driven config changes today (`postLimitsAudit`'s existing pattern).
+  mirroring `SetMissionSpendCap`'s `auditPost` mechanic, stamped `from: MISSION_COPILOT_AGENT_ID`
+  (matching `SetMissionSpendCap`'s own pattern exactly, since only the copilot ever calls this tool
+  now), `to: ["user"]` — visible in that mission's own Conversations panel. When `requestedByAgentId`
+  is set, the audit body names that agent and its stated reason, so the operator sees who actually
+  needed the upgrade, not just that the copilot acted.
 - **Control-plane copilot informed, silently** — every request/renewal is recorded in Decision 1's
   own runtime dataset (or `missionAnomalies`) — no mailbox message, no wake, nothing displayed
   anywhere. This is the "control copilot should also be informed" requirement, satisfied as data the
@@ -257,19 +265,24 @@ complexity once individual agents are expected to manage their own timing; see A
   reserved for a genuinely exceptional pattern (excessive renewals, prolonged upgraded-tier runtime),
   which is ADR-0032's concern, not this ADR's. See ADR-0032's Decision 4.
 
-**5. The upgrade request automatically schedules its own renewal reminder, addressed to the
-*calling* agent** — not left to that agent to remember, and not hardcoded to the mission-copilot.
+**5. The upgrade request automatically schedules its own renewal reminder, addressed to *both* the
+mission-copilot and the requesting agent (if any)** — not left to either to remember unprompted.
 `CreateScheduledMessage`'s underlying mechanism already supports exactly this: a one-off `deliverAt`
 timestamp (not just recurring `cron`), delivered by the control plane's existing `scheduler.ts`
-tick, addressed to `to: [callingAgentId]` — which requires zero new plumbing regardless of which
-agent that is (every agent, copilot included, is a normal entry in the runtime `teamConfig.agents`
-array and picked up by the same unread-mail dispatch loop). `RequestResourceUpgrade`'s own
-`execute()` inserts one `scheduled_messages` document at `expiry − bufferMinutes` (default TBD, e.g.
-10–15 min) reminding the requesting agent its upgrade is about to lapse — that agent is the one who
-actually knows whether its job is done, which the mission-copilot generally would not. A renewal
-call cancels that reminder (same mechanic as `CancelScheduledMessage` — `deleteOne({_id,
-missionId})`) and schedules a fresh one against the new expiry. This means Decision 1's tracking
-record needs two more fields: which agent requested the upgrade, and the reminder's own
+tick, addressed to `to: requestedByAgentId ? ["mission-copilot", requestedByAgentId] : ["mission-copilot"]`
+— zero new plumbing (every agent, copilot included, is a normal entry in the runtime
+`teamConfig.agents` array and picked up by the same unread-mail dispatch loop; `to` already accepts
+multiple recipients). `RequestResourceUpgrade`'s own `execute()` inserts one `scheduled_messages`
+document at `expiry − bufferMinutes` (default TBD, e.g. 10–15 min). On waking to that reminder,
+**the mission-copilot decides whether to renew** — the same judgment-layer role it plays for the
+original request (Decision 3) — but when `requestedByAgentId` is set, it first consults that agent
+via ordinary `PostMessage` ("still need performance-2x? expiring in 10 min") rather than deciding
+unilaterally, since the requesting agent is the one who actually knows whether its job is done. The
+requesting agent gets the same reminder directly (not routed only through the copilot) so it isn't
+silently blocked waiting on a copilot that's busy elsewhere — either can prompt the renewal
+conversation. A renewal call cancels the pending reminder (same mechanic as `CancelScheduledMessage`
+— `deleteOne({_id, missionId})`) and schedules a fresh one against the new expiry. This means
+Decision 1's tracking record needs two more fields: `requestedByAgentId`, and the reminder's own
 `scheduled_messages` `_id` so a renewal can find and replace it. The reminder is a courtesy nudge
 only — if ignored, expiry still proceeds exactly as Decision 3 describes (hard, immediate revert);
 this doesn't reopen the "wait for something before reverting" question already settled there.
@@ -289,8 +302,20 @@ from.
   upgrade *because* a computation is already running and straining memory, waiting for idle either
   waits for the very computation causing the problem (defeating the purpose) or the mission OOMs and
   crashes first, at which point the plain stop/recreate path was going to run anyway. Rejected in
-  favor of Decision 3 — the calling agent manages timing itself, and the tool is documented as
+  favor of Decision 3 — the mission-copilot manages timing itself, and the tool is documented as
   something to call *before* starting known-heavy work, not as a mid-crisis rescue.
+- **Tier A direct access — any agent calls `RequestResourceUpgrade` itself, no mediation** (this
+  ADR's immediately-preceding revision, shipped in `860401b` then reverted). Motivated by the real
+  concern that agents themselves, not the mission-copilot, are the ones writing the large jobs that
+  need more headroom — so requiring a round-trip through the copilot seemed like unneeded latency.
+  Reverted after further consideration: a single requesting agent can't see what *other* agents on
+  the mission are mid-task, so it has no way to judge whether an immediate hard-suspend is actually
+  safe to trigger right now — only the mission-copilot has (or can gather) that cross-agent
+  visibility. Direct access also meant every agent independently reasoning about renewal, expiry, and
+  cost exposure with no single point of coordination, and no natural place to consult the
+  mission-copilot before an extension the way the mediated flow's Decision 5 now does. The two-step
+  flow costs one extra `PostMessage` round-trip (bounded by the requesting agent's next dispatch, not
+  a synchronous wait) in exchange for a real judgment layer — accepted as the better trade.
 - **Fully open-ended upgrade, no expiry at all.** Rejected: unbounded runtime-at-expensive-tier
   risk with no natural check-in point, and no mechanism to notice a forgotten upgrade. The renewal
   mechanic (Decision 3) is kept even though hard-suspend is now accepted as the interruption model,
@@ -318,32 +343,37 @@ from.
 - **Renewal-reminder buffer** (Decision 5) — how far before expiry the automatic reminder fires
   (10–15 min was illustrative, not decided); too short risks the requesting agent not getting a turn
   dispatched in time to act on it, too long makes it fire well before it would naturally reconsider.
-- **Does regular mission-agent guidance need a dedicated platform skill, or is the tool description
-  alone (Decision 2/3) enough?** ADR-0032's `resource-oversight` skill doesn't reach mission agents
-  at all (different skill-loading mechanism, copilot-only). If the tool description proves
-  insufficient in practice (agents calling it at genuinely bad times despite the warning), a new
-  mission-agent-facing platform skill — discovered the normal way, via `discoverSkills()` — would be
-  the fix; not designed here, deliberately deferred until there's evidence the description alone
-  isn't enough.
+- **Does the mission-copilot's timing-judgment guidance (Decision 3) need a dedicated platform
+  skill, or is `buildSystemPromptTemplate()` enough?** Regular mission agents no longer need this
+  guidance at all under the mediated design — they only ever call `PostMessage`, never the upgrade
+  tool directly. The open question is narrower now: whether the mission-copilot's own guidance for
+  judging request timing and renewal consultation belongs in a new platform skill (discoverable via
+  the standard `discoverSkills()` tiering every mission agent uses, including the copilot) or is
+  simple enough to embed directly in `buildSystemPromptTemplate()` (`mission-copilot.ts:39`). Either
+  way, ADR-0032's `resource-oversight` skill is not the answer — it's provisioned only for the
+  *control-plane* copilot via a separate mechanism (`provisionCopilotSkills`) and never reaches the
+  mission-copilot. Not designed here, deliberately deferred until there's a first working version to
+  observe.
 - **Which tiers are selectable** — the full Fly catalog, or a curated subset (e.g. just
   performance-1x/2x/4x) to bound complexity and cost exposure per request.
-- **Confirmation requirement — now more open than before, not less, and wider still now that any
-  agent can call it.** Because machine runtime is deliberately *not* folded into the $ spend cap
-  (Decision 1), an unconfirmed upgrade request has **no dollar ceiling bounding it at all** — a
-  materially different risk profile than `SetMissionSpendCap`, which at least answers to the #49
-  ceiling. This is sharper on two counts now: Decision 4 makes the routine case silent (mission-
-  cockpit audit message + data logging only, no live relay to the control-plane copilot) — nothing
-  short of ADR-0032's own exceptional-pattern alert would ever flag a mission stuck renewing an
-  expensive tier indefinitely — and the set of callers is now every agent in the mission, not just
-  the one (the mission-copilot) this whole design's trust assumptions were originally built around.
-  Candidates: (a) a dedicated, operator-settable ceiling on cumulative upgraded-tier runtime or
-  renewal count, mirroring the #49 ceiling pattern but denominated in time, not dollars — smaller
-  lift than full `ProposeAction` infra (which no execution-plane agent has today, mission-copilot
-  included — same gap CR-07/Sprint 28f tracks); (b) require confirmation on the *first* request
-  only, not each renewal; (c) rely entirely on ADR-0032's exceptional-pattern alert as the only
-  backstop, with no dedicated ceiling. Leaning toward (a) as the pragmatic default, more so now than
-  before given the wider caller set, but this needs a decision before implementation, not
-  an assumption.
+- **Confirmation requirement — improved by the mediated design, not eliminated.** Because machine
+  runtime is deliberately *not* folded into the $ spend cap (Decision 1), an unconfirmed upgrade
+  request has **no dollar ceiling bounding it at all** — a materially different risk profile than
+  `SetMissionSpendCap`, which at least answers to the #49 ceiling. Reverting to a Tier B,
+  copilot-mediated tool narrows the exposure back down to a single trusted caller per mission (same
+  trust assumption `SetMissionSpendCap` itself already carries, and #49's own incident was about that
+  same copilot acting unilaterally) — but doesn't remove the underlying gap: the mission-copilot can
+  still request/renew indefinitely with no operator confirmation and no dollar ceiling watching it.
+  Decision 4 also keeps the routine case silent (mission-cockpit audit message + data logging only,
+  no live relay to the control-plane copilot) — nothing short of ADR-0032's own exceptional-pattern
+  alert would ever flag a mission stuck renewing an expensive tier indefinitely. Candidates: (a) a
+  dedicated, operator-settable ceiling on cumulative upgraded-tier runtime or renewal count,
+  mirroring the #49 ceiling pattern but denominated in time, not dollars — smaller lift than full
+  `ProposeAction` infra (which no execution-plane agent has today, mission-copilot included — same
+  gap CR-07/Sprint 28f tracks); (b) require confirmation on the *first* request only, not each
+  renewal; (c) rely entirely on ADR-0032's exceptional-pattern alert as the only backstop, with no
+  dedicated ceiling. Leaning toward (a) as the pragmatic default, but this needs a decision before
+  implementation, not an assumption.
 - **Rate-table maintenance process** — how staleness gets noticed (no automated signal exists);
   likely a periodic manual check against Fly's pricing docs. Lower stakes now that the table is
   display-only, not enforcement-critical.
@@ -356,38 +386,50 @@ from.
 - New execution-plane → control-plane authenticated route — `docs/security/threat-model.md` gets a
   new entry when this is actually implemented (matches the existing GitHub-proxy TB-16 pattern, not
   a new trust-boundary shape).
-- A new **Tier A** tool (`agent-runner.ts`), not Tier B — available to every mission agent by
-  default, individually excludable per-agent via the existing `disabledTools` mechanism. This is a
-  different registration point than every other tool this ADR models itself on (`SetMissionSpendCap`,
-  `CreateScheduledMessage`, the GitHub-proxy tools are all Tier B, copilot-only).
+- A new **Tier B** tool (`mission-copilot-tools.ts`), copilot-exclusive — same registration point as
+  `SetMissionSpendCap`, `CreateScheduledMessage`/`CancelScheduledMessage`, and the GitHub-proxy
+  tools. Regular mission agents get no new tool at all; they request an upgrade via their existing
+  `PostMessage` capability, so this feature adds zero new surface to the Tier A array every agent
+  already carries.
 - No new orchestration for "safe" suspend timing — deliberately simpler than an earlier draft
-  considered (see Alternatives); the calling agent's own judgment carries this responsibility
-  instead. The tool's own description (Decision 2) carries the core guidance directly, since it
-  needs to reach any agent, not just the control-plane copilot (ADR-0032's `resource-oversight`
-  skill is provisioned only for that copilot and wouldn't reach a regular mission agent at all) —
-  whether a dedicated mission-agent-facing platform skill is also worth authoring is open.
+  considered (see Alternatives); the mission-copilot's own judgment carries this responsibility
+  instead, informed by whatever cross-agent visibility it can gather (team-status awareness,
+  `ReadMissionLog`, etc.), which a single requesting agent lacks. Whether this guidance needs a
+  dedicated new platform skill or belongs directly in `buildSystemPromptTemplate()` is still open
+  (see Open Questions) — either way it's mission-copilot-only guidance now, not something that needs
+  to reach every agent in the mission.
 - A new data model for machine-tier-change segments (`{missionId, guestConfig, startedAt,
   endedAt}`) and a new cockpit tab to display it — genuinely new surface, not an extension of
   existing cost tracking. **Existing mission spend caps keep their current meaning unchanged** —
   this was a real risk in an earlier draft of this ADR and is now avoided by design.
 - `GetMissionStatus`'s tool output grows by one field group (tier + duration-at-tier).
 - No new scheduling infrastructure for the renewal reminder — reuses `CreateScheduledMessage`'s
-  existing one-off `deliverAt` mechanism and `scheduler.ts`'s existing delivery path unchanged; the
-  only new code is `RequestResourceUpgrade` calling that same underlying write itself instead of
-  leaving it to the calling agent to remember.
+  existing one-off `deliverAt` mechanism, multi-recipient `to`, and `scheduler.ts`'s existing
+  delivery path unchanged; the only new code is `RequestResourceUpgrade` calling that same underlying
+  write itself, addressed to both the mission-copilot and the requesting agent, instead of leaving
+  either to remember unprompted.
+- Any agent can still trigger a hard suspend indirectly, via a `PostMessage` the mission-copilot
+  acts on — the mediation adds a judgment layer, not a hard gate; a copilot that acts on every
+  request without pushback offers little more protection than direct access would have. This is the
+  same trust assumption `SetMissionSpendCap` already carries, and is why the Confirmation-requirement
+  open question above isn't closed by this design alone.
 
 ## Related
 
 - `packages/control-plane/src/fly-machines.ts` — `provisionMission`/`resumeMission`, the
   stop-and-recreate-against-existing-volume pattern this feature reuses
-- `packages/agent-runtime-worker/src/agent-runner.ts` (Tier A tool list, `disabledTools` filter,
-  `getAdditionalTools`/Tier B split) — where `RequestResourceUpgrade` actually gets registered;
-  confirms it must join the Tier A array, not `mission-copilot-tools.ts`'s Tier B one, for every
-  agent to get it by default and remain individually excludable
+- `packages/agent-runtime-worker/src/agent-runner.ts` (Tier A tool assembly, `disabledTools` filter,
+  `getAdditionalTools`/Tier B split, `daemon.ts:721-724`'s `agentId === MISSION_COPILOT_AGENT_ID`
+  wiring) — confirms `RequestResourceUpgrade` joins `mission-copilot-tools.ts`'s Tier B set exactly
+  like every tool it's modeled on, not the Tier A array every agent gets by default
 - `packages/agent-runtime-worker/src/monitor-routes/budget.ts`,
   `packages/agent-runtime-worker/src/mission-copilot-tools.ts` (`SetMissionSpendCap`,
-  `CreateScheduledMessage`/`CancelScheduledMessage`) — Tier B, copilot-only tools whose *mechanics*
-  (not registration point) this feature's renewal step and auto-reminder mirror
+  `CreateScheduledMessage`/`CancelScheduledMessage`) — Tier B, copilot-only tools whose registration
+  point *and* mechanics this feature's tool, renewal step, and auto-reminder all mirror directly
+- `packages/agent-runtime-worker/src/mission-copilot.ts` (`buildMissionCopilotAgentConfig`,
+  `buildSystemPromptTemplate`, `injectMissionCopilot`) — confirms the mission-copilot is an ordinary
+  runtime `teamConfig.agents[]` entry using the standard `discoverSkills()` tiering, and is the
+  natural home for Decision 3's timing-judgment guidance (see Open Questions)
 - `packages/control-plane/src/scheduler.ts` (`ScheduledMessageDoc`, `deliver()`) — the exact
   mechanism Decision 5's automatic renewal reminder reuses unchanged; confirmed a one-off
   `deliverAt` timestamp (not just `cron`) and a recipient other than `"mission-copilot"` both

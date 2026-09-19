@@ -85,9 +85,9 @@ for that half.** Verified directly, not assumed:
   existing `PostMessage`/issue-tracking tools); if the design ever wants the control-plane copilot
   to *act* on a mission's resources directly (not just flag it), that already routes through
   `ProposeAction` today, with **no new confirmation infrastructure needed for this ADR at all** —
-  a real contrast with ADR-0031's upgrade tool — callable by *any* mission agent, not just the
-  mission-copilot — which has no such mechanism to lean on (see ADR-0031's Confirmation open
-  question).
+  a real contrast with ADR-0031's upgrade tool, which is mediated through the *mission*-copilot (any
+  agent can ask via `PostMessage`, but only the mission-copilot decides and calls it) with no
+  equivalent `ProposeAction`-style gate of its own (see ADR-0031's Confirmation open question).
 
 ## Decision
 
