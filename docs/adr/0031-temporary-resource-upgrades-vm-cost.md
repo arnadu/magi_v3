@@ -108,10 +108,11 @@ const requestResourceUpgrade: MagiTool = {
 The control-plane route (authenticated like the GitHub-proxy routes) **first validates the requested
 shape** — against the Fly validity rules in Context and a **maximum machine size** (initially a
 control-plane constant, default 4 CPUs / 16 GB; no agent tool can change it), rejecting (never
-silently clamping) with the list of valid options — then performs stop →
+silently clamping) with the list of valid options — and against the **cumulative upgraded-runtime
+cap** (Decision 7) — then performs stop →
 `provisionMission(existingVolumeId, ...)` as `resumeMission()` does, and writes the Decision-1
 segment. The ceiling applies no matter how the agent phrased the request, so it bounds cost
-exposure per request (see the Confirmation open question). Renewal is the same tool called again against the current window (cancels and replaces the
+exposure per request; Decision 7 bounds it cumulatively. Renewal is the same tool called again against the current window (cancels and replaces the
 reminder, Decision 5); reverting to the default tier is the same stop/recreate path.
 
 **3. Suspend is hard and immediate; the mission-copilot judges timing; the guidance lives in a new
@@ -192,6 +193,32 @@ proceeds as Decision 3 (hard revert).
 **6. Extend `GetMissionStatus`** with current tier (`memoryMb`/`cpus`/`cpu_kind`) and time at that
 tier, for ADR-0032 and for direct questions to the control-plane copilot.
 
+**7. Cumulative upgraded-runtime cap (default 24 h), operator-resettable from a new section of the
+cockpit Limits panel.** Time on any machine config other than the mission's default (Decision 1's
+segments) counts toward a per-mission cap of **24 hours** (control-plane constant). Mechanics:
+- **Derived, not counted.** Used time = sum of non-default-config segments with `startedAt` at or
+  after the mission's `upgradedRuntimeResetAt` (a segment straddling the reset is clipped to it).
+  There is no separate counter to keep in sync with the dataset. An in-progress segment counts to
+  the end of its planned window, so an early revert gives the unused time back.
+- **Enforced in the route, at request and renewal:** reject (never clamp) when `used + requested
+  duration > cap`, with a message saying the cap is reached and that the operator can reset it in
+  the cockpit. Because the whole window is checked up front, an upgrade can never run past the cap
+  and nothing needs to force a revert mid-window. The mission-copilot relays the rejection to the
+  user in the mission chat.
+- **Reset is operator-only and structurally separate from every agent path**, following #49's
+  ceiling: a new authenticated route `PATCH /:id/limits/upgrade-reset` on the Firebase-authed
+  missions router sets `upgradedRuntimeResetAt = now` on the mission document (own writer function
+  like `writeMissionCostCeiling`, never the shared config writer any tool uses) and posts a
+  `postLimitsAudit` message to the mission ("Upgraded-runtime counter reset by the operator").
+- **New "Upgraded compute time" section in the Limits panel** (`LimitsPanel.tsx`, alongside the
+  spend cap and its ceiling): used / cap with a bar (same `pctColor`/`Minibar` styling as the spend
+  cap), the last reset time, the currently active upgrade if any (shape and expiry), and a **Reset**
+  button. `GET` limits (`missions.ts`, `LimitsData`) gains an `upgrades: {usedHours, capHours,
+  resetAt, active}` block. The cap value itself stays a constant for now; editing it (and the
+  maximum machine size) from this section is a later addition.
+- ADR-0032's `prolonged-VM-upgrade` alert should fire at a fraction of this cap (e.g. 80%), so the
+  operator hears about it before the mission-copilot's next request is rejected.
+
 ## Alternatives considered
 
 - **Wait for the mission to be idle before resizing.** Needs new plumbing (`runningJobs` is
@@ -212,19 +239,12 @@ tier, for ADR-0032 and for direct questions to the control-plane copilot.
 
 ## Open questions
 
-- **Limiting duration and frequency.** The maximum machine size (Decision 2) bounds one request,
-  but nothing bounds how long a big machine stays up or how often it is renewed, and the
-  mission-copilot can request/renew without operator confirmation (the mediation is a judgment
-  layer, not a gate; no execution-plane agent has `ProposeAction` today — CR-07). Candidates:
-  (a) a cap on cumulative upgraded runtime or renewal count, like #49 but in time (leaning);
-  (b) confirm the first request only; (c) rely on ADR-0032's alert alone. Decide before
-  implementation.
-- **Making the maximum size operator-editable.** Deferred: start with the constant. If a mission
-  legitimately needs more, add a per-mission field on the cockpit Limits panel (like #49's
-  `maxCostCeilingUsd`), settable only through the Firebase-authenticated Limits route, never from an
-  execution-plane path.
-- **Default and maximum window length**, and whether total upgraded duration has a cap independent
-  of renewals.
+- **Making the maximum size and the 24 h cap operator-editable.** Deferred: start with constants (only
+  the used-time reset ships, Decision 7). If a mission legitimately needs more, add editable
+  per-mission values to the same Limits section (like #49's `maxCostCeilingUsd`), settable only
+  through the Firebase-authenticated route, never from an execution-plane path.
+- **Default and maximum length of a single window** (2 h was an illustrative placeholder); the
+  cumulative 24 h cap is settled (Decision 7).
 - **Reminder buffer** — how long before expiry (10–15 min is illustrative).
 - **Price/validity-table maintenance** — no staleness signal exists for either the price table
   (display-only, low stakes) or the shape-validity rules (a stale rule means Fly rejects a shape our
@@ -237,10 +257,13 @@ tier, for ADR-0032 and for direct questions to the control-plane copilot.
 - One new execution-plane → control-plane route: add a `docs/security/threat-model.md` entry
   (same shape as the GitHub-proxy boundary, not a new one).
 - Touchpoints: new Tier B tool (`mission-copilot-tools.ts`); new control-plane route with a
-  shape-validity table and maximum-size constant, plus a tier-segment collection and cockpit
-  tab; `GetMissionStatus` extension; new `request-resources` skill (with the shape menu generated
+  shape-validity table, maximum-size constant and cumulative-cap check, plus a tier-segment
+  collection and cockpit tab; new `PATCH /:id/limits/upgrade-reset` route,
+  `upgradedRuntimeResetAt` mission field and "Upgraded compute time" Limits-panel section
+  (Decision 7); `GetMissionStatus` extension; new `request-resources` skill (with the shape menu generated
   from the price table) plus a pointer in `run-background`. No change to Tier A tools, spend-cap
   accounting, or the scheduler.
-- Any agent can still cause a hard suspend indirectly by asking; safety rests on the
-  mission-copilot's judgment, the same trust `SetMissionSpendCap` already carries.
+- Any agent can still cause a hard suspend indirectly by asking; the mission-copilot's judgment is
+  the first line of defense, and the hard bounds behind it (maximum size, 24 h cumulative cap,
+  operator-only reset) hold even if that judgment fails.
 - Issue #31 (suspected OOM crash-loop) is likely closed or reframed once on-demand sizing exists.

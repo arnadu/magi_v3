@@ -87,7 +87,8 @@ for that half.** Verified directly, not assumed:
   `ProposeAction` today, with **no new confirmation infrastructure needed for this ADR at all** —
   a real contrast with ADR-0031's upgrade tool, which is mediated through the *mission*-copilot (any
   agent can ask via `PostMessage`, but only the mission-copilot decides and calls it) with no
-  equivalent `ProposeAction`-style gate of its own (see ADR-0031's Confirmation open question).
+  equivalent `ProposeAction`-style gate of its own (bounded instead by ADR-0031's maximum machine size
+  and 24 h cumulative cap, its Decisions 2 and 7).
 
 ## Decision
 
@@ -119,10 +120,9 @@ default TBD (see Open Questions). **This ADR is the only user of this relay for 
 ADR-0031 deliberately does *not* relay every routine request/renewal (see its Decision 4); this
 ADR's `prolonged-VM-upgrade` category is a periodic *pattern* check against ADR-0031's Decision-1
 dataset (e.g. "renewed more than N times" or "cumulative upgraded-tier runtime exceeds X hours" for
-one mission), not a live trigger fired on each request. It's the only thing standing in for a
-dedicated cost/runtime ceiling on the upgrade mechanism itself — see ADR-0031's Confirmation open
-question, which currently leans toward *also* wanting a hard ceiling rather than relying on this
-alone.
+one mission), not a live trigger fired on each request. ADR-0031 already enforces a hard 24 h
+cumulative cap (its Decision 7, operator-resettable in the Limits panel), so this alert is the
+early warning — fire it at a fraction of that cap (e.g. 80%) — not the backstop.
 
 **5. Drive the copilot's response through its existing conventions, not new ones**: extend
 `config/teams/copilot.yaml`'s system prompt with a "Resource Oversight" responsibility section
