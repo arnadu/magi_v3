@@ -227,6 +227,26 @@ segments) counts toward a per-mission cap of **24 hours** (control-plane constan
 - ADR-0032's `upgrade-cap-near` alert fires at 80% of this cap, and `upgrade-cap-reached` (hard)
   fires when a request is rejected, so the operator hears about it before or as it happens.
 
+**8. Lifecycle and safety of the resize itself** (gaps found while planning the implementation):
+- **State** lives on the `missions` document as `upgrade: {cpuKind, cpus, memoryMb, expiresAt,
+  segmentId, requestedByAgentId?, reminderId?, resizingSince?}`; absent means the mission is on its
+  default machine (`mission.memoryMb`/`cpus`, shared CPU). `ProvisionOptions` gains `cpuKind`.
+- **One resize at a time:** the route claims the mission with an atomic `findOneAndUpdate` that sets
+  `resizingSince`; a concurrent request gets 409. A claim older than 5 min is treated as a failed
+  resize (below). A resize to a *different shape*, or a revert, is rejected within 5 min of the
+  previous one (cooldown), so a misbehaving copilot cannot repeatedly hard-suspend the mission;
+  same-shape renewals are exempt.
+- **Who executes the expiry revert:** a `revertExpiredUpgrades(db)` sweeper in the control plane's
+  existing 1-min scheduler tick (`scheduler.ts`), also run once at startup, so a control-plane outage
+  at expiry reverts late rather than never.
+- **Manual or scheduled suspend, and destroy, end the upgrade:** the open segment is closed at the stop
+  time and `upgrade` is cleared, so any resume (operator, or the scheduler waking a suspended mission)
+  provisions the default machine.
+- **A failed resize** (machine stopped or deleted but the re-create failed, or a stale claim): the
+  mission is set to status `error` with an `errorMessage`, exactly like a failed resume; the segment is
+  closed, `resize-failure` (ADR-0032) is raised, and the operator's Resume provisions the default
+  machine. There is no attempt to restore the upgraded shape.
+
 ## Alternatives considered
 
 - **Wait for the mission to be idle before resizing.** Needs new plumbing (`runningJobs` is
