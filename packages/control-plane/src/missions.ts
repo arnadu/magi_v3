@@ -41,12 +41,9 @@ import {
 	isLocalExecution,
 	provisionLocal,
 } from "./fly-machines.js";
-import {
-	destroyTracked,
-	provisionTracked,
-	suspendTracked,
-} from "./machine-lifecycle.js";
+import { destroyTracked, provisionTracked } from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
+import { suspendMissionMachine } from "./resource-upgrade.js";
 import { getTemplate } from "./templates.js";
 import {
 	queryLlmCall,
@@ -88,6 +85,8 @@ interface MissionDoc {
 		| "error";
 	/** Set when status === "error"; cleared on successful resume. */
 	errorMessage?: string;
+	/** Set while a machine resize (ADR-0031) is in flight; see resource-upgrade.ts. */
+	resize?: { claimedAt?: Date; lastAt?: Date };
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -688,10 +687,13 @@ export function createMissionsRouter(db: Db): Router {
 		// resume as the irreversible DELETE /:id action, which never ran. The
 		// mission stays in "error" until an operator explicitly resumes
 		// (success clears it) or destroys it.
+		// Also skipped while a resize has the machine stopped on purpose: the live
+		// state would otherwise flip the mission to "suspended" mid-resize.
 		if (
 			mission.machineId &&
 			mission.status !== "destroyed" &&
-			mission.status !== "error"
+			mission.status !== "error" &&
+			!mission.resize?.claimedAt
 		) {
 			try {
 				const liveState = await getMachineState(mission.machineId);
@@ -1516,7 +1518,10 @@ export function createMissionsRouter(db: Db): Router {
 		}
 		try {
 			if (!mission.machineId.startsWith("local-")) {
-				await suspendTracked(db, req.params.id, mission.machineId);
+				await suspendMissionMachine(db, {
+					missionId: req.params.id,
+					machineId: mission.machineId,
+				});
 			}
 			await col.updateOne(
 				{ missionId: req.params.id },

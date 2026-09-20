@@ -60,6 +60,8 @@ interface MissionDoc {
 	userId?: string;
 	agents?: AgentConfig[];
 	mission?: { memoryMb?: number; cpus?: number };
+	/** Set while a machine resize (ADR-0031) is in flight. */
+	resize?: { claimedAt?: Date };
 }
 
 /**
@@ -125,7 +127,9 @@ export async function deliver(db: Db): Promise<void> {
 		try {
 			// Wake the execution plane machine if it is stopped.
 			const mission = await missionsCol.findOne({ missionId: doc.missionId });
-			if (mission?.machineId) {
+			// A resize in flight has the machine stopped on purpose; the message still
+			// lands in the mailbox and the re-created machine reads it on boot.
+			if (mission?.machineId && !mission.resize?.claimedAt) {
 				const state = await getMachineState(mission.machineId).catch(
 					() => "unknown",
 				);

@@ -12,6 +12,7 @@
 
 import type { Db } from "mongodb";
 import {
+	deleteMachine,
 	destroyMission,
 	type MachineHandle,
 	type ProvisionOptions,
@@ -119,4 +120,73 @@ export async function destroyTracked(
 	await bestEffort("destroy", missionId, () =>
 		closeOpenSegments(db, missionId),
 	);
+}
+
+export type ResizeStage = "stop" | "delete" | "provision";
+
+/**
+ * A resize failed at `stage`. At "stop" nothing changed (the old machine is
+ * still running); at "delete" or "provision" the old machine is gone, only
+ * the volume remains, and the mission needs an operator Resume.
+ */
+export class ResizeError extends Error {
+	constructor(
+		readonly stage: ResizeStage,
+		message: string,
+	) {
+		super(message);
+		this.name = "ResizeError";
+	}
+}
+
+/**
+ * Replace a running mission's machine with one of a different shape on the
+ * same volume: stop, delete, provision (the pattern the operator's resume
+ * route already uses, since Fly cannot reliably resize in place), closing the
+ * old runtime segment and opening one for the new machine. A hard stop, the
+ * same as a manual suspend.
+ */
+export async function resizeTracked(
+	db: Db,
+	mission: { missionId: string; machineId: string; volumeId: string },
+	shape: MachineShape,
+	tracking: ProvisionTracking,
+): Promise<MachineHandle> {
+	const { missionId } = mission;
+	const stage = async <T>(
+		name: ResizeStage,
+		op: () => Promise<T>,
+	): Promise<T> => {
+		try {
+			return await op();
+		} catch (e) {
+			throw new ResizeError(name, (e as Error).message);
+		}
+	};
+
+	await stage("stop", () => suspendMission(mission.machineId));
+	await bestEffort("resize stop", missionId, () =>
+		closeOpenSegments(db, missionId),
+	);
+	await stage("delete", () => deleteMachine(mission.machineId));
+	const handle = await stage("provision", () =>
+		provisionMission(missionId, {
+			existingVolumeId: mission.volumeId,
+			cpuKind: shape.cpuKind,
+			cpus: shape.cpus,
+			memoryMb: shape.memoryMb,
+		}),
+	);
+	await bestEffort("resize provision", missionId, () =>
+		openSegment(db, {
+			missionId,
+			machineId: handle.machineId,
+			shape,
+			upgraded: tracking.upgraded ?? false,
+			startedAt: new Date(),
+			plannedEndAt: tracking.plannedEndAt,
+			requestedByAgentId: tracking.requestedByAgentId,
+		}),
+	);
+	return handle;
 }

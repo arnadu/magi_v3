@@ -184,15 +184,19 @@ request-message contract between them:
 heavy work.
 
 **4. Notifications — three separate things.**
-- **Mission cockpit:** `auditPost` as in `SetMissionSpendCap` (`from: MISSION_COPILOT_AGENT_ID`,
-  `to: ["user"]`); when `requestedByAgentId` is set the body names that agent and its reason.
+- **Mission cockpit and the agents involved:** posted by the control plane, not by the tool, because
+  the requesting daemon is stopped by the resize itself before it could post anything. One mailbox
+  message from `system` to `["user", "mission-copilot", requestedByAgentId?]`: the operator sees it in
+  the mission's Conversations panel, and the mission-copilot and the requester learn, on restart, what
+  happened, until when, and that their interrupted turns and jobs restart. When `requestedByAgentId`
+  is set the body names that agent and its (sanitised, capped) reason.
 - **Control-plane copilot:** informed silently via the Decision-1 dataset — no mailbox message, no
   wake, nothing shown in the control chat. ADR-0032's daily report reads it.
 - **`copilot-{userId}` mailbox relay:** not used for routine requests/renewals; reserved for
   ADR-0032's alerts (`upgrade-cap-near`, `upgrade-cap-reached`, `upgrade-idle`, `resize-failure`).
 
 **5. The request automatically schedules its own renewal reminder** — one `scheduled_messages`
-document (`deliverAt = expiry − buffer`) with `to: ["mission-copilot", requestedByAgentId]` (just
+document (`deliverAt = expiry − 10 min`, or halfway through a window shorter than that) with `to: ["mission-copilot", requestedByAgentId]` (just
 the copilot if no requester). The mission-copilot decides whether to renew, but when there is a
 requester it first consults that agent via `PostMessage` ("still need performance-2x? expiring in
 10 min") since that agent knows whether its job is done. The requester also gets the reminder
@@ -232,6 +236,10 @@ segments) counts toward a per-mission cap of **24 hours** (control-plane constan
 - **State** lives on the `missions` document as `upgrade: {cpuKind, cpus, memoryMb, expiresAt,
   segmentId, requestedByAgentId?, reminderId?, resizingSince?}`; absent means the mission is on its
   default machine (`mission.memoryMb`/`cpus`, shared CPU). `ProvisionOptions` gains `cpuKind`.
+- **A resize in flight is invisible to the rest of the platform:** the mission stays `running`, but the
+  cockpit's live-status refresh and the scheduler's wake-up both skip a mission whose resize claim is
+  held (the machine is stopped on purpose; a scheduled message still lands in the mailbox and the new
+  machine reads it on boot).
 - **One resize at a time:** the route claims the mission with an atomic `findOneAndUpdate` that sets
   `resizingSince`; a concurrent request gets 409. A claim older than 5 min is treated as a failed
   resize (below). A resize to a *different shape*, or a revert, is rejected within 5 min of the

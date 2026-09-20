@@ -31,12 +31,9 @@ import { readCopilotFileNode } from "./copilot-files.js";
 import type { CopilotRuntime } from "./copilot-runtime.js";
 import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
 import { isLocalExecution, provisionLocal } from "./fly-machines.js";
-import {
-	provisionTracked,
-	resumeTracked,
-	suspendTracked,
-} from "./machine-lifecycle.js";
+import { provisionTracked, resumeTracked } from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
+import { suspendMissionMachine } from "./resource-upgrade.js";
 import { getTemplate } from "./templates.js";
 import {
 	queryLlmCall,
@@ -514,7 +511,10 @@ export async function executeAction(
 			const mission = await missions.findOne({ missionId, userId });
 			if (!mission?.machineId)
 				throw new Error(`Mission "${missionId}" has no machine`);
-			await suspendTracked(db, missionId, mission.machineId);
+			await suspendMissionMachine(db, {
+				missionId,
+				machineId: mission.machineId,
+			});
 			await missions.updateOne(
 				{ missionId },
 				{ $set: { status: "suspended", updatedAt: now } },

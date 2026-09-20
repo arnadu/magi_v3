@@ -242,6 +242,21 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | A daemon's watch loop dies (e.g. `copilot.yaml` fails to load) | Its handle stays in the runtime map, so the waker's `ensureCopilotRunning` is a no-op and mail stays stranded | 🟠 | None yet | **G-11** |
 | A misbehaving mission floods the copilot with relays | Repeated wake-ups, LLM spend | 🟡 | The daemon drains all unread mail in one turn; the copilot's own per-user spend cap (`getCopilotSpendCap`); resource alerts are de-duplicated by `resource-alert-state.ts` (below) | Anomalies from other sources are not de-duplicated |
 
+**Machine upgrades** (`resource-upgrade.ts`, ADR-0031)
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| The machine will not stop | Nothing changed | 🟢 | The claim is released, the caller is told "Nothing changed" | None |
+| Delete or re-create fails after the old machine was stopped | Mission has no machine | 🟠 | Mission set to `error` with a message to Resume (the volume is intact and the resume route re-creates the default machine); `resize-failure` raised (hard); segments closed; reminder cancelled | None |
+| Control plane restarts mid-resize | The claim stays; the machine's state is unknown | 🟠 | The sweeper treats a claim older than 5 minutes as a failed resize (same handling as above) | **G-12**: a machine created just before the crash is not tracked and stays on Fly until `reconcile-mission-state.mjs --purge-orphans` |
+| Control plane down at expiry | Upgrade outlives its window | 🟠 | `sweepUpgrades` reverts late, at the next tick or at startup — **wired into the scheduler tick in step 2.4**; until then nothing reverts an expired upgrade | Until 2.4 |
+| Two resizes race, or a renewal races the expiry revert | Double resize, or an upgrade resurrected after it ended | 🟠 | Atomic claim (`findOneAndUpdate` on `resize.claimedAt`); renewal is a compare-and-set on the old expiry and refuses while a claim is held | None |
+| A misbehaving copilot resizes repeatedly | Repeated hard suspends, cost | 🟠 | 5-minute cooldown between shape changes (renewals exempt), 24 h cumulative cap with operator-only reset, maximum size, mandatory ≤ 60 min windows | Bounded, not prevented (F-031) |
+| Rejected requests are retried in a loop | Flood of `upgrade-cap-reached` alerts | 🟡 | The alert is raised once per mission per 24 h (`evaluateAlert`) | None |
+| Scheduler wake-up or cockpit status refresh during a resize | Machine restarted mid-resize, or mission shown as suspended | 🟠 | Both skip a mission whose resize claim is held | None |
+| An upgraded mission is suspended | A stopped upgraded machine would come back untracked on resume | 🟠 | Suspend reverts the upgrade first (`suspendMissionMachine`), so a suspended mission's machine is always the default shape; if the revert fails the suspend is refused with the reason | None |
+| Reminder or notification write fails | Nobody warned before expiry | 🟡 | Best-effort and logged; the expiry itself does not depend on either | None |
+
 **Machine runtime segments** (`machine-lifecycle.ts`, `machine-segments.ts`, `machineSegments`)
 
 | Failure | Effect | Severity | Current mitigation | Gap |
@@ -275,6 +290,7 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | ~~G-7~~ | ~~`sharedDir/objectives/*`'s two-copy architecture (Fly volume + MongoDB `teamFiles` snapshot)~~ | ~~🔴 Data loss (mitigated, not eliminated, by the interim fix)~~ | **Closed Sprint 26c** — objectives moved fully into MongoDB (`objectivesGoals`/`objectivesEvents`); the Fly-volume copy no longer exists, existing missions self-migrate on next resume. See ADR-0019 |
 | G-8 | No backup/point-in-time-recovery capability (MongoDB Atlas M0 free tier, currently in use, has no backup feature at all); no stated RTO/RPO | 🔴 Data loss on Atlas-side corruption/accidental deletion, or a catastrophic Atlas outage — beyond what app-level bugs already risk | **Accepted for now**, given the current single-tenant/pre-revenue posture — closing this requires a paid Atlas tier (M10+), not application code. Revisit before any production/paying-customer commitment. |
 | G-11 | A crashed control-plane copilot daemon watch loop leaves a stale handle in the runtime map (`copilot-runtime.ts`): later `ensureCopilotRunning` calls, including the waker's, do nothing, so mail stays unread until the control plane restarts or the operator switches the copilot model | 🟠 Copilot silently stops responding to relays and operator messages | Small — have `CopilotDaemonHandle` report when its loop has ended and let the runtime drop the handle |
+| G-12 | A machine created by a resize just before the control plane crashed is not recorded on the mission, so it keeps running on Fly untracked (`resource-upgrade.ts`) | 🟠 Unexpected cost until cleaned up | Small — have the sweeper's stale-claim recovery list the mission's machines on Fly and destroy the extra one; today `scripts/reconcile-mission-state.mjs --purge-orphans` does it by hand |
 
 ---
 
