@@ -14,8 +14,9 @@ VM-tier alert and daily report read the dataset produced by Decision 1 below.
 The default mission machine is `shared` CPU, 1 CPU, 1024 MB (`fly-machines.ts:182-186`). That is too
 small for missions that run real compute, which have caused OOM crashes (issue #31), but a bigger
 default would waste money for the (large) part of mission time that isn't compute-bound. Fly bills
-per second, so a short excursion to a big tier is cheap: performance-1x is ~16× the per-second rate
-of shared-cpu-1x (~$0.045/h vs ~$0.0065/h), so a 15-minute burst costs about $0.011.
+per second, so a short excursion to a big tier is cheap: performance-1x costs ~$0.045/h against
+~$0.008/h for our 1 GB shared default (~5.5×; ~16× the 256 MB shared-cpu-1x preset), so a 15-minute burst
+costs about $0.011.
 
 **Facts the design relies on (all verified in code/Fly docs):**
 
@@ -149,7 +150,7 @@ request-message contract between them:
 
     | Shape | kind | CPUs | RAM | ≈ $/h |
     |---|---|---|---|---|
-    | default (today) | shared | 1 | 1 GB | 0.007 |
+    | default (today) | shared | 1 | 1 GB | 0.008 |
     | memory, small | shared | 1 | 2 GB | 0.015 |
     | memory, medium | shared | 2 | 4 GB | 0.03 |
     | memory, large | shared | 4 | 8 GB | 0.06 |
@@ -255,7 +256,7 @@ segments) counts toward a per-mission cap of **24 hours** (control-plane constan
   single agent can't see what teammates are mid-task before triggering a hard suspend, and nobody
   coordinates renewals. The mission-copilot mediation costs one `PostMessage` round-trip.
 - **Fixed `performance-Nx` preset enum.** Simplest tool signature, but the presets tie RAM to
-  CPU: the smallest performance preset is 1 CPU / 2 GB at ~16× the default's per-second rate, so a
+  CPU: the smallest performance preset is 1 CPU / 2 GB at ~5.5× the default's hourly rate, so a
   memory-only OOM would force paying for CPU the job doesn't use. Free `cpuKind`/`cpus`/`memoryMb`
   with route-side validation lets an agent buy just the RAM it needs.
 - **No expiry.** Unbounded time at an expensive tier and no check-in point; renewal gives an audited

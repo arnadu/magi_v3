@@ -13,6 +13,7 @@ their design, only how to build, test, secure, document and roll it out.
 | 0.2 Roadmap, ADR status, issues | ✅ 2026-09-20: roadmap row and CLAUDE.md entry, ADRs Accepted (sprint 28g), issues #53 and #54 filed |
 | 1.1 Copilot waker | ✅ 2026-09-20: 27 unit + 4 integration tests (real Mongo Change Stream); LIVE on dev: a relay posted to a throwaway `copilot-{user}` mailbox with no daemon was read by a newly started daemon in 2 s and answered (test data cleaned up) |
 | 1.2–1.4 Thresholds, alert state, anomaly categories, stats index | ✅ 2026-09-20: `resource-thresholds.ts`, `resource-alert-state.ts` (26 tests incl. hysteresis, fail-open), 8 new `AnomalyCategory` values (16 tests), `agentTurnStats` `{missionId, startedAt}` index (1 test); the `explain` check runs in step 5.4 when the first windowed query exists |
+| 2.1 Shape rules, price table, menu | ✅ 2026-09-20: `machine-shapes.ts`, 59 tests including an exhaustive sweep of 10,000+ shapes against an independent oracle |
 
 ## 1. How the work is run
 
