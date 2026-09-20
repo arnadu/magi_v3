@@ -130,8 +130,8 @@ single requester lacks, so it decides whether to act now, ask the requester to w
 
 Agents learn about all of this through a new **platform skill `request-resources`** (in
 `packages/skills/`, discovered by the standard `discoverSkills()` tiering, so both worker agents and
-the mission-copilot see it; ADR-0032's `resource-oversight` skill is control-plane-copilot-only and
-does not reach mission agents). It has two sections and is the single source of truth for the
+the mission-copilot see it; ADR-0032's copilot skills are team skills for the control-plane copilot
+only and do not reach mission agents). It has two sections and is the single source of truth for the
 request-message contract between them:
 
 - *Worker agents:*
@@ -188,7 +188,7 @@ heavy work.
 - **Control-plane copilot:** informed silently via the Decision-1 dataset — no mailbox message, no
   wake, nothing shown in the control chat. ADR-0032's daily report reads it.
 - **`copilot-{userId}` mailbox relay:** not used for routine requests/renewals; reserved for
-  ADR-0032's exceptional-pattern alert (e.g. excessive renewals).
+  ADR-0032's alerts (`upgrade-cap-near`, `upgrade-cap-reached`, `upgrade-idle`, `resize-failure`).
 
 **5. The request automatically schedules its own renewal reminder** — one `scheduled_messages`
 document (`deliverAt = expiry − buffer`) with `to: ["mission-copilot", requestedByAgentId]` (just
@@ -224,8 +224,8 @@ segments) counts toward a per-mission cap of **24 hours** (control-plane constan
   button. `GET` limits (`missions.ts`, `LimitsData`) gains an `upgrades: {usedHours, capHours,
   resetAt, active}` block. The cap value itself stays a constant for now; editing it (and the
   maximum machine size) from this section is a later addition.
-- ADR-0032's `prolonged-VM-upgrade` alert should fire at a fraction of this cap (e.g. 80%), so the
-  operator hears about it before the mission-copilot's next request is rejected.
+- ADR-0032's `upgrade-cap-near` alert fires at 80% of this cap, and `upgrade-cap-reached` (hard)
+  fires when a request is rejected, so the operator hears about it before or as it happens.
 
 ## Alternatives considered
 

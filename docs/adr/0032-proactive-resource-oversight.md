@@ -1,208 +1,229 @@
 # ADR-0032 — Proactive multi-resource oversight by the control-plane copilot
 
-**Status**: Proposed — records a direction and the research behind it; several open questions
-below need to be settled before implementation starts. Not yet assigned to a numbered sprint.
+**Status**: Proposed — a few implementation-time checks remain (Open questions).
 **Sprint**: TBD (candidate: same push as ADR-0031, right after 28f)
-**Date**: 2026-09-18
-
-**Related**: Split out from an earlier combined draft that also covered
-[ADR-0031](0031-temporary-resource-upgrades-vm-cost.md) (temporary mission-machine resource
-upgrades). The two are designed together — this ADR's VM-tier alert and daily report both read the
-runtime dataset ADR-0031's Decision 1 produces — and likely ship in the same push, but are
-genuinely separate concerns: ADR-0031 is about scaling *one mission's own machine* on request; this
-ADR is about the control-plane copilot's *ongoing, cross-resource* monitoring of every mission a
-user owns — VM tier, LLM cost, per-mission disk, and MongoDB Atlas storage, not just machine size.
+**Date**: 2026-09-20
+**Related**: [ADR-0031](0031-temporary-resource-upgrades-vm-cost.md) (temporary machine upgrades).
+Designed together and likely shipped together, but separate: ADR-0031 scales one mission's machine on
+request; this ADR is the control-plane copilot's ongoing monitoring of every mission a user owns —
+LLM spend, machine upgrades, per-mission disk, and MongoDB Atlas storage. The daily report and the
+upgrade alerts read ADR-0031's Decision-1 dataset and its 24 h cap.
 
 ---
 
 ## Context
 
-**The control-plane copilot is purely reactive today**, not periodic. Its only wakeup mechanism is
-a MongoDB Change Stream on the `mailbox` collection (`copilot-daemon.ts:204-429`); the daemon is
-started lazily per-user only when a message arrives (`ensureCopilotRunning`, `copilot-router.ts:
-109-122`, called from the `/message` route at `copilot-router.ts:160`). `node-cron`'s scheduler
-(`scheduler.ts`) could in principle post to a copilot's own mailbox via the existing free-form
-`create_schedule` `ProposeAction` type, but its `deliver()` function only wakes the *target* for
-mission Fly machines — it explicitly checks machine state and calls `resumeMission()` before
-inserting the mailbox message (`scheduler.ts:124-136`) — with no equivalent step for a
-`copilot-{userId}` mailbox target. A scheduled message to a copilot today can land in its mailbox
-without ever waking the daemon to read it. There is no existing "proactively review things on a
-timer" capability for the control-plane copilot to build on; getting a genuine daily report
-requires closing this gap, not routing around it.
-
-**`ensureCopilotRunning` is structurally reusable but currently trapped.** It's a plain `async
-function(userId: string)` with no HTTP/session dependency (`copilot-router.ts:109-122`), so a new
-periodic timer calling it once per user is a small, mechanical addition in principle — but it, the
-`runningDaemons` map, and `eventBus` are private closure variables inside `createCopilotRouter()`
-(`copilot-router.ts:94-98`), which returns only the Express `router` (`:447`). Making it callable
-from a new timer means either exporting these from `createCopilotRouter`, or extracting
-daemon-management into its own module imported by both `copilot-router.ts` and the new timer.
-Either is a real but small refactor. A `listUsers`-style query also doesn't exist yet
-(`packages/control-plane/src/users.ts` has no such helper) and would need adding.
-
-**Two of the four resources this ADR wants monitored have zero instrumentation today, not partial
-implementations.** Confirmed by direct grep, not assumed:
-
-- **MongoDB Atlas storage.** No `dbStats`, Atlas Admin API call, or storage-size query exists
-  anywhere in the repo. This isn't a hypothetical risk — `docs/operational-resilience.md` documents
-  a *real* incident: an Atlas M0 (512MB) quota outage that silently broke login. The fix at the time
-  was purely reactive (delete old `llmCallLog` entries, lower `LOG_RETENTION_DAYS` twice, switch the
-  pruner to `deleteMany`) — no ongoing usage monitoring was added, and `operational-resilience.md`
-  still explicitly lists "no monitoring/alerting on Atlas storage" as open. This is the
-  highest-justified item in this ADR's whole scope: it has already caused a production outage once.
-- **Fly Volume disk usage (issue #31's sibling gap, G-4).** No disk-usage query, `statvfs`, or Fly
-  Volume capacity API call exists anywhere. A precedent *does* exist for a different resource —
-  `process.memoryUsage()` is already logged every 60s (added for issue #31's investigation) — but
-  that's memory, not disk, and isn't surfaced anywhere an operator or copilot can see it; it's log
-  lines only.
-
-**LLM cost and VM tier already have data, just not a review surface for the control-plane copilot.**
-LLM cost is fully tracked (`missionLifetimeCostUsd`, per-mission spend caps, ADR-0018) but the
-control-plane copilot has no tool exposing it today — `GetMissionStatus` doesn't include spend.
-VM tier is exactly what ADR-0031's Decision 1 dataset produces. Both just need a read path for the
-control-plane copilot; neither needs new instrumentation.
-
-**The control-plane copilot already has everything needed to *act* on this — nothing new to build
-for that half.** Verified directly, not assumed:
-- **Skills already work for it.** `provisionCopilotSkills()` (`copilot-daemon.ts:143-198`) copies
-  platform skills (`github-issues`, `objectives`, `incident-triage`) and team-specific skills
-  (`config/teams/copilot/skills`) into the copilot's own `sharedDir/skills/_platform`
-  (`copilot-daemon.ts:163,182-192`) — exactly the path `discoverSkills()` scans
-  (`agent-runtime-worker/src/skills.ts:43`). The copilot's turns run through the same `runAgent()`
-  path every mission agent uses (`copilot-daemon.ts:357`), so the full platform→team→mission→agent
-  skill-tiering already applies. **"Specific skills to help it manage different kinds of
-  situations" is authoring new skill files, not building new infrastructure.**
-- **It already has a designed pattern for exactly this kind of ongoing tracking.** Its system
-  prompt (`config/teams/copilot.yaml`) already instructs it to relay-triaged hard anomalies and
-  "append a line to your mental map's Anomaly log" (`copilot.yaml:71`), with a dedicated `<h2>
-  Anomaly log</h2>` section in its `initialMentalMap` (`copilot.yaml:118-125`) — a durable,
-  persists-across-sessions scratchpad for "what I've already looked into and what I found." A
-  "Resource Oversight" section following the identical convention is a natural, cheap extension —
-  not a new mechanism, the same one used one section down.
-- **It already has a standing confirmation rule that fits this cleanly.** `copilot.yaml:90-92`:
-  "All mutating MAGI actions go through ProposeAction — never execute changes directly." Reporting,
-  alerting, and messaging the operator are not mutating actions and need no new gate (same as its
-  existing `PostMessage`/issue-tracking tools); if the design ever wants the control-plane copilot
-  to *act* on a mission's resources directly (not just flag it), that already routes through
-  `ProposeAction` today, with **no new confirmation infrastructure needed for this ADR at all** —
-  a real contrast with ADR-0031's upgrade tool, which is mediated through the *mission*-copilot (any
-  agent can ask via `PostMessage`, but only the mission-copilot decides and calls it) with no
-  equivalent `ProposeAction`-style gate of its own (bounded instead by ADR-0031's maximum machine size
-  and 24 h cumulative cap, its Decisions 2 and 7).
+- **The control-plane copilot is purely reactive.** It wakes on a MongoDB Change Stream over its own
+  mailbox (`copilot-daemon.ts:204-429`), but the daemon is only *started* from the `/message` route
+  (`ensureCopilotRunning`, `copilot-router.ts:109-122`, called at `:160`). So anything posted to
+  `copilot-{userId}` while no daemon is running — including today's hard-anomaly relays from
+  `AnomalyRecorder` (`anomaly.ts:120-132`) and any scheduled message — sits unread until the user next
+  messages the copilot. This is an existing gap, not only a prerequisite for the daily report.
+- **Two of the four resources have no instrumentation.** No disk-usage measurement exists anywhere
+  (G-4); the only resource logging is `process.memoryUsage()` every 60 s (`daemon.ts:514`, log lines
+  only). No Atlas storage measurement exists either, although an M0 (512 MB) quota outage has already
+  broken login once (`docs/operational-resilience.md`, fixed reactively; monitoring still listed open).
+  LLM spend and machine runtime already have data (`llmCallLog`/`missionStats`; ADR-0031's dataset).
+- **What the control-plane copilot can do today** (`copilot-tools.ts`): read tools (`ListMissions`,
+  `GetMissionStatus`, `ReadMissionMailbox`, `ReadMissionLog`, `ReadMissionFile`) and `ProposeAction`
+  (operator-confirmed) with types including `suspend_mission`, `write_mission_file`,
+  `create_schedule` (the only way it can message a mission's agents), `pause_agent`,
+  `set_mission_budget`. Anything mutating already needs confirmation, so this ADR adds no
+  confirmation infrastructure. It has no tool to see disk, Atlas or upgrade data.
+- **Skills and prompt conventions already work for it.** `provisionCopilotSkills()`
+  (`copilot-daemon.ts:143-198`) copies platform skills and the team skills in
+  `config/teams/copilot/skills/` (today `cost-management`, `mission-monitoring`, `mission-recovery`,
+  `schedule-management`, …) into its skills folder; its system prompt (`config/teams/copilot.yaml`)
+  already has an anomaly-handling section and an "Anomaly log" in its `initialMentalMap`.
+- **`AnomalyRecorder`** (`anomaly.ts:51-137`) always persists to `missionAnomalies`, notifies the
+  mission's own copilot for every severity, and relays to `copilot-{userId}` (mail from `"system"`,
+  subject `Anomaly (hard): <category> — mission <id>`) only for `severity: "hard"`. The control plane
+  already depends on `@magi/agent-runtime-worker`, so it can construct the same recorder.
+- **There is a platform-admin notion** (`req.isAdmin` for `CONTROL_API_KEY` callers, `auth.ts`) but no
+  stored admin user — the Atlas cluster is shared by all users, so its alert needs an explicit
+  recipient.
 
 ## Decision
 
-**1. Close the scheduler → copilot wake gap first**, since the daily report depends on it: extract
-`ensureCopilotRunning` (and the state it needs) out of `createCopilotRouter()`'s closure so both
-`copilot-router.ts` and a new periodic job can call it, and add the missing wake step to
-`scheduler.ts`'s `deliver()` for `copilot-{userId}` mailbox targets (mirroring the existing
-`resumeMission()`-before-insert pattern it already has for mission Fly machines).
+**1. Wake the copilot for any mail addressed to it (fixes the gap for all sources).** Extract
+`ensureCopilotRunning` and its `runningDaemons` map out of `createCopilotRouter()`'s closure into
+`control-plane/src/copilot-runtime.ts`. New `startCopilotWaker(db, ensureCopilotRunning)` (started
+next to `startScheduler` in `index.ts`) opens a Change Stream on `mailbox` for inserts whose
+`missionId` matches `^copilot-` and `to` includes `"copilot"`, calling `ensureCopilotRunning(userId)`.
+It also runs a catch-up scan on startup and every 5 min (unread copilot mail whose user has no running
+daemon), so a dropped stream or a control-plane restart loses nothing. This replaces patching
+`scheduler.ts`'s `deliver()`: one mechanism covers anomaly relays, scheduled messages and reports.
 
-**2. Add instrumentation for the two untracked resources.** Fly Volume disk usage: logged in the
-daemon's existing heartbeat (same cadence as the existing `process.memoryUsage()` logging added for
-issue #31), reported to the control plane so it's queryable per mission — this is issue #31's
-sibling gap G-4, done as a side effect of this work rather than separately. MongoDB Atlas storage:
-a periodic `dbStats`-equivalent check run centrally by the control plane (this is a cluster-wide
-resource, not a per-mission one — it doesn't belong on any single mission's daemon).
+**2. Instrumentation.**
+- **Per-mission disk (closes G-4).** New `agent-runtime-worker/src/resource-sampler.ts`, called from
+  the job-runner tick that already runs every 60 s (`daemon.ts`, next to `logMemoryUsage`): `fs.statfs`
+  on `AGENT_WORKDIR` (verify it is the volume mount) → upsert `missionResources`
+  `{missionId, diskUsedBytes, diskTotalBytes, rssMb, runningJobs, updatedAt}`. `runningJobs` needs the
+  module-level counter (`daemon.ts:145`) exposed through a getter. Failure never breaks the tick.
+- **Atlas storage.** In the control plane's 5-min tick (Decision 4): `dbStats` on the app database
+  plus a per-collection size breakdown, compared with `ATLAS_STORAGE_LIMIT_MB` (env, default 512),
+  upserted as `platformResources` `{_id: "atlas", usedBytes, limitBytes, collections: [{name, bytes}],
+  updatedAt}`.
+- **`GetMissionStatus`** (`copilot-tools.ts:190-225`) additionally returns machine config, time on
+  it, upgraded time used / cap (ADR-0031), latest disk sample and its age.
 
-**3. Add a genuine daily report**, not just event-driven alerts: a new control-plane-side periodic
-job (using the now-exported `ensureCopilotRunning` + a new `listUsers`-style query) that, once per
-day per user, gathers that user's own missions' current state across all four resources — LLM
-spend, VM tier/runtime (ADR-0031's dataset), Fly Volume disk usage, and the shared Atlas storage
-figure — and posts it as a single structured mailbox message, then ensures the copilot daemon is
-running to read it.
+**3. Thresholds and dedupe live in one file**, `agent-runtime-worker/src/resource-thresholds.ts`
+(constants, no config surface for now), imported by both the daemon and the control plane.
+Alert state is kept in `resourceAlertState` `{key: "<missionId|platform>:<category>", level,
+lastAlertAt}`: an alert fires when the level rises or 24 h have passed at the same level; the key is
+deleted when the value falls 5 points below the threshold, so a recovered condition re-alerts fresh.
 
-**4. Add intra-day threshold alerts for all four resources**, reusing the *existing*
-`AnomalyRecorder` → `copilot-{userId}` relay rather than inventing a second alerting mechanism: new
-categories for disk-usage-high, atlas-storage-high, and prolonged-VM-upgrade (LLM cost already has
-an equivalent path via the existing limit-breach category). Thresholds are operator-configurable,
-default TBD (see Open Questions). **This ADR is the only user of this relay for VM-tier events** —
-ADR-0031 deliberately does *not* relay every routine request/renewal (see its Decision 4); this
-ADR's `prolonged-VM-upgrade` category is a periodic *pattern* check against ADR-0031's Decision-1
-dataset (e.g. "renewed more than N times" or "cumulative upgraded-tier runtime exceeds X hours" for
-one mission), not a live trigger fired on each request. ADR-0031 already enforces a hard 24 h
-cumulative cap (its Decision 7, operator-resettable in the Limits panel), so this alert is the
-early warning — fire it at a fraction of that cap (e.g. 80%) — not the backstop.
+**4. Real-time alerts.** Reuse `AnomalyRecorder`: new `AnomalyCategory` values below. Soft alerts
+reach the mission's own copilot and the daily report only; hard alerts are also relayed to
+`copilot-{userId}` (and, with Decision 1, wake it).
 
-**5. Drive the copilot's response through its existing conventions, not new ones**: extend
-`config/teams/copilot.yaml`'s system prompt with a "Resource Oversight" responsibility section
-(same structural pattern as the existing Anomaly-log guidance) describing what the daily report and
-each alert category mean and what a reasonable response looks like; add a matching "Resource
-Oversight" mental-map section (mirroring the existing Anomaly log) so the copilot has working
-memory of what it's already flagged, avoiding duplicate operator pings on every wake; author a new
-`resource-oversight` platform skill (reusing the already-working skill mechanism from Context)
-bundling threshold reference info and response playbooks per resource type ("what to do when Atlas
-storage is past 80%," "what to do when a mission has renewed its upgrade N times").
+| Category | Emitter | Trigger (default) | Severity | Handled by |
+|---|---|---|---|---|
+| `disk-usage-high` | daemon sampler | volume ≥ 80% / ≥ 90% | soft / hard | `disk-pressure` |
+| `spend-cap-near` | control-plane tick, from `missionStats` totals vs the mission cap | ≥ 90% / ≥ 98% of cap | soft / hard | `cost-management` |
+| `spend-spike` | control-plane hourly, from `llmCallLog` | 24 h spend > 3× trailing 7-day daily average and > $5 | soft | `cost-management` |
+| `upgrade-cap-near` | control-plane tick, from ADR-0031 segments | ≥ 80% of the 24 h cap | soft | `vm-upgrade-oversight` |
+| `upgrade-cap-reached` | ADR-0031 route, on rejection | request rejected by the cap | hard | `vm-upgrade-oversight` |
+| `upgrade-idle` | control-plane tick | upgraded machine, no conversation activity **and** `runningJobs = 0` for 30 min | soft | `vm-upgrade-oversight` |
+| `resize-failure` | ADR-0031 route | machine stopped but re-create failed | hard | `mission-recovery` |
+| `atlas-storage-high` | control-plane tick | cluster ≥ 70% / ≥ 85% of limit | soft (report only) / hard | `atlas-storage` |
+
+Mission-level alerts use a control-plane `AnomalyRecorder` built like `constructAnomalyRecorder`
+(`daemon-boot/mission-owner.ts`): the mission's mailbox, `MISSION_COPILOT_AGENT_ID` when the mission
+has one, and the owner's `copilot-{userId}` mailbox. `atlas-storage-high` has no mission, so it is
+posted directly to the copilot mailbox of each user in the new env var **`PLATFORM_ADMIN_USER_IDS`**
+(comma-separated Firebase UIDs; empty → a startup warning and no Atlas alerts or report section).
+`upgrade-idle` requires the `runningJobs` sample: a long background job legitimately has no LLM
+activity.
+
+**5. Daily report.** New `control-plane/src/resource-monitor.ts` (`startResourceMonitor(db)`, started
+with the scheduler) runs the 5-min tick above and, once per day at `RESOURCE_REPORT_HOUR_UTC`
+(default 12), builds one report per user who owns a non-destroyed, non-draft mission
+(`missions.distinct("userId", …)` — no `listUsers` helper needed). `buildDailyReport(db, userId, now)`
+returns a typed `DailyReport`; `renderDailyReport()` turns it into the text below and it is posted to
+`copilot-{userId}` (`from: "system"`, `to: ["copilot"]`, subject `Daily resource report — YYYY-MM-DD`).
+It is written first as a `resourceSnapshots` document `{userId, date, missions: {id: {diskUsedBytes,
+llmTotalUsd, upgradedMs}}, atlasBytes?}` with a unique `(userId, date)` index, which makes it
+idempotent across restarts and supplies yesterday's numbers for growth rates. If the control plane was
+down at the report hour, the first tick after start builds any missing report for today. Spend uses the
+same aggregation as `GET /api/missions/stats` (extracted into a shared helper); caps come from each
+mission's team config as in `GET /:id/limits`. The Atlas block appears only in reports for
+`PLATFORM_ADMIN_USER_IDS`. The report is always sent, with an empty flags list when all is well.
+
+```
+Daily resource report — 2026-09-20 (last 24 h)
+
+FLAGS (2)
+  ! meteo-textbook  disk 8.1 / 10 GB (81%), growing ~0.4 GB/day, full in ~5 days
+  ! tutor           upgraded machine idle 47 min (performance 2 CPU / 8 GB, expires in 38 min)
+
+PLATFORM
+  MongoDB Atlas   212 / 512 MB (41%)   +6 MB/24 h, ~50 days to full
+    largest: llmCallLog 118 MB · conversationMessages 61 MB · agentTurnStats 14 MB
+
+MISSIONS
+  mission          status   LLM 24h  LLM total / cap       machine now            upgraded / 24 h cap  disk         last activity
+  gold-digest-v2   running  $4.12    $161.40 / $250  (65%)  shared 1 CPU 1 GB      0.0 h                2.1 / 10 GB  4 min ago
+  meteo-textbook   running  $9.80    $88.10 / $150   (59%)  shared 1 CPU 1 GB      2.5 h                8.1 / 10 GB  21 min ago
+  tutor            running  $1.35    $12.60 / $50    (25%)  performance 2 CPU 8 GB 5.0 h                1.2 / 10 GB  47 min ago
+
+UPGRADES (ADR-0031 dataset)
+  2 requests, 6 renewals, 0 rejected; 7.5 h upgraded in total
+  meteo-textbook: 1 request + 2 renewals, shared 2 CPU / 4 GB, 2.5 h, asked by lead-analyst ("pandas transform")
+  tutor:          1 request + 4 renewals, performance 2 CPU / 8 GB, 5.0 h, asked by notebook-agent
+  Active now: tutor, expires in 38 min
+```
+
+Flags are computed by the control plane, never by the LLM: any mission with disk ≥ 80% or projected
+full within 7 days; Atlas ≥ 70%; spend ≥ 80% of cap; an upgrade idle as defined above; upgraded time
+≥ 80% of the cap; upgraded time on ≥ 5 of the last 7 snapshots (a chronic upgrade, a sign the
+mission's default size is wrong); a running mission whose resource sample is older than 5 min
+(monitoring is blind); any rejected upgrade request. Suspended missions show status and spend, with
+disk marked "last sample <age>".
+
+**6. What the copilot does with it: extend its own conventions, in three places.**
+- **System prompt** (`config/teams/copilot.yaml`) gets a "Resource oversight" section next to
+  "System-triggered anomalies": what the daily report and the new categories are, that a report with
+  no flags is answered with a one-line all-clear in the control chat (silence is ambiguous — it
+  cannot mean "fine" and "the job died" at once), and that the digest lists flags first and stays
+  under ~120 words with at most one proposed next step.
+- **Mental map** (`initialMentalMap`) gets a "Resource oversight" table — `mission | category | first
+  flagged | status | last action` — so a flag that persists is not re-announced every morning, and
+  the same flag on ≥ 2 missions is treated as a platform problem, as the anomaly section already
+  does for categories.
+- **Skills**, as *team* skills in `config/teams/copilot/skills/` — not platform skills, which are
+  copied into every mission's shared folder and would appear in every mission agent's prompt:
+
+| Skill | Description (frontmatter) | Playbook contents |
+|---|---|---|
+| `daily-resource-report` (new) | How to read the daily resource report, decide what needs the operator's attention, write the digest, and keep the Resource oversight mental-map table current. | Order: flags → already-flagged check → digest → mental-map update; one-line all-clear; cross-mission pattern check. |
+| `disk-pressure` (new) | Responding to a mission volume filling up: find what is growing, then choose cleanup, extending the volume, or suspending before writes fail. | The 90% alert body carries the top-5 directories (bounded `du`, run once by the sampler on crossing 80%). Logs/temp → propose `create_schedule` asking the mission's copilot to prune; git objects → `git gc`; agent data → extend the volume; ≥ 95% or projected full within 2 h → propose `suspend_mission`. |
+| `atlas-storage` (new) | Responding to shared MongoDB storage pressure using the per-collection breakdown, and knowing which fixes need the platform owner. | Levers in order: lower `LOG_RETENTION_DAYS` (the pruner runs every 30 min; needs a control-plane env change and deploy, so the copilot tells the owner exactly which value), clear the largest log collection, move up an Atlas tier. Read-only: the copilot has no DB tool. |
+| `vm-upgrade-oversight` (new) | Reviewing machine-upgrade activity: judge whether a mission holds a bigger machine than it needs, handle cap-near and cap-reached, and recognise when the default size should change. | `upgrade-idle` → propose a message to the mission's copilot not to renew; cap-near → check the reason pattern; cap-reached → explain that only the operator can reset it in the Limits panel (ADR-0031 Decision 7); chronic flag → propose `save_session_config` raising the default machine (only after the mission is suspended, as that action already requires). |
+| `cost-management` (extend) | Existing skill, LLM cost. | Add `spend-cap-near` (check burn rate, then `pause_agent` on the runaway or `set_mission_budget` within the ceiling) and `spend-spike` (per-agent attribution from `missionStats`). |
+| `incident-triage` (extend) | Existing skill, shared with the mission-copilot. | Add one section per new category naming the skill that handles it (table in Decision 4). |
+
+Anything mutating goes through `ProposeAction`, unchanged. Extending a Fly volume (Fly volumes can grow,
+not shrink) would need a new `extend_volume` action type; whether that is in scope is an open question.
 
 ## Alternatives considered
 
-- **A new, from-scratch "objectives"-style structure for the control-plane copilot's own ongoing
-  responsibilities** (mirroring the per-mission objectives tree). Rejected as unnecessary — the
-  existing mental-map + Anomaly-log convention already solves exactly this problem for hard
-  anomalies today, and extending that same pattern for resource oversight is materially cheaper
-  than building or adapting a second structured-state mechanism just for this.
-- **A dedicated new alerting pipeline for resource thresholds**, separate from `AnomalyRecorder`.
-  Rejected — the existing pipe already reaches the right mailbox for the right user with no new
-  code beyond adding categories; a second pipeline would be pure duplication.
-- **Skipping Atlas storage monitoring as "already fixed"** (it did get a reactive fix once).
-  Rejected — `operational-resilience.md` itself still lists this as an open gap, and the past
-  incident is exactly the evidence that reactive-only handling isn't sufficient here.
-- **Merging this into ADR-0031 as one document** (the original draft). Split out per review — the
-  two are different shapes of work (a per-mission on-request mechanism vs. a cross-mission ongoing
-  monitoring capability spanning resources ADR-0031 never touches) and read better, and are easier
-  to reference independently, as separate ADRs even though they're likely implemented together.
+- **Patch `scheduler.ts`'s `deliver()` to wake the copilot** (this ADR's earlier direction). It only
+  covers scheduled messages; the Change Stream waker also fixes anomaly relays and reports.
+- **A new alerting pipeline separate from `AnomalyRecorder`.** Rejected: the existing pipe already
+  reaches the right mailbox for the right user.
+- **Compute flags in the LLM from raw data.** Rejected: thresholds are arithmetic; the LLM's value
+  is judgment about what to do.
+- **One monolithic `resource-oversight` platform skill.** Rejected: per-situation skills load on
+  demand, and a platform skill would reach every mission agent.
+- **A new objectives-style structure for the copilot's own responsibilities.** Rejected: its
+  mental-map convention already solves "what have I already flagged".
+- **Skipping Atlas monitoring because the last outage got a fix.** Rejected: the fix was reactive
+  and `operational-resilience.md` still lists the gap.
 
 ## Open questions
 
-- **Threshold defaults per resource** — none proposed yet (disk %, Atlas storage %, "prolonged
-  upgrade" duration/renewal count). Needs real numbers, likely informed by Atlas's actual tier
-  limits (512MB on the current M0) and typical mission disk footprints.
-- **Daily report format and delivery time** — per-user local time vs. a fixed UTC time; whether it
-  should skip sending anything when nothing is noteworthy, or always send a short "all clear."
-- **Where the Atlas `dbStats`-equivalent check actually runs** — inside `scheduler.ts`'s existing
-  tick loop (reuses its already-running cadence) vs. a wholly separate timer; leaning toward the
-  former to avoid a second periodic-job mechanism, but not decided.
-- **Skill content ownership** — the `resource-oversight` skill's playbooks need real operational
-  judgment (what's actually the right response to each situation), not just plumbing; this is
-  writing, not engineering, and should happen with the operator's input, not assumed.
-- **Scope beyond the initial four resources** — the operator's own framing was "VM, LLM, disk,
-  MongoDB usage, **etc.**"; this ADR designs for exactly four to keep the first delivery concrete,
-  but the mechanism (Decision 1's wake-gap fix, Decision 3's daily report, Decision 4's alert reuse)
-  is generic enough that adding a fifth resource later should be cheap. Worth confirming there's no
-  other resource the operator already has in mind that should be included from the start rather
-  than added later.
+- **Fly OOM detection.** `unclean-restart` should carry an OOM flag if Fly's machine exit event reports
+  an OOM kill, so the copilot can point at a resource request (issue #31). Nothing in the code reads
+  Fly exit events yet; verify the field before relying on it.
+- **Atlas accounting.** Which `dbStats` figure matches what Atlas counts against the M0 quota
+  (`dataSize + indexSize` vs `storageSize`) — verify once against the Atlas UI.
+- **`llmCallLog` query cost.** The hourly `spend-spike` aggregation needs an index on
+  `(missionId, createdAt)`; verify it exists, given that collection is what filled the quota before.
+- **Disk sampling details.** That `AGENT_WORKDIR` is the volume mount, and that the daemon user can
+  `du` enough of it to name the largest directories (agent home directories are ACL-restricted).
+- **`extend_volume`.** Add a `ProposeAction` type for it now, or leave volume growth to the operator
+  running `flyctl volumes extend` at first.
+- **Report hour and timezone.** One UTC hour (default 12) until users have a stored timezone.
+- **Skill playbook wording.** The decision tables above fix the structure; the actual text needs your
+  review, since it encodes operational judgment.
+- **A fifth resource** (your "etc."): the mechanism (waker, sampler, thresholds, report sections) is
+  generic; confirm nothing else should be in the first delivery.
 
 ## Consequences
 
-- Two new pieces of instrumentation (Fly Volume disk usage in the daemon heartbeat; a centralized
-  Atlas storage check) — both net-new monitoring, closing real, previously-flagged gaps (G-4 and
-  the Atlas-storage gap from `operational-resilience.md`) as part of this work rather than
-  separately.
-- A small refactor to `copilot-router.ts` (exporting `ensureCopilotRunning`/daemon-management
-  state) and one added branch in `scheduler.ts`'s `deliver()`.
-- Three new `AnomalyCategory` values, reusing existing relay wiring.
-- A new periodic control-plane job (daily report) and a new `listUsers`-style query.
-- `config/teams/copilot.yaml`'s system prompt and `initialMentalMap` grow by one section each; one
-  new platform skill (`resource-oversight`) — content work, not just code.
-- No new confirmation-gate infrastructure needed for this ADR at all (see Context) — the
-  control-plane copilot already has `ProposeAction` for anything mutating.
+- New: `copilot-runtime.ts`, `resource-monitor.ts` (control plane); `resource-sampler.ts`,
+  `resource-thresholds.ts` (agent-runtime-worker); collections `missionResources`, `platformResources`,
+  `resourceAlertState`, `resourceSnapshots` (prune snapshots and alert state with the existing
+  log pruner); eight new `AnomalyCategory` values; extended `GetMissionStatus`.
+- New env vars, documented in `CLAUDE.md`: `PLATFORM_ADMIN_USER_IDS`, `RESOURCE_REPORT_HOUR_UTC`,
+  `ATLAS_STORAGE_LIMIT_MB`.
+- `config/teams/copilot.yaml` grows a prompt section and a mental-map table; four new team skills and
+  two extended ones (content work, not only code).
+- Closes G-4 and the Atlas-storage gap in `docs/operational-resilience.md`, which gets entries for
+  the new components: a failing sampler or check never breaks its host tick; the report is idempotent
+  per `(user, date)`; the waker has a periodic catch-up so a dropped Change Stream loses nothing.
+- Fixes the existing "relayed anomalies never wake the copilot" gap for the categories that already exist.
+- No new confirmation infrastructure; `ProposeAction` covers every mutating response.
 
 ## Related
 
-- [ADR-0031](0031-temporary-resource-upgrades-vm-cost.md) — the VM-tier runtime dataset this ADR's
-  daily report and alert read; designed alongside this ADR, likely shipped together
-- `packages/agent-runtime-worker/src/anomaly.ts`, `daemon-boot/mission-owner.ts` — the existing
-  `copilot-{userId}` relay pipeline this ADR's alerts reuse (ADR-0020, F-028)
-- `packages/control-plane/src/copilot-router.ts` (`ensureCopilotRunning`), `copilot-daemon.ts`
-  (`provisionCopilotSkills`), `packages/control-plane/src/scheduler.ts` (`deliver()`) — this ADR's
-  wake-gap fix and daily-report mechanism
-- `packages/control-plane/src/copilot-tools.ts` (`GetMissionStatus`) — to be extended with tier info
-  (shared with ADR-0031)
-- `config/teams/copilot.yaml` — the existing Anomaly-log/ProposeAction conventions this ADR extends
-  rather than replaces
-- `docs/operational-resilience.md` — documents the real Atlas storage-quota incident motivating
-  this ADR, and lists both G-4 (disk) and the Atlas-storage gap as still open
-- Issue #31 (suspected OOM crash-loop) — likely closes, or is substantially reframed, once
-  default/on-demand memory sizing (ADR-0031) and disk visibility (this ADR) both exist
-- ADR-0026 (sensitive-data encryption direction) — same "Proposed, research-recorded,
-  implementation deferred" shape this ADR follows
+- [ADR-0031](0031-temporary-resource-upgrades-vm-cost.md) — the runtime dataset, the 24 h cap and the
+  upgrade categories this ADR reports on
+- `packages/agent-runtime-worker/src/anomaly.ts`, `daemon-boot/mission-owner.ts` — the relay this ADR
+  reuses (ADR-0020, F-028)
+- `packages/control-plane/src/copilot-router.ts`, `copilot-daemon.ts`, `scheduler.ts`, `missions.ts`
+  (`GET /stats`, `GET /:id/limits`), `copilot-tools.ts` — code this ADR extracts from or extends
+- `config/teams/copilot.yaml`, `config/teams/copilot/skills/` — prompt and skills this ADR extends
+- `docs/operational-resilience.md` — the Atlas quota incident and the open G-4 / Atlas gaps
+- Issue #31 — likely closed or reframed once ADR-0031 and this ADR both exist
