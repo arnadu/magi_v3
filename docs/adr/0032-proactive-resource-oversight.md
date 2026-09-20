@@ -1,6 +1,6 @@
 # ADR-0032 — Proactive multi-resource oversight by the control-plane copilot
 
-**Status**: Proposed — a few implementation-time checks remain (Open questions).
+**Status**: Proposed — the technical unknowns were investigated 2026-09-20 (Verified findings); one product decision remains open (`conversationMessages` retention).
 **Sprint**: TBD (candidate: same push as ADR-0031, right after 28f)
 **Date**: 2026-09-20
 **Related**: [ADR-0031](0031-temporary-resource-upgrades-vm-cost.md) (temporary machine upgrades).
@@ -23,7 +23,7 @@ upgrade alerts read ADR-0031's Decision-1 dataset and its 24 h cap.
   (G-4); the only resource logging is `process.memoryUsage()` every 60 s (`daemon.ts:514`, log lines
   only). No Atlas storage measurement exists either, although an M0 (512 MB) quota outage has already
   broken login once (`docs/operational-resilience.md`, fixed reactively; monitoring still listed open).
-  LLM spend and machine runtime already have data (`llmCallLog`/`missionStats`; ADR-0031's dataset).
+  LLM spend and machine runtime already have data (`missionStats`/`agentTurnStats`; ADR-0031's dataset).
 - **What the control-plane copilot can do today** (`copilot-tools.ts`): read tools (`ListMissions`,
   `GetMissionStatus`, `ReadMissionMailbox`, `ReadMissionLog`, `ReadMissionFile`) and `ProposeAction`
   (operator-confirmed) with types including `suspend_mission`, `write_mission_file`,
@@ -57,13 +57,27 @@ daemon), so a dropped stream or a control-plane restart loses nothing. This repl
 **2. Instrumentation.**
 - **Per-mission disk (closes G-4).** New `agent-runtime-worker/src/resource-sampler.ts`, called from
   the job-runner tick that already runs every 60 s (`daemon.ts`, next to `logMemoryUsage`): `fs.statfs`
-  on `AGENT_WORKDIR` (verify it is the volume mount) → upsert `missionResources`
-  `{missionId, diskUsedBytes, diskTotalBytes, rssMb, runningJobs, updatedAt}`. `runningJobs` needs the
-  module-level counter (`daemon.ts:145`) exposed through a getter. Failure never breaks the tick.
-- **Atlas storage.** In the control plane's 5-min tick (Decision 4): `dbStats` on the app database
-  plus a per-collection size breakdown, compared with `ATLAS_STORAGE_LIMIT_MB` (env, default 512),
-  upserted as `platformResources` `{_id: "atlas", usedBytes, limitBytes, collections: [{name, bytes}],
-  updatedAt}`.
+  on `AGENT_WORKDIR` — which *is* the Fly volume mount in production (`AGENT_WORKDIR=/missions`,
+  `mounts: [{path: "/missions"}]`, `fly-machines.ts:151,175`; `fs.statfs` exists on the image's
+  Node 20) → upsert `missionResources` `{missionId, diskUsedBytes, diskTotalBytes, rssMb,
+  runningJobs, updatedAt}`. `runningJobs` needs the module-level counter (`daemon.ts:145`) exposed
+  through a getter. Failure never breaks the tick, and alerts are skipped when `FLY_APP_NAME` is
+  unset (local dev, where the workdir is not a volume). On crossing 80% the sampler also runs one
+  bounded `du -x -k --max-depth=3 /missions` (20 s timeout, errors ignored) for the alert's top-5
+  directories; this works because the daemon's OS user holds `rwx` ACLs on every agent directory
+  (`workspace-manager.ts:197-236`).
+- **Atlas storage.** In the control plane's 5-min tick (Decision 4). The M0 quota counts "uncompressed
+  BSON documents … plus … associated indexes" (Atlas docs), i.e. `dataSize + indexSize` from
+  `dbStats`, **not** `storageSize` (compressed: 155 MB vs 313 MB `dataSize` for the dev app
+  database). The limit is cluster-wide, and the dev cluster holds 11 databases, so the check runs
+  `listDatabases` (permitted for the app credentials — verified) and sums `dataSize + indexSize`
+  over every database except `admin`/`local`/`config`, falling back to the app database with a
+  warning if listing is ever denied. The per-collection breakdown uses `$collStats` with
+  `storageStats` (verified to work on this tier), for the app database only, plus an "other
+  databases" total. Compared with `ATLAS_STORAGE_LIMIT_MB` (env, default 512), upserted as
+  `platformResources` `{_id: "atlas", usedBytes, limitBytes, databases: [{name, bytes}], collections:
+  [{name, bytes}], updatedAt}`. Measured on the dev cluster on 2026-09-20: ≈ 358 MB of 512 MB (70%),
+  of which the app database is 315 MB and `conversationMessages` alone is 302 MB.
 - **`GetMissionStatus`** (`copilot-tools.ts:190-225`) additionally returns machine config, time on
   it, upgraded time used / cap (ADR-0031), latest disk sample and its age.
 
@@ -73,7 +87,7 @@ Alert state is kept in `resourceAlertState` `{key: "<missionId|platform>:<catego
 lastAlertAt}`: an alert fires when the level rises or 24 h have passed at the same level; the key is
 deleted when the value falls 5 points below the threshold, so a recovered condition re-alerts fresh.
 
-**4. Real-time alerts.** Reuse `AnomalyRecorder`: new `AnomalyCategory` values below. Soft alerts
+**4. Real-time alerts.** Reuse `AnomalyRecorder`: nine new `AnomalyCategory` values below. Soft alerts
 reach the mission's own copilot and the daily report only; hard alerts are also relayed to
 `copilot-{userId}` (and, with Decision 1, wake it).
 
@@ -81,12 +95,13 @@ reach the mission's own copilot and the daily report only; hard alerts are also 
 |---|---|---|---|---|
 | `disk-usage-high` | daemon sampler | volume ≥ 80% / ≥ 90% | soft / hard | `disk-pressure` |
 | `spend-cap-near` | control-plane tick, from `missionStats` totals vs the mission cap | ≥ 90% / ≥ 98% of cap | soft / hard | `cost-management` |
-| `spend-spike` | control-plane hourly, from `llmCallLog` | 24 h spend > 3× trailing 7-day daily average and > $5 | soft | `cost-management` |
+| `spend-spike` | control-plane hourly, from `agentTurnStats` (`costUsd` by `startedAt`; **not** `llmCallLog`, which is pruned to 1 day) | 24 h spend > 3× trailing 7-day daily average and > $5 | soft | `cost-management` |
 | `upgrade-cap-near` | control-plane tick, from ADR-0031 segments | ≥ 80% of the 24 h cap | soft | `vm-upgrade-oversight` |
 | `upgrade-cap-reached` | ADR-0031 route, on rejection | request rejected by the cap | hard | `vm-upgrade-oversight` |
 | `upgrade-idle` | control-plane tick | upgraded machine, no conversation activity **and** `runningJobs = 0` for 30 min | soft | `vm-upgrade-oversight` |
 | `resize-failure` | ADR-0031 route | machine stopped but re-create failed | hard | `mission-recovery` |
-| `atlas-storage-high` | control-plane tick | cluster ≥ 70% / ≥ 85% of limit | soft (report only) / hard | `atlas-storage` |
+| `oom-suspected` | control-plane tick, from Fly machine events | unrequested machine exit with `exit_code` 137, or `signal`/`guest_signal` 9, or `oom_killed: true` | hard | `vm-upgrade-oversight` |
+| `atlas-storage-high` | control-plane tick | cluster (all databases) ≥ 70% / ≥ 85% of limit | soft (report only) / hard | `atlas-storage` |
 
 Mission-level alerts use a control-plane `AnomalyRecorder` built like `constructAnomalyRecorder`
 (`daemon-boot/mission-owner.ts`): the mission's mailbox, `MISSION_COPILOT_AGENT_ID` when the mission
@@ -95,6 +110,15 @@ posted directly to the copilot mailbox of each user in the new env var **`PLATFO
 (comma-separated Firebase UIDs; empty → a startup warning and no Atlas alerts or report section).
 `upgrade-idle` requires the `runningJobs` sample: a long background job legitimately has no LLM
 activity.
+
+`oom-suspected` comes from one Fly Machines list call per tick for the whole missions app, which
+returns every machine's `events[]`. Verified on the dev app: an `exit` event carries
+`request.exit_event` with `exit_code`, `signal`, `guest_signal`, `requested_stop`, `restarting` and
+`exited_at`; an `oom_killed` field was never present in the 8 exits observed (none was an OOM), so it
+is honoured if it appears but the rule does not depend on it. Fly keeps only ~5 events per machine, so
+the 5-min cadence matters; each exit is handled once, keyed on `exited_at` in `resourceAlertState`.
+An OOM kill of a child process (a Python job) leaves the daemon alive and surfaces as a `job-failure`
+with exit code 137/−9 instead; the `vm-upgrade-oversight` skill treats that as a probable OOM too.
 
 **5. Daily report.** New `control-plane/src/resource-monitor.ts` (`startResourceMonitor(db)`, started
 with the scheduler) runs the 5-min tick above and, once per day at `RESOURCE_REPORT_HOUR_UTC`
@@ -105,21 +129,28 @@ returns a typed `DailyReport`; `renderDailyReport()` turns it into the text belo
 It is written first as a `resourceSnapshots` document `{userId, date, missions: {id: {diskUsedBytes,
 llmTotalUsd, upgradedMs}}, atlasBytes?}` with a unique `(userId, date)` index, which makes it
 idempotent across restarts and supplies yesterday's numbers for growth rates. If the control plane was
-down at the report hour, the first tick after start builds any missing report for today. Spend uses the
-same aggregation as `GET /api/missions/stats` (extracted into a shared helper); caps come from each
-mission's team config as in `GET /:id/limits`. The Atlas block appears only in reports for
+down at the report hour, the first tick after start builds any missing report for today. Spend lifetime
+totals come from `missionStats` (`lifetimeCostUsd`, the source `missionLifetimeCostUsd()` uses), 24 h and
+daily figures from `agentTurnStats`, and caps from each mission's team config as in `GET
+/:id/limits`. It must **not** reuse `GET /api/missions/stats`: that route aggregates `llmCallLog` on
+`$cost` and `$createdAt`, but entries store `usage.cost.totalCostUsd` and `savedAt`, and the
+collection is pruned to 1 day, so its spend figures cannot be right (fixing it is a separate
+follow-up). A new index `{missionId: 1, startedAt: 1}` on `agentTurnStats` (next to the existing
+ones in `agent-stats.ts`) backs the windowed queries. The Atlas block appears only in reports for
 `PLATFORM_ADMIN_USER_IDS`. The report is always sent, with an empty flags list when all is well.
 
 ```
 Daily resource report — 2026-09-20 (last 24 h)
 
-FLAGS (2)
+FLAGS (3)
+  ! Atlas storage  358 / 512 MB (70%), +6 MB/24 h, full in ~26 days
   ! meteo-textbook  disk 8.1 / 10 GB (81%), growing ~0.4 GB/day, full in ~5 days
   ! tutor           upgraded machine idle 47 min (performance 2 CPU / 8 GB, expires in 38 min)
 
 PLATFORM
-  MongoDB Atlas   212 / 512 MB (41%)   +6 MB/24 h, ~50 days to full
-    largest: llmCallLog 118 MB · conversationMessages 61 MB · agentTurnStats 14 MB
+  MongoDB Atlas   358 / 512 MB (70%)   +6 MB/24 h, ~26 days to full
+    app database 315 MB: conversationMessages 302 MB · mailbox 5.5 MB · agentTurnStats 1.4 MB
+    other databases on the cluster: 43 MB (10 databases)
 
 MISSIONS
   mission          status   LLM 24h  LLM total / cap       machine now            upgraded / 24 h cap  disk         last activity
@@ -158,8 +189,8 @@ disk marked "last sample <age>".
 |---|---|---|
 | `daily-resource-report` (new) | How to read the daily resource report, decide what needs the operator's attention, write the digest, and keep the Resource oversight mental-map table current. | Order: flags → already-flagged check → digest → mental-map update; one-line all-clear; cross-mission pattern check. |
 | `disk-pressure` (new) | Responding to a mission volume filling up: find what is growing, then choose cleanup, extending the volume, or suspending before writes fail. | The 90% alert body carries the top-5 directories (bounded `du`, run once by the sampler on crossing 80%). Logs/temp → propose `create_schedule` asking the mission's copilot to prune; git objects → `git gc`; agent data → extend the volume; ≥ 95% or projected full within 2 h → propose `suspend_mission`. |
-| `atlas-storage` (new) | Responding to shared MongoDB storage pressure using the per-collection breakdown, and knowing which fixes need the platform owner. | Levers in order: lower `LOG_RETENTION_DAYS` (the pruner runs every 30 min; needs a control-plane env change and deploy, so the copilot tells the owner exactly which value), clear the largest log collection, move up an Atlas tier. Read-only: the copilot has no DB tool. |
-| `vm-upgrade-oversight` (new) | Reviewing machine-upgrade activity: judge whether a mission holds a bigger machine than it needs, handle cap-near and cap-reached, and recognise when the default size should change. | `upgrade-idle` → propose a message to the mission's copilot not to renew; cap-near → check the reason pattern; cap-reached → explain that only the operator can reset it in the Limits panel (ADR-0031 Decision 7); chronic flag → propose `save_session_config` raising the default machine (only after the mission is suspended, as that action already requires). |
+| `atlas-storage` (new) | Responding to shared MongoDB storage pressure using the per-collection breakdown, and knowing which fixes need the platform owner. | Read the breakdown first. Today the growth driver is `conversationMessages` (302 of 315 MB), which nothing prunes — the existing pruner deletes only `llmCallLog`, already near empty — so `LOG_RETENTION_DAYS` is not a lever any more. Levers in order: drop unused databases on the shared cluster (the owner does this in Atlas), a retention rule for compacted `conversationMessages` (does not exist yet, see Open questions), move up an Atlas tier. Read-only: the copilot has no DB tool and only tells the owner which lever and what numbers. |
+| `vm-upgrade-oversight` (new) | Reviewing machine-upgrade activity: judge whether a mission holds a bigger machine than it needs, handle cap-near and cap-reached, and recognise when the default size should change. | `oom-suspected` (or a `job-failure` with exit 137/−9) → propose a message asking the mission's copilot to request a bigger machine (ADR-0031), or, if it already ran at the maximum size, that the job needs redesigning; `upgrade-idle` → propose a message to the mission's copilot not to renew; cap-near → check the reason pattern; cap-reached → explain that only the operator can reset it in the Limits panel (ADR-0031 Decision 7); chronic flag → propose `save_session_config` raising the default machine (only after the mission is suspended, as that action already requires). |
 | `cost-management` (extend) | Existing skill, LLM cost. | Add `spend-cap-near` (check burn rate, then `pause_agent` on the runaway or `set_mission_budget` within the ceiling) and `spend-spike` (per-agent attribution from `missionStats`). |
 | `incident-triage` (extend) | Existing skill, shared with the mission-copilot. | Add one section per new category naming the skill that handles it (table in Decision 4). |
 
@@ -181,22 +212,33 @@ not shrink) would need a new `extend_volume` action type; whether that is in sco
 - **Skipping Atlas monitoring because the last outage got a fix.** Rejected: the fix was reactive
   and `operational-resilience.md` still lists the gap.
 
+## Verified findings (2026-09-20)
+
+Each of these was an open question; they are settled and reflected in the Decisions above.
+- **OOM detection:** Fly machine events expose unrequested exits with `exit_code`/`signal`; rule and
+  its limits are in Decision 4 (checked against the real dev machines).
+- **Atlas accounting:** the quota is `dataSize + indexSize` summed over all databases on the cluster
+  (Decision 2). The dev cluster is already at ≈ 70%, so the soft threshold would fire on day one.
+- **Spend queries:** `llmCallLog` has no `(missionId, time)` index and is pruned to 1 day (dev copy is
+  empty), so spend alerts and the report use `missionStats` and `agentTurnStats` (Decisions 4-5).
+- **Disk:** `/missions` is the volume mount and the daemon can `du` all agent directories
+  (Decision 2).
+- **Not needed now:** volume extension. The `disk-pressure` skill offers cleanup and suspension; growing
+  a volume is left to the operator (`flyctl volumes extend`).
+
 ## Open questions
 
-- **Fly OOM detection.** `unclean-restart` should carry an OOM flag if Fly's machine exit event reports
-  an OOM kill, so the copilot can point at a resource request (issue #31). Nothing in the code reads
-  Fly exit events yet; verify the field before relying on it.
-- **Atlas accounting.** Which `dbStats` figure matches what Atlas counts against the M0 quota
-  (`dataSize + indexSize` vs `storageSize`) — verify once against the Atlas UI.
-- **`llmCallLog` query cost.** The hourly `spend-spike` aggregation needs an index on
-  `(missionId, createdAt)`; verify it exists, given that collection is what filled the quota before.
-- **Disk sampling details.** That `AGENT_WORKDIR` is the volume mount, and that the daemon user can
-  `du` enough of it to name the largest directories (agent home directories are ACL-restricted).
-- **`extend_volume`.** Add a `ProposeAction` type for it now, or leave volume growth to the operator
-  running `flyctl volumes extend` at first.
+- **Who prunes `conversationMessages`?** It is the real Atlas growth driver (302 MB of the app
+  database; compaction only flags messages `compacted: true`, never deletes). Deleting compacted
+  messages after N days would cap growth but affects what the Transcripts panel and audits can show,
+  so it is a product decision and probably its own ADR. Without it, `atlas-storage-high` can warn but
+  the only remedies are dropping unused databases or a paid Atlas tier.
+- **`GET /api/missions/stats` spend fields** are computed from fields `llmCallLog` does not have, over
+  a 1-day retention window; file an issue and switch the route to `missionStats`/`agentTurnStats`.
+  Not required for this ADR, which avoids the route.
 - **Report hour and timezone.** One UTC hour (default 12) until users have a stored timezone.
-- **Skill playbook wording.** The decision tables above fix the structure; the actual text needs your
-  review, since it encodes operational judgment.
+- **Skill playbook wording.** The decision tables above fix the structure; the text is reviewed
+  during implementation.
 - **A fifth resource** (your "etc."): the mechanism (waker, sampler, thresholds, report sections) is
   generic; confirm nothing else should be in the first delivery.
 
@@ -205,7 +247,7 @@ not shrink) would need a new `extend_volume` action type; whether that is in sco
 - New: `copilot-runtime.ts`, `resource-monitor.ts` (control plane); `resource-sampler.ts`,
   `resource-thresholds.ts` (agent-runtime-worker); collections `missionResources`, `platformResources`,
   `resourceAlertState`, `resourceSnapshots` (prune snapshots and alert state with the existing
-  log pruner); eight new `AnomalyCategory` values; extended `GetMissionStatus`.
+  log pruner); nine new `AnomalyCategory` values; a new `agentTurnStats` index; extended `GetMissionStatus`.
 - New env vars, documented in `CLAUDE.md`: `PLATFORM_ADMIN_USER_IDS`, `RESOURCE_REPORT_HOUR_UTC`,
   `ATLAS_STORAGE_LIMIT_MB`.
 - `config/teams/copilot.yaml` grows a prompt section and a mental-map table; four new team skills and
