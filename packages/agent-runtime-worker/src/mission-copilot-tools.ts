@@ -49,6 +49,7 @@ import { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
 import { type ObjectiveDef, ObjectiveDefSchema } from "./objectives/types.js";
+import { createResourceUpgradeTools } from "./resource-upgrade-tool.js";
 import type { MagiTool, ToolResult } from "./tools.js";
 import { truncate } from "./tools.js";
 
@@ -1248,5 +1249,6 @@ export function createMissionCopilotTools(
 		listScheduledMessages,
 		listGithubIssues,
 		reportGithubIssue,
+		...createResourceUpgradeTools({ missionId, controlPlaneUrl, monitorToken }),
 	];
 }

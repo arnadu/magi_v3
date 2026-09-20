@@ -106,6 +106,12 @@ const requestResourceUpgrade: MagiTool = {
 };
 ```
 
+A second Tier B tool, `EndResourceUpgrade` (no parameters), returns the mission to its default machine early
+(the job is done), through `POST /resources/revert`, subject to the same cooldown. Both tools return
+rejections to the copilot verbatim; a successful *new* upgrade restarts the machine that is running the
+copilot, so its result is normally not seen — the control plane's notification message (Decision 4) is
+what the copilot reads on restart.
+
 The control-plane route (authenticated like the GitHub-proxy routes) **first validates the requested
 shape** — against the Fly validity rules in Context and a **maximum machine size** (initially a
 control-plane constant, default 4 CPUs / 16 GB; no agent tool can change it), rejecting (never

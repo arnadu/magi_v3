@@ -396,7 +396,8 @@ also applies live via the running mission's `/set-budget`.
 Tier B tools require infrastructure only available in the control plane (MongoDB `db` handle,
 Fly Machines API, SSE push channel). They are constructed by `copilot-daemon.ts` and injected
 into `AgentRunContext.additionalTools`. They are never available to execution-plane agents and
-cannot be disabled via `disabledTools`.
+cannot be disabled via `disabledTools`. (The mission-copilot has its own Tier B set on the
+execution plane — see below.)
 
 | Tool name | Purpose |
 |-----------|---------|
@@ -409,6 +410,15 @@ cannot be disabled via `disabledTools`.
 | `ListTemplates` | List available team config templates |
 | `GetTemplate` | Read full YAML + files for a template |
 | `ProposeAction` | Propose a mutating action; operator must confirm before execution |
+
+**Mission-copilot Tier B tools.** On the execution plane the mission-copilot alone (matched on the
+literal agent id `mission-copilot`, never on config data) is given extra tools from
+`mission-copilot-tools.ts` through the same `additionalTools` mechanism: config, objectives,
+transcripts, budget, scheduling, background-job control and the GitHub proxy (ADR-0016). It also gets
+`RequestResourceUpgrade` and `EndResourceUpgrade` (ADR-0031, `resource-upgrade-tool.ts`): request a
+temporary bigger machine (CPU kind, CPUs, RAM, mandatory duration ≤ 60 min) or return to the default.
+The control plane performs the resize; worker agents cannot call these tools and instead ask the
+mission-copilot by mailbox message (the `request-resources` skill).
 
 **Background jobs** (via Tool IPC server at `:4001`, not registered as LLM tools):
 

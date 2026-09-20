@@ -180,6 +180,13 @@ describe("mission-copilot-tools", () => {
 		}
 	});
 
+	it("includes the machine-upgrade tools (ADR-0031), which only the mission copilot is given", () => {
+		const { tools } = buildTools();
+		const names = tools.map((t) => t.name);
+		expect(names).toContain("RequestResourceUpgrade");
+		expect(names).toContain("EndResourceUpgrade");
+	});
+
 	// ── Family A ─────────────────────────────────────────────────────────────
 
 	describe("ReadMissionConfig / SaveMissionConfig", () => {
