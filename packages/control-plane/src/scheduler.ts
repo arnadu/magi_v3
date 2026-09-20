@@ -22,7 +22,8 @@ import {
 import cronParser from "cron-parser";
 import type { Collection, Db } from "mongodb";
 import { schedule } from "node-cron";
-import { getMachineState, resumeMission } from "./fly-machines.js";
+import { getMachineState } from "./fly-machines.js";
+import { resumeTracked } from "./machine-lifecycle.js";
 
 const { parseExpression } = cronParser;
 
@@ -58,6 +59,7 @@ interface MissionDoc {
 	status: string;
 	userId?: string;
 	agents?: AgentConfig[];
+	mission?: { memoryMb?: number; cpus?: number };
 }
 
 /**
@@ -131,7 +133,11 @@ export async function deliver(db: Db): Promise<void> {
 					console.log(
 						`[scheduler] Resuming machine ${mission.machineId} for mission ${doc.missionId}`,
 					);
-					await resumeMission(mission.machineId);
+					await resumeTracked(db, {
+						missionId: doc.missionId,
+						machineId: mission.machineId,
+						mission: mission.mission,
+					});
 				}
 			}
 

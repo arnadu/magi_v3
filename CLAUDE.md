@@ -119,6 +119,7 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 - `llmCallLog` — audit log of every LLM call with cost breakdown
 - `scheduled_messages` — cron-based agent wakeups
 - `agentTurnStats` — per-turn (per-wakeup) statistics, upserted incrementally during a turn (LLM call count, tokens, cost, peak context, tool counts/errors, files written, messages sent, URLs visited); one doc per `(missionId, agentId, turnNumber)`
+- `machineSegments` — runtime segments per machine shape (ADR-0031): one doc per stretch a mission's machine ran with one shape; drives the runtime cockpit tab and the cumulative upgrade cap
 - `resourceAlertState` — per-alert de-duplication/hysteresis state for resource alerts (ADR-0032); one doc per `<missionId|platform>:<category>` key
 - `missionStats` — lifetime per-agent totals (cost, LLM calls, turn count, consecutive zero-output turns), `$inc`-updated once at turn end; one doc per `(missionId, agentId)`
 

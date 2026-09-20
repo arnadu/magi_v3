@@ -242,6 +242,16 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | A daemon's watch loop dies (e.g. `copilot.yaml` fails to load) | Its handle stays in the runtime map, so the waker's `ensureCopilotRunning` is a no-op and mail stays stranded | 🟠 | None yet | **G-11** |
 | A misbehaving mission floods the copilot with relays | Repeated wake-ups, LLM spend | 🟡 | The daemon drains all unread mail in one turn; the copilot's own per-user spend cap (`getCopilotSpendCap`); resource alerts are de-duplicated by `resource-alert-state.ts` (below) | Anomalies from other sources are not de-duplicated |
 
+**Machine runtime segments** (`machine-lifecycle.ts`, `machine-segments.ts`, `machineSegments`)
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| A segment write fails after a machine operation succeeded | Runtime under- or over-counted | 🟡 | Bookkeeping is best-effort: logged with the mission id, and the machine operation is never failed for it (that would orphan a running machine); `reconcileSegments` corrects it from live Fly state | `reconcileSegments` is not scheduled until step 5.4 |
+| Fly stops a machine on its own (crash loop, OOM) while a segment is open | Runtime overstated | 🟡 | `reconcileSegments` closes segments whose machine is stopped or gone | Same |
+| The scheduler wakes a suspended mission | Runtime would be missed | 🟡 | The scheduler's resume goes through `resumeTracked`, which opens a segment; `reconcileSegments` also opens one for any running machine that has none, using the machine's real shape | None |
+| New code bypasses `machine-lifecycle.ts` and calls Fly directly | Segments silently incomplete | 🟠 | A unit test fails if any control-plane module other than `fly-machines.ts`/`machine-lifecycle.ts` imports the raw provision/stop/restart/destroy functions | None |
+| Two segments open for one mission | Runtime double-counted | 🟡 | `openSegment` closes any open segment for the mission first | None |
+
 **Alert de-duplication** (`resource-alert-state.ts`, `resourceAlertState`)
 
 | Failure | Effect | Severity | Current mitigation | Gap |

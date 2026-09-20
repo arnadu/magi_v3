@@ -14,6 +14,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { type CpuKind, DEFAULT_MACHINE } from "./machine-shapes.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 
 const FLY_API_BASE = "https://api.machines.dev/v1";
@@ -62,10 +63,12 @@ export interface ProvisionOptions {
 	 *  Used when re-provisioning a machine whose Fly machine was deleted but
 	 *  whose workspace volume is still intact. */
 	existingVolumeId?: string;
-	/** Guest memory in MB. Defaults to 1024 (issue #25 — was hardcoded). */
+	/** Guest memory in MB. Defaults to DEFAULT_MACHINE.memoryMb (issue #25 — was hardcoded). */
 	memoryMb?: number;
 	/** Guest CPU count. Defaults to 1. */
 	cpus?: number;
+	/** Guest CPU kind. Defaults to "shared"; temporary upgrades (ADR-0031) may ask for "performance". */
+	cpuKind?: CpuKind;
 }
 
 /**
@@ -180,9 +183,9 @@ export async function provisionMission(
 				// missions (multiple agents, Python data-science stack) can override
 				// via mission.memoryMb (issue #25) — see ProvisionOptions.
 				guest: {
-					cpu_kind: "shared",
-					cpus: opts.cpus ?? 1,
-					memory_mb: opts.memoryMb ?? 1024,
+					cpu_kind: opts.cpuKind ?? DEFAULT_MACHINE.cpuKind,
+					cpus: opts.cpus ?? DEFAULT_MACHINE.cpus,
+					memory_mb: opts.memoryMb ?? DEFAULT_MACHINE.memoryMb,
 				},
 			},
 			region,

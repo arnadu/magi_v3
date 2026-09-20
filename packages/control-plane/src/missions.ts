@@ -37,13 +37,15 @@ import type { Collection, Db, ObjectId } from "mongodb";
 import {
 	deleteMachine,
 	destroyLocal,
-	destroyMission,
 	getMachineState,
 	isLocalExecution,
 	provisionLocal,
-	provisionMission,
-	suspendMission,
 } from "./fly-machines.js";
+import {
+	destroyTracked,
+	provisionTracked,
+	suspendTracked,
+} from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { getTemplate } from "./templates.js";
 import {
@@ -1220,7 +1222,7 @@ export function createMissionsRouter(db: Db): Router {
 		try {
 			const handle = isLocalExecution()
 				? provisionLocal(req.params.id, { teamFiles: mission.teamFiles ?? [] })
-				: await provisionMission(req.params.id, {
+				: await provisionTracked(db, req.params.id, {
 						memoryMb: validated.mission.memoryMb,
 						cpus: validated.mission.cpus,
 					});
@@ -1412,7 +1414,7 @@ export function createMissionsRouter(db: Db): Router {
 			// Local: write to disk since the developer's daemon reads from the local path.
 			const handle = isLocalExecution()
 				? provisionLocal(missionId, { teamFiles: resolvedFiles })
-				: await provisionMission(missionId, {
+				: await provisionTracked(db, missionId, {
 						memoryMb: doc.mission?.memoryMb,
 						cpus: doc.mission?.cpus,
 					});
@@ -1514,7 +1516,7 @@ export function createMissionsRouter(db: Db): Router {
 		}
 		try {
 			if (!mission.machineId.startsWith("local-")) {
-				await suspendMission(mission.machineId);
+				await suspendTracked(db, req.params.id, mission.machineId);
 			}
 			await col.updateOne(
 				{ missionId: req.params.id },
@@ -1579,7 +1581,7 @@ export function createMissionsRouter(db: Db): Router {
 						`[missions] could not delete machine ${mission.machineId}: ${(e as Error).message} — proceeding to provision anyway`,
 					);
 				}
-				const handle = await provisionMission(missionId, {
+				const handle = await provisionTracked(db, missionId, {
 					existingVolumeId: mission.volumeId,
 					// teamFiles omitted: daemon fetches from missions collection at startup
 					memoryMb: mission.mission?.memoryMb,
@@ -1653,7 +1655,12 @@ export function createMissionsRouter(db: Db): Router {
 			if (mission.machineId?.startsWith("local-")) {
 				destroyLocal(req.params.id);
 			} else if (mission.machineId && mission.volumeId) {
-				await destroyMission(mission.machineId, mission.volumeId);
+				await destroyTracked(
+					db,
+					req.params.id,
+					mission.machineId,
+					mission.volumeId,
+				);
 			}
 			await col.updateOne(
 				{ missionId: req.params.id },

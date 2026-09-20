@@ -240,9 +240,12 @@ segments) counts toward a per-mission cap of **24 hours** (control-plane constan
 - **Who executes the expiry revert:** a `revertExpiredUpgrades(db)` sweeper in the control plane's
   existing 1-min scheduler tick (`scheduler.ts`), also run once at startup, so a control-plane outage
   at expiry reverts late rather than never.
-- **Manual or scheduled suspend, and destroy, end the upgrade:** the open segment is closed at the stop
-  time and `upgrade` is cleared, so any resume (operator, or the scheduler waking a suspended mission)
-  provisions the default machine.
+- **Suspend and destroy end the upgrade.** Destroy closes the segment and clears `upgrade`. A suspend of
+  an upgraded mission first reverts it (stop, re-create the default machine on the same volume, stop
+  again), so a suspended mission's stopped machine is always the default shape and every resume path
+  works unchanged: the scheduler waking a suspended mission and the copilot's `resume_mission` both
+  plain-start the existing machine (only the operator's resume route re-creates it), and neither must
+  ever bring back an untracked upgraded machine.
 - **A failed resize** (machine stopped or deleted but the re-create failed, or a stale claim): the
   mission is set to status `error` with an `errorMessage`, exactly like a failed resume; the segment is
   closed, `resize-failure` (ADR-0032) is raised, and the operator's Resume provisions the default

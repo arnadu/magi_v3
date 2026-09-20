@@ -30,13 +30,12 @@ import { COPILOT_WORKDIR } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
 import type { CopilotRuntime } from "./copilot-runtime.js";
 import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
+import { isLocalExecution, provisionLocal } from "./fly-machines.js";
 import {
-	isLocalExecution,
-	provisionLocal,
-	provisionMission,
-	resumeMission,
-	suspendMission,
-} from "./fly-machines.js";
+	provisionTracked,
+	resumeTracked,
+	suspendTracked,
+} from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { getTemplate } from "./templates.js";
 import {
@@ -436,7 +435,7 @@ export async function executeAction(
 			if (existing) throw new Error(`Mission "${missionId}" already exists`);
 
 			const resolvedMission = { ...template.config.mission, id: missionId };
-			const handle = await provisionMission(missionId, {
+			const handle = await provisionTracked(db, missionId, {
 				teamFiles: template.teamFiles,
 			});
 
@@ -480,7 +479,7 @@ export async function executeAction(
 			try {
 				const handle = isLocalExecution()
 					? provisionLocal(missionId, { teamFiles: draft.teamFiles ?? [] })
-					: await provisionMission(missionId, {
+					: await provisionTracked(db, missionId, {
 							memoryMb: validated.mission.memoryMb,
 							cpus: validated.mission.cpus,
 						});
@@ -515,7 +514,7 @@ export async function executeAction(
 			const mission = await missions.findOne({ missionId, userId });
 			if (!mission?.machineId)
 				throw new Error(`Mission "${missionId}" has no machine`);
-			await suspendMission(mission.machineId);
+			await suspendTracked(db, missionId, mission.machineId);
 			await missions.updateOne(
 				{ missionId },
 				{ $set: { status: "suspended", updatedAt: now } },
@@ -528,7 +527,11 @@ export async function executeAction(
 			const mission = await missions.findOne({ missionId, userId });
 			if (!mission?.machineId)
 				throw new Error(`Mission "${missionId}" has no machine`);
-			await resumeMission(mission.machineId);
+			await resumeTracked(db, {
+				missionId,
+				machineId: mission.machineId,
+				mission: mission.mission,
+			});
 			await missions.updateOne(
 				{ missionId },
 				{ $set: { status: "running", updatedAt: now } },
