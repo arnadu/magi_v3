@@ -1,7 +1,7 @@
 # ADR-0031 — Temporary mission-machine resource upgrades
 
-**Status**: Proposed — several open questions below need settling before implementation.
-**Sprint**: TBD (candidate: right after 28f, alongside the Jupyter/webapp-exposure feature)
+**Status**: Accepted — remaining open questions are implementation-time details.
+**Sprint**: 28g
 **Date**: 2026-09-18
 **Related**: [ADR-0032](0032-proactive-resource-oversight.md) — the control-plane copilot's
 cross-resource monitoring. Designed together, likely shipped together, but a separate concern; its

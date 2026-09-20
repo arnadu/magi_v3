@@ -5,6 +5,13 @@ Working title **Sprint 28g** (number to be assigned; the ADRs say "right after 2
 [ADR-0032](../adr/0032-proactive-resource-oversight.md). Read those first — this plan does not repeat
 their design, only how to build, test, secure, document and roll it out.
 
+## Progress
+
+| Step | Status |
+|---|---|
+| 0.1 Baseline | ✅ 2026-09-20: build, lint, 47 unit files / 487 tests, `daemon-job.integration.test.ts` all green |
+| 0.2 Roadmap, ADR status, issues | ✅ 2026-09-20: roadmap row and CLAUDE.md entry, ADRs Accepted (sprint 28g), issues #53 and #54 filed |
+
 ## 1. How the work is run
 
 - **One step = one commit** on `main` (solo-dev workflow; push = deploy to dev). Each commit carries
@@ -29,8 +36,9 @@ their design, only how to build, test, secure, document and roll it out.
    resize leaves the mission in `error`). These were gaps, not preferences; they are needed to
    implement safely.
 2. No feature flags: rollback is a revert + redeploy.
-3. Two follow-up issues to file (not in scope): `GET /api/missions/stats` spend fields read
-   nonexistent fields, and `conversationMessages` retention (ADR-0032 Open questions).
+3. Two follow-up issues (not in scope), filed 2026-09-20: [#53](https://github.com/arnadu/magi_v3/issues/53)
+   (`GET /api/missions/stats` spend fields read nonexistent fields) and
+   [#54](https://github.com/arnadu/magi_v3/issues/54) (`conversationMessages` retention).
 
 ## 2. Work packages and steps
 

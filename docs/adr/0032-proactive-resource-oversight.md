@@ -1,7 +1,7 @@
 # ADR-0032 — Proactive multi-resource oversight by the control-plane copilot
 
-**Status**: Proposed — the technical unknowns were investigated 2026-09-20 (Verified findings); one product decision remains open (`conversationMessages` retention).
-**Sprint**: TBD (candidate: same push as ADR-0031, right after 28f)
+**Status**: Accepted — technical unknowns investigated 2026-09-20 (Verified findings); `conversationMessages` retention stays open as a separate decision.
+**Sprint**: 28g (same push as ADR-0031)
 **Date**: 2026-09-20
 **Related**: [ADR-0031](0031-temporary-resource-upgrades-vm-cost.md) (temporary machine upgrades).
 Designed together and likely shipped together, but separate: ADR-0031 scales one mission's machine on
@@ -231,11 +231,12 @@ Each of these was an open question; they are settled and reflected in the Decisi
 - **Who prunes `conversationMessages`?** It is the real Atlas growth driver (302 MB of the app
   database; compaction only flags messages `compacted: true`, never deletes). Deleting compacted
   messages after N days would cap growth but affects what the Transcripts panel and audits can show,
-  so it is a product decision and probably its own ADR. Without it, `atlas-storage-high` can warn but
+  so it is a product decision and probably its own ADR; tracked as
+  [#54](https://github.com/arnadu/magi_v3/issues/54). Without it, `atlas-storage-high` can warn but
   the only remedies are dropping unused databases or a paid Atlas tier.
 - **`GET /api/missions/stats` spend fields** are computed from fields `llmCallLog` does not have, over
-  a 1-day retention window; file an issue and switch the route to `missionStats`/`agentTurnStats`.
-  Not required for this ADR, which avoids the route.
+  a 1-day retention window; tracked as [#53](https://github.com/arnadu/magi_v3/issues/53) (switch the
+  route to `missionStats`/`agentTurnStats`). Not required for this ADR, which avoids the route.
 - **Report hour and timezone.** One UTC hour (default 12) until users have a stored timezone.
 - **Skill playbook wording.** The decision tables above fix the structure; the text is reviewed
   during implementation.

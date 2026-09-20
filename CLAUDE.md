@@ -152,6 +152,13 @@ handlers, #48 mid-turn dispatch gap, #52), 28c (CR-01/CR-02 fixes + `monitor-ser
 `daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 + beta deployment), 28a
 (live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
 
+**Sprint 28g — Resource management (in progress).** Temporary mission-machine upgrades
+(ADR-0031: agents ask the mission-copilot, which requests a bigger machine for ≤ 60 min; 24 h cumulative
+cap with operator reset in the Limits panel; runtime-by-config cockpit tab) and proactive resource
+oversight (ADR-0032: control-plane copilot daily report + threshold alerts for disk, LLM spend,
+upgrades, OOM and Atlas storage; Change-Stream copilot waker). Closes G-4 and the Atlas-storage gap.
+Plan and step status: `docs/plans/resource-management-implementation-plan.md`.
+
 **Sprint 28f — Remaining operational hardening (backlog, not started).** G-4 disk monitoring
 (highest-severity operational gap — Fly Volume usage in the daemon heartbeat, surfaced in the
 dashboard) + G-5 out-of-band alerting (issues #3, #4, likely shares G-4's alert plumbing);
