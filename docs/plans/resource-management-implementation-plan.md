@@ -11,7 +11,7 @@ their design, only how to build, test, secure, document and roll it out.
 |---|---|
 | 0.1 Baseline | ✅ 2026-09-20: build, lint, 47 unit files / 487 tests, `daemon-job.integration.test.ts` all green |
 | 0.2 Roadmap, ADR status, issues | ✅ 2026-09-20: roadmap row and CLAUDE.md entry, ADRs Accepted (sprint 28g), issues #53 and #54 filed |
-| 1.1 Copilot waker | ✅ code + unit (27) + integration (4, real Mongo/Change Stream) tests; LIVE check on dev pending deploy |
+| 1.1 Copilot waker | ✅ 2026-09-20: 27 unit + 4 integration tests (real Mongo Change Stream); LIVE on dev: a relay posted to a throwaway `copilot-{user}` mailbox with no daemon was read by a newly started daemon in 2 s and answered (test data cleaned up) |
 
 ## 1. How the work is run
 
