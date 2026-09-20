@@ -27,7 +27,9 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { createAuthMiddleware } from "./auth.js";
 import { createCopilotRouter } from "./copilot-router.js";
+import { createCopilotRuntime } from "./copilot-runtime.js";
 import { PendingActionsStore } from "./copilot-tools.js";
+import { startCopilotWaker } from "./copilot-waker.js";
 import { initFirebase } from "./firebase.js";
 import { createMissionCopilotRouter } from "./mission-copilot-router.js";
 import { createMissionsRouter } from "./missions.js";
@@ -158,6 +160,7 @@ async function main(): Promise<void> {
 
 	// Copilot chat API + SSE (per-user daemon started lazily on first message).
 	const pendingActions = new PendingActionsStore();
+	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);
 	app.use(
 		"/api/copilot",
 		express.json({ limit: "4mb" }),
@@ -167,7 +170,7 @@ async function main(): Promise<void> {
 			standardHeaders: true,
 			legacyHeaders: false,
 		}),
-		createCopilotRouter(db, REPO_ROOT, pendingActions),
+		createCopilotRouter(db, pendingActions, copilotRuntime),
 	);
 
 	// Mission CRUD + lifecycle.
@@ -270,11 +273,16 @@ async function main(): Promise<void> {
 
 	// Start scheduled message delivery heartbeat.
 	const stopScheduler = startScheduler(db);
+	// Start a user's copilot daemon whenever mail arrives for it (ADR-0032).
+	const stopCopilotWaker = startCopilotWaker(db, (userId) =>
+		copilotRuntime.ensureCopilotRunning(userId),
+	);
 
 	// Graceful shutdown.
 	async function shutdown(): Promise<void> {
 		console.log("[control-plane] Shutting down…");
 		stopScheduler();
+		stopCopilotWaker();
 		server.close(() => {
 			client
 				.close()

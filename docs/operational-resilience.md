@@ -11,6 +11,7 @@ mode that should appear in this document before it reaches production.
 
 ## Recently fixed
 
+| The control-plane copilot is now woken for any mail addressed to it (`copilot-waker.ts`, `copilot-runtime.ts`): a Change Stream on `mailbox` plus a startup/5-minute catch-up scan start the owning user's daemon when mail arrives for `copilot-{userId}`. Before this the daemon was only ever started by the operator's own `/message` route, so hard-anomaly relays from missions (`AnomalyRecorder`, ADR-0020) and scheduled messages sat unread until the operator next wrote to the copilot | 28g | Closes a gap in the ADR-0020 wake-up design that made the whole relay pipeline inert whenever the copilot wasn't already running; also the prerequisite for ADR-0032's daily report |
 | `BrowseWebHandle.close()` (`browse-web-egress-proxy.ts`, new in the CR-03 SSRF fix) no longer waits on `http.Server.close()`'s own callback — it explicitly tracks and force-destroys every socket a CONNECT tunnel touches (both the inbound client socket and the proxy's own outbound leg) before returning | 28e | Found empirically while testing the SSRF fix, not from a live incident: a CONNECT-hijacked socket is detached from the http.Server's normal connection bookkeeping, so `server.closeAllConnections()`/`close()` genuinely never resolves if Chromium still holds the tunnel open at teardown — reproduced past 45s before the fix. `agent-runner.ts` awaits this close() in a `finally` block, so an unbounded hang here would have stalled every subsequent turn for that agent, not just failed cleanly |
 | Traced the Atlas quota outage (below) recurring within 24 hours to why mid-session context pruning wasn't keeping typical context small: `pruneEphemeralResults` only fires once a call crosses `MID_SESSION_PRUNE_THRESHOLD` (160k tokens), and even then only stubs a whitelisted set of "ephemeral" tool results older than the last 2 rounds — assistant text, user messages, and non-ephemeral results (`WriteFile`, `PostMessage`, mailbox, objectives) are never pruned within a session, so real mission data (`meteo-textbook-20260730`, 166 turns) showed context repeatedly climbing to 100k–160k and staying there for many consecutive hour-plus turns instead of returning to a low baseline. Lowered the threshold 160k→100k (`loop.ts`) so pruning engages earlier, shrinking actual LLM cost/latency, not just log size; `llmCallLog`'s `truncateOldMessages()` (caps each logged call to its most recent 40 messages) stays as a backstop. Correction to the row below: growth was never literal whole-mission-history duplication (context is genuinely bounded by this mechanism) — it was this mechanism firing too rarely and pruning too little each time | 27 (unplanned) | Addresses the actual mechanism, not just its symptom (log size) — the fix below only capped what got logged after the fact; this one shrinks what agents actually send, cutting cost and latency too |
 | Fixed the actual root cause behind the Atlas quota outage (below) recurring a second time within 24 hours: `llmCallLog.input.messages` logs whatever context was actually sent to the LLM on each call, which had been climbing far higher than necessary — see the row above for why. Backstop fix at the log layer regardless (`truncateOldMessages()` in `llm-call-log.ts`, caps each entry to the most recent 40 messages); the pruner (`scheduler.ts`) also switched from `$unset`-stripping to full `deleteMany` (proven to still work even when Atlas blocks other writes, unlike updates) and now runs every 30 minutes instead of daily, with `LOG_RETENTION_DAYS` lowered 2→1 | 27 (unplanned) | Closes the "still no Atlas storage monitoring" gap's practical impact (not the gap itself, which remains open) — the pruner can no longer be blocked by the exact condition it exists to prevent |
@@ -227,6 +228,22 @@ open — watch for a recurrence.
 
 ---
 
+## Layer 10 — Resource oversight and machine upgrades (ADR-0031/0032, Sprint 28g)
+
+Built incrementally across Sprint 28g; each step adds its rows here in the same commit.
+
+**Control-plane copilot waker** (`copilot-waker.ts`, `copilot-runtime.ts`)
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| Mail lands in `copilot-{userId}` while no daemon is running | Relays, scheduled messages and reports unread until the operator next messages the copilot | 🟠 | Change Stream on `mailbox` (inserts to `copilot-*` with `to: "copilot"`) starts the daemon; a freshly started daemon drains pre-existing unread mail on its first loop iteration | None |
+| Change Stream drops or errors | Wake-ups missed | 🟡 | Reopens with 2–30 s backoff and rescans immediately after reopening; an independent scan also runs at startup and every 5 minutes (`readBy` does not contain `copilot`) | Worst case a wake-up is delayed by up to 5 minutes |
+| Operator message and a wake-up race for the same user | Two daemons for one user, duplicate turns | 🟠 | `ensureCopilotRunning` de-duplicates overlapping starts with an in-flight map (unit-tested; the model lookup is async, which made this race possible before) | None |
+| A daemon's watch loop dies (e.g. `copilot.yaml` fails to load) | Its handle stays in the runtime map, so the waker's `ensureCopilotRunning` is a no-op and mail stays stranded | 🟠 | None yet | **G-11** |
+| A misbehaving mission floods the copilot with relays | Repeated wake-ups, LLM spend | 🟡 | The daemon drains all unread mail in one turn; the copilot's own per-user spend cap (`getCopilotSpendCap`); per-alert de-duplication arrives with the Sprint 28g alert state | Until then, only the spend cap |
+
+---
+
 ## Gap summary
 
 | ID | Gap | Severity if triggered | Fix complexity |
@@ -239,6 +256,7 @@ open — watch for a recurrence.
 | ~~G-6~~ | ~~Orphaned background jobs not cleaned on restart~~ | ~~🟠 `jobs/running/` accumulates stale entries~~ | **Closed (Sprint 12)** — `recoverOrphanedJobs()` in `daemon.ts` scans on startup |
 | ~~G-7~~ | ~~`sharedDir/objectives/*`'s two-copy architecture (Fly volume + MongoDB `teamFiles` snapshot)~~ | ~~🔴 Data loss (mitigated, not eliminated, by the interim fix)~~ | **Closed Sprint 26c** — objectives moved fully into MongoDB (`objectivesGoals`/`objectivesEvents`); the Fly-volume copy no longer exists, existing missions self-migrate on next resume. See ADR-0019 |
 | G-8 | No backup/point-in-time-recovery capability (MongoDB Atlas M0 free tier, currently in use, has no backup feature at all); no stated RTO/RPO | 🔴 Data loss on Atlas-side corruption/accidental deletion, or a catastrophic Atlas outage — beyond what app-level bugs already risk | **Accepted for now**, given the current single-tenant/pre-revenue posture — closing this requires a paid Atlas tier (M10+), not application code. Revisit before any production/paying-customer commitment. |
+| G-11 | A crashed control-plane copilot daemon watch loop leaves a stale handle in the runtime map (`copilot-runtime.ts`): later `ensureCopilotRunning` calls, including the waker's, do nothing, so mail stays unread until the control plane restarts or the operator switches the copilot model | 🟠 Copilot silently stops responding to relays and operator messages | Small — have `CopilotDaemonHandle` report when its loop has ended and let the runtime drop the handle |
 
 ---
 

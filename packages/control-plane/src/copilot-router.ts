@@ -7,7 +7,8 @@
  * POST /api/copilot/dismiss   — dismiss a pending action without executing
  *
  * Each authenticated user gets an isolated copilot daemon (missionId = "copilot-{userId}")
- * started lazily on first message. SSE events are routed per-user.
+ * started lazily on first message, or when mail arrives for it (copilot-waker.ts).
+ * SSE events are routed per-user.
  */
 
 import {
@@ -25,12 +26,9 @@ import {
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { type Collection, type Db, ObjectId } from "mongodb";
-import {
-	COPILOT_WORKDIR,
-	type CopilotDaemonHandle,
-	startCopilotDaemon,
-} from "./copilot-daemon.js";
+import { COPILOT_WORKDIR } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
+import type { CopilotRuntime } from "./copilot-runtime.js";
 import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
 import {
 	isLocalExecution,
@@ -58,68 +56,16 @@ import {
 const COPILOT_AGENT_ID = "copilot";
 
 // ---------------------------------------------------------------------------
-// Per-user SSE event bus
-// ---------------------------------------------------------------------------
-
-export class CopilotEventBus {
-	private readonly clients = new Map<string, Set<Response>>();
-
-	addClient(userId: string, res: Response): void {
-		if (!this.clients.has(userId)) this.clients.set(userId, new Set());
-		this.clients.get(userId)?.add(res);
-	}
-
-	removeClient(userId: string, res: Response): void {
-		this.clients.get(userId)?.delete(res);
-	}
-
-	/** Push an event only to SSE clients belonging to userId. */
-	push(userId: string, type: string, data: unknown): void {
-		const payload = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
-		const set = this.clients.get(userId) ?? new Set();
-		for (const res of set) {
-			try {
-				res.write(payload);
-			} catch {
-				set.delete(res);
-			}
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Router factory
 // ---------------------------------------------------------------------------
 
 export function createCopilotRouter(
 	db: Db,
-	repoRoot: string,
 	pending: PendingActionsStore,
+	runtime: CopilotRuntime,
 ): Router {
 	const router = createRouter();
-	const eventBus = new CopilotEventBus();
-	const defaultModelId = process.env.MODEL ?? "claude-sonnet-4-6";
-
-	// userId → running daemon handle (lazy-started on first message)
-	const runningDaemons = new Map<string, CopilotDaemonHandle>();
-
-	// Resolution order: user's own copilotModel setting -> MODEL env var ->
-	// hardcoded fallback. Only read at daemon start (see the /settings routes
-	// below for how a change takes effect on an already-running daemon).
-	async function ensureCopilotRunning(userId: string): Promise<void> {
-		if (runningDaemons.has(userId)) return;
-		const missionId = `copilot-${userId}`;
-		const modelId = (await getCopilotModel(db, userId)) ?? defaultModelId;
-		const handle = startCopilotDaemon(
-			db,
-			repoRoot,
-			modelId,
-			(type, data) => eventBus.push(userId, type, data),
-			pending,
-			missionId,
-		);
-		runningDaemons.set(userId, handle);
-	}
+	const { eventBus, defaultModelId } = runtime;
 
 	// ── POST /api/copilot/message ─────────────────────────────────────────────
 
@@ -157,7 +103,7 @@ export function createCopilotRouter(
 			body,
 		});
 
-		await ensureCopilotRunning(req.userId);
+		await runtime.ensureCopilotRunning(req.userId);
 
 		res.json({ ok: true, id: msg.id });
 	});
@@ -193,7 +139,7 @@ export function createCopilotRouter(
 		// here instead of aborting mid-flight is simpler and more honest than
 		// trying to sequence the abort/restart correctly, and matches how the
 		// operator was already retrying by hand.
-		if (runningDaemons.get(req.userId)?.isBusy()) {
+		if (runtime.getDaemon(req.userId)?.isBusy()) {
 			res.status(409).json({
 				error:
 					"Copilot is currently running a turn — wait for it to finish before changing the model.",
@@ -207,8 +153,7 @@ export function createCopilotRouter(
 		// won't pick up the change on its own — stop it so the next message
 		// triggers a fresh ensureCopilotRunning() with the new model. Safe now:
 		// the busy check above already ruled out an in-flight turn.
-		runningDaemons.get(req.userId)?.stop();
-		runningDaemons.delete(req.userId);
+		runtime.stopDaemon(req.userId);
 
 		res.json({ ok: true, model: model ?? defaultModelId });
 	});
