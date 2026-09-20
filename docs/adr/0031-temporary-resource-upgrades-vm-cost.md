@@ -78,7 +78,7 @@ and the #49 ceiling are untouched. This dataset is also ADR-0032's foundation.
 
 ```
 PostMessage(to: ["mission-copilot"], subject: "Resource upgrade request",
-  body: "Requesting performance, 2 CPUs, 8 GB for ~3h: 10 GB in-memory pandas transform, CPU-bound.")
+  body: "Requesting performance, 2 CPUs, 8 GB for 45 min: 10 GB in-memory pandas transform, CPU-bound.")
 ```
 
 *Step 2* is a new **Tier B** tool in `mission-copilot-tools.ts`, modeled on `SetMissionSpendCap`:
@@ -97,7 +97,7 @@ const requestResourceUpgrade: MagiTool = {
     cpuKind: Type.Union([Type.Literal("shared"), Type.Literal("performance")]),
     cpus: Type.Integer({ description: "Number of CPUs (valid values depend on cpuKind)" }),
     memoryMb: Type.Integer({ description: "RAM in MB, multiple of 256, within the valid range for cpuKind × cpus" }),
-    durationHours: Type.Number({ description: "Hours to hold this machine before auto-revert unless renewed (max: TBD)" }),
+    durationMinutes: Type.Integer({ minimum: 1, maximum: 60, description: "Required, no default. Minutes to hold this machine before auto-revert unless renewed (max 60)" }),
     reason: Type.String({ description: "Why this is needed — shown to the operator" }),
     requestedByAgentId: Type.Optional(Type.String({ description: "Agent id who asked for this, if any" })),
   }),
@@ -111,9 +111,16 @@ control-plane constant, default 4 CPUs / 16 GB; no agent tool can change it), re
 silently clamping) with the list of valid options — and against the **cumulative upgraded-runtime
 cap** (Decision 7) — then performs stop →
 `provisionMission(existingVolumeId, ...)` as `resumeMission()` does, and writes the Decision-1
-segment. The ceiling applies no matter how the agent phrased the request, so it bounds cost
-exposure per request; Decision 7 bounds it cumulatively. Renewal is the same tool called again against the current window (cancels and replaces the
-reminder, Decision 5); reverting to the default tier is the same stop/recreate path.
+segment. The limits apply no matter how the agent phrased the request: size is bounded per request,
+Decision 7 bounds it cumulatively.
+
+**Duration is mandatory and capped at 60 minutes per window.** There is no default: a request
+without `durationMinutes`, or with more than 60, is rejected (never clamped), like any other invalid
+shape. Work that needs longer must renew, which gives the mission-copilot a checkpoint at least
+hourly. Renewal is the same tool called again while an upgrade is active: with the **same shape** it
+only moves the expiry to now + `durationMinutes` (still ≤ 60; no restart, no suspend) and replaces
+the reminder (Decision 5); with a **different shape** it is a new resize (hard suspend, as above).
+Reverting to the default machine is the same stop/recreate path.
 
 **3. Suspend is hard and immediate; the mission-copilot judges timing; the guidance lives in a new
 platform skill.** No idle-wait mechanism — an agent asks for more memory *because* a computation is
@@ -136,7 +143,8 @@ request-message contract between them:
     `shared` with more RAM for memory-heavy, CPU-light work (data loading, pandas, notebooks);
     choose `performance` only for sustained CPU-bound work (model training, big numerical jobs),
     since `shared` CPUs are throttled to a small baseline. Leave ~25% RAM headroom over the
-    estimated peak. Ask for the shortest duration that covers the work plus a margin.
+    estimated peak. Duration is required (no default) and at most 60 minutes: ask for the shortest that covers the work
+    plus a margin, and expect to renew for longer jobs.
   - **The menu** (approximate cost; regenerated from the price table, never hand-edited):
 
     | Shape | kind | CPUs | RAM | ≈ $/h |
@@ -149,7 +157,7 @@ request-message contract between them:
     | compute, medium | performance | 2 | 8 GB | 0.12 |
     | compute, large | performance | 4 | 16 GB | 0.24 |
 
-    Off-menu shapes are allowed within the validity rules and operator ceiling; the menu is
+    Off-menu shapes are allowed within the validity rules and the maximum machine size; the menu is
     guidance, not an enforced list.
   - **The message:** to `mission-copilot`, stating kind, CPUs, RAM, duration, the job it's for and
     why that size (one line each) — exactly what the copilot needs to make the call without a
@@ -157,7 +165,7 @@ request-message contract between them:
   - **What happens next:** the machine is hard-suspended and re-created, so every agent's current
     turn is aborted and running background jobs are re-run from scratch; wait for the copilot's
     reply before starting the heavy job, and be prepared for it to say "wait" or "no".
-  - **At expiry:** you get a reminder about 10-15 min before. Reply whether you still need it and
+  - **At expiry:** you get a reminder about 10 min before. Reply whether you still need it and
     for how long; if your job is done, say so so the machine can revert.
   - **No mission-copilot in the roster** (`MISSION_COPILOT_ENABLED=false`): ask the user instead.
 - *Mission-copilot:*
@@ -168,7 +176,7 @@ request-message contract between them:
   - **Acting:** call `RequestResourceUpgrade` with `requestedByAgentId`, then tell the requester and
     anyone interrupted what happened and when the machine reverts.
   - **Renewing:** at the reminder, consult the requester (`PostMessage`) rather than deciding alone;
-    renew only if the job is still running, and don't let renewals become the default.
+    renew only if the job is still running (a same-shape renewal just extends the expiry, no restart), and don't let renewals become the default.
   - **Errors:** a rejected shape comes back with the valid options; correct and retry, don't loop.
 
 `run-background/SKILL.md` gets a one-line pointer to it, since that is where agents decide to submit
@@ -243,9 +251,8 @@ segments) counts toward a per-mission cap of **24 hours** (control-plane constan
   the used-time reset ships, Decision 7). If a mission legitimately needs more, add editable
   per-mission values to the same Limits section (like #49's `maxCostCeilingUsd`), settable only
   through the Firebase-authenticated route, never from an execution-plane path.
-- **Default and maximum length of a single window** (2 h was an illustrative placeholder); the
-  cumulative 24 h cap is settled (Decision 7).
-- **Reminder buffer** — how long before expiry (10–15 min is illustrative).
+- **Reminder buffer** — how long before expiry (about 10 min is illustrative; must fit comfortably
+  inside a window that is at most 60 min).
 - **Price/validity-table maintenance** — no staleness signal exists for either the price table
   (display-only, low stakes) or the shape-validity rules (a stale rule means Fly rejects a shape our
   route accepted; the route should surface Fly's error, not swallow it). Periodic manual check.
