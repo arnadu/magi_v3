@@ -176,4 +176,66 @@ describe("createMongoAnomalyRecorder", () => {
 			}),
 		).resolves.toBeUndefined();
 	});
+
+	describe("resource-oversight categories (ADR-0032)", () => {
+		const resourceCategories = [
+			"disk-usage-high",
+			"spend-cap-near",
+			"spend-spike",
+			"upgrade-cap-near",
+			"upgrade-cap-reached",
+			"upgrade-idle",
+			"resize-failure",
+			"oom-suspected",
+		] as const;
+
+		it.each(
+			resourceCategories,
+		)("%s soft: persisted and sent to the mission copilot, not relayed to the control-plane copilot", async (category) => {
+			const { db, inserted } = fakeDb();
+			const missionMailbox = fakeMailbox();
+			const copilotMailbox = fakeMailbox();
+			const recorder = createMongoAnomalyRecorder(
+				db,
+				missionMailbox,
+				"mission-copilot",
+				{ mailboxRepo: copilotMailbox, missionId: "copilot-user1" },
+			);
+
+			await recorder.record({
+				missionId: "m1",
+				category,
+				severity: "soft",
+				message: "heads up",
+			});
+
+			expect(inserted[0]).toMatchObject({ category, severity: "soft" });
+			expect(missionMailbox.posted).toHaveLength(1);
+			expect(copilotMailbox.posted).toHaveLength(0);
+		});
+
+		it.each(
+			resourceCategories,
+		)("%s hard: relayed to the control-plane copilot naming the category and mission", async (category) => {
+			const { db } = fakeDb();
+			const copilotMailbox = fakeMailbox();
+			const recorder = createMongoAnomalyRecorder(
+				db,
+				fakeMailbox(),
+				"mission-copilot",
+				{ mailboxRepo: copilotMailbox, missionId: "copilot-user1" },
+			);
+
+			await recorder.record({
+				missionId: "m1",
+				category,
+				severity: "hard",
+				message: "act now",
+			});
+
+			expect(copilotMailbox.posted).toHaveLength(1);
+			expect(copilotMailbox.posted[0].subject).toContain(category);
+			expect(copilotMailbox.posted[0].subject).toContain("m1");
+		});
+	});
 });

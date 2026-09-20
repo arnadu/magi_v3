@@ -12,6 +12,7 @@ their design, only how to build, test, secure, document and roll it out.
 | 0.1 Baseline | ✅ 2026-09-20: build, lint, 47 unit files / 487 tests, `daemon-job.integration.test.ts` all green |
 | 0.2 Roadmap, ADR status, issues | ✅ 2026-09-20: roadmap row and CLAUDE.md entry, ADRs Accepted (sprint 28g), issues #53 and #54 filed |
 | 1.1 Copilot waker | ✅ 2026-09-20: 27 unit + 4 integration tests (real Mongo Change Stream); LIVE on dev: a relay posted to a throwaway `copilot-{user}` mailbox with no daemon was read by a newly started daemon in 2 s and answered (test data cleaned up) |
+| 1.2–1.4 Thresholds, alert state, anomaly categories, stats index | ✅ 2026-09-20: `resource-thresholds.ts`, `resource-alert-state.ts` (26 tests incl. hysteresis, fail-open), 8 new `AnomalyCategory` values (16 tests), `agentTurnStats` `{missionId, startedAt}` index (1 test); the `explain` check runs in step 5.4 when the first windowed query exists |
 
 ## 1. How the work is run
 
@@ -57,8 +58,8 @@ Sizes: S ≈ under half a day, M ≈ about a day, L ≈ multi-day. Files are new
 | # | Step | Files | Tests |
 |---|---|---|---|
 | 1.1 | **Copilot waker** (ADR-0032 D1). Extract `ensureCopilotRunning` + `runningDaemons` into `copilot-runtime.ts`; `copilot-router.ts` *(edit)* imports it; `startCopilotWaker(db, ensure)` (Change Stream on `mailbox` for `missionId ^copilot-`, `to` includes `copilot`, plus startup and 5-min catch-up scan for unread mail with no running daemon); start it in `index.ts` *(edit)* | `control-plane/src/copilot-runtime.ts`, `copilot-waker.ts` | Unit: fake change stream emitter — wakes once per user, ignores non-copilot mailboxes and `from: "user"` inserts, catch-up scan finds stranded mail, stream error → scan still recovers. Integration: insert a relay into a real `copilot-{uid}` mailbox with no daemon → `startCopilotDaemon` invoked. **LIVE:** post a hard anomaly on dev, confirm the daemon starts and reads it (this fixes today's gap on its own) |
-| 1.2 | **Thresholds and alert state**. `resource-thresholds.ts` (all constants from ADR-0032 Decisions 3-4 and ADR-0031: 24 h cap, 4 CPU / 16 GB max, 60 min window, 5 min cooldown); `resource-alert-state.ts` (`shouldAlert(key, level, now)`, `clear(key)`, backed by `resourceAlertState`) | `agent-runtime-worker/src/` | Unit: level rises / same level within 24 h / after 24 h / recovery 5 points below re-arms; fake Mongo |
-| 1.3 | **New anomaly categories**: nine values in `AnomalyCategory` *(edit `anomaly.ts`)*; soft/hard semantics unchanged | `anomaly.ts` | Extend `anomaly.unit.test.ts`: soft is persisted and mission-copilot-notified but not relayed; hard is relayed |
+| 1.2 | **Thresholds and alert state**. `resource-thresholds.ts` (all constants from ADR-0032 Decisions 3-4 and ADR-0031: 24 h cap, 4 CPU / 16 GB max, 60 min window, 5 min cooldown); `resource-alert-state.ts` (`evaluateAlert(store, key, ratio, thresholds, now)` with hysteresis, fail-open, backed by `resourceAlertState`) | `agent-runtime-worker/src/` | Unit: level rises / same level within 24 h / after 24 h / recovery 5 points below re-arms; fake Mongo |
+| 1.3 | **New anomaly categories**: eight values in `AnomalyCategory` *(edit `anomaly.ts`; `atlas-storage-high` is platform-level and does not use the recorder)*; soft/hard semantics unchanged | `anomaly.ts` | Extend `anomaly.unit.test.ts`: soft is persisted and mission-copilot-notified but not relayed; hard is relayed |
 | 1.4 | `agentTurnStats` index `{missionId: 1, startedAt: 1}` *(edit `agent-stats.ts`)* | | Index-creation test in the existing style; verify on dev with an `explain` |
 
 ### Phase 2 — ADR-0031 core: the upgrade mechanism (L)

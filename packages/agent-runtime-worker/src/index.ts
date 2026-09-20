@@ -89,6 +89,17 @@ export type { OrchestratorConfig } from "./orchestrator.js";
 export { runOrchestrationLoop } from "./orchestrator.js";
 export { buildSystemPrompt, formatMessages } from "./prompt.js";
 export { convertToLlm } from "./reflection.js";
+export type {
+	AlertLevel,
+	AlertState,
+	AlertStateStore,
+} from "./resource-alert-state.js";
+export {
+	createMongoAlertStateStore,
+	evaluateAlert,
+	levelFor,
+} from "./resource-alert-state.js";
+export * from "./resource-thresholds.js";
 export { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 export { createFetchUrlTool } from "./tools/fetch-url.js";
 export { tryCreateSearchWebTool } from "./tools/search-web.js";

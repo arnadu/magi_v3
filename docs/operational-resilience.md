@@ -240,7 +240,15 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | Change Stream drops or errors | Wake-ups missed | 🟡 | Reopens with 2–30 s backoff and rescans immediately after reopening; an independent scan also runs at startup and every 5 minutes (`readBy` does not contain `copilot`) | Worst case a wake-up is delayed by up to 5 minutes |
 | Operator message and a wake-up race for the same user | Two daemons for one user, duplicate turns | 🟠 | `ensureCopilotRunning` de-duplicates overlapping starts with an in-flight map (unit-tested; the model lookup is async, which made this race possible before) | None |
 | A daemon's watch loop dies (e.g. `copilot.yaml` fails to load) | Its handle stays in the runtime map, so the waker's `ensureCopilotRunning` is a no-op and mail stays stranded | 🟠 | None yet | **G-11** |
-| A misbehaving mission floods the copilot with relays | Repeated wake-ups, LLM spend | 🟡 | The daemon drains all unread mail in one turn; the copilot's own per-user spend cap (`getCopilotSpendCap`); per-alert de-duplication arrives with the Sprint 28g alert state | Until then, only the spend cap |
+| A misbehaving mission floods the copilot with relays | Repeated wake-ups, LLM spend | 🟡 | The daemon drains all unread mail in one turn; the copilot's own per-user spend cap (`getCopilotSpendCap`); resource alerts are de-duplicated by `resource-alert-state.ts` (below) | Anomalies from other sources are not de-duplicated |
+
+**Alert de-duplication** (`resource-alert-state.ts`, `resourceAlertState`)
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| State store (Mongo) unreachable when an alert is evaluated | Could suppress or repeat alerts | 🟠 | `evaluateAlert` fails open: it logs with the key and ratio, and returns the reading's own level, so an outage causes repeats, never a missed hard alert | None |
+| A reading hovers around a threshold | Alert storm | 🟡 | Level is re-alerted only on escalation or after 24 h; state is forgotten only once the ratio is 5 points below the threshold | None |
+| Alert keys for destroyed missions accumulate | Small unbounded growth of `resourceAlertState` | 🟢 | None (one tiny document per mission and category) | Prune with the log pruner when the monitor lands (step 5.4) |
 
 ---
 

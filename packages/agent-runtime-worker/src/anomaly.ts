@@ -3,8 +3,8 @@
  *
  * Unifies several previously-siloed notification paths (limit-rule breaches,
  * agent crashes/timeouts, LLM errors, permanently-failed background jobs,
- * exhausted scheduled-message deliveries, unclean process restarts) into one
- * sink that:
+ * exhausted scheduled-message deliveries, unclean process restarts, and the
+ * resource-oversight categories of ADR-0032) into one sink that:
  *   1. Persists the event (`missionAnomalies` — for the cockpit Trace panel
  *      and post-hoc review).
  *   2. Wakes the mission's own copilot via its mailbox, if one is present.
@@ -34,7 +34,18 @@ export type AnomalyCategory =
 	| "llm-error"
 	| "job-failure"
 	| "scheduling-failure"
-	| "unclean-restart";
+	| "unclean-restart"
+	// Resource oversight (ADR-0031/0032). The platform-level Atlas storage alert
+	// has no mission and is posted straight to the admin copilots' mailboxes
+	// instead of going through this recorder.
+	| "disk-usage-high"
+	| "spend-cap-near"
+	| "spend-spike"
+	| "upgrade-cap-near"
+	| "upgrade-cap-reached"
+	| "upgrade-idle"
+	| "resize-failure"
+	| "oom-suspected";
 
 export type AnomalySeverity = "hard" | "soft";
 

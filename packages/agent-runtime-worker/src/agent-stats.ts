@@ -215,6 +215,16 @@ export function createMongoAgentStatsRepository(db: Db): AgentStatsRepository {
 				(e as Error).message,
 			),
 		);
+	// Backs the windowed spend queries of ADR-0032 (24 h spend, 7-day baseline):
+	// the unique index above only helps a missionId prefix scan.
+	turns
+		.createIndex({ missionId: 1, startedAt: 1 })
+		.catch((e: unknown) =>
+			console.warn(
+				"[agent-stats] Failed to create agentTurnStats startedAt index:",
+				(e as Error).message,
+			),
+		);
 	missions
 		.createIndex({ missionId: 1, agentId: 1 }, { unique: true })
 		.catch((e: unknown) =>

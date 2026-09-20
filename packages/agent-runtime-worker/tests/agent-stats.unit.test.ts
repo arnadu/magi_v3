@@ -1,7 +1,9 @@
+import type { Db } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	type AgentStatsRepository,
 	type AgentTurnStats,
+	createMongoAgentStatsRepository,
 	type MissionStats,
 	StatsCollector,
 } from "../src/agent-stats.js";
@@ -447,5 +449,28 @@ describe("StatsCollector", () => {
 		expect(collector.getTurn("a")?.toolCalls).toEqual({});
 		expect(collector.getTurn("b")?.llmCallCount).toBe(0);
 		expect(collector.getTurn("b")?.toolCalls).toEqual({ Bash: 1 });
+	});
+});
+
+describe("createMongoAgentStatsRepository indexes", () => {
+	it("indexes agentTurnStats by (missionId, startedAt) for the windowed spend queries of ADR-0032", () => {
+		const created: { collection: string; spec: unknown }[] = [];
+		const db = {
+			collection(name: string) {
+				return {
+					createIndex: async (spec: unknown) => {
+						created.push({ collection: name, spec });
+						return "ok";
+					},
+				};
+			},
+		} as unknown as Db;
+
+		createMongoAgentStatsRepository(db);
+
+		expect(created).toContainEqual({
+			collection: "agentTurnStats",
+			spec: { missionId: 1, startedAt: 1 },
+		});
 	});
 });

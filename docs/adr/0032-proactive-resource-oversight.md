@@ -87,7 +87,7 @@ Alert state is kept in `resourceAlertState` `{key: "<missionId|platform>:<catego
 lastAlertAt}`: an alert fires when the level rises or 24 h have passed at the same level; the key is
 deleted when the value falls 5 points below the threshold, so a recovered condition re-alerts fresh.
 
-**4. Real-time alerts.** Reuse `AnomalyRecorder`: nine new `AnomalyCategory` values below. Soft alerts
+**4. Real-time alerts.** Nine alerts; eight reuse `AnomalyRecorder` as new `AnomalyCategory` values (`atlas-storage-high` has no mission and is posted straight to the admin copilots' mailboxes, below). Soft alerts
 reach the mission's own copilot and the daily report only; hard alerts are also relayed to
 `copilot-{userId}` (and, with Decision 1, wake it).
 
@@ -248,7 +248,7 @@ Each of these was an open question; they are settled and reflected in the Decisi
 - New: `copilot-runtime.ts`, `resource-monitor.ts` (control plane); `resource-sampler.ts`,
   `resource-thresholds.ts` (agent-runtime-worker); collections `missionResources`, `platformResources`,
   `resourceAlertState`, `resourceSnapshots` (prune snapshots and alert state with the existing
-  log pruner); nine new `AnomalyCategory` values; a new `agentTurnStats` index; extended `GetMissionStatus`.
+  log pruner); eight new `AnomalyCategory` values plus the platform-level `atlas-storage-high` alert; a new `agentTurnStats` index; extended `GetMissionStatus`.
 - New env vars, documented in `CLAUDE.md`: `PLATFORM_ADMIN_USER_IDS`, `RESOURCE_REPORT_HOUR_UTC`,
   `ATLAS_STORAGE_LIMIT_MB`.
 - `config/teams/copilot.yaml` grows a prompt section and a mental-map table; four new team skills and
