@@ -673,6 +673,33 @@ export async function suspendMissionMachine(
 // Sweeper
 // ---------------------------------------------------------------------------
 
+/**
+ * A runnable for the scheduler's tick: sweeps once, never overlaps itself (a
+ * revert can outlast a minute), never throws, and logs only when it did
+ * something.
+ */
+export function createUpgradeSweeper(db: Db): () => Promise<void> {
+	let running = false;
+	return async () => {
+		if (running) return;
+		running = true;
+		try {
+			const r = await sweepUpgrades(db);
+			if (r.reverted || r.recovered || r.cleared) {
+				console.log(
+					`[resource-upgrade] Sweep { reverted: ${r.reverted}, recovered: ${r.recovered}, cleared: ${r.cleared} }`,
+				);
+			}
+		} catch (e) {
+			console.error(
+				`[resource-upgrade] Sweep failed { error: "${(e as Error).message}" }`,
+			);
+		} finally {
+			running = false;
+		}
+	};
+}
+
 export interface SweepResult {
 	reverted: number;
 	recovered: number;

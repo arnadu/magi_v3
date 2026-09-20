@@ -24,6 +24,7 @@ import type { Collection, Db } from "mongodb";
 import { schedule } from "node-cron";
 import { getMachineState } from "./fly-machines.js";
 import { resumeTracked } from "./machine-lifecycle.js";
+import { createUpgradeSweeper } from "./resource-upgrade.js";
 
 const { parseExpression } = cronParser;
 
@@ -293,18 +294,25 @@ export function startScheduler(db: Db): () => void {
 			console.error("[scheduler] Pruning error:", e),
 		);
 
+	// Revert expired temporary machine upgrades (ADR-0031). Also run at startup,
+	// so an outage that spanned an expiry reverts late rather than never.
+	const sweepUpgrades = createUpgradeSweeper(db);
+	void sweepUpgrades();
+
 	// Deliver any overdue messages immediately on startup.
 	tick();
 	// Prune any stale log entries immediately on startup (catches missed days).
 	prune();
 
 	const deliveryTask = schedule("* * * * *", tick);
+	const upgradeSweepTask = schedule("* * * * *", () => void sweepUpgrades());
 	// Every 30 minutes — was daily at 02:00 UTC, too slow to catch fast
 	// accumulation on a busy mission before it reached the Atlas quota.
 	const pruneTask = schedule("*/30 * * * *", prune);
 
 	return () => {
 		deliveryTask.stop();
+		upgradeSweepTask.stop();
 		pruneTask.stop();
 	};
 }

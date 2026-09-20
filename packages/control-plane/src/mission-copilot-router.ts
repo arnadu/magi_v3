@@ -27,6 +27,11 @@ import { Router } from "express";
 import type { Db } from "mongodb";
 import { GITHUB_REPO, ghFetch } from "./github.js";
 import { deriveMonitorToken } from "./monitor-token.js";
+import {
+	requestUpgrade,
+	revertUpgrade,
+	type UpgradeResult,
+} from "./resource-upgrade.js";
 
 /** Verify the caller holds the exact MONITOR_TOKEN for the missionId it claims. Fails closed on a missing signing key. */
 export function verifyMissionToken(
@@ -54,10 +59,47 @@ export function verifyMissionToken(
 	next();
 }
 
-export function createMissionCopilotRouter(_db: Db): ExpressRouter {
+/**
+ * Wrap a resource-upgrade operation as a route handler. Runs after
+ * verifyMissionToken, so `req.body.missionId` is the mission whose token the
+ * caller holds; the service never sees any other id.
+ */
+export function resourceRoute(
+	run: (missionId: string, body: unknown) => Promise<UpgradeResult>,
+) {
+	return async (req: Request, res: Response): Promise<void> => {
+		const missionId = req.body?.missionId as string;
+		try {
+			const result = await run(missionId, req.body);
+			res.status(result.status).json(result.body);
+		} catch (e) {
+			console.error(
+				`[mission-copilot-router] Resource request failed { path: "${req.path}", missionId: "${missionId}", error: "${(e as Error).message}" }`,
+			);
+			res
+				.status(500)
+				.json({ error: "Internal error handling the resource request." });
+		}
+	};
+}
+
+export function createMissionCopilotRouter(db: Db): ExpressRouter {
 	const router = Router();
 
 	router.use((req, res, next) => verifyMissionToken(req, res, next));
+
+	// Temporary machine upgrades (ADR-0031). Renewing is the same call as
+	// requesting, with an unchanged shape.
+	router.post(
+		"/resources/upgrade",
+		resourceRoute((missionId, body) => requestUpgrade(db, missionId, body)),
+	);
+	router.post(
+		"/resources/revert",
+		resourceRoute((missionId) =>
+			revertUpgrade(db, missionId, { reason: "requested" }),
+		),
+	);
 
 	router.get("/github/issues", async (req, res) => {
 		const query = req.query.query as string | undefined;

@@ -14,6 +14,7 @@ import {
 	suspendTracked,
 } from "../src/machine-lifecycle.js";
 import {
+	createUpgradeSweeper,
 	requestUpgrade,
 	revertUpgrade,
 	sanitizeReason,
@@ -780,5 +781,63 @@ describe("suspendMissionMachine", () => {
 			suspendMissionMachine(t.db, { missionId: "m1", machineId: "mach-1" }),
 		).rejects.toThrow(/default machine before suspending/);
 		expect(suspend).not.toHaveBeenCalled();
+	});
+});
+
+describe("createUpgradeSweeper", () => {
+	it("sweeps once per call, logs what it did, and stays quiet when there is nothing to do", async () => {
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+		const t = setup(
+			missionDoc({
+				upgrade: upgradeState({ expiresAt: new Date(Date.now() - MIN) }),
+			}),
+		);
+		const sweep = createUpgradeSweeper(t.db);
+
+		await sweep();
+		expect(resize).toHaveBeenCalledTimes(1);
+		expect(log).toHaveBeenCalledWith(expect.stringContaining("reverted: 1"));
+
+		log.mockClear();
+		await sweep();
+		expect(log).not.toHaveBeenCalled();
+	});
+
+	it("does not overlap itself when a revert outlasts the tick", async () => {
+		let release!: () => void;
+		resize.mockReturnValue(
+			new Promise((resolve) => {
+				release = () =>
+					resolve({ machineId: "mach-2", privateIp: "::2", volumeId: "vol-1" });
+			}),
+		);
+		const t = setup(
+			missionDoc({
+				upgrade: upgradeState({ expiresAt: new Date(Date.now() - MIN) }),
+			}),
+		);
+		const sweep = createUpgradeSweeper(t.db);
+
+		const first = sweep();
+		await sweep(); // returns immediately: a sweep is already running
+		await vi.waitFor(() => expect(resize).toHaveBeenCalledTimes(1));
+		release();
+		await first;
+		expect(resize).toHaveBeenCalledTimes(1);
+
+		// and it can run again afterwards
+		await sweep();
+	});
+
+	it("never throws when the sweep itself fails", async () => {
+		const broken = {
+			collection() {
+				throw new Error("mongo down");
+			},
+		} as unknown as Parameters<typeof createUpgradeSweeper>[0];
+		await expect(createUpgradeSweeper(broken)()).resolves.toBeUndefined();
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining("Sweep failed"),
+		);
 	});
 });
