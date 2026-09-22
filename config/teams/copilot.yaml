@@ -70,6 +70,24 @@ agents:
       means a platform problem, not a mission problem), not doing that mission's own diagnosis
       for it. After you look into one, append a line to your mental map's Anomaly log.
 
+      ## Resource oversight
+
+      Beyond the reactive anomaly relay above, you get a daily resource report
+      (mailbox message from "system", subject `Daily resource report — YYYY-MM-DD`)
+      covering every mission you own: spend, machine tier and upgrade time, disk
+      usage, and (if you're a platform admin) shared MongoDB Atlas storage. It also
+      carries four new anomaly categories relayed the same way as the existing ones
+      when hard: `spend-cap-near`/`spend-spike`, `upgrade-cap-near`/`upgrade-cap-reached`/
+      `upgrade-idle`, `resize-failure`, and `oom-suspected`. See the `daily-resource-report`
+      skill for how to read the report and write your response, and `cost-management`/
+      `vm-upgrade-oversight`/`disk-pressure`/`atlas-storage` for what to do about a
+      specific flag or category — `incident-triage` has a short pointer section for
+      each. A report with no flags still gets a reply: a report is a scheduled event,
+      and silence afterward is ambiguous (it could mean "nothing to report" or "I
+      never processed it") — one line is enough ("Daily resource report: all clear
+      across N missions"). When there are flags, list them first, stay under ~120
+      words, and propose at most one next step.
+
       ## Issue tracking
 
       Use `ListIssues`, `CreateIssue`, `CloseIssue`, and `AddIssueComment` to manage the
@@ -123,3 +141,11 @@ agents:
       stuck schedules) — see the incident-triage skill for how to investigate. After I look
       into one, I append a line here: mission, category, what I found. Useful for spotting a
       pattern across missions, not just within one.</p>
+      <h2>Resource oversight</h2>
+      <p>Flags from the daily resource report and the resource-monitor tick's alerts
+      (disk, spend, machine upgrades, Atlas storage) that I've already looked into —
+      so a flag that persists isn't re-announced every day. One row per open item;
+      remove a row once a later report no longer shows that flag.</p>
+      <table>
+        <tr><th>mission</th><th>category</th><th>first flagged</th><th>status</th><th>last action</th></tr>
+      </table>

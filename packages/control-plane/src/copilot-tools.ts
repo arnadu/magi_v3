@@ -49,6 +49,7 @@ import {
 	upgradedMsSince,
 } from "./machine-segments.js";
 import { deriveMonitorToken } from "./monitor-token.js";
+import { latestResourceSample } from "./resource-queries.js";
 import {
 	getTemplate as getTemplateData,
 	listTemplates as listTemplateData,
@@ -243,6 +244,14 @@ export function createCopilotTools(
 			const capHours = UPGRADE_LIMITS.cumulativeCapHours;
 			const upgradedLine = `upgradedRuntime: ${(usedMs / 3_600_000).toFixed(1)} h / ${capHours} h used since last reset`;
 
+			const sample = await latestResourceSample(db, missionId).catch(
+				() => null,
+			);
+			const diskLine =
+				sample?.diskUsedBytes !== undefined && sample.diskTotalBytes
+					? `disk:      ${(sample.diskUsedBytes / 1024 ** 3).toFixed(1)} / ${(sample.diskTotalBytes / 1024 ** 3).toFixed(1)} GB (sample ${sample.updatedAt ? `${Math.round((now.getTime() - sample.updatedAt.getTime()) / 60_000)} min old` : "age unknown"})`
+					: "disk:      (no sample yet)";
+
 			const summary = [
 				`missionId: ${mission.missionId}`,
 				`name:      ${mission.name}`,
@@ -253,6 +262,7 @@ export function createCopilotTools(
 				tierLine,
 				sinceLine,
 				upgradedLine,
+				diskLine,
 				`createdAt: ${mission.createdAt.toISOString()}`,
 				`updatedAt: ${mission.updatedAt.toISOString()}`,
 			].join("\n");

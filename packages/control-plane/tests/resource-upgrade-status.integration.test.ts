@@ -1,6 +1,7 @@
 /**
  * GetMissionStatus's ADR-0031 extension (tier, time-on-tier, cumulative
- * upgraded runtime) against real MongoDB — no Fly, no LLM.
+ * upgraded runtime) and its ADR-0032 step 6.2 disk-sample line, against real
+ * MongoDB — no Fly, no LLM.
  */
 
 import { randomUUID } from "node:crypto";
@@ -33,6 +34,7 @@ describe("GetMissionStatus — machine tier and upgraded runtime", () => {
 	afterEach(async () => {
 		await db.collection("missions").deleteMany({ missionId });
 		await db.collection("machineSegments").deleteMany({ missionId });
+		await db.collection("missionResources").deleteMany({ missionId });
 	});
 
 	function status() {
@@ -148,5 +150,46 @@ describe("GetMissionStatus — machine tier and upgraded runtime", () => {
 
 		const text = (await status()).content[0].text;
 		expect(text).toContain("upgradedRuntime: 2.0 h / 24 h");
+	});
+
+	it("reports 'no sample yet' before the disk sampler has ever run", async () => {
+		const now = new Date();
+		await db.collection("missions").insertOne({
+			missionId,
+			userId,
+			name: "Test",
+			teamConfig: "",
+			status: "running",
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		const text = (await status()).content[0].text;
+		expect(text).toContain("disk:      (no sample yet)");
+	});
+
+	it("reports the latest disk sample and its age", async () => {
+		const now = new Date();
+		await db.collection("missions").insertOne({
+			missionId,
+			userId,
+			name: "Test",
+			teamConfig: "",
+			status: "running",
+			createdAt: now,
+			updatedAt: now,
+		});
+		await db.collection("missionResources").insertOne({
+			missionId,
+			diskUsedBytes: 5 * 1024 ** 3,
+			diskTotalBytes: 10 * 1024 ** 3,
+			rssMb: 120,
+			runningJobs: 0,
+			updatedAt: new Date(now.getTime() - 3 * 60_000),
+		});
+
+		const text = (await status()).content[0].text;
+		expect(text).toContain("disk:      5.0 / 10.0 GB");
+		expect(text).toContain("min old)");
 	});
 });

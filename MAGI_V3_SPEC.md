@@ -90,7 +90,7 @@ For local development setup and environment variables, see [USER_GUIDE.md](USER_
 | `packages/control-plane/` | Express API, Fly Machines client, cron scheduler, HTTP reverse proxy, single-page UI |
 | `packages/agent-runtime-worker/` | Daemon, orchestration loop, agent runner, monitor server (:4000), tool API server (:4001) |
 | `packages/agent-config/` | Zod schema for team YAML; `loadTeamConfig()`, `parseTeamConfig()` |
-| `packages/skills/` | Platform skills: `skill-creator`, `git-provenance`, `postmessage-conventions`, `run-background`, `schedule-task`, `request-resources` (ADR-0031) |
+| `packages/skills/` | Platform skills: `skill-creator`, `git-provenance`, `postmessage-conventions`, `run-background`, `schedule-task`, `request-resources` (ADR-0031), `incident-triage` (ADR-0020) |
 
 ### Technology Stack
 
@@ -419,6 +419,29 @@ transcripts, budget, scheduling, background-job control and the GitHub proxy (AD
 temporary bigger machine (CPU kind, CPUs, RAM, mandatory duration ≤ 60 min) or return to the default.
 The control plane performs the resize; worker agents cannot call these tools and instead ask the
 mission-copilot by mailbox message (the `request-resources` skill).
+
+**Resource oversight (ADR-0032).** `AnomalyCategory` (`anomaly.ts`) has nine values: the six
+original ones (`limit-breach`, `agent-crash`, `agent-timeout`, `llm-error`, `job-failure`,
+`scheduling-failure`, `unclean-restart`) plus `disk-usage-high` (daemon sampler, soft 80%/hard
+90% of the Fly Volume), `spend-cap-near`/`spend-spike` (control-plane resource-monitor tick, from
+`missionStats`/`agentTurnStats`), `upgrade-cap-near`/`upgrade-cap-reached`/`upgrade-idle`
+(ADR-0031 machine-upgrade dataset), `resize-failure` (a failed upgrade resize), and
+`oom-suspected` (a Fly machine exit consistent with an OOM kill, `fly-events.ts`). Every category
+except `atlas-storage-high` goes through the shared `AnomalyRecorder`: persisted to
+`missionAnomalies`, notified to the mission's own copilot at any severity, relayed to
+`copilot-{userId}` only when hard. `atlas-storage-high` (shared MongoDB Atlas cluster storage,
+soft 70%/hard 85% of `ATLAS_STORAGE_LIMIT_MB`) has no owning mission, so it posts directly to each
+`PLATFORM_ADMIN_USER_IDS` recipient's copilot mailbox instead.
+
+A control-plane copilot with a running mission also receives a **daily resource report**
+(`resource-report.ts`) once `RESOURCE_REPORT_HOUR_UTC` (default 12 UTC) has passed for the day:
+per-mission spend, machine tier and upgrade time, disk usage, and — for platform admins — the
+Atlas breakdown, plus a computed FLAGS list (disk/spend/upgrade-cap thresholds, growth-rate
+projections, a "chronic upgrade" pattern, and stale/missing resource samples). Four new
+control-plane-copilot team skills (`config/teams/copilot/skills/`) handle these:
+`daily-resource-report`, `disk-pressure`, `atlas-storage`, `vm-upgrade-oversight`; `cost-management`
+and `mission-recovery` (same directory) and the platform `incident-triage` skill were extended
+with sections for the new categories.
 
 **Background jobs** (via Tool IPC server at `:4001`, not registered as LLM tools):
 

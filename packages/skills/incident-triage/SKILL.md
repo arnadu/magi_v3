@@ -3,7 +3,8 @@ name: incident-triage
 description: |
   How to investigate each category of system-generated anomaly (limit
   breaches, agent crashes/timeouts, LLM errors, failed background jobs,
-  failed scheduled deliveries, unclean restarts) — what to check first, and
+  failed scheduled deliveries, unclean restarts, and the resource-oversight
+  categories — disk, spend, machine upgrades, OOM) — what to check first, and
   which action tier it falls into. Shared by the mission copilot and the
   control-plane copilot; each has a different vantage point on the same
   categories, noted per section below.
@@ -153,6 +154,73 @@ shutdown (a stale PID, no matching live process).
 - **Action tier**: mostly informational — log it in your anomaly log. If it
   recurs for the same mission, that pattern (not any single instance) is the
   real signal something's wrong, and is worth raising to the user.
+
+### `disk-usage-high` (ADR-0032)
+
+The mission's Fly Volume is at 80% (soft) or 90% (hard, with a top-5
+directories breakdown in the message body).
+
+- **Mission copilot**: the breakdown tells you what's growing. Clean up logs
+  or temp files directly, `git gc` a bloated `.git`, or tell the user the
+  volume needs extending (Fly volumes only grow, never shrink — no tool of
+  yours does this).
+- **Control-plane copilot**: see the `disk-pressure` skill.
+
+### `spend-cap-near` (ADR-0032)
+
+90% (soft) or 98% (hard) of the mission's spend cap (`mission.maxCostUsd`).
+
+- **Mission copilot**: `ReadAgentUsage` per agent to find the driver;
+  `PauseAgent` on a runaway, or `SetMissionSpendCap` to raise the cap if the
+  spend is legitimate (within whatever ceiling the operator allows).
+- **Control-plane copilot**: see the `cost-management` skill.
+
+### `spend-spike` (ADR-0032)
+
+Soft only: 24h spend over 3x the trailing 7-day daily average, and over $5.
+Informational, not a cap breach — investigate the same way as a burn-rate
+spike (see `cost-management` for the control-plane copilot; `ReadAgentUsage`
+for the mission copilot), decide if it's an expected bigger day or worth a
+note.
+
+### `upgrade-cap-near` / `upgrade-cap-reached` (ADR-0031/0032)
+
+80% of the mission's 24h cumulative upgraded-runtime cap (soft), or a rejected
+`RequestResourceUpgrade` call because the cap was already hit (hard).
+
+- **Mission copilot**: for cap-near, judge whether the current upgrade still
+  needs the remaining time. For cap-reached, there is nothing you can do —
+  only the operator can reset the cap (cockpit Limits panel); say so.
+- **Control-plane copilot**: see the `vm-upgrade-oversight` skill.
+
+### `upgrade-idle` (ADR-0032)
+
+The mission is on an upgraded machine with no conversation activity and no
+running background job for 30+ minutes.
+
+- **Mission copilot**: check whether the job that justified the upgrade has
+  actually finished; if so, `EndResourceUpgrade` rather than let it run to
+  expiry.
+- **Control-plane copilot**: see the `vm-upgrade-oversight` skill.
+
+### `resize-failure` (ADR-0031)
+
+A temporary upgrade's machine resize failed partway — see `mission-recovery`'s
+own dedicated failure-mode entry for the recovery sequence (both copilots use
+the same one: propose/perform `resume_mission`).
+
+### `oom-suspected` (ADR-0032)
+
+An unrequested machine exit consistent with an out-of-memory kill (inferred
+from the exit signal — "suspected," not certain). A killed *child* process
+(e.g. a Python background job) surfaces differently, as a `job-failure` with
+exit code 137/−9 — treat that the same way.
+
+- **Mission copilot**: if not already on the maximum shape, consider
+  `RequestResourceUpgrade` sized for the task that failed. If it already ran
+  at the maximum shape, the job itself needs redesigning — a bigger machine
+  isn't available as the fix.
+- **Control-plane copilot**: see the `vm-upgrade-oversight` skill.
 
 ## Worked example: don't let a plausible story substitute for evidence
 

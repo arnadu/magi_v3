@@ -96,6 +96,28 @@ pool user doesn't exist, `magi-node` wrapper missing, sudoers rule stale.
 likely requires `sudo env NODE_BIN=$(which node) scripts/setup-dev.sh` on the host.
 In production (Fly.io), this should not occur — file a bug if it does.
 
+### 7. Temporary machine upgrade resize failed (`resize-failure`, ADR-0031)
+
+**Signature:** A hard `resize-failure` anomaly relayed to you: the machine was
+stopped as part of an upgrade or revert, but re-creating it on the same
+volume failed. The mission's status is set to `error`.
+
+**What happened:** ADR-0031's temporary upgrades work by stopping the machine
+and re-provisioning it at the new size on the same Fly volume (Fly can't
+resize a running machine in place). The stop succeeded; the re-create didn't —
+usually a transient Fly API issue, occasionally a genuinely invalid shape.
+
+**Recovery:**
+- `GetMissionStatus` to confirm the current state — the mission has no live
+  machine right now, just a volume.
+- Propose `resume_mission`. Because there's no machine currently, this
+  re-provisions one at the mission's default shape (the upgrade itself was
+  already lost when the resize failed — this recovers the mission, not the
+  upgrade).
+- If `resume_mission` also fails, this is a genuine Fly-side problem beyond
+  what you can retry your way out of — escalate to the operator with the
+  error text rather than repeatedly retrying.
+
 ## Recovery action reference
 
 | Action type | When to use |

@@ -9,17 +9,22 @@ description: |
 
 ## Spend stats fields
 
-From `GET /api/missions/stats` (call via Bash + curl, or use the dashboard):
+**Do not trust `GET /api/missions/stats` for spend figures** — it aggregates
+`llmCallLog` on fields that collection doesn't actually have, over a
+collection that's pruned to 1 day anyway (tracked as issue #53; not fixed by
+this skill, since the route itself isn't yours to fix). Use `missionStats` and
+`agentTurnStats` instead — the same collections `spend-cap-near`/`spend-spike`
+below and the daily resource report are built from, so a number you compute
+this way will always agree with what an alert or the report already told you.
 
-| Field | Meaning |
+| Field / query | Meaning |
 |-------|---------|
-| `spendTotal` | All-time cost for this mission (USD) |
-| `spendToday` | Cost since midnight UTC today |
-| `spendLastHour` | Cost in the last 60 minutes |
-| `lastActivity` | Timestamp of the last conversationMessage |
+| `missionStats.lifetimeCostUsd`, summed across an agent's docs for the mission | All-time cost for this mission (USD) |
+| `agentTurnStats.costUsd` summed over `startedAt` in the last 24h | Cost in the last 24 hours |
+| `missionStats.lastTurnAt`, max across agents | Timestamp of the mission's last turn |
 
-These figures come from the `llmCallLog` collection and reflect LLM API costs only —
-they do not include Fly.io compute or data API costs.
+These figures reflect LLM API costs only — they do not include Fly.io compute
+or data API costs.
 
 ## Burn rate reference
 
@@ -74,16 +79,47 @@ Fly machine), the orchestrator enters budget-pause mode:
 
 ## Cost attribution
 
-Each `llmCallLog` entry has `missionId`, `agentId`, `model`, `inputTokens`,
-`outputTokens`, `cost`, and `createdAt`. To identify which agent is driving costs,
+`missionStats` has one document per `(missionId, agentId)` with its own
+`lifetimeCostUsd` — already per-agent, no aggregation needed for the lifetime
+view. For a time-windowed per-agent breakdown (e.g. "who drove the last 24h"),
 run a query via Bash:
 ```bash
-# Example: per-agent cost for a mission (adjust MONGODB_URI and DB as needed)
+# Per-agent cost for a mission in the last 24h (adjust MONGODB_URI and DB as needed)
 mongosh "$MONGODB_URI" --eval '
-  db.llmCallLog.aggregate([
-    { $match: { missionId: "gold-digest-001" } },
-    { $group: { _id: "$agentId", total: { $sum: "$cost" } } },
+  db.agentTurnStats.aggregate([
+    { $match: { missionId: "gold-digest-001", startedAt: { $gte: new Date(Date.now() - 86400000) } } },
+    { $group: { _id: "$agentId", total: { $sum: "$costUsd" } } },
     { $sort: { total: -1 } }
   ]).forEach(printjson)
 '
 ```
+
+## `spend-cap-near` (ADR-0032)
+
+Relayed as an anomaly at 90% (soft) and 98% (hard) of a mission's own spend
+cap (`mission.maxCostUsd`), or as a "Spend" flag in the daily report. This is
+proactive — it fires well before the mission's own hard `MAX_COST_USD`
+budget-pause (see below) would kick in, so you have room to act deliberately
+instead of reacting to an already-paused mission.
+
+1. Check the burn rate (above) to see whether this is a sustained climb or a
+   temporary spike that's already slowing down.
+2. If it's a genuine runaway agent, propose `pause_agent` on the specific
+   agent driving it (from the per-agent attribution above) rather than the
+   whole mission — this stops the bleeding without interrupting agents that
+   are working fine.
+3. If the spend is legitimate for what the mission is actually doing, propose
+   `set_mission_budget` to raise the cap — but only within whatever ceiling
+   the operator has configured (`maxCostCeilingUsd`, operator-only); if the
+   requested raise would exceed it, explain that to the operator rather than
+   silently capping your own request.
+
+## `spend-spike` (ADR-0032)
+
+Soft-only: 24h spend more than 3x the trailing 7-day daily average, and above
+$5 (so a quiet mission's normal day-to-day noise never qualifies). Unlike
+`spend-cap-near`, this isn't about a cap at all — a mission with no cap
+configured can still spike. Use the per-agent attribution query above scoped
+to the last 24h to find which agent's activity actually changed, then decide
+whether that's expected (a legitimately bigger task today) or worth a note —
+this flag on its own is informational, not a signal to act automatically.
