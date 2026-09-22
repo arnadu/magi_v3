@@ -280,6 +280,27 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | New code bypasses `machine-lifecycle.ts` and calls Fly directly | Segments silently incomplete | 🟠 | A unit test fails if any control-plane module other than `fly-machines.ts`/`machine-lifecycle.ts` imports the raw provision/stop/restart/destroy functions | None |
 | Two segments open for one mission | Runtime double-counted | 🟡 | `openSegment` closes any open segment for the mission first | None |
 
+**Disk usage sampler** (`resource-sampler.ts`, `missionResources` — closes G-4)
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| `statfs` on the volume fails | No sample this tick | 🟢 | Logged, tick continues; nothing is written, so the report/alert reads the last-known sample and a stale-sample check (step 6.1) flags it as "monitoring blind" rather than silently showing 0% | None |
+| The Mongo write fails | Sample not persisted this tick | 🟢 | Logged; alert evaluation still runs against the in-memory reading, so an alert is never lost to this specific failure | None |
+| `du` (the top-5-directories breakdown) times out or hits a permission-denied subdirectory | Alert fires with no breakdown, or a partial one | 🟢 | 20 s timeout; partial stdout is used; the alert still fires on the `statfs` figure alone | Less actionable alert, not a missed one |
+| Local dev (`AGENT_WORKDIR` is an ordinary directory, not a volume) | A meaningless "volume full" alert | 🟢 | Alerts are gated on `FLY_APP_NAME` being set; the sample is still stored so the code path stays exercised | None |
+| The whole sampler throws | Job-runner tick would break | 🟢 | The call site in `daemon.ts` wraps it in a `.catch()`; `runPendingJobs` on the same tick is unaffected either way | None |
+
+**Atlas storage usage** (`atlas-usage.ts`, `platformResources`)
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| `listDatabases` is denied (credentials scoped narrower than expected) | Cluster-wide figure understates real usage | 🟡 | Falls back to the app database alone, with a logged warning; the fallback figure is still real and still alerts correctly on the app database's own growth (the dominant driver — see G-9) | Other tenants' usage on a shared cluster would be invisible in the fallback |
+| `dbStats` fails for one database on the cluster | That database's bytes are omitted from the total | 🟢 | Logged and skipped; every other database still counts, so the total is a (safe) undercount, never a crash | None |
+| The `$collStats` breakdown fails for one collection | That collection is missing from the top-10 list | 🟢 | Logged and skipped; the total usage figure is unaffected (it comes from `dbStats`, not `$collStats`) | None |
+| `PLATFORM_ADMIN_USER_IDS` is empty | No one is ever alerted, and the daily report has no Atlas section | 🟠 | A warning is logged on every tick (not just once), impossible to miss in the logs | Still nothing surfaced in the product itself if nobody reads logs |
+| The Mongo write to `platformResources` fails | This tick's sample not persisted | 🟢 | Logged; alert evaluation still runs against the in-memory reading | None |
+| Relaying to one admin's mailbox fails | That admin misses this tick's alert | 🟢 | Logged per-recipient; the other admins and the stored sample are unaffected | None |
+
 **Alert de-duplication** (`resource-alert-state.ts`, `resourceAlertState`)
 
 | Failure | Effect | Severity | Current mitigation | Gap |
@@ -297,11 +318,12 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | ~~G-1~~ | ~~No auto-restart policy on Fly execution machine~~ | ~~🟠 Mission stall until operator resumes~~ | **Closed Sprint 20** — `restart: { policy: "on-failure", max_retries: 3 }` added to `fly-machines.ts` |
 | G-2 | Inbox messages marked-read before agent completes | 🟠 Inbox text lost (context preserved via mental map) | Moderate — two-phase read/ack in orchestrator |
 | ~~G-3~~ | ~~Missed cron fires not replayed on daemon restart~~ | ~~🔴 Silently skips daily brief cycle~~ | **Corrected, not a real gap (2026-07-22)** — this described an execution-plane in-memory `node-cron` design that no longer matches the code; delivery is control-plane-owned, always-on, with a startup catch-up tick already in place. The real (narrower) gap it was standing in for — no attempt cap on repeated delivery failure — closed Sprint 26c via `MAX_DELIVERY_ATTEMPTS` in `scheduler.ts` (ADR-0020) |
-| G-4 | No disk monitoring for Fly Volume | 🔴 Volume fills silently; writes fail | Moderate — log disk usage in daemon; alert in dashboard |
+| ~~G-4~~ | ~~No disk monitoring for Fly Volume~~ | ~~🔴 Volume fills silently; writes fail~~ | **Closed Sprint 28g** — `resource-sampler.ts` samples volume usage every 60 s (`missionResources`) and raises a `disk-usage-high` anomaly (soft at 80%, hard at 90%, relayed to the operator's copilot) via the existing `AnomalyRecorder`, same pipe every other anomaly uses |
 | G-5 | No out-of-band alerting for LLM auth failure | 🟠 Operator must notice dashboard banner | Moderate — POST to a webhook / send email |
 | ~~G-6~~ | ~~Orphaned background jobs not cleaned on restart~~ | ~~🟠 `jobs/running/` accumulates stale entries~~ | **Closed (Sprint 12)** — `recoverOrphanedJobs()` in `daemon.ts` scans on startup |
 | ~~G-7~~ | ~~`sharedDir/objectives/*`'s two-copy architecture (Fly volume + MongoDB `teamFiles` snapshot)~~ | ~~🔴 Data loss (mitigated, not eliminated, by the interim fix)~~ | **Closed Sprint 26c** — objectives moved fully into MongoDB (`objectivesGoals`/`objectivesEvents`); the Fly-volume copy no longer exists, existing missions self-migrate on next resume. See ADR-0019 |
 | G-8 | No backup/point-in-time-recovery capability (MongoDB Atlas M0 free tier, currently in use, has no backup feature at all); no stated RTO/RPO | 🔴 Data loss on Atlas-side corruption/accidental deletion, or a catastrophic Atlas outage — beyond what app-level bugs already risk | **Accepted for now**, given the current single-tenant/pre-revenue posture — closing this requires a paid Atlas tier (M10+), not application code. Revisit before any production/paying-customer commitment. |
+| G-9 | `conversationMessages` grows without bound — compaction (`conversation-repository.ts`) only marks old messages `compacted: true`, nothing ever deletes them. It is the actual driver of Atlas storage growth (302 of 315 MB in the app database on the dev cluster, 2026-09-20), not `llmCallLog` (already pruned to 1 day). The new `atlas-storage-high` alert (ADR-0032) can warn that the cluster is filling, but has no remedy to point at beyond dropping unrelated databases on the shared cluster or paying for a bigger Atlas tier | 🔴 Repeat of the 2026-07 Atlas quota outage, this time with no pruner able to fix it | Needs a retention decision (delete vs. archive compacted messages after N days) that also weighs what the Transcripts panel and audits need to keep showing — tracked as issue [#54](https://github.com/arnadu/magi_v3/issues/54), likely its own ADR |
 | G-11 | A crashed control-plane copilot daemon watch loop leaves a stale handle in the runtime map (`copilot-runtime.ts`): later `ensureCopilotRunning` calls, including the waker's, do nothing, so mail stays unread until the control plane restarts or the operator switches the copilot model | 🟠 Copilot silently stops responding to relays and operator messages | Small — have `CopilotDaemonHandle` report when its loop has ended and let the runtime drop the handle |
 | G-12 | A machine created by a resize just before the control plane crashed is not recorded on the mission, so it keeps running on Fly untracked (`resource-upgrade.ts`) | 🟠 Unexpected cost until cleaned up | Small — have the sweeper's stale-claim recovery list the mission's machines on Fly and destroy the extra one; today `scripts/reconcile-mission-state.mjs --purge-orphans` does it by hand |
 

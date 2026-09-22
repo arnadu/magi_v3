@@ -121,6 +121,8 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 - `agentTurnStats` — per-turn (per-wakeup) statistics, upserted incrementally during a turn (LLM call count, tokens, cost, peak context, tool counts/errors, files written, messages sent, URLs visited); one doc per `(missionId, agentId, turnNumber)`
 - `machineSegments` — runtime segments per machine shape (ADR-0031): one doc per stretch a mission's machine ran with one shape; drives the runtime cockpit tab and the cumulative upgrade cap
 - `resourceAlertState` — per-alert de-duplication/hysteresis state for resource alerts (ADR-0032); one doc per `<missionId|platform>:<category>` key
+- `missionResources` — latest per-mission resource sample (ADR-0032): disk usage, daemon RSS, in-flight background job count; upserted every 60 s by the daemon's job-runner tick; one doc per `missionId`
+- `platformResources` — cluster-wide (not per-mission) resource samples (ADR-0032); today just `_id: "atlas"`: shared MongoDB Atlas storage usage and its per-database/per-collection breakdown, upserted by the control plane's 5-min resource-monitor tick
 - `missionStats` — lifetime per-agent totals (cost, LLM calls, turn count, consecutive zero-output turns), `$inc`-updated once at turn end; one doc per `(missionId, agentId)`
 
 ### Data flow

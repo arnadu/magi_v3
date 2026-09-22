@@ -82,6 +82,8 @@ export const DATA_KEY_NAMES = [
 	"NEWSAPIORG_API_KEY",
 ] as const;
 
+import type { Db } from "mongodb";
+import type { AnomalyRecorder } from "./anomaly.js";
 import { wireAbortSignal } from "./daemon-boot/abort-signal.js";
 import { provisionAgentIdentities } from "./daemon-boot/agent-identity.js";
 import type { BootContext } from "./daemon-boot/context.js";
@@ -112,6 +114,7 @@ import { resolveLinuxUsers } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
+import { sampleDiskUsage } from "./resource-sampler.js";
 import type { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
 import type { AgentIdentity } from "./workspace-manager.js";
@@ -527,9 +530,30 @@ function startJobRunner(
 	toolPort: number,
 	mailboxRepo: MailboxRepository,
 	teamConfig: TeamConfig,
+	db: Db,
+	anomalyRecorder: AnomalyRecorder,
 ): () => void {
 	function tick(): void {
 		logMemoryUsage(missionId);
+		sampleDiskUsage({
+			db,
+			anomalyRecorder,
+			missionId,
+			// The Fly Volume mount root, not the per-agent `workdir` above — any
+			// path on the same filesystem gives statfs() the same totals, but
+			// `du`'s breakdown should cover the whole mission, not one agent.
+			workdir: process.env.AGENT_WORKDIR ?? process.cwd(),
+			rssMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+			runningJobs,
+			// FLY_APP_NAME is unset in local dev, where AGENT_WORKDIR is an
+			// ordinary host directory, not a real volume — alerting on its
+			// fill level there would be meaningless.
+			alertsEnabled: Boolean(process.env.FLY_APP_NAME),
+		}).catch((e) =>
+			console.error(
+				`[resource-sampler] Uncaught failure { missionId: "${missionId}", error: "${(e as Error).message}" }`,
+			),
+		);
 		runPendingJobs(
 			sharedDir,
 			workdir,
@@ -674,6 +698,7 @@ async function main(): Promise<void> {
 			toolApiServer,
 			toolPort,
 			teamConfig,
+			db,
 		},
 		startJobRunner,
 	);

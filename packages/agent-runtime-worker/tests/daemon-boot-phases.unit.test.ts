@@ -635,6 +635,7 @@ describe("startBackgroundJobs", () => {
 		const teamConfig = {} as Parameters<
 			typeof startBackgroundJobs
 		>[0]["teamConfig"];
+		const db = {} as Parameters<typeof startBackgroundJobs>[0]["db"];
 
 		const { stopJobRunner } = await startBackgroundJobs(
 			{
@@ -646,6 +647,7 @@ describe("startBackgroundJobs", () => {
 				toolApiServer,
 				toolPort: 4001,
 				teamConfig,
+				db,
 			},
 			fakeStartJobRunner,
 		);
@@ -664,6 +666,8 @@ describe("startBackgroundJobs", () => {
 			4001,
 			mailboxRepo,
 			teamConfig,
+			db,
+			anomalyRecorder,
 		);
 		expect(callOrder).toEqual(["recover", "start"]);
 		expect(stopJobRunner).toBe(stopFn);
