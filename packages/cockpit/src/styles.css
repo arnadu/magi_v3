@@ -1806,6 +1806,28 @@ h2.sec {
 .limits-error {
 	color: var(--bad);
 }
+.runtime-rows {
+	display: flex;
+	flex-direction: column;
+}
+.runtime-row {
+	display: grid;
+	grid-template-columns: 1fr 70px 90px;
+	gap: 10px;
+	align-items: center;
+	padding: 6px 0;
+	font-size: 12px;
+	border-bottom: 1px solid var(--line);
+}
+.runtime-row:last-child {
+	border-bottom: none;
+}
+.runtime-row-head {
+	font-size: 10.5px;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	border-bottom: 1px solid var(--line);
+}
 .badge {
 	display: inline-flex;
 	align-items: center;

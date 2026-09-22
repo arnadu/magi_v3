@@ -9,6 +9,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
 import { listSegments, runtimeByConfig } from "./machine-segments.js";
+import { estimateCostPerHourUsd } from "./machine-shapes.js";
 
 interface MissionDocLike {
 	missionId: string;
@@ -50,10 +51,23 @@ export function createMissionResourceRoutes(db: Db): Router {
 		}
 
 		const now = new Date();
-		const byHorizon: Record<string, ReturnType<typeof runtimeByConfig>> = {};
+		const byHorizon: Record<
+			string,
+			Array<{
+				shape: ReturnType<typeof runtimeByConfig>[number]["shape"];
+				upgraded: boolean;
+				ms: number;
+				/** Display-only estimate from the static price table (never enforcement — see ADR-0031 Decision 1). */
+				estimatedCostUsd: number;
+			}>
+		> = {};
 		for (const [key, since] of Object.entries(horizons(now))) {
 			const segments = await listSegments(db, missionId, since);
-			byHorizon[key] = runtimeByConfig(segments, { since, now });
+			byHorizon[key] = runtimeByConfig(segments, { since, now }).map((row) => ({
+				...row,
+				estimatedCostUsd:
+					(row.ms / 3_600_000) * estimateCostPerHourUsd(row.shape),
+			}));
 		}
 
 		res.json({ byHorizon });

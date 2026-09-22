@@ -12,6 +12,7 @@ import express from "express";
 import type { Db, MongoClient } from "mongodb";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
+import { estimateCostPerHourUsd } from "../src/machine-shapes.js";
 import { createMissionResourceRoutes } from "../src/mission-resource-routes.js";
 import { readLimits, writeUpgradedRuntimeReset } from "../src/missions.js";
 
@@ -296,16 +297,29 @@ describe("ADR-0031 operator surfaces", () => {
 				body as {
 					byHorizon: Record<
 						string,
-						Array<{ shape: unknown; upgraded: boolean; ms: number }>
+						Array<{
+							shape: unknown;
+							upgraded: boolean;
+							ms: number;
+							estimatedCostUsd: number;
+						}>
 					>;
 				}
 			).byHorizon.lifetime;
 			expect(lifetime).toHaveLength(2);
-			expect(lifetime.find((r) => r.upgraded)?.shape).toEqual({
+			const upgraded = lifetime.find((r) => r.upgraded);
+			expect(upgraded?.shape).toEqual({
 				cpuKind: "performance",
 				cpus: 2,
 				memoryMb: 8192,
 			});
+			// 1h at performance/2/8192 — a positive, display-only estimate from
+			// the static price table (never used for enforcement).
+			expect(upgraded?.estimatedCostUsd).toBeGreaterThan(0);
+			expect(lifetime.find((r) => !r.upgraded)?.estimatedCostUsd).toBeCloseTo(
+				estimateCostPerHourUsd({ cpuKind: "shared", cpus: 1, memoryMb: 1024 }),
+				6,
+			);
 		});
 
 		it("excludes runtime from before the horizon's window", async () => {

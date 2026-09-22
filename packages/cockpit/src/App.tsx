@@ -25,6 +25,7 @@ import { LoginScreen } from "./LoginScreen";
 import { LogPanel } from "./LogPanel";
 import { MissionsPanel } from "./MissionsPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
+import { RuntimePanel } from "./RuntimePanel";
 import { SchedulePanel } from "./SchedulePanel";
 import { SAMPLE_TREE } from "./sample";
 import { TemplatesPanel } from "./TemplatesPanel";
@@ -45,6 +46,7 @@ type MainTab =
 	| "transcripts"
 	| "trace"
 	| "limits"
+	| "runtime"
 	| "schedule"
 	| "log"
 	| "config";
@@ -748,6 +750,13 @@ export function App() {
 						</button>
 						<button
 							type="button"
+							className={`tab ${mainTab === "runtime" ? "on" : ""}`}
+							onClick={() => setMainTab("runtime")}
+						>
+							Runtime
+						</button>
+						<button
+							type="button"
 							className={`tab ${mainTab === "schedule" ? "on" : ""}`}
 							onClick={() => setMainTab("schedule")}
 						>
@@ -797,6 +806,7 @@ export function App() {
 							/>
 						)}
 						{mainTab === "limits" && <LimitsPanel missionId={view.mission} />}
+						{mainTab === "runtime" && <RuntimePanel missionId={view.mission} />}
 						{mainTab === "schedule" && (
 							<SchedulePanel missionId={view.mission} />
 						)}

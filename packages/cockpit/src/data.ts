@@ -648,6 +648,28 @@ export interface LimitsData {
 	};
 }
 
+// ── Runtime tab (ADR-0031) — machine time by config, not $ spend ──────────
+
+export interface MachineRuntimeRow {
+	shape: { cpuKind: string; cpus: number; memoryMb: number };
+	upgraded: boolean;
+	ms: number;
+	/** Display-only estimate from the static price table — never enforcement. */
+	estimatedCostUsd: number;
+}
+
+export interface MachineRuntimeData {
+	byHorizon: Record<"today" | "7d" | "30d" | "lifetime", MachineRuntimeRow[]>;
+}
+
+export function fetchMachineRuntime(
+	missionId: string,
+): Promise<MachineRuntimeData> {
+	return api<MachineRuntimeData>(
+		`/api/missions/${mp(missionId)}/machine-runtime`,
+	);
+}
+
 export function fetchLimits(missionId: string): Promise<LimitsData> {
 	return api<LimitsData>(`/api/missions/${mp(missionId)}/limits`);
 }
