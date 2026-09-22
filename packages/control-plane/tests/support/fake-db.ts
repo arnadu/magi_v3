@@ -3,7 +3,8 @@
  * what the resource modules use: dotted paths; equality (Dates and ObjectIds
  * by value); $exists, $in, $ne, $gt, $gte, $lt, $lte, $or; $set / $unset;
  * find/sort, findOne, findOneAndUpdate, updateOne (with upsert)/Many, insertOne,
- * deleteOne.
+ * deleteOne; a two-stage `aggregate([{$match}, {$group: {_id, field: {$sum: "$path"}}}])`
+ * (exactly resource-monitor.ts's windowed spend query — not a general aggregation engine).
  * Not a general Mongo emulator.
  */
 
@@ -173,6 +174,39 @@ function collectionOver(docs: Doc[]) {
 			const i = docs.findIndex((x) => matches(x, filter));
 			if (i >= 0) docs.splice(i, 1);
 			return { deletedCount: i >= 0 ? 1 : 0 };
+		},
+		aggregate(pipeline: Doc[]) {
+			let result = docs;
+			for (const stage of pipeline) {
+				if ("$match" in stage) {
+					result = result.filter((d) => matches(d, stage.$match as Doc));
+				} else if ("$group" in stage) {
+					const group = stage.$group as Doc;
+					const acc: Doc = { _id: group._id ?? null };
+					for (const [key, spec] of Object.entries(group)) {
+						if (key === "_id") continue;
+						const sumField = isOperatorObject(spec)
+							? (spec as Doc).$sum
+							: undefined;
+						if (typeof sumField !== "string" || !sumField.startsWith("$")) {
+							throw new Error(
+								`fake-db: unsupported $group accumulator for "${key}" (only "$sum: \\"$field\\"" is supported)`,
+							);
+						}
+						const path = sumField.slice(1);
+						acc[key] = result.reduce(
+							(sum, d) => sum + ((getPath(d, path) as number) ?? 0),
+							0,
+						);
+					}
+					result = [acc];
+				} else {
+					throw new Error(
+						`fake-db: unsupported aggregation stage "${Object.keys(stage)[0]}"`,
+					);
+				}
+			}
+			return { toArray: async () => result.map(copy) };
 		},
 		find(filter: Doc) {
 			let result = docs.filter((d) => matches(d, filter));

@@ -19,6 +19,9 @@ import {
 	DISK_USAGE,
 	REPORT_FLAGS,
 	SPEND_CAP,
+	SPEND_SPIKE_RATIO,
+	UPGRADE_CAP_NEAR,
+	UPGRADE_IDLE,
 	UPGRADE_LIMITS,
 } from "../src/resource-thresholds.js";
 
@@ -57,6 +60,15 @@ describe("thresholds", () => {
 		expect(t.hard - ALERT_CLEAR_HYSTERESIS).toBeGreaterThan(
 			t.soft - ALERT_CLEAR_HYSTERESIS,
 		);
+	});
+
+	it.each([
+		["UPGRADE_CAP_NEAR", UPGRADE_CAP_NEAR],
+		["UPGRADE_IDLE", UPGRADE_IDLE],
+		["SPEND_SPIKE_RATIO", SPEND_SPIKE_RATIO],
+	])("%s: soft-only — hard is unreachable, soft is positive", (_n, t) => {
+		expect(t.soft).toBeGreaterThan(0);
+		expect(t.hard).toBe(Number.POSITIVE_INFINITY);
 	});
 
 	it("upgrade limits are mutually consistent", () => {

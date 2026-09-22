@@ -77,6 +77,8 @@ provisioned missions — the daemon reads its structured config directly from Mo
 - `MISSION_COPILOT_ENABLED` (execution plane; `"false"` opts a mission out of the mission copilot agent, ADR-0016 — default on since Sprint 26)
 - `MONITOR_TOKEN` (execution plane; per-mission auth token for MonitorServer's mutating routes and the mission copilot's own tool calls to it — derived from `MONITOR_SIGNING_KEY` and injected by the control plane at machine creation; empty = no auth, local dev only)
 - `CONTROL_PLANE_URL` (execution plane; base URL the mission copilot's GitHub-proxy tools call — injected by the control plane at machine creation from its own `FLY_APP_NAME`; empty in local dev, where the proxy isn't reachable)
+- `PLATFORM_ADMIN_USER_IDS` (control plane only; comma-separated Firebase UIDs — recipients of the `atlas-storage-high` relay from the 5-min resource-monitor tick, and (once the Sprint 28g daily report lands) its Atlas section. Empty is valid but logged on every tick: no one receives the Atlas alert)
+- `ATLAS_STORAGE_LIMIT_MB` (control plane only; shared MongoDB Atlas cluster storage quota in MB, used by the resource-monitor tick's `atlas-storage-high` check; default 512, the M0 free-tier limit)
 
 **Data API keys** (forwarded to background jobs only — never to agent tool subprocesses):
 Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`

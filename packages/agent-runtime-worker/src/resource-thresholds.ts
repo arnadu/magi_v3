@@ -35,8 +35,39 @@ export const SPEND_SPIKE = {
 /** `upgrade-cap-near` fires at this fraction of the cumulative upgraded-runtime cap. */
 export const UPGRADE_CAP_NEAR_RATIO = 0.8;
 
+/**
+ * `upgrade-cap-near` as a `LevelThresholds` pair for `evaluateAlert`, soft only
+ * (ADR-0032: this category never escalates to hard — cap-reached is a
+ * separate, already-relayed category). `hard` is unreachable by construction.
+ */
+export const UPGRADE_CAP_NEAR: LevelThresholds = {
+	soft: UPGRADE_CAP_NEAR_RATIO,
+	hard: Number.POSITIVE_INFINITY,
+};
+
 /** `upgrade-idle`: an upgraded machine with no conversation activity and no running job for this long. */
 export const UPGRADE_IDLE_MINUTES = 30;
+
+/**
+ * `upgrade-idle` as a `LevelThresholds` pair, evaluated against
+ * `idleMinutes / UPGRADE_IDLE_MINUTES` so 1.0 is "idle for the full window."
+ * Soft only, same reasoning as `UPGRADE_CAP_NEAR`.
+ */
+export const UPGRADE_IDLE: LevelThresholds = {
+	soft: 1,
+	hard: Number.POSITIVE_INFINITY,
+};
+
+/**
+ * `spend-spike` as a `LevelThresholds` pair, evaluated against
+ * `last24hSpend / (SPEND_SPIKE.multiplier * trailingDailyAverage)` so 1.0 is
+ * exactly at the multiplier. Soft only — ADR-0032 never escalates a spike to
+ * hard (the mission's own spend cap, `SPEND_CAP`, is the hard stop).
+ */
+export const SPEND_SPIKE_RATIO: LevelThresholds = {
+	soft: 1,
+	hard: Number.POSITIVE_INFINITY,
+};
 
 /** Ratio must fall this far below a threshold before its alert state is forgotten (no flapping). */
 export const ALERT_CLEAR_HYSTERESIS = 0.05;

@@ -36,6 +36,7 @@ import { createMissionResourceRoutes } from "./mission-resource-routes.js";
 import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { createProxyRouter } from "./proxy.js";
+import { startResourceMonitor } from "./resource-monitor.js";
 import { startScheduler } from "./scheduler.js";
 import { createTemplatesRouter, loadTemplates } from "./templates.js";
 
@@ -279,12 +280,28 @@ async function main(): Promise<void> {
 	const stopCopilotWaker = startCopilotWaker(db, (userId) =>
 		copilotRuntime.ensureCopilotRunning(userId),
 	);
+	// Proactive resource oversight: Atlas storage, OOM detection, spend/upgrade
+	// alerts (ADR-0032). An empty PLATFORM_ADMIN_USER_IDS is valid (logged by
+	// atlas-usage.ts on every tick) — it just means no one receives the
+	// Atlas-storage alert or (once step 6 lands) the daily report.
+	const platformAdminUserIds = (process.env.PLATFORM_ADMIN_USER_IDS ?? "")
+		.split(",")
+		.map((id) => id.trim())
+		.filter((id) => id.length > 0);
+	const atlasStorageLimitMb = process.env.ATLAS_STORAGE_LIMIT_MB
+		? Number.parseInt(process.env.ATLAS_STORAGE_LIMIT_MB, 10)
+		: undefined;
+	const stopResourceMonitor = startResourceMonitor(db, client, {
+		platformAdminUserIds,
+		atlasStorageLimitMb,
+	});
 
 	// Graceful shutdown.
 	async function shutdown(): Promise<void> {
 		console.log("[control-plane] Shutting down…");
 		stopScheduler();
 		stopCopilotWaker();
+		stopResourceMonitor();
 		server.close(() => {
 			client
 				.close()

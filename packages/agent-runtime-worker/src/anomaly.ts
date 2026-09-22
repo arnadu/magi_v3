@@ -21,7 +21,11 @@
  */
 
 import type { Db } from "mongodb";
-import type { MailboxRepository } from "./mailbox.js";
+import {
+	createMongoMailboxRepository,
+	type MailboxRepository,
+} from "./mailbox.js";
+import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -145,4 +149,28 @@ export function createMongoAnomalyRecorder(
 			}
 		},
 	};
+}
+
+/**
+ * The recurring "one mission's `AnomalyRecorder`" wiring: the mission's own
+ * mailbox for its copilot, plus a relay to the owning user's control-plane
+ * copilot (`copilot-{userId}`) for hard severities. Used by every
+ * control-plane-side caller that raises an anomaly against a specific mission
+ * (resource-upgrade.ts, fly-events.ts, resource-monitor.ts) so this wiring is
+ * only ever written once.
+ */
+export function createMongoAnomalyRecorderForMission(
+	db: Db,
+	missionId: string,
+	userId: string,
+): AnomalyRecorder {
+	return createMongoAnomalyRecorder(
+		db,
+		createMongoMailboxRepository(db, missionId),
+		MISSION_COPILOT_AGENT_ID,
+		{
+			mailboxRepo: createMongoMailboxRepository(db, `copilot-${userId}`),
+			missionId: `copilot-${userId}`,
+		},
+	);
 }

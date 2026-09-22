@@ -5,7 +5,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createMongoAnomalyRecorder } from "../src/anomaly.js";
+import {
+	createMongoAnomalyRecorder,
+	createMongoAnomalyRecorderForMission,
+} from "../src/anomaly.js";
 import type { MailboxMessage, MailboxRepository } from "../src/mailbox.js";
 
 function fakeMailbox(): MailboxRepository & { posted: MailboxMessage[] } {
@@ -237,5 +240,51 @@ describe("createMongoAnomalyRecorder", () => {
 			expect(copilotMailbox.posted[0].subject).toContain(category);
 			expect(copilotMailbox.posted[0].subject).toContain("m1");
 		});
+	});
+});
+
+describe("createMongoAnomalyRecorderForMission", () => {
+	it("wires the mission's own mailbox and a copilot-{userId} relay from just missionId + userId", async () => {
+		const { db, inserted } = fakeDb();
+		const recorder = createMongoAnomalyRecorderForMission(db, "m1", "user1");
+
+		await recorder.record({
+			missionId: "m1",
+			category: "resize-failure",
+			severity: "hard",
+			message: "resize failed",
+		});
+
+		// The fake routes every collection through one shared array: the
+		// missionAnomalies doc, the mission-copilot mailbox post, and the
+		// copilot-user1 relay post (hard severity relays).
+		expect(inserted).toHaveLength(3);
+		expect(inserted).toContainEqual(
+			expect.objectContaining({
+				missionId: "m1",
+				category: "resize-failure",
+				severity: "hard",
+			}),
+		);
+		expect(inserted).toContainEqual(
+			expect.objectContaining({ missionId: "copilot-user1", to: ["copilot"] }),
+		);
+	});
+
+	it("does not relay a soft anomaly to the control-plane copilot", async () => {
+		const { db, inserted } = fakeDb();
+		const recorder = createMongoAnomalyRecorderForMission(db, "m1", "user1");
+
+		await recorder.record({
+			missionId: "m1",
+			category: "upgrade-cap-near",
+			severity: "soft",
+			message: "heads up",
+		});
+
+		// Just the missionAnomalies doc and the mission-copilot mailbox post —
+		// no copilot-user1 relay doc for a soft anomaly.
+		expect(inserted).toHaveLength(2);
+		expect(inserted.some((d) => d.missionId === "copilot-user1")).toBe(false);
 	});
 });

@@ -16,7 +16,10 @@ export type {
 	AnomalySeverity,
 	MissionAnomaly,
 } from "./anomaly.js";
-export { createMongoAnomalyRecorder } from "./anomaly.js";
+export {
+	createMongoAnomalyRecorder,
+	createMongoAnomalyRecorderForMission,
+} from "./anomaly.js";
 export type {
 	ConversationRepository,
 	StoredMessage,

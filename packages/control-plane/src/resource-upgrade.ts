@@ -21,8 +21,7 @@
 import { randomUUID } from "node:crypto";
 import {
 	createMongoAlertStateStore,
-	createMongoAnomalyRecorder,
-	createMongoMailboxRepository,
+	createMongoAnomalyRecorderForMission,
 	evaluateAlert,
 	MISSION_COPILOT_AGENT_ID,
 	UPGRADE_LIMITS,
@@ -158,15 +157,10 @@ async function recordAnomaly(
 	category: "upgrade-cap-reached" | "resize-failure",
 	message: string,
 ): Promise<void> {
-	const copilotMissionId = `copilot-${mission.userId}`;
-	await createMongoAnomalyRecorder(
+	await createMongoAnomalyRecorderForMission(
 		db,
-		createMongoMailboxRepository(db, mission.missionId),
-		MISSION_COPILOT_AGENT_ID,
-		{
-			mailboxRepo: createMongoMailboxRepository(db, copilotMissionId),
-			missionId: copilotMissionId,
-		},
+		mission.missionId,
+		mission.userId,
 	).record({
 		missionId: mission.missionId,
 		category,

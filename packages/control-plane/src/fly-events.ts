@@ -19,9 +19,7 @@
 import {
 	type AlertStateStore,
 	createMongoAlertStateStore,
-	createMongoAnomalyRecorder,
-	createMongoMailboxRepository,
-	MISSION_COPILOT_AGENT_ID,
+	createMongoAnomalyRecorderForMission,
 } from "@magi/agent-runtime-worker";
 import type { Db } from "mongodb";
 import type { FlyMachineEvent, FlyMachineSummary } from "./fly-machines.js";
@@ -72,15 +70,10 @@ async function recordOomSuspected(
 		return;
 	}
 
-	const copilotMissionId = `copilot-${mission.userId}`;
-	await createMongoAnomalyRecorder(
+	await createMongoAnomalyRecorderForMission(
 		db,
-		createMongoMailboxRepository(db, mission.missionId),
-		MISSION_COPILOT_AGENT_ID,
-		{
-			mailboxRepo: createMongoMailboxRepository(db, copilotMissionId),
-			missionId: copilotMissionId,
-		},
+		mission.missionId,
+		mission.userId,
 	).record({
 		missionId: mission.missionId,
 		category: "oom-suspected",
