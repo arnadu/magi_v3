@@ -9,7 +9,9 @@ scope: platform
 ## Purpose
 
 Run scripts that are too slow for an agent turn (>2 min) — data refreshes, web scraping,
-report generation, model training. Your script:
+report generation, model training. If the job is memory- or compute-heavy enough that it
+might not fit on this mission's current machine, see the `request-resources` skill
+*before* submitting it. Your script:
 
 - Runs as **your** Linux user — same file permissions as your agent turn
 - Can call LLM tools (FetchUrl, Research, SearchWeb, PostMessage) via the Tool API using
