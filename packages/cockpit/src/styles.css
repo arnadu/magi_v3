@@ -1819,6 +1819,10 @@ h2.sec {
 	background: var(--bad);
 	color: #fff;
 }
+.badge-warn {
+	background: var(--warn);
+	color: #fff;
+}
 
 /* Primitives — a stronger CTA button and inline error text, for full-page
    flows (login) that need more visual weight than the rail's .rail-btn. */

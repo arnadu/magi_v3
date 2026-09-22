@@ -632,10 +632,42 @@ export interface LimitsData {
 	agents: AgentLimitsRow[];
 	/** False when suspended/provisioning/etc — live numbers are unavailable then. */
 	missionRunning: boolean;
+	/** Temporary machine upgrades (ADR-0031 Decision 7). */
+	upgrades: {
+		usedHours: number;
+		capHours: number;
+		/** ISO timestamp of the operator's last reset, or null if never reset. */
+		resetAt: string | null;
+		active: {
+			cpuKind: string;
+			cpus: number;
+			memoryMb: number;
+			expiresAt: string;
+			requestedByAgentId?: string;
+		} | null;
+	};
 }
 
 export function fetchLimits(missionId: string): Promise<LimitsData> {
 	return api<LimitsData>(`/api/missions/${mp(missionId)}/limits`);
+}
+
+/** Issue #31/ADR-0031 — resets the cumulative upgraded-machine-runtime cap to
+ * 0. No mission tool can ever call this route; only the cockpit Limits panel
+ * can, matching the same structural-separation pattern as
+ * saveMissionCostCeiling (see missions.ts's writeUpgradedRuntimeReset). */
+export async function resetUpgradedRuntime(
+	missionId: string,
+): Promise<{ resetAt: string }> {
+	const res = await fetch(
+		`/api/missions/${mp(missionId)}/limits/upgrade-reset`,
+		{
+			method: "PATCH",
+			credentials: "include",
+		},
+	);
+	if (!res.ok) throw new Error(`HTTP ${res.status} resetting upgraded runtime`);
+	return (await res.json()) as { resetAt: string };
 }
 
 /** Returns whether the mission's own live cap was also updated immediately

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AgentLimits, AgentLimitsRow, LimitsData } from "./data";
 import {
 	fetchLimits,
@@ -6,6 +6,7 @@ import {
 	saveMissionCap,
 	saveMissionCostCeiling,
 } from "./data";
+import { UpgradeLimitsSection } from "./UpgradeLimitsSection";
 
 const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
 
@@ -13,14 +14,17 @@ const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
  * duplicated rather than imported: it's a 6-line pure function, and pulling
  * in a cross-panel dependency for something this small isn't worth it unless
  * a third consumer shows up. */
-function pctColor(spent: number, cap: number): { pct: number; color: string } {
+export function pctColor(
+	spent: number,
+	cap: number,
+): { pct: number; color: string } {
 	const pct = cap > 0 ? Math.min(100, Math.round((100 * spent) / cap)) : 0;
 	const color =
 		pct >= 90 ? "var(--bad)" : pct >= 70 ? "var(--warn)" : "var(--ok)";
 	return { pct, color };
 }
 
-function Minibar({ pct, color }: { pct: number; color: string }) {
+export function Minibar({ pct, color }: { pct: number; color: string }) {
 	return (
 		<span className="minibar">
 			<i style={{ width: `${pct}%`, background: color }} />
@@ -396,11 +400,18 @@ function MissionSection({
 export function LimitsPanel({ missionId }: { missionId: string | null }) {
 	const [data, setData] = useState<LimitsData | null | "error">(null);
 	const [refreshKey, setRefreshKey] = useState(0);
+	const lastMissionId = useRef<string | null>(null);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is a signal-only dependency (re-fetch on save/refresh), not read in the body
 	useEffect(() => {
 		if (!missionId) return;
-		setData(null);
+		// Blank the panel only when switching to a different mission — a
+		// same-mission refresh (after any section's Save/Reset) keeps the
+		// current numbers on screen instead of flashing "Loading…", which
+		// would otherwise unmount every section and wipe its own
+		// just-set confirmation note before the operator could read it.
+		if (missionId !== lastMissionId.current) setData(null);
+		lastMissionId.current = missionId;
 		fetchLimits(missionId).then(setData, () => setData("error"));
 	}, [missionId, refreshKey]);
 
@@ -423,6 +434,11 @@ export function LimitsPanel({ missionId }: { missionId: string | null }) {
 				</button>
 			</div>
 			<MissionSection
+				data={data}
+				missionId={missionId}
+				onSaved={() => setRefreshKey((k) => k + 1)}
+			/>
+			<UpgradeLimitsSection
 				data={data}
 				missionId={missionId}
 				onSaved={() => setRefreshKey((k) => k + 1)}
