@@ -37,11 +37,17 @@ import {
 	type ObjectiveDef,
 	ObjectiveDefSchema,
 	type ToolResult,
+	UPGRADE_LIMITS,
 } from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
 import { getMachineState } from "./fly-machines.js";
 import { GITHUB_REPO, ghFetch } from "./github.js";
+import {
+	defaultShapeOf,
+	getOpenSegment,
+	upgradedMsSince,
+} from "./machine-segments.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import {
 	getTemplate as getTemplateData,
@@ -98,6 +104,15 @@ interface MissionDoc {
 	status: string;
 	createdAt: Date;
 	updatedAt: Date;
+	/** Present while the mission is on an upgraded machine (ADR-0031). */
+	upgrade?: {
+		cpuKind: string;
+		cpus: number;
+		memoryMb: number;
+		expiresAt: Date;
+	};
+	/** Set by the operator-only reset route; upgraded time before it no longer counts against the cap. */
+	upgradedRuntimeResetAt?: Date;
 }
 
 interface ScheduledMessageDoc {
@@ -210,6 +225,24 @@ export function createCopilotTools(
 				}
 			}
 
+			const now = new Date();
+			const shape = mission.upgrade ?? defaultShapeOf(mission);
+			const tierLine = `tier:      ${shape.cpuKind}, ${shape.cpus} CPU${shape.cpus === 1 ? "" : "s"}, ${shape.memoryMb} MB${mission.upgrade ? ` (upgraded, expires ${mission.upgrade.expiresAt.toISOString()})` : " (default)"}`;
+			const openSegment = await getOpenSegment(db, missionId).catch(() => null);
+			const sinceLine = openSegment
+				? `onTierSince: ${openSegment.startedAt.toISOString()}`
+				: "onTierSince: (unknown — no runtime segment recorded)";
+			const since = mission.upgradedRuntimeResetAt ?? new Date(0);
+			const usedMs = await upgradedMsSince(
+				db,
+				missionId,
+				since,
+				now,
+				"elapsed",
+			).catch(() => 0);
+			const capHours = UPGRADE_LIMITS.cumulativeCapHours;
+			const upgradedLine = `upgradedRuntime: ${(usedMs / 3_600_000).toFixed(1)} h / ${capHours} h used since last reset`;
+
 			const summary = [
 				`missionId: ${mission.missionId}`,
 				`name:      ${mission.name}`,
@@ -217,6 +250,9 @@ export function createCopilotTools(
 				`machineId: ${mission.machineId ?? "(none)"}`,
 				`privateIp: ${mission.privateIp ?? "(none)"}`,
 				`liveState: ${machineState}`,
+				tierLine,
+				sinceLine,
+				upgradedLine,
 				`createdAt: ${mission.createdAt.toISOString()}`,
 				`updatedAt: ${mission.updatedAt.toISOString()}`,
 			].join("\n");

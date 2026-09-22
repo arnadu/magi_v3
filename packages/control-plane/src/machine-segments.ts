@@ -193,6 +193,14 @@ export async function setPlannedEnd(
 	);
 }
 
+/** The mission's currently-open segment, if any (there is at most one). */
+export async function getOpenSegment(
+	db: Db,
+	missionId: string,
+): Promise<MachineSegment | null> {
+	return collection(db).findOne({ missionId, endedAt: { $exists: false } });
+}
+
 /** Segments that overlap [since, now], oldest first. */
 export async function listSegments(
 	db: Db,
