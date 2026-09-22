@@ -216,6 +216,13 @@ declare -A CONTROL_SECRETS=(
   # Needs a GitHub personal access token (classic) with repo scope.
   [GH_TOKEN]="${GH_TOKEN:-}"
   [GITHUB_REPO]="${GITHUB_REPO:-arnadu/magi_v3}"
+  # Resource oversight (ADR-0032) — the resource-monitor tick and daily report.
+  # Empty PLATFORM_ADMIN_USER_IDS is valid (logged on every tick); the other
+  # two fall back to their own code defaults (512 MB, hour 12 UTC) if unset,
+  # but are given explicit values here for discoverability.
+  [PLATFORM_ADMIN_USER_IDS]="${PLATFORM_ADMIN_USER_IDS:-}"
+  [ATLAS_STORAGE_LIMIT_MB]="${ATLAS_STORAGE_LIMIT_MB:-512}"
+  [RESOURCE_REPORT_HOUR_UTC]="${RESOURCE_REPORT_HOUR_UTC:-12}"
 )
 set_secrets_if_needed "$CONTROL_APP" CONTROL_SECRETS
 

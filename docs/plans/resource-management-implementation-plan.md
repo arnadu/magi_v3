@@ -231,7 +231,7 @@ storage alert*, *disk-pressure alert*, and update the existing "Fly Volume full"
 | `MAGI_V3_SPEC.md` | §6 tool table: `RequestResourceUpgrade` (Tier B); skills; anomaly categories; resource sampling | 2.5, 5.1 |
 | `MAGI_V3_ROADMAP.md` | Sprint row; near-term candidates rows resolved | 0.2, 7.1 |
 | `docs/implementation-history.md` | Sprint section with key files and design rationale | 7.1 |
-| `docs/deployment.md`, `secrets.env.template`, `scripts/bootstrap.sh`, fly toml `[env]` | The three env vars and where each environment sets them; note `PLATFORM_ADMIN_USER_IDS` must be set for the Atlas alert to reach anyone | 5.2 |
+| `secrets.env.template`, `scripts/bootstrap.sh` | The three env vars, added to `CONTROL_SECRETS` and the template | Committed at step 5.2 in name only — the code landed but these files weren't actually touched until noticed while setting up step 6.3's live test; fixed 2026-09-22. `docs/deployment.md`'s existing "Adding or updating a secret" section already covers the mechanism (`bootstrap.sh --reset-secrets`) generically, so no fly toml `[env]` block is used (this repo's convention is Fly secrets, not toml env, for control-plane config) |
 | `docs/operational-resilience.md` | Section 5 above | per step, 7.1 |
 | `docs/security/threat-model.md`, `docs/security/findings.md` | Section 4 above | 2.4, 3.1, 7.1 |
 | `docs/code-structure.md` | New files and the "do not grow" note for `mission-copilot-tools.ts` / `missions.ts` | 7.2 |
