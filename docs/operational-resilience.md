@@ -79,6 +79,19 @@ flyctl machine start <machineId> -a magi-missions-dev
 **Recovery — extended Atlas outage:**  
 Restart daemon after Atlas recovers. State is fully preserved in Atlas; no messages are lost (inbox messages are only marked read immediately before a successful `runAgent` call begins).
 
+**Observed live, 2026-09-22 (Sprint 28g):** a real MongoDB Atlas connectivity incident (also breaking this
+session's own dev-machine connectivity to Atlas/GitHub/Fly for over an hour, so plausibly an upstream
+network event rather than Atlas-only) caused a throwaway test mission's daemon to hit exactly this path:
+`waitForMail`'s Change Stream errored, the orchestration loop exited, and the daemon shut down cleanly
+(signal-less `exit`, no `requested_stop`) roughly 11 minutes after its last activity. Fly's
+`restart: {policy: "on-failure"}` correctly did not restart the clean exit, so the machine stayed stopped
+until the operator (Claude, in this case) noticed via a status check and issued a manual resume. No data was
+lost — this is the documented, working recovery path, not a new failure mode — but it's a fresh, concrete
+instance of the still-open "No alerting; operator may not notice" gap in the row above: nothing paged
+anyone, and the only signal was the mission's `status` field quietly flipping to `suspended` on next read.
+Grounds ADR-0032's daily report/threshold-alert work as addressing a real, recently-observed gap, not a
+hypothetical one.
+
 **Gap G-2 (moderate): Inbox messages lost if daemon crashes between `markRead` and agent completion.**  
 The orchestrator marks messages read before calling `runAgent`. A crash in the narrow window between those two operations means those inbox messages are gone from the agent's next-session view. The agent's mental map and conversation history are intact, so it can resume, but it won't see the specific text from those messages. A two-phase approach (mark as `processing` → mark as `read` in `.finally()`) would close this window. Current assessment: low probability, moderate impact — acceptable for now given the mental map mitigates most practical cases.
 
