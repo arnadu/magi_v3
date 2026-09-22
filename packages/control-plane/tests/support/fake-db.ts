@@ -1,9 +1,9 @@
 /**
  * Minimal in-memory Mongo fake for control-plane unit tests. Supports only
  * what the resource modules use: dotted paths; equality (Dates and ObjectIds
- * by value); $exists, $in, $ne, $gt, $gte, $lt, $lte, $or; $set / $unset;
- * find/sort, findOne, findOneAndUpdate, updateOne (with upsert)/Many, insertOne,
- * deleteOne; a two-stage `aggregate([{$match}, {$group: {_id, field: {$sum: "$path"}}}])`
+ * by value); $exists, $in, $nin, $ne, $gt, $gte, $lt, $lte, $or; $set / $unset;
+ * find/sort/limit, findOne, findOneAndUpdate, updateOne (with upsert)/Many, insertOne,
+ * deleteOne, distinct; a two-stage `aggregate([{$match}, {$group: {_id, field: {$sum: "$path"}}}])`
  * (exactly resource-monitor.ts's windowed spend query — not a general aggregation engine).
  * Not a general Mongo emulator.
  */
@@ -68,6 +68,9 @@ function matchesValue(actual: unknown, cond: unknown): boolean {
 				break;
 			case "$in":
 				if (!(arg as unknown[]).map(comparable).includes(a)) return false;
+				break;
+			case "$nin":
+				if ((arg as unknown[]).map(comparable).includes(a)) return false;
 				break;
 			case "$ne":
 				if (a === b) return false;
@@ -175,6 +178,13 @@ function collectionOver(docs: Doc[]) {
 			if (i >= 0) docs.splice(i, 1);
 			return { deletedCount: i >= 0 ? 1 : 0 };
 		},
+		async distinct(field: string, filter: Doc = {}) {
+			const values = new Set<unknown>();
+			for (const d of docs) {
+				if (matches(d, filter)) values.add(getPath(d, field));
+			}
+			return [...values].filter((v) => v !== undefined);
+		},
 		aggregate(pipeline: Doc[]) {
 			let result = docs;
 			for (const stage of pipeline) {
@@ -219,6 +229,10 @@ function collectionOver(docs: Doc[]) {
 								(comparable(getPath(b, key)) as number)) *
 							dir,
 					);
+					return cursor;
+				},
+				limit(n: number) {
+					result = result.slice(0, n);
 					return cursor;
 				},
 				async toArray() {

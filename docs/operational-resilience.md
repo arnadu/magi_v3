@@ -330,7 +330,18 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 |---------|--------|----------|--------------------|-----|
 | State store (Mongo) unreachable when an alert is evaluated | Could suppress or repeat alerts | 🟠 | `evaluateAlert` fails open: it logs with the key and ratio, and returns the reading's own level, so an outage causes repeats, never a missed hard alert | None |
 | A reading hovers around a threshold | Alert storm | 🟡 | Level is re-alerted only on escalation or after 24 h; state is forgotten only once the ratio is 5 points below the threshold | None |
-| Alert keys for destroyed missions accumulate | Small unbounded growth of `resourceAlertState` | 🟢 | None (one tiny document per mission and category) | Prune with the log pruner when the monitor lands (step 5.4) |
+| Alert keys for destroyed missions accumulate | Small unbounded growth of `resourceAlertState` | 🟢 | None (one tiny document per mission and category) | Still open now that step 5.4 has landed — pruning was not part of that step's scope; wire into the existing 30-min log pruner (`scheduler.ts`) in a follow-up |
+
+**Daily resource report** (`resource-report.ts`, `resourceSnapshots`)
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| Control plane is down through the entire report hour | A user's report for that day would otherwise never send | 🟡 | `runDailyReportsIfDue` fires once `now` is at or past today's report-hour boundary, not only inside the exact hour — the very next 5-min tick after restart, any time later the same day, still sends | A day where the process never comes back up before midnight UTC genuinely skips that day's report — no cross-day catch-up, by design (yesterday's numbers would be stale by the time a next-day tick ran) |
+| Two ticks race to send the same user's report (unlikely with one control-plane instance, but not assumed) | Could double-send | 🟢 | The `resourceSnapshots` `(userId, date)` document is created via `$setOnInsert` upsert; only the call whose `upsertedCount` is 1 proceeds to post the mailbox message, so a race resolves to exactly one send | None |
+| The mailbox post fails after the snapshot is already claimed | That user's report for the day is lost, not retried | 🟠 | Logged with the userId; deliberate persist-before-post ordering trades this narrow failure mode for never double-sending on a crash between the two steps | No automatic retry within the day; visible in logs, not yet surfaced as its own anomaly |
+| One user's report build throws (bad data, a broken query) | Would otherwise abort the whole tick's report pass | 🟢 | Each user is processed in its own try/catch inside `runDailyReportsIfDue`'s loop; one failure never blocks another user's report | None |
+| A mission's disk/Atlas sample is missing when the report builds | Would otherwise crash formatting | 🟢 | Every derived field (`diskUsedBytes`, `diskSampleAt`, growth rates, `atlas`) is optional throughout `DailyReport`/`renderDailyReport`; a missing sample renders as "no sample" and still triggers the existing "Monitoring blind" flag for a `running` mission | None |
+| `RESOURCE_REPORT_HOUR_UTC` set to a non-numeric value | `Number.parseInt` yields `NaN`; `Date.UTC(...NaN)` is an Invalid Date, and any comparison against it (`now < reportTimeToday`) is always false | 🟡 | None beyond normal env-var review at deploy time | A malformed value makes every tick look "due," not just one per day — the per-`(userId, date)` snapshot claim still caps it at one real send per user per day, so the practical effect is wasted tick work, not duplicate reports; no input validation yet since this is an operator-set env var, not agent input |
 
 ---
 

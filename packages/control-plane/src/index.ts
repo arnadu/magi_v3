@@ -281,9 +281,9 @@ async function main(): Promise<void> {
 		copilotRuntime.ensureCopilotRunning(userId),
 	);
 	// Proactive resource oversight: Atlas storage, OOM detection, spend/upgrade
-	// alerts (ADR-0032). An empty PLATFORM_ADMIN_USER_IDS is valid (logged by
-	// atlas-usage.ts on every tick) — it just means no one receives the
-	// Atlas-storage alert or (once step 6 lands) the daily report.
+	// alerts, and the daily report (ADR-0032). An empty PLATFORM_ADMIN_USER_IDS
+	// is valid (logged by atlas-usage.ts on every tick) — it just means no one
+	// receives the Atlas-storage alert or the report's Atlas section.
 	const platformAdminUserIds = (process.env.PLATFORM_ADMIN_USER_IDS ?? "")
 		.split(",")
 		.map((id) => id.trim())
@@ -291,9 +291,13 @@ async function main(): Promise<void> {
 	const atlasStorageLimitMb = process.env.ATLAS_STORAGE_LIMIT_MB
 		? Number.parseInt(process.env.ATLAS_STORAGE_LIMIT_MB, 10)
 		: undefined;
+	const reportHourUtc = process.env.RESOURCE_REPORT_HOUR_UTC
+		? Number.parseInt(process.env.RESOURCE_REPORT_HOUR_UTC, 10)
+		: undefined;
 	const stopResourceMonitor = startResourceMonitor(db, client, {
 		platformAdminUserIds,
 		atlasStorageLimitMb,
+		reportHourUtc,
 	});
 
 	// Graceful shutdown.

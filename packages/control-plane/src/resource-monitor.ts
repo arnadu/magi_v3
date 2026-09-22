@@ -1,17 +1,19 @@
 /**
  * The 5-minute resource-oversight tick (ADR-0032): the cross-cutting Atlas
- * storage and OOM-detection checks, plus four per-mission alert categories —
+ * storage and OOM-detection checks, four per-mission alert categories —
  * `spend-cap-near` (missionStats totals vs the mission's own cap),
  * `spend-spike` (agentTurnStats, 24h spend vs a trailing 7-day daily
  * average — the `{missionId, startedAt}` index added in step 1.4 exists
  * specifically for this windowed query), `upgrade-cap-near` (machine
  * segments vs the cumulative upgrade cap), and `upgrade-idle` (an upgraded
- * machine with no conversation activity and no running job).
+ * machine with no conversation activity and no running job) — plus, once
+ * `now` reaches `RESOURCE_REPORT_HOUR_UTC` for the day, the daily report
+ * (`resource-report.ts`).
  *
  * Every per-mission and cross-cutting check is independently caught — one
- * mission's failure, or the Atlas/OOM checks failing, must never stop the
- * rest of the tick. Started once from index.ts alongside the scheduler and
- * copilot waker.
+ * mission's failure, or the Atlas/OOM/report checks failing, must never stop
+ * the rest of the tick. Started once from index.ts alongside the scheduler
+ * and copilot waker.
  */
 
 import {
@@ -39,6 +41,12 @@ import {
 	upgradeCapNearRatio,
 	upgradeIdleRatio,
 } from "./resource-alerts.js";
+import {
+	lastActivityAt,
+	latestResourceSample,
+	sumTurnCostUsd,
+} from "./resource-queries.js";
+import { runDailyReportsIfDue } from "./resource-report.js";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -67,47 +75,6 @@ async function runningMissions(db: Db): Promise<MissionRow[]> {
 			},
 		)
 		.toArray();
-}
-
-/** Sum of `agentTurnStats.costUsd` for turns starting in `[from, to)`, across every agent. */
-async function sumTurnCostUsd(
-	db: Db,
-	missionId: string,
-	from: Date,
-	to: Date,
-): Promise<number> {
-	const [row] = await db
-		.collection("agentTurnStats")
-		.aggregate<{ total: number }>([
-			{ $match: { missionId, startedAt: { $gte: from, $lt: to } } },
-			{ $group: { _id: null, total: { $sum: "$costUsd" } } },
-		])
-		.toArray();
-	return row?.total ?? 0;
-}
-
-/** The latest turn activity for any agent in the mission, or null if none has ever run. */
-async function lastActivityAt(db: Db, missionId: string): Promise<Date | null> {
-	const rows = await db
-		.collection<{ lastTurnAt: Date }>("missionStats")
-		.find({ missionId }, { projection: { lastTurnAt: 1 } })
-		.toArray();
-	if (rows.length === 0) return null;
-	return rows.reduce(
-		(max, r) => (r.lastTurnAt > max ? r.lastTurnAt : max),
-		rows[0].lastTurnAt,
-	);
-}
-
-/** The disk sampler's latest `runningJobs` reading, or null if no sample exists yet. */
-async function latestRunningJobs(
-	db: Db,
-	missionId: string,
-): Promise<number | null> {
-	const doc = await db
-		.collection<{ runningJobs?: number }>("missionResources")
-		.findOne({ missionId }, { projection: { runningJobs: 1 } });
-	return doc?.runningJobs ?? null;
 }
 
 async function checkSpendCapNear(
@@ -243,13 +210,13 @@ async function checkUpgradeIdle(
 ): Promise<void> {
 	if (!mission.upgrade) return;
 
-	const [runningJobs, activity] = await Promise.all([
-		latestRunningJobs(db, mission.missionId),
+	const [sample, activity] = await Promise.all([
+		latestResourceSample(db, mission.missionId),
 		lastActivityAt(db, mission.missionId),
 	]);
 	const ratio = upgradeIdleRatio({
 		isUpgraded: true,
-		runningJobs,
+		runningJobs: sample?.runningJobs ?? null,
 		lastActivityAt: activity,
 		now,
 		idleMinutesThreshold: UPGRADE_IDLE_MINUTES,
@@ -310,6 +277,8 @@ export interface ResourceMonitorDeps {
 	platformAdminUserIds: string[];
 	/** Defaults to `ATLAS_STORAGE_LIMIT_MB` env, else 512 — see `atlas-usage.ts`. */
 	atlasStorageLimitMb?: number;
+	/** Defaults to `RESOURCE_REPORT_HOUR_UTC` env, else 12 — see `resource-report.ts`. */
+	reportHourUtc?: number;
 	now?: () => Date;
 }
 
@@ -348,6 +317,16 @@ export async function runResourceMonitorTick(
 	for (const mission of missions) {
 		await checkMission(db, mission, alertStore, now);
 	}
+
+	await runDailyReportsIfDue(db, {
+		platformAdminUserIds: deps.platformAdminUserIds,
+		reportHourUtc: deps.reportHourUtc,
+		now: () => now,
+	}).catch((e) =>
+		console.error(
+			`[resource-monitor] Daily report check failed: ${(e as Error).message}`,
+		),
+	);
 }
 
 /** Start the 5-min resource-monitor tick. Also runs once immediately. Returns a stop function. */

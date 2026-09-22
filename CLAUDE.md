@@ -79,6 +79,7 @@ provisioned missions — the daemon reads its structured config directly from Mo
 - `CONTROL_PLANE_URL` (execution plane; base URL the mission copilot's GitHub-proxy tools call — injected by the control plane at machine creation from its own `FLY_APP_NAME`; empty in local dev, where the proxy isn't reachable)
 - `PLATFORM_ADMIN_USER_IDS` (control plane only; comma-separated Firebase UIDs — recipients of the `atlas-storage-high` relay from the 5-min resource-monitor tick, and (once the Sprint 28g daily report lands) its Atlas section. Empty is valid but logged on every tick: no one receives the Atlas alert)
 - `ATLAS_STORAGE_LIMIT_MB` (control plane only; shared MongoDB Atlas cluster storage quota in MB, used by the resource-monitor tick's `atlas-storage-high` check; default 512, the M0 free-tier limit)
+- `RESOURCE_REPORT_HOUR_UTC` (control plane only; UTC hour, 0-23, at or after which the daily resource report is built and sent for each user owning a non-destroyed, non-draft mission; default 12. Checked on every 5-min resource-monitor tick — a control plane down through the whole report hour still sends as soon as it's back up, later the same day)
 
 **Data API keys** (forwarded to background jobs only — never to agent tool subprocesses):
 Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
@@ -125,6 +126,7 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 - `resourceAlertState` — per-alert de-duplication/hysteresis state for resource alerts (ADR-0032); one doc per `<missionId|platform>:<category>` key
 - `missionResources` — latest per-mission resource sample (ADR-0032): disk usage, daemon RSS, in-flight background job count; upserted every 60 s by the daemon's job-runner tick; one doc per `missionId`
 - `platformResources` — cluster-wide (not per-mission) resource samples (ADR-0032); today just `_id: "atlas"`: shared MongoDB Atlas storage usage and its per-database/per-collection breakdown, upserted by the control plane's 5-min resource-monitor tick
+- `resourceSnapshots` — one doc per `(userId, date)` (unique index), written by the daily resource report (ADR-0032): per-mission `{diskUsedBytes, llmTotalUsd, upgradedMs}` plus `atlasBytes` for admins; its existence is the idempotency/send-claim for that user's report that day, and the last 7 days back the "chronic upgrade" flag and disk/Atlas growth-rate projections
 - `missionStats` — lifetime per-agent totals (cost, LLM calls, turn count, consecutive zero-output turns), `$inc`-updated once at turn end; one doc per `(missionId, agentId)`
 
 ### Data flow
