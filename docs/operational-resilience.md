@@ -301,6 +301,17 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | The Mongo write to `platformResources` fails | This tick's sample not persisted | 🟢 | Logged; alert evaluation still runs against the in-memory reading | None |
 | Relaying to one admin's mailbox fails | That admin misses this tick's alert | 🟢 | Logged per-recipient; the other admins and the stored sample are unaffected | None |
 
+**OOM detection** (`fly-events.ts`, no dedicated collection — dedupes via `resourceAlertState`)
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| `oom_killed`/137/signal-9 is inference, not a certainty — Fly has no dedicated "OOM" event type | A crash from an unrelated cause could be misclassified as `oom-suspected` | 🟢 | Named "suspected" throughout (category, message, docs) rather than asserted as fact; a false positive only prompts the operator/copilot to consider a memory upgrade, it takes no automatic action | None — not live-verified against a real Fly OOM exit (2.7's own OOM was a clean in-container `MemoryError`, never a Fly-level kill); flagged rather than claimed |
+| Fly retains only ~5 events per machine | A burst of restarts between ticks could push an OOM exit out of the retained history before the next scan | 🟡 | The 5-min resource-monitor tick (step 5.4) is far more frequent than 5 events typically accumulate under normal restart cadence | A machine crash-looping faster than 5 min could still lose an event; no gap ticket yet — track if seen live |
+| `listMachines()` (whole-app Fly API call) fails | This tick's OOM scan is skipped | 🟢 | Logged, returns without throwing; the next tick tries again | None |
+| The exit event has no `exited_at` | Can't build a stable dedup key | 🟢 | Skipped rather than risking the same exit being reported on every tick forever | That specific exit is never reported at all — acceptable since it also can't be de-duplicated |
+| The owning mission was already destroyed/re-provisioned by the time the scan runs | No mission to attach the anomaly to | 🟢 | Logged and skipped; the machine-to-mission lookup is by current `machineId`, so a re-provisioned mission's *new* machine is unaffected | None |
+| Dedup store (`resourceAlertState`) unreachable | Could report the same exit on every tick | 🟠 | Fails open (proceeds without de-duplication) rather than silently dropping a hard anomaly — same posture as every other alert path here | Repeat notifications during a store outage, never a missed one |
+
 **Alert de-duplication** (`resource-alert-state.ts`, `resourceAlertState`)
 
 | Failure | Effect | Severity | Current mitigation | Gap |

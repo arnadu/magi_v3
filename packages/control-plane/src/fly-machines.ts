@@ -293,6 +293,42 @@ export async function machineExists(machineId: string): Promise<boolean> {
 	return res.status !== 404;
 }
 
+/** One entry of a Fly machine's retained event history (Fly keeps ~5). */
+export interface FlyMachineEvent {
+	type: string;
+	timestamp?: number;
+	request?: {
+		exit_event?: {
+			exit_code?: number;
+			signal?: number;
+			guest_signal?: number;
+			requested_stop?: boolean;
+			restarting?: boolean;
+			oom_killed?: boolean;
+			exited_at?: string;
+		};
+	};
+}
+
+export interface FlyMachineSummary {
+	id: string;
+	events?: FlyMachineEvent[];
+}
+
+/**
+ * Every machine currently known to the app, with its retained event history.
+ * Used by the resource monitor's OOM-detection sweep (ADR-0032) — never
+ * called per-request. Empty in local execution mode, which has no real Fly
+ * machines to list.
+ */
+export async function listMachines(): Promise<FlyMachineSummary[]> {
+	if (isLocalExecution()) return [];
+	const app = appName();
+	const res = await flyFetch(`/apps/${app}/machines`);
+	if (!res.ok) throw new Error(`Failed to list machines: ${res.status}`);
+	return (await res.json()) as FlyMachineSummary[];
+}
+
 // ---------------------------------------------------------------------------
 // Local execution mode (LOCAL_EXECUTION=true)
 // ---------------------------------------------------------------------------
