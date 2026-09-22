@@ -32,6 +32,7 @@ import { PendingActionsStore } from "./copilot-tools.js";
 import { startCopilotWaker } from "./copilot-waker.js";
 import { initFirebase } from "./firebase.js";
 import { createMissionCopilotRouter } from "./mission-copilot-router.js";
+import { createMissionResourceRoutes } from "./mission-resource-routes.js";
 import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { createProxyRouter } from "./proxy.js";
@@ -182,6 +183,7 @@ async function main(): Promise<void> {
 		express.json({ limit: "4mb" }),
 		createMissionsRouter(db),
 	);
+	app.use("/api/missions", createMissionResourceRoutes(db));
 
 	// Per-user LLM usage summary (admin sees all missions).
 	app.get("/api/usage", async (req, res) => {

@@ -30,6 +30,7 @@ import {
 	DEFAULT_SOFT_LIMITS,
 	MISSION_COPILOT_AGENT_ID,
 	managedRegionKeys,
+	UPGRADE_LIMITS,
 } from "@magi/agent-runtime-worker";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
@@ -42,6 +43,7 @@ import {
 	provisionLocal,
 } from "./fly-machines.js";
 import { destroyTracked, provisionTracked } from "./machine-lifecycle.js";
+import { upgradedMsSince } from "./machine-segments.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
 import { getTemplate } from "./templates.js";
@@ -87,6 +89,17 @@ interface MissionDoc {
 	errorMessage?: string;
 	/** Set while a machine resize (ADR-0031) is in flight; see resource-upgrade.ts. */
 	resize?: { claimedAt?: Date; lastAt?: Date };
+	/** Present while the mission is on an upgraded machine (ADR-0031). */
+	upgrade?: {
+		cpuKind: string;
+		cpus: number;
+		memoryMb: number;
+		expiresAt: Date;
+		requestedByAgentId?: string;
+	};
+	/** Operator-only reset point for the cumulative upgraded-runtime cap (ADR-0031 Decision 7);
+	 *  written only by writeUpgradedRuntimeReset() below, never by any execution-plane path. */
+	upgradedRuntimeResetAt?: Date;
 	createdAt: Date;
 	updatedAt: Date;
 }
@@ -140,6 +153,20 @@ export interface LimitsData {
 	};
 	agents: AgentLimitsRow[];
 	missionRunning: boolean;
+	/** Temporary machine upgrades (ADR-0031 Decision 7). */
+	upgrades: {
+		usedHours: number;
+		capHours: number;
+		/** ISO timestamp of the operator's last reset, or null if never reset. */
+		resetAt: string | null;
+		active: {
+			cpuKind: string;
+			cpus: number;
+			memoryMb: number;
+			expiresAt: string;
+			requestedByAgentId?: string;
+		} | null;
+	};
 }
 
 interface RouteResult {
@@ -170,7 +197,7 @@ function effectiveSoftOf(
  * operator of its own action). Gives the mission copilot situational
  * awareness of externally-changed limits, relevant to its resource-oversight
  * role. */
-async function postLimitsAudit(
+export async function postLimitsAudit(
 	db: Db,
 	missionId: string,
 	subject: string,
@@ -323,6 +350,15 @@ export async function readLimits(
 		}
 	}
 
+	const resetSince = mission.upgradedRuntimeResetAt ?? new Date(0);
+	const usedMs = await upgradedMsSince(
+		db,
+		missionId,
+		resetSince,
+		new Date(),
+		"elapsed",
+	);
+
 	const data: LimitsData = {
 		mission: {
 			maxCostUsd: teamConfig.mission.maxCostUsd ?? null,
@@ -332,8 +368,56 @@ export async function readLimits(
 		},
 		agents,
 		missionRunning,
+		upgrades: {
+			usedHours: usedMs / 3_600_000,
+			capHours: UPGRADE_LIMITS.cumulativeCapHours,
+			resetAt: mission.upgradedRuntimeResetAt?.toISOString() ?? null,
+			active: mission.upgrade
+				? {
+						cpuKind: mission.upgrade.cpuKind,
+						cpus: mission.upgrade.cpus,
+						memoryMb: mission.upgrade.memoryMb,
+						expiresAt: mission.upgrade.expiresAt.toISOString(),
+						...(mission.upgrade.requestedByAgentId && {
+							requestedByAgentId: mission.upgrade.requestedByAgentId,
+						}),
+					}
+				: null,
+		},
 	};
 	return { status: 200, body: data };
+}
+
+/**
+ * Operator-only reset of the cumulative upgraded-runtime cap (ADR-0031
+ * Decision 7). Writes directly to the top-level `upgradedRuntimeResetAt`
+ * field — same structural-separation pattern as `writeMissionCostCeiling`
+ * (F-025): no execution-plane tool can ever reach this field or this write
+ * path, only the Firebase-authenticated cockpit Limits route.
+ */
+export async function writeUpgradedRuntimeReset(
+	col: Collection<MissionDoc>,
+	db: Db,
+	missionId: string,
+	filter: Partial<MissionDoc>,
+): Promise<RouteResult> {
+	const mission = await col.findOne({ missionId, ...filter });
+	if (!mission) return { status: 404, body: { error: "Not found" } };
+
+	const resetAt = new Date();
+	await col.updateOne(
+		{ missionId },
+		{ $set: { upgradedRuntimeResetAt: resetAt, updatedAt: resetAt } },
+	);
+
+	await postLimitsAudit(
+		db,
+		missionId,
+		"Upgraded-runtime counter reset",
+		`Operator reset this mission's cumulative upgraded-machine-runtime counter to 0 via the cockpit Limits panel (was counting since ${mission.upgradedRuntimeResetAt ? mission.upgradedRuntimeResetAt.toISOString() : "the mission's creation"}).`,
+	);
+
+	return { status: 200, body: { ok: true, resetAt: resetAt.toISOString() } };
 }
 
 /**
@@ -1301,6 +1385,19 @@ export function createMissionsRouter(db: Db): Router {
 			req.params.id,
 			userFilter(req),
 			ceilingUsd,
+		);
+		res.status(result.status).json(result.body);
+	});
+
+	// ADR-0031 Decision 7 — operator-only reset of the cumulative
+	// upgraded-machine-runtime cap. See writeUpgradedRuntimeReset's own doc
+	// comment for why this is a separate write path, mirroring F-025.
+	router.patch("/:id/limits/upgrade-reset", async (req, res) => {
+		const result = await writeUpgradedRuntimeReset(
+			col,
+			db,
+			req.params.id,
+			userFilter(req),
 		);
 		res.status(result.status).json(result.body);
 	});
