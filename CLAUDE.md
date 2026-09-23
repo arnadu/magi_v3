@@ -152,30 +152,29 @@ Full history and per-sprint detail: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) (st
 [docs/implementation-history.md](docs/implementation-history.md) (full build log). Sprints 1–28e
 are done — this section tracks only what's active now, not a running log of what shipped.
 
-**Done, most recent first:** 28e (critical security fixes — CR-03/F-002 BrowseWeb SSRF re-fix via
-a Chromium egress-filtering proxy; CR-04/F-030 job-env half, removing raw data-provider keys from
-background-job env in favor of scoped ToolApiServer tools; CR-04's harder cluster-wide-credential
-half deferred to Sprint 29), 28d (live-bug fixes — #49 spend-cap ceiling/F-025, #46 crash
-handlers, #48 mid-turn dispatch gap, #52), 28c (CR-01/CR-02 fixes + `monitor-server.ts`/
-`daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 + beta deployment), 28a
-(live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
+**Done, most recent first:** 28g (resource management — ADR-0031 temporary mission-machine
+upgrades, mediated through the mission-copilot: ≤ 60 min windows, 24 h cumulative cap with
+operator reset in the Limits panel, runtime-by-config cockpit tab; ADR-0032 proactive oversight:
+5-min resource-monitor tick, daily resource report, nine anomaly categories, Change-Stream copilot
+waker; closes **G-4** and the Atlas-storage gap; live-verified end to end on dev, including a real
+disk-fill test and an independently-recomputed Atlas figure; full build log:
+`docs/plans/resource-management-implementation-plan.md`), 28e (critical security fixes —
+CR-03/F-002 BrowseWeb SSRF re-fix via a Chromium egress-filtering proxy; CR-04/F-030 job-env half,
+removing raw data-provider keys from background-job env in favor of scoped ToolApiServer tools;
+CR-04's harder cluster-wide-credential half deferred to Sprint 29), 28d (live-bug fixes — #49
+spend-cap ceiling/F-025, #46 crash handlers, #48 mid-turn dispatch gap, #52), 28c (CR-01/CR-02
+fixes + `monitor-server.ts`/`daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 +
+beta deployment), 28a (live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
 
-**Sprint 28g — Resource management (in progress).** Temporary mission-machine upgrades
-(ADR-0031: agents ask the mission-copilot, which requests a bigger machine for ≤ 60 min; 24 h cumulative
-cap with operator reset in the Limits panel; runtime-by-config cockpit tab) and proactive resource
-oversight (ADR-0032: control-plane copilot daily report + threshold alerts for disk, LLM spend,
-upgrades, OOM and Atlas storage; Change-Stream copilot waker). Closes G-4 and the Atlas-storage gap.
-Plan and step status: `docs/plans/resource-management-implementation-plan.md`.
-
-**Sprint 28f — Remaining operational hardening (backlog, not started).** G-4 disk monitoring
-(highest-severity operational gap — Fly Volume usage in the daemon heartbeat, surfaced in the
-dashboard) + G-5 out-of-band alerting (issues #3, #4, likely shares G-4's alert plumbing);
-onboarding flow; usage dashboard; CR-06 (CI/CD supply-chain gates), CR-07 remainder
-(confirmation gates for pause/resume/schedule-cancel — the acute spend-cap case is already fixed,
-28d), CR-08 (sensitive-data posture, blocked on Sprint 29 anyway); issues #7, #21; unblocks
-F-021/F-023/F-026 in `docs/security/findings.md`. Also revisit #31 (suspected OOM-driven daemon
-crash-loop) now that 28d's #46 crash handlers have shipped and more `logMemoryUsage()` data has
-accumulated.
+**Sprint 28f — Remaining operational hardening (backlog, not started).** G-5 out-of-band alerting
+(issues #3, #4) — G-4 disk monitoring itself closed in 28g, but 28f's onboarding flow, usage
+dashboard, CR-06 (CI/CD supply-chain gates), CR-07 remainder (confirmation gates for
+pause/resume/schedule-cancel — the acute spend-cap case is already fixed, 28d), CR-08
+(sensitive-data posture, blocked on Sprint 29 anyway), issues #7, #21, and unblocking
+F-021/F-023/F-026 in `docs/security/findings.md` are all still open. Also revisit #31 (suspected
+OOM-driven daemon crash-loop) now that 28d's #46 crash handlers have shipped, more
+`logMemoryUsage()` data has accumulated, and 28g's `oom-suspected` detection exists (though not
+yet live-verified against a genuine Fly-level OOM kill).
 
 **Sprint 29 — Sensitive-data encryption + tenant credential isolation (not started, direction
 recorded in ADR-0026).** Application-level encryption so Fly and MongoDB cannot read mission data
