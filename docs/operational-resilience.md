@@ -345,6 +345,7 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | One user's report build throws (bad data, a broken query) | Would otherwise abort the whole tick's report pass | 🟢 | Each user is processed in its own try/catch inside `runDailyReportsIfDue`'s loop; one failure never blocks another user's report | None |
 | A mission's disk/Atlas sample is missing when the report builds | Would otherwise crash formatting | 🟢 | Every derived field (`diskUsedBytes`, `diskSampleAt`, growth rates, `atlas`) is optional throughout `DailyReport`/`renderDailyReport`; a missing sample renders as "no sample" and still triggers the existing "Monitoring blind" flag for a `running` mission | None |
 | `RESOURCE_REPORT_HOUR_UTC` set to a non-numeric value | `Number.parseInt` yields `NaN`; `Date.UTC(...NaN)` is an Invalid Date, and any comparison against it (`now < reportTimeToday`) is always false | 🟡 | None beyond normal env-var review at deploy time | A malformed value makes every tick look "due," not just one per day — the per-`(userId, date)` snapshot claim still caps it at one real send per user per day, so the practical effect is wasted tick work, not duplicate reports; no input validation yet since this is an operator-set env var, not agent input |
+| `missions.distinct("userId", ...)` itself fails (transient Mongo issue), before the per-user loop even starts | No user's report is even attempted this tick, not just one — a broader blast radius than the per-user try/catch below suggests | 🟢 | Caught at the call site in `resource-monitor.ts` (`runDailyReportsIfDue(...).catch(...)`), logged; the next 5-min tick retries automatically, and since `now` stays past the report-hour boundary all day, the retry still counts as "on time," not late | None — self-heals within one tick interval |
 
 ---
 
@@ -394,9 +395,23 @@ Wait for Atlas to recover, then restart the daemon. All state is in MongoDB; not
 Send the lead agent a message asking it to compact its mental map before the next session. The reflection system will handle the rest at the next session boundary.
 
 ### Fly Volume full
+1. Check `GetMissionStatus`'s `disk:` line first (control-plane copilot, or the daily resource
+   report) — cheaper than SSHing in, and current as of the last 60 s sample.
+2. If a breakdown is needed beyond the alert's own top-5 directories:
 ```bash
 flyctl ssh console -a magi-missions-dev -s <machineId>
 # Inside the machine:
 du -sh /missions/*          # identify largest directories
 # Remove old mission workdirs or archive logs
 ```
+
+### A copilot marked a message read but never replied (G-2)
+Observed live 2026-09-22 with the ADR-0032 daily report: a control-plane redeploy (or any
+process restart) interrupted the copilot's turn moments after it read the message, and since
+`readBy` was already set, nothing re-delivers it.
+1. Confirm via Mongo: `db.mailbox.findOne({missionId: "copilot-{userId}", subject: "..."})` — if
+   `readBy` includes `"copilot"` but no reply from `"copilot"` follows it in the thread, this is it.
+2. Recovery is simple: send the copilot a new message (dashboard, or `cli:post`) — a genuinely
+   new, unread message triggers a fresh turn regardless of the stuck old one. Referencing what
+   was missed ("did you see the daily report?") gets the best result, but isn't required.
+3. Not yet automated — the underlying gap (two-phase read/ack) is tracked as **G-2**, unfixed.
