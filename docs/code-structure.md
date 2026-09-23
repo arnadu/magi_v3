@@ -27,11 +27,13 @@ for the full analysis. This document is the durable tracking artifact that verif
 | `packages/agent-runtime-worker/src/agent-runner.ts` | 972 | Not yet characterized | Unknown | Backlog — needs triage | [#36](https://github.com/arnadu/magi_v3/issues/36) |
 | `packages/agent-runtime-worker/src/document-processor.ts` | 887 | Not yet characterized | Unknown | Backlog — needs triage | [#36](https://github.com/arnadu/magi_v3/issues/36) |
 | `packages/control-plane/src/copilot-router.ts` | 799 | Not yet characterized | Unknown | Backlog — needs triage | [#36](https://github.com/arnadu/magi_v3/issues/36) |
-| `packages/control-plane/src/copilot-tools.ts` | 761 | Not yet characterized | Unknown | Backlog — needs triage | [#36](https://github.com/arnadu/magi_v3/issues/36) |
+| `packages/control-plane/src/copilot-tools.ts` | 951 | Not yet characterized (grown from 761 across several Sprint 28g tool additions — `RequestResourceUpgrade`/`EndResourceUpgrade` wiring, `GetMissionStatus`'s disk-sample line — none individually large) | Unknown | Backlog — needs triage | [#36](https://github.com/arnadu/magi_v3/issues/36) |
+| `packages/control-plane/src/resource-upgrade.ts` | 788 | Born large in Sprint 28g (ADR-0031 step 2.3): already siloed into named sections (request/same-shape-renewal/revert/sweeper/suspend-with-revert) sharing a few small private helpers (`recordAnomaly`, `describeShape`, `notify`); no individual function exceeds ~90 lines | Low | Backlog | [#59](https://github.com/arnadu/magi_v3/issues/59) |
+| `packages/control-plane/src/resource-report.ts` | 662 | Born large in Sprint 28g (ADR-0032 step 6.1): three genuinely separable phases already marked by section-header comments — assemble (`buildDailyReport`/`buildMissionRow`/`computeFlags`, I/O-heavy), render (`renderDailyReport`, pure text formatting), and persist/schedule (`claimAndPersistSnapshot`/`postReportMail`/`runDailyReportsIfDue`) — a near-mechanical three-way file split | Low | Backlog | [#59](https://github.com/arnadu/magi_v3/issues/59) |
 
-Line counts as of 2026-08-12, except `monitor-server.ts` and `daemon.ts` (both re-measured
-2026-09-15 post-decomposition). Re-measure at each `/code-structure-review` pass — this table is a
-snapshot, not a live query.
+Line counts as of 2026-08-12, except `monitor-server.ts` and `daemon.ts` (re-measured 2026-09-15
+post-decomposition) and the three rows above (measured 2026-09-23, Sprint 28g close-out). Re-measure
+at each `/code-structure-review` pass — this table is a snapshot, not a live query.
 
 ## Decomposition risk key
 

@@ -1598,3 +1598,107 @@ sandboxed-iframe pattern CodePen/JSFiddle/CodeSandbox use for untrusted live pre
   instead of `srcdoc` — lets relative asset paths resolve against a real URL. Bigger lift
   (content-type sniffing, more SSRF/path-traversal surface to review); only build if single-file
   HTML genuinely isn't enough.
+
+## Sprint 28g — Resource management: temporary machine upgrades (ADR-0031) and proactive oversight (ADR-0032)
+
+Full step-by-step build log with test counts and live-verification detail:
+[docs/plans/resource-management-implementation-plan.md](plans/resource-management-implementation-plan.md).
+This section is the retrospective summary; that file is the record of what actually happened,
+step by step, including every live check.
+
+**ADR-0031 — temporary mission-machine upgrades.** Any worker agent can hit an OOM or a
+too-small-machine wall mid-task; before this, the only fix was an operator manually resizing the
+mission's default machine. Now the mission-copilot alone (`RequestResourceUpgrade`/
+`EndResourceUpgrade`, `resource-upgrade-tool.ts`) can stop, delete, and re-create the mission's own
+machine on its own volume at a different shape — CPU kind, CPU count, RAM — for a mandatory window
+of ≤ 60 minutes, structurally bounded rather than confirmation-gated (max 4 CPUs/16 GB, a 24 h
+cumulative cap resettable only by the operator in the cockpit Limits panel, a 5-minute cooldown
+between shape changes, one resize in flight at a time via an atomic Mongo claim). `machine-segments.ts`
+tracks every stretch of runtime by shape (used by the cumulative cap, the Runtime cockpit tab, and
+later the daily report); `machine-lifecycle.ts` is the sole chokepoint for Fly provision/stop/resume/
+destroy, enforced by an import-scanning test so no new call site can bypass segment tracking. New
+threat-model boundary **TB-22**: the first mission-originated path to a Fly Machines mutation, same
+transport/auth as the existing monitor-token boundary (TB-19). **Live-verified end to end** on a
+throwaway dev mission (2026-09-22): a real `MemoryError` on the default machine, an unprompted
+mission-copilot request for a bigger one, real Fly resize confirmed against the live machine (not
+just Mongo), an *emergent* unprompted retry-and-succeed once the "machine upgraded" notification
+woke the worker agent, automatic sweeper-driven revert within its 1-minute tick, and a seeded
+24-hour-cap rejection.
+
+**ADR-0032 — proactive multi-resource oversight.** The control-plane copilot was previously
+reactive-only (surprisingly: `ensureCopilotRunning` was only ever called from the operator's own
+`/message` route, so a hard-anomaly relay landing while no daemon was running sat unread until the
+operator happened to write to it — an existing gap, not new). Four new instrumentation and alerting
+pieces, all wired into a single 5-minute control-plane tick (`resource-monitor.ts`) alongside a
+Change-Stream-based copilot waker with a periodic catch-up scan:
+- **Disk** (`resource-sampler.ts`, in the daemon's existing 60 s job-runner tick): `fs.statfs` on
+  the Fly volume mount, soft/hard thresholds at 80%/90%, a bounded `du --max-depth=3` breakdown on
+  crossing hard. Closes gap **G-4** (no disk monitoring), the highest-severity item in
+  `docs/operational-resilience.md`'s backlog. **Live-verified**: `fallocate`d a real mission's
+  10 GB volume to 87% then 91% — both thresholds fired with correct percentages and a correct
+  top-5-directory breakdown; freeing the space and confirming via `df` closed the loop.
+- **Atlas storage** (`atlas-usage.ts`): the shared MongoDB Atlas cluster's own quota, computed as
+  `dataSize + indexSize` summed over every non-system database — **not** `storageSize`, which
+  undercounts by roughly half due to compression (verified on the dev cluster: 171 MB `storageSize`
+  vs 359 MB `dataSize` for the app database alone). **Live-verified** by independently recomputing
+  the same methodology via raw `dbStats` calls against the live cluster and matching the code's own
+  persisted figure. `conversationMessages` is the dominant growth driver (323 of 352 MB in the app
+  database) and nothing currently prunes it — tracked as gap **G-9** and issue #54, since deciding a
+  retention policy for it is a product decision, not a mechanical fix.
+- **OOM detection** (`fly-events.ts`): one Fly Machines list call per tick for the whole app,
+  classifying each machine's retained exit events (`requested_stop` always wins over an
+  OOM-looking code; otherwise `oom_killed`/signal 9/exit code 137 → `oom-suspected`), deduped on
+  `machineId:exited_at`. Not live-verified against a genuine Fly-level OOM kill — the closest live
+  attempt (the ADR-0031 test above) produced a clean in-container `MemoryError`, never a real
+  machine-level kill; documented as an open gap rather than claimed.
+- **Nine `AnomalyCategory` values** total (six pre-existing, three groups of new: disk, spend
+  (`spend-cap-near`/`spend-spike`), upgrades (`upgrade-cap-near`/`upgrade-cap-reached`/
+  `upgrade-idle`/`resize-failure`), plus OOM) all flow through the existing `AnomalyRecorder`
+  pipe — mission mailbox at any severity, `copilot-{userId}` relay only when hard — except
+  `atlas-storage-high`, which has no owning mission and posts straight to each
+  `PLATFORM_ADMIN_USER_IDS` recipient instead.
+- **Daily resource report** (`resource-report.ts`): one report per user per day at
+  `RESOURCE_REPORT_HOUR_UTC` (default 12 UTC), computed flags (never left to the LLM) for
+  disk/spend/upgrade thresholds, growth-rate projections from the previous day's `resourceSnapshots`,
+  a "chronic upgrade" pattern across the last 7 snapshots, and stale/missing samples. Idempotent via
+  an atomic `$setOnInsert` claim on `resourceSnapshots(userId, date)`, and a genuine catch-up (fires
+  once `now` is at or past the report hour, not only inside it) rather than an exact-hour match.
+  Deliberately scoped down from the ADR's own illustrative sample report: per-mission "N requests, M
+  renewals" upgrade counts aren't derivable from `machineSegments`' schema (a same-shape renewal
+  moves a segment's `plannedEndAt` rather than opening a new one), so the report shows total
+  upgraded time and any active upgrade instead of inventing an untracked counter. **Live-verified**
+  on the real dev deployment: correct data for two real users, exactly one snapshot/mailbox post
+  each despite dozens of ticks (idempotency held), and a genuine (not seeded) flag — a real 24-hour
+  upgrade cap exhausted from the ADR-0031 live test above. The admin user's copilot woke on its own,
+  read the report, and replied with a substantive, accurate digest referencing both flags. One real
+  finding from the same live pass: a second user's copilot marked the report read but never replied
+  — its turn was almost certainly cut off by an unrelated control-plane redeploy moments after the
+  message arrived, a live hit of the already-documented gap **G-2** (inbox marked-read before the
+  agent completes), not a defect in this work.
+
+**Copilot behavior** (`config/teams/copilot.yaml` + four new team skills — `daily-resource-report`,
+`disk-pressure`, `atlas-storage`, `vm-upgrade-oversight` — plus extensions to `cost-management`,
+`mission-recovery`, and the platform `incident-triage` skill): all wording is a first draft, per
+this project's testing approach (prompt and skill content is judged manually, never asserted on).
+While extending `cost-management`, found and fixed a real pre-existing inaccuracy: its "Spend stats
+fields"/"Cost attribution" sections pointed at `GET /api/missions/stats` and `llmCallLog` — both
+unreliable per this same sprint's own finding (`llmCallLog` lacks the fields that route aggregates
+on and is pruned to 1 day; tracked separately as issue #53) — corrected to `missionStats`/
+`agentTurnStats`, the same collections the new alerts and the report actually read.
+
+**Gaps found and closed along the way, not originally scoped:**
+- `GetMissionStatus` was supposed to gain a disk-sample line once the sampler landed (planned at
+  step 2.6, explicitly deferred to "once step 5.1 lands") — never actually done. Closed while
+  writing the new skills, since their content references checking it.
+- `PLATFORM_ADMIN_USER_IDS`/`ATLAS_STORAGE_LIMIT_MB`/`RESOURCE_REPORT_HOUR_UTC` were documented in
+  `CLAUDE.md` and read by the code but never wired into `secrets.env.template`/`scripts/bootstrap.sh`
+  — a fresh bootstrap would never have set them. Found while setting up the live daily-report test.
+- The same throwaway dev mission used for ADR-0031's live test has a genuinely stuck mission-copilot
+  (a `RequestResourceUpgrade` retry loop hitting OpenRouter's in-flight-budget error, burning real
+  API cost on every resume) — already tracked as issues #55, #56, and #58 (the last one apparently
+  filed by a copilot noticing the resulting anomaly flood during this same live-test pass); no new
+  issue needed.
+
+**Not yet built**, per the plan: Phase 6's `6.2` copilot content shipped, but the plan's Phase 7
+close-out (security/operational-resilience/code-structure review passes, beta-promotion decision)
+runs after this history entry.
