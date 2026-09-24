@@ -27,3 +27,6 @@ primary_region = "iad"
 [[mounts]]
   source = "copilot_workdir"
   destination = "/home/magi-copilot/workdir"
+  # Fly's default is 5 days; 30 gives real headroom to notice an accidentally
+  # destroyed volume and restore from a snapshot before it too ages out.
+  snapshot_retention = 30

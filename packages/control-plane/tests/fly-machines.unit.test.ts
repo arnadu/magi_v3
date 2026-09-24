@@ -67,6 +67,15 @@ describe("provisionMission (ADR-0021: no config payload)", () => {
 		expect(fetchMock.mock.calls[0][0]).toContain("/machines");
 	});
 
+	it("requests a 30-day snapshot retention on a new volume (Fly's default is 5)", async () => {
+		await provisionMission("mission-1");
+		const volumeCall = fetchMock.mock.calls.find((c) =>
+			(c[0] as string).includes("/volumes"),
+		);
+		const body = JSON.parse((volumeCall?.[1] as RequestInit).body as string);
+		expect(body.snapshot_retention).toBe(30);
+	});
+
 	it("machine env carries MISSION_ID but no team-config payload of any kind", async () => {
 		await provisionMission("mission-1");
 

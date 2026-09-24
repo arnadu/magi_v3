@@ -19,6 +19,13 @@ import { deriveMonitorToken } from "./monitor-token.js";
 
 const FLY_API_BASE = "https://api.machines.dev/v1";
 
+// Fly's own default is 5 days. A mission's operator may not look at a
+// long-running mission for weeks; 30 days gives real headroom to notice an
+// accidentally destroyed volume and recover from a snapshot before it too
+// ages out — at this project's current usage (~1-2 GB/mission, incremental
+// snapshot billing), the cost difference over the default is negligible.
+const SNAPSHOT_RETENTION_DAYS = 30;
+
 function appName(): string {
 	const name = process.env.FLY_MISSIONS_APP_NAME;
 	if (!name) throw new Error("FLY_MISSIONS_APP_NAME is not set");
@@ -121,6 +128,7 @@ export async function provisionMission(
 				name: flyVolumeName(missionId),
 				size_gb: 10,
 				region,
+				snapshot_retention: SNAPSHOT_RETENTION_DAYS,
 			}),
 		});
 		if (!volRes.ok) {
