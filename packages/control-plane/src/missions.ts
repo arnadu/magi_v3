@@ -25,6 +25,7 @@ import {
 import {
 	buildMissionCopilotAgentConfig,
 	createMongoAgentStatsRepository,
+	createMongoAnomalyRecorderForMission,
 	createMongoMissionConfigWriter,
 	createMongoObjectivesRepository,
 	DEFAULT_SOFT_LIMITS,
@@ -1738,6 +1739,24 @@ export function createMissionsRouter(db: Db): Router {
 				{ missionId },
 				{ $set: { status: "error", errorMessage, updatedAt: new Date() } },
 			);
+			// Wake the copilot the same way every other resource-oversight category
+			// does (ADR-0032) — without this, a resume failure was only ever
+			// discovered by someone happening to notice the mission's status
+			// (found live, issue #62: a drifted volumeId went undetected on a
+			// second mission until a proactive check, precisely because nothing
+			// woke anyone). Covers any resume failure, not just a drifted volume.
+			await createMongoAnomalyRecorderForMission(db, missionId, mission.userId)
+				.record({
+					missionId,
+					category: "resume-failure",
+					severity: "hard",
+					message: errorMessage,
+				})
+				.catch((e) =>
+					console.error(
+						`[missions] Failed to record resume-failure anomaly { missionId: "${missionId}", error: "${(e as Error).message}" }`,
+					),
+				);
 			res.status(500).json({ error: errorMessage });
 		}
 	});

@@ -49,7 +49,11 @@ export type AnomalyCategory =
 	| "upgrade-cap-reached"
 	| "upgrade-idle"
 	| "resize-failure"
-	| "oom-suspected";
+	| "oom-suspected"
+	// Control-plane mission lifecycle. Distinct from resize-failure (ADR-0031's
+	// upgrade/revert path): this covers a plain operator/copilot-initiated
+	// resume failing, for any reason (e.g. a drifted `volumeId` — see issue #62).
+	| "resume-failure";
 
 export type AnomalySeverity = "hard" | "soft";
 

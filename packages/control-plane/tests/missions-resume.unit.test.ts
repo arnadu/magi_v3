@@ -107,6 +107,25 @@ describe("POST /:id/resume — volume-existence guard", () => {
 		}
 	});
 
+	it("raises a hard resume-failure anomaly on any resume failure, waking the copilot", async () => {
+		mockedVolumeExists.mockResolvedValue(false);
+		const { baseUrl, server, data } = await startApp([missionDoc()]);
+		try {
+			await fetch(`${baseUrl}/m1/resume`, { method: "POST" });
+
+			const anomaly = data.missionAnomalies.find((a) => a.missionId === "m1");
+			expect(anomaly).toMatchObject({
+				category: "resume-failure",
+				severity: "hard",
+			});
+			expect(anomaly?.message).toContain("does not exist on Fly");
+			// Hard severity relays to the owning user's control-plane copilot.
+			expect(data.mailbox.some((m) => m.missionId === "copilot-u1")).toBe(true);
+		} finally {
+			server.close();
+		}
+	});
+
 	it("deletes the old machine and provisions a new one when the volume exists", async () => {
 		mockedVolumeExists.mockResolvedValue(true);
 		mockedDeleteMachine.mockResolvedValue(undefined);
