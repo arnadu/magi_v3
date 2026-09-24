@@ -26,6 +26,14 @@
  * file, so it only means something when run on the same host as the local
  * daemon). Does not fix a mission whose machineId/volumeId is simply
  * missing/wrong — that needs a human decision (resume vs. mark destroyed).
+ *
+ * Report-only mode also flags any mission whose `volumeId` doesn't match a
+ * real Fly volume, independent of whether its `machineId` is fine (added
+ * 2026-09-24 after a live incident where exactly this happened silently on
+ * two missions — one only surfaced once someone tried to resume it, the
+ * other was still sitting undetected). Never auto-fixed, even under
+ * --fix-status: the correct ID can only be found by a human checking
+ * `flyctl volumes list` for the mission's actual volume.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -119,6 +127,7 @@ async function main() {
 	]);
 
 	const machineById = new Map(flyMachines.map((m) => [m.id, m]));
+	const volumeIdSet = new Set(flyVolumes.map((v) => v.id));
 	const referencedMachineIds = new Set(
 		activeMissions.map((m) => m.machineId).filter(Boolean),
 	);
@@ -129,9 +138,28 @@ async function main() {
 	const findings = {
 		statusDrift: [],
 		missingMachine: [],
+		missingVolume: [],
 		imageDrift: [],
 		staleLocal: [],
 	};
+
+	// ── 0. Volume-existence check, independent of machine state (2026-09-24
+	// live incident: a mission's `volumeId` in Mongo drifted to an ID that
+	// never existed on Fly while its *machineId* still matched a real,
+	// healthy machine — this must run regardless of what the machine check
+	// below finds, not nested inside it). Never auto-fixed, even under
+	// --fix-status: the correct volumeId can only be found by a human
+	// checking `flyctl volumes list` for the mission's actual volume. ──
+	for (const m of activeMissions) {
+		if (!m.volumeId || m.volumeId.startsWith("local-")) continue;
+		if (!volumeIdSet.has(m.volumeId)) {
+			findings.missingVolume.push({
+				missionId: m.missionId,
+				volumeId: m.volumeId,
+				status: m.status,
+			});
+		}
+	}
 
 	// ── 1. Per-mission checks (Fly-backed) ──────────────────────────────────
 	for (const m of activeMissions) {
@@ -246,6 +274,18 @@ async function main() {
 		console.log();
 	}
 
+	if (findings.missingVolume.length > 0) {
+		console.log(
+			"── Missions whose tracked volume does not exist on Fly (data-loss risk on resume) ──",
+		);
+		for (const f of findings.missingVolume) {
+			console.log(
+				`  ✗ ${f.missionId} (status: ${f.status}) — volumeId ${f.volumeId} not found. Check \`flyctl volumes list -a ${flyApp}\` for the mission's real volume (often still attached to its current machine) and fix mission.volumeId in MongoDB before the next resume.`,
+			);
+		}
+		console.log();
+	}
+
 	if (findings.statusDrift.length > 0) {
 		console.log("── Status drift (Mongo vs. real Fly machine state) ──");
 		for (const f of findings.statusDrift) {
@@ -306,6 +346,7 @@ async function main() {
 
 	const totalIssues =
 		findings.missingMachine.length +
+		findings.missingVolume.length +
 		findings.statusDrift.length +
 		findings.staleLocal.length +
 		findings.imageDrift.length +
