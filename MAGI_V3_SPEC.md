@@ -402,7 +402,7 @@ execution plane — see below.)
 | Tool name | Purpose |
 |-----------|---------|
 | `ListMissions` | List all missions with status |
-| `GetMissionStatus` | Full status including live Fly machine state |
+| `GetMissionStatus` | Full status including live Fly machine state and a live `volumeId` verification against Fly (issue #62) |
 | `ReadMissionMailbox` | Read recent messages from any mission's mailbox |
 | `ReadMissionLog` | Read daemon log from a running mission's monitor server |
 | `ReadMissionFile` | Browse/read files in a mission's sharedDir or agent workdir |
@@ -420,18 +420,31 @@ temporary bigger machine (CPU kind, CPUs, RAM, mandatory duration ≤ 60 min) or
 The control plane performs the resize; worker agents cannot call these tools and instead ask the
 mission-copilot by mailbox message (the `request-resources` skill).
 
-**Resource oversight (ADR-0032).** `AnomalyCategory` (`anomaly.ts`) has nine values: the six
+**Resource oversight (ADR-0032).** `AnomalyCategory` (`anomaly.ts`) has ten values: the six
 original ones (`limit-breach`, `agent-crash`, `agent-timeout`, `llm-error`, `job-failure`,
 `scheduling-failure`, `unclean-restart`) plus `disk-usage-high` (daemon sampler, soft 80%/hard
 90% of the Fly Volume), `spend-cap-near`/`spend-spike` (control-plane resource-monitor tick, from
 `missionStats`/`agentTurnStats`), `upgrade-cap-near`/`upgrade-cap-reached`/`upgrade-idle`
-(ADR-0031 machine-upgrade dataset), `resize-failure` (a failed upgrade resize), and
-`oom-suspected` (a Fly machine exit consistent with an OOM kill, `fly-events.ts`). Every category
-except `atlas-storage-high` goes through the shared `AnomalyRecorder`: persisted to
-`missionAnomalies`, notified to the mission's own copilot at any severity, relayed to
-`copilot-{userId}` only when hard. `atlas-storage-high` (shared MongoDB Atlas cluster storage,
-soft 70%/hard 85% of `ATLAS_STORAGE_LIMIT_MB`) has no owning mission, so it posts directly to each
-`PLATFORM_ADMIN_USER_IDS` recipient's copilot mailbox instead.
+(ADR-0031 machine-upgrade dataset), `resize-failure` (a failed upgrade resize), `oom-suspected`
+(a Fly machine exit consistent with an OOM kill, `fly-events.ts`), and `resume-failure` (a plain
+`resume_mission`/`POST /:id/resume` failing for any reason — most commonly a drifted
+`mission.volumeId`, see issue #62). Every category except `atlas-storage-high` goes through the
+shared `AnomalyRecorder`: persisted to `missionAnomalies`, notified to the mission's own copilot
+at any severity, relayed to `copilot-{userId}` only when hard. `atlas-storage-high` (shared
+MongoDB Atlas cluster storage, soft 70%/hard 85% of `ATLAS_STORAGE_LIMIT_MB`) has no owning
+mission, so it posts directly to each `PLATFORM_ADMIN_USER_IDS` recipient's copilot mailbox
+instead.
+
+**Mission-volume-drift recovery (issue #62).** In addition to the read-only `GetMissionStatus`
+line above, `ProposeAction` accepts `fix_mission_volume: { missionId }`: the server (never the
+LLM) searches Fly's own volume list for the one matching the mission's existing naming convention
+(`flyVolumeName()`), excluding volumes already claimed by another non-destroyed mission, and
+refuses rather than guessing on an ambiguous or empty match. It writes only `mission.volumeId` in
+MongoDB — it never touches Fly. `resume_mission` itself also detects when the mission's machine no
+longer exists (as it wouldn't after a resume that failed this way) and falls back to
+reprovisioning fresh against the volume, rather than only supporting the ordinary
+suspend-then-resume case. See `config/teams/copilot/skills/mission-recovery/SKILL.md`'s failure
+mode #8 for the full recovery sequence.
 
 A control-plane copilot with a running mission also receives a **daily resource report**
 (`resource-report.ts`) once `RESOURCE_REPORT_HOUR_UTC` (default 12 UTC) has passed for the day:
