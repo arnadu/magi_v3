@@ -118,11 +118,45 @@ usually a transient Fly API issue, occasionally a genuinely invalid shape.
   what you can retry your way out of — escalate to the operator with the
   error text rather than repeatedly retrying.
 
+### 8. Resume failed — volume drift (`resume-failure` anomaly, issue #62)
+
+**Signature:** A hard `resume-failure` anomaly relayed to you, or a mission
+stuck in `error` status after a resume attempt. `GetMissionStatus`'s
+`volumeId:` line reads `NOT FOUND on Fly`.
+
+**What happened:** `mission.volumeId` in MongoDB no longer matches any real
+Fly volume — the record has drifted (root cause of the drift itself is still
+open, tracked in issue #62; this is about recovering from it, not preventing
+it). This is **not** data loss: the mission's actual workspace volume is
+still on Fly, just no longer the one MongoDB is pointing at. Resuming with a
+drifted `volumeId` fails safely (the guard added for this refuses to delete
+the mission's current machine before confirming the target volume exists) —
+but the mission stays down until the record is corrected.
+
+**Recovery:**
+1. `GetMissionStatus` to confirm the `volumeId:` line actually says `NOT
+   FOUND on Fly` — don't assume the volume is destroyed from error text
+   alone (that was the mistake made live during the original incident).
+2. Propose `fix_mission_volume({ missionId })`. This searches Fly's volume
+   list server-side for the mission's real volume (matched by name, never
+   by an ID you supply) and corrects `mission.volumeId` — it never touches
+   Fly itself, so it's safe to try even if you're not fully sure.
+3. If it refuses with "No unclaimed Fly volume named..." or "Ambiguous:
+   N unclaimed Fly volumes...", stop and escalate — this needs a human to
+   check `flyctl volumes list` directly; guessing risks attaching the wrong
+   mission's data.
+4. On success, propose `resume_mission`. It detects the old machine is gone
+   and reprovisions fresh against the corrected volume — same mechanism as
+   failure mode #7 above, and the reason #7's `resume_mission` step is
+   reliable too (both cases reprovision against an existing volume rather
+   than trying to restart a machine that no longer exists).
+
 ## Recovery action reference
 
 | Action type | When to use |
 |-------------|-------------|
-| `resume_mission` | Machine stopped; daemon crashed; after fixing config |
+| `resume_mission` | Machine stopped; daemon crashed; after fixing config; also recovers a destroyed machine by reprovisioning fresh against the mission's volume |
+| `fix_mission_volume` | `GetMissionStatus` shows `volumeId: NOT FOUND on Fly` — corrects the drifted record before `resume_mission` can succeed |
 | `suspend_mission` | Stop burn; before config edit; runaway agent |
 | `save_session_config` | Fix team YAML or mental map; mission must be suspended first |
 | `write_mission_file` | Inject a new skill or data file into a running mission's workspace |

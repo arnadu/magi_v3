@@ -3,11 +3,11 @@ name: incident-triage
 description: |
   How to investigate each category of system-generated anomaly (limit
   breaches, agent crashes/timeouts, LLM errors, failed background jobs,
-  failed scheduled deliveries, unclean restarts, and the resource-oversight
-  categories — disk, spend, machine upgrades, OOM) — what to check first, and
-  which action tier it falls into. Shared by the mission copilot and the
-  control-plane copilot; each has a different vantage point on the same
-  categories, noted per section below.
+  failed scheduled deliveries, unclean restarts, mission resume failures,
+  and the resource-oversight categories — disk, spend, machine upgrades,
+  OOM) — what to check first, and which action tier it falls into. Shared by
+  the mission copilot and the control-plane copilot; each has a different
+  vantage point on the same categories, noted per section below.
 ---
 
 # Incident triage
@@ -208,6 +208,26 @@ running background job for 30+ minutes.
 A temporary upgrade's machine resize failed partway — see `mission-recovery`'s
 own dedicated failure-mode entry for the recovery sequence (both copilots use
 the same one: propose/perform `resume_mission`).
+
+### `resume-failure` (control-plane mission lifecycle, issue #62)
+
+A plain operator- or copilot-initiated `resume_mission`/`POST /:id/resume`
+failed, for any reason — most commonly `mission.volumeId` in MongoDB having
+drifted to a volume that no longer exists on Fly (not data loss — the real
+volume is untouched, just no longer what the record points at). Distinct
+from `resize-failure` above: that's specifically ADR-0031's upgrade/revert
+path; this covers a plain resume failing for any cause, including ones not
+yet seen.
+
+- **Control-plane copilot**: this is the audience that actually acts on it —
+  see `mission-recovery`'s dedicated failure-mode entry for the full
+  diagnostic sequence and the `fix_mission_volume` → `resume_mission`
+  recovery pair.
+- **Mission copilot**: you should never see this — `/resume` is an
+  operator/control-plane-copilot-driven route, not something your own tools
+  call. If you somehow do (e.g. a relayed message reaching you by mistake),
+  there is nothing actionable on the mission side; point the operator at the
+  control-plane copilot instead of investigating locally.
 
 ### `oom-suspected` (ADR-0032)
 
