@@ -1,17 +1,35 @@
 /**
  * GetMissionStatus's ADR-0031 extension (tier, time-on-tier, cumulative
- * upgraded runtime) and its ADR-0032 step 6.2 disk-sample line, against real
- * MongoDB — no Fly, no LLM.
+ * upgraded runtime), its ADR-0032 step 6.2 disk-sample line, and its
+ * issue-#62 follow-up live volume-verification line, against real
+ * MongoDB. `getMachineState`/`volumeExists` are mocked so this stays a pure
+ * Mongo integration test — no live Fly calls.
  */
 
 import { randomUUID } from "node:crypto";
 import type { Db, MongoClient } from "mongodb";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
 import {
 	createCopilotTools,
 	PendingActionsStore,
 } from "../src/copilot-tools.js";
+import { volumeExists } from "../src/fly-machines.js";
+
+vi.mock("../src/fly-machines.js", () => ({
+	getMachineState: vi.fn(),
+	volumeExists: vi.fn(),
+}));
+
+const mockedVolumeExists = vi.mocked(volumeExists);
 
 describe("GetMissionStatus — machine tier and upgraded runtime", () => {
 	// biome-ignore lint/style/noNonNullAssertion: required env var; vitest.setup.ts validates presence
@@ -35,6 +53,7 @@ describe("GetMissionStatus — machine tier and upgraded runtime", () => {
 		await db.collection("missions").deleteMany({ missionId });
 		await db.collection("machineSegments").deleteMany({ missionId });
 		await db.collection("missionResources").deleteMany({ missionId });
+		vi.clearAllMocks();
 	});
 
 	function status() {
@@ -191,5 +210,101 @@ describe("GetMissionStatus — machine tier and upgraded runtime", () => {
 		const text = (await status()).content[0].text;
 		expect(text).toContain("disk:      5.0 / 10.0 GB");
 		expect(text).toContain("min old)");
+	});
+
+	it("reports '(no volumeId on record)' when the mission has none", async () => {
+		const now = new Date();
+		await db.collection("missions").insertOne({
+			missionId,
+			userId,
+			name: "Test",
+			teamConfig: "",
+			status: "running",
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		const text = (await status()).content[0].text;
+		expect(text).toContain("volume:    (no volumeId on record)");
+		expect(mockedVolumeExists).not.toHaveBeenCalled();
+	});
+
+	it("reports the volume as verified when it exists on Fly", async () => {
+		const now = new Date();
+		mockedVolumeExists.mockResolvedValue(true);
+		await db.collection("missions").insertOne({
+			missionId,
+			userId,
+			name: "Test",
+			teamConfig: "",
+			status: "running",
+			volumeId: "vol_real",
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		const text = (await status()).content[0].text;
+		expect(text).toContain("volumeId:  vol_real (verified on Fly)");
+		expect(mockedVolumeExists).toHaveBeenCalledWith("vol_real");
+	});
+
+	it("flags a drifted volumeId as NOT FOUND on Fly", async () => {
+		const now = new Date();
+		mockedVolumeExists.mockResolvedValue(false);
+		await db.collection("missions").insertOne({
+			missionId,
+			userId,
+			name: "Test",
+			teamConfig: "",
+			status: "error",
+			volumeId: "vol_gone",
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		const text = (await status()).content[0].text;
+		expect(text).toContain("volumeId:  vol_gone (NOT FOUND on Fly");
+		expect(text).toContain("mission-recovery skill");
+	});
+
+	it("does not call volumeExists for a local-execution mission", async () => {
+		const now = new Date();
+		await db.collection("missions").insertOne({
+			missionId,
+			userId,
+			name: "Test",
+			teamConfig: "",
+			status: "running",
+			machineId: "local-status-tier",
+			volumeId: `local-${missionId}`,
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		const text = (await status()).content[0].text;
+		expect(text).toContain("(local execution — not a real Fly volume)");
+		expect(mockedVolumeExists).not.toHaveBeenCalled();
+	});
+
+	it("reports a verification error without throwing when the Fly call itself fails", async () => {
+		const now = new Date();
+		mockedVolumeExists.mockRejectedValue(new Error("fly api down"));
+		await db.collection("missions").insertOne({
+			missionId,
+			userId,
+			name: "Test",
+			teamConfig: "",
+			status: "running",
+			volumeId: "vol_real",
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		const r = await status();
+		expect(r.isError).toBeFalsy();
+		const text = r.content[0].text;
+		expect(text).toContain(
+			"volumeId:  vol_real (could not verify: fly api down)",
+		);
 	});
 });

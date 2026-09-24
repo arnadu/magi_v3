@@ -41,7 +41,7 @@ import {
 } from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
-import { getMachineState } from "./fly-machines.js";
+import { getMachineState, volumeExists } from "./fly-machines.js";
 import { GITHUB_REPO, ghFetch } from "./github.js";
 import {
 	defaultShapeOf,
@@ -252,6 +252,24 @@ export function createCopilotTools(
 					? `disk:      ${(sample.diskUsedBytes / 1024 ** 3).toFixed(1)} / ${(sample.diskTotalBytes / 1024 ** 3).toFixed(1)} GB (sample ${sample.updatedAt ? `${Math.round((now.getTime() - sample.updatedAt.getTime()) / 60_000)} min old` : "age unknown"})`
 					: "disk:      (no sample yet)";
 
+			// Live check against Fly, not just what MongoDB says — issue #62's
+			// incident was exactly a copilot inferring "volume destroyed" from
+			// error text with no way to actually check.
+			let volumeLine: string;
+			if (!mission.volumeId) {
+				volumeLine = "volume:    (no volumeId on record)";
+			} else if (mission.machineId?.startsWith("local-")) {
+				volumeLine = `volumeId:  ${mission.volumeId} (local execution — not a real Fly volume)`;
+			} else {
+				try {
+					volumeLine = (await volumeExists(mission.volumeId))
+						? `volumeId:  ${mission.volumeId} (verified on Fly)`
+						: `volumeId:  ${mission.volumeId} (NOT FOUND on Fly — mission.volumeId has likely drifted; see mission-recovery skill)`;
+				} catch (e) {
+					volumeLine = `volumeId:  ${mission.volumeId} (could not verify: ${(e as Error).message})`;
+				}
+			}
+
 			const summary = [
 				`missionId: ${mission.missionId}`,
 				`name:      ${mission.name}`,
@@ -263,6 +281,7 @@ export function createCopilotTools(
 				sinceLine,
 				upgradedLine,
 				diskLine,
+				volumeLine,
 				`createdAt: ${mission.createdAt.toISOString()}`,
 				`updatedAt: ${mission.updatedAt.toISOString()}`,
 			].join("\n");
