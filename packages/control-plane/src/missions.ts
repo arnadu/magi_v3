@@ -41,6 +41,7 @@ import {
 	getMachineState,
 	isLocalExecution,
 	provisionLocal,
+	volumeExists,
 } from "./fly-machines.js";
 import { destroyTracked, provisionTracked } from "./machine-lifecycle.js";
 import { upgradedMsSince } from "./machine-segments.js";
@@ -1669,6 +1670,18 @@ export function createMissionsRouter(db: Db): Router {
 				if (!mission.volumeId) {
 					throw new Error(
 						"No volume ID stored for this mission — cannot resume",
+					);
+				}
+				// Verify the volume actually exists BEFORE deleting the old (working)
+				// machine. Without this check, a `mission.volumeId` that had drifted
+				// wrong in MongoDB (found live, 2026-09-23) caused this handler to
+				// destroy a healthy machine and then fail to re-create it — the real
+				// data volume was untouched, but the mission was down until someone
+				// noticed and fixed the record by hand. Failing here instead leaves
+				// the working machine exactly as it was.
+				if (!(await volumeExists(mission.volumeId))) {
+					throw new Error(
+						`Volume ${mission.volumeId} does not exist on Fly — mission.volumeId in MongoDB has likely drifted from the real volume. Not touching the current machine; check \`flyctl volumes list\` for the mission's actual volume before retrying.`,
 					);
 				}
 				// Best-effort delete of the old machine. If it's already gone (deleted

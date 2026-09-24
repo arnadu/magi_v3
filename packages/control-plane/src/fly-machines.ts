@@ -293,6 +293,23 @@ export async function machineExists(machineId: string): Promise<boolean> {
 	return res.status !== 404;
 }
 
+/**
+ * Returns true if the volume exists on Fly, false if the API returns 404.
+ * Callers that are about to destroy a *working* machine in order to
+ * re-provision on this volume must check this first — `provisionMission`'s
+ * own machine-create call fails on a nonexistent volume only *after* mounts
+ * are attempted, which is too late if the caller already deleted the old
+ * machine to make room (found live, 2026-09-23: a mission's `volumeId` in
+ * MongoDB had drifted to a volume that no longer existed; resume deleted the
+ * mission's healthy machine, then failed to recreate it, leaving the mission
+ * down even though the *real* data volume was untouched the whole time).
+ */
+export async function volumeExists(volumeId: string): Promise<boolean> {
+	const app = appName();
+	const res = await flyFetch(`/apps/${app}/volumes/${volumeId}`);
+	return res.status !== 404;
+}
+
 /** One entry of a Fly machine's retained event history (Fly keeps ~5). */
 export interface FlyMachineEvent {
 	type: string;
