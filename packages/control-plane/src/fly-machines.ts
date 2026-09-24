@@ -94,7 +94,7 @@ export interface ProvisionOptions {
  * Strategy: hyphens → underscores, lowercase; if > 30 chars keep first 16 + last 14
  * (_YYYYMMDD_xxxx) so the unique timestamp suffix is always preserved.
  */
-function flyVolumeName(missionId: string): string {
+export function flyVolumeName(missionId: string): string {
 	const slug = missionId.toLowerCase().replace(/-/g, "_");
 	// 14 = length of "_YYYYMMDD_xxxx" tail; 30 - 14 = 16 chars for the prefix.
 	return slug.length <= 30 ? slug : `${slug.slice(0, 16)}${slug.slice(-14)}`;
@@ -308,6 +308,26 @@ export async function volumeExists(volumeId: string): Promise<boolean> {
 	const app = appName();
 	const res = await flyFetch(`/apps/${app}/volumes/${volumeId}`);
 	return res.status !== 404;
+}
+
+export interface FlyVolumeSummary {
+	id: string;
+	name: string;
+}
+
+/**
+ * Every volume currently known to the app. Used by `fix_mission_volume`
+ * (ADR mission-volume-drift-recovery-plan, issue #62) to find the real
+ * volume for a mission whose `mission.volumeId` in MongoDB has drifted —
+ * matched by `flyVolumeName()`, the same naming convention `provisionMission`
+ * creates volumes under.
+ */
+export async function listVolumes(): Promise<FlyVolumeSummary[]> {
+	if (isLocalExecution()) return [];
+	const app = appName();
+	const res = await flyFetch(`/apps/${app}/volumes`);
+	if (!res.ok) throw new Error(`Failed to list volumes: ${res.status}`);
+	return (await res.json()) as FlyVolumeSummary[];
 }
 
 /** One entry of a Fly machine's retained event history (Fly keeps ~5). */

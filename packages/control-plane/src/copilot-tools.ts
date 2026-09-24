@@ -498,7 +498,16 @@ export function createCopilotTools(
 			"from draft to running. Stays operator-confirmed because it's the one step that " +
 			"actually spins up a paid machine.\n" +
 			"- suspend_mission: { missionId }\n" +
-			"- resume_mission: { missionId }\n" +
+			"- resume_mission: { missionId } — also recovers a mission whose machine " +
+			"was destroyed (e.g. after a prior failed resume), by reprovisioning " +
+			"fresh against the mission's volumeId. If that volumeId itself no longer " +
+			"exists on Fly, propose fix_mission_volume first.\n" +
+			"- fix_mission_volume: { missionId } — for a mission whose GetMissionStatus " +
+			"shows its volumeId as NOT FOUND on Fly (drifted MongoDB record, not a real " +
+			"data loss — see the mission-recovery skill). Finds the mission's real " +
+			"volume on Fly by name and corrects mission.volumeId; never touches Fly " +
+			"itself, and refuses rather than guessing if the match is ambiguous or " +
+			"missing. Follow with resume_mission to actually bring the mission back up.\n" +
 			"- write_mission_file: { missionId, path, content, agentId? }\n" +
 			"- save_session_config: { missionId, mission?, agents?, missionCopilotLimits?, teamFiles?: [{path, content}], mentalMaps?: {[agentId]: html} } " +
 			"— mission must be suspended first. Structured partial patch (ADR-0021): omit mission/agents/" +
@@ -538,6 +547,7 @@ export function createCopilotTools(
 				"launch_draft",
 				"suspend_mission",
 				"resume_mission",
+				"fix_mission_volume",
 				"write_mission_file",
 				"save_session_config",
 				"cancel_schedule",

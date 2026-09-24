@@ -30,7 +30,14 @@ import { COPILOT_WORKDIR } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
 import type { CopilotRuntime } from "./copilot-runtime.js";
 import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
-import { isLocalExecution, provisionLocal } from "./fly-machines.js";
+import {
+	flyVolumeName,
+	isLocalExecution,
+	listVolumes,
+	machineExists,
+	provisionLocal,
+	volumeExists,
+} from "./fly-machines.js";
 import { provisionTracked, resumeTracked } from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
@@ -527,6 +534,51 @@ export async function executeAction(
 			const mission = await missions.findOne({ missionId, userId });
 			if (!mission?.machineId)
 				throw new Error(`Mission "${missionId}" has no machine`);
+
+			// A mission left in "error" status (e.g. after a resume that failed
+			// because its volumeId had drifted — issue #62) has no guarantee its
+			// machineId still points to a real Fly machine. resumeTracked's plain
+			// Fly "start" only works when the machine still exists (the ordinary
+			// suspend → resume case, and the scheduler's wake-for-delivery path,
+			// both left untouched). When it's gone, fall back to the same
+			// delete-if-exists + reprovision-against-volume path the operator's
+			// own POST /:id/resume route uses, which tolerates an already-gone
+			// machine — without this, the copilot's own resume_mission action
+			// could never actually recover a mission fix_mission_volume just
+			// fixed, since its old machineId is exactly the one that got deleted.
+			const machineGone =
+				!mission.machineId.startsWith("local-") &&
+				!(await machineExists(mission.machineId));
+			if (machineGone) {
+				if (!mission.volumeId)
+					throw new Error(
+						`Mission "${missionId}" has no volumeId — cannot resume`,
+					);
+				if (!(await volumeExists(mission.volumeId))) {
+					throw new Error(
+						`Volume ${mission.volumeId} does not exist on Fly — mission.volumeId in MongoDB has likely drifted. Try ProposeAction "fix_mission_volume" first.`,
+					);
+				}
+				const handle = await provisionTracked(db, missionId, {
+					existingVolumeId: mission.volumeId,
+					memoryMb: mission.mission?.memoryMb,
+					cpus: mission.mission?.cpus,
+				});
+				await missions.updateOne(
+					{ missionId },
+					{
+						$set: {
+							machineId: handle.machineId,
+							privateIp: handle.privateIp,
+							status: "running",
+							updatedAt: now,
+						},
+						$unset: { errorMessage: "" },
+					},
+				);
+				return `Mission "${missionId}" resumed (its machine had been destroyed — reprovisioned fresh: ${handle.machineId})`;
+			}
+
 			await resumeTracked(db, {
 				missionId,
 				machineId: mission.machineId,
@@ -537,6 +589,50 @@ export async function executeAction(
 				{ $set: { status: "running", updatedAt: now } },
 			);
 			return `Mission "${missionId}" resumed`;
+		}
+
+		case "fix_mission_volume": {
+			const missionId = payload.missionId as string;
+			const mission = await missions.findOne({ missionId, userId });
+			if (!mission) throw new Error(`Mission "${missionId}" not found`);
+
+			// The candidate is derived server-side from Fly's own volume list and
+			// the existing naming convention (flyVolumeName) — the LLM never
+			// supplies a volume ID directly. Letting it do so would let a
+			// compromised or confused copilot attach any mission's volume to any
+			// other mission, a cross-tenant risk. Refusing on ambiguity (rather
+			// than guessing) keeps this to "fix the one case we can verify."
+			const expectedName = flyVolumeName(missionId);
+			const [allVolumes, otherMissions] = await Promise.all([
+				listVolumes(),
+				missions
+					.find({ missionId: { $ne: missionId }, status: { $ne: "destroyed" } })
+					.toArray(),
+			]);
+			const claimedElsewhere = new Set(
+				otherMissions.map((m) => m.volumeId).filter((id): id is string => !!id),
+			);
+			const candidates = allVolumes.filter(
+				(v) => v.name === expectedName && !claimedElsewhere.has(v.id),
+			);
+
+			if (candidates.length === 0) {
+				throw new Error(
+					`No unclaimed Fly volume named "${expectedName}" found for mission "${missionId}" — check \`flyctl volumes list\` manually.`,
+				);
+			}
+			if (candidates.length > 1) {
+				throw new Error(
+					`Ambiguous: ${candidates.length} unclaimed Fly volumes named "${expectedName}" found (ids: ${candidates.map((c) => c.id).join(", ")}) — resolve manually via \`flyctl volumes list\`.`,
+				);
+			}
+
+			const [volume] = candidates;
+			await missions.updateOne(
+				{ missionId },
+				{ $set: { volumeId: volume.id, updatedAt: now } },
+			);
+			return `mission.volumeId for "${missionId}" corrected to ${volume.id} (matched by name "${expectedName}"). Propose "resume_mission" next to bring the mission back up.`;
 		}
 
 		case "write_mission_file": {
