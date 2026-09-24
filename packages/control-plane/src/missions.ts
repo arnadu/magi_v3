@@ -810,15 +810,25 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
-		const msgs = await db
-			.collection("mailbox")
-			.find({
-				missionId: req.params.id,
-				$or: [{ from: "user" }, { to: "user" }],
-			})
-			.sort({ timestamp: 1 })
-			.limit(500)
-			.toArray();
+		// Newest 500 first (descending), then reversed back to chronological
+		// order for the client's thread-builder (ConversationsPanel.tsx's
+		// buildThreads expects ascending order). Sorting ascending with the
+		// same limit() — the previous code — takes the OLDEST 500 instead:
+		// once a mission's operator thread passed 500 messages, everything
+		// after the 500th-oldest was silently dropped forever, even though it
+		// was still in MongoDB (found live on meteo-textbook-20260730, whose
+		// resume-recovery traffic tipped it just over the cap).
+		const msgs = (
+			await db
+				.collection("mailbox")
+				.find({
+					missionId: req.params.id,
+					$or: [{ from: "user" }, { to: "user" }],
+				})
+				.sort({ timestamp: -1 })
+				.limit(500)
+				.toArray()
+		).reverse();
 		res.json(
 			msgs.map((m) => ({
 				id: m.id,

@@ -728,4 +728,75 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 			expect(res.status).toBe(404);
 		});
 	});
+
+	describe("GET /:id/conversations", () => {
+		let missionId: string;
+
+		beforeEach(async () => {
+			missionId = newMissionId();
+			const res = await fetch(baseUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					missionId,
+					name: "Conversations Mission",
+					teamConfig: "inline",
+					mission: { name: "Conversations Mission" },
+					agents: baseAgents(),
+				}),
+			});
+			expect(res.status).toBe(201);
+		});
+
+		afterEach(async () => {
+			await db.collection("mailbox").deleteMany({ missionId });
+		});
+
+		it("returns a small thread in ascending chronological order", async () => {
+			const base = Date.parse("2026-09-24T00:00:00.000Z");
+			await db.collection("mailbox").insertMany(
+				[2, 0, 1].map((offset) => ({
+					missionId,
+					from: offset % 2 === 0 ? "user" : "analyst",
+					to: [offset % 2 === 0 ? "analyst" : "user"],
+					subject: `msg-${offset}`,
+					body: `body-${offset}`,
+					timestamp: new Date(base + offset * 1000),
+				})),
+			);
+
+			const res = await fetch(`${baseUrl}/${missionId}/conversations`);
+			expect(res.status).toBe(200);
+			const msgs = (await res.json()) as Array<{ subject: string }>;
+			expect(msgs.map((m) => m.subject)).toEqual(["msg-0", "msg-1", "msg-2"]);
+		});
+
+		it("returns the newest 500 messages, not the oldest, once the thread exceeds the cap", async () => {
+			// The bug this guards: sorting ascending with limit(500) took the
+			// OLDEST 500 and silently dropped everything after — found live on
+			// meteo-textbook-20260730, where the mission's operator thread had
+			// grown past 500 and new messages stopped appearing in the cockpit's
+			// Conversations panel even though they were still in MongoDB.
+			const base = Date.parse("2026-09-24T00:00:00.000Z");
+			await db.collection("mailbox").insertMany(
+				Array.from({ length: 510 }, (_, i) => ({
+					missionId,
+					from: "user",
+					to: ["analyst"],
+					subject: `msg-${i}`,
+					body: `body-${i}`,
+					timestamp: new Date(base + i * 1000),
+				})),
+			);
+
+			const res = await fetch(`${baseUrl}/${missionId}/conversations`);
+			expect(res.status).toBe(200);
+			const msgs = (await res.json()) as Array<{ subject: string }>;
+			expect(msgs).toHaveLength(500);
+			// The 10 oldest (msg-0..msg-9) are dropped; the 500 newest remain,
+			// still in ascending order for the client's thread-builder.
+			expect(msgs[0]?.subject).toBe("msg-10");
+			expect(msgs[msgs.length - 1]?.subject).toBe("msg-509");
+		});
+	});
 });
