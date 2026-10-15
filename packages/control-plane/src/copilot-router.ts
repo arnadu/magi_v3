@@ -16,6 +16,7 @@ import {
 	type Limits,
 	parseTeamConfig,
 	type TeamConfig,
+	validateTeamFiles,
 } from "@magi/agent-config";
 import {
 	createMongoAgentStatsRepository,
@@ -721,6 +722,15 @@ export async function executeAction(
 				});
 			} catch (e) {
 				return `Invalid team config: ${(e as Error).message}`;
+			}
+			// TF1/CHAIN-A: scFiles is copilot/LLM-authored and reaches the
+			// daemon's filesystem unvalidated otherwise (team-files-sync.ts).
+			if (scTeamFilesProvided) {
+				try {
+					validateTeamFiles(scFiles);
+				} catch (e) {
+					return (e as Error).message;
+				}
 			}
 
 			await createMongoMissionConfigWriter(db).write(

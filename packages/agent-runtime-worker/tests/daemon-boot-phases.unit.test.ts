@@ -11,6 +11,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -396,6 +397,75 @@ describe("syncTeamFiles", () => {
 		await expect(
 			syncTeamFiles({ db, missionId: "m1", teamDir: "/tmp/unused" }),
 		).resolves.toEqual({});
+	});
+
+	// TF1/CHAIN-A (2026-10-15 audit): relPath is tenant/agent-authored. These
+	// pin the exact attack shapes from the finding — a traversal or symlink
+	// must never let a write land outside teamDir, and a bad entry must not
+	// stop the rest of the (valid) files from syncing.
+	it("rejects a traversal path and still writes the other valid files", async () => {
+		const base = mkdtempSync(join(tmpdir(), "magi-team-files-"));
+		dir = base;
+		const teamDir = join(base, "team");
+		mkdirSync(teamDir);
+		const db = fakeDbWithMissionDoc({
+			teamFiles: [
+				{ path: "../outside-marker.txt", content: "evil" },
+				{ path: "skills/foo.md", content: "# Foo" },
+			],
+		});
+		await syncTeamFiles({ db, missionId: "m1", teamDir });
+
+		expect(existsSync(join(base, "outside-marker.txt"))).toBe(false);
+		expect(readFileSync(join(teamDir, "skills/foo.md"), "utf8")).toBe("# Foo");
+	});
+
+	it("rejects an absolute path", async () => {
+		const base = mkdtempSync(join(tmpdir(), "magi-team-files-"));
+		dir = base;
+		const teamDir = join(base, "team");
+		mkdirSync(teamDir);
+		const absTarget = join(base, "abs-marker.txt");
+		const db = fakeDbWithMissionDoc({
+			teamFiles: [{ path: absTarget, content: "evil" }],
+		});
+		await syncTeamFiles({ db, missionId: "m1", teamDir });
+
+		expect(existsSync(absTarget)).toBe(false);
+	});
+
+	it("rejects a write through a symlinked parent directory that resolves outside teamDir", async () => {
+		const base = mkdtempSync(join(tmpdir(), "magi-team-files-"));
+		dir = base;
+		const teamDir = join(base, "team");
+		const outsideDir = join(base, "outside");
+		mkdirSync(teamDir);
+		mkdirSync(outsideDir);
+		symlinkSync(outsideDir, join(teamDir, "linked"));
+		const db = fakeDbWithMissionDoc({
+			teamFiles: [{ path: "linked/evil.txt", content: "evil" }],
+		});
+		await syncTeamFiles({ db, missionId: "m1", teamDir });
+
+		expect(existsSync(join(outsideDir, "evil.txt"))).toBe(false);
+	});
+
+	it("rejects a write to a path that is itself a symlink (O_NOFOLLOW)", async () => {
+		const base = mkdtempSync(join(tmpdir(), "magi-team-files-"));
+		dir = base;
+		const teamDir = join(base, "team");
+		const outsideDir = join(base, "outside");
+		mkdirSync(teamDir);
+		mkdirSync(outsideDir);
+		const target = join(outsideDir, "target.txt");
+		writeFileSync(target, "original");
+		symlinkSync(target, join(teamDir, "evil.txt"));
+		const db = fakeDbWithMissionDoc({
+			teamFiles: [{ path: "evil.txt", content: "evil" }],
+		});
+		await syncTeamFiles({ db, missionId: "m1", teamDir });
+
+		expect(readFileSync(target, "utf8")).toBe("original");
 	});
 });
 

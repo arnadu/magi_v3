@@ -270,6 +270,27 @@ describe("executeAction: save_session_config", () => {
 		expect(result).toContain("Invalid team config:");
 	});
 
+	it("TF1/CHAIN-A: rejects a teamFiles traversal path and writes nothing", async () => {
+		const missions = [
+			suspendedMission({ teamFiles: [{ path: "old.md", content: "keep" }] }),
+		];
+		const db = fakeDb({ missions });
+		const result = await executeAction(
+			db,
+			makeAction({
+				missionId: "m1",
+				teamFiles: [
+					{ path: "../../home/magi-operator/.gitconfig", content: "evil" },
+				],
+			}),
+			"user1",
+		);
+		expect(result).toMatch(/escape/);
+		expect(missions[0].teamFiles).toEqual([
+			{ path: "old.md", content: "keep" },
+		]);
+	});
+
 	it("writes teamFiles only when explicitly provided", async () => {
 		const missions = [
 			suspendedMission({ teamFiles: [{ path: "old.md", content: "keep" }] }),

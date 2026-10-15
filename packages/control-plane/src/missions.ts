@@ -21,6 +21,7 @@ import {
 	LimitsSchema,
 	parseTeamConfig,
 	type TeamConfig,
+	validateTeamFiles,
 } from "@magi/agent-config";
 import {
 	buildMissionCopilotAgentConfig,
@@ -1150,6 +1151,15 @@ export function createMissionsRouter(db: Db): Router {
 				.json({ error: `Invalid team config: ${(e as Error).message}` });
 			return;
 		}
+		// TF1/CHAIN-A: teamFiles paths are written verbatim to the daemon's
+		// filesystem on every boot (team-files-sync.ts) — reject a traversal
+		// or absolute path here rather than let it reach Mongo at all.
+		try {
+			validateTeamFiles(teamFiles ?? []);
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+			return;
+		}
 
 		// Validate every proposed mental-map edit BEFORE writing anything —
 		// a direct-edit save bypasses addElement/updateElement/removeElement
@@ -1266,6 +1276,15 @@ export function createMissionsRouter(db: Db): Router {
 		};
 		if (!nextMission || !agents) {
 			res.status(400).json({ error: "mission and agents are required" });
+			return;
+		}
+		// TF1/CHAIN-A: same reason as PUT /:id/config above — a draft is
+		// permissive about everything else, but teamFiles still reaches the
+		// daemon's filesystem unvalidated otherwise, on launch.
+		try {
+			validateTeamFiles(teamFiles ?? []);
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
 			return;
 		}
 
@@ -1479,6 +1498,16 @@ export function createMissionsRouter(db: Db): Router {
 				res
 					.status(400)
 					.json({ error: `Invalid team config: ${(e as Error).message}` });
+				return;
+			}
+			// TF1/CHAIN-A: same reason as PUT /:id/config — inlineFiles is
+			// tenant-supplied and reaches the daemon's filesystem unvalidated
+			// otherwise (team-files-sync.ts). Template-sourced teamFiles below
+			// are operator-authored on disk, not tenant input, so no check there.
+			try {
+				validateTeamFiles(inlineFiles ?? []);
+			} catch (e) {
+				res.status(400).json({ error: (e as Error).message });
 				return;
 			}
 			resolvedFiles = inlineFiles ?? [];

@@ -1,6 +1,14 @@
 # MAGI V3 Threat Model
 
-**Last updated:** 2026-10-15, third-party audit remediation (WO-1 Group A1) — **F-032 fixed**
+**Last updated:** 2026-10-15, WO-1 Group A2 — **F-033 fixed** (TF1/CHAIN-A): `teamFiles` paths
+from tenant-supplied and agent-authored config were written to disk as the daemon with no
+validation (`daemon-boot/team-files-sync.ts`), so a `../` path could plant a `~/.gitconfig` for the
+daemon's own git calls to execute. All five writers now validate through one shared
+`validateTeamFiles` (`agent-config/src/team-files.ts`), and the sync step re-checks at write time
+(string check, parent realpath inside `teamDir`, `O_NOFOLLOW`). This narrows the daemon's trust
+boundary with agent-writable config (TB-7) but does not close CHAIN-A alone: GIT1 (unhardened git
+in `shared/`) is still open until the next commit.
+**Previously:** 2026-10-15, third-party audit remediation (WO-1 Group A1) — **F-032 fixed**
 (ENV1, CRITICAL): `parseTeamConfig` (`agent-config/src/loader.ts`) is the shared validator for
 tenant-supplied inline config (`POST /api/missions`), agent/LLM-authored tool payloads
 (`SaveMissionConfig`, `EditDraftConfig`), and operator-authored YAML alike — not just the last

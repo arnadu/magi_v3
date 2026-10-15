@@ -177,6 +177,27 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 			});
 			expect(second.status).toBe(409);
 		});
+
+		it("TF1/CHAIN-A: rejects a teamFiles traversal path and never creates the mission", async () => {
+			const missionId = newMissionId();
+			const res = await fetch(baseUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					missionId,
+					name: "Test Mission",
+					teamConfig: "inline",
+					mission: { name: "Test Mission" },
+					agents: baseAgents(),
+					teamFiles: [{ path: "../../etc/passwd", content: "evil" }],
+				}),
+			});
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: string };
+			expect(body.error).toMatch(/escape/);
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc).toBeNull();
+		});
 	});
 
 	describe("PUT /:id/config + POST /:id/resume", () => {
@@ -212,6 +233,34 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 				}),
 			});
 			expect(res.status).toBe(409);
+		});
+
+		it("TF1/CHAIN-A: rejects a teamFiles traversal path and writes nothing", async () => {
+			const suspendRes = await fetch(`${baseUrl}/${missionId}/suspend`, {
+				method: "POST",
+			});
+			expect(suspendRes.status).toBe(200);
+
+			const before = await db.collection("missions").findOne({ missionId });
+
+			const res = await fetch(`${baseUrl}/${missionId}/config`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mission: { name: "Should Not Land" },
+					agents: baseAgents(),
+					teamFiles: [
+						{ path: "../../home/magi-operator/.gitconfig", content: "evil" },
+					],
+				}),
+			});
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: string };
+			expect(body.error).toMatch(/escape/);
+
+			const after = await db.collection("missions").findOne({ missionId });
+			expect(after?.mission.name).toBe(before?.mission.name);
+			expect(after?.teamFiles).toEqual(before?.teamFiles);
 		});
 
 		it("edit lands after suspend → PUT → resume (the resume-time-overwrite landmine scenario)", async () => {
@@ -580,6 +629,24 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 			expect(doc?.status).toBe("draft");
 			expect(doc?.agents).toHaveLength(1);
 			expect(doc?.agents[0].id).toBe("half-built");
+		});
+
+		it("TF1/CHAIN-A: rejects a teamFiles traversal path even though config itself is permissive", async () => {
+			const res = await fetch(`${baseUrl}/${missionId}/draft`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mission: { name: "Draft Under Edit" },
+					agents: [{ id: "half-built", supervisor: "user" }],
+					teamFiles: [{ path: "/etc/passwd", content: "evil" }],
+				}),
+			});
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: string };
+			expect(body.error).toMatch(/relative/);
+
+			const doc = await db.collection("missions").findOne({ missionId });
+			expect(doc?.teamFiles ?? []).toEqual([]);
 		});
 
 		it("409s once the mission is no longer a draft", async () => {

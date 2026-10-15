@@ -38,6 +38,7 @@ import {
 	type Limits,
 	parseTeamConfig,
 	type TeamConfig,
+	validateTeamFiles,
 } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import cronParser from "cron-parser";
@@ -320,6 +321,15 @@ export function createMissionCopilotTools(
 				});
 			} catch (e) {
 				return err(`Invalid team config: ${(e as Error).message}`);
+			}
+			// TF1/CHAIN-A: teamFiles is agent/LLM-authored here and reaches the
+			// daemon's filesystem unvalidated otherwise (team-files-sync.ts).
+			if (teamFilesProvided && teamFiles) {
+				try {
+					validateTeamFiles(teamFiles);
+				} catch (e) {
+					return err((e as Error).message);
+				}
 			}
 
 			// Issue #49 / F-025: SetMissionSpendCap enforces this via
