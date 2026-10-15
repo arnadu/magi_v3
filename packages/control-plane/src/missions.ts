@@ -21,6 +21,7 @@ import {
 	LimitsSchema,
 	parseTeamConfig,
 	type TeamConfig,
+	validateNewMissionId,
 	validateTeamFiles,
 } from "@magi/agent-config";
 import {
@@ -1478,6 +1479,14 @@ export function createMissionsRouter(db: Db): Router {
 				.json({ error: "missionId, name, and teamConfig are required" });
 			return;
 		}
+		// MID1: a caller-chosen id must not collide with a platform namespace
+		// (e.g. copilot-<userId>, whose mailbox has no missions document).
+		try {
+			validateNewMissionId(missionId);
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
+			return;
+		}
 
 		// Resolve structured config BEFORE inserting the mission doc so a bad
 		// payload or an unknown template name never leaves a stuck
@@ -1597,6 +1606,12 @@ export function createMissionsRouter(db: Db): Router {
 		};
 		if (!missionId || !name) {
 			res.status(400).json({ error: "missionId and name are required" });
+			return;
+		}
+		try {
+			validateNewMissionId(missionId);
+		} catch (e) {
+			res.status(400).json({ error: (e as Error).message });
 			return;
 		}
 

@@ -16,6 +16,7 @@ import {
 	type Limits,
 	parseTeamConfig,
 	type TeamConfig,
+	validateNewMissionId,
 	validateTeamFiles,
 } from "@magi/agent-config";
 import {
@@ -429,7 +430,9 @@ export async function executeAction(
 
 	switch (action.type) {
 		case "launch_mission": {
-			const missionId = payload.missionId as string;
+			const missionId = payload.missionId;
+			// MID1: the id here is LLM-authored; same namespace rule as POST /.
+			validateNewMissionId(missionId);
 			const name = (payload.name as string | undefined) ?? missionId;
 			const templateId = payload.templateId as string;
 

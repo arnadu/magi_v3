@@ -352,6 +352,26 @@ describe("executeAction: save_session_config", () => {
 	});
 });
 
+describe("executeAction: launch_mission — MID1", () => {
+	it("refuses a copilot-namespace missionId before touching Mongo or templates", async () => {
+		const db = fakeDb({ missions: [] });
+		await expect(
+			executeAction(
+				db,
+				{
+					id: "action-1",
+					userId: "user1",
+					type: "launch_mission",
+					label: "Launch",
+					payload: { missionId: "copilot-admin", templateId: "tutor" },
+					createdAt: new Date(),
+				},
+				"user1",
+			),
+		).rejects.toThrow(/reserved/);
+	});
+});
+
 describe("executeAction: launch_draft", () => {
 	const ORIGINAL_ENV = { ...process.env };
 	let localMissionsDir: string;

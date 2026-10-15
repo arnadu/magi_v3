@@ -1,6 +1,11 @@
 # MAGI V3 Threat Model
 
-**Last updated:** 2026-10-15, WO-1 Group A3 — **F-034 fixed** (GIT1): the daemon no longer runs git
+**Last updated:** 2026-10-15, WO-1 Group A4 — **F-035 fixed** (MID1): new mission ids are checked
+against a slug pattern and the reserved platform names (`copilot`, `admin`, `platform`, `system`,
+and their `<name>-` prefixes) at every creation route, so a tenant can no longer create a mission
+inside the control-plane copilot's `copilot-<userId>` mailbox namespace. Pre-existing ids are not
+re-validated at boot (see F-035 for why).
+**Previously:** 2026-10-15, WO-1 Group A3 — **F-034 fixed** (GIT1): the daemon no longer runs git
 inside the agent-writable tree. The shared workspace's git directory is a daemon-owned
 `shared.git` beside `shared/`, and every daemon git call goes through `safe-git.ts` (explicit
 git-dir, no global/system config, hooks and fsmonitor off, minimal env with no secrets). With
