@@ -10,7 +10,7 @@
  * version via `git show <hash>:<relPath>`.
  *
  * Concurrency: multiple agents may finish turns at overlapping times, and two
- * concurrent `git add`/`commit` invocations would collide on `.git/index.lock`.
+ * concurrent `git add`/`commit` invocations would collide on the git index lock.
  * All operations are therefore serialized through a single in-process promise
  * chain (one WorkspaceGit instance per mission). A commit reflects the workspace
  * delta since the previous commit — i.e. it may include changes from other
@@ -21,10 +21,7 @@
  * a mission.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const pexec = promisify(execFile);
+import { runGit } from "./safe-git.js";
 
 /** One file changed in a commit, with its git status letter (A/M/D/R…). */
 export interface ChangedFile {
@@ -39,7 +36,7 @@ export interface CommitResult {
 }
 
 export class WorkspaceGit {
-	/** Serializes all git operations to avoid `.git/index.lock` collisions. */
+	/** Serializes all git operations to avoid git index-lock collisions. */
 	private queue: Promise<unknown> = Promise.resolve();
 
 	constructor(private readonly sharedDir: string) {}
@@ -56,7 +53,7 @@ export class WorkspaceGit {
 	}
 
 	private git(...args: string[]): Promise<{ stdout: string }> {
-		return pexec("git", ["-C", this.sharedDir, ...args]);
+		return runGit(this.sharedDir, args);
 	}
 
 	/**

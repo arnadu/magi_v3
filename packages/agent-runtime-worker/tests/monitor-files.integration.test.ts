@@ -7,7 +7,6 @@
  * Requires MONGODB_URI. (No pool users / API key needed.)
  */
 
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
 	mkdirSync,
@@ -31,6 +30,7 @@ import { createMongoMissionConfigRepository } from "../src/mission-config.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
 import { type AgentInfo, MonitorServer } from "../src/monitor-server.js";
+import { ensureSharedGitDir, runGit } from "../src/safe-git.js";
 import { UsageAccumulator } from "../src/usage.js";
 import { WorkspaceGit } from "../src/workspace-git.js";
 
@@ -59,7 +59,7 @@ beforeAll(async () => {
 	workdir = mkdtempSync(join(tmpdir(), "magi-monfiles-"));
 	sharedDir = join(workdir, "shared");
 	mkdirSync(sharedDir, { recursive: true });
-	execFileSync("git", ["-C", sharedDir, "init", "-q"]);
+	ensureSharedGitDir(sharedDir);
 	const conn = await connectMongo(MONGODB_URI, "magi-test");
 	client = conn.client;
 	const mailboxRepo = createMongoMailboxRepository(conn.db, missionId);
@@ -227,14 +227,12 @@ describe("POST /files/shared/edit", () => {
 
 		// The commit is real and separately attributed (no matching
 		// agentTurnStats entry — this is the "outside edit" case).
-		const log = execFileSync("git", [
-			"-C",
-			sharedDir,
+		const { stdout: log } = await runGit(sharedDir, [
 			"log",
 			"-1",
 			"--format=%s",
 			json.commit as string,
-		]).toString();
+		]);
 		expect(log.trim()).toBe(`operator edit: ${relPath}`);
 
 		// The most-recent prior toucher (echo, from the seed commit) was notified.

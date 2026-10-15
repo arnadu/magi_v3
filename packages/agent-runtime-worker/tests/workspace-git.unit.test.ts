@@ -1,29 +1,27 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ensureSharedGitDir, runGit } from "../src/safe-git.js";
 import { WorkspaceGit } from "../src/workspace-git.js";
 
 // Real git against a throwaway repo — deterministic, no network, no LLM.
+// Uses the production layout (GIT1, 2026-10-15 audit): the git dir is a
+// daemon-owned `shared.git` beside `shared/`, never `shared/.git`.
 
+let base: string;
 let dir: string;
 
-function git(...args: string[]): void {
-	execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
-}
-
 beforeEach(() => {
-	dir = mkdtempSync(join(tmpdir(), "magi-wsgit-"));
-	git("init", "-b", "main");
-	// Identity so commits work in CI without global git config.
-	git("config", "user.name", "test");
-	git("config", "user.email", "test@test");
-	git("commit", "--allow-empty", "-m", "init");
+	base = mkdtempSync(join(tmpdir(), "magi-wsgit-"));
+	dir = join(base, "shared");
+	mkdirSync(dir);
+	ensureSharedGitDir(dir);
 });
 
 afterEach(() => {
-	rmSync(dir, { recursive: true, force: true });
+	rmSync(base, { recursive: true, force: true });
 });
 
 describe("WorkspaceGit", () => {
@@ -40,11 +38,7 @@ describe("WorkspaceGit", () => {
 		expect(r?.changedFiles.every((c) => c.status === "A")).toBe(true);
 
 		// The content is retrievable at that commit (the file-viewer access path).
-		const shown = execFileSync(
-			"git",
-			["-C", dir, "show", `${r?.commit}:a.txt`],
-			{ encoding: "utf8" },
-		);
+		const { stdout: shown } = await runGit(dir, ["show", `${r?.commit}:a.txt`]);
 		expect(shown).toBe("hello");
 	});
 
@@ -85,20 +79,20 @@ describe("WorkspaceGit", () => {
 			"f4.txt",
 		]);
 		// HEAD history is linear and intact (no corruption from concurrent access).
-		const log = execFileSync("git", ["-C", dir, "log", "--oneline"], {
-			encoding: "utf8",
-		});
+		const { stdout: log } = await runGit(dir, ["log", "--oneline"]);
 		expect(log.split("\n").filter(Boolean).length).toBeGreaterThanOrEqual(2);
 	});
 
-	it("does not throw when the directory is not a git repo (logged, returns null)", async () => {
-		const nonRepo = mkdtempSync(join(tmpdir(), "magi-nonrepo-"));
+	it("does not throw when the workspace has no git dir (logged, returns null)", async () => {
+		const nonRepoBase = mkdtempSync(join(tmpdir(), "magi-nonrepo-"));
+		const nonRepo = join(nonRepoBase, "shared");
+		mkdirSync(nonRepo);
 		try {
 			const wg = new WorkspaceGit(nonRepo);
 			writeFileSync(join(nonRepo, "x.txt"), "y");
 			expect(await wg.commit("turn: agent/0")).toBeNull();
 		} finally {
-			rmSync(nonRepo, { recursive: true, force: true });
+			rmSync(nonRepoBase, { recursive: true, force: true });
 		}
 	});
 });

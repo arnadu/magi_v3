@@ -12,6 +12,7 @@ import {
 import { userInfo } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureSharedGitDir } from "./safe-git.js";
 
 /**
  * Default platform skills path: packages/skills/ resolved from the compiled
@@ -143,9 +144,7 @@ export class WorkspaceManager {
 			mkdirSync(join(identity.workdir, "skills"), { recursive: true });
 		}
 
-		if (!existsSync(join(sharedDir, ".git"))) {
-			initSharedGitRepo(sharedDir);
-		}
+		ensureSharedGitDir(sharedDir);
 
 		return identities;
 	}
@@ -164,7 +163,7 @@ export class WorkspaceManager {
 				);
 			}
 		}
-		// Remove the entire per-mission directory (contains shared/ and nothing else).
+		// Remove the entire per-mission directory (shared/ and its daemon-owned shared.git).
 		const missionDir = join(this.layout.missionsBase, missionId);
 		try {
 			rmSync(missionDir, { recursive: true, force: true });
@@ -375,38 +374,4 @@ export function copyTeamFilesToSharedDir(
 		}
 	}
 	walk(teamDir);
-}
-
-/**
- * Initialise the shared directory as a git repository and create an empty
- * initial commit, so the daemon's automatic commit-on-sleep (WorkspaceGit,
- * called at the end of every agent turn — see agent-runner.ts) always has a
- * repo to commit into from mission start.
- *
- * Git is workspace infrastructure — it is always present from mission start.
- * The git-provenance skill teaches agents that commits happen automatically;
- * it does not teach a manual commit convention, and agents should never run
- * `git commit` themselves in sharedDir (they don't own `.git`, the daemon
- * does — see git-provenance/SKILL.md).
- */
-function initSharedGitRepo(sharedDir: string): void {
-	execFileSync("git", ["-C", sharedDir, "init", "-b", "main"], {
-		stdio: "ignore",
-	});
-	execFileSync(
-		"git",
-		[
-			"-C",
-			sharedDir,
-			"-c",
-			"user.name=magi",
-			"-c",
-			"user.email=magi@magi",
-			"commit",
-			"--allow-empty",
-			"-m",
-			"chore: initialise mission workspace",
-		],
-		{ stdio: "ignore" },
-	);
 }

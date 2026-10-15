@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import {
 	createReadStream,
 	existsSync,
@@ -15,7 +14,6 @@ import {
 } from "node:http";
 import { basename, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import type { Model } from "@mariozechner/pi-ai";
 import JSZip from "jszip";
 import type { Db } from "mongodb";
@@ -44,6 +42,7 @@ import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import { createTraceRoutes } from "./monitor-routes/trace.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
 import { createUploadDownloadRoutes } from "./monitor-routes/upload-download.js";
+import { runGit } from "./safe-git.js";
 import type { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
 
@@ -103,8 +102,6 @@ export const TEXT_EXTENSIONS = new Set([
 	".sql",
 	".r",
 ]);
-
-const pexec = promisify(execFile);
 
 export const IMAGE_MIME: Record<string, string> = {
 	".png": "image/png",
@@ -883,9 +880,7 @@ export class MonitorServer {
 
 		let commits: { commit: string; timestamp: string }[] = [];
 		try {
-			const { stdout } = await pexec("git", [
-				"-C",
-				this.sharedDir,
+			const { stdout } = await runGit(this.sharedDir, [
 				"log",
 				"--follow",
 				"--format=%H|%cI",

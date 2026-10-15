@@ -1,6 +1,13 @@
 # MAGI V3 Threat Model
 
-**Last updated:** 2026-10-15, WO-1 Group A2 — **F-033 fixed** (TF1/CHAIN-A): `teamFiles` paths
+**Last updated:** 2026-10-15, WO-1 Group A3 — **F-034 fixed** (GIT1): the daemon no longer runs git
+inside the agent-writable tree. The shared workspace's git directory is a daemon-owned
+`shared.git` beside `shared/`, and every daemon git call goes through `safe-git.ts` (explicit
+git-dir, no global/system config, hooks and fsmonitor off, minimal env with no secrets). With
+F-033, this closes **CHAIN-A** end to end. Residual: agents can still *read* the repository
+history (by design, unchanged), and X-TENANT2 (shared credentials on every mission machine)
+remains the reason any future daemon-identity bug is cross-tenant — Sprint 29.
+**Previously:** 2026-10-15, WO-1 Group A2 — **F-033 fixed** (TF1/CHAIN-A): `teamFiles` paths
 from tenant-supplied and agent-authored config were written to disk as the daemon with no
 validation (`daemon-boot/team-files-sync.ts`), so a `../` path could plant a `~/.gitconfig` for the
 daemon's own git calls to execute. All five writers now validate through one shared

@@ -27,7 +27,6 @@
  *   - setup-dev.sh (pool users magi-w1, magi-w2 must exist).
  */
 
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
 	chmodSync,
@@ -51,6 +50,7 @@ import { createMongoMailboxRepository } from "../src/mailbox.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
 import { runOrchestrationLoop } from "../src/orchestrator.js";
+import { runGit } from "../src/safe-git.js";
 import type { AgentIdentity } from "../src/workspace-manager.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
 
@@ -279,11 +279,11 @@ describe("integration: agent skills — skill creation and discovery", () => {
 			// report.md — not authored by "worker": commit-on-sleep always commits
 			// as the daemon's own fixed identity, regardless of which agent wrote
 			// the file (see workspace-git.ts).
-			const gitLog = execFileSync(
-				"git",
-				["-C", sharedDir, "log", "--name-only", "--format="],
-				{ encoding: "utf-8" },
-			);
+			const { stdout: gitLog } = await runGit(sharedDir, [
+				"log",
+				"--name-only",
+				"--format=",
+			]);
 			expect(gitLog).toMatch(/report\.md/);
 
 			// 4. Lead sent at least one message to the user.

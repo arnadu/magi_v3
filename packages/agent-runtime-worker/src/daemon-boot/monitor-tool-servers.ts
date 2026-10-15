@@ -63,7 +63,7 @@ export async function startMonitorServer(
 	const sharedDir = join(ctx.workdir, "missions", ctx.missionId, "shared");
 	// Shared between the orchestrator (agent turn-end commits) and MonitorServer
 	// (operator file-edit commits) — one serialized queue, so the two can never
-	// race each other on .git/index.lock.
+	// race each other on the git index lock.
 	const workspaceGit = new WorkspaceGit(sharedDir);
 	const monitor = new MonitorServer(
 		ctx.db,

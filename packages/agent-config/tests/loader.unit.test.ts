@@ -176,7 +176,7 @@ describe("parseTeamConfig — no environment variable expansion (ENV1)", () => {
 		};
 	}
 
-	it("passes a ${VAR}-shaped string through literally even when the variable is set", () => {
+	it("passes a dollar-brace variable reference through literally even when the variable is set", () => {
 		process.env[SECRET_VAR] = "s3cr3t-value";
 		const config = parseTeamConfig(configWith(`key=\${${SECRET_VAR}}`));
 		expect(config.agents[0].systemPrompt).toBe(`key=\${${SECRET_VAR}}`);
@@ -189,7 +189,7 @@ describe("parseTeamConfig — no environment variable expansion (ENV1)", () => {
 		expect(config.agents[0].systemPrompt).toBe(`key=\${${SECRET_VAR}}`);
 	});
 
-	it("leaves ${VAR} literal through the YAML path too", () => {
+	it("leaves a dollar-brace variable reference literal through the YAML path too", () => {
 		process.env[SECRET_VAR] = "s3cr3t-value";
 		const yaml = `
 mission:
