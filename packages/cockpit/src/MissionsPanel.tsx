@@ -47,6 +47,7 @@ function slugify(name: string): string {
 			.trim()
 			.toLowerCase()
 			.replace(/[^a-z0-9]+/g, "-")
+			.slice(0, 63) // the server's mission-id length limit
 			.replace(/^-+|-+$/g, "") || "mission"
 	);
 }

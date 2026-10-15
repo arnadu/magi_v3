@@ -28,6 +28,7 @@ import {
 	StatsCollector,
 } from "../src/agent-stats.js";
 import { createMongoConversationRepository } from "../src/conversation-repository.js";
+import { resolveLinuxUsers } from "../src/linux-user.js";
 import { createMongoMailboxRepository } from "../src/mailbox.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { connectMongo } from "../src/mongo.js";
@@ -83,12 +84,16 @@ describe("integration: objectives spine end-to-end (template path)", () => {
 			// daemon.ts's onWorkspaceReady chain; that hook fires fire-and-forget
 			// (not awaited) from inside runOrchestrationLoop, so a test relying on
 			// it would race the first turn against migration completion.
+			// Same user resolution runOrchestrationLoop uses (a pool user in
+			// local dev), so both provision calls target the same OS users.
+			const linuxUsers = resolveLinuxUsers(teamConfig.agents);
 			workspaceManager.provision(
 				missionId,
-				teamConfig.agents.map((a) => ({
-					id: a.id,
-					linuxUser: a.linuxUser ?? a.id,
-				})),
+				teamConfig.agents.map((a) => {
+					const linuxUser = linuxUsers.get(a.id);
+					if (!linuxUser) throw new Error(`No Linux user for ${a.id}`);
+					return { id: a.id, linuxUser };
+				}),
 			);
 			await migrateLegacyObjectivesStore(sharedDir, missionId, objectivesRepo);
 

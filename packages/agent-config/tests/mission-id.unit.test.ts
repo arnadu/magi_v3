@@ -18,9 +18,8 @@ describe("validateNewMissionId", () => {
 		"../x",
 		"Copilot-Admin",
 		"has space",
-		"ab",
 		"-leading-hyphen",
-		"a".repeat(42),
+		"a".repeat(64),
 		"",
 	])("rejects the malformed id %j", (id) => {
 		expect(() => validateNewMissionId(id)).toThrow(/missionId must be/);
@@ -37,6 +36,9 @@ describe("validateNewMissionId", () => {
 		"test2",
 		"copilotish-research",
 		"admins-guide",
+		"ai",
+		`missions-router-test-${"0".repeat(8)}-0000-0000-0000-${"0".repeat(12)}`,
+		"a".repeat(63),
 	])("accepts the normal id %s", (id) => {
 		expect(() => validateNewMissionId(id)).not.toThrow();
 	});

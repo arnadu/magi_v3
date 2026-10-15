@@ -13,7 +13,9 @@
  * this rule. That tightening waits until stored ids are verified to conform.
  */
 
-export const MISSION_ID_RE = /^[a-z0-9][a-z0-9-]{2,40}$/;
+// 1-63 chars (the DNS-label limit): long enough for any cockpit-generated
+// slug, bounded for paths, headers and Fly volume names.
+export const MISSION_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /** Exact names, and `<name>-` prefixes, that belong to platform identities. */
 export const RESERVED_MISSION_ID_NAMES = [
@@ -26,7 +28,7 @@ export const RESERVED_MISSION_ID_NAMES = [
 export function validateNewMissionId(id: unknown): asserts id is string {
 	if (typeof id !== "string" || !MISSION_ID_RE.test(id)) {
 		throw new Error(
-			"missionId must be 3-41 characters of lowercase letters, digits and hyphens, starting with a letter or digit",
+			"missionId must be 1-63 characters of lowercase letters, digits and hyphens, starting with a letter or digit",
 		);
 	}
 	const reserved = RESERVED_MISSION_ID_NAMES.find(
