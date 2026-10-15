@@ -14,13 +14,14 @@
  *   node scripts/migrate-mission-config-to-structured.mjs              # dry run is NOT the default — this writes
  *   MONGODB_URI="mongodb+srv://..." node scripts/migrate-mission-config-to-structured.mjs
  *
- * Must run with the same environment variables production missions resolve
- * `${VAR}`-style substitutions against (see expandEnvInObject in
- * packages/agent-config/src/loader.ts) — running from a bare local shell
- * without those vars set can silently resolve a substitution to an empty
- * string. The summary below flags any resolved mission whose config looks
- * suspicious (an empty string where a value was expected) so this isn't
- * silently accepted.
+ * `${VAR}`-style substitution in team config was removed from
+ * `parseTeamConfig` (ENV1, 2026-10-15 audit — it let tenant-supplied config
+ * read arbitrary server environment variables back out through the API).
+ * Any already-migrated `teamConfigYaml` that relied on it was expanded at
+ * migration time and is unaffected; this script no longer performs
+ * expansion on anything it parses now. The empty-string suspicion check
+ * below predates the removal and is kept as a general sanity check on
+ * parsed output, not specifically for substitution failures.
  */
 
 import { readFileSync } from "node:fs";

@@ -39,7 +39,11 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 
 ## Fixed Findings
 
-### Sprint 28e
+### 2026-10-15 third-party audit remediation (WO-1 Group A)
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-032 | CRITICAL | `packages/agent-config/src/loader.ts` (`parseTeamConfig`) | **ENV1 — `${VAR}` expansion from the server environment reached tenant-supplied and agent-authored config.** `parseTeamConfig` is the shared validator for `POST /api/missions` (tenant-supplied inline config), the mission-copilot's `SaveMissionConfig`/control-plane's `EditDraftConfig` tool payloads (agent-authored), and operator-authored YAML — not just the last one. Any signed-in user could put `${CONTROL_API_KEY}` or `${MONGODB_URI}` in a mission/agent field and get the real secret back in the `POST` response (which also persisted the expanded value into the `missions` document). An unset variable produced a distinct error, making it also an environment-variable existence oracle. Found by a third-party static audit (`audit-oct26/magi-remediation-kit/docs/review/REVIEW.md`); independently re-verified against the live code before fixing (a config with `${FAKE_VAR}` round-tripped the literal secret value through `parseTeamConfig` on the unfixed code). No shipped template used this feature. | Deleted `expandEnvInObject` and its call in `parseTeamConfig` entirely — not gated behind an opt-in flag, since nothing used it. `${VAR}`-shaped strings now pass through unchanged for every caller, with no existence oracle. Three regression tests added (`loader.unit.test.ts`): a set variable is not substituted, an unset variable does not throw, and the YAML path behaves the same as the inline-object path. |
 
 | ID | Severity | Location | Description | Fix applied |
 |----|----------|----------|-------------|-------------|

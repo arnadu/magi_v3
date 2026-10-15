@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { parseTeamConfigYaml } from "../src/loader.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { parseTeamConfig, parseTeamConfigYaml } from "../src/loader.js";
 
 /**
  * Reserved "mission-copilot" agent id (ADR-0016) — the daemon injects the
@@ -141,5 +141,67 @@ agents:
 		const config = parseTeamConfigYaml(yaml);
 		expect(config.agents[0].name).toBe("Lead");
 		expect(config.agents[0].role).toBe("lead-agent");
+	});
+});
+
+/**
+ * ENV1 (2026-10-15 audit) — `parseTeamConfig` is the shared validator for
+ * every trust level: tenant-supplied inline config (`POST /api/missions`),
+ * agent/LLM-authored tool payloads (`SaveMissionConfig`, `EditDraftConfig`),
+ * AND operator-authored on-disk YAML. It must never read process.env on
+ * behalf of a caller who isn't the operator — a `${VAR}` string in
+ * tenant-supplied config let any signed-in user retrieve any server
+ * environment variable (CONTROL_API_KEY, MONGODB_URI, ...) back in the
+ * API response. No shipped template ever used this feature (grep of
+ * config/teams/*.yaml is empty), so the fix is to remove it, not gate it.
+ */
+describe("parseTeamConfig — no environment variable expansion (ENV1)", () => {
+	const SECRET_VAR = "MAGI_TEST_ENV1_SECRET";
+
+	afterEach(() => {
+		delete process.env[SECRET_VAR];
+	});
+
+	function configWith(systemPrompt: string) {
+		return {
+			mission: { id: "test-mission", name: "Test Mission" },
+			agents: [
+				{
+					id: "lead",
+					supervisor: "user",
+					systemPrompt,
+					initialMentalMap: '<section id="tasks"></section>',
+				},
+			],
+		};
+	}
+
+	it("passes a ${VAR}-shaped string through literally even when the variable is set", () => {
+		process.env[SECRET_VAR] = "s3cr3t-value";
+		const config = parseTeamConfig(configWith(`key=\${${SECRET_VAR}}`));
+		expect(config.agents[0].systemPrompt).toBe(`key=\${${SECRET_VAR}}`);
+		expect(config.agents[0].systemPrompt).not.toContain("s3cr3t-value");
+	});
+
+	it("does not throw when the referenced variable is unset (no existence oracle)", () => {
+		expect(SECRET_VAR in process.env).toBe(false);
+		const config = parseTeamConfig(configWith(`key=\${${SECRET_VAR}}`));
+		expect(config.agents[0].systemPrompt).toBe(`key=\${${SECRET_VAR}}`);
+	});
+
+	it("leaves ${VAR} literal through the YAML path too", () => {
+		process.env[SECRET_VAR] = "s3cr3t-value";
+		const yaml = `
+mission:
+  id: test-mission
+  name: Test Mission
+agents:
+  - id: lead
+    supervisor: user
+    systemPrompt: "key=\${${SECRET_VAR}}"
+    initialMentalMap: <section id="tasks"></section>
+`;
+		const config = parseTeamConfigYaml(yaml);
+		expect(config.agents[0].systemPrompt).toBe(`key=\${${SECRET_VAR}}`);
 	});
 });

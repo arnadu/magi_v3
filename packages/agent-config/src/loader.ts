@@ -171,39 +171,6 @@ export type TeamConfig = z.infer<typeof TeamConfigSchema>;
 export type Limits = z.infer<typeof LimitsSchema>;
 
 // ---------------------------------------------------------------------------
-// Environment variable expansion
-// ---------------------------------------------------------------------------
-
-/**
- * Expand ${VAR} tokens in all string values of the parsed YAML object.
- * Throws if a referenced variable is not set in process.env.
- * Applied before Zod validation so schema errors reference the expanded values.
- */
-function expandEnvInObject(obj: unknown): unknown {
-	if (typeof obj === "string") {
-		return obj.replace(/\$\{([^}]+)\}/g, (_, name: string) => {
-			const val = process.env[name];
-			if (val === undefined) {
-				throw new Error(
-					`Team config references undefined environment variable: \${${name}}`,
-				);
-			}
-			return val;
-		});
-	}
-	if (Array.isArray(obj)) return obj.map(expandEnvInObject);
-	if (obj !== null && typeof obj === "object") {
-		return Object.fromEntries(
-			Object.entries(obj as Record<string, unknown>).map(([k, v]) => [
-				k,
-				expandEnvInObject(v),
-			]),
-		);
-	}
-	return obj;
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -212,16 +179,23 @@ function expandEnvInObject(obj: unknown): unknown {
  * `mission`/`agents`/`missionCopilotLimits` fields assembled into one object,
  * or an inline JSON payload from a tool call) into a validated TeamConfig.
  * Throws with a descriptive message on validation failure. This is the core
- * validator (ADR-0021, "Parsing") — env-var expansion, Zod validation, and the
- * reserved-id check all happen here, on a plain object, no YAML involved.
- * Every caller except `parseTeamConfigYaml` below should call this directly.
+ * validator (ADR-0021, "Parsing") — Zod validation and the reserved-id check
+ * happen here, on a plain object, no YAML involved. Every caller except
+ * `parseTeamConfigYaml` below should call this directly.
+ *
+ * SECURITY (ENV1, 2026-10-15 audit): this function used to expand `${VAR}`
+ * tokens in every string from `process.env` before validation. It is called
+ * on tenant-supplied config (`POST /api/missions`) and agent/LLM-authored
+ * tool payloads (`SaveMissionConfig`), not just operator-authored YAML, so
+ * that expansion let any signed-in user retrieve any server environment
+ * variable (CONTROL_API_KEY, MONGODB_URI, provider keys) back in the API
+ * response or into an agent's own system prompt. Deleted outright rather
+ * than gated behind an opt-in flag: no shipped template ever used it.
  */
 export function parseTeamConfig(obj: unknown): TeamConfig {
-	const raw = expandEnvInObject(obj);
-
 	let parsed: TeamConfig;
 	try {
-		parsed = TeamConfigSchema.parse(raw);
+		parsed = TeamConfigSchema.parse(obj);
 	} catch (e) {
 		if (e instanceof ZodError) {
 			const issues = e.issues

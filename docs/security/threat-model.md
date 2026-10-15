@@ -1,6 +1,18 @@
 # MAGI V3 Threat Model
 
-**Last updated:** Sprint 28g (in progress) — new boundary **TB-22**: mission-originated machine upgrades (ADR-0031). The control plane now exposes `POST /api/mission-copilot/resources/*`, the first mission-originated path to a Fly Machines mutation (stop, delete and re-create the mission's own machine). Same auth as TB-19; bounded structurally (size, duration, cumulative cap, cooldown) rather than by a confirmation gate — recorded as F-031.
+**Last updated:** 2026-10-15, third-party audit remediation (WO-1 Group A1) — **F-032 fixed**
+(ENV1, CRITICAL): `parseTeamConfig` (`agent-config/src/loader.ts`) is the shared validator for
+tenant-supplied inline config (`POST /api/missions`), agent/LLM-authored tool payloads
+(`SaveMissionConfig`, `EditDraftConfig`), and operator-authored YAML alike — not just the last
+one. It used to expand `${VAR}` tokens from the server's own environment in every string before
+validation, so any signed-in user could retrieve `CONTROL_API_KEY`, `MONGODB_URI` or any other
+platform secret back through the API by naming it in a mission/agent field. Deleted outright
+(no shipped template used it); see F-032 in `findings.md` for the fix and regression tests. This
+is the first of several findings from a full third-party static audit
+(`audit-oct26/magi-remediation-kit/docs/review/REVIEW.md`, reviewed commit `49d8730f`); the
+remaining WO-1 Group A items (TF1/CHAIN-A, GIT1, MID1, X-TENANT3) update this file again as each
+lands.
+**Previously:** Sprint 28g (in progress) — new boundary **TB-22**: mission-originated machine upgrades (ADR-0031). The control plane now exposes `POST /api/mission-copilot/resources/*`, the first mission-originated path to a Fly Machines mutation (stop, delete and re-create the mission's own machine). Same auth as TB-19; bounded structurally (size, duration, cumulative cap, cooldown) rather than by a confirmation gate — recorded as F-031.
 **Previously:** Sprint 28e — Two critical security fixes from the 2026-08-09 audit, both closing
 live exposures rather than preventive hardening. **F-002 re-fixed** (BrowseWeb SSRF, CR-03):
 Stagehand V3's removal of `page.route()` had silently reopened this a second time; fixed with a
