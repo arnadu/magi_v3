@@ -28,7 +28,7 @@ import {
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { type Collection, type Db, ObjectId } from "mongodb";
-import { COPILOT_WORKDIR } from "./copilot-daemon.js";
+import { COPILOT_WORKDIR, copilotWorkdirFor } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
 import type { CopilotRuntime } from "./copilot-runtime.js";
 import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
@@ -273,9 +273,15 @@ export function createCopilotRouter(
 	// control-plane container, so COPILOT_WORKDIR is on this process's own
 	// filesystem. See copilot-files.ts for the path-boundary/symlink guard.
 
+	// X-TENANT3: a user sees only their own copilot's subdirectory. Admins
+	// see the whole workdir, which also keeps files written before per-user
+	// subdirectories existed reachable to someone.
 	router.get("/files", (req: Request, res: Response) => {
 		const userPath = (req.query.path as string | undefined) ?? "";
-		const node = readCopilotFileNode(COPILOT_WORKDIR, userPath);
+		const root = req.isAdmin
+			? COPILOT_WORKDIR
+			: copilotWorkdirFor(`copilot-${req.userId}`);
+		const node = readCopilotFileNode(root, userPath);
 		if (node === null) {
 			res.status(400).json({ error: "Path outside root" });
 			return;

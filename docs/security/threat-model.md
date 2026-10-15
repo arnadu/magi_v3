@@ -1,6 +1,13 @@
 # MAGI V3 Threat Model
 
-**Last updated:** 2026-10-15, WO-1 Group A4 — **F-035 fixed** (MID1): new mission ids are checked
+**Last updated:** 2026-10-15, WO-1 Group A5 — **F-036 fixed** (X-TENANT3), completing WO-1 Group
+A: each user's control-plane copilot now has its own subdirectory of the copilot workdir
+(`users/copilot-<userId>`), and `GET /api/copilot/files` (TB-21) serves a non-admin caller only
+their own. This supersedes the Sprint 27 note below that accepted the unscoped route "for the
+current solo-operator deployment" — the control plane is multi-user. Still open: one `magi-copilot`
+OS identity for all users (TB-15), so isolation between copilots' own shells is by convention
+only until Sprint 29.
+**Previously:** 2026-10-15, WO-1 Group A4 — **F-035 fixed** (MID1): new mission ids are checked
 against a slug pattern and the reserved platform names (`copilot`, `admin`, `platform`, `system`,
 and their `<name>-` prefixes) at every creation route, so a tenant can no longer create a mission
 inside the control-plane copilot's `copilot-<userId>` mailbox namespace. Pre-existing ids are not

@@ -17,7 +17,7 @@ import {
 	realpathSync,
 	statSync,
 } from "node:fs";
-import { basename, extname, resolve } from "node:path";
+import { basename, extname, resolve, sep } from "node:path";
 
 const TEXT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -81,7 +81,9 @@ export type FileNode =
  */
 function resolveWithinRoot(root: string, userPath: string): string | null {
 	const abs = resolve(root, userPath || ".");
-	if (!abs.startsWith(root)) return null;
+	// Separator boundary: per-user roots are siblings (`copilot-u1` vs
+	// `copilot-u10`), so a bare prefix test would admit a neighbor's path.
+	if (abs !== root && !abs.startsWith(`${root}${sep}`)) return null;
 	if (!existsSync(abs)) return abs; // let the caller 404
 	const real = realpathSync(abs);
 	const realRoot = realpathSync(root);
@@ -96,6 +98,10 @@ export function readCopilotFileNode(
 ): FileNode | null {
 	const abs = resolveWithinRoot(root, userPath);
 	if (abs === null) return null;
+	// A user whose copilot has never run has no directory yet.
+	if (abs === root && !existsSync(root)) {
+		return { type: "dir", path: userPath, entries: [] };
+	}
 	if (!existsSync(abs)) {
 		return { type: "file", name: basename(abs), encoding: "binary" };
 	}

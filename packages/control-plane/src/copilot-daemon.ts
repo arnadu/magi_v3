@@ -49,11 +49,25 @@ export const COPILOT_WORKDIR = "/home/magi-copilot/workdir";
  */
 const POLL_FALLBACK_MS = 15_000;
 
-const COPILOT_IDENTITY: AgentIdentity = {
-	workdir: COPILOT_WORKDIR,
-	sharedDir: COPILOT_WORKDIR,
-	linuxUser: "magi-copilot",
-};
+/**
+ * X-TENANT3 (2026-10-15 audit): each user's copilot gets its own subdirectory
+ * of the volume-mounted workdir instead of all users sharing its root, so the
+ * `GET /api/copilot/files` route can serve a caller only their own copilot's
+ * files. Still one OS identity (`magi-copilot`) for every user: a copilot's
+ * own Bash can read another user's subdirectory. Per-user OS identities are
+ * the follow-up (Sprint 29 scope, TB-15).
+ */
+export function copilotWorkdirFor(missionId: string): string {
+	if (!/^copilot-[A-Za-z0-9_-]+$/.test(missionId)) {
+		throw new Error(`Not a copilot mission id: "${missionId}"`);
+	}
+	return join(COPILOT_WORKDIR, "users", missionId);
+}
+
+function copilotIdentityFor(missionId: string): AgentIdentity {
+	const dir = copilotWorkdirFor(missionId);
+	return { workdir: dir, sharedDir: dir, linuxUser: "magi-copilot" };
+}
 
 // ---------------------------------------------------------------------------
 // Handle
@@ -140,7 +154,7 @@ export function startCopilotDaemon(
 // Skill provisioning
 // ---------------------------------------------------------------------------
 
-function provisionCopilotSkills(repoRoot: string): void {
+function provisionCopilotSkills(repoRoot: string, userDir: string): void {
 	// When a Fly persistent volume is mounted, the volume root is owned by the
 	// process user (magi-operator, uid 999) with mode 0755 — not magi-copilot.
 	// Set an ACL entry so the copilot agent subprocess (sudo -u magi-copilot) can
@@ -160,7 +174,7 @@ function provisionCopilotSkills(repoRoot: string): void {
 		);
 	}
 
-	const dest = join(COPILOT_WORKDIR, "skills", "_platform");
+	const dest = join(userDir, "skills", "_platform");
 	try {
 		mkdirSync(dest, { recursive: true });
 
@@ -252,7 +266,8 @@ async function runWatchLoop(
 			? { ...teamConfig, mission: { ...teamConfig.mission, id: missionId } }
 			: teamConfig;
 
-	provisionCopilotSkills(repoRoot);
+	const identity = copilotIdentityFor(missionId);
+	provisionCopilotSkills(repoRoot, identity.workdir);
 
 	console.log("[copilot-daemon] Ready — watching for operator messages");
 
@@ -327,7 +342,7 @@ async function runWatchLoop(
 				conversationRepo,
 				llmCallLog,
 				statsCollector,
-				identity: COPILOT_IDENTITY,
+				identity,
 				onUserMessage: (msg) => pushEvent("copilot-msg", msg),
 				onMessage: async (msg: Message) => {
 					pushEvent("copilot-loop-msg", msg);

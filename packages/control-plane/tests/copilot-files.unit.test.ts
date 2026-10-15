@@ -76,3 +76,44 @@ describe("readCopilotFileNode", () => {
 		});
 	});
 });
+
+/**
+ * X-TENANT3 (2026-10-15 audit): one copilot workdir used to serve every user.
+ * Each user's copilot now has its own subdirectory, so the files route must
+ * never let one user's root reach a sibling user's — including a sibling
+ * whose id shares a prefix (`copilot-u1` vs `copilot-u10`).
+ */
+describe("per-user copilot roots", () => {
+	let base: string;
+	let rootU1: string;
+	let rootU10: string;
+
+	beforeEach(() => {
+		base = mkdtempSync(join(tmpdir(), "copilot-users-"));
+		rootU1 = join(base, "copilot-u1");
+		rootU10 = join(base, "copilot-u10");
+		mkdirSync(rootU1);
+		mkdirSync(rootU10);
+		writeFileSync(join(rootU1, "mine.txt"), "u1's file");
+		writeFileSync(join(rootU10, "secret.txt"), "u10's file");
+	});
+
+	afterEach(() => {
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	it("reads the caller's own file", () => {
+		const node = readCopilotFileNode(rootU1, "mine.txt");
+		expect(node).toMatchObject({ type: "file", content: "u1's file" });
+	});
+
+	it("rejects a path into a sibling user's root that shares a name prefix", () => {
+		expect(readCopilotFileNode(rootU1, "../copilot-u10/secret.txt")).toBeNull();
+		expect(readCopilotFileNode(rootU1, "../copilot-u10")).toBeNull();
+	});
+
+	it("returns an empty listing for a user whose copilot has never run", () => {
+		const node = readCopilotFileNode(join(base, "copilot-never"), "");
+		expect(node).toEqual({ type: "dir", path: "", entries: [] });
+	});
+});
