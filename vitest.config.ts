@@ -14,10 +14,11 @@ export default defineConfig({
 			reporter: ["text", "html"],
 			include: ["packages/*/src/**/*.ts"],
 			exclude: ["packages/*/src/**/*.d.ts", "packages/cockpit/**"],
-			// Per-package ratchet (issue #44, audit remediation M0): thresholds sit one
-			// point under the 2026-10-16 baseline and `autoUpdate` rewrites them upward
-			// when coverage improves — commit the bump. They are a floor against
-			// regression, not a target; raise deliberately with new tests.
+			// Per-package ratchet (issue #44): `autoUpdate` rewrites each threshold to the
+			// measured value whenever coverage rises, so the numbers below are always the
+			// last green run — commit the bump. A drop fails `npm run verify`; lowering a
+			// number by hand is the deliberate, visible escape hatch (e.g. deleting
+			// well-covered code), never a `?? default`.
 			thresholds: {
 				autoUpdate: true,
 				"packages/agent-config/src/**": {
