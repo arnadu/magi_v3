@@ -28,13 +28,13 @@ export default defineConfig({
 				},
 				"packages/agent-runtime-worker/src/**": {
 					statements: 48.29,
-					branches: 81.67,
+					branches: 81.68,
 					functions: 68.19,
 				},
 				"packages/control-plane/src/**": {
-					statements: 46.06,
-					branches: 86.58,
-					functions: 72.22,
+					statements: 47.36,
+					branches: 87.79,
+					functions: 73.26,
 				},
 			},
 		},
