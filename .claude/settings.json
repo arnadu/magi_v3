@@ -31,7 +31,7 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "cmd=$(jq -r '.tool_input.command // \"\"'); if printf '%s' \"$cmd\" | grep -Eq '(^|[;&| ])flyctl +(deploy|machines? +(destroy|kill)|volumes? +destroy)|git +push +.*(--force|-f( |$)|--force-with-lease|--no-verify)'; then jq -n --arg r \"Blocked by .claude/settings.json: deploys go through CI (push to main) and scripts/deploy-missions.sh; force-pushes, --no-verify pushes and machine/volume destruction are operator-only actions.\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:$r}}'; fi",
+						"command": "cmd=$(jq -r '.tool_input.command // \"\"'); if printf '%s' \"$cmd\" | grep -Eq '(^|[;&| ])flyctl +(deploy|machines? +(destroy|kill)|volumes? +destroy)|git +push +[^;&|]*(--force|-f( |$)|--force-with-lease|--no-verify)'; then jq -n --arg r \"Blocked by .claude/settings.json: deploys go through CI (push to main) and scripts/deploy-missions.sh; force-pushes, --no-verify pushes and machine/volume destruction are operator-only actions.\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:$r}}'; fi",
 						"timeout": 10
 					}
 				]
