@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { liveStateToStatus } from "../src/missions.js";
+import { liveStateToStatus } from "../src/mission-status.js";
 
 describe("liveStateToStatus", () => {
 	it("maps started/starting to running", () => {
@@ -12,9 +12,12 @@ describe("liveStateToStatus", () => {
 		expect(liveStateToStatus("stopping")).toBe("suspended");
 	});
 
-	it("maps destroyed/destroying to destroyed", () => {
-		expect(liveStateToStatus("destroyed")).toBe("destroyed");
-		expect(liveStateToStatus("destroying")).toBe("destroyed");
+	it("maps an out-of-band destroyed/destroying machine to suspended (volume intact, resumable), never to destroyed", () => {
+		// "destroyed" is reserved for the operator's DELETE, which also removes
+		// the volume and hides the mission from every list. A machine deleted
+		// outside MAGI leaves the volume, and resume re-provisions onto it.
+		expect(liveStateToStatus("destroyed")).toBe("suspended");
+		expect(liveStateToStatus("destroying")).toBe("suspended");
 	});
 
 	it("returns null (leave status unchanged) for transient creation states, not error", () => {

@@ -12,7 +12,6 @@
  * logged, matching the daemon-side resource-sampler's fail-open posture.
  */
 
-import { randomUUID } from "node:crypto";
 import {
 	type AlertStateStore,
 	ATLAS_STORAGE,
@@ -21,6 +20,7 @@ import {
 	evaluateAlert,
 } from "@magi/agent-runtime-worker";
 import type { Db, MongoClient } from "mongodb";
+import { relayToPlatformAdmins } from "./platform-relay.js";
 
 const SYSTEM_DATABASES = new Set(["admin", "local", "config"]);
 const MAX_COLLECTIONS = 10;
@@ -209,22 +209,8 @@ export async function checkAtlasStorage(deps: AtlasUsageDeps): Promise<void> {
 		.join(", ");
 	const message = `Shared MongoDB Atlas cluster is at ${pct}% (${gb(usage.usedBytes)} / ${gb(usage.limitBytes)} GB) across ${usage.databases.length} database(s).${largest ? ` Largest collections in the app database: ${largest}.` : ""}`;
 
-	for (const userId of deps.platformAdminUserIds) {
-		try {
-			await deps.db.collection("mailbox").insertOne({
-				id: randomUUID(),
-				missionId: `copilot-${userId}`,
-				from: "system",
-				to: ["copilot"],
-				subject: "Anomaly (hard): atlas-storage-high",
-				body: message,
-				timestamp: new Date(),
-				readBy: [],
-			});
-		} catch (e) {
-			console.error(
-				`[atlas-usage] Failed to relay to admin { userId: "${userId}", error: "${(e as Error).message}" }`,
-			);
-		}
-	}
+	await relayToPlatformAdmins(deps.db, deps.platformAdminUserIds, {
+		category: "atlas-storage-high",
+		body: message,
+	});
 }

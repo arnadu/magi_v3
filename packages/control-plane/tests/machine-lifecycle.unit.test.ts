@@ -7,15 +7,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	destroyMission,
+	machineExists,
 	provisionMission,
 	resumeMission,
 	suspendMission,
+	volumeExists,
 } from "../src/fly-machines.js";
 import {
 	destroyTracked,
 	provisionTracked,
 	resumeTracked,
 	suspendTracked,
+	wakeTracked,
 } from "../src/machine-lifecycle.js";
 import { fakeSegmentsDb } from "./support/fake-segments-db.js";
 
@@ -24,12 +27,16 @@ vi.mock("../src/fly-machines.js", () => ({
 	suspendMission: vi.fn(),
 	resumeMission: vi.fn(),
 	destroyMission: vi.fn(),
+	machineExists: vi.fn(),
+	volumeExists: vi.fn(),
 }));
 
 const provision = vi.mocked(provisionMission);
 const stop = vi.mocked(suspendMission);
 const start = vi.mocked(resumeMission);
 const destroy = vi.mocked(destroyMission);
+const exists = vi.mocked(machineExists);
+const volExists = vi.mocked(volumeExists);
 
 const handle = { machineId: "mach-1", privateIp: "::1", volumeId: "vol-1" };
 
@@ -180,5 +187,99 @@ describe("destroyTracked", () => {
 		await destroyTracked(db, "m1", "mach-1", "vol-1");
 		expect(destroy).toHaveBeenCalledWith("mach-1", "vol-1");
 		expect(segments[0].endedAt).toBeInstanceOf(Date);
+	});
+});
+
+describe("wakeTracked", () => {
+	const mission = () => ({
+		missionId: "m1",
+		userId: "u1",
+		status: "suspended",
+		machineId: "mach-old",
+		volumeId: "vol-1",
+		errorMessage: "earlier failure",
+	});
+
+	it("starts the machine when it still exists and marks the mission running", async () => {
+		exists.mockResolvedValue(true);
+		const { db, segments, missions } = fakeSegmentsDb({
+			missions: [mission()],
+		});
+		const result = await wakeTracked(db, {
+			missionId: "m1",
+			machineId: "mach-old",
+			volumeId: "vol-1",
+		});
+		expect(result).toEqual({ reprovisioned: false, machineId: "mach-old" });
+		expect(start).toHaveBeenCalledWith("mach-old");
+		expect(provision).not.toHaveBeenCalled();
+		expect(segments).toHaveLength(1);
+		expect(missions[0]).toMatchObject({
+			status: "running",
+			machineId: "mach-old",
+		});
+	});
+
+	it("re-provisions on the volume when the machine is gone, and rewrites machineId/privateIp/status", async () => {
+		exists.mockResolvedValue(false);
+		volExists.mockResolvedValue(true);
+		const { db, segments, missions } = fakeSegmentsDb({
+			missions: [mission()],
+		});
+		const result = await wakeTracked(db, {
+			missionId: "m1",
+			machineId: "mach-old",
+			volumeId: "vol-1",
+			mission: { memoryMb: 2048, cpus: 2 },
+		});
+		expect(result).toEqual({ reprovisioned: true, machineId: "mach-1" });
+		expect(start).not.toHaveBeenCalled();
+		expect(provision).toHaveBeenCalledWith("m1", {
+			existingVolumeId: "vol-1",
+			memoryMb: 2048,
+			cpus: 2,
+		});
+		expect(segments[0]).toMatchObject({ machineId: "mach-1" });
+		expect(missions[0]).toMatchObject({
+			status: "running",
+			machineId: "mach-1",
+			privateIp: "::1",
+		});
+		expect(missions[0].errorMessage).toBeUndefined();
+	});
+
+	it("refuses when the machine is gone and the recorded volume does not exist (drifted volumeId)", async () => {
+		exists.mockResolvedValue(false);
+		volExists.mockResolvedValue(false);
+		const { db, missions } = fakeSegmentsDb({ missions: [mission()] });
+		await expect(
+			wakeTracked(db, {
+				missionId: "m1",
+				machineId: "mach-old",
+				volumeId: "vol-1",
+			}),
+		).rejects.toThrow(/likely drifted/);
+		expect(provision).not.toHaveBeenCalled();
+		expect(missions[0].status).toBe("suspended");
+	});
+
+	it("refuses when the machine is gone and no volumeId is recorded", async () => {
+		exists.mockResolvedValue(false);
+		const { db } = fakeSegmentsDb({ missions: [mission()] });
+		await expect(
+			wakeTracked(db, { missionId: "m1", machineId: "mach-old" }),
+		).rejects.toThrow(/no volumeId/);
+		expect(volExists).not.toHaveBeenCalled();
+	});
+
+	it("does nothing for a local developer daemon", async () => {
+		const { db, segments } = fakeSegmentsDb({ missions: [mission()] });
+		const result = await wakeTracked(db, {
+			missionId: "m1",
+			machineId: "local-m1",
+		});
+		expect(result).toEqual({ reprovisioned: false, machineId: "local-m1" });
+		expect(exists).not.toHaveBeenCalled();
+		expect(segments).toHaveLength(0);
 	});
 });

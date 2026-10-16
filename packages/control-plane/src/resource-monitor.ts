@@ -34,6 +34,7 @@ import type { Db, MongoClient } from "mongodb";
 import { schedule } from "node-cron";
 import { checkAtlasStorage } from "./atlas-usage.js";
 import { checkOomExits } from "./fly-events.js";
+import { checkOrphanMachines } from "./fly-orphans.js";
 import { upgradedMsSince } from "./machine-segments.js";
 import {
 	spendCapRatio,
@@ -304,6 +305,16 @@ export async function runResourceMonitorTick(
 	await checkOomExits(db).catch((e) =>
 		console.error(
 			`[resource-monitor] OOM check failed: ${(e as Error).message}`,
+		),
+	);
+
+	await checkOrphanMachines({
+		db,
+		platformAdminUserIds: deps.platformAdminUserIds,
+		now: () => now,
+	}).catch((e) =>
+		console.error(
+			`[resource-monitor] Orphan-machine check failed: ${(e as Error).message}`,
 		),
 	);
 

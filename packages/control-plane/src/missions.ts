@@ -48,6 +48,7 @@ import {
 } from "./fly-machines.js";
 import { destroyTracked, provisionTracked } from "./machine-lifecycle.js";
 import { upgradedMsSince } from "./machine-segments.js";
+import { liveStateToStatus } from "./mission-status.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
 import { getTemplate } from "./templates.js";
@@ -58,7 +59,7 @@ import {
 	queryTurns,
 } from "./transcript-queries.js";
 
-interface MissionDoc {
+export interface MissionDoc {
 	missionId: string;
 	/** Firebase UID of the owner, or "admin" for CONTROL_API_KEY-created missions. */
 	userId: string;
@@ -770,11 +771,11 @@ export function createMissionsRouter(db: Db): Router {
 		// Refresh live machine state from Fly. Skipped for "error": a failed
 		// resume sets status to "error" but deliberately leaves the stale
 		// machineId of the (now possibly-deleted) old machine in place — a live
-		// lookup against that stale id would see it gone and silently overwrite
-		// "error" with "destroyed", misrepresenting a failed-but-retryable
-		// resume as the irreversible DELETE /:id action, which never ran. The
-		// mission stays in "error" until an operator explicitly resumes
-		// (success clears it) or destroys it.
+		// lookup against it would silently overwrite "error" (and errorMessage's
+		// explanation) with whatever the dead machine reports. The mission stays
+		// in "error" until an operator explicitly resumes (success clears it) or
+		// destroys it. "destroyed" is skipped because only DELETE /:id produces
+		// it, and that machine no longer exists by definition.
 		// Also skipped while a resize has the machine stopped on purpose: the live
 		// state would otherwise flip the mission to "suspended" mid-resize.
 		if (
@@ -1865,51 +1866,4 @@ export function createMissionsRouter(db: Db): Router {
 	void performDestroy; // referenced only to re-enable later; not wired to a route
 
 	return router;
-}
-
-/**
- * Maps a live Fly machine state to a mission status, or `null` when the state
- * doesn't confidently indicate one (leave the mission's current status alone).
- *
- * `null` for "created"/"replacing" — not `"error"` — matters because
- * `provisionMission`/`resumeMission` return as soon as Fly accepts the
- * create/start call, without waiting for the machine to reach "started".
- * A mission doc is written as "running" immediately after that, making it
- * eligible for this live-refresh check on the very next `GET /:id` — which
- * the cockpit fires within milliseconds via a mount-only effect right after
- * navigating to the new mission. Mapping the machine's still-transient state
- * to "error" flipped brand-new, fully-provisioned missions to error within
- * seconds (found live, 2026-09-11 — twice, both with machineId/volumeId/
- * privateIp all set and no errorMessage, the fingerprint of this path rather
- * than a real provisioning failure).
- *
- * The `default` case gets the same treatment: Fly has no first-class "failed"
- * machine state (a crash surfaces as "stopped" with a nonzero exit code in a
- * separate events field, not here), so an unrecognized state is ambiguous,
- * not evidence of failure — overwriting a known-good status with "error" and
- * no explanation is worse than leaving it stale until the next successful
- * refresh.
- */
-export function liveStateToStatus(
-	flyState: string,
-): MissionDoc["status"] | null {
-	switch (flyState) {
-		case "started":
-		case "starting":
-			return "running";
-		case "stopped":
-		case "stopping":
-			return "suspended";
-		case "destroyed":
-		case "destroying":
-			return "destroyed";
-		case "created":
-		case "replacing":
-			return null;
-		default:
-			console.warn(
-				`[missions] unrecognized Fly machine state "${flyState}" — leaving mission status unchanged`,
-			);
-			return null;
-	}
 }

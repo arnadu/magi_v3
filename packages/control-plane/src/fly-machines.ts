@@ -357,14 +357,20 @@ export interface FlyMachineEvent {
 
 export interface FlyMachineSummary {
 	id: string;
+	name?: string;
+	state?: string;
+	/** ISO timestamp from Fly. */
+	created_at?: string;
+	/** Only `env.MISSION_ID` is read (set by `provisionMission`); the rest of the config is not modelled. */
+	config?: { env?: Record<string, string> };
 	events?: FlyMachineEvent[];
 }
 
 /**
  * Every machine currently known to the app, with its retained event history.
- * Used by the resource monitor's OOM-detection sweep (ADR-0032) — never
- * called per-request. Empty in local execution mode, which has no real Fly
- * machines to list.
+ * Used by the resource monitor's OOM-detection sweep and orphan check
+ * (ADR-0032) — never called per-request. Empty in local execution mode, which
+ * has no real Fly machines to list.
  */
 export async function listMachines(): Promise<FlyMachineSummary[]> {
 	if (isLocalExecution()) return [];

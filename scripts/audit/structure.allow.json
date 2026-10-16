@@ -204,10 +204,10 @@
 		}
 	},
 	"packages/control-plane/src/copilot-router.ts": {
-		"lines": 917,
+		"lines": 877,
 		"fns": {
-			"createCopilotRouter@67": 338,
-			"executeAction@428": 416
+			"createCopilotRouter@65": 338,
+			"executeAction@426": 378
 		}
 	},
 	"packages/control-plane/src/copilot-tools.ts": {
@@ -223,13 +223,13 @@
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
-		"lines": 1916,
+		"lines": 1870,
 		"fns": {
-			"readLimits@222": 172,
-			"createMissionsRouter@663": 1206,
-			"<anonymous>@1109": 137,
-			"<anonymous>@1458": 137,
-			"<anonymous>@1693": 124
+			"readLimits@223": 172,
+			"createMissionsRouter@664": 1206,
+			"<anonymous>@1110": 137,
+			"<anonymous>@1459": 137,
+			"<anonymous>@1694": 124
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {
@@ -242,12 +242,6 @@
 		"lines": 789,
 		"fns": {
 			"requestUpgrade@320": 143
-		}
-	},
-	"packages/control-plane/src/scheduler.ts": {
-		"lines": 319,
-		"fns": {
-			"deliver@113": 128
 		}
 	}
 }

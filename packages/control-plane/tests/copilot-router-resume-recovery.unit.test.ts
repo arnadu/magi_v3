@@ -11,13 +11,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { executeAction } from "../src/copilot-router.js";
 import type { PendingAction } from "../src/copilot-tools.js";
-import {
-	flyVolumeName,
-	listVolumes,
-	machineExists,
-	volumeExists,
-} from "../src/fly-machines.js";
-import { provisionTracked, resumeTracked } from "../src/machine-lifecycle.js";
+import { flyVolumeName, listVolumes } from "../src/fly-machines.js";
+import { wakeTracked } from "../src/machine-lifecycle.js";
 
 vi.mock("../src/fly-machines.js", async () => {
 	const actual = await vi.importActual<typeof import("../src/fly-machines.js")>(
@@ -32,16 +27,15 @@ vi.mock("../src/fly-machines.js", async () => {
 		volumeExists: vi.fn(),
 	};
 });
+// The start-or-reprovision decision itself lives in machine-lifecycle.ts and
+// is tested there (machine-lifecycle.unit.test.ts, "wakeTracked"); here only
+// the hand-off and the operator-facing message are checked.
 vi.mock("../src/machine-lifecycle.js", () => ({
-	provisionTracked: vi.fn(),
-	resumeTracked: vi.fn(),
+	wakeTracked: vi.fn(),
 }));
 
 const mockedListVolumes = vi.mocked(listVolumes);
-const mockedMachineExists = vi.mocked(machineExists);
-const mockedVolumeExists = vi.mocked(volumeExists);
-const mockedProvisionTracked = vi.mocked(provisionTracked);
-const mockedResumeTracked = vi.mocked(resumeTracked);
+const mockedWakeTracked = vi.mocked(wakeTracked);
 
 interface MissionDoc {
 	missionId: string;
@@ -129,11 +123,15 @@ beforeEach(() => {
 	vi.clearAllMocks();
 });
 
-describe("executeAction: resume_mission — destroyed-machine fallback", () => {
-	it("does a plain start when the machine still exists (ordinary suspend → resume)", async () => {
-		mockedMachineExists.mockResolvedValue(true);
-		mockedResumeTracked.mockResolvedValue(undefined);
-		const missions = [missionM1({ status: "suspended" })];
+describe("executeAction: resume_mission — hands off to wakeTracked", () => {
+	it("passes the mission's machine, volume and shape, and reports a plain resume", async () => {
+		mockedWakeTracked.mockResolvedValue({
+			reprovisioned: false,
+			machineId: "old-machine",
+		});
+		const missions = [
+			missionM1({ status: "suspended", mission: { memoryMb: 2048 } }),
+		];
 		const db = fakeDb(missions);
 
 		const result = await executeAction(
@@ -143,25 +141,20 @@ describe("executeAction: resume_mission — destroyed-machine fallback", () => {
 		);
 
 		expect(result).toBe('Mission "m1" resumed');
-		expect(mockedResumeTracked).toHaveBeenCalledWith(db, {
+		expect(mockedWakeTracked).toHaveBeenCalledWith(db, {
 			missionId: "m1",
 			machineId: "old-machine",
-			mission: undefined,
+			volumeId: "vol_real",
+			mission: { memoryMb: 2048 },
 		});
-		expect(mockedProvisionTracked).not.toHaveBeenCalled();
-		expect(missions[0].status).toBe("running");
 	});
 
-	it("reprovisions fresh against the volume when the machine no longer exists", async () => {
-		mockedMachineExists.mockResolvedValue(false);
-		mockedVolumeExists.mockResolvedValue(true);
-		mockedProvisionTracked.mockResolvedValue({
+	it("tells the operator when the machine had to be re-provisioned", async () => {
+		mockedWakeTracked.mockResolvedValue({
+			reprovisioned: true,
 			machineId: "new-machine",
-			privateIp: "fdaa::1",
-			volumeId: "vol_real",
 		});
-		const missions = [missionM1({ errorMessage: "boom" })];
-		const db = fakeDb(missions);
+		const db = fakeDb([missionM1({ errorMessage: "boom" })]);
 
 		const result = await executeAction(
 			db,
@@ -170,30 +163,28 @@ describe("executeAction: resume_mission — destroyed-machine fallback", () => {
 		);
 
 		expect(result).toContain("machine had been destroyed");
-		expect(mockedProvisionTracked).toHaveBeenCalledWith(db, "m1", {
-			existingVolumeId: "vol_real",
-			memoryMb: undefined,
-			cpus: undefined,
-		});
-		expect(mockedResumeTracked).not.toHaveBeenCalled();
-		expect(missions[0]).toMatchObject({
-			machineId: "new-machine",
-			privateIp: "fdaa::1",
-			status: "running",
-		});
-		expect(missions[0].errorMessage).toBeUndefined();
+		expect(result).toContain("new-machine");
 	});
 
-	it("refuses the reprovision fallback when the volume is also gone", async () => {
-		mockedMachineExists.mockResolvedValue(false);
-		mockedVolumeExists.mockResolvedValue(false);
-		const missions = [missionM1()];
-		const db = fakeDb(missions);
+	it("surfaces wakeTracked's refusal (e.g. a drifted volumeId) unchanged", async () => {
+		mockedWakeTracked.mockRejectedValue(
+			new Error(
+				'Volume vol_real does not exist on Fly — mission.volumeId in MongoDB has likely drifted. Try ProposeAction "fix_mission_volume" first.',
+			),
+		);
+		const db = fakeDb([missionM1()]);
 
 		await expect(
 			executeAction(db, action("resume_mission", { missionId: "m1" }), "user1"),
 		).rejects.toThrow(/mission\.volumeId in MongoDB has likely drifted/);
-		expect(mockedProvisionTracked).not.toHaveBeenCalled();
+	});
+
+	it("refuses a mission with no machine before calling the lifecycle layer", async () => {
+		const db = fakeDb([missionM1({ machineId: undefined })]);
+		await expect(
+			executeAction(db, action("resume_mission", { missionId: "m1" }), "user1"),
+		).rejects.toThrow(/has no machine/);
+		expect(mockedWakeTracked).not.toHaveBeenCalled();
 	});
 });
 

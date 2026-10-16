@@ -15,10 +15,12 @@ import {
 	deleteMachine,
 	destroyMission,
 	type MachineHandle,
+	machineExists,
 	type ProvisionOptions,
 	provisionMission,
 	resumeMission,
 	suspendMission,
+	volumeExists,
 } from "./fly-machines.js";
 import {
 	closeOpenSegments,
@@ -107,6 +109,85 @@ export async function resumeTracked(
 			startedAt: new Date(),
 		}),
 	);
+}
+
+export interface WakeResult {
+	/** False: the stopped machine was started. True: it was gone and a new one was provisioned on the volume. */
+	reprovisioned: boolean;
+	machineId: string;
+}
+
+/**
+ * Bring a mission's machine back for a wake-up (a scheduled delivery, the
+ * copilot's resume): a plain start when the stopped machine still exists,
+ * otherwise a fresh provision against the mission's volume. The machine can
+ * be gone for reasons the mission doc never saw — a resize that failed after
+ * its delete step, or a machine removed outside MAGI (the Fly dashboard, a
+ * quota clean-up: 2026-10-16, when every stopped machine in the app was
+ * deleted by hand). The volume is the mission's state; the machine is
+ * disposable, and `POST /:id/resume` already deletes and re-creates it on
+ * every operator resume. Either branch leaves the mission doc saying
+ * "running" with the machine that is actually up, so both callers share one
+ * piece of bookkeeping instead of each updating the doc differently.
+ * "local-*" machines are the developer's own daemon: nothing to start.
+ */
+export async function wakeTracked(
+	db: Db,
+	mission: {
+		missionId: string;
+		machineId: string;
+		volumeId?: string;
+		mission?: { memoryMb?: number; cpus?: number };
+	},
+): Promise<WakeResult> {
+	const { missionId, machineId } = mission;
+	const missions = db.collection("missions");
+	if (machineId.startsWith("local-")) {
+		return { reprovisioned: false, machineId };
+	}
+	if (await machineExists(machineId)) {
+		await resumeTracked(db, {
+			missionId,
+			machineId,
+			mission: mission.mission,
+		});
+		await missions.updateOne(
+			{ missionId },
+			{ $set: { status: "running", updatedAt: new Date() } },
+		);
+		return { reprovisioned: false, machineId };
+	}
+	if (!mission.volumeId) {
+		throw new Error(
+			`Mission "${missionId}" has no machine on Fly (${machineId} is gone) and no volumeId to re-provision from`,
+		);
+	}
+	if (!(await volumeExists(mission.volumeId))) {
+		throw new Error(
+			`Volume ${mission.volumeId} does not exist on Fly — mission.volumeId in MongoDB has likely drifted. Try ProposeAction "fix_mission_volume" first.`,
+		);
+	}
+	const handle = await provisionTracked(db, missionId, {
+		existingVolumeId: mission.volumeId,
+		memoryMb: mission.mission?.memoryMb,
+		cpus: mission.mission?.cpus,
+	});
+	await missions.updateOne(
+		{ missionId },
+		{
+			$set: {
+				machineId: handle.machineId,
+				privateIp: handle.privateIp,
+				status: "running",
+				updatedAt: new Date(),
+			},
+			$unset: { errorMessage: "" },
+		},
+	);
+	console.log(
+		`[machine-lifecycle] wake re-provisioned { missionId: "${missionId}", goneMachineId: "${machineId}", machineId: "${handle.machineId}" }`,
+	);
+	return { reprovisioned: true, machineId: handle.machineId };
 }
 
 /** Destroy the machine and volume, then close the mission's open segment. */

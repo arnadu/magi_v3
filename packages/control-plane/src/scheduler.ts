@@ -23,7 +23,7 @@ import cronParser from "cron-parser";
 import type { Collection, Db } from "mongodb";
 import { schedule } from "node-cron";
 import { getMachineState } from "./fly-machines.js";
-import { resumeTracked } from "./machine-lifecycle.js";
+import { wakeTracked } from "./machine-lifecycle.js";
 import { createUpgradeSweeper } from "./resource-upgrade.js";
 
 const { parseExpression } = cronParser;
@@ -57,6 +57,7 @@ interface MissionDoc {
 	_id: unknown;
 	missionId: string;
 	machineId?: string;
+	volumeId?: string;
 	status: string;
 	userId?: string;
 	agents?: AgentConfig[];
@@ -107,6 +108,29 @@ async function recordSchedulingFailure(
 	});
 }
 
+/**
+ * Wake the execution plane machine before a delivery if it is stopped — or
+ * gone: a missing machine (getMachineState 404 → "unknown") is re-provisioned
+ * on the mission's volume by wakeTracked rather than failing the delivery
+ * five times and marking the schedule failed. A resize in flight has the
+ * machine stopped on purpose; the message still lands in the mailbox and the
+ * re-created machine reads it on boot.
+ */
+async function wakeIfNotRunning(db: Db, mission: MissionDoc): Promise<void> {
+	if (!mission.machineId || mission.resize?.claimedAt) return;
+	const state = await getMachineState(mission.machineId).catch(() => "unknown");
+	if (state === "started" || state === "starting") return;
+	console.log(
+		`[scheduler] Waking machine ${mission.machineId} (state ${state}) for mission ${mission.missionId}`,
+	);
+	await wakeTracked(db, {
+		missionId: mission.missionId,
+		machineId: mission.machineId,
+		volumeId: mission.volumeId,
+		mission: mission.mission,
+	});
+}
+
 // Exported for unit testing (deliver's attempt-cap/escalation logic) —
 // mirrors why job-recovery.ts's recoverOrphanedJobs is exported separately
 // from daemon.ts.
@@ -126,25 +150,8 @@ export async function deliver(db: Db): Promise<void> {
 		if (!doc) break;
 
 		try {
-			// Wake the execution plane machine if it is stopped.
 			const mission = await missionsCol.findOne({ missionId: doc.missionId });
-			// A resize in flight has the machine stopped on purpose; the message still
-			// lands in the mailbox and the re-created machine reads it on boot.
-			if (mission?.machineId && !mission.resize?.claimedAt) {
-				const state = await getMachineState(mission.machineId).catch(
-					() => "unknown",
-				);
-				if (state !== "started" && state !== "starting") {
-					console.log(
-						`[scheduler] Resuming machine ${mission.machineId} for mission ${doc.missionId}`,
-					);
-					await resumeTracked(db, {
-						missionId: doc.missionId,
-						machineId: mission.machineId,
-						mission: mission.mission,
-					});
-				}
-			}
+			if (mission) await wakeIfNotRunning(db, mission);
 
 			// Deliver to mailbox. Fields must match MailboxMessage
 			// (agent-runtime-worker/src/mailbox.ts) exactly — this insert

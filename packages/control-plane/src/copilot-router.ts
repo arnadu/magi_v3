@@ -36,11 +36,9 @@ import {
 	flyVolumeName,
 	isLocalExecution,
 	listVolumes,
-	machineExists,
 	provisionLocal,
-	volumeExists,
 } from "./fly-machines.js";
-import { provisionTracked, resumeTracked } from "./machine-lifecycle.js";
+import { provisionTracked, wakeTracked } from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
 import { getTemplate } from "./templates.js";
@@ -547,58 +545,20 @@ export async function executeAction(
 
 			// A mission left in "error" status (e.g. after a resume that failed
 			// because its volumeId had drifted — issue #62) has no guarantee its
-			// machineId still points to a real Fly machine. resumeTracked's plain
-			// Fly "start" only works when the machine still exists (the ordinary
-			// suspend → resume case, and the scheduler's wake-for-delivery path,
-			// both left untouched). When it's gone, fall back to the same
-			// delete-if-exists + reprovision-against-volume path the operator's
-			// own POST /:id/resume route uses, which tolerates an already-gone
-			// machine — without this, the copilot's own resume_mission action
-			// could never actually recover a mission fix_mission_volume just
-			// fixed, since its old machineId is exactly the one that got deleted.
-			const machineGone =
-				!mission.machineId.startsWith("local-") &&
-				!(await machineExists(mission.machineId));
-			if (machineGone) {
-				if (!mission.volumeId)
-					throw new Error(
-						`Mission "${missionId}" has no volumeId — cannot resume`,
-					);
-				if (!(await volumeExists(mission.volumeId))) {
-					throw new Error(
-						`Volume ${mission.volumeId} does not exist on Fly — mission.volumeId in MongoDB has likely drifted. Try ProposeAction "fix_mission_volume" first.`,
-					);
-				}
-				const handle = await provisionTracked(db, missionId, {
-					existingVolumeId: mission.volumeId,
-					memoryMb: mission.mission?.memoryMb,
-					cpus: mission.mission?.cpus,
-				});
-				await missions.updateOne(
-					{ missionId },
-					{
-						$set: {
-							machineId: handle.machineId,
-							privateIp: handle.privateIp,
-							status: "running",
-							updatedAt: now,
-						},
-						$unset: { errorMessage: "" },
-					},
-				);
-				return `Mission "${missionId}" resumed (its machine had been destroyed — reprovisioned fresh: ${handle.machineId})`;
-			}
-
-			await resumeTracked(db, {
+			// machineId still points to a real Fly machine; wakeTracked starts it
+			// when it exists and re-provisions on the volume when it is gone —
+			// without that, this action could never recover a mission
+			// fix_mission_volume just fixed, since its old machineId is exactly
+			// the one that got deleted.
+			const woke = await wakeTracked(db, {
 				missionId,
 				machineId: mission.machineId,
+				volumeId: mission.volumeId,
 				mission: mission.mission,
 			});
-			await missions.updateOne(
-				{ missionId },
-				{ $set: { status: "running", updatedAt: now } },
-			);
-			return `Mission "${missionId}" resumed`;
+			return woke.reprovisioned
+				? `Mission "${missionId}" resumed (its machine had been destroyed — reprovisioned fresh: ${woke.machineId})`
+				: `Mission "${missionId}" resumed`;
 		}
 
 		case "fix_mission_volume": {
