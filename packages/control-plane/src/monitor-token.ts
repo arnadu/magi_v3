@@ -15,3 +15,13 @@ export function deriveMonitorToken(missionId: string): string {
 	if (!key) return "";
 	return createHmac("sha256", key).update(missionId).digest("hex");
 }
+
+/**
+ * Request headers for any control-plane → monitor-server call. Every monitor
+ * route requires the token (GETs included); when no signing key is configured
+ * (local dev with a loopback daemon) the header is simply absent.
+ */
+export function monitorAuthHeaders(missionId: string): Record<string, string> {
+	const token = deriveMonitorToken(missionId);
+	return token ? { "x-monitor-token": token } : {};
+}

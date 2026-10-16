@@ -17,8 +17,9 @@
  *     instance holds (pause/resume, the budget cap) — reusing those code
  *     paths instead of duplicating them keeps a single source of truth and
  *     reuses the same audit/SSE side effects the dashboard's own buttons
- *     trigger. GET is unauthenticated (loopback, MonitorServer's own
- *     tokenOk() exempts GET); mutating calls send x-monitor-token.
+ *     trigger. Every call, GET included, sends x-monitor-token — the monitor
+ *     is reachable from other machines in the app over 6PN, so nothing on it
+ *     is unauthenticated.
  *
  * Trust-boundary marking: every read that returns free text a teammate wrote
  * (or that passed through a teammate) is wrapped — this is not limited to
@@ -168,6 +169,7 @@ export function createMissionCopilotTools(
 	async function monitorGet(path: string): Promise<ToolResult> {
 		try {
 			const res = await fetch(`http://127.0.0.1:${monitorPort}${path}`, {
+				headers: { "x-monitor-token": monitorToken },
 				signal: AbortSignal.timeout(10_000),
 			});
 			const body = await res.text();

@@ -42,6 +42,7 @@ import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import { createTraceRoutes } from "./monitor-routes/trace.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
 import { createUploadDownloadRoutes } from "./monitor-routes/upload-download.js";
+import { requireMonitorToken, safeEqual } from "./safe-equal.js";
 import { runGit } from "./safe-git.js";
 import {
 	PathOutsideRootError,
@@ -226,10 +227,9 @@ export class MonitorServer {
 	// Agent workdir map (populated by daemon after workspace provision)
 	private agentWorkdirs = new Map<string, string>();
 
-	// Per-machine auth token for mutating routes.
-	// Set via MONITOR_TOKEN env var at machine creation time.
-	// Empty/absent = local dev mode: no check performed.
-	private readonly monitorToken = process.env.MONITOR_TOKEN ?? "";
+	// Per-mission auth token, required on every route. Injected via MONITOR_TOKEN
+	// at machine creation; mandatory on Fly, optional only for a local daemon.
+	private readonly monitorToken = requireMonitorToken();
 
 	constructor(
 		private readonly db: Db,
@@ -481,10 +481,22 @@ export class MonitorServer {
 
 	// ── Request handler ───────────────────────────────────────────────────────
 
-	/** Returns true if the request carries the correct monitor token (or no token is configured). */
+	/**
+	 * True when the request carries the mission's token in `x-monitor-token`
+	 * (constant-time compare), or when no token is configured — which the
+	 * constructor only allows off Fly (local dev).
+	 */
 	private tokenOk(req: IncomingMessage): boolean {
 		if (!this.monitorToken) return true;
-		return req.headers["x-monitor-token"] === this.monitorToken;
+		const provided = req.headers["x-monitor-token"];
+		return (
+			typeof provided === "string" && safeEqual(provided, this.monitorToken)
+		);
+	}
+
+	/** Every registered route (method + path), for tests that must cover the whole surface. */
+	routeTable(): ReadonlyArray<Pick<RouteEntry, "method" | "path">> {
+		return this.routes.map(({ method, path }) => ({ method, path }));
 	}
 
 	private async handleRequest(
@@ -496,9 +508,14 @@ export class MonitorServer {
 		res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
 		res.setHeader("Vary", "Origin");
 
-		// All mutating requests require the monitor token when one is configured.
-		// GET requests (dashboard UI, SSE stream, file reads) are read-only and exempt.
-		if (req.method !== "GET" && !this.tokenOk(req)) {
+		// Every route requires the mission's token, GETs included: this server
+		// binds `::` and is reachable from every other machine in the Fly app
+		// over 6PN (verified live 2026-10-17 — one mission's machine read
+		// another's /status and /files/shared), and an agent's Bash can resolve
+		// `<app>.internal`. Transcripts, mail and files are not read-only in the
+		// sense that matters. The control-plane proxy injects the header on every
+		// forwarded request, SSE included; the mission copilot's own calls send it.
+		if (!this.tokenOk(req)) {
 			res.writeHead(401, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "Unauthorized" }));
 			return;

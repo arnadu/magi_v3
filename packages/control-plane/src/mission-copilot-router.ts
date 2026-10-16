@@ -25,6 +25,7 @@
 import type { Router as ExpressRouter, Request, Response } from "express";
 import { Router } from "express";
 import type { Db } from "mongodb";
+import { safeEqual } from "./auth.js";
 import { GITHUB_REPO, ghFetch } from "./github.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import {
@@ -52,7 +53,11 @@ export function verifyMissionToken(
 	// before comparing, so an empty provided header can never match.
 	const expected = deriveMonitorToken(missionId);
 	const provided = req.headers["x-monitor-token"];
-	if (!expected || typeof provided !== "string" || provided !== expected) {
+	if (
+		!expected ||
+		typeof provided !== "string" ||
+		!safeEqual(provided, expected)
+	) {
 		res.status(401).json({ error: "Unauthorized" });
 		return;
 	}

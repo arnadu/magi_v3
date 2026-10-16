@@ -49,7 +49,7 @@ import {
 import { destroyTracked, provisionTracked } from "./machine-lifecycle.js";
 import { upgradedMsSince } from "./machine-segments.js";
 import { liveStateToStatus } from "./mission-status.js";
-import { deriveMonitorToken } from "./monitor-token.js";
+import { deriveMonitorToken, monitorAuthHeaders } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
 import { getTemplate } from "./templates.js";
 import {
@@ -340,6 +340,7 @@ export async function readLimits(
 	if (missionRunning && mission.privateIp) {
 		try {
 			const res = await fetch(`http://[${mission.privateIp}]:4000/status`, {
+				headers: monitorAuthHeaders(mission.missionId),
 				signal: AbortSignal.timeout(5_000),
 			});
 			if (res.ok) {
@@ -872,6 +873,7 @@ export function createMissionsRouter(db: Db): Router {
 				// tight for this cross-app WireGuard hop and caused silent,
 				// undiagnosable fallback to the stale static roster.
 				const liveRes = await fetch(`http://${host}:4000/team`, {
+					headers: monitorAuthHeaders(mission.missionId),
 					signal: AbortSignal.timeout(10_000),
 				});
 				if (liveRes.ok) {

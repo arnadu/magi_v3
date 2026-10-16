@@ -60,7 +60,7 @@ export function createAuthMiddleware(db: Db) {
 	};
 }
 
-function safeEqual(a: string, b: string): boolean {
+export function safeEqual(a: string, b: string): boolean {
 	// Constant-time comparison. HMAC both inputs to fixed-length 32-byte digests
 	// so timingSafeEqual never leaks length via an early return on differing
 	// lengths. The "cmp" key is NOT a secret — it is a fixed public salt used only

@@ -126,8 +126,39 @@ describe("MONITOR_TOKEN set", () => {
 		await cleanup(client, missionId);
 	});
 
-	it("a GET route succeeds with no token header at all", async () => {
-		const res = await fetch(`${base}/status`);
+	it("every registered route — GETs and SSE included — returns 401 without the token", async () => {
+		// Enumerates the live route table so a route added later cannot be
+		// unauthenticated by omission. Regex routes get a dummy segment; the
+		// body/params do not matter because the gate runs before any handler.
+		const routes = monitor.routeTable();
+		expect(routes.length).toBeGreaterThan(20);
+		for (const route of routes) {
+			const paths = Array.isArray(route.path)
+				? route.path
+				: typeof route.path === "string"
+					? [route.path]
+					: [
+							route.path.source
+								.replace(/^\^|\$$/g, "")
+								.replace(/\\\//g, "/")
+								.replace(/\([^)]*\)/g, "x"),
+						];
+			for (const p of paths) {
+				const res = await fetch(`${base}${p}`, {
+					method: route.method,
+					headers: { "content-type": "application/json" },
+					body: route.method === "GET" ? undefined : "{}",
+				});
+				expect(res.status, `${route.method} ${p}`).toBe(401);
+				await res.arrayBuffer();
+			}
+		}
+	});
+
+	it("a GET route succeeds with the correct token header", async () => {
+		const res = await fetch(`${base}/status`, {
+			headers: { "x-monitor-token": TOKEN },
+		});
 		expect(res.status).toBe(200);
 	});
 

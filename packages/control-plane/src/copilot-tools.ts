@@ -48,7 +48,7 @@ import {
 	getOpenSegment,
 	upgradedMsSince,
 } from "./machine-segments.js";
-import { deriveMonitorToken } from "./monitor-token.js";
+import { deriveMonitorToken, monitorAuthHeaders } from "./monitor-token.js";
 import { latestResourceSample } from "./resource-queries.js";
 import {
 	getTemplate as getTemplateData,
@@ -155,10 +155,14 @@ export function createCopilotTools(
 	/** HTTP fetch to the monitor server running on a mission's execution machine. */
 	async function monitorFetch(
 		privateIp: string,
+		missionId: string,
 		path: string,
 	): Promise<string> {
 		const url = `http://[${privateIp}]:4000${path}`;
-		const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+		const res = await fetch(url, {
+			headers: monitorAuthHeaders(missionId),
+			signal: AbortSignal.timeout(10_000),
+		});
 		if (!res.ok)
 			throw new Error(`Monitor server ${privateIp} returned ${res.status}`);
 		return res.text();
@@ -344,6 +348,7 @@ export function createCopilotTools(
 			try {
 				const text = await monitorFetch(
 					mission.privateIp,
+					mission.missionId,
 					`/log?lines=${lines}`,
 				);
 				return ok(text || "(empty log)");
@@ -386,7 +391,11 @@ export function createCopilotTools(
 				: `/files/shared?path=${encodeURIComponent(userPath)}`;
 
 			try {
-				const text = await monitorFetch(mission.privateIp, endpoint);
+				const text = await monitorFetch(
+					mission.privateIp,
+					mission.missionId,
+					endpoint,
+				);
 				return ok(text);
 			} catch (e) {
 				return err(`Failed to read file: ${(e as Error).message}`);
