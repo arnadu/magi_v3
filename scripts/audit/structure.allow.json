@@ -1,0 +1,253 @@
+{
+	"packages/agent-runtime-worker/src/agent-runner.ts": {
+		"lines": 945,
+		"fns": {
+			"runAgent@263": 682
+		}
+	},
+	"packages/agent-runtime-worker/src/agent-stats.ts": {
+		"lines": 616,
+		"fns": {
+			"createMongoAgentStatsRepository@202": 163
+		}
+	},
+	"packages/agent-runtime-worker/src/cli-usage.ts": {
+		"lines": 365,
+		"fns": {
+			"printAggregateSummary@208": 152
+		}
+	},
+	"packages/agent-runtime-worker/src/conversation-repository.ts": {
+		"lines": 316,
+		"fns": {
+			"createMongoConversationRepository@130": 186
+		}
+	},
+	"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts": {
+		"lines": 343,
+		"fns": {
+			"createOnAgentMessage@79": 123,
+			"createRemainingOrchestrationCallbacks@219": 124
+		}
+	},
+	"packages/agent-runtime-worker/src/daemon.ts": {
+		"lines": 801,
+		"fns": {
+			"runPendingJobs@218": 282,
+			"main@579": 214
+		}
+	},
+	"packages/agent-runtime-worker/src/document-processor.ts": {
+		"lines": 1147,
+		"fns": {
+			"processPdf@622": 151
+		}
+	},
+	"packages/agent-runtime-worker/src/loop.ts": {
+		"lines": 521,
+		"fns": {
+			"runInnerLoop@235": 240
+		}
+	},
+	"packages/agent-runtime-worker/src/mailbox.ts": {
+		"lines": 326,
+		"fns": {
+			"createMailboxTools@160": 166
+		}
+	},
+	"packages/agent-runtime-worker/src/mental-map.ts": {
+		"lines": 335,
+		"fns": {
+			"createMentalMapTools@213": 122
+		}
+	},
+	"packages/agent-runtime-worker/src/mission-copilot-tools.ts": {
+		"lines": 1265,
+		"fns": {
+			"createMissionCopilotTools@142": 1123
+		}
+	},
+	"packages/agent-runtime-worker/src/mission-copilot.ts": {
+		"lines": 570,
+		"fns": {
+			"buildSystemPromptTemplate@39": 222
+		}
+	},
+	"packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts": {
+		"lines": 169,
+		"fns": {
+			"createAgentSessionsRoutes@14": 155
+		}
+	},
+	"packages/agent-runtime-worker/src/monitor-server.ts": {
+		"lines": 1329,
+		"fns": {
+			"handleUpload@554": 142
+		}
+	},
+	"packages/agent-runtime-worker/src/objectives/tools.ts": {
+		"lines": 251,
+		"fns": {
+			"createObjectivesTools@34": 217
+		}
+	},
+	"packages/agent-runtime-worker/src/orchestrator.ts": {
+		"lines": 643,
+		"fns": {
+			"runOrchestrationLoop@214": 419,
+			"dispatchOnePass@402": 157
+		}
+	},
+	"packages/agent-runtime-worker/src/tools/browse-web.ts": {
+		"lines": 506,
+		"fns": {
+			"createBrowseWebHandle@80": 426,
+			"execute@265": 206
+		}
+	},
+	"packages/agent-runtime-worker/src/tools/fetch-url.ts": {
+		"lines": 428,
+		"fns": {
+			"createFetchUrlTool@167": 261,
+			"execute@206": 220
+		}
+	},
+	"packages/agent-runtime-worker/src/tools/inspect-image.ts": {
+		"lines": 177,
+		"fns": {
+			"createInspectImageTool@48": 129
+		}
+	},
+	"packages/agent-runtime-worker/src/tools/research.ts": {
+		"lines": 455,
+		"fns": {
+			"createResearchTool@217": 238,
+			"execute@295": 158
+		}
+	},
+	"packages/cockpit/src/App.tsx": {
+		"lines": 821,
+		"fns": {
+			"App@522": 299
+		}
+	},
+	"packages/cockpit/src/ConfigPanel.tsx": {
+		"lines": 544,
+		"fns": {
+			"ConfigPanel@159": 385
+		}
+	},
+	"packages/cockpit/src/ConversationsPanel.tsx": {
+		"lines": 415,
+		"fns": {
+			"ConversationsPanel@71": 344
+		}
+	},
+	"packages/cockpit/src/CopilotPanel.tsx": {
+		"lines": 489,
+		"fns": {
+			"CopilotPanel@76": 413,
+			"<anonymous>@137": 149
+		}
+	},
+	"packages/cockpit/src/DraftEditor.tsx": {
+		"lines": 496,
+		"fns": {
+			"DraftEditor@45": 451
+		}
+	},
+	"packages/cockpit/src/FilesPanel.tsx": {
+		"lines": 504,
+		"fns": {
+			"FileViewer@223": 192
+		}
+	},
+	"packages/cockpit/src/LimitsPanel.tsx": {
+		"lines": 457,
+		"fns": {
+			"AgentCard@107": 134
+		}
+	},
+	"packages/cockpit/src/MissionsPanel.tsx": {
+		"lines": 504,
+		"fns": {
+			"CreateMissionForm@55": 135,
+			"MissionsPanel@347": 157
+		}
+	},
+	"packages/cockpit/src/TemplatesPanel.tsx": {
+		"lines": 131,
+		"fns": {
+			"TemplatesPanel@10": 121
+		}
+	},
+	"packages/cockpit/src/TracePanel.tsx": {
+		"lines": 930,
+		"fns": {
+			"CostTimeline@174": 545
+		}
+	},
+	"packages/cockpit/src/TranscriptsPanel.tsx": {
+		"lines": 404,
+		"fns": {
+			"TranscriptsPanel@199": 205
+		}
+	},
+	"packages/cockpit/src/data.ts": {
+		"lines": 1088,
+		"fns": {}
+	},
+	"packages/control-plane/src/copilot-daemon.ts": {
+		"lines": 455,
+		"fns": {
+			"runWatchLoop@218": 186
+		}
+	},
+	"packages/control-plane/src/copilot-router.ts": {
+		"lines": 917,
+		"fns": {
+			"createCopilotRouter@67": 338,
+			"executeAction@428": 416
+		}
+	},
+	"packages/control-plane/src/copilot-tools.ts": {
+		"lines": 981,
+		"fns": {
+			"createCopilotTools@142": 839
+		}
+	},
+	"packages/control-plane/src/index.ts": {
+		"lines": 325,
+		"fns": {
+			"main@51": 269
+		}
+	},
+	"packages/control-plane/src/missions.ts": {
+		"lines": 1916,
+		"fns": {
+			"readLimits@222": 172,
+			"createMissionsRouter@663": 1206,
+			"<anonymous>@1109": 137,
+			"<anonymous>@1458": 137,
+			"<anonymous>@1693": 124
+		}
+	},
+	"packages/control-plane/src/resource-report.ts": {
+		"lines": 663,
+		"fns": {
+			"computeFlags@237": 166
+		}
+	},
+	"packages/control-plane/src/resource-upgrade.ts": {
+		"lines": 789,
+		"fns": {
+			"requestUpgrade@320": 143
+		}
+	},
+	"packages/control-plane/src/scheduler.ts": {
+		"lines": 319,
+		"fns": {
+			"deliver@113": 128
+		}
+	}
+}

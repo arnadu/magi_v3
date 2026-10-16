@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Pre-push hook: a push to main deploys dev, so the full gate runs here, not just lint.
+# `npm run verify` = build + lint + tripwires + structure ratchet + typecheck + unit tests with
+# coverage thresholds — the same script CI runs, so local and CI agree.
+# Install via: git config core.hooksPath .githooks  (done by setup-dev.sh)
+# Escape hatch for a genuine emergency: git push --no-verify (say why in the commit message).
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "[pre-push] Running npm run verify…"
+if ! npm run verify --silent; then
+    echo ""
+    echo "[pre-push] BLOCKED: fix the failures above before pushing."
+    exit 1
+fi

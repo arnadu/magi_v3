@@ -7,7 +7,10 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["**", "!**/public/cockpit/**"]
+		"includes": [
+			"**",
+			"!**/public/cockpit/**"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -16,7 +19,15 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true
+			"recommended": true,
+			"complexity": {
+				"noExcessiveCognitiveComplexity": {
+					"level": "error",
+					"options": {
+						"maxAllowedComplexity": 25
+					}
+				}
+			}
 		}
 	},
 	"javascript": {
@@ -31,5 +42,49 @@
 				"organizeImports": "on"
 			}
 		}
-	}
+	},
+	"overrides": [
+		{
+			"includes": [
+				"packages/agent-runtime-worker/public/app.js",
+				"packages/agent-runtime-worker/src/agent-runner.ts",
+				"packages/agent-runtime-worker/src/cli-tool.ts",
+				"packages/agent-runtime-worker/src/conversation-repository.ts",
+				"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts",
+				"packages/agent-runtime-worker/src/daemon.ts",
+				"packages/agent-runtime-worker/src/document-processor.ts",
+				"packages/agent-runtime-worker/src/loop.ts",
+				"packages/agent-runtime-worker/src/objectives/store.ts",
+				"packages/agent-runtime-worker/src/orchestrator.ts",
+				"packages/agent-runtime-worker/src/reflection.ts",
+				"packages/agent-runtime-worker/src/tools/browse-web.ts",
+				"packages/agent-runtime-worker/src/tools/fetch-url.ts",
+				"packages/agent-runtime-worker/src/tools/research.ts",
+				"packages/agent-runtime-worker/src/workspace-manager.ts",
+				"packages/agent-runtime-worker/tests/browse-web.integration.test.ts",
+				"packages/agent-runtime-worker/tests/data-factory.integration.test.ts",
+				"packages/agent-runtime-worker/tests/fetch-share.integration.test.ts",
+				"packages/agent-runtime-worker/tests/multi-agent.integration.test.ts",
+				"packages/agent-runtime-worker/tests/skills.integration.test.ts",
+				"packages/cockpit/src/App.tsx",
+				"packages/cockpit/src/CopilotPanel.tsx",
+				"packages/cockpit/src/FilesPanel.tsx",
+				"packages/cockpit/src/Markdown.tsx",
+				"packages/control-plane/src/copilot-daemon.ts",
+				"packages/control-plane/src/copilot-router.ts",
+				"packages/control-plane/src/copilot-tools.ts",
+				"packages/control-plane/src/missions.ts",
+				"packages/control-plane/src/resource-report.ts",
+				"packages/control-plane/src/resource-upgrade.ts",
+				"packages/control-plane/tests/support/fake-db.ts"
+			],
+			"linter": {
+				"rules": {
+					"complexity": {
+						"noExcessiveCognitiveComplexity": "off"
+					}
+				}
+			}
+		}
+	]
 }

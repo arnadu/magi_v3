@@ -1,0 +1,28 @@
+# Tripwire allowlist. Formats (see tripwires.sh):
+#   <check-id> <regex-without-spaces>   # reason (owner, date)   -- drops matching "file:line:text" hits
+#   <check-id> maxcount=<N>             # reason (owner, date)   -- noisy checks: fail only above N
+# Ratchet rule: a maxcount may only go down; a regex entry may be removed, never widened, without a
+# reason in the commit. The plan milestone that retires each entry is named in its reason.
+
+# T1: the doc comment that explains why env expansion was removed (F-032) mentions process.env.
+T1-env-in-config ^packages/agent-config/src/loader\.ts:[0-9]+:[[:space:]]*\* # comment, not code (remyh, 2026-10-16)
+
+# T2: the cockpit's single sanctioned HTML sink; its input goes through renderMarkdown's escaping
+# (hardened in M1 C1). Everything else is the legacy dashboard, deleted in M1 C2 (LEG-XSS).
+T2-html-sinks ^packages/cockpit/src/Markdown\.tsx: # sanctioned sink, escaped upstream (remyh, 2026-10-16)
+T2-html-sinks maxcount=55 # public/app.js only; goes to 0 when the legacy dashboard is deleted in M1 (remyh, 2026-10-16)
+T3-href-from-data maxcount=1 # public/app.js:554; goes to 0 with M1 C2 (remyh, 2026-10-16)
+
+# T4: team-files-sync validates (validateTeamFilePath + parent realpath + O_NOFOLLOW, F-033);
+# artifacts.ts's two joins are AR1/DOC4, fixed in M1 B1.
+T4-path-join team-files-sync\.ts:[0-9]+:.*join\(ctx\.teamDir,[[:space:]]relPath\) # F-033 guards (remyh, 2026-10-16)
+T4-path-join maxcount=2 # artifacts.ts writeFile(join(dir, f.name)) — AR1/DOC4, M1 B1 (remyh, 2026-10-16)
+
+T5-spawn-env maxcount=26 # reviewed one by one in M1 (B1/B4); each gets an explicit env or a regex entry here (remyh, 2026-10-16)
+T6-git ^packages/agent-runtime-worker/src/safe-git\.ts: # the one sanctioned git call site (F-034) (remyh, 2026-10-16)
+T7-async-handler maxcount=41 # C1: asyncHandler wrapper lands in M2 (WS-1 E2) (remyh, 2026-10-16)
+T8-empty-catch maxcount=11 # R-11 (M5): log operation/input/consequence, or justify in a comment (remyh, 2026-10-16)
+T9-escape-hatches maxcount=20 # R-12 (M5): each cast gets a one-line constraint or goes (remyh, 2026-10-16)
+T10-optional-cap maxcount=1 # LM1: mandatory default cap lands in M3 (WS-1 F) (remyh, 2026-10-16)
+T11-comment-history maxcount=115 # INV-9: shrinks as comments are touched; no bulk rewrite (remyh, 2026-10-16)
+T12-raw-mailbox-insert maxcount=6 # MBX1: postMailbox() helper lands in M2 (WS-1 D4) (remyh, 2026-10-16)

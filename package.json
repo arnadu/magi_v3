@@ -1,38 +1,43 @@
 {
-  "name": "magi-v3",
-  "private": true,
-  "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
-  "scripts": {
-    "postinstall": "patch-package",
-    "build": "npm run build --workspaces --if-present",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
-    "lint": "biome check packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
-    "lint:fix": "biome check --write --unsafe packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
-    "security:sast": "semgrep scan --config p/default packages/ --error",
-    "security:secrets": "gitleaks detect --source . --no-banner",
-    "security:deps": "npm audit --audit-level=high",
-    "security": "npm run security:sast && npm run security:secrets && npm run security:deps"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.4",
-    "@types/express": "^4.17.0",
-    "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^3.2.7",
-    "dotenv": "^17.3.1",
-    "patch-package": "^8.0.0",
-    "typescript": "^6.0.0",
-    "vitest": "^3.0.0"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "dependencies": {
-    "@mariozechner/pi-ai": "npm:@earendil-works/pi-ai@0.82.1"
-  }
+	"name": "magi-v3",
+	"private": true,
+	"type": "module",
+	"workspaces": [
+		"packages/*"
+	],
+	"scripts": {
+		"postinstall": "patch-package",
+		"build": "npm run build --workspaces --if-present",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
+		"lint": "biome check packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
+		"lint:fix": "biome check --write --unsafe packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
+		"typecheck": "tsc -p packages/agent-config/tsconfig.json --noEmit && tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit && tsc -p packages/control-plane/tsconfig.json --noEmit && tsc -p packages/cockpit/tsconfig.json --noEmit",
+		"audit:tripwires": "bash scripts/audit/tripwires.sh --selftest && bash scripts/audit/tripwires.sh",
+		"audit:structure": "node scripts/audit/structure-check.mjs",
+		"verify:quick": "npm run lint && npm run audit:tripwires && npm run audit:structure && npm run typecheck",
+		"verify": "npm run build && npm run verify:quick && npm run test:coverage",
+		"security:sast": "semgrep scan --config p/default packages/ --error",
+		"security:secrets": "gitleaks detect --source . --no-banner --redact --config .gitleaks.toml",
+		"security:deps": "npm audit --omit=dev --audit-level=high",
+		"security": "npm run security:sast && npm run security:secrets && npm run security:deps"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.4",
+		"@types/express": "^4.17.0",
+		"@types/node": "^22.0.0",
+		"@vitest/coverage-v8": "^3.2.7",
+		"dotenv": "^17.3.1",
+		"patch-package": "^8.0.0",
+		"typescript": "^6.0.0",
+		"vitest": "^3.0.0"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"dependencies": {
+		"@mariozechner/pi-ai": "npm:@earendil-works/pi-ai@0.82.1"
+	}
 }

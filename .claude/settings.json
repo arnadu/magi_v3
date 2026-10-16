@@ -1,0 +1,41 @@
+{
+	"hooks": {
+		"PostToolUse": [
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; case \"$f\" in *.ts|*.tsx|*.js|*.mjs|*.json) npx biome check --write \"$f\" >/dev/null 2>&1 || true ;; esac; }",
+						"timeout": 30,
+						"statusMessage": "Biome on the edited file"
+					}
+				]
+			}
+		],
+		"Stop": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "input=$(cat); [ \"$(printf '%s' \"$input\" | jq -r '.stop_hook_active // false')\" = \"true\" ] && exit 0; cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; [ -z \"$(git status --porcelain -- packages scripts .github biome.json vitest.config.ts 2>/dev/null)\" ] && exit 0; if out=$(npm run verify:quick --silent 2>&1); then exit 0; else printf 'verify:quick failed — fix before finishing:\\n%s\\n' \"$(printf '%s' \"$out\" | tail -40)\" >&2; exit 2; fi",
+						"timeout": 300,
+						"statusMessage": "verify:quick (lint, tripwires, structure, typecheck)"
+					}
+				]
+			}
+		],
+		"PreToolUse": [
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "cmd=$(jq -r '.tool_input.command // \"\"'); if printf '%s' \"$cmd\" | grep -Eq '(^|[;&| ])flyctl +(deploy|machines? +(destroy|kill)|volumes? +destroy)|git +push +.*(--force|-f( |$)|--force-with-lease|--no-verify)'; then jq -n --arg r \"Blocked by .claude/settings.json: deploys go through CI (push to main) and scripts/deploy-missions.sh; force-pushes, --no-verify pushes and machine/volume destruction are operator-only actions.\" '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:$r}}'; fi",
+						"timeout": 10
+					}
+				]
+			}
+		]
+	}
+}
