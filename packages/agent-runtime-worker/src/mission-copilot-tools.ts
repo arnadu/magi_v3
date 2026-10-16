@@ -43,7 +43,7 @@ import {
 import { Type } from "@sinclair/typebox";
 import cronParser from "cron-parser";
 import { type Db, ObjectId } from "mongodb";
-import type { JobSpec } from "./job-recovery.js";
+import { type JobSpec, readFailedJobStatus } from "./job-recovery.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMissionConfigRepository } from "./mission-config.js";
 import { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
@@ -946,15 +946,9 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const jobId = args.jobId as string;
-			const statusPath = join(sharedDir, "jobs", "status", `${jobId}.json`);
-			let original: JobSpec & { exitCode?: number };
-			try {
-				original = JSON.parse(await readFile(statusPath, "utf8"));
-			} catch {
-				return err(
-					`No completed job "${jobId}" found (checked jobs/status/${jobId}.json) — only a finished job's spec can be resubmitted.`,
-				);
-			}
+			const status = readFailedJobStatus(sharedDir, jobId);
+			if ("error" in status) return err(status.error);
+			const original = status.spec;
 			const newId = randomUUID();
 			const newSpec: JobSpec = {
 				id: newId,

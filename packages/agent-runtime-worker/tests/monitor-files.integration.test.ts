@@ -13,6 +13,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -367,5 +368,89 @@ describe("GET /files/shared, GET /files/history, /files/workdir/:agentId", () =>
 			body: JSON.stringify({ path: "x.txt", content: "y" }),
 		});
 		expect(res.status).toBe(404);
+	});
+});
+
+describe("file routes never follow a symlink out of (or inside) sharedDir", () => {
+	// Agents have rwx on sharedDir and can plant links; the daemon serves
+	// these routes with its own privileges (MS1/MS2/MS5/MS6, audit 2026-10).
+	let secretPath: string;
+	beforeAll(() => {
+		secretPath = join(workdir, "secret.txt");
+		writeFileSync(secretPath, "daemon-only");
+		mkdirSync(join(sharedDir, "links"), { recursive: true });
+		writeFileSync(join(sharedDir, "links", "plain.txt"), "plain");
+		symlinkSync(secretPath, join(sharedDir, "links", "out.txt"));
+		symlinkSync(
+			join(sharedDir, "links", "plain.txt"),
+			join(sharedDir, "links", "in.txt"),
+		);
+		symlinkSync(workdir, join(sharedDir, "links", "outdir"));
+	});
+
+	it("GET /files/shared refuses a link to a file outside and a link to a file inside", async () => {
+		for (const p of [
+			"links/out.txt",
+			"links/in.txt",
+			"links/outdir/secret.txt",
+		]) {
+			const res = await fetch(
+				`${base}/files/shared?path=${encodeURIComponent(p)}`,
+			);
+			expect(res.status, p).toBe(400);
+		}
+	});
+
+	it("GET /files/shared lists a symlink as such without following it", async () => {
+		const res = await fetch(
+			`${base}/files/shared?path=${encodeURIComponent("links")}`,
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			entries: { name: string; type: string }[];
+		};
+		const types = Object.fromEntries(body.entries.map((e) => [e.name, e.type]));
+		expect(types).toEqual({
+			"plain.txt": "file",
+			"out.txt": "symlink",
+			"in.txt": "symlink",
+			outdir: "symlink",
+		});
+	});
+
+	it("GET /download refuses a symlink and skips symlinks inside a zipped folder", async () => {
+		const res = await fetch(
+			`${base}/download?path=${encodeURIComponent("links/out.txt")}`,
+		);
+		expect(res.status).toBe(400);
+		const zipRes = await fetch(
+			`${base}/download?path=${encodeURIComponent("links")}&format=zip`,
+		);
+		expect(zipRes.status).toBe(200);
+		const zip = await JSZip.loadAsync(Buffer.from(await zipRes.arrayBuffer()));
+		expect(Object.keys(zip.files).sort()).toEqual(["plain.txt"]);
+	});
+
+	it("POST /files/shared/write and /edit refuse to write through a symlink", async () => {
+		for (const route of ["/files/shared/write", "/files/shared/edit"]) {
+			const res = await fetch(`${base}${route}`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ path: "links/out.txt", content: "pwned" }),
+			});
+			expect(res.status, route).toBe(400);
+		}
+		expect(readFileSync(secretPath, "utf8")).toBe("daemon-only");
+	});
+
+	it("POST /files/shared/write refuses git metadata paths", async () => {
+		for (const p of [".gitattributes", "sub/.gitignore", ".git/config"]) {
+			const res = await fetch(`${base}/files/shared/write`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ path: p, content: "* filter=evil" }),
+			});
+			expect(res.status, p).toBe(400);
+		}
 	});
 });

@@ -14,6 +14,7 @@ import {
 import { join } from "node:path";
 import type { AnomalyRecorder } from "./anomaly.js";
 import type { MailboxRepository } from "./mailbox.js";
+import { readInside } from "./safe-path.js";
 
 export interface JobSpec {
 	/** Unique job id (UUID). */
@@ -42,6 +43,44 @@ export interface JobSpec {
 	 * crash loop — see MAX_JOB_RECOVERY_ATTEMPTS.
 	 */
 	recoveryAttempts?: number;
+}
+
+/** Job ids are UUIDs or slugs; anything else cannot name a status file (and `../` must never reach the path). */
+export const JOB_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$/;
+
+/**
+ * The status record of a finished job, read as the daemon from agent-writable
+ * `sharedDir/jobs/status/`: the id is validated as a slug, the file is read
+ * without following a symlink, and a job that exited 0 is refused — it is
+ * neither failed nor cancelled, and resubmitting it would be a silent duplicate run.
+ */
+export function readFailedJobStatus(
+	sharedDir: string,
+	jobId: string,
+): { spec: JobSpec & { exitCode?: number } } | { error: string } {
+	if (!JOB_ID_RE.test(jobId)) {
+		return {
+			error: `Invalid job id "${jobId}" — ids are the slugs ListBackgroundJobs shows.`,
+		};
+	}
+	let spec: JobSpec & { exitCode?: number };
+	try {
+		spec = JSON.parse(
+			readInside(sharedDir, `jobs/status/${jobId}.json`, {
+				maxBytes: 1_000_000,
+			}).bytes.toString("utf8"),
+		);
+	} catch {
+		return {
+			error: `No completed job "${jobId}" found (checked jobs/status/${jobId}.json) — only a finished job's spec can be resubmitted.`,
+		};
+	}
+	if (spec.exitCode === 0) {
+		return {
+			error: `Job "${jobId}" completed successfully (exit 0) — RestartBackgroundJob is for failed or cancelled jobs. To run it again, submit it as a new job.`,
+		};
+	}
+	return { spec };
 }
 
 /**

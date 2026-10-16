@@ -1,21 +1,12 @@
-import {
-	createReadStream,
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	statSync,
-	writeFileSync,
-} from "node:fs";
+import { realpathSync } from "node:fs";
 import {
 	createServer,
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Model } from "@mariozechner/pi-ai";
-import JSZip from "jszip";
 import type { Db } from "mongodb";
 import type { StatsCollector } from "./agent-stats.js";
 import {
@@ -27,6 +18,15 @@ import {
 import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
+import {
+	containOrReply,
+	handleDownload,
+	safeUploadName,
+	serveFileNode,
+	TEXT_EXTENSIONS,
+	TEXT_FILE_MAX_BYTES,
+	touchesGitMetadata,
+} from "./monitor-files.js";
 import { createAgentSessionsRoutes } from "./monitor-routes/agent-sessions.js";
 import { createBudgetRoutes } from "./monitor-routes/budget.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
@@ -43,10 +43,22 @@ import { createTraceRoutes } from "./monitor-routes/trace.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
 import { createUploadDownloadRoutes } from "./monitor-routes/upload-download.js";
 import { runGit } from "./safe-git.js";
+import {
+	PathOutsideRootError,
+	resolveInside,
+	writeFileInside,
+} from "./safe-path.js";
 import type { UsageAccumulator } from "./usage.js";
 import { WorkspaceGit } from "./workspace-git.js";
 
 /** Body cap for file uploads (base64-encoded). ~22 MB raw file. */
+export {
+	addToZip,
+	IMAGE_MIME,
+	TEXT_EXTENSIONS,
+	TEXT_FILE_MAX_BYTES,
+} from "./monitor-files.js";
+
 export const UPLOAD_MAX_BODY_BYTES = 30 * 1024 * 1024;
 
 /**
@@ -54,7 +66,6 @@ export const UPLOAD_MAX_BODY_BYTES = 30 * 1024 * 1024;
  * never be editable, editing would silently discard the un-fetched remainder
  * on save — the same figure gates whether the cockpit's Edit button appears.
  */
-export const TEXT_FILE_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * Cap for the raw POST body of a file-edit request — must exceed
@@ -77,40 +88,6 @@ export const MIME: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
 	".css": "text/css",
 	".js": "application/javascript",
-};
-
-export const TEXT_EXTENSIONS = new Set([
-	".txt",
-	".md",
-	".markdown",
-	".json",
-	".yaml",
-	".yml",
-	".toml",
-	".ts",
-	".js",
-	".mjs",
-	".py",
-	".sh",
-	".bash",
-	".env",
-	".csv",
-	".log",
-	".xml",
-	".html",
-	".css",
-	".sql",
-	".r",
-]);
-
-export const IMAGE_MIME: Record<string, string> = {
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".gif": "image/gif",
-	".svg": "image/svg+xml",
-	".webp": "image/webp",
-	".ico": "image/x-icon",
 };
 
 // ---------------------------------------------------------------------------
@@ -297,7 +274,7 @@ export class MonitorServer {
 				sharedDir: this.sharedDir,
 				getAgentWorkdirs: () => this.agentWorkdirs,
 				serveFilePath: (root, userPath, res) =>
-					this.serveFilePath(root, userPath, res),
+					serveFileNode(root, userPath, res),
 				serveFileHistory: (userPath, res) =>
 					this.serveFileHistory(userPath, res),
 				writeFilePath: (root, rawBody, res) =>
@@ -365,7 +342,8 @@ export class MonitorServer {
 			}),
 			...createUploadDownloadRoutes({
 				handleUpload: (req, res) => this.handleUpload(req, res),
-				handleDownload: (rawUrl, res) => this.handleDownload(rawUrl, res),
+				handleDownload: (rawUrl, res) =>
+					handleDownload(this.sharedDir, rawUrl, res),
 			}),
 		];
 		this.server = createServer((req, res) =>
@@ -612,13 +590,13 @@ export class MonitorServer {
 
 		const bytes = Buffer.from(contentBase64, "base64");
 
-		// Save the pristine original under uploads/<date>/ for provenance.
-		const safeName = basename(filename);
+		// Save the pristine original under uploads/<date>/ for provenance. The
+		// name is operator-supplied: one path component, never `..`, and the
+		// write never follows a symlink an agent may have planted there.
+		const safeName = safeUploadName(filename);
 		const dateDir = new Date().toISOString().slice(0, 10);
-		const uploadDir = join(this.sharedDir, "uploads", dateDir);
 		try {
-			mkdirSync(uploadDir, { recursive: true });
-			writeFileSync(join(uploadDir, safeName), bytes);
+			writeFileInside(this.sharedDir, `uploads/${dateDir}/${safeName}`, bytes);
 		} catch (e) {
 			console.error(`[monitor] upload save failed: ${(e as Error).message}`);
 		}
@@ -694,150 +672,6 @@ export class MonitorServer {
 		}
 	}
 
-	/** Stream a file (attachment) or a folder subtree as a zip from sharedDir. */
-	private handleDownload(rawUrl: string, res: ServerResponse): void {
-		const params = new URL(rawUrl, "http://x").searchParams;
-		const userPath = params.get("path") ?? "";
-		const asZip = params.get("format") === "zip";
-		// Sprint 27: lets a chat/mailbox message embed an inline <img src=...>
-		// pointing straight at this route (renderMarkdown's image support) —
-		// the default (no `inline`) keeps forcing a download, unchanged for the
-		// Files panel's own "Download" button and every other existing caller.
-		const inline = params.get("inline") === "1";
-
-		const abs = resolve(this.sharedDir, userPath);
-		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Path outside root" }));
-			return;
-		}
-		if (!existsSync(abs)) {
-			res.writeHead(404, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Not found" }));
-			return;
-		}
-
-		const stat = statSync(abs);
-		if (stat.isDirectory() || asZip) {
-			const zip = new JSZip();
-			addToZip(zip, abs, abs);
-			zip
-				.generateAsync({ type: "nodebuffer" })
-				.then((buf) => {
-					res.writeHead(200, {
-						"Content-Type": "application/zip",
-						"Content-Disposition": `attachment; filename="${basename(abs) || "download"}.zip"`,
-					});
-					res.end(buf);
-				})
-				.catch((e: Error) => {
-					res.writeHead(500, { "Content-Type": "application/json" });
-					res.end(JSON.stringify({ error: e.message }));
-				});
-			return;
-		}
-
-		const imageMime = inline
-			? IMAGE_MIME[extname(abs).toLowerCase()]
-			: undefined;
-		if (imageMime) {
-			// No Content-Disposition — this must render in an <img> tag, not
-			// prompt a save dialog.
-			res.writeHead(200, { "Content-Type": imageMime });
-			createReadStream(abs).pipe(res);
-			return;
-		}
-
-		res.writeHead(200, {
-			"Content-Type": "application/octet-stream",
-			"Content-Disposition": `attachment; filename="${basename(abs)}"`,
-		});
-		createReadStream(abs).pipe(res);
-	}
-
-	// ── File browser ──────────────────────────────────────────────────────────
-
-	private serveFilePath(
-		root: string,
-		userPath: string,
-		res: ServerResponse,
-	): void {
-		const abs = resolve(root, userPath);
-		if (!abs.startsWith(root)) {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Path outside root" }));
-			return;
-		}
-		if (!existsSync(abs)) {
-			res.writeHead(404, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Not found" }));
-			return;
-		}
-		const stat = statSync(abs);
-		res.writeHead(200, { "Content-Type": "application/json" });
-		if (stat.isDirectory()) {
-			let entries: string[];
-			try {
-				entries = readdirSync(abs);
-			} catch {
-				entries = [];
-			}
-			const listed = entries.map((name) => {
-				try {
-					const s = statSync(join(abs, name));
-					return {
-						name,
-						type: s.isDirectory() ? "dir" : "file",
-						size: s.isDirectory() ? undefined : s.size,
-						modified: s.mtime.toISOString(),
-					};
-				} catch {
-					return { name, type: "file" as const };
-				}
-			});
-			listed.sort((a, b) => {
-				if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
-				return a.name.localeCompare(b.name);
-			});
-			res.end(JSON.stringify({ type: "dir", path: userPath, entries: listed }));
-			return;
-		}
-		// File
-		const ext = extname(abs).toLowerCase();
-		const imageMime = IMAGE_MIME[ext];
-		if (imageMime) {
-			const content = readFileSync(abs).toString("base64");
-			res.end(
-				JSON.stringify({
-					type: "file",
-					name: basename(abs),
-					encoding: "base64",
-					mimeType: imageMime,
-					content,
-				}),
-			);
-			return;
-		}
-		if (TEXT_EXTENSIONS.has(ext) || ext === "") {
-			const raw = readFileSync(abs);
-			const content = raw.slice(0, TEXT_FILE_MAX_BYTES).toString("utf8");
-			res.end(
-				JSON.stringify({
-					type: "file",
-					name: basename(abs),
-					encoding: "text",
-					mimeType: "text/plain",
-					content,
-					truncated: raw.length > TEXT_FILE_MAX_BYTES,
-				}),
-			);
-			return;
-		}
-		res.end(
-			JSON.stringify({ type: "file", name: basename(abs), encoding: "binary" }),
-		);
-	}
-
 	/**
 	 * Provenance for a file: its git history (via `git log --follow`), each
 	 * commit joined against `agentTurnStats.gitCommit` to name the agent/turn
@@ -872,11 +706,13 @@ export class MonitorServer {
 	private async resolveFileHistory(
 		userPath: string,
 	): Promise<FileHistoryEntry[] | null> {
-		const abs = resolve(this.sharedDir, userPath);
-		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
+		let abs: string;
+		try {
+			abs = resolveInside(this.sharedDir, userPath);
+		} catch {
 			return null;
 		}
-		const relPath = relative(this.sharedDir, abs);
+		const relPath = relative(realpathSync(this.sharedDir), abs);
 
 		let commits: { commit: string; timestamp: string }[] = [];
 		try {
@@ -955,20 +791,23 @@ export class MonitorServer {
 			);
 			return;
 		}
-		const abs = resolve(root, userPath);
-		if (!abs.startsWith(root)) {
+		if (touchesGitMetadata(userPath)) {
 			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Path outside root" }));
+			res.end(JSON.stringify({ error: "Git metadata paths are not writable" }));
 			return;
 		}
 		try {
-			mkdirSync(resolve(abs, ".."), { recursive: true });
-			writeFileSync(abs, content, "utf-8");
+			writeFileInside(root, userPath, content);
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: true }));
 		} catch (e) {
-			res.writeHead(500, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: (e as Error).message }));
+			const status = e instanceof PathOutsideRootError ? 400 : 500;
+			res.writeHead(status, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					error: status === 400 ? "Path outside root" : (e as Error).message,
+				}),
+			);
 		}
 	}
 
@@ -1020,10 +859,11 @@ export class MonitorServer {
 			return;
 		}
 
-		const abs = resolve(this.sharedDir, userPath);
-		if (abs !== this.sharedDir && !abs.startsWith(`${this.sharedDir}/`)) {
+		const abs = containOrReply(this.sharedDir, userPath, res);
+		if (!abs) return;
+		if (touchesGitMetadata(userPath)) {
 			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Path outside root" }));
+			res.end(JSON.stringify({ error: "Git metadata paths are not editable" }));
 			return;
 		}
 
@@ -1048,7 +888,7 @@ export class MonitorServer {
 			return;
 		}
 
-		const relPath = relative(this.sharedDir, abs);
+		const relPath = relative(realpathSync(this.sharedDir), abs);
 
 		// Who to notify — resolved BEFORE the write, so it reflects who touched
 		// the file prior to this edit, not this edit's own (not-yet-created) commit.
@@ -1056,10 +896,10 @@ export class MonitorServer {
 		const lastAgentId = history?.[0]?.agentId ?? null;
 
 		try {
-			mkdirSync(resolve(abs, ".."), { recursive: true });
-			writeFileSync(abs, content, "utf-8");
+			writeFileInside(this.sharedDir, userPath, content);
 		} catch (e) {
-			res.writeHead(500, { "Content-Type": "application/json" });
+			const status = e instanceof PathOutsideRootError ? 400 : 500;
+			res.writeHead(status, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: (e as Error).message }));
 			return;
 		}
@@ -1290,21 +1130,6 @@ export class MonitorServer {
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 export const MAX_BODY_BYTES = MAILBOX_MAX_BODY_BYTES;
-
-/** Recursively add a file or directory subtree to a zip, paths relative to `base`. */
-export function addToZip(zip: JSZip, abs: string, base: string): void {
-	const stat = statSync(abs);
-	if (stat.isDirectory()) {
-		for (const name of readdirSync(abs)) {
-			// Skip the git metadata dir — it bloats the archive and isn't a deliverable.
-			if (name === ".git") continue;
-			addToZip(zip, join(abs, name), base);
-		}
-	} else {
-		const rel = relative(base, abs) || basename(abs);
-		zip.file(rel, readFileSync(abs));
-	}
-}
 
 export function readBody(
 	req: IncomingMessage,

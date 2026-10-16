@@ -1,6 +1,7 @@
 # MAGI V3 Threat Model
 
-**Last updated:** 2026-10-15, WO-1 Group A5 — **F-036 fixed** (X-TENANT3), completing WO-1 Group
+**Last updated:** 2026-10-16 (Sprint 28f audit remediation, M1 B1) — **F-037..F-041**: every daemon-identity read/write on an agent-writable tree now goes through `safe-path.ts` (`resolveInside` + `O_NOFOLLOW` opens): the monitor file routes (TB-6/TB-21 input: `?path=`), `Research`, artifact writes, `InspectImage`, the copilot’s job restart. No new boundary; the guard column of `trust-boundaries.md` flips from **open** to guarded for MS1/RS2/AR1/INSP1/MC8. Still open on these routes: per-mission token on GETs (M1, B2).
+**Previously:** 2026-10-15, WO-1 Group A5 — **F-036 fixed** (X-TENANT3), completing WO-1 Group
 A: each user's control-plane copilot now has its own subdirectory of the copilot workdir
 (`users/copilot-<userId>`), and `GET /api/copilot/files` (TB-21) serves a non-admin caller only
 their own. This supersedes the Sprint 27 note below that accepted the unscoped route "for the

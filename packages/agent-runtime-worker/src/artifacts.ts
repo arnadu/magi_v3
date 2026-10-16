@@ -1,5 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { basename, join } from "node:path";
+import { mkdirInside, writeFileInside } from "./safe-path.js";
 
 // ---------------------------------------------------------------------------
 // Artifact ID
@@ -7,23 +8,21 @@ import { join } from "node:path";
 
 /**
  * Generate a human-readable, sortable artifact ID.
- * Format: {slug}-{YYYYMMDD}T{HHmmss}
- * The slug is derived from the URL hostname or the filename stem.
+ * Format: {slug}-{YYYYMMDD}T{HHmmss}Z-{4 hex}
+ * The slug is derived from the URL hostname or the filename stem; the
+ * timestamp is UTC; the random suffix exists because the directory is
+ * created by the daemon inside agent-writable `shared/` — an id an agent can
+ * predict is a directory it can pre-plant (as a symlink elsewhere) and have
+ * the daemon write fetched web content into. It also stops two artifacts
+ * from the same host in the same second from colliding.
  *
  * Examples:
- *   "https://reuters.com/article/foo" → "reuters-com-20260223T143012"
- *   "/home/user/docs/report.pdf"      → "report-20260223T143012"
+ *   "https://reuters.com/article/foo" → "reuters-com-20260223T143012Z-9f3a"
+ *   "/home/user/docs/report.pdf"      → "report-20260223T143012Z-0c71"
  */
 export function generateArtifactId(sourceHint: string): string {
-	const now = new Date();
-	const ts =
-		now.getFullYear().toString() +
-		String(now.getMonth() + 1).padStart(2, "0") +
-		String(now.getDate()).padStart(2, "0") +
-		"T" +
-		String(now.getHours()).padStart(2, "0") +
-		String(now.getMinutes()).padStart(2, "0") +
-		String(now.getSeconds()).padStart(2, "0");
+	const ts = `${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`;
+	const suffix = randomBytes(2).toString("hex");
 
 	let slug: string;
 	try {
@@ -45,7 +44,7 @@ export function generateArtifactId(sourceHint: string): string {
 	}
 
 	if (!slug) slug = "file";
-	return `${slug}-${ts}`;
+	return `${slug}-${ts}-${suffix}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,23 +87,53 @@ export interface FileEntry {
 // Internal helper
 // ---------------------------------------------------------------------------
 
+/**
+ * A file name inside an artifact directory: one component, never `.`/`..`/
+ * empty. Names come from processors (content.md, image-0.jpg) and from ZIP
+ * entries and sheet titles, which are attacker-influenced — a bad one is
+ * replaced, not written somewhere else and not allowed to abort the archive.
+ */
+export function safeEntryName(name: string): string {
+	const base = basename(name.replace(/\0/g, ""));
+	if (base === "" || base === "." || base === "..") return "file";
+	return base;
+}
+
+/**
+ * Create `relDir` under `root` and write `files` + `meta.json` into it. The
+ * directory is created exclusively (a pre-planted directory or symlink at
+ * that path fails instead of being reused), every parent is realpath'd and
+ * every file is opened `O_EXCL|O_NOFOLLOW`, so a symlink an agent plants in
+ * the tree cannot redirect what the daemon writes — the agent-writable
+ * `shared/` tree is exactly where these land (safe-path.ts).
+ */
 async function writeDirectory(
-	dir: string,
+	root: string,
+	relDir: string,
 	files: FileEntry[],
 	meta: ArtifactMeta | UploadMeta,
 ): Promise<string> {
-	await mkdir(dir, { recursive: true });
+	const dir = mkdirInside(root, relDir);
+	const seen = new Set<string>();
 	for (const f of files) {
-		if (typeof f.content === "string") {
-			await writeFile(join(dir, f.name), f.content, "utf8");
-		} else {
-			await writeFile(join(dir, f.name), f.content);
-		}
+		let name = safeEntryName(f.name);
+		if (name === "meta.json") name = "meta.1.json";
+		// Two entries that sanitise to the same name must not clobber each other.
+		for (let n = 1; seen.has(name); n++) name = `${n}-${safeEntryName(f.name)}`;
+		seen.add(name);
+		writeFileInside(root, join(relDir, name), f.content, {
+			exclusive: true,
+			mkdirParents: false,
+		});
 	}
-	await writeFile(
-		join(dir, "meta.json"),
+	writeFileInside(
+		root,
+		join(relDir, "meta.json"),
 		JSON.stringify(meta, null, 2),
-		"utf8",
+		{
+			exclusive: true,
+			mkdirParents: false,
+		},
 	);
 	return dir;
 }
@@ -136,7 +165,7 @@ export async function saveArtifact(
 	files: FileEntry[],
 	meta: ArtifactMeta,
 ): Promise<string> {
-	return writeDirectory(join(artifactsDir, "artifacts", id), files, meta);
+	return writeDirectory(artifactsDir, join("artifacts", id), files, meta);
 }
 
 // ---------------------------------------------------------------------------
@@ -157,5 +186,5 @@ export async function saveUpload(
 	files: FileEntry[],
 	meta: UploadMeta,
 ): Promise<string> {
-	return writeDirectory(join(workdir, "uploads", id), files, meta);
+	return writeDirectory(workdir, join("uploads", id), files, meta);
 }

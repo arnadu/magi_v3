@@ -37,9 +37,9 @@ findings scheduled in `docs/plans/audit-oct26-remediation-plan.md` (committed at
 | Run git on the workspace (daemon) | hooks, config, filters, attributes | agents (`shared/` is rwx) | git dir outside `shared/` + `safe-git.ts` hardened env/args (F-034) |
 | Create a mission (control plane) | `missionId` | tenant, control-plane copilot | `validateNewMissionId` (F-035) |
 | Serve copilot files (control plane) | `?path=` | signed-in user | per-user root + realpath boundary (F-036) |
-| Monitor file read/download/write/edit (daemon) | `?path=`, symlinks in `shared/` | agents; any 6PN peer on GET (M1) | **open** — MS1: no realpath; → `resolveInside` (M1 B1); token on all routes (M1 B2) |
-| `Research` context files / output path (daemon, in-process) | paths | agent | **open** — RS2 → `resolveInside`, deny `/proc` (M1 B1) |
-| Artifact / document writes (daemon) | `shared/artifacts/<id>`, zip entry names | agent (predictable id, symlink plant), web content | **open** — AR1/DOC4 (M1 B1) |
+| Monitor file read/download/write/edit (daemon) | `?path=`, symlinks in `shared/` | agents; any 6PN peer on GET (M1) | `safe-path.ts` `resolveInside` + `O_NOFOLLOW` opens, `lstat` listings, zip cap, no `.git*` writes (F-037); **open** — token on all routes (M1 B2) |
+| `Research` context files / output path (daemon, in-process) | paths | agent | `resolveInside` against the agent’s permitted roots, `readInside`/`writeFileInside`, pseudo-fs denied (F-038) |
+| Artifact / document writes (daemon) | `shared/artifacts/<id>`, zip entry names | agent (symlink plant), web content | unpredictable id, exclusive `mkdirInside`, `O_EXCL\|O_NOFOLLOW` files, `safeEntryName` (F-039) |
 | Run a background job (daemon, `sudo -u`) | `jobs/pending/*.json` incl. `agentId`, `id` | any agent | **open** — JOB1/JOB2 → owner-uid attribution, private queue (M1 B4, ADR-0033) |
 | Ingest schedules (daemon) | `shared/schedules/*.json` | any agent | **open** (not built) — ADR-0033 |
 | Skill discovery into system prompts (daemon) | `SKILL.md` frontmatter in agent-writable tiers | agents | **open** — SK1/WM1 (M1 B5) |

@@ -16,6 +16,7 @@ import { join, resolve } from "node:path";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { runInnerLoop } from "../loop.js";
+import { readInside, resolveInside, writeFileInside } from "../safe-path.js";
 import type { AclPolicy, MagiTool, ToolResult } from "../tools.js";
 import { createBashTool, truncate } from "../tools.js";
 import { tryCreateBrowseWebTool } from "./browse-web.js";
@@ -31,6 +32,80 @@ const RESEARCH_MAX_TURNS = 10;
 
 /** Default cache freshness for time-sensitive data (market prices, news). */
 const DEFAULT_MAX_AGE_HOURS = 12;
+/** Cap per context file read into the prompt — larger inputs are truncated and flagged. */
+const CONTEXT_FILE_MAX_BYTES = 5_000_000;
+
+/**
+ * Every `context_files`/`output_path` entry is read or written by the daemon
+ * process (this tool runs in-process, not through the sudo child), so each
+ * must physically land inside one of the agent's permitted roots — a symlink
+ * in shared/ to /proc/self/environ would otherwise put the daemon's
+ * environment into the prompt. The returned map remembers which root matched
+ * so the read/write helpers re-check at open time (O_NOFOLLOW).
+ */
+export function containResearchPaths(
+	permittedPaths: string[],
+	paths: string[],
+): { rootOf: Map<string, string> } | { rejected: string } {
+	const rootOf = new Map<string, string>();
+	for (const p of paths) {
+		const abs = resolve(p);
+		const root = permittedPaths.find((pp) => {
+			try {
+				resolveInside(pp, abs);
+				return true;
+			} catch {
+				return false;
+			}
+		});
+		if (!root) return { rejected: p };
+		rootOf.set(p, root);
+	}
+	return { rootOf };
+}
+
+/** One `## Context:` section per file; a file that cannot be read says so in the prompt rather than vanishing. */
+export function readContextSections(
+	rootOf: Map<string, string>,
+	contextFiles: string[],
+): string[] {
+	return contextFiles.map((filePath) => {
+		try {
+			const read = readInside(
+				rootOf.get(filePath) as string,
+				resolve(filePath),
+				{
+					maxBytes: CONTEXT_FILE_MAX_BYTES,
+				},
+			);
+			const label = filePath.split("/").pop() ?? filePath;
+			const note = read.truncated
+				? `\n\n[truncated at ${CONTEXT_FILE_MAX_BYTES} bytes]`
+				: "";
+			return `## Context: ${label}\n\n${read.bytes.toString("utf-8")}${note}`;
+		} catch (e) {
+			return `## Context: ${filePath}\n\n(not read: ${(e as Error).message})`;
+		}
+	});
+}
+
+export function writeFinding(
+	rootOf: Map<string, string>,
+	outputPath: string,
+	text: string,
+): void {
+	try {
+		writeFileInside(
+			rootOf.get(outputPath) as string,
+			resolve(outputPath),
+			text,
+		);
+	} catch (e) {
+		console.warn(
+			`[research] Failed to write output_path ${outputPath}: ${(e as Error).message}`,
+		);
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Research index types
@@ -305,15 +380,19 @@ export function createResearchTool(
 			const contextFiles = args.context_files ?? [];
 			const outputPath = args.output_path;
 
-			// Validate all paths are within permitted paths.
-			const permittedPaths = acl.permittedPaths ?? [];
-			for (const p of [...contextFiles, ...(outputPath ? [outputPath] : [])]) {
-				const abs = resolve(p);
-				const allowed = permittedPaths.some((pp) => abs.startsWith(pp));
-				if (!allowed) {
-					return toolErr(`Research: path not within permitted paths: ${p}`);
-				}
+			const contained = containResearchPaths(acl.permittedPaths ?? [], [
+				...contextFiles,
+				...(outputPath ? [outputPath] : []),
+			]);
+			if ("rejected" in contained) {
+				return toolErr(
+					`Research: path not within permitted paths: ${contained.rejected}`,
+				);
 			}
+			const { rootOf } = contained;
+			const writeOutput = (text: string): void => {
+				if (outputPath) writeFinding(rootOf, outputPath, text);
+			};
 
 			// When context files are provided, always treat as fresh (maxAge = 0).
 			const maxAge =
@@ -338,11 +417,7 @@ export function createResearchTool(
 						}
 					}
 					const result = `[Cached finding — ${cached.agentId}, ${new Date(cached.savedAt).toISOString().slice(0, 16)}]\n\n${fullAnswer}`;
-					if (outputPath) {
-						try {
-							writeFileSync(outputPath, fullAnswer, "utf-8");
-						} catch {}
-					}
+					writeOutput(fullAnswer);
 					return ok(result);
 				}
 			}
@@ -350,17 +425,7 @@ export function createResearchTool(
 			// 2. Build task string, injecting context file contents when provided.
 			let task = question;
 			if (contextFiles.length > 0) {
-				const sections: string[] = [];
-				for (const filePath of contextFiles) {
-					if (!existsSync(filePath)) continue; // silently skip missing files
-					try {
-						const content = readFileSync(filePath, "utf-8");
-						const label = filePath.split("/").pop() ?? filePath;
-						sections.push(`## Context: ${label}\n\n${content}`);
-					} catch {
-						// Skip unreadable files.
-					}
-				}
+				const sections = readContextSections(rootOf, contextFiles);
 				if (sections.length > 0) {
 					task = `${sections.join("\n\n---\n\n")}\n\n---\n\n## Question\n\n${question}`;
 				}
@@ -419,15 +484,7 @@ export function createResearchTool(
 			}
 
 			// 6. Write to output_path if provided.
-			if (outputPath) {
-				try {
-					writeFileSync(outputPath, finding, "utf-8");
-				} catch (e) {
-					console.warn(
-						`[research] Failed to write output_path: ${(e as Error).message}`,
-					);
-				}
-			}
+			writeOutput(finding);
 
 			// 7. Persist finding to research cache.
 			const slug = slugify(question);

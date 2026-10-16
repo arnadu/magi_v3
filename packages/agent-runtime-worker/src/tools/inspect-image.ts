@@ -1,11 +1,34 @@
-import { realpathSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { EXT_TO_MIME } from "../mime-types.js";
 import { piModels } from "../models.js";
+import { PathNotFoundError, readInside, resolveInside } from "../safe-path.js";
 import type { MagiTool, ToolResult } from "../tools.js";
+
+/** Largest image the tool will base64 into a vision request. */
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+
+/**
+ * The first base an existing `path` is physically inside of (safe-path.ts
+ * semantics), or why none matched: `missing` when the path simply does not
+ * exist under any base, so the tool can say that instead of "outside".
+ */
+export function findPermittedBase(
+	bases: string[],
+	path: string,
+): { base?: string; missing: boolean } {
+	let missing = false;
+	for (const base of bases) {
+		try {
+			resolveInside(base, path, { mustExist: true });
+			return { base, missing: false };
+		} catch (e) {
+			if (e instanceof PathNotFoundError) missing = true;
+		}
+	}
+	return { missing };
+}
 
 // ---------------------------------------------------------------------------
 // MIME helpers
@@ -76,29 +99,20 @@ export function createInspectImageTool(
 				(args.prompt as string | undefined) ?? "Describe this image in detail.";
 
 			// --- Guard: path must stay within workdir or an allowedDir -----------
+			// Read as the daemon: physical containment now, O_NOFOLLOW at the open.
 			const resolvedPath = resolve(workdir, imagePath);
-			// Follow symlinks before checking permissions — prevents an agent from
-			// creating ln -s /etc/passwd workdir/img.png to escape the permitted tree.
-			let realPath: string;
-			try {
-				realPath = realpathSync(resolvedPath);
-			} catch {
-				return toolErr(
-					`InspectImage: path "${imagePath}" does not exist or is not accessible`,
-				);
-			}
-			const allBases = [
-				resolve(workdir),
-				...allowedDirs.map((d) => resolve(d)),
-			];
-			const allowed = allBases.some(
-				(base) => realPath === base || realPath.startsWith(base + sep),
+			const found = findPermittedBase(
+				[resolve(workdir), ...allowedDirs.map((d) => resolve(d))],
+				resolvedPath,
 			);
-			if (!allowed) {
+			if (!found.base) {
 				return toolErr(
-					`InspectImage: path "${imagePath}" is outside the permitted directories`,
+					found.missing
+						? `InspectImage: path "${imagePath}" does not exist or is not accessible`
+						: `InspectImage: path "${imagePath}" is outside the permitted directories`,
 				);
 			}
+			const base = found.base;
 
 			// --- Guard: model must support images ---------------------------------
 			if (!model.input.includes("image")) {
@@ -117,9 +131,18 @@ export function createInspectImageTool(
 			}
 
 			// --- Read image -------------------------------------------------------
+			// Capped: the bytes are base64'd into a vision request.
 			let imageBytes: Buffer;
 			try {
-				imageBytes = await readFile(realPath);
+				const read = readInside(base, resolvedPath, {
+					maxBytes: MAX_IMAGE_BYTES,
+				});
+				if (read.truncated) {
+					return toolErr(
+						`InspectImage: "${imagePath}" is ${(read.size / (1024 * 1024)).toFixed(1)} MB; the limit is ${MAX_IMAGE_BYTES / (1024 * 1024)} MB. Downscale or crop it first.`,
+					);
+				}
+				imageBytes = read.bytes;
 			} catch (e) {
 				return toolErr(
 					`InspectImage: could not read "${imagePath}" — ${(e as Error).message}`,

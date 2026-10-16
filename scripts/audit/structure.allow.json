@@ -62,9 +62,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot-tools.ts": {
-		"lines": 1265,
+		"lines": 1259,
 		"fns": {
-			"createMissionCopilotTools@142": 1123
+			"createMissionCopilotTools@142": 1117
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot.ts": {
@@ -80,9 +80,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
-		"lines": 1329,
+		"lines": 1154,
 		"fns": {
-			"handleUpload@554": 142
+			"handleUpload@532": 142
 		}
 	},
 	"packages/agent-runtime-worker/src/objectives/tools.ts": {
@@ -115,14 +115,14 @@
 	"packages/agent-runtime-worker/src/tools/inspect-image.ts": {
 		"lines": 177,
 		"fns": {
-			"createInspectImageTool@48": 129
+			"createInspectImageTool@71": 129
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/research.ts": {
 		"lines": 455,
 		"fns": {
-			"createResearchTool@217": 238,
-			"execute@295": 158
+			"createResearchTool@292": 220,
+			"execute@370": 140
 		}
 	},
 	"packages/cockpit/src/App.tsx": {

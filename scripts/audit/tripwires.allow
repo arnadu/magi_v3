@@ -13,10 +13,8 @@ T2-html-sinks ^packages/cockpit/src/Markdown\.tsx: # sanctioned sink, escaped up
 T2-html-sinks maxcount=55 # public/app.js only; goes to 0 when the legacy dashboard is deleted in M1 (remyh, 2026-10-16)
 T3-href-from-data maxcount=1 # public/app.js:554; goes to 0 with M1 C2 (remyh, 2026-10-16)
 
-# T4: team-files-sync validates (validateTeamFilePath + parent realpath + O_NOFOLLOW, F-033);
-# artifacts.ts's two joins are AR1/DOC4, fixed in M1 B1.
-T4-path-join team-files-sync\.ts:[0-9]+:.*join\(ctx\.teamDir,[[:space:]]relPath\) # F-033 guards (remyh, 2026-10-16)
-T4-path-join maxcount=2 # artifacts.ts writeFile(join(dir, f.name)) — AR1/DOC4, M1 B1 (remyh, 2026-10-16)
+# T4: no entries — every daemon-identity path join goes through safe-path.ts since M1 B1 (F-037..F-041).
+# A new hit here means a new raw join on agent-controlled input: use resolveInside/readInside/writeFileInside.
 
 T5-spawn-env maxcount=26 # reviewed one by one in M1 (B1/B4); each gets an explicit env or a regex entry here (remyh, 2026-10-16)
 T6-git ^packages/agent-runtime-worker/src/safe-git\.ts: # the one sanctioned git call site (F-034) (remyh, 2026-10-16)

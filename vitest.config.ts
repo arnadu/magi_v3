@@ -27,9 +27,9 @@ export default defineConfig({
 					functions: 87.5,
 				},
 				"packages/agent-runtime-worker/src/**": {
-					statements: 48.29,
-					branches: 81.68,
-					functions: 68.19,
+					statements: 51.76,
+					branches: 81.79,
+					functions: 70.34,
 				},
 				"packages/control-plane/src/**": {
 					statements: 47.36,
