@@ -14,27 +14,29 @@ export default defineConfig({
 			reporter: ["text", "html"],
 			include: ["packages/*/src/**/*.ts"],
 			exclude: ["packages/*/src/**/*.d.ts", "packages/cockpit/**"],
-			// Per-package ratchet (issue #44): `autoUpdate` rewrites each threshold to the
-			// measured value whenever coverage rises, so the numbers below are always the
-			// last green run — commit the bump. A drop fails `npm run verify`; lowering a
-			// number by hand is the deliberate, visible escape hatch (e.g. deleting
-			// well-covered code), never a `?? default`.
+			// Per-package floors (issue #44), maintained by hand: set to a few tenths
+			// under what CI last measured, because coverage differs slightly between a
+			// developer machine and the runner (tests that skip without pool users or
+			// setfacl) — `autoUpdate` wrote a local maximum here once and CI then failed
+			// by 0.06 points. Raise them deliberately after a sprint's tests land
+			// (read the numbers off the CI `verify` job); a drop fails `npm run verify`;
+			// lowering one is the visible escape hatch (e.g. deleting well-covered
+			// code), never a `?? default`.
 			thresholds: {
-				autoUpdate: true,
 				"packages/agent-config/src/**": {
-					statements: 93.25,
-					branches: 92.3,
-					functions: 87.5,
+					statements: 93,
+					branches: 92,
+					functions: 87,
 				},
 				"packages/agent-runtime-worker/src/**": {
-					statements: 51.76,
-					branches: 81.79,
-					functions: 70.34,
+					statements: 51.5,
+					branches: 81.3,
+					functions: 70.1,
 				},
 				"packages/control-plane/src/**": {
-					statements: 47.36,
-					branches: 87.79,
-					functions: 73.26,
+					statements: 47.2,
+					branches: 87.5,
+					functions: 73,
 				},
 			},
 		},
