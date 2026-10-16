@@ -141,9 +141,17 @@ jobs:
 
   build-execution-image:
     name: Build execution plane image (dev)
-    needs: [changes, verify, semgrep, dependencies, secrets, workflows-and-shell]
+    # Runs after the control-plane deploy (or its skip): its last step pins FLY_MISSIONS_IMAGE on the
+    # control-plane machine, which needs the same machine lease `flyctl deploy` holds — running the
+    # two in parallel made the pin fail with "lease currently held" and left the secret staged.
+    needs: [changes, verify, semgrep, dependencies, secrets, workflows-and-shell, deploy-control-plane]
     if: >-
-      (github.event_name == 'push' && needs.changes.outputs.execution == 'true') ||
-      (github.event_name == 'workflow_dispatch' && inputs.build_execution)
+      !cancelled() &&
+      (needs.deploy-control-plane.result == 'success' || needs.deploy-control-plane.result == 'skipped') &&
+      needs.verify.result == 'success' && needs.semgrep.result == 'success' &&
+      needs.dependencies.result == 'success' && needs.secrets.result == 'success' &&
+      needs.workflows-and-shell.result == 'success' &&
+      ((github.event_name == 'push' && needs.changes.outputs.execution == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.build_execution))
     uses: ./.github/workflows/build-execution-image.yml
     secrets: inherit

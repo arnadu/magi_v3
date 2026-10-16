@@ -43,6 +43,18 @@ jobs:
       # an earlier version ran `secrets unset ... || true`, which silently undid the pin
       # deploy-missions.sh sets and hid its own errors.
       - name: Pin FLY_MISSIONS_IMAGE on the control plane to this build
-        run: flyctl secrets set "FLY_MISSIONS_IMAGE=registry.fly.io/magi-missions-dev:${{ github.sha }}" --app magi-control-dev
+        # Retries: setting a secret restages the control-plane machine and needs its lease, which a
+        # concurrent deploy may hold for a minute. A failure after the retries leaves the secret
+        # "Staged" — `flyctl secrets deploy --app magi-control-dev` applies it by hand.
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if flyctl secrets set "FLY_MISSIONS_IMAGE=registry.fly.io/magi-missions-dev:${{ github.sha }}" --app magi-control-dev; then
+              exit 0
+            fi
+            echo "secrets set failed (attempt $attempt/6) — retrying in 20s"
+            sleep 20
+          done
+          echo "::error::FLY_MISSIONS_IMAGE could not be pinned; run: flyctl secrets deploy --app magi-control-dev"
+          exit 1
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}
