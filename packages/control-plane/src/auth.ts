@@ -73,12 +73,12 @@ export function safeEqual(a: string, b: string): boolean {
 	return timingSafeEqual(ha, hb);
 }
 
-function extractBearer(header: string | undefined): string | undefined {
+export function extractBearer(header: string | undefined): string | undefined {
 	if (!header?.startsWith("Bearer ")) return undefined;
 	return header.slice(7);
 }
 
-function extractCookie(
+export function extractCookie(
 	cookieHeader: string | undefined,
 	name: string,
 ): string | undefined {
