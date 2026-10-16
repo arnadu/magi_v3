@@ -9,7 +9,7 @@ authoritative reference for everything security-related in the codebase.
 
 | Layer | What it catches | When to run |
 |-------|----------------|-------------|
-| **Automated SAST** (`npm run security`) | Dangerous code patterns, exposed secrets, dependency CVEs | Every push to `main` — the `semgrep`, `secrets` (gitleaks, config `.gitleaks.toml`) and `dependencies` (`npm audit --omit=dev`) jobs in `.github/workflows/quality.yml` gate both deploy workflows. Locally: `.githooks/pre-commit` runs `npm run lint`, `.githooks/pre-push` runs `npm run verify` (build, lint, tripwires, structure ratchet, typecheck, coverage); `npm run security` is manual and needs the tools installed |
+| **Automated SAST** (`npm run security`) | Dangerous code patterns, exposed secrets, dependency CVEs | Every push to `main` — the `semgrep`, `secrets` (gitleaks, config `.gitleaks.toml`) and `dependencies` (`npm run security:deps`, see below) jobs in `.github/workflows/quality.yml` gate both deploy workflows. Locally: `.githooks/pre-commit` runs `npm run lint`, `.githooks/pre-push` runs `npm run verify` (build, lint, tripwires, structure ratchet, typecheck, coverage); `npm run security` is manual and needs the tools installed |
 | **Tripwires** (`npm run audit:tripwires`, `scripts/audit/tripwires.sh`) | Known-dangerous patterns specific to this codebase: `process.env` in config parsing, HTML sinks, path joins on agent-controlled input, spawns, git outside `safe-git.ts`, unwrapped async Express handlers, empty catches, type-system escapes, raw mailbox inserts | Part of `npm run verify` (pre-push, CI) and `verify:quick` (Claude Code Stop hook). `tripwires.allow` lists every accepted hit with owner, reason and the milestone that retires it; counts only ratchet down |
 | **AI review** (`/security-review`) | Business logic flaws, novel attack vectors, architectural weaknesses | Before each sprint completion; on any new external integration or sudo rule |
 | **Threat model** (`docs/security/threat-model.md`) | Living DFD + STRIDE — drives what the automated tools check for | Update whenever a new trust boundary, external service, or privilege level is added |
@@ -30,8 +30,17 @@ Individual checks:
 ```bash
 npm run security:sast      # semgrep: dangerous patterns in packages/
 npm run security:secrets   # gitleaks: full history scan with .gitleaks.toml (one documented allowlist)
-npm run security:deps      # npm audit --omit=dev only — pip-audit for the Python skills is not wired in
+npm run security:deps      # better-npm-audit, production deps, high+ (pip-audit for the Python skills is not wired in)
 ```
+
+**Dependency advisories — the order of remedies.** (1) Upgrade the direct dependency. (2) If the
+vulnerable package is transitive and its fixed release is outside the declarer's range, pin it
+with an npm `overrides` entry in the root `package.json` — only when the declarer never actually
+loads it or the fixed line is API-compatible (both cases are checked, e.g. `grep -r` of the
+declarer's `dist/` for the import). (3) Only when no fixed release exists anywhere, add the
+advisory to `.nsprc` with `notes` saying why the vulnerable code path is unreachable here and an
+`expiry` after which `security:deps` fails again. `.nsprc` entries are a ratchet in the same sense
+as `scripts/audit/tripwires.allow`: they are expected to shrink, never to accumulate.
 
 ### Tool installation (one-time)
 

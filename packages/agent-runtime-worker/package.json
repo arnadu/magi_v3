@@ -28,7 +28,7 @@
 		"cron-parser": "^4.9.0",
 		"exceljs": "^4.4.0",
 		"execa": "^9.6.1",
-		"image-size": "^2.0.2",
+		"image-size": "^2.0.4",
 		"jsdom": "^26.1.0",
 		"jszip": "^3.10.1",
 		"mammoth": "^1.12.0",

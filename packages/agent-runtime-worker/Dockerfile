@@ -1,5 +1,5 @@
 # Build stage — compile TypeScript from the repo root so workspace deps resolve.
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN npm run build -w packages/agent-config
 RUN npm run build -w packages/agent-runtime-worker
 
 # Runtime stage.
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 
 # System dependencies.
 RUN apt-get update && apt-get install -y --no-install-recommends \

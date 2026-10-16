@@ -172,7 +172,7 @@ auto-deploy dev (audit finding CI1, 2026-10-16). Gates, all pinned by commit SHA
 |---|---|
 | `verify` | `npm run verify` — build, Biome, tripwires (`scripts/audit/tripwires.sh`), file/function-length ratchet (`scripts/audit/structure-check.mjs`), typecheck, unit tests with per-package coverage thresholds. Same script as the local `.githooks/pre-push` hook |
 | `semgrep` | SAST, `p/default` |
-| `dependencies` | `npm audit --omit=dev --audit-level=high` |
+| `dependencies` | `npm run security:deps` — better-npm-audit over production deps at high+, with `.nsprc` as the documented, expiring exception list (policy: `docs/security/CLAUDE.md`) |
 | `secrets` | gitleaks over the full history |
 | `workflows-and-shell` | actionlint; shellcheck (`-S error`) over `scripts/` and `packages/skills/**/*.sh` |
 | `changes` | `dorny/paths-filter`: which of the two deploys the push affects |

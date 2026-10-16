@@ -3,7 +3,7 @@
 # agent-runtime-worker is included in the image (copilot daemon); changes there also trigger this deploy.
 
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
@@ -39,7 +39,7 @@ RUN npx tsc -p packages/agent-runtime-worker/tsconfig.json
 RUN npx tsc -p packages/control-plane/tsconfig.json
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 
 WORKDIR /app
 

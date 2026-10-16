@@ -1,0 +1,7 @@
+{
+	"GHSA-vfj7-8cjw-p6xm": {
+		"active": true,
+		"expiry": "2027-01-31",
+		"notes": "braces <=3.0.3 ReDoS via deeply nested brace patterns; no fixed release exists (3.0.3 is latest). Reached only through http-proxy-middleware -> micromatch, which hpm uses to match the `pathFilter` option against request paths. proxy.ts sets no pathFilter, so micromatch/braces never parse request-controlled input here. Re-check for a braces release at expiry. Policy for this file: docs/security/CLAUDE.md."
+	}
+}
