@@ -26,18 +26,29 @@ jobs:
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         with:
           filters: |
+            # Everything each Dockerfile COPYs, plus the workflow that builds it. A root
+            # dependency bump touches only package*.json/patches and must still deploy.
             control:
               - 'packages/control-plane/**'
               - 'packages/agent-config/**'
               - 'packages/agent-runtime-worker/**'
               - 'packages/cockpit/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'patches/**'
               - 'tsconfig.base.json'
               - 'fly.control-dev.toml'
+              - '.github/workflows/deploy-control-plane.yml'
             execution:
               - 'packages/agent-runtime-worker/**'
               - 'packages/agent-config/**'
               - 'packages/skills/**'
               - 'config/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'patches/**'
+              - 'tsconfig.base.json'
+              - '.github/workflows/build-execution-image.yml'
 
   verify:
     name: Build, lint, tripwires, typecheck, unit tests + coverage
