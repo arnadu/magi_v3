@@ -32,7 +32,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	type AgentConfig,
@@ -45,6 +45,7 @@ import { Type } from "@sinclair/typebox";
 import cronParser from "cron-parser";
 import { type Db, ObjectId } from "mongodb";
 import { type JobSpec, readFailedJobStatus } from "./job-recovery.js";
+import { enqueuePrivateJob, jobDirs } from "./job-runner.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMissionConfigRepository } from "./mission-config.js";
 import { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
@@ -948,7 +949,8 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const jobId = args.jobId as string;
-			const status = readFailedJobStatus(sharedDir, jobId);
+			const dirs = jobDirs(sharedDir);
+			const status = readFailedJobStatus(dirs, jobId);
 			if ("error" in status) return err(status.error);
 			const original = status.spec;
 			const newId = randomUUID();
@@ -961,13 +963,9 @@ export function createMissionCopilotTools(
 				notifySubject: original.notifySubject,
 				timeoutMs: original.timeoutMs,
 			};
-			const pendingDir = join(sharedDir, "jobs", "pending");
-			await mkdir(pendingDir, { recursive: true });
-			await writeFile(
-				join(pendingDir, `${newId}.json`),
-				JSON.stringify(newSpec, null, 2),
-				"utf8",
-			);
+			// Daemon-authored: goes to the private queue, never to the agents'
+			// pending dir (where a daemon-owned file is refused as unattributable).
+			enqueuePrivateJob(dirs, newSpec);
 			await auditPost(
 				`Restarted background job "${jobId}"`,
 				`I resubmitted job ${jobId}'s original spec as a new job (${newId}). It will run on the daemon's next job-runner heartbeat (within 60s).`,
@@ -1081,39 +1079,41 @@ export function createMissionCopilotTools(
 			"Structured status of async background jobs (jobs/pending|running|status) — a convenience over browsing sharedDir/jobs/ by hand.",
 		parameters: Type.Object({}),
 		async execute() {
-			async function listDir(sub: string): Promise<string[]> {
+			const dirs = jobDirs(sharedDir);
+			async function listDir(dir: string): Promise<string[]> {
 				try {
-					return (await readdir(join(sharedDir, "jobs", sub))).filter((f) =>
-						f.endsWith(".json"),
-					);
+					return (await readdir(dir)).filter((f) => f.endsWith(".json"));
 				} catch {
 					return [];
 				}
 			}
 			async function readSpec(
-				sub: string,
+				dir: string,
 				file: string,
 			): Promise<Record<string, unknown> | null> {
 				try {
-					return JSON.parse(
-						await readFile(join(sharedDir, "jobs", sub, file), "utf8"),
-					);
+					return JSON.parse(await readFile(join(dir, file), "utf8"));
 				} catch {
 					return null;
 				}
 			}
 
+			// Agent submissions wait in shared/jobs/pending; everything the daemon
+			// itself tracks (its own queue, the running set, authoritative status)
+			// lives in the private directories.
 			const jobs: Array<Record<string, unknown>> = [];
-			for (const file of await listDir("pending")) {
-				const spec = await readSpec("pending", file);
-				if (spec) jobs.push({ ...spec, status: "pending" });
+			for (const dir of [dirs.pending, dirs.queue]) {
+				for (const file of await listDir(dir)) {
+					const spec = await readSpec(dir, file);
+					if (spec) jobs.push({ ...spec, status: "pending" });
+				}
 			}
-			for (const file of await listDir("running")) {
-				const spec = await readSpec("running", file);
+			for (const file of await listDir(dirs.running)) {
+				const spec = await readSpec(dirs.running, file);
 				if (spec) jobs.push({ ...spec, status: "running" });
 			}
-			for (const file of await listDir("status")) {
-				const spec = await readSpec("status", file);
+			for (const file of await listDir(dirs.status)) {
+				const spec = await readSpec(dirs.status, file);
 				if (spec) {
 					jobs.push({
 						...spec,

@@ -1,6 +1,7 @@
 /**
  * Unit tests for the FRED/FMP/NewsAPI server-side proxy tools (issue CR-04,
- * job-env half). No network — global fetch is stubbed and asserted on.
+ * job-env half). No network — the pinned fetch layer (safe-http.ts) is mocked
+ * and asserted on.
  *
  * These tools exist so background jobs (agent-authored code) never receive
  * the raw provider keys in their own env — the daemon holds the key, the job
@@ -11,7 +12,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/safe-http.js", () => ({ safeGet: vi.fn() }));
+
+import { safeGet } from "../src/safe-http.js";
 import {
+	DailyQuota,
 	tryCreateDataFmpTool,
 	tryCreateDataFredTool,
 	tryCreateDataNewsapiTool,
@@ -19,12 +25,16 @@ import {
 
 const ORIGINAL_ENV = { ...process.env };
 
-function stubFetch(status: number, body: string): ReturnType<typeof vi.fn> {
-	const fetchMock = vi.fn(
-		async () => new Response(body, { status, statusText: "" }),
-	);
-	vi.stubGlobal("fetch", fetchMock);
-	return fetchMock;
+function stubFetch(status: number, body: string) {
+	const mock = vi.mocked(safeGet);
+	mock.mockReset();
+	mock.mockImplementation(async (input) => ({
+		status,
+		headers: {},
+		bytes: Buffer.from(body),
+		finalUrl: typeof input === "string" ? new URL(input) : input,
+	}));
+	return mock;
 }
 
 beforeEach(() => {
@@ -32,7 +42,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	vi.unstubAllGlobals();
+	vi.mocked(safeGet).mockReset();
 	process.env = { ...ORIGINAL_ENV };
 });
 
@@ -122,15 +132,42 @@ describe("tryCreateDataNewsapiTool", () => {
 	});
 
 	it("builds the NewsAPI URL with defaults and caps pageSize at 100", async () => {
+		process.env.NEWSAPIORG_API_KEY ??= "k";
 		process.env.NEWSAPIORG_API_KEY = "secret-news-key";
 		const fetchMock = stubFetch(200, '{"status":"ok","articles":[]}');
 		const tool = tryCreateDataNewsapiTool();
 
-		await tool?.execute("id", { pageSize: 500 }, undefined);
+		await tool?.execute("id", { q: "NVIDIA", pageSize: 500 }, undefined);
 
 		const calledUrl = new URL(fetchMock.mock.calls[0][0] as string);
 		expect(calledUrl.searchParams.get("q")).toBe("NVIDIA");
 		expect(calledUrl.searchParams.get("pageSize")).toBe("100");
 		expect(calledUrl.searchParams.get("apiKey")).toBe("secret-news-key");
+	});
+});
+
+describe("data-newsapi query", () => {
+	it("requires q instead of defaulting to a hard-coded query", async () => {
+		process.env.NEWSAPIORG_API_KEY = "k";
+		const mock = stubFetch(200, "{}");
+		const tool = tryCreateDataNewsapiTool();
+		const result = await tool?.execute("id", {}, undefined);
+		expect(result?.isError).toBe(true);
+		expect(mock).not.toHaveBeenCalled();
+	});
+});
+
+describe("DailyQuota", () => {
+	it("caps calls per provider per UTC day and resets on the next day", () => {
+		let now = new Date("2026-10-17T10:00:00Z");
+		const q = new DailyQuota(2, () => now);
+		expect(q.take("fred")).toBe(true);
+		expect(q.take("fred")).toBe(true);
+		expect(q.take("fred")).toBe(false);
+		expect(q.take("fmp")).toBe(true); // independent per provider
+		expect(q.used("fred")).toBe(2);
+		now = new Date("2026-10-18T00:00:01Z");
+		expect(q.take("fred")).toBe(true);
+		expect(q.used("fred")).toBe(1);
 	});
 });

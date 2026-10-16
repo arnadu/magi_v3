@@ -14,6 +14,7 @@ import {
 	MAX_JOB_RECOVERY_ATTEMPTS,
 	recoverOrphanedJobs,
 } from "../src/job-recovery.js";
+import { jobDirs } from "../src/job-runner.js";
 import type { MailboxMessage, MailboxRepository } from "../src/mailbox.js";
 
 function fakeMailbox(): MailboxRepository & { posted: MailboxMessage[] } {
@@ -49,7 +50,7 @@ function fakeMailbox(): MailboxRepository & { posted: MailboxMessage[] } {
 const MISSION = "m1";
 
 function writeRunningJob(sharedDir: string, spec: JobSpec): string {
-	const runningDir = join(sharedDir, "jobs", "running");
+	const runningDir = jobDirs(sharedDir).running;
 	writeFileSync(
 		join(runningDir, `${spec.id}.json`),
 		JSON.stringify(spec, null, 2),
@@ -61,19 +62,22 @@ describe("recoverOrphanedJobs", () => {
 	let sharedDir: string;
 
 	beforeEach(() => {
-		sharedDir = mkdtempSync(join(tmpdir(), "job-recovery-test-"));
-		mkdirSync(join(sharedDir, "jobs", "running"), { recursive: true });
+		sharedDir = join(
+			mkdtempSync(join(tmpdir(), "job-recovery-test-")),
+			"shared",
+		);
+		mkdirSync(jobDirs(sharedDir).running, { recursive: true });
 	});
 
 	afterEach(() => {
-		rmSync(sharedDir, { recursive: true, force: true });
+		rmSync(join(sharedDir, ".."), { recursive: true, force: true });
 	});
 
 	it("does nothing when there is no running/ dir at all", async () => {
-		rmSync(join(sharedDir, "jobs"), { recursive: true, force: true });
+		rmSync(jobDirs(sharedDir).privateRoot, { recursive: true, force: true });
 		const mailbox = fakeMailbox();
 		await expect(
-			recoverOrphanedJobs(sharedDir, MISSION, mailbox),
+			recoverOrphanedJobs(jobDirs(sharedDir), MISSION, mailbox),
 		).resolves.toBeUndefined();
 		expect(mailbox.posted).toHaveLength(0);
 	});
@@ -88,14 +92,14 @@ describe("recoverOrphanedJobs", () => {
 		writeRunningJob(sharedDir, spec);
 		const mailbox = fakeMailbox();
 
-		await recoverOrphanedJobs(sharedDir, MISSION, mailbox);
+		await recoverOrphanedJobs(jobDirs(sharedDir), MISSION, mailbox);
 
-		const runningFiles = readdirSync(join(sharedDir, "jobs", "running"));
+		const runningFiles = readdirSync(jobDirs(sharedDir).running);
 		expect(runningFiles).toHaveLength(0);
-		const pendingFiles = readdirSync(join(sharedDir, "jobs", "pending"));
+		const pendingFiles = readdirSync(jobDirs(sharedDir).queue);
 		expect(pendingFiles).toEqual(["job-1.json"]);
 		const recovered = JSON.parse(
-			readFileSync(join(sharedDir, "jobs", "pending", "job-1.json"), "utf8"),
+			readFileSync(join(jobDirs(sharedDir).queue, "job-1.json"), "utf8"),
 		);
 		expect(recovered.recoveryAttempts).toBe(1);
 		expect(mailbox.posted).toHaveLength(0); // no notification yet — still under the cap
@@ -113,22 +117,22 @@ describe("recoverOrphanedJobs", () => {
 		writeRunningJob(sharedDir, spec);
 		const mailbox = fakeMailbox();
 
-		await recoverOrphanedJobs(sharedDir, MISSION, mailbox);
+		await recoverOrphanedJobs(jobDirs(sharedDir), MISSION, mailbox);
 
 		// NOT re-queued.
-		expect(() => readdirSync(join(sharedDir, "jobs", "pending"))).not.toThrow();
-		const pendingFiles = readdirSync(join(sharedDir, "jobs", "pending"));
+		expect(() => readdirSync(jobDirs(sharedDir).queue)).not.toThrow();
+		const pendingFiles = readdirSync(jobDirs(sharedDir).queue);
 		expect(pendingFiles).toHaveLength(0);
-		const runningFiles = readdirSync(join(sharedDir, "jobs", "running"));
+		const runningFiles = readdirSync(jobDirs(sharedDir).running);
 		expect(runningFiles).toHaveLength(0);
 
 		// Moved to failed/, with a status file explaining why.
-		const failedFiles = readdirSync(join(sharedDir, "jobs", "failed"));
+		const failedFiles = readdirSync(jobDirs(sharedDir).failed);
 		expect(failedFiles).toEqual(["job-2.json"]);
-		const statusFiles = readdirSync(join(sharedDir, "jobs", "status"));
+		const statusFiles = readdirSync(jobDirs(sharedDir).status);
 		expect(statusFiles).toEqual(["job-2.json"]);
 		const status = JSON.parse(
-			readFileSync(join(sharedDir, "jobs", "status", "job-2.json"), "utf8"),
+			readFileSync(join(jobDirs(sharedDir).status, "job-2.json"), "utf8"),
 		);
 		expect(status.error).toMatch(/exceeded/i);
 
@@ -149,21 +153,18 @@ describe("recoverOrphanedJobs", () => {
 		writeRunningJob(sharedDir, spec);
 		const mailbox = fakeMailbox();
 
-		await recoverOrphanedJobs(sharedDir, MISSION, mailbox);
+		await recoverOrphanedJobs(jobDirs(sharedDir), MISSION, mailbox);
 
 		expect(mailbox.posted[0].to).toEqual(["user"]);
 	});
 
 	it("leaves a malformed job file in place rather than deleting or re-queueing it", async () => {
-		writeFileSync(
-			join(sharedDir, "jobs", "running", "broken.json"),
-			"{not json",
-		);
+		writeFileSync(join(jobDirs(sharedDir).running, "broken.json"), "{not json");
 		const mailbox = fakeMailbox();
 
-		await recoverOrphanedJobs(sharedDir, MISSION, mailbox);
+		await recoverOrphanedJobs(jobDirs(sharedDir), MISSION, mailbox);
 
-		const runningFiles = readdirSync(join(sharedDir, "jobs", "running"));
+		const runningFiles = readdirSync(jobDirs(sharedDir).running);
 		expect(runningFiles).toEqual(["broken.json"]);
 		expect(mailbox.posted).toHaveLength(0);
 	});

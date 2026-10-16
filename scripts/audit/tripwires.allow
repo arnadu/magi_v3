@@ -16,6 +16,7 @@ T3-href-from-data maxcount=1 # public/app.js:554; goes to 0 with M1 C2 (remyh, 2
 # T4: no entries — every daemon-identity path join goes through safe-path.ts since M1 B1 (F-037..F-041).
 # A new hit here means a new raw join on agent-controlled input: use resolveInside/readInside/writeFileInside.
 
+T5-spawn-env linux-user\.ts:[0-9]+:.*execFileSync\("id" # uidOf: fixed argv, PATH-only env, daemon identity (remyh, 2026-10-17)
 T5-spawn-env maxcount=26 # reviewed one by one in M1 (B1/B4); each gets an explicit env or a regex entry here (remyh, 2026-10-16)
 T6-git ^packages/agent-runtime-worker/src/safe-git\.ts: # the one sanctioned git call site (F-034) (remyh, 2026-10-16)
 T7-async-handler maxcount=41 # C1: asyncHandler wrapper lands in M2 (WS-1 E2) (remyh, 2026-10-16)

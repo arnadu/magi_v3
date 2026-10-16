@@ -41,6 +41,7 @@ import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
 import { syncTeamFiles } from "../src/daemon-boot/team-files-sync.js";
 import { resolveUsageAndCap } from "../src/daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "../src/daemon-boot/workspace.js";
+import { jobDirs } from "../src/job-runner.js";
 import { CLAUDE_SONNET } from "../src/models.js";
 import { UsageAccumulator } from "../src/usage.js";
 import { WorkspaceManager } from "../src/workspace-manager.js";
@@ -723,7 +724,7 @@ describe("startBackgroundJobs", () => {
 		);
 
 		expect(mockRecoverOrphanedJobs).toHaveBeenCalledWith(
-			"/tmp/magi-shared-test",
+			jobDirs("/tmp/magi-shared-test"),
 			"m1",
 			mailboxRepo,
 			anomalyRecorder,

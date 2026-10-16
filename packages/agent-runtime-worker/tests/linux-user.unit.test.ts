@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveLinuxUsers } from "../src/linux-user.js";
+import { buildUidToAgentId, resolveLinuxUsers } from "../src/linux-user.js";
 
 describe("resolveLinuxUsers", () => {
 	const ORIGINAL_POOL_SIZE = process.env.MAGI_POOL_SIZE;
@@ -54,5 +54,56 @@ describe("resolveLinuxUsers", () => {
 		const resolved = resolveLinuxUsers(agents, false);
 		expect(resolved.get("pinned")).toBe("magi-w5");
 		expect(resolved.get("derived")).toBe("magi-w1");
+	});
+});
+
+describe("pool assignment vs explicit linuxUser (one OS user per agent)", () => {
+	it("never hands a pool user to a derived agent when another agent claims it explicitly", () => {
+		const agents = [
+			{ id: "data-researcher", linuxUser: "magi-w1" },
+			{ id: "mission-copilot" },
+		];
+		const resolved = resolveLinuxUsers(agents, false);
+		expect(resolved.get("data-researcher")).toBe("magi-w1");
+		expect(resolved.get("mission-copilot")).toBe("magi-w2");
+	});
+
+	it("counts explicitly claimed pool users against the pool when it fills up", () => {
+		process.env.MAGI_POOL_SIZE = "2";
+		try {
+			const agents = [
+				{ id: "a", linuxUser: "magi-w1" },
+				{ id: "b" },
+				{ id: "c" },
+			];
+			expect(() => resolveLinuxUsers(agents, false)).toThrow(
+				/only 1 of the 2 pool users/,
+			);
+		} finally {
+			delete process.env.MAGI_POOL_SIZE;
+		}
+	});
+});
+
+describe("buildUidToAgentId", () => {
+	it("maps each roster user's uid to its agent", () => {
+		const uids: Record<string, number> = { "magi-w1": 60001, "magi-w2": 60002 };
+		const map = buildUidToAgentId([{ id: "b" }, { id: "a" }], (u) => uids[u]);
+		expect([...map.entries()].sort()).toEqual([
+			[60001, "a"],
+			[60002, "b"],
+		]);
+	});
+
+	it("refuses two agents on one uid — job attribution would be ambiguous", () => {
+		expect(() =>
+			buildUidToAgentId(
+				[
+					{ id: "x", linuxUser: "same" },
+					{ id: "y", linuxUser: "same" },
+				],
+				() => 7,
+			),
+		).toThrow(/share Linux user same/);
 	});
 });

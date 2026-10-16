@@ -31,10 +31,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/daemon.ts": {
-		"lines": 801,
+		"lines": 440,
 		"fns": {
-			"runPendingJobs@218": 282,
-			"main@579": 214
+			"main@218": 214
 		}
 	},
 	"packages/agent-runtime-worker/src/document-processor.ts": {
@@ -64,7 +63,7 @@
 	"packages/agent-runtime-worker/src/mission-copilot-tools.ts": {
 		"lines": 1259,
 		"fns": {
-			"createMissionCopilotTools@142": 1117
+			"createMissionCopilotTools@144": 1117
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot.ts": {
@@ -82,7 +81,7 @@
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
 		"lines": 1154,
 		"fns": {
-			"handleUpload@532": 142
+			"handleUpload@549": 142
 		}
 	},
 	"packages/agent-runtime-worker/src/objectives/tools.ts": {
@@ -99,17 +98,17 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/browse-web.ts": {
-		"lines": 506,
+		"lines": 504,
 		"fns": {
-			"createBrowseWebHandle@80": 426,
-			"execute@265": 206
+			"createBrowseWebHandle@78": 426,
+			"execute@263": 206
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/fetch-url.ts": {
 		"lines": 428,
 		"fns": {
-			"createFetchUrlTool@167": 261,
-			"execute@206": 220
+			"createFetchUrlTool@180": 261,
+			"execute@219": 220
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/inspect-image.ts": {
@@ -226,10 +225,10 @@
 		"lines": 1870,
 		"fns": {
 			"readLimits@223": 172,
-			"createMissionsRouter@664": 1206,
-			"<anonymous>@1110": 137,
-			"<anonymous>@1459": 137,
-			"<anonymous>@1694": 124
+			"createMissionsRouter@665": 1206,
+			"<anonymous>@1112": 137,
+			"<anonymous>@1461": 137,
+			"<anonymous>@1696": 124
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {

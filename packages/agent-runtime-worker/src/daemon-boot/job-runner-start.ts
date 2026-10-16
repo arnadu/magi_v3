@@ -2,6 +2,7 @@ import type { TeamConfig } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { AnomalyRecorder } from "../anomaly.js";
 import { recoverOrphanedJobs } from "../job-recovery.js";
+import { ensureJobDirs, jobDirs } from "../job-runner.js";
 import type { MailboxRepository } from "../mailbox.js";
 import type { ToolApiServer } from "../tool-api-server.js";
 import type { BootContext } from "./context.js";
@@ -44,8 +45,10 @@ export async function startBackgroundJobs(
 		anomalyRecorder: AnomalyRecorder,
 	) => () => void,
 ): Promise<Pick<BootContext, "stopJobRunner">> {
+	const dirs = jobDirs(ctx.sharedDir);
+	ensureJobDirs(dirs);
 	await recoverOrphanedJobs(
-		ctx.sharedDir,
+		dirs,
 		ctx.missionId,
 		ctx.mailboxRepo,
 		ctx.anomalyRecorder,

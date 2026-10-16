@@ -39,17 +39,8 @@
  *                                 set by the control plane at machine creation; empty in local dev
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
-import {
-	createWriteStream,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	realpathSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TeamConfig } from "@magi/agent-config";
 
@@ -109,15 +100,17 @@ import { loadDaemonTeamConfig } from "./daemon-boot/team-config.js";
 import { syncTeamFiles } from "./daemon-boot/team-files-sync.js";
 import { resolveUsageAndCap } from "./daemon-boot/usage-cap.js";
 import { constructWorkspaceManager } from "./daemon-boot/workspace.js";
-import type { JobSpec } from "./job-recovery.js";
-import { resolveLinuxUsers } from "./linux-user.js";
+import {
+	cancelBackgroundJob,
+	runningJobCount,
+	runPendingJobs,
+} from "./job-runner.js";
+import { buildUidToAgentId } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { sampleDiskUsage } from "./resource-sampler.js";
 import type { ToolApiServer } from "./tool-api-server.js";
-import type { AclPolicy } from "./tools.js";
-import type { AgentIdentity } from "./workspace-manager.js";
 
 /**
  * Mission copilot (ADR-0016): default-on as of Sprint 26, validated end-to-end
@@ -137,367 +130,6 @@ const missionCopilotEnabled = process.env.MISSION_COPILOT_ENABLED !== "false";
 // triggering daemon.ts's unconditional main() at module load).
 
 /** Default job wall-clock timeout: 30 minutes (F-006). */
-const DEFAULT_JOB_TIMEOUT_MS = 30 * 60_000;
-
-// ---------------------------------------------------------------------------
-// Background job execution
-// ---------------------------------------------------------------------------
-
-const MAX_CONCURRENT_JOBS = 3;
-/** Track running jobs so we enforce the concurrency limit. */
-let runningJobs = 0;
-
-/**
- * jobId → live ChildProcess, populated on spawn and cleared on exit (ADR-0016
- * — the mission copilot's CancelBackgroundJob). Before this, no registry
- * existed at all: runningJobs above is a bare counter, and the PID the
- * timeout handler kills is a closure-local variable inside runPendingJobs,
- * unreachable from anywhere else. This is the only way to reach a running
- * job's process from outside that closure.
- */
-const runningJobProcesses = new Map<string, ChildProcess>();
-
-/**
- * Kill a running background job's entire process group, the same
- * SIGKILL-the-process-group pattern the wall-clock timeout already uses.
- * Returns false if the job isn't currently running (already exited, or the
- * id is unknown) — the caller should report that, not treat it as success.
- */
-export function cancelBackgroundJob(jobId: string): boolean {
-	const child = runningJobProcesses.get(jobId);
-	if (!child || child.pid === undefined) return false;
-	try {
-		process.kill(-child.pid, "SIGKILL");
-	} catch {
-		return false;
-	}
-	return true;
-}
-
-/**
- * Read the shebang line from a script and return the interpreter argv prefix.
- * Handles `#!/usr/bin/env <cmd>` → `/usr/local/bin/<cmd>` and direct paths.
- * Returns [] if no shebang found (caller falls back to direct execution).
- *
- * Why: WriteFile creates files without the execute bit (+x). Rather than
- * chmod-ing a file owned by a different user, we extract the interpreter from
- * the shebang and prepend it to the magi-job argv so the OS doesn't need +x.
- */
-function readShebangInterpreter(scriptPath: string): string[] {
-	try {
-		const head = readFileSync(scriptPath, "utf8").slice(0, 256);
-		const firstLine = head.split("\n")[0] ?? "";
-		if (!firstLine.startsWith("#!")) return [];
-		const shebang = firstLine.slice(2).trim();
-		const envMatch = shebang.match(/^\/usr\/bin\/env\s+(\S+)/);
-		if (envMatch) return [`/usr/local/bin/${envMatch[1]}`];
-		return [shebang.split(/\s+/)[0]];
-	} catch {
-		return [];
-	}
-}
-
-/**
- * Scan sharedDir/jobs/pending/*.json and spawn each job (up to
- * MAX_CONCURRENT_JOBS at a time).
- *
- * Job files are written by:
- *   - The scheduled delivery heartbeat (when a cron spec has a jobSpec field).
- *   - submit-job.sh (agent or operator one-shots).
- *
- * For each pending job:
- *   1. Move the spec to jobs/running/ (atomically prevents double-execution).
- *   2. Issue a bearer token for the agent's ACL.
- *   3. Spawn: sudo -u <linuxUser> [interpreter] <scriptPath> <args...>
- *      with MAGI_TOOL_URL, MAGI_TOOL_TOKEN, data-key env vars, PATH, HOME.
- *      Interpreter is extracted from the script's shebang line — the script
- *      does not need to be executable (+x).
- *   4. Pipe stdout+stderr to logs/bg-<id>.log.
- *   5. On exit: revoke token, write jobs/status/<id>.json, optionally notify.
- */
-async function runPendingJobs(
-	sharedDir: string,
-	workdir: string,
-	missionId: string,
-	toolApiServer: ToolApiServer,
-	toolPort: number,
-	mailboxRepo: MailboxRepository,
-	teamConfig: TeamConfig,
-): Promise<void> {
-	const pendingDir = join(sharedDir, "jobs", "pending");
-	const runningDir = join(sharedDir, "jobs", "running");
-	const statusDir = join(sharedDir, "jobs", "status");
-	const logsDir = join(sharedDir, "logs");
-
-	let files: string[];
-	try {
-		files = readdirSync(pendingDir).filter((f) => f.endsWith(".json"));
-	} catch {
-		return; // pending dir does not exist yet
-	}
-
-	for (const file of files) {
-		if (runningJobs >= MAX_CONCURRENT_JOBS) break;
-
-		const pendingPath = join(pendingDir, file);
-		let spec: JobSpec;
-		try {
-			spec = JSON.parse(readFileSync(pendingPath, "utf8")) as JobSpec;
-		} catch {
-			continue; // malformed spec — leave it for the next cycle
-		}
-
-		// Atomically claim the job: move pending → running.
-		const runningPath = join(runningDir, file);
-		try {
-			mkdirSync(runningDir, { recursive: true });
-			mkdirSync(statusDir, { recursive: true });
-			mkdirSync(logsDir, { recursive: true });
-			// Node doesn't expose atomic rename across directories natively,
-			// but writeFileSync + unlinkSync is safe enough for our use case
-			// (single-process daemon, not distributed).
-			writeFileSync(runningPath, readFileSync(pendingPath));
-			unlinkSync(pendingPath);
-		} catch {
-			continue; // race or IO error — skip
-		}
-
-		// Derive linuxUser from the team config — never trust the job file.
-		const agentCfg = teamConfig.agents.find((a) => a.id === spec.agentId);
-		if (!agentCfg) {
-			console.error(
-				`[daemon:jobs] Unknown agentId "${spec.agentId}" in job ${spec.id} — skipping`,
-			);
-			try {
-				unlinkSync(runningPath);
-			} catch {}
-			continue;
-		}
-		const linuxUser = resolveLinuxUsers(teamConfig.agents).get(agentCfg.id);
-		if (!linuxUser) {
-			console.error(
-				`[daemon:jobs] Could not resolve a Linux user for agentId "${spec.agentId}" in job ${spec.id} — skipping`,
-			);
-			try {
-				unlinkSync(runningPath);
-			} catch {}
-			continue;
-		}
-		const agentWorkdir = join(
-			workdir,
-			"home",
-			linuxUser,
-			"missions",
-			missionId,
-		);
-		const permittedPaths = [agentWorkdir, sharedDir];
-
-		// F-013: Validate scriptPath using resolve() + realpathSync() to prevent
-		// symlink traversal (an agent could symlink a script inside permittedPaths
-		// to an arbitrary executable outside them).
-		let resolvedScript: string;
-		try {
-			resolvedScript = resolve(spec.scriptPath);
-			const realScript = realpathSync(resolvedScript);
-			const scriptAllowed = permittedPaths.some(
-				(p) => realScript === p || realScript.startsWith(`${p}/`),
-			);
-			if (!scriptAllowed) {
-				console.error(
-					`[daemon:jobs] scriptPath "${spec.scriptPath}" resolves outside permitted paths for agent "${spec.agentId}" — skipping`,
-				);
-				try {
-					unlinkSync(runningPath);
-				} catch {}
-				continue;
-			}
-		} catch (e) {
-			console.error(
-				`[daemon:jobs] scriptPath "${spec.scriptPath}" could not be resolved: ${(e as Error).message} — skipping`,
-			);
-			try {
-				unlinkSync(runningPath);
-			} catch {}
-			continue;
-		}
-
-		const acl: AclPolicy = {
-			agentId: spec.agentId,
-			linuxUser,
-			permittedPaths,
-		};
-		const identity: AgentIdentity = {
-			workdir: agentWorkdir,
-			sharedDir,
-			linuxUser,
-		};
-
-		// F-014: Issue token just before spawn — revoke immediately if spawn fails
-		// so the token window is as short as possible.
-		const token = toolApiServer.issueToken(acl, identity);
-		const logPath = join(logsDir, `bg-${spec.id}.log`);
-		const logStream = createWriteStream(logPath, { flags: "a" });
-
-		runningJobs++;
-		const interpreter = readShebangInterpreter(resolvedScript);
-		console.log(
-			`[daemon:jobs] Starting job ${spec.id} (${spec.scriptPath}) as ${linuxUser}`,
-		);
-
-		let child: ReturnType<typeof spawn>;
-		try {
-			child = spawn(
-				"sudo",
-				[
-					"-u",
-					linuxUser,
-					"/usr/local/bin/magi-job",
-					...interpreter,
-					resolvedScript,
-					...spec.args,
-				],
-				{
-					// CR-04 (job-env half): the raw FRED_API_KEY/FMP_API_KEY/
-					// NEWSAPIORG_API_KEY used to be spread here directly — this is
-					// agent-authored code, and a reusable third-party credential in
-					// its env could be read and exfiltrated with no privilege
-					// escalation needed. The data-factory adapters now call the
-					// data-fred/data-fmp/data-newsapi tools through MAGI_TOOL_URL
-					// instead (tool-api-server.ts, tools/data-provider-proxy.ts) —
-					// the daemon holds the real keys, the job gets a capability.
-					env: {
-						PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-						HOME: `/home/${linuxUser}`,
-						MAGI_TOOL_URL: `http://127.0.0.1:${toolPort}`,
-						MAGI_TOOL_TOKEN: token,
-					},
-					stdio: ["ignore", "pipe", "pipe"],
-				},
-			);
-		} catch (e) {
-			// F-014: spawn failed — revoke token immediately so it cannot be used.
-			runningJobs--;
-			toolApiServer.revokeToken(token);
-			logStream.end();
-			try {
-				unlinkSync(runningPath);
-			} catch {}
-			console.error(
-				`[daemon:jobs] Failed to spawn job ${spec.id}: ${(e as Error).message}`,
-			);
-			continue;
-		}
-
-		child.stdout?.pipe(logStream);
-		child.stderr?.pipe(logStream);
-		runningJobProcesses.set(spec.id, child);
-
-		// F-006: Wall-clock timeout — kill the entire process group after timeoutMs.
-		const jobTimeoutMs = spec.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;
-		const timeoutHandle = setTimeout(() => {
-			console.error(
-				`[daemon:jobs] Job ${spec.id} timed out after ${jobTimeoutMs}ms — killing`,
-			);
-			if (child.pid !== undefined) {
-				try {
-					process.kill(-child.pid, "SIGKILL");
-				} catch {}
-			} else {
-				child.kill("SIGKILL");
-			}
-		}, jobTimeoutMs);
-
-		child.on("close", (exitCode) => {
-			clearTimeout(timeoutHandle);
-			runningJobs--;
-			runningJobProcesses.delete(spec.id);
-			toolApiServer.revokeToken(token);
-			logStream.end();
-
-			// Clean up the running file.
-			try {
-				unlinkSync(runningPath);
-			} catch {}
-
-			// Write status file. Carries the full original spec (not just
-			// scriptPath) so RestartBackgroundJob (ADR-0016) can resubmit an
-			// exact retry — agentId/args/notifyAgentId/timeoutMs are otherwise
-			// unrecoverable once jobs/running/<id>.json is cleaned up above.
-			const statusPath = join(statusDir, `${spec.id}.json`);
-			const status = {
-				id: spec.id,
-				agentId: spec.agentId,
-				scriptPath: spec.scriptPath,
-				args: spec.args,
-				notifyAgentId: spec.notifyAgentId,
-				notifySubject: spec.notifySubject,
-				timeoutMs: spec.timeoutMs,
-				exitCode: exitCode ?? -1,
-				completedAt: new Date().toISOString(),
-				logPath,
-			};
-			try {
-				writeFileSync(statusPath, JSON.stringify(status, null, 2));
-			} catch {}
-
-			const success = exitCode === 0;
-			console.log(
-				`[daemon:jobs] Job ${spec.id} exited ${exitCode ?? "null"} — ${success ? "ok" : "FAILED"}`,
-			);
-
-			// Post completion notification if requested.
-			if (spec.notifyAgentId) {
-				const subject =
-					spec.notifySubject ?? `Background job complete: ${spec.id}`;
-				const body = success
-					? `Job completed successfully.\nLog: ${logPath}`
-					: `Job FAILED (exit ${exitCode ?? "null"}).\nLog: ${logPath}`;
-				mailboxRepo
-					.post({
-						missionId,
-						from: "scheduler",
-						to: [spec.notifyAgentId],
-						subject,
-						body,
-					})
-					.catch((e: unknown) =>
-						console.error(
-							`[daemon:jobs] Failed to notify ${spec.notifyAgentId}: ${(e as Error).message}`,
-						),
-					);
-			}
-
-			// Additively: a failed job is otherwise visible only in
-			// jobs/status/<id>.json — nothing wakes anyone up (GitHub #3).
-			// The mission copilot (ADR-0016), when present, is the one agent
-			// positioned to investigate and either fix or report it; notify it
-			// regardless of whether the submitting agent also asked to be
-			// notified via notifyAgentId.
-			if (
-				!success &&
-				missionCopilotEnabled &&
-				teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
-			) {
-				mailboxRepo
-					.post({
-						missionId,
-						from: "scheduler",
-						to: [MISSION_COPILOT_AGENT_ID],
-						subject: `Background job failed: ${spec.id}`,
-						body:
-							`Job "${spec.id}" (submitted by "${spec.agentId}") exited ` +
-							`${exitCode ?? "null"}.\nScript: ${spec.scriptPath}\nLog: ${logPath}`,
-					})
-					.catch((e: unknown) =>
-						console.error(
-							`[daemon:jobs] Failed to notify mission copilot of job failure: ${(e as Error).message}`,
-						),
-					);
-			}
-		});
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Background job runner
 // ---------------------------------------------------------------------------
@@ -533,6 +165,10 @@ function startJobRunner(
 	db: Db,
 	anomalyRecorder: AnomalyRecorder,
 ): () => void {
+	// Who may submit a job: resolved once; the roster does not change while
+	// the daemon runs (a config change restarts it).
+	const uidToAgentId = buildUidToAgentId(teamConfig.agents);
+	const daemonUid = process.getuid?.() ?? -1;
 	function tick(): void {
 		logMemoryUsage(missionId);
 		sampleDiskUsage({
@@ -544,7 +180,7 @@ function startJobRunner(
 			// `du`'s breakdown should cover the whole mission, not one agent.
 			workdir: process.env.AGENT_WORKDIR ?? process.cwd(),
 			rssMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
-			runningJobs,
+			runningJobs: runningJobCount(),
 			// FLY_APP_NAME is unset in local dev, where AGENT_WORKDIR is an
 			// ordinary host directory, not a real volume — alerting on its
 			// fill level there would be meaningless.
@@ -554,15 +190,18 @@ function startJobRunner(
 				`[resource-sampler] Uncaught failure { missionId: "${missionId}", error: "${(e as Error).message}" }`,
 			),
 		);
-		runPendingJobs(
+		runPendingJobs({
 			sharedDir,
 			workdir,
 			missionId,
+			teamConfig,
 			toolApiServer,
 			toolPort,
 			mailboxRepo,
-			teamConfig,
-		).catch((e) => console.error("[daemon:jobs] Heartbeat error:", e));
+			missionCopilotEnabled,
+			uidToAgentId,
+			daemonUid,
+		});
 	}
 
 	// Run any pending jobs immediately on startup (handles crash recovery).

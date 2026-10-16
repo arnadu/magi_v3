@@ -5,11 +5,12 @@
  * store; HTTP calls to the monitor server are faked via global.fetch.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ObjectId } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { jobDirs } from "../src/job-runner.js";
 import { MISSION_COPILOT_AGENT_ID } from "../src/mission-copilot.js";
 import { createMissionCopilotTools } from "../src/mission-copilot-tools.js";
 import type { MagiTool } from "../src/tools.js";
@@ -123,13 +124,17 @@ describe("mission-copilot-tools", () => {
 	let fetchMock: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
-		sharedDir = mkdtempSync(join(tmpdir(), "mission-copilot-tools-"));
+		sharedDir = join(
+			mkdtempSync(join(tmpdir(), "mission-copilot-tools-")),
+			"shared",
+		);
+		mkdirSync(sharedDir, { recursive: true });
 		mailboxPosts = [];
 		fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 	});
 	afterEach(() => {
-		rmSync(sharedDir, { recursive: true, force: true });
+		rmSync(join(sharedDir, ".."), { recursive: true, force: true });
 		vi.unstubAllGlobals();
 	});
 
@@ -657,9 +662,9 @@ describe("mission-copilot-tools", () => {
 			expect(result.isError).toBe(true);
 		});
 
-		it("RestartBackgroundJob resubmits the original spec as a new pending job", async () => {
+		it("RestartBackgroundJob resubmits the original spec into the daemon-private queue", async () => {
 			const { mkdir, writeFile } = await import("node:fs/promises");
-			const statusDir = join(sharedDir, "jobs", "status");
+			const statusDir = jobDirs(sharedDir).status;
 			await mkdir(statusDir, { recursive: true });
 			await writeFile(
 				join(statusDir, "old-job.json"),
@@ -684,11 +689,11 @@ describe("mission-copilot-tools", () => {
 			expect(parsed.newJobId).not.toBe("old-job");
 
 			const { readFile, readdir } = await import("node:fs/promises");
-			const pendingFiles = await readdir(join(sharedDir, "jobs", "pending"));
+			const pendingFiles = await readdir(jobDirs(sharedDir).queue);
 			expect(pendingFiles).toEqual([`${parsed.newJobId}.json`]);
 			const newSpec = JSON.parse(
 				await readFile(
-					join(sharedDir, "jobs", "pending", `${parsed.newJobId}.json`),
+					join(jobDirs(sharedDir).queue, `${parsed.newJobId}.json`),
 					"utf8",
 				),
 			);
@@ -701,18 +706,18 @@ describe("mission-copilot-tools", () => {
 		it("ListBackgroundJobs reports pending, running, and completed jobs from their respective directories", async () => {
 			const { mkdir, writeFile } = await import("node:fs/promises");
 			await mkdir(join(sharedDir, "jobs", "pending"), { recursive: true });
-			await mkdir(join(sharedDir, "jobs", "running"), { recursive: true });
-			await mkdir(join(sharedDir, "jobs", "status"), { recursive: true });
+			await mkdir(jobDirs(sharedDir).running, { recursive: true });
+			await mkdir(jobDirs(sharedDir).status, { recursive: true });
 			await writeFile(
 				join(sharedDir, "jobs", "pending", "p1.json"),
 				JSON.stringify({ id: "p1", agentId: "worker", scriptPath: "a.py" }),
 			);
 			await writeFile(
-				join(sharedDir, "jobs", "running", "r1.json"),
+				join(jobDirs(sharedDir).running, "r1.json"),
 				JSON.stringify({ id: "r1", agentId: "worker", scriptPath: "b.py" }),
 			);
 			await writeFile(
-				join(sharedDir, "jobs", "status", "s1.json"),
+				join(jobDirs(sharedDir).status, "s1.json"),
 				JSON.stringify({
 					id: "s1",
 					agentId: "worker",
@@ -721,7 +726,7 @@ describe("mission-copilot-tools", () => {
 				}),
 			);
 			await writeFile(
-				join(sharedDir, "jobs", "status", "s2.json"),
+				join(jobDirs(sharedDir).status, "s2.json"),
 				JSON.stringify({
 					id: "s2",
 					agentId: "worker",

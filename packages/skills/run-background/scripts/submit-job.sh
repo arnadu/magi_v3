@@ -5,25 +5,30 @@
 # Writes a job spec to sharedDir/jobs/pending/<jobId>.json.
 # The daemon picks it up on its next heartbeat (within 1 minute).
 #
-# The daemon derives the linux user from the agentId via the team config.
-# Do NOT include a linuxUser field — it would be ignored and is a security risk.
+# The job runs as the user who created the spec file: the daemon attributes
+# it to the file's owner, not to the --agent field, so --agent must be your
+# own agent id (it defaults to $AGENT_ID) — a spec naming another agent is
+# refused. Do NOT include a linuxUser field; it is ignored.
 #
 # Usage:
 #   bash submit-job.sh \
 #     --script   <abs-path-to-script> \
-#     --agent    <agentId> \
+#     [--agent   <agentId>]            (default: $AGENT_ID — must be yourself)
 #     [--args    "<space-separated-args>"] \
 #     [--notify-subject "<text>"] \
 #     [--notify-agent   <agentId>]
 #
 # Environment:
 #   SHARED_DIR   (required) — mission shared directory
+#   AGENT_ID     (set by the Bash tool) — the submitting agent
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # Arg parsing
 # ---------------------------------------------------------------------------
+# Captured before arg parsing reuses the name: the Bash tool sets AGENT_ID.
+AGENT_ID_FROM_ENV="${AGENT_ID:-}"
 SCRIPT_PATH=""
 AGENT_ID=""
 ARGS_STR=""
@@ -41,8 +46,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "${SCRIPT_PATH}" || -z "${AGENT_ID}" ]]; then
-    echo "Usage: submit-job.sh --script <path> --agent <agentId> [--args '...'] [--notify-subject '...']" >&2
+AGENT_ID="${AGENT_ID:-$AGENT_ID_FROM_ENV}"
+if [[ -z "${SCRIPT_PATH}" ]]; then
+    echo "Usage: submit-job.sh --script <path> [--agent <agentId>] [--args '...'] [--notify-subject '...']" >&2
+    exit 1
+fi
+if [[ -z "${AGENT_ID}" ]]; then
+    echo "Error: --agent not given and AGENT_ID is not set in the environment" >&2
     exit 1
 fi
 

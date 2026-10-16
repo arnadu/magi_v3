@@ -35,7 +35,7 @@ bash $SKILL_DIR/../run-background/scripts/submit-job.sh \
 |------|-------------|
 | `--script <path>` | Absolute path to the script (shebang selects interpreter) |
 | `--args <...>` | Space-separated positional args to pass to the script |
-| `--agent <id>` | Your agent id (determines linuxUser and ACL) |
+| `--agent <id>` | Your own agent id (default: `$AGENT_ID`). The job runs as whoever created the spec file — the daemon attributes it to the file's owner, so naming another agent is refused |
 | `--notify-subject <text>` | Subject for the completion PostMessage (omit to suppress) |
 | `--notify-agent <id>` | Recipient of the completion notification (default: same as --agent) |
 

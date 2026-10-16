@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 const MAGI_CREATE_USER_PATH = "/usr/local/bin/magi-create-user";
@@ -57,16 +58,67 @@ export function resolveLinuxUsers(
 
 	const poolSize = Number.parseInt(process.env.MAGI_POOL_SIZE ?? "6", 10);
 	const sorted = [...needsDerivation].sort();
-	if (sorted.length > poolSize) {
+	// A pool user an agent already claims explicitly (`linuxUser: magi-w1` in
+	// the config) is not handed out again: two agents on one OS user makes
+	// every ownership-based decision ambiguous (job attribution, ACLs).
+	const claimed = new Set(resolved.values());
+	const free = Array.from(
+		{ length: poolSize },
+		(_, i) => `magi-w${i + 1}`,
+	).filter((u) => !claimed.has(u));
+	if (sorted.length > free.length) {
 		throw new Error(
 			`Local dev pool exhausted: ${sorted.length} agent(s) need a Linux user ` +
-				`(${sorted.join(", ")}), but only ${poolSize} pool users ` +
-				`(magi-w1..magi-w${poolSize}) exist. Run scripts/setup-dev.sh with a ` +
-				"larger MAGI_POOL_SIZE, or reduce the team's agent count.",
+				`(${sorted.join(", ")}), but only ${free.length} of the ${poolSize} pool users ` +
+				`(magi-w1..magi-w${poolSize}) are not already claimed by an explicit linuxUser. ` +
+				"Run scripts/setup-dev.sh with a larger MAGI_POOL_SIZE, or reduce the team's agent count.",
 		);
 	}
 	sorted.forEach((id, i) => {
-		resolved.set(id, `magi-w${i + 1}`);
+		resolved.set(id, free[i]);
 	});
 	return resolved;
+}
+
+/**
+ * Numeric uid of an OS user, via `id -u` (Node has no getpwnam). Throws when
+ * the user does not exist — in production `ensureAgentUsers()` created every
+ * roster user before this runs, and in local dev the pool users exist.
+ */
+export function uidOf(linuxUser: string): number {
+	if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(linuxUser)) {
+		throw new Error(`Not a Linux user name: ${JSON.stringify(linuxUser)}`);
+	}
+	const out = execFileSync("id", ["-u", linuxUser], {
+		env: { PATH: "/usr/bin:/bin" },
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
+	}).trim();
+	const uid = Number.parseInt(out, 10);
+	if (!Number.isInteger(uid))
+		throw new Error(`id -u ${linuxUser} returned ${JSON.stringify(out)}`);
+	return uid;
+}
+
+/**
+ * Owner uid → agentId for a mission's roster. The job runner attributes an
+ * agent-submitted spec to the owner of its file, so this is the one mapping
+ * that decides which identity a job runs under.
+ */
+export function buildUidToAgentId(
+	agents: ReadonlyArray<{ id: string; linuxUser?: string }>,
+	uidLookup: (linuxUser: string) => number = uidOf,
+): Map<number, string> {
+	const map = new Map<number, string>();
+	for (const [agentId, linuxUser] of resolveLinuxUsers(agents)) {
+		const uid = uidLookup(linuxUser);
+		const prior = map.get(uid);
+		if (prior && prior !== agentId) {
+			throw new Error(
+				`Agents "${prior}" and "${agentId}" share Linux user ${linuxUser} (uid ${uid}) — job attribution would be ambiguous`,
+			);
+		}
+		map.set(uid, agentId);
+	}
+	return map;
 }
