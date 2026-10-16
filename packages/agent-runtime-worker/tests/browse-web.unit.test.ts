@@ -3,19 +3,16 @@
  * No browser, no LLM, no network. Pure function tests.
  */
 
-// We test the exported internals by importing the module and using a small
-// test shim. The SSRF check is an async function so we export it for testing.
-// To avoid spinning up a real Stagehand instance we test isPrivateHost directly
-// by re-exporting it from browse-web.ts via a thin test-only path below.
-//
-// Alternatively we test the tool's execute() by constructing a minimal handle.
+// The host classification lives in ssrf.ts (`isPrivateLiteral` is its
+// synchronous, DNS-free form); BrowseWeb's pre-navigation check and the
+// egress proxy both build on it. ssrf.unit.test.ts covers the resolver path.
 
 import { describe, expect, it } from "vitest";
-import { PRIVATE_HOST_RE } from "../src/tools/browse-web.js";
+import { isPrivateLiteral } from "../src/ssrf.js";
 
 describe("BrowseWeb URL validation", () => {
 	function matchesPrivate(host: string): boolean {
-		return PRIVATE_HOST_RE.test(host);
+		return isPrivateLiteral(host);
 	}
 
 	it("blocks loopback addresses", () => {

@@ -13,9 +13,11 @@
  * (HTTPS) and every plain-HTTP request the browser makes is resolved and
  * checked against `isPrivateHost()` — the same check `browse-web.ts` already
  * runs — *before* the upstream connection opens, so it covers everything the
- * browser does, not just top-level navigation. No DNS-rebinding gap: DNS is
- * resolved here, once, immediately before connecting, never by the browser
- * itself (Chromium delegates DNS resolution to the configured proxy).
+ * browser does, not just top-level navigation. No DNS-rebinding gap: each
+ * target is resolved here exactly once (`resolvePinned`, every answer vetted,
+ * lookup failure = refused) and the upstream socket is opened to that vetted
+ * address — never re-resolved by the socket, and never resolved by the
+ * browser itself (Chromium delegates DNS resolution to the configured proxy).
  *
  * No auth: this proxy is reachable only by the Chromium process this
  * handle's own BrowseWeb tool launches (bound to 127.0.0.1, an ephemeral
@@ -29,7 +31,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer, request as httpRequest } from "node:http";
 import { connect as netConnect, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
-import { isPrivateHost } from "../ssrf.js";
+import { resolvePinned } from "../ssrf.js";
 
 export interface EgressProxyHandle {
 	/** Pass as `localBrowserLaunchOptions.proxy.server` when launching Chromium. */
@@ -62,11 +64,17 @@ async function handleConnect(
 	sockets: Set<Duplex | Socket>,
 ): Promise<void> {
 	const { hostname, port } = splitHostPort(req.url ?? "");
-	if (!hostname || (await isPrivateHost(hostname, allowedHosts))) {
+	// Resolve once, vet every answer, connect to the vetted address — the name
+	// is never resolved again by the socket (DNS rebinding, B1).
+	let pinned: { address: string; family: 4 | 6 };
+	try {
+		if (!hostname) throw new Error("no host");
+		pinned = await resolvePinned(hostname, allowedHosts);
+	} catch {
 		clientSocket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
 		return;
 	}
-	const upstream = netConnect(port, hostname, () => {
+	const upstream = netConnect(port, pinned.address, () => {
 		clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
 		upstream.write(head);
 		upstream.pipe(clientSocket);
@@ -103,13 +111,20 @@ async function handlePlainHttp(
 		res.writeHead(400).end("Bad Request — expected an absolute URI");
 		return;
 	}
-	if (await isPrivateHost(target.hostname, allowedHosts)) {
+	let pinned: { address: string; family: 4 | 6 };
+	try {
+		pinned = await resolvePinned(target.hostname, allowedHosts);
+	} catch {
 		res.writeHead(403).end("Forbidden");
 		return;
 	}
 	const upstreamReq = httpRequest(
 		target,
-		{ method: req.method, headers: req.headers },
+		{
+			method: req.method,
+			headers: req.headers,
+			lookup: (_h, _o, cb) => cb(null, pinned.address, pinned.family),
+		},
 		(upstreamRes) => {
 			res.writeHead(upstreamRes.statusCode ?? 502, upstreamRes.headers);
 			upstreamRes.pipe(res);

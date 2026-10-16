@@ -12,7 +12,7 @@ import {
 	generateArtifactId,
 	saveArtifact,
 } from "../artifacts.js";
-import { isPrivateHost, PRIVATE_HOST_RE } from "../ssrf.js";
+import { isPrivateHost } from "../ssrf.js";
 import type { MagiTool, ToolResult } from "../tools.js";
 import {
 	createEgressFilterProxy,
@@ -39,8 +39,6 @@ function toolErr(text: string): ToolResult {
 }
 
 // SSRF protection helpers are in ../ssrf.ts — imported above.
-// Re-export PRIVATE_HOST_RE so unit tests that import it from here continue to work.
-export { PRIVATE_HOST_RE };
 
 // ---------------------------------------------------------------------------
 // Public API

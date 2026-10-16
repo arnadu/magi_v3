@@ -94,7 +94,7 @@ describe("BrowseWeb egress-filtering proxy", () => {
 	});
 
 	it("rejects a CONNECT to a distinct private loopback address not on the allowlist", async () => {
-		// 127.0.0.2 is still loopback (matches PRIVATE_HOST_RE's ^127\.) but is a
+		// 127.0.0.2 is still loopback (is classified private by ssrf.ts) but is a
 		// different address than the one allowlisted for the "safe" server —
 		// mirrors the real attack shape: the start page is allowed, a link on it
 		// points somewhere else private that must still be blocked.

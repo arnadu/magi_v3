@@ -44,7 +44,7 @@ findings scheduled in `docs/plans/audit-oct26-remediation-plan.md` (committed at
 | Run a background job (daemon, `sudo -u`) | `jobs/pending/*.json` incl. `agentId`, `id` | any agent | **open** — JOB1/JOB2 → owner-uid attribution, private queue (M1 B4, ADR-0033) |
 | Ingest schedules (daemon) | `shared/schedules/*.json` | any agent | **open** (not built) — ADR-0033 |
 | Skill discovery into system prompts (daemon) | `SKILL.md` frontmatter in agent-writable tiers | agents | **open** — SK1/WM1 (M1 B5) |
-| Fetch a URL (daemon, in-process) | URL and every redirect hop | agent, web | `isPrivateHost` first hop only — **open** S2/S1 (M1 B3); BrowseWeb egress proxy (F-002) |
+| Fetch a URL (daemon, in-process) | URL and every redirect hop | agent, web | `safe-http.ts` `safeGet`: every hop vetted by `resolveVetted` (all DNS answers, fail closed) and connected to the pinned address, streaming byte cap, timeout (F-043); BrowseWeb egress proxy pins the same way (F-002/F-043); **open** — in-browser `file://`/`chrome://` navigation (F-044) |
 | Execute copilot `ProposeAction` (control plane) | payload | control-plane copilot (LLM), confirmed by the operator on a label only | ownership on most actions; **open** — EA1/CK-GATE (M2 D2), `file_github_issue` gate (M1 B6) |
 | Execute an LLM tool call (daemon) | tool arguments | agent LLM, web-influenced | TypeBox schema declared, **open** — not validated (LP2, M2 D1) |
 | Render agent output in the cockpit (browser) | markdown, file content, SVG | agents, web | escapes `& < >`; **open** — `"` and attribute breakout (XSS1, M1 C1); sandboxed iframes (TB-20) |

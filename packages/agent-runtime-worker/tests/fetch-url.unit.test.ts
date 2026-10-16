@@ -18,11 +18,14 @@ import { fileURLToPath } from "node:url";
 import type { Model } from "@mariozechner/pi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Allow any host in this test (no production change). Hoisted by Vitest.
+// Allow any host and stub the network layer (no production change). Hoisted
+// by Vitest. safe-http.ts has its own tests against a real local server.
 vi.mock("../src/ssrf.js", () => ({
 	isPrivateHost: vi.fn(async () => false),
 }));
+vi.mock("../src/safe-http.js", () => ({ safeGet: vi.fn() }));
 
+import { safeGet } from "../src/safe-http.js";
 import { createFetchUrlTool } from "../src/tools/fetch-url.js";
 
 const DOCS = join(
@@ -48,18 +51,14 @@ const TEXT_MODEL = {
 	maxTokens: 100,
 } as unknown as Model<string>;
 
-/** Stub global fetch to return given bytes + content-type for any URL. */
+/** Stub safeGet to return given bytes + content-type for any URL. */
 function stubFetch(bytes: Buffer, contentType: string): void {
-	vi.stubGlobal(
-		"fetch",
-		vi.fn(
-			async () =>
-				new Response(bytes, {
-					status: 200,
-					headers: { "content-type": contentType },
-				}),
-		),
-	);
+	vi.mocked(safeGet).mockImplementation(async (input) => ({
+		status: 200,
+		headers: { "content-type": contentType },
+		bytes,
+		finalUrl: typeof input === "string" ? new URL(input) : input,
+	}));
 }
 
 let dir: string;
