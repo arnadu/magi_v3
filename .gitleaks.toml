@@ -1,0 +1,17 @@
+# gitleaks config: default rules, plus one narrowly-scoped allowlist.
+# The Firebase *client* web API key appears in docs/deployment.md's history. It is public by
+# design — the control plane serves it unauthenticated to every browser via /firebase-config.js
+# (threat model TB-14) — and is restricted by HTTP referrer in the Firebase console. The current
+# docs use a placeholder; this entry only keeps the history scan from failing on old commits.
+# Anything else gitleaks finds is a real finding: do not widen this.
+# `[allowlist]` (singular) is the form every gitleaks 8.x accepts; `[[allowlists]]` needs ≥ 8.25.
+title = "MAGI V3 gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Firebase client web API key in docs/deployment.md history (public by design, TB-14)"
+regexTarget = "match"
+regexes = ['''AIza[0-9A-Za-z_-]{35}''']
+paths = ['''^docs/deployment\.md$''']

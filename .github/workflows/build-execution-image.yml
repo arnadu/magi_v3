@@ -1,13 +1,14 @@
 name: Build execution plane image
 
+# Reusable: called by quality.yml after every gate passes on a push to main that touched the
+# execution plane. Pins the control plane to the exact image just built — the same policy
+# scripts/deploy-missions.sh uses — so no path ever relies on the floating :latest tag.
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/agent-runtime-worker/**'
-      - 'packages/agent-config/**'
-      - 'packages/skills/**'
-      - 'config/**'
+  workflow_call: {}
+
+permissions:
+  contents: read
 
 jobs:
   build-dev:
@@ -16,10 +17,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be # 1.5
 
       - name: Authenticate with Fly registry
         run: flyctl auth docker
@@ -38,8 +39,10 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}
 
-      # Remove the image override so the control plane uses :latest from now on.
-      - name: Clear image pin on control plane
-        run: flyctl secrets unset FLY_MISSIONS_IMAGE --app magi-control-dev || true
+      # Pin the control plane to this exact build (restarts it). Failure here is a real failure:
+      # an earlier version ran `secrets unset ... || true`, which silently undid the pin
+      # deploy-missions.sh sets and hid its own errors.
+      - name: Pin FLY_MISSIONS_IMAGE on the control plane to this build
+        run: flyctl secrets set "FLY_MISSIONS_IMAGE=registry.fly.io/magi-missions-dev:${{ github.sha }}" --app magi-control-dev
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}

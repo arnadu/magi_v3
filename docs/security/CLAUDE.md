@@ -9,7 +9,8 @@ authoritative reference for everything security-related in the codebase.
 
 | Layer | What it catches | When to run |
 |-------|----------------|-------------|
-| **Automated SAST** (`npm run security`) | Dangerous code patterns, exposed secrets, dependency CVEs | Intended on every PR and as pre-commit hooks; **currently CI/manual only** — `.githooks/pre-commit` runs `npm run lint` alone, `security:sast`/`security:secrets` are not yet wired into it (tracked under CR-06, Sprint 28b) |
+| **Automated SAST** (`npm run security`) | Dangerous code patterns, exposed secrets, dependency CVEs | Every push to `main` — the `semgrep`, `secrets` (gitleaks, config `.gitleaks.toml`) and `dependencies` (`npm audit --omit=dev`) jobs in `.github/workflows/quality.yml` gate both deploy workflows. Locally: `.githooks/pre-commit` runs `npm run lint`, `.githooks/pre-push` runs `npm run verify` (build, lint, tripwires, structure ratchet, typecheck, coverage); `npm run security` is manual and needs the tools installed |
+| **Tripwires** (`npm run audit:tripwires`, `scripts/audit/tripwires.sh`) | Known-dangerous patterns specific to this codebase: `process.env` in config parsing, HTML sinks, path joins on agent-controlled input, spawns, git outside `safe-git.ts`, unwrapped async Express handlers, empty catches, type-system escapes, raw mailbox inserts | Part of `npm run verify` (pre-push, CI) and `verify:quick` (Claude Code Stop hook). `tripwires.allow` lists every accepted hit with owner, reason and the milestone that retires it; counts only ratchet down |
 | **AI review** (`/security-review`) | Business logic flaws, novel attack vectors, architectural weaknesses | Before each sprint completion; on any new external integration or sudo rule |
 | **Threat model** (`docs/security/threat-model.md`) | Living DFD + STRIDE — drives what the automated tools check for | Update whenever a new trust boundary, external service, or privilege level is added |
 
@@ -28,8 +29,8 @@ npm run security
 Individual checks:
 ```bash
 npm run security:sast      # semgrep: dangerous patterns in packages/
-npm run security:secrets   # gitleaks: secrets in files and staged changes
-npm run security:deps      # npm audit only — pip-audit not yet wired in (tracked under CR-06, Sprint 28b)
+npm run security:secrets   # gitleaks: full history scan with .gitleaks.toml (one documented allowlist)
+npm run security:deps      # npm audit --omit=dev only — pip-audit for the Python skills is not wired in
 ```
 
 ### Tool installation (one-time)
@@ -37,12 +38,11 @@ npm run security:deps      # npm audit only — pip-audit not yet wired in (trac
 ```bash
 pip install semgrep           # or: brew install semgrep
 brew install gitleaks         # or: download from github.com/gitleaks/gitleaks/releases
-pip install pip-audit         # Python dependency scanner
-pip install pre-commit        # pre-commit hook framework
-pre-commit install            # activate hooks in this repo (run from project root)
+git config core.hooksPath .githooks   # done by setup-dev.sh; installs pre-commit (lint) + pre-push (verify)
 ```
 
-After `pre-commit install`, gitleaks and semgrep run automatically before each commit.
+CI runs the same three scanners on every push, so a missing local install only delays the
+finding to the push — it cannot reach a deploy.
 
 ---
 

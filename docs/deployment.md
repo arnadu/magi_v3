@@ -162,7 +162,20 @@ time. If you add a new secret after bootstrap, update it in `fly-machines.ts` an
 
 ## 3. GitHub Actions CI/CD setup
 
-Two workflows automate the full build and deploy cycle on every push to `main`.
+One pipeline, `quality.yml`, runs every gate on pull requests and on every push to `main`, and on
+a push to `main` also deploys — but only after every gate is green, and only for the paths each
+deploy owns. The two deploy workflows below are reusable workflows it calls (`uses:`), not
+independent triggers, so a red lint, test, dependency audit, secret scan or tripwire can no longer
+auto-deploy dev (audit finding CI1, 2026-10-16). Gates, all pinned by commit SHA:
+
+| Job | What it runs |
+|---|---|
+| `verify` | `npm run verify` — build, Biome, tripwires (`scripts/audit/tripwires.sh`), file/function-length ratchet (`scripts/audit/structure-check.mjs`), typecheck, unit tests with per-package coverage thresholds. Same script as the local `.githooks/pre-push` hook |
+| `semgrep` | SAST, `p/default` |
+| `dependencies` | `npm audit --omit=dev --audit-level=high` |
+| `secrets` | gitleaks over the full history |
+| `workflows-and-shell` | actionlint; shellcheck (`-S error`) over `scripts/` and `packages/skills/**/*.sh` |
+| `changes` | `dorny/paths-filter`: which of the two deploys the push affects |
 
 ### Secret required
 
@@ -180,25 +193,29 @@ app's registry and will fail for the other.
 
 `bootstrap.sh --suffix dev` generates and sets this token automatically when `gh` is available.
 
-### Workflow 1: `build-execution-image.yml`
+### Workflow 1: `build-execution-image.yml` (reusable, called by `quality.yml`)
 
-Triggers on changes to: `packages/agent-runtime-worker/**`, `packages/agent-config/**`,
-`packages/skills/**`, `config/**`
+Runs after the gates pass on a push to `main` touching: `packages/agent-runtime-worker/**`,
+`packages/agent-config/**`, `packages/skills/**`, `config/**`
 
 What it does:
 1. Builds the execution plane Docker image
 2. Pushes as `:latest` and `:{sha}` tags to `registry.fly.io/magi-missions-dev`
-3. Clears `FLY_MISSIONS_IMAGE` on `magi-control-dev` (so it picks up `:latest`)
+3. **Pins** `FLY_MISSIONS_IMAGE` on `magi-control-dev` to the `:{sha}` it just built — the same
+   policy as `scripts/deploy-missions.sh`, so neither path ever relies on the floating `:latest`
+   (the previous "unset the pin `|| true`" step silently undid manual pins and hid its own
+   failures). Setting the secret restarts the control plane.
 
 After this workflow completes, the next mission provisioned will use the new image.
 Running missions are unaffected — they continue on their existing machine image.
 
-### Workflow 2: `deploy-control-plane.yml`
+### Workflow 2: `deploy-control-plane.yml` (reusable, called by `quality.yml`)
 
-Triggers on changes to: `packages/control-plane/**`, `packages/agent-config/**`,
-`packages/agent-runtime-worker/**`, `packages/cockpit/**`, `tsconfig.base.json`,
-`fly.control-dev.toml` — and can also be triggered manually (`workflow_dispatch`), e.g. via
-`gh workflow run "Deploy control plane"`, without needing a matching file change.
+Runs after the gates pass on a push to `main` touching: `packages/control-plane/**`,
+`packages/agent-config/**`, `packages/agent-runtime-worker/**`, `packages/cockpit/**`,
+`tsconfig.base.json`, `fly.control-dev.toml`. Can also be triggered manually
+(`workflow_dispatch`, e.g. `gh workflow run "Deploy control plane"`) — that path skips the gates,
+so reserve it for redeploying a commit that already passed them.
 
 What it does:
 1. **Builds the cockpit** (`npm run build -w @magi/cockpit`) — its Vite output is gitignored,
@@ -367,7 +384,7 @@ Fill in the Firebase vars in `secrets.env` before running `bootstrap.sh`:
 ```bash
 # secrets.env (gitignored — fill in once, bootstrap.sh reads it)
 FIREBASE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"magi-68bb2",...}'
-FIREBASE_CLIENT_API_KEY=AIzaSyDj6CTM8fPIKs4NxPFH-qOGEqagnzGCf-4
+FIREBASE_CLIENT_API_KEY=<your-firebase-web-api-key>
 FIREBASE_CLIENT_AUTH_DOMAIN=magi-68bb2.firebaseapp.com
 FIREBASE_CLIENT_PROJECT_ID=magi-68bb2
 ```
@@ -396,7 +413,7 @@ Add to your `.env` (copied from `secrets.env.template`):
 
 ```
 FIREBASE_SERVICE_ACCOUNT_KEY={"type":"service_account",...}   # from magi-68bb2 console
-FIREBASE_CLIENT_API_KEY=AIzaSyDj6CTM8fPIKs4NxPFH-qOGEqagnzGCf-4
+FIREBASE_CLIENT_API_KEY=<your-firebase-web-api-key>
 FIREBASE_CLIENT_AUTH_DOMAIN=magi-68bb2.firebaseapp.com
 FIREBASE_CLIENT_PROJECT_ID=magi-68bb2
 ```
