@@ -175,6 +175,13 @@ auto-deploy dev (audit finding CI1, 2026-10-16). Gates, all pinned by commit SHA
 | `dependencies` | `npm run security:deps` — better-npm-audit over production deps at high+, with `.nsprc` as the documented, expiring exception list (policy: `docs/security/CLAUDE.md`) |
 | `secrets` | gitleaks over the full history |
 | `workflows-and-shell` | actionlint; shellcheck (`-S error`) over `scripts/` and `packages/skills/**/*.sh` |
+
+**When a push fails a gate, its changes stay undeployed** — and the path filter compares each
+push against its own base, so a follow-up push that only fixes the gate (say, a coverage floor)
+does not redeploy the earlier change. Once `main` is green again, force the deploys with
+`gh workflow run Quality -f deploy_control=true -f build_execution=true`: the dispatch runs every
+gate on `main` and then deploys the chosen planes regardless of paths. Check for this whenever a
+Quality run on `main` is red: `gh run list --workflow Quality --limit 5`.
 | `changes` | `dorny/paths-filter`: which of the two deploys the push affects |
 
 ### Secret required

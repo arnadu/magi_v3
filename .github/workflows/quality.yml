@@ -4,11 +4,26 @@ name: Quality
 # jobs at the bottom run only on a push to main, only for the paths they own, and only after every
 # gate is green — a red lint, test, audit or secret scan can no longer auto-deploy dev.
 # Actions are pinned by commit SHA (the tag is in the trailing comment).
+#
+# The path filter compares against the push's base, so a push whose gates failed leaves its
+# changes undeployed until another push touches the same paths — a follow-up that only fixes the
+# gate does not redeploy them. `workflow_dispatch` runs every gate on main and then deploys the
+# chosen planes regardless of paths: `gh workflow run Quality -f deploy_control=true -f build_execution=true`.
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_control:
+        description: Deploy the control plane (dev) after the gates pass
+        type: boolean
+        default: true
+      build_execution:
+        description: Build + pin the execution plane image (dev) after the gates pass
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -23,6 +38,8 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - id: filter
+        # A dispatch has no base to diff against; the deploy jobs use the inputs instead.
+        if: github.event_name != 'workflow_dispatch'
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         with:
           filters: |
@@ -116,13 +133,17 @@ jobs:
   deploy-control-plane:
     name: Deploy control plane (dev)
     needs: [changes, verify, semgrep, dependencies, secrets, workflows-and-shell]
-    if: github.event_name == 'push' && needs.changes.outputs.control == 'true'
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.control == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.deploy_control)
     uses: ./.github/workflows/deploy-control-plane.yml
     secrets: inherit
 
   build-execution-image:
     name: Build execution plane image (dev)
     needs: [changes, verify, semgrep, dependencies, secrets, workflows-and-shell]
-    if: github.event_name == 'push' && needs.changes.outputs.execution == 'true'
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.execution == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_execution)
     uses: ./.github/workflows/build-execution-image.yml
     secrets: inherit
