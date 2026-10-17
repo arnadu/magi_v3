@@ -1,6 +1,6 @@
 /**
  * daemon-boot/agent-identity.ts — OS-user provisioning, the mission
- * copilot's source-access ACL grant, and the bundled provisionAgentIdentities
+ * copilot's source-access check, and the bundled provisionAgentIdentities
  * phase (Sprint 28c, issue #33). Isolated in its own test file (rather than
  * daemon-boot-phases.unit.test.ts) because it needs to mock node:child_process
  * and node:fs, which other phases' tests use for real (e.g. setupLogTee's
@@ -23,8 +23,8 @@ vi.mock("node:fs", () => ({
 
 const {
 	ensureAgentUsers,
-	grantMissionCopilotSourceAccess,
 	provisionAgentIdentities,
+	verifyMissionCopilotSourceAccess,
 } = await import("../src/daemon-boot/agent-identity.js");
 
 describe("ensureAgentUsers", () => {
@@ -66,7 +66,7 @@ describe("ensureAgentUsers", () => {
 	});
 });
 
-describe("grantMissionCopilotSourceAccess", () => {
+describe("verifyMissionCopilotSourceAccess", () => {
 	beforeEach(() => {
 		mockExecFileSync.mockReset();
 		mockExistsSync.mockReset();
@@ -74,27 +74,34 @@ describe("grantMissionCopilotSourceAccess", () => {
 
 	it("is a no-op when /opt/magi-src does not exist (local dev)", () => {
 		mockExistsSync.mockReturnValue(false);
-		grantMissionCopilotSourceAccess("magi-w1");
+		expect(verifyMissionCopilotSourceAccess("magi-w1")).toBe(true);
 		expect(mockExecFileSync).not.toHaveBeenCalled();
 	});
 
-	it("grants the ACL via setfacl when the path exists", () => {
+	it("probes readability as the copilot's own OS user through the sudo path its tools use, never with setfacl", () => {
 		mockExistsSync.mockReturnValue(true);
 		mockExecFileSync.mockReturnValueOnce("");
-		grantMissionCopilotSourceAccess("magi-w1");
-		expect(mockExecFileSync).toHaveBeenCalledWith(
-			"setfacl",
-			["-R", "-m", "u:magi-w1:rX", "/opt/magi-src"],
-			{ stdio: "ignore" },
+		expect(verifyMissionCopilotSourceAccess("mission-copilot")).toBe(true);
+		const [cmd, args] = mockExecFileSync.mock.calls[0];
+		expect(cmd).toBe("sudo");
+		expect(args.slice(0, 4)).toEqual([
+			"-n",
+			"-u",
+			"mission-copilot",
+			"/usr/local/bin/magi-node",
+		]);
+		expect(args.join(" ")).toContain("/opt/magi-src/MAGI_V3_SPEC.md");
+		expect(mockExecFileSync.mock.calls.some((c) => c[0] === "setfacl")).toBe(
+			false,
 		);
 	});
 
-	it("does not throw when setfacl fails", () => {
+	it("reports false without throwing when the probe fails", () => {
 		mockExistsSync.mockReturnValue(true);
 		mockExecFileSync.mockImplementationOnce(() => {
-			throw new Error("boom");
+			throw new Error("EACCES");
 		});
-		expect(() => grantMissionCopilotSourceAccess("magi-w1")).not.toThrow();
+		expect(verifyMissionCopilotSourceAccess("mission-copilot")).toBe(false);
 	});
 });
 
@@ -132,7 +139,7 @@ describe("provisionAgentIdentities", () => {
 		expect(idCalls.length).toBe(teamConfig.agents.length);
 	});
 
-	it("does not inject the mission copilot when disabled, and skips the ACL grant", () => {
+	it("does not inject the mission copilot when disabled, and skips the source-access check", () => {
 		const teamConfig = baseTeamConfig();
 		const originalCount = teamConfig.agents.length;
 		provisionAgentIdentities({ teamConfig, missionId: "m1" }, false);

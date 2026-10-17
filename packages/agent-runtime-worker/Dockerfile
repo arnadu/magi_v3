@@ -1,5 +1,8 @@
 # Build stage — compile TypeScript from the repo root so workspace deps resolve.
-FROM node:22-slim AS builder
+# Base image pinned by digest (multi-arch index for node:22-slim) so a rebuild
+# cannot silently pick up a different base; bump the digest deliberately, with
+# the tag comment kept in step.
+FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS builder
 
 WORKDIR /app
 
@@ -27,7 +30,7 @@ RUN npm run build -w packages/agent-config
 RUN npm run build -w packages/agent-runtime-worker
 
 # Runtime stage.
-FROM node:22-slim AS runtime
+FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS runtime
 
 # System dependencies.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -57,6 +60,13 @@ RUN for i in 1 2 3 4 5; do \
 # Non-root daemon user (uid 999). Owns the daemon process; never runs as root.
 RUN useradd -m -u 999 -s /bin/bash magi-operator
 
+# Mission-copilot OS user (ADR-0016; agent id "mission-copilot" maps to this
+# username in production). Created at image build, not by the daemon at
+# startup, so that /opt/magi-src below can be owned statically by root with
+# this user's group — the daemon then never needs to (and cannot) change who
+# may read the source the copilot trusts.
+RUN useradd -m -u 60011 -s /bin/bash -G magi-shared mission-copilot
+
 # Allow all users to access git repos under /missions and /app without "dubious
 # ownership" errors. Pool users (uid 60001+) differ from magi-operator (uid 999)
 # which owns the files written to the Fly Volume.
@@ -64,15 +74,33 @@ RUN git config --system safe.directory /missions && \
     git config --system safe.directory /app
 
 # magi-create-user: root helper invoked via sudo by magi-operator to create
-# per-agent OS users at daemon startup. Validates the username format to
-# prevent unexpected input; idempotent (skips if user already exists).
-# Does NOT touch sudoers (CR-01, 2026-08-09 audit) — no agent identity ever
-# needs its own sudo grant, since sudo is only ever invoked by the trusted
-# daemon (magi-operator) to spawn a subprocess AS an agent, never by an
-# agent's own subprocess. Membership in magi-shared is what makes the new
-# user a valid sudo target of magi-operator's own group-scoped grant below.
-RUN printf '#!/bin/bash\nset -e\nif [[ ! "$1" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then\n  echo "magi-create-user: invalid username" >&2; exit 1\nfi\nif id "$1" >/dev/null 2>&1; then exit 0; fi\nuseradd -m -s /bin/bash -G magi-shared "$1"\n' \
-    > /usr/local/bin/magi-create-user && chmod +x /usr/local/bin/magi-create-user
+# per-agent OS users at daemon startup. Validates the username format;
+# idempotent for a user it (or this image) created. An existing name is only
+# accepted if it is a real agent-class user — uid >= 1000 and a member of
+# magi-shared — so an agent id that collides with a system account (root,
+# magi-operator, daemon, …) fails here instead of silently becoming a sudo
+# target that the group-scoped grant below would then refuse at dispatch time.
+# Does NOT touch sudoers (CR-01) — no agent identity ever needs its own sudo
+# grant; sudo is only ever invoked by the trusted daemon to spawn a subprocess
+# AS an agent. Membership in magi-shared is what makes the new user a valid
+# sudo target of magi-operator's group-scoped grant.
+RUN printf '%s\n' \
+      '#!/bin/bash' \
+      'set -e' \
+      'if [[ ! "$1" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then' \
+      '  echo "magi-create-user: invalid username" >&2; exit 1' \
+      'fi' \
+      'if id "$1" >/dev/null 2>&1; then' \
+      '  if [[ "$(id -u "$1")" -lt 1000 ]]; then' \
+      '    echo "magi-create-user: $1 is a system account, not an agent user" >&2; exit 1' \
+      '  fi' \
+      '  if ! id -nG "$1" | tr " " "\n" | grep -qx magi-shared; then' \
+      '    echo "magi-create-user: $1 exists but is not in magi-shared" >&2; exit 1' \
+      '  fi' \
+      '  exit 0' \
+      'fi' \
+      'useradd -m -s /bin/bash -G magi-shared "$1"' \
+      > /usr/local/bin/magi-create-user && chmod 755 /usr/local/bin/magi-create-user
 
 # sudoers: ONLY magi-operator (the daemon) may invoke sudo, and only to become
 # a member of magi-shared (every pool/per-agent user, never root or any other
@@ -86,9 +114,12 @@ RUN printf '#!/bin/bash\nset -e\nif [[ ! "$1" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then
 # user is automatically a valid target the moment magi-create-user adds it to
 # the group, with no sudoers file edit at runtime.
 # env_keep for magi-job: sudo's default env_reset strips all custom vars before
-# exec. Background jobs need MAGI_TOOL_* for the Tool API and data keys for
-# adapters (FRED, FMP, NewsAPI). Must match DATA_KEY_NAMES in daemon.ts.
-RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API_KEY\"" > /etc/sudoers.d/magi && \
+# exec. A background job inherits exactly two: the Tool API address and its own
+# scoped token. Data-provider keys are deliberately absent — jobs reach
+# FRED/FMP/NewsAPI through the daemon's data-* tools (CR-04), never through a
+# raw key in their environment, so sudo must not be able to pass one through
+# even if the daemon's env ever leaked into a spawn.
+RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL_TOKEN\"" > /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(root) NOPASSWD: /usr/local/bin/magi-create-user" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
@@ -125,26 +156,29 @@ COPY --from=builder /app/node_modules/ ./node_modules/
 COPY config/ ./config/
 # packages/skills/ is not in the builder stage (not compiled TypeScript) — copy direct.
 COPY packages/skills/ ./packages/skills/
+# The runtime needs dist/ (and node_modules/) readable by every agent user:
+# magi-tool and the isolated tool-executor run *as the agent*. The TypeScript
+# source and the tests do not belong in the image at all — the only copy an
+# agent may read is the copilot-gated one under /opt/magi-src below.
+RUN rm -rf /app/packages/agent-config/src /app/packages/agent-config/tests \
+           /app/packages/agent-runtime-worker/src /app/packages/agent-runtime-worker/tests
 
 # /opt/magi-src/ — read-only platform source + spec for the mission copilot
 # (ADR-0016) to diagnose platform bugs and check the real tool/skill catalog
-# before granting one. daemon.ts grants read access to the copilot's specific
-# OS user at startup via setfacl (that user doesn't exist yet at image-build
-# time) — this directory having no group/world read bit by default is what
-# makes every *other* agent's Bash tool unable to reach it, since Bash has no
-# software path check (A-002) and would otherwise bypass
-# AgentRunContext.permittedPaths entirely.
-#
-# Owned by magi-operator (the daemon's own runtime user), not root: setfacl
-# requires either superuser or file-owner privilege to modify a path's ACL,
-# and the daemon runs as magi-operator (USER below), not root — root-owned
-# would make every runtime setfacl call in daemon.ts fail with "Operation not
-# permitted".
-RUN mkdir -p /opt/magi-src && chown magi-operator:magi-operator /opt/magi-src
-COPY --from=builder --chown=magi-operator:magi-operator /app/packages/agent-runtime-worker/src/ /opt/magi-src/packages/agent-runtime-worker/src/
-COPY --from=builder --chown=magi-operator:magi-operator /app/packages/agent-config/src/ /opt/magi-src/packages/agent-config/src/
-COPY --chown=magi-operator:magi-operator MAGI_V3_SPEC.md /opt/magi-src/MAGI_V3_SPEC.md
-RUN chmod -R 750 /opt/magi-src
+# before granting one. Owned by root, group mission-copilot, mode 750: the
+# copilot's own OS user (created above) can read it, every other agent's Bash
+# gets EACCES (Bash has no software path check, A-002, so this mode is the
+# whole boundary), and no runtime process — the daemon included — can modify
+# or re-grant it, so what the copilot reads and trusts is fixed at build time.
+# The daemon only verifies readability at startup (daemon-boot/agent-identity.ts).
+# dist/ under /app is necessarily agent-readable (see above); the gate here is
+# the human-readable source and the spec, which is what the copilot is told
+# to consult.
+RUN mkdir -p /opt/magi-src
+COPY --from=builder --chown=root:mission-copilot /app/packages/agent-runtime-worker/src/ /opt/magi-src/packages/agent-runtime-worker/src/
+COPY --from=builder --chown=root:mission-copilot /app/packages/agent-config/src/ /opt/magi-src/packages/agent-config/src/
+COPY --chown=root:mission-copilot MAGI_V3_SPEC.md /opt/magi-src/MAGI_V3_SPEC.md
+RUN chown root:mission-copilot /opt/magi-src && chmod -R 750 /opt/magi-src
 
 # Install data factory Python dependencies into the shared venv.
 RUN /opt/magi/venv/bin/pip install --no-cache-dir \

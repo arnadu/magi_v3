@@ -34,6 +34,16 @@ export function mountPublicSurface(app: express.Express): string {
 		}),
 	);
 
+	// Liveness for Fly's http checks (fly.control-*.toml): answers as soon as
+	// the process accepts connections. Deliberately no dependency probe — a
+	// Mongo outage must not make Fly restart the control plane in a loop; the
+	// resource monitor and the copilot report that failure through their own
+	// paths.
+	app.get("/healthz", (_req, res) => {
+		res.setHeader("Cache-Control", "no-store");
+		res.json({ ok: true, uptimeSeconds: Math.floor(process.uptime()) });
+	});
+
 	// Firebase client config — served from env vars so dev/prod use different projects.
 	// These are public client-side identifiers, not secrets.
 	app.get("/firebase-config.js", (_req, res) => {

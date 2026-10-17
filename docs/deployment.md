@@ -112,14 +112,20 @@ exists, image already pushed, etc.).
 5. Source secrets.env
 6. Auto-generate MONITOR_SIGNING_KEY if not set in secrets.env
 7. fly tokens create deploy -a magi-missions-{suffix} → FLY_API_TOKEN_MACHINES
-8. fly secrets set -a magi-control-{suffix}  MONGODB_URI CONTROL_API_KEY MONITOR_SIGNING_KEY
+8. fly secrets import -a magi-control-{suffix}  (values on stdin, never argv)
+                                              MONGODB_URI CONTROL_API_KEY MONITOR_SIGNING_KEY
                                               FLY_API_TOKEN_MACHINES FLY_MISSIONS_APP_NAME
                                               ANTHROPIC_API_KEY OPENROUTER_API_KEY (if set)
                                               FIREBASE_SERVICE_ACCOUNT_KEY (if set)
                                               FIREBASE_CLIENT_API_KEY / AUTH_DOMAIN / PROJECT_ID (if set)
-9. fly secrets set -a magi-missions-{suffix} ANTHROPIC_API_KEY MONGODB_URI + data keys
+   (skipped when MONGODB_URI is already set on the app, unless --reset-secrets)
+9. fly secrets import -a magi-missions-{suffix} ANTHROPIC_API_KEY MONGODB_URI + data keys
+   (skipped when ANTHROPIC_API_KEY is already set on the app, unless --reset-secrets)
 10. docker build -f packages/agent-runtime-worker/Dockerfile -t registry.fly.io/magi-missions-{suffix}:latest .
 11. flyctl auth docker && docker push registry.fly.io/magi-missions-{suffix}:latest
+    (no local Docker: `flyctl deploy --remote-only` instead, then the launch machines that
+    deploy created — release metadata, no volume mount, the just-built image — are removed;
+    any other machine in the app, i.e. a mission machine, is listed and kept)
 12. flyctl deploy --config fly.control-{suffix}.toml --app magi-control-{suffix}
 13. If gh present: flyctl tokens create org personal → gh secret set FLY_API_TOKEN_CI
 14. Print: "Bootstrap complete. Control plane: https://magi-control-{suffix}.fly.dev"
@@ -339,10 +345,10 @@ answer to "what version is this running" instead of that answer only living in F
 history:
 
 1. Refuses to run against a dirty working tree — the tag has to name an exact, reproducible commit.
-2. Tags `HEAD` (default `promote/{suffix}/{timestamp}-{short-sha}`, or pass `--tag` for a custom
-   label) and pushes the tag.
-3. Runs `deploy-missions.sh --suffix {suffix}` (execution plane image + `FLY_MISSIONS_IMAGE` pin).
-4. Runs `flyctl deploy --config fly.control-{suffix}.toml` (control plane).
+2. Runs `deploy-missions.sh --suffix {suffix}` (execution plane image + `FLY_MISSIONS_IMAGE` pin).
+3. Runs `flyctl deploy --config fly.control-{suffix}.toml` (control plane).
+4. Only then tags `HEAD` (default `promote/{suffix}/{timestamp}-{short-sha}`, or pass `--tag` for a
+   custom label) and pushes the tag — a promotion that failed halfway leaves no tag behind.
 
 To roll a bad promotion back: `git checkout <previous tag>` and re-run `promote.sh` from there
 (it refuses a dirty tree, so `checkout` cleanly rather than reverting commits on `main`).
@@ -629,6 +635,32 @@ flyctl machines list -a magi-missions-dev   # all machines
 flyctl machine status <id>                   # single machine state
 fly ssh console -a magi-missions-dev -s      # SSH into a running machine
 ```
+
+### Health checks
+
+Fly's `[[http_service.checks]]` in every `fly.control-*.toml` polls `GET /healthz` on the control
+plane every 30 s. It is a liveness check only (`{ok, uptimeSeconds}`, no auth, no Mongo probe): a
+Mongo outage is reported by the resource monitor and the copilot, not by making Fly restart-loop
+the control plane. There is no Docker `HEALTHCHECK` — Fly ignores it. Mission machines are
+API-provisioned with no Fly service, so they have no Fly check; their liveness signal is the
+daemon's 60 s `missionResources` heartbeat (ADR-0032).
+
+### Reconciling MongoDB against Fly
+
+```bash
+node scripts/reconcile-mission-state.mjs                        # report only (exit 1 if drift)
+node scripts/reconcile-mission-state.mjs --fix-status           # Mongo status ← real machine state
+node scripts/reconcile-mission-state.mjs --purge-orphans        # prints what a purge WOULD destroy
+node scripts/reconcile-mission-state.mjs --purge-orphans --yes  # destroys it
+```
+
+Needs `MONGODB_URI`, `FLY_API_TOKEN_MACHINES`, `FLY_MISSIONS_APP_NAME` and, to avoid every pinned
+machine being reported as image drift, the control plane's current `FLY_MISSIONS_IMAGE`. The purge
+never touches a machine with a volume mount, a volume that is attached to a machine, or anything
+younger than `--min-age-hours` (default 24) — each skip is printed with its reason, because a
+mission whose `volumeId` drifted (issue #62) makes its real data volume look orphaned. `--fix-status`
+only rewrites a status that still holds the value the scan saw. Rules and tests:
+`scripts/lib/reconcile-policy.mjs`, `packages/control-plane/tests/reconcile-policy.unit.test.ts`.
 
 ---
 

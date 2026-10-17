@@ -56,60 +56,62 @@ export function ensureAgentUsers(
 }
 
 const MISSION_COPILOT_SRC_PATH = "/opt/magi-src";
+const MISSION_COPILOT_SRC_PROBE = `${MISSION_COPILOT_SRC_PATH}/MAGI_V3_SPEC.md`;
 
 /**
- * Grant the mission copilot's specific OS user read access to the bundled
- * platform source (ADR-0016).
+ * Check that the mission copilot's OS user can read the bundled platform
+ * source (ADR-0016), and report it either way.
  *
- * Why this can't be a Dockerfile permission alone: Bash has no software
- * checkPath — path enforcement for Bash is delegated entirely to OS Linux
- * ACLs (accepted finding A-002). AgentRunContext.permittedPaths (extended
- * for the copilot in agent-runner.ts) only gates WriteFile/EditFile. If
- * /opt/magi-src/ were world-or-group readable at the OS level, *any* agent
- * could read it via Bash regardless of permittedPaths — the actual
- * restriction has to be an OS-level ACL grant scoped to one specific Linux
- * user, the same setfacl-per-agent pattern WorkspaceManager already uses for
- * sharedDir/workdir. That user (agent id "mission-copilot") doesn't exist until
- * ensureAgentUsers() creates it, so this must run at daemon startup, not at
- * image build time — the Dockerfile only makes the directory readable by
- * magi-operator itself (mode 750, owned by magi-operator's own dedicated
- * group — confirmed via a real image build), not by any other user.
+ * The grant itself is static: the execution-plane image creates the
+ * `mission-copilot` user and ships /opt/magi-src owned by root, group
+ * `mission-copilot`, mode 750. Nothing that runs at runtime — not even the
+ * daemon, which a confused-deputy bug could drive — can then change what the
+ * copilot reads and trusts, and Bash run by every other agent user gets EACCES:
+ * Bash has no software path check (A-002), so the OS mode is the real
+ * boundary, not AgentRunContext.permittedPaths (which only gates
+ * WriteFile/EditFile).
  *
- * Best-effort: /opt/magi-src/ only exists in the built execution-plane
- * image, never in local dev — skip silently when absent, matching every
- * other ACL call's tolerance for unsupported/missing environments.
+ * The probe runs the same `sudo -u <user> magi-node` path the copilot's own
+ * tools use, so it fails exactly when the copilot would. Best-effort:
+ * /opt/magi-src only exists in the built image, never in local dev.
  */
-export function grantMissionCopilotSourceAccess(linuxUser: string): void {
-	if (!existsSync(MISSION_COPILOT_SRC_PATH)) return;
+export function verifyMissionCopilotSourceAccess(linuxUser: string): boolean {
+	if (!existsSync(MISSION_COPILOT_SRC_PATH)) return true;
 	try {
 		execFileSync(
-			"setfacl",
-			["-R", "-m", `u:${linuxUser}:rX`, MISSION_COPILOT_SRC_PATH],
-			{ stdio: "ignore" },
+			"sudo",
+			[
+				"-n",
+				"-u",
+				linuxUser,
+				"/usr/local/bin/magi-node",
+				"-e",
+				`require("node:fs").accessSync(${JSON.stringify(MISSION_COPILOT_SRC_PROBE)}, 4)`,
+			],
+			{ stdio: "ignore", timeout: 10_000 },
 		);
 		console.log(
-			`[daemon] Granted ${linuxUser} read access to ${MISSION_COPILOT_SRC_PATH}`,
+			`[daemon] ${linuxUser} can read ${MISSION_COPILOT_SRC_PATH} (platform source for the mission copilot)`,
 		);
+		return true;
 	} catch (e) {
 		console.error(
-			`[daemon] Failed to grant ${linuxUser} access to ${MISSION_COPILOT_SRC_PATH}: ${(e as Error).message}`,
+			`[daemon] ${linuxUser} cannot read ${MISSION_COPILOT_SRC_PATH}: ${(e as Error).message} — the mission copilot will diagnose without the platform source; the image is expected to ship it as root:${linuxUser} mode 750`,
 		);
+		return false;
 	}
 }
 
 /**
  * Mission-copilot injection, OS-user provisioning, and the copilot's source-
- * access ACL grant, bundled into one extraction rather than three: this is
- * the file's clearest load-bearing sequential-ordering example, and
- * splitting it across separate commits risks a later one disturbing the
- * order. The two ordering constraints below are the reason it's bundled:
+ * access check, bundled because their order is load-bearing:
  *
  *   1. Mission-copilot injection must precede ensureAgentUsers — the
  *      copilot needs a real per-agent OS user and workspace ACL through the
  *      exact same path every other agent goes through.
- *   2. The ACL grant must run after ensureAgentUsers — the copilot's OS
- *      user (agent id "mission-copilot") doesn't exist until that call
- *      creates it.
+ *   2. The source-access check must run after ensureAgentUsers — it runs as
+ *      the copilot's OS user (agent id "mission-copilot"), which the image
+ *      pre-creates in production but local dev maps onto a pool user.
  */
 export function provisionAgentIdentities(
 	ctx: Pick<BootContext, "teamConfig" | "missionId">,
@@ -131,7 +133,7 @@ export function provisionAgentIdentities(
 			MISSION_COPILOT_AGENT_ID,
 		);
 		if (copilotLinuxUser) {
-			grantMissionCopilotSourceAccess(copilotLinuxUser);
+			verifyMissionCopilotSourceAccess(copilotLinuxUser);
 		}
 	}
 

@@ -88,7 +88,7 @@ Functions with no boot-time role of their own — `runPendingJobs`, `startJobRun
 `logMemoryUsage`, `dataKeysEnv`, `cancelBackgroundJob` (already exported, used by nothing outside
 `daemon.ts`) — stay in `daemon.ts` rather than moving into `daemon-boot/`, since they're ongoing
 runtime concerns for the life of the process, not part of the sequential startup this ADR is
-about. `ensureAgentUsers`/`grantMissionCopilotSourceAccess`, by contrast, *did* move physically
+about. `ensureAgentUsers`/`verifyMissionCopilotSourceAccess` (then named `grantMissionCopilotSourceAccess`), by contrast, *did* move physically
 into `daemon-boot/agent-identity.ts`, since nothing outside `daemon.ts` imported them and leaving
 them behind would have meant a circular import back into `daemon.ts` for no benefit.
 

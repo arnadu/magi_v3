@@ -34,9 +34,11 @@ bash scripts/promote.sh --suffix <name>      # tag HEAD + deploy both planes to 
                                       # dirty tree; not wired into CI, only -dev auto-deploys
 
 # Reconcile MongoDB mission state against real Fly.io machines/volumes — report-only by default;
-# --fix-status corrects Mongo drift, --purge-orphans destroys untracked Fly resources (destructive).
+# --fix-status corrects Mongo drift (compare-and-set), --purge-orphans destroys untracked Fly
+# resources (destructive: prints a plan, acts only with --yes, never touches attached volumes,
+# machines with a mount, or anything younger than --min-age-hours, default 24).
 # Requires MONGODB_URI, FLY_API_TOKEN_MACHINES, FLY_MISSIONS_APP_NAME.
-node scripts/reconcile-mission-state.mjs [--fix-status] [--purge-orphans]
+node scripts/reconcile-mission-state.mjs [--fix-status] [--purge-orphans [--yes] [--min-age-hours N]]
 
 # CLI — run the orchestration loop with a team config
 cd packages/agent-runtime-worker && npm run build   # build first

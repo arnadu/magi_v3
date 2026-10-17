@@ -4,8 +4,9 @@
 #
 # Wraps deploy-missions.sh (execution plane image + FLY_MISSIONS_IMAGE pin) and
 # a control-plane `flyctl deploy` into one command, and tags the promoted
-# commit first so "what version is this environment running" has a git-visible
-# answer instead of only living in Fly's release history.
+# commit once both deploys have succeeded, so "what version is this
+# environment running" has a git-visible answer instead of only living in
+# Fly's release history — and a failed promotion leaves no tag behind.
 #
 # Usage:
 #   bash scripts/promote.sh --suffix prod-beta [--tag promote/prod-beta/custom-label]
@@ -64,11 +65,6 @@ info "Tag         : $TAG"
 info "Commit      : $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
 echo ""
 
-info "Tagging current commit…"
-git tag "$TAG"
-git push origin "$TAG"
-success "Tag pushed: $TAG"
-
 info "Deploying execution plane…"
 bash scripts/deploy-missions.sh --suffix "$SUFFIX"
 
@@ -87,6 +83,14 @@ success "Cockpit built."
 info "Deploying control plane…"
 flyctl deploy --config "$CONTROL_TOML" --app "$CONTROL_APP"
 success "Control plane deployed: https://${CONTROL_APP}.fly.dev"
+
+# Tag only after both deploys succeeded: a tag is the record of what an
+# environment runs, so a deploy that failed halfway must not leave one behind.
+# The tree is clean (checked above), so HEAD is still the commit that shipped.
+info "Tagging promoted commit…"
+git tag "$TAG"
+git push origin "$TAG"
+success "Tag pushed: $TAG"
 
 echo ""
 success "Promoted $TAG to $SUFFIX."

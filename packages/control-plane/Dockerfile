@@ -3,7 +3,9 @@
 # agent-runtime-worker is included in the image (copilot daemon); changes there also trigger this deploy.
 
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
-FROM node:22-slim AS builder
+# Base image pinned by digest (multi-arch index for node:22-slim); bump
+# deliberately, keeping the tag comment in step.
+FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS builder
 
 WORKDIR /app
 
@@ -39,7 +41,7 @@ RUN npx tsc -p packages/agent-runtime-worker/tsconfig.json
 RUN npx tsc -p packages/control-plane/tsconfig.json
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM node:22-slim AS runtime
+FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS runtime
 
 WORKDIR /app
 
@@ -88,10 +90,14 @@ COPY --from=builder /app/packages/control-plane/package.json ./packages/control-
 # Copy the static UI.
 COPY packages/control-plane/public ./packages/control-plane/public
 
-# Include TypeScript source files so the copilot can read the codebase via Bash.
-COPY packages/agent-config/src ./packages/agent-config/src
-COPY packages/agent-runtime-worker/src ./packages/agent-runtime-worker/src
-COPY packages/control-plane/src ./packages/control-plane/src
+# TypeScript source so the copilot can read the codebase via Bash (as
+# magi-copilot). Group magi-shared, no world bits: readable by the two process
+# identities that need it (magi-operator, magi-copilot) and by nothing else
+# that might ever be added to this image.
+COPY --chown=root:magi-shared packages/agent-config/src ./packages/agent-config/src
+COPY --chown=root:magi-shared packages/agent-runtime-worker/src ./packages/agent-runtime-worker/src
+COPY --chown=root:magi-shared packages/control-plane/src ./packages/control-plane/src
+RUN chmod -R o-rwx ./packages/agent-config/src ./packages/agent-runtime-worker/src ./packages/control-plane/src
 
 # The platform spec — documents architecture and the tool catalog end to end
 # (ADR-0016 Track 3). Without this the copilot's only way to answer "what

@@ -308,8 +308,11 @@ echo "[setup-dev] Wrote wrapper ${JOB_WRAPPER}"
 POOL_LIST="$(seq -s, -f 'magi-w%.0f' 1 "${POOL_SIZE}")"
 SUDOERS_FILE="/etc/sudoers.d/magi"
 
-# Data key names that background job scripts need access to.
-DATA_KEYS="MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API_KEY"
+# The only variables a background job inherits through sudo: the Tool API
+# address and the job's own scoped token. Data-provider keys are deliberately
+# NOT here — jobs reach FRED/FMP/NewsAPI through the daemon's data-* tools
+# (CR-04), never through a raw key in their environment.
+JOB_ENV_KEEP="MAGI_TOOL_URL MAGI_TOOL_TOKEN"
 
 {
     # Allow the orchestrator user to run the node wrapper as any pool user
@@ -329,7 +332,7 @@ DATA_KEYS="MAGI_TOOL_URL MAGI_TOOL_TOKEN FRED_API_KEY FMP_API_KEY NEWSAPIORG_API
     printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${MISSION_COPILOT_USER}" "${JOB_WRAPPER}"
     # Preserve MAGI tool IPC env vars when running background jobs.
     # Without env_keep, sudo's env_reset strips these before exec.
-    printf 'Defaults!%s env_keep += "%s"\n' "${JOB_WRAPPER}" "${DATA_KEYS}"
+    printf 'Defaults!%s env_keep += "%s"\n' "${JOB_WRAPPER}" "${JOB_ENV_KEEP}"
     # Prevent sudo from prompting pool workers for a password.
     # Without this, sudo's default is to authenticate via PAM before checking
     # authorization — so a magi-wN user running "sudo anything" would produce

@@ -10,8 +10,10 @@
 #   cp secrets.env.template secrets.env   # fill in API keys
 #   bash scripts/bootstrap.sh
 #
-# Idempotent — safe to re-run. Existing apps and secrets are preserved unless
-# you explicitly pass --reset-secrets.
+# Re-runnable: existing apps and secrets are preserved unless you explicitly
+# pass --reset-secrets, and the remote-build path removes only the launch
+# machines `fly deploy` itself created (never a mission machine). A re-run
+# still rebuilds the image and redeploys the control plane.
 #
 # Options:
 #   --suffix <name>        App name suffix (e.g. "prod" → magi-control-prod).
@@ -146,23 +148,18 @@ success "FLY_API_TOKEN_MACHINES generated."
 # ── Set Fly secrets ───────────────────────────────────────────────────────────
 set_secrets_if_needed() {
   local app="$1"; shift
-  local -n pairs="$1"  # nameref to associative array
+  local -n pairs="$1"; shift  # nameref to associative array
+  local probe_key="$1"        # a key this app always needs; its presence means "already bootstrapped"
 
   if [[ "$RESET_SECRETS" == true ]]; then
     info "Setting secrets on $app (--reset-secrets)…"
   else
-    # Check if secrets are already set by looking for any known key.
-    # NOT "${!pairs[*]%% *}" — combining indirect-keys expansion with a
-    # nameref AND a %% modifier is a bash gotcha: it evaluates to the
-    # array's *values* space-joined, then tries to use that whole string as
-    # a variable name, dying with "invalid variable name" (found live,
-    # 2026-09-11, on a fresh bootstrap). Plain "${!pairs[@]}" is unaffected —
-    # used correctly a few lines down — so loop-and-break instead of adding
-    # a modifier onto the nameref'd indirect expansion.
-    local first_key=""
-    for first_key in "${!pairs[@]}"; do break; done
-    if flyctl secrets list -a "$app" --json 2>/dev/null | grep -q "\"$first_key\""; then
-      info "Secrets already set on $app — skipping (use --reset-secrets to overwrite)."
+    # Probe a named, always-required key rather than "whichever key the
+    # associative array happens to enumerate first" — bash gives no ordering
+    # guarantee, so that probe could land on an optional key that is legitimately
+    # absent and re-set everything on an app that was already bootstrapped.
+    if flyctl secrets list -a "$app" --json 2>/dev/null | grep -q "\"$probe_key\""; then
+      info "Secrets already set on $app ($probe_key present) — skipping (use --reset-secrets to overwrite)."
       return 0
     fi
     info "Setting secrets on $app…"
@@ -187,7 +184,10 @@ set_secrets_if_needed() {
     local keys_only=()
     for kv in "${args[@]}"; do keys_only+=("${kv%%=*}"); done
     info "Writing secrets to $app: ${keys_only[*]}"
-    flyctl secrets set -a "$app" "${args[@]}"
+    # Values go over stdin (`secrets import` reads KEY=VALUE lines), never as
+    # argv: an argument list is visible to every process on the host via
+    # `ps`/`/proc/*/cmdline` for as long as flyctl runs.
+    printf '%s\n' "${args[@]}" | flyctl secrets import -a "$app"
     success "Secrets set on $app."
   else
     warn "No secrets to set on $app — all values were empty."
@@ -224,7 +224,7 @@ declare -A CONTROL_SECRETS=(
   [ATLAS_STORAGE_LIMIT_MB]="${ATLAS_STORAGE_LIMIT_MB:-512}"
   [RESOURCE_REPORT_HOUR_UTC]="${RESOURCE_REPORT_HOUR_UTC:-12}"
 )
-set_secrets_if_needed "$CONTROL_APP" CONTROL_SECRETS
+set_secrets_if_needed "$CONTROL_APP" CONTROL_SECRETS MONGODB_URI
 
 declare -A MISSIONS_SECRETS=(
   [ANTHROPIC_API_KEY]="${ANTHROPIC_API_KEY}"
@@ -237,7 +237,7 @@ declare -A MISSIONS_SECRETS=(
   [NEWSAPIORG_API_KEY]="${NEWSAPIORG_API_KEY:-}"
   [OPENROUTER_API_KEY]="${OPENROUTER_API_KEY:-}"
 )
-set_secrets_if_needed "$MISSIONS_APP" MISSIONS_SECRETS
+set_secrets_if_needed "$MISSIONS_APP" MISSIONS_SECRETS ANTHROPIC_API_KEY
 
 # ── Build and push Docker image ────────────────────────────────────────────────
 IMAGE="registry.fly.io/${MISSIONS_APP}:latest"
@@ -300,13 +300,38 @@ if [[ "$SKIP_DOCKER" == false ]]; then
       warn "Could not determine deployment image tag — FLY_MISSIONS_IMAGE will not be updated."
     fi
 
-    # Destroy any launch machines fly deploy created (we only want the registry image).
-    info "Cleaning up Fly launch machines for ${MISSIONS_APP}…"
+    # Remove only the launch machines `fly deploy` itself just created (we only
+    # want the registry image). A mission machine is never one of them: fly
+    # deploy stamps its machines with release metadata and gives them no
+    # volume mount, whereas every mission machine is API-provisioned with no
+    # release metadata and a /missions mount. Anything that does not match all
+    # three signals (release metadata, no mounts, the image just built) is
+    # listed and left alone — re-running this script on a live environment
+    # must never take tenant missions down.
+    info "Cleaning up the launch machines fly deploy created for ${MISSIONS_APP}…"
     flyctl machines list --app "$MISSIONS_APP" --json 2>/dev/null \
-      | python3 -c "import json,sys; [print(m['id']) for m in json.load(sys.stdin)]" \
-      | while read -r mid; do
-          flyctl machine destroy "$mid" --app "$MISSIONS_APP" --force >/dev/null 2>&1 \
-            && info "  Destroyed launch machine $mid"
+      | DEPLOY_IMAGE="$DEPLOY_IMAGE" python3 -c '
+import json, os, sys
+want = os.environ.get("DEPLOY_IMAGE", "")
+for m in json.load(sys.stdin):
+    cfg = m.get("config") or {}
+    meta = cfg.get("metadata") or {}
+    from_deploy = "fly_release_id" in meta or "fly_process_group" in meta
+    no_mounts = not cfg.get("mounts")
+    same_image = (not want) or cfg.get("image") == want
+    if from_deploy and no_mounts and same_image:
+        print("remove", m["id"])
+    else:
+        print("keep", m["id"], cfg.get("image", "?"), "mounts" if not no_mounts else "no-mounts")
+' \
+      | while read -r verdict mid rest; do
+          if [[ "$verdict" == "remove" ]]; then
+            flyctl machine destroy "$mid" --app "$MISSIONS_APP" --force >/dev/null 2>&1 \
+              && info "  Removed launch machine $mid" \
+              || warn "  Could not remove launch machine $mid — remove it by hand: flyctl machine destroy $mid -a $MISSIONS_APP"
+          else
+            info "  Kept $mid ($rest) — not a fly-deploy launch machine"
+          fi
         done || true
 
     success "Image built via remote builder: $IMAGE"

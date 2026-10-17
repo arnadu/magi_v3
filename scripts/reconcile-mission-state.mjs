@@ -6,20 +6,33 @@
  *
  *   --fix-status     Correct a mission's Mongo `status` field when it
  *                     disagrees with the real Fly machine state (Mongo-only
- *                     write, never touches Fly). Does not resurrect missing
+ *                     write, never touches Fly). Compare-and-set: a mission
+ *                     whose status moved between the scan and the fix is
+ *                     reported and left alone. Does not resurrect missing
  *                     machines or fix missing machineId/volumeId.
  *   --purge-orphans  Destroy Fly machines/volumes that exist on Fly but are
  *                     referenced by no mission document at all (orphaned).
- *                     DESTRUCTIVE and irreversible — requires this flag
- *                     explicitly; never implied by --fix-status.
+ *                     DESTRUCTIVE and irreversible. Prints the plan and
+ *                     refuses to act unless --yes is also given. Never
+ *                     touches: a machine with a volume mount (a mission
+ *                     machine whose document is missing or drifted), a
+ *                     volume that is attached to a machine, or anything
+ *                     younger than --min-age-hours (default 24 — a provision
+ *                     may still be in flight). Each skip is printed with its
+ *                     reason. Rules: scripts/lib/reconcile-policy.mjs.
+ *   --yes            Required with --purge-orphans.
+ *   --min-age-hours N  Age gate for --purge-orphans (default 24).
  *
  * Usage:
  *   node scripts/reconcile-mission-state.mjs                    # report only
  *   node scripts/reconcile-mission-state.mjs --fix-status
- *   node scripts/reconcile-mission-state.mjs --purge-orphans
+ *   node scripts/reconcile-mission-state.mjs --purge-orphans          # plan only
+ *   node scripts/reconcile-mission-state.mjs --purge-orphans --yes    # destroys
  *
  * Requires MONGODB_URI, FLY_API_TOKEN_MACHINES, FLY_MISSIONS_APP_NAME (env
- * or .env) — the same variables the control plane itself uses.
+ * or .env) — the same variables the control plane itself uses. Set
+ * FLY_MISSIONS_IMAGE to the control plane's current pin as well, or every
+ * running machine on a pinned deployment tag is reported as image drift.
  *
  * What this does NOT do: reconcile local-execution missions against a real
  * running daemon process on a *remote* machine (only checks the local PID
@@ -33,42 +46,39 @@
  * two missions — one only surfaced once someone tried to resume it, the
  * other was still sitting undetected). Never auto-fixed, even under
  * --fix-status: the correct ID can only be found by a human checking
- * `flyctl volumes list` for the mission's actual volume.
+ * `flyctl volumes list` for the mission's actual volume. The same incident
+ * is why --purge-orphans skips attached volumes: the real volume of a
+ * drifted mission is exactly what looks orphaned.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { config as loadDotenv } from "dotenv";
+import {
+	applyStatusFix,
+	classifyOrphans,
+	parseMinAgeHours,
+} from "./lib/reconcile-policy.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = join(dirname(__filename), "..");
 
-// ---------------------------------------------------------------------------
-// Load .env if present (dev mode) — matches this repo's other scripts.
-// ---------------------------------------------------------------------------
-try {
-	const envPath = join(REPO_ROOT, ".env");
-	const lines = readFileSync(envPath, "utf-8").split("\n");
-	for (const line of lines) {
-		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith("#")) continue;
-		const eq = trimmed.indexOf("=");
-		if (eq === -1) continue;
-		const key = trimmed.slice(0, eq).trim();
-		const val = trimmed
-			.slice(eq + 1)
-			.trim()
-			.replace(/^["']|["']$/g, "");
-		if (key && !(key in process.env)) process.env[key] = val;
-	}
-} catch {
-	/* no .env file — rely on environment */
-}
+// .env if present (dev mode); never overrides variables already in the environment.
+loadDotenv({ path: join(REPO_ROOT, ".env"), quiet: true });
 
 const args = process.argv.slice(2);
 const fixStatus = args.includes("--fix-status");
 const purgeOrphans = args.includes("--purge-orphans");
+const confirmed = args.includes("--yes");
+let minAgeHours;
+try {
+	minAgeHours = parseMinAgeHours(args);
+} catch (e) {
+	console.error(`Error: ${e.message}`);
+	process.exit(1);
+}
 
 const mongoUri = process.env.MONGODB_URI;
 const flyToken = process.env.FLY_API_TOKEN_MACHINES;
@@ -114,7 +124,7 @@ async function main() {
 	console.log(`Connected to MongoDB (db: ${db.databaseName})`);
 	console.log(`Fly app: ${flyApp}`);
 	console.log(
-		`Mode: ${purgeOrphans ? "PURGE ORPHANS (destructive)" : fixStatus ? "fix-status" : "report only"}\n`,
+		`Mode: ${purgeOrphans ? (confirmed ? "PURGE ORPHANS (destructive)" : "purge-orphans PLAN (no --yes: nothing is destroyed)") : fixStatus ? "fix-status" : "report only"}\n`,
 	);
 
 	const missions = db.collection("missions");
@@ -249,12 +259,18 @@ async function main() {
 	}
 
 	// ── 2. Orphan checks (Fly resources not referenced by any active mission) ──
-	const orphanMachines = flyMachines.filter(
-		(fm) => !referencedMachineIds.has(fm.id),
-	);
-	const orphanVolumes = flyVolumes.filter(
-		(fv) => !referencedVolumeIds.has(fv.id),
-	);
+	const orphans = classifyOrphans({
+		machines: flyMachines,
+		volumes: flyVolumes,
+		referencedMachineIds,
+		referencedVolumeIds,
+		now: Date.now(),
+		minAgeMs: minAgeHours * 3_600_000,
+	});
+	const orphanMachines = orphans.machines.purge;
+	const orphanVolumes = orphans.volumes.purge;
+	const skippedCount =
+		orphans.machines.skipped.length + orphans.volumes.skipped.length;
 
 	// ── Report ───────────────────────────────────────────────────────────────
 	console.log(
@@ -324,11 +340,11 @@ async function main() {
 
 	if (orphanMachines.length > 0) {
 		console.log(
-			"── Fly machines not referenced by any active mission (orphaned) ──",
+			"── Fly machines not referenced by any active mission (orphaned, purgeable) ──",
 		);
 		for (const om of orphanMachines) {
 			console.log(
-				`  ${purgeOrphans ? "→" : "•"} ${om.id} (${om.name}, state: ${om.state}, image: ${om.config?.image ?? "?"})`,
+				`  ${purgeOrphans ? "→" : "•"} ${om.id} (${om.name}, state: ${om.state}, image: ${om.config?.image ?? "?"}, created ${om.created_at ?? "?"})`,
 			);
 		}
 		console.log();
@@ -336,10 +352,29 @@ async function main() {
 
 	if (orphanVolumes.length > 0) {
 		console.log(
-			"── Fly volumes not referenced by any active mission (orphaned) ──",
+			"── Fly volumes not referenced by any active mission (orphaned, purgeable) ──",
 		);
 		for (const ov of orphanVolumes) {
-			console.log(`  ${purgeOrphans ? "→" : "•"} ${ov.id} (${ov.name})`);
+			console.log(
+				`  ${purgeOrphans ? "→" : "•"} ${ov.id} (${ov.name}, created ${ov.created_at ?? "?"})`,
+			);
+		}
+		console.log();
+	}
+
+	if (skippedCount > 0) {
+		console.log(
+			"── Unreferenced Fly resources NOT purgeable (resolve by hand) ──",
+		);
+		for (const s of orphans.machines.skipped) {
+			console.log(
+				`  ⚠ machine ${s.resource.id} (${s.resource.name}, state: ${s.resource.state}): ${s.reason}`,
+			);
+		}
+		for (const s of orphans.volumes.skipped) {
+			console.log(
+				`  ⚠ volume ${s.resource.id} (${s.resource.name}): ${s.reason}`,
+			);
 		}
 		console.log();
 	}
@@ -351,21 +386,31 @@ async function main() {
 		findings.staleLocal.length +
 		findings.imageDrift.length +
 		orphanMachines.length +
-		orphanVolumes.length;
+		orphanVolumes.length +
+		skippedCount;
 
 	if (totalIssues === 0) {
 		console.log("No drift found. Mongo and Fly agree.");
 	}
 
 	// ── Apply fixes ──────────────────────────────────────────────────────────
+	const reportFix = (missionId, from, to, outcome) => {
+		if (outcome === "fixed") console.log(`  ✓ ${missionId}: ${from} → ${to}`);
+		else
+			console.log(
+				`  ↷ ${missionId}: status is no longer "${from}" (changed since the scan) — left untouched`,
+			);
+	};
+
 	if (fixStatus && findings.statusDrift.length > 0) {
 		console.log("\nApplying --fix-status (Fly-backed drift) …");
 		for (const f of findings.statusDrift) {
-			await missions.updateOne(
-				{ missionId: f.missionId },
-				{ $set: { status: f.impliedStatus, updatedAt: new Date() } },
-			);
-			console.log(`  ✓ ${f.missionId}: ${f.mongoStatus} → ${f.impliedStatus}`);
+			const outcome = await applyStatusFix(missions, {
+				missionId: f.missionId,
+				from: f.mongoStatus,
+				to: f.impliedStatus,
+			});
+			reportFix(f.missionId, f.mongoStatus, f.impliedStatus, outcome);
 		}
 	}
 
@@ -376,15 +421,30 @@ async function main() {
 		// operator-initiated suspend would have left behind.
 		console.log("\nApplying --fix-status (stale local-execution missions) …");
 		for (const f of findings.staleLocal) {
-			await missions.updateOne(
-				{ missionId: f.missionId },
-				{ $set: { status: "suspended", updatedAt: new Date() } },
-			);
-			console.log(`  ✓ ${f.missionId}: ${f.status} → suspended`);
+			const outcome = await applyStatusFix(missions, {
+				missionId: f.missionId,
+				from: f.status,
+				to: "suspended",
+			});
+			reportFix(f.missionId, f.status, "suspended", outcome);
 		}
 	}
 
-	if (purgeOrphans && (orphanMachines.length > 0 || orphanVolumes.length > 0)) {
+	if (
+		purgeOrphans &&
+		!confirmed &&
+		(orphanMachines.length > 0 || orphanVolumes.length > 0)
+	) {
+		console.log(
+			`\n--purge-orphans without --yes: the ${orphanMachines.length} machine(s) and ${orphanVolumes.length} volume(s) marked → above would be destroyed. Re-run with --yes to proceed.`,
+		);
+	}
+
+	if (
+		purgeOrphans &&
+		confirmed &&
+		(orphanMachines.length > 0 || orphanVolumes.length > 0)
+	) {
 		console.log("\nApplying --purge-orphans …");
 		for (const om of orphanMachines) {
 			try {
@@ -414,7 +474,10 @@ async function main() {
 	}
 
 	await client.close();
-	process.exit(totalIssues > 0 && !fixStatus && !purgeOrphans ? 1 : 0);
+	// Exit 1 = drift found and nothing was applied (report mode, or a purge
+	// plan that still needs --yes), so a cron wrapper can alert on it.
+	const applied = fixStatus || (purgeOrphans && confirmed);
+	process.exit(totalIssues > 0 && !applied ? 1 : 0);
 }
 
 main().catch((e) => {

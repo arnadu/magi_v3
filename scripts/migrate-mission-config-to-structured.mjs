@@ -10,9 +10,16 @@
  * boot cutover deploys (see the ADR and the Stage 3a plan notes for the
  * full safety argument).
  *
+ * HISTORICAL — the ADR-0021 cutover ran on every environment in Sprint 24.
+ * Every mission created since is written in structured form directly and
+ * `teamConfigYaml` is no longer read by any code path, so there is nothing
+ * left for this script to migrate. It is kept for the record and for a
+ * restored pre-cutover backup only; it refuses to run without
+ * `--historical-ok` so it cannot be mistaken for a maintenance task.
+ *
  * Usage:
- *   node scripts/migrate-mission-config-to-structured.mjs              # dry run is NOT the default — this writes
- *   MONGODB_URI="mongodb+srv://..." node scripts/migrate-mission-config-to-structured.mjs
+ *   MONGODB_URI="mongodb+srv://..." node scripts/migrate-mission-config-to-structured.mjs --historical-ok
+ *   (there is no dry-run mode — this writes)
  *
  * `${VAR}`-style substitution in team config was removed from
  * `parseTeamConfig` (ENV1, 2026-10-15 audit — it let tenant-supplied config
@@ -52,6 +59,14 @@ try {
 	}
 } catch {
 	/* no .env file — rely on environment */
+}
+
+if (!process.argv.includes("--historical-ok")) {
+	console.error(
+		"This migration is historical (ADR-0021 cutover, Sprint 24) and has nothing to do on a current database.\n" +
+			"If you are really restoring a pre-cutover backup, re-run with --historical-ok.",
+	);
+	process.exit(2);
 }
 
 const mongoUri = process.env.MONGODB_URI;
