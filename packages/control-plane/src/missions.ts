@@ -37,6 +37,7 @@ import {
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Collection, Db, ObjectId } from "mongodb";
+import { asyncRoutes } from "./async-handler.js";
 import {
 	deleteMachine,
 	destroyLocal,
@@ -661,13 +662,14 @@ export async function writeAgentLimits(
 
 export function createMissionsRouter(db: Db): Router {
 	const router = createRouter();
+	const routes = asyncRoutes(router);
 	const col = db.collection<MissionDoc>("missions");
 
 	// Create userId index on first router mount (idempotent).
 	void col.createIndex({ userId: 1, createdAt: -1 });
 
 	// List missions (scoped to current user unless admin).
-	router.get("/", async (req, res) => {
+	routes.get("/", async (req, res) => {
 		const missions = await col
 			.find(userFilter(req), { sort: { createdAt: -1 } })
 			.toArray();
@@ -675,7 +677,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// Per-mission telemetry — registered before /:id to avoid route shadowing.
-	router.get("/stats", async (req, res) => {
+	routes.get("/stats", async (req, res) => {
 		const missions = await col
 			.find(
 				{ ...userFilter(req), status: { $ne: "destroyed" } },
@@ -757,7 +759,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// Get one mission.
-	router.get("/:id", async (req, res) => {
+	routes.get("/:id", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -802,7 +804,7 @@ export function createMissionsRouter(db: Db): Router {
 	// All mailbox messages the operator participates in (sender or recipient), for
 	// the cockpit Conversations panel. The client folds these into threads by
 	// participant set. read/unread reuses the mailbox `readBy` array.
-	router.get("/:id/conversations", async (req, res) => {
+	routes.get("/:id/conversations", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -846,7 +848,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// The mission's agent roster, for the compose recipient chips.
-	router.get("/:id/agents", async (req, res) => {
+	routes.get("/:id/agents", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -898,7 +900,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// Mark operator messages as read (body: { ids: string[] }).
-	router.post("/:id/messages/read", async (req, res) => {
+	routes.post("/:id/messages/read", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -921,7 +923,7 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Send an operator message to one or more agents (wakes them via the mailbox
 	// Change Stream, same as cli-post). Body: { to: string | string[], body, subject? }.
-	router.post("/:id/messages/send", async (req, res) => {
+	routes.post("/:id/messages/send", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -955,7 +957,7 @@ export function createMissionsRouter(db: Db): Router {
 	// ── Transcript + LLM-log explorer (the cockpit Transcripts tab) ────────────
 
 	// Turn timeline for one agent (from agentTurnStats).
-	router.get("/:id/turns", async (req, res) => {
+	routes.get("/:id/turns", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -974,7 +976,7 @@ export function createMissionsRouter(db: Db): Router {
 
 	// Detailed transcript for one agent+turn (conversationMessages, including
 	// Research sub-loop messages tagged with parentToolUseId).
-	router.get("/:id/transcript", async (req, res) => {
+	routes.get("/:id/transcript", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -993,7 +995,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// LLM calls for one agent+turn — summaries (the drill-down list).
-	router.get("/:id/llm-calls", async (req, res) => {
+	routes.get("/:id/llm-calls", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -1013,7 +1015,7 @@ export function createMissionsRouter(db: Db): Router {
 
 	// One full LLM call (the drill-down detail: exact input + output). `output`
 	// is absent after the 7-day retention window (usage/cost still present).
-	router.get("/:id/llm-call", async (req, res) => {
+	routes.get("/:id/llm-call", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -1040,7 +1042,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// Get full config for editing — structured config + live mental maps per agent.
-	router.get("/:id/config", async (req, res) => {
+	routes.get("/:id/config", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -1103,7 +1105,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// Update config (structured + mental maps). Mission must be suspended.
-	router.put("/:id/config", async (req, res) => {
+	routes.put("/:id/config", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -1244,7 +1246,7 @@ export function createMissionsRouter(db: Db): Router {
 	// same shape as PUT /:id/config, but skips the mental-map/managed-region/notify machinery
 	// entirely: a draft has no conversationMessages history, so none of that applies — its
 	// initialMentalMap lives directly on the agent object, not in a separate mentalMaps record.
-	router.put("/:id/draft", async (req, res) => {
+	routes.put("/:id/draft", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -1303,7 +1305,7 @@ export function createMissionsRouter(db: Db): Router {
 	// Validate and launch a draft — the only point at which a draft's config must be fully
 	// valid (parseTeamConfig). Provisions a real machine on success, mirroring POST /'s
 	// provisioning try/catch exactly.
-	router.post("/:id/launch", async (req, res) => {
+	routes.post("/:id/launch", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -1366,14 +1368,14 @@ export function createMissionsRouter(db: Db): Router {
 
 	// ── Limits (cockpit Limits panel) ─────────────────────────────────────────
 
-	router.get("/:id/limits", async (req, res) => {
+	routes.get("/:id/limits", async (req, res) => {
 		const result = await readLimits(col, db, req.params.id, userFilter(req));
 		res.status(result.status).json(result.body);
 	});
 
 	// ── Objectives (cockpit ObjectivesPanel) — reads Mongo directly, works
 	// regardless of mission running state (ADR-0019).
-	router.get("/:id/objectives", async (req, res) => {
+	routes.get("/:id/objectives", async (req, res) => {
 		const result = await readObjectives(
 			col,
 			db,
@@ -1383,7 +1385,7 @@ export function createMissionsRouter(db: Db): Router {
 		res.status(result.status).json(result.body);
 	});
 
-	router.patch("/:id/limits/mission", async (req, res) => {
+	routes.patch("/:id/limits/mission", async (req, res) => {
 		const maxCostUsd = req.body?.maxCostUsd;
 		if (typeof maxCostUsd !== "number") {
 			res.status(400).json({ error: "maxCostUsd (number) is required" });
@@ -1399,7 +1401,7 @@ export function createMissionsRouter(db: Db): Router {
 		res.status(result.status).json(result.body);
 	});
 
-	router.patch("/:id/limits/ceiling", async (req, res) => {
+	routes.patch("/:id/limits/ceiling", async (req, res) => {
 		const ceilingUsd = req.body?.ceilingUsd;
 		if (typeof ceilingUsd !== "number") {
 			res.status(400).json({ error: "ceilingUsd (number) is required" });
@@ -1418,7 +1420,7 @@ export function createMissionsRouter(db: Db): Router {
 	// ADR-0031 Decision 7 — operator-only reset of the cumulative
 	// upgraded-machine-runtime cap. See writeUpgradedRuntimeReset's own doc
 	// comment for why this is a separate write path, mirroring F-025.
-	router.patch("/:id/limits/upgrade-reset", async (req, res) => {
+	routes.patch("/:id/limits/upgrade-reset", async (req, res) => {
 		const result = await writeUpgradedRuntimeReset(
 			col,
 			db,
@@ -1428,7 +1430,7 @@ export function createMissionsRouter(db: Db): Router {
 		res.status(result.status).json(result.body);
 	});
 
-	router.patch("/:id/limits/agent/:agentId", async (req, res) => {
+	routes.patch("/:id/limits/agent/:agentId", async (req, res) => {
 		const limits = req.body?.limits;
 		if (
 			limits !== null &&
@@ -1449,7 +1451,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// Provision a new mission.
-	router.post("/", async (req, res) => {
+	routes.post("/", async (req, res) => {
 		const {
 			missionId,
 			name,
@@ -1591,7 +1593,7 @@ export function createMissionsRouter(db: Db): Router {
 	// (already-validated config) or blank (no agents yet). A blank draft intentionally
 	// fails TeamConfigSchema until filled in — full validation only runs at Launch
 	// (POST /:id/launch), not here, so the operator/copilot can build it up incrementally.
-	router.post("/draft", async (req, res) => {
+	routes.post("/draft", async (req, res) => {
 		const { missionId, name, teamConfig } = req.body as {
 			missionId?: string;
 			name?: string;
@@ -1654,7 +1656,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// Suspend.
-	router.post("/:id/suspend", async (req, res) => {
+	routes.post("/:id/suspend", async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
@@ -1684,7 +1686,7 @@ export function createMissionsRouter(db: Db): Router {
 	});
 
 	// Resume — the daemon reads structured config directly from `missions` at boot (ADR-0021).
-	router.post("/:id/resume", async (req, res) => {
+	routes.post("/:id/resume", async (req, res) => {
 		const missionId = req.params.id;
 		const mission = await col.findOne({
 			missionId,
@@ -1817,7 +1819,7 @@ export function createMissionsRouter(db: Db): Router {
 	// performDestroy() below, kept callable (not inlined) so it stays normally
 	// type-checked instead of sitting as unreachable dead code — re-enable by
 	// replacing this handler's body with `await performDestroy(req, res);`.
-	router.delete("/:id", async (_req, res) => {
+	routes.delete("/:id", async (_req, res) => {
 		res.status(403).json({
 			error:
 				"Mission destruction is temporarily disabled — see CLAUDE.md's Sprint Roadmap.",

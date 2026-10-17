@@ -8,6 +8,7 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
+import { asyncRoutes } from "./async-handler.js";
 import { listSegments, runtimeByConfig } from "./machine-segments.js";
 import { estimateCostPerHourUsd } from "./machine-shapes.js";
 
@@ -37,9 +38,10 @@ function horizons(now: Date): Record<string, Date> {
 
 export function createMissionResourceRoutes(db: Db): Router {
 	const router = createRouter();
+	const routes = asyncRoutes(router);
 	const missions = db.collection<MissionDocLike>("missions");
 
-	router.get("/:id/machine-runtime", async (req: Request, res: Response) => {
+	routes.get("/:id/machine-runtime", async (req: Request, res: Response) => {
 		const missionId = req.params.id;
 		const mission = await missions.findOne({
 			missionId,

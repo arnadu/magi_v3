@@ -25,6 +25,7 @@ import {
 import { config as dotenvConfig } from "dotenv";
 import express from "express";
 import rateLimit from "express-rate-limit";
+import { asyncRoutes } from "./async-handler.js";
 import { createAuthMiddleware } from "./auth.js";
 import { createCopilotRouter } from "./copilot-router.js";
 import { createCopilotRuntime } from "./copilot-runtime.js";
@@ -35,6 +36,7 @@ import { createMissionResourceRoutes } from "./mission-resource-routes.js";
 import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { MongoPendingActionsStore } from "./pending-actions.js";
+import { errorMiddleware, installProcessGuards } from "./process-guards.js";
 import { createProxyRouter } from "./proxy.js";
 import { mountPublicSurface } from "./public-routes.js";
 import { startResourceMonitor } from "./resource-monitor.js";
@@ -50,7 +52,28 @@ const REPO_ROOT = join(
 );
 dotenvConfig({ path: join(REPO_ROOT, ".env"), quiet: true });
 
+/** PLATFORM_ADMIN_USER_IDS (comma-separated UIDs), ATLAS_STORAGE_LIMIT_MB, RESOURCE_REPORT_HOUR_UTC — see CLAUDE.md. */
+function resourceMonitorOptionsFromEnv(env: NodeJS.ProcessEnv): {
+	platformAdminUserIds: string[];
+	atlasStorageLimitMb?: number;
+	reportHourUtc?: number;
+} {
+	return {
+		platformAdminUserIds: (env.PLATFORM_ADMIN_USER_IDS ?? "")
+			.split(",")
+			.map((id) => id.trim())
+			.filter((id) => id.length > 0),
+		atlasStorageLimitMb: env.ATLAS_STORAGE_LIMIT_MB
+			? Number.parseInt(env.ATLAS_STORAGE_LIMIT_MB, 10)
+			: undefined,
+		reportHourUtc: env.RESOURCE_REPORT_HOUR_UTC
+			? Number.parseInt(env.RESOURCE_REPORT_HOUR_UTC, 10)
+			: undefined,
+	};
+}
+
 async function main(): Promise<void> {
+	installProcessGuards();
 	const mongoUri = process.env.MONGODB_URI;
 	if (!mongoUri) {
 		console.error("Error: MONGODB_URI is required");
@@ -86,6 +109,7 @@ async function main(): Promise<void> {
 	loadTemplates(REPO_ROOT);
 
 	const app = express();
+	const appRoutes = asyncRoutes(app);
 
 	// Fly.io terminates TLS and sets X-Forwarded-For. Trust one proxy hop so
 	// express-rate-limit can correctly identify client IPs.
@@ -177,7 +201,7 @@ async function main(): Promise<void> {
 	app.use("/api/missions", createMissionResourceRoutes(db));
 
 	// Per-user LLM usage summary (admin sees all missions).
-	app.get("/api/usage", async (req, res) => {
+	appRoutes.get("/api/usage", async (req, res) => {
 		const filter = req.isAdmin ? {} : { userId: req.userId };
 		const missions = await db
 			.collection("missions")
@@ -203,7 +227,10 @@ async function main(): Promise<void> {
 		res.json(
 			missions.map((m) => ({
 				...m,
-				usage: costMap[m.missionId as string] ?? { totalCostUsd: 0, calls: 0 },
+				usage: costMap[m.missionId as string] ?? {
+					totalCostUsd: 0,
+					calls: 0,
+				},
 			})),
 		);
 	});
@@ -245,7 +272,7 @@ async function main(): Promise<void> {
 			},
 		},
 	];
-	app.get("/api/models", async (_req, res) => {
+	appRoutes.get("/api/models", async (_req, res) => {
 		const openrouter = await fetchOpenRouterCatalog();
 		res.json({ anthropic: ANTHROPIC_MODELS, openrouter });
 	});
@@ -258,6 +285,11 @@ async function main(): Promise<void> {
 	app.get(/.*/, (_req, res) => {
 		res.sendFile(join(publicDir, "index.html"));
 	});
+
+	// Terminal error handler — after every route, so a `next(err)` from
+	// asyncHandler (or a synchronous throw) becomes a JSON 500 instead of a
+	// hung request.
+	app.use(errorMiddleware());
 
 	const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 	const server = app.listen(port, () => {
@@ -274,21 +306,11 @@ async function main(): Promise<void> {
 	// alerts, and the daily report (ADR-0032). An empty PLATFORM_ADMIN_USER_IDS
 	// is valid (logged by atlas-usage.ts on every tick) — it just means no one
 	// receives the Atlas-storage alert or the report's Atlas section.
-	const platformAdminUserIds = (process.env.PLATFORM_ADMIN_USER_IDS ?? "")
-		.split(",")
-		.map((id) => id.trim())
-		.filter((id) => id.length > 0);
-	const atlasStorageLimitMb = process.env.ATLAS_STORAGE_LIMIT_MB
-		? Number.parseInt(process.env.ATLAS_STORAGE_LIMIT_MB, 10)
-		: undefined;
-	const reportHourUtc = process.env.RESOURCE_REPORT_HOUR_UTC
-		? Number.parseInt(process.env.RESOURCE_REPORT_HOUR_UTC, 10)
-		: undefined;
-	const stopResourceMonitor = startResourceMonitor(db, client, {
-		platformAdminUserIds,
-		atlasStorageLimitMb,
-		reportHourUtc,
-	});
+	const stopResourceMonitor = startResourceMonitor(
+		db,
+		client,
+		resourceMonitorOptionsFromEnv(process.env),
+	);
 
 	// Graceful shutdown.
 	async function shutdown(): Promise<void> {

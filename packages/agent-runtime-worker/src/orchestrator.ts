@@ -227,7 +227,12 @@ export async function runOrchestrationLoop(
 		onUserMessage,
 		workspaceManager,
 	} = config;
-	const maxRuns = config.maxRuns ?? 50;
+	// The default cap exists for the CLI, where "drain and stop" is the point.
+	// A daemon (waitForMail set) runs until told to stop: with the CLI default
+	// it exited 0 after 50 dispatches, and Fly's on-failure policy never
+	// restarted it (audit D1).
+	const maxRuns =
+		config.maxRuns ?? (config.waitForMail ? Number.POSITIVE_INFINITY : 50);
 	const missionId = teamConfig.mission.id;
 
 	const leadAgent = teamConfig.agents[0];

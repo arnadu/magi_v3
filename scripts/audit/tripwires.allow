@@ -19,7 +19,8 @@ T2-html-sinks ^packages/cockpit/src/Markdown\.tsx: # sanctioned sink, escaped up
 T5-spawn-env linux-user\.ts:[0-9]+:.*execFileSync\("id" # uidOf: fixed argv, PATH-only env, daemon identity (remyh, 2026-10-17)
 T5-spawn-env maxcount=26 # reviewed one by one in M1 (B1/B4); each gets an explicit env or a regex entry here (remyh, 2026-10-16)
 T6-git ^packages/agent-runtime-worker/src/safe-git\.ts: # the one sanctioned git call site (F-034) (remyh, 2026-10-16)
-T7-async-handler maxcount=41 # C1: asyncHandler wrapper lands in M2 (WS-1 E2) (remyh, 2026-10-16)
+# T7: no entries — every async Express handler goes through async-handler.ts (F-060); a new bare
+# `async (req, res)` handler is a hung request waiting to happen.
 T8-empty-catch maxcount=11 # R-11 (M5): log operation/input/consequence, or justify in a comment (remyh, 2026-10-16)
 T9-escape-hatches maxcount=20 # R-12 (M5): each cast gets a one-line constraint or goes (remyh, 2026-10-16)
 T10-optional-cap maxcount=1 # LM1: mandatory default cap lands in M3 (WS-1 F) (remyh, 2026-10-16)

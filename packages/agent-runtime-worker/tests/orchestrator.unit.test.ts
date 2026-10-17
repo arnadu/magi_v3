@@ -754,3 +754,47 @@ describe("TC-10: daemon mode processes mid-turn mail without an unrelated waitFo
 		expect(runCount["agent-a"]).toBe(2);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// D1 (F-059): a daemon has no dispatch cap
+// ---------------------------------------------------------------------------
+
+describe("daemon mode (waitForMail) runs past the CLI's 50-dispatch default", () => {
+	it("dispatches 60 times and stops only when aborted", async () => {
+		const tc = makeTeamConfig(["agent-a"]);
+		const { repo } = makeMockMailbox({ "agent-a": ["task"] });
+		// Never drained: markRead is a no-op here, so every dispatchReady()
+		// finds unread mail for agent-a.
+		repo.markRead.mockImplementation(async () => {});
+		const ac = new AbortController();
+		const started: string[] = [];
+		mockRunAgent.mockImplementation(async (id: string) => {
+			started.push(id);
+			if (started.length >= 60) ac.abort();
+		});
+		await runOrchestrationLoop(
+			buildConfig(tc, repo, {
+				waitForMail: () => new Promise<void>((r) => setTimeout(r, 1)),
+			}),
+			ac.signal,
+		);
+		expect(started.length).toBeGreaterThanOrEqual(60);
+	});
+
+	it("still honours an explicit maxRuns in daemon mode", async () => {
+		const tc = makeTeamConfig(["agent-a"]);
+		const { repo } = makeMockMailbox({ "agent-a": ["task"] });
+		repo.markRead.mockImplementation(async () => {});
+		const started: string[] = [];
+		mockRunAgent.mockImplementation(async (id: string) => {
+			started.push(id);
+		});
+		await runOrchestrationLoop(
+			buildConfig(tc, repo, {
+				maxRuns: 3,
+				waitForMail: () => new Promise<void>((r) => setTimeout(r, 1)),
+			}),
+		);
+		expect(started.length).toBe(3);
+	});
+});

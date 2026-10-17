@@ -426,7 +426,16 @@ async function main(): Promise<void> {
 	}
 	// Force-exit after cleanup. The MongoDB driver and other async handles can
 	// keep the event loop alive even after client.close() — process.exit() is
-	// the only reliable way to free the port and terminate cleanly.
+	// the only reliable way to free the port and terminate cleanly. A loop
+	// that ends without a shutdown signal is a failure (the Change Stream
+	// died, or a cap fired) — exit non-zero so the machine's on-failure
+	// restart policy brings the daemon back (audit D1).
+	if (!signal.aborted) {
+		console.error(
+			"[daemon] orchestration loop ended without a shutdown signal — exiting 1 so the supervisor restarts the daemon",
+		);
+		process.exit(1);
+	}
 	process.exit(0);
 }
 

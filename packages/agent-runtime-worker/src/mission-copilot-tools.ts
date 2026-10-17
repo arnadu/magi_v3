@@ -42,7 +42,6 @@ import {
 	validateTeamFiles,
 } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
-import cronParser from "cron-parser";
 import { type Db, ObjectId } from "mongodb";
 import { type JobSpec, readFailedJobStatus } from "./job-recovery.js";
 import { enqueuePrivateJob, jobDirs } from "./job-runner.js";
@@ -59,9 +58,6 @@ import { type ObjectiveDef, ObjectiveDefSchema } from "./objectives/types.js";
 import { createResourceUpgradeTools } from "./resource-upgrade-tool.js";
 import type { MagiTool, ToolResult } from "./tools.js";
 import { truncate } from "./tools.js";
-
-// Named import errors on Node 18/22 — see CLAUDE.md's Known Pitfalls.
-const { parseExpression } = cronParser;
 
 export interface MissionCopilotToolsConfig {
 	db: Db;

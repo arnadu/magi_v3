@@ -6,7 +6,7 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
-import { asyncHandler } from "./async-handler.js";
+import { asyncHandler, asyncRoutes } from "./async-handler.js";
 import type { CopilotEventBus } from "./copilot-runtime.js";
 import type { PendingAction, PendingActionsStore } from "./pending-actions.js";
 
@@ -26,10 +26,11 @@ export function createPendingActionRoutes(
 ): Router {
 	const { db, pending, eventBus, executeAction } = deps;
 	const router = createRouter();
+	const routes = asyncRoutes(router);
 
 	// ── POST /api/copilot/confirm ─────────────────────────────────────────────
 
-	router.post("/confirm", async (req: Request, res: Response) => {
+	routes.post("/confirm", async (req: Request, res: Response) => {
 		const { pendingActionId } = req.body as { pendingActionId?: string };
 		if (!pendingActionId) {
 			res.status(400).json({ error: "pendingActionId is required" });

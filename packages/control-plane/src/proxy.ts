@@ -16,6 +16,7 @@ import type {
 import { Router as createRouter } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import type { Db } from "mongodb";
+import { asyncRoutes } from "./async-handler.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 
 interface MissionDoc {
@@ -28,6 +29,7 @@ interface MissionDoc {
 
 export function createProxyRouter(db: Db): Router {
 	const router = createRouter();
+	const routes = asyncRoutes(router);
 
 	// Cache proxy instances by target URL — createProxyMiddleware registers
 	// listeners on the HTTP server so it must NOT be called per-request.
@@ -77,7 +79,7 @@ export function createProxyRouter(db: Db): Router {
 	// cockpit calls (`/events`, `/status`, `/files/*`, `/download`, …) — to the
 	// execution plane machine's port 4000. The monitor serves no HTML of its own
 	// since the legacy dashboard was deleted (F-052); the cockpit is the only UI.
-	router.use(
+	routes.use(
 		"/missions/:id",
 		async (req: Request, res: Response, next: NextFunction) => {
 			const missionId = req.params.id;

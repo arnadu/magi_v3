@@ -28,6 +28,7 @@ import {
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Collection, Db } from "mongodb";
+import { asyncRoutes } from "./async-handler.js";
 import { type ActionPayload, parseActionPayload } from "./copilot-actions.js";
 import { COPILOT_WORKDIR, copilotWorkdirFor } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
@@ -79,11 +80,12 @@ export function createCopilotRouter(
 	runtime: CopilotRuntime,
 ): Router {
 	const router = createRouter();
+	const routes = asyncRoutes(router);
 	const { eventBus, defaultModelId } = runtime;
 
 	// ── POST /api/copilot/message ─────────────────────────────────────────────
 
-	router.post("/message", async (req: Request, res: Response) => {
+	routes.post("/message", async (req: Request, res: Response) => {
 		const { subject, body } = req.body as {
 			subject?: string;
 			body?: string;
@@ -128,7 +130,7 @@ export function createCopilotRouter(
 	// mission-level copilot model override -> this user-level setting -> the
 	// MODEL env var fallback. No rework needed here for that later.
 
-	router.get("/settings", async (req: Request, res: Response) => {
+	routes.get("/settings", async (req: Request, res: Response) => {
 		const model = await getCopilotModel(db, req.userId);
 		res.json({
 			model: model ?? defaultModelId,
@@ -136,7 +138,7 @@ export function createCopilotRouter(
 		});
 	});
 
-	router.post("/settings", async (req: Request, res: Response) => {
+	routes.post("/settings", async (req: Request, res: Response) => {
 		const { model } = req.body as { model?: string | null };
 		if (model !== null && model !== undefined && typeof model !== "string") {
 			res.status(400).json({ error: "model must be a string or null" });
@@ -174,7 +176,7 @@ export function createCopilotRouter(
 
 	// ── GET /api/copilot/usage ───────────────────────────────────────────────
 
-	router.get("/usage", async (req: Request, res: Response) => {
+	routes.get("/usage", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
 		const [agg] = await db
 			.collection("llmCallLog")
@@ -209,7 +211,7 @@ export function createCopilotRouter(
 	//   copilot  → operator: { from: "copilot", to: ["user"]    }
 	// No separate collection needed.
 
-	router.get("/history", async (req: Request, res: Response) => {
+	routes.get("/history", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
 		const raw = await db
 			.collection("mailbox")
@@ -236,12 +238,12 @@ export function createCopilotRouter(
 	// exists for "copilot-{userId}", so there's no ownership lookup to do; the
 	// userId is already the whole scope. See transcript-queries.ts.
 
-	router.get("/turns", async (req: Request, res: Response) => {
+	routes.get("/turns", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
 		res.json(await queryTurns(db, missionId, COPILOT_AGENT_ID));
 	});
 
-	router.get("/transcript", async (req: Request, res: Response) => {
+	routes.get("/transcript", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
 		const turn = Number(req.query.turn);
 		if (Number.isNaN(turn)) {
@@ -251,7 +253,7 @@ export function createCopilotRouter(
 		res.json(await queryTranscript(db, missionId, COPILOT_AGENT_ID, turn));
 	});
 
-	router.get("/llm-calls", async (req: Request, res: Response) => {
+	routes.get("/llm-calls", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
 		const turn = Number(req.query.turn);
 		if (Number.isNaN(turn)) {
@@ -261,7 +263,7 @@ export function createCopilotRouter(
 		res.json(await queryLlmCalls(db, missionId, COPILOT_AGENT_ID, turn));
 	});
 
-	router.get("/llm-call", async (req: Request, res: Response) => {
+	routes.get("/llm-call", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
 		const turn = Number(req.query.turn);
 		const i = Number(req.query.i);
@@ -300,7 +302,7 @@ export function createCopilotRouter(
 
 	// ── GET/PATCH /api/copilot/limits ───────────────────────────────────────
 
-	router.get("/limits", async (req: Request, res: Response) => {
+	routes.get("/limits", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
 		const [capUsd, spentUsd] = await Promise.all([
 			getCopilotSpendCap(db, req.userId),
@@ -309,7 +311,7 @@ export function createCopilotRouter(
 		res.json({ capUsd: capUsd ?? null, spentUsd });
 	});
 
-	router.patch("/limits", async (req: Request, res: Response) => {
+	routes.patch("/limits", async (req: Request, res: Response) => {
 		const { capUsd } = req.body as { capUsd?: number | null };
 		if (capUsd !== null && capUsd !== undefined && typeof capUsd !== "number") {
 			res.status(400).json({ error: "capUsd must be a number or null" });

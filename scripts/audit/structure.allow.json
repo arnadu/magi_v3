@@ -61,9 +61,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot-tools.ts": {
-		"lines": 1259,
+		"lines": 1257,
 		"fns": {
-			"createMissionCopilotTools@148": 1113
+			"createMissionCopilotTools@144": 1113
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot.ts": {
@@ -94,7 +94,7 @@
 		"lines": 643,
 		"fns": {
 			"runOrchestrationLoop@214": 419,
-			"dispatchOnePass@402": 157
+			"dispatchOnePass@407": 157
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/browse-web.ts": {
@@ -205,8 +205,8 @@
 	"packages/control-plane/src/copilot-router.ts": {
 		"lines": 826,
 		"fns": {
-			"createCopilotRouter@76": 284,
-			"executeAction@383": 370
+			"createCopilotRouter@77": 284,
+			"executeAction@385": 370
 		}
 	},
 	"packages/control-plane/src/copilot-tools.ts": {
@@ -218,17 +218,17 @@
 	"packages/control-plane/src/index.ts": {
 		"lines": 314,
 		"fns": {
-			"main@53": 256
+			"main@75": 256
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
 		"lines": 1863,
 		"fns": {
-			"readLimits@220": 172,
-			"createMissionsRouter@662": 1201,
-			"<anonymous>@1106": 134,
-			"<anonymous>@1452": 137,
-			"<anonymous>@1687": 124
+			"readLimits@221": 172,
+			"createMissionsRouter@663": 1201,
+			"<anonymous>@1108": 134,
+			"<anonymous>@1454": 134,
+			"<anonymous>@1689": 124
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {

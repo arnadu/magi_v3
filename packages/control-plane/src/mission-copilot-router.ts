@@ -25,6 +25,7 @@
 import type { Router as ExpressRouter, Request, Response } from "express";
 import { Router } from "express";
 import type { Db } from "mongodb";
+import { asyncRoutes } from "./async-handler.js";
 import { safeEqual } from "./auth.js";
 import {
 	type ProposeForOwnerDeps,
@@ -97,6 +98,7 @@ export function createMissionCopilotRouter(
 	proposals: Pick<ProposeForOwnerDeps, "pending" | "notify">,
 ): ExpressRouter {
 	const router = Router();
+	const routes = asyncRoutes(router);
 	const deps: ProposeForOwnerDeps = { db, ...proposals };
 
 	router.use((req, res, next) => verifyMissionToken(req, res, next));
@@ -114,7 +116,7 @@ export function createMissionCopilotRouter(
 		),
 	);
 
-	router.get("/github/issues", async (req, res) => {
+	routes.get("/github/issues", async (req, res) => {
 		const query = req.query.query as string | undefined;
 		try {
 			const issues = await searchOpenIssues({ q: query });
@@ -137,7 +139,7 @@ export function createMissionCopilotRouter(
 	// teammates' output, which may quote untrusted sources). The forced
 	// `mission-copilot` label and the provenance block are applied at
 	// execution, server-side.
-	router.post("/github/issue", async (req, res) => {
+	routes.post("/github/issue", async (req, res) => {
 		const missionId = req.body?.missionId as string;
 		try {
 			const result = await proposeIssueForMissionOwner(deps, missionId, {
