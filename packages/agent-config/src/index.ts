@@ -1,3 +1,9 @@
+export {
+	ENV_CATALOG,
+	type EnvPlane,
+	type EnvVar,
+	renderEnvDoc,
+} from "./env-catalog.js";
 export type { AgentConfig, Limits, TeamConfig } from "./loader.js";
 export {
 	AgentSchema,

@@ -271,3 +271,35 @@ describe("parseTeamConfig — team-level integrity (LU1/RID1/CFG1)", () => {
 		).toThrow(/systemPrompt/);
 	});
 });
+
+describe("loadTeamConfig", () => {
+	it("reads and validates a team config file from disk, the CLI's entry point", async () => {
+		const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const { loadTeamConfig } = await import("../src/loader.js");
+		const dir = mkdtempSync(join(tmpdir(), "magi-load-"));
+		try {
+			const file = join(dir, "team.yaml");
+			writeFileSync(
+				file,
+				[
+					"mission:",
+					"  id: demo",
+					"  name: Demo",
+					"agents:",
+					"  - id: lead",
+					"    supervisor: user",
+					"    systemPrompt: You lead.",
+					"    initialMentalMap: <p>x</p>",
+				].join("\n"),
+			);
+			const cfg = loadTeamConfig(file);
+			expect(cfg.mission.id).toBe("demo");
+			expect(cfg.agents.map((a) => a.id)).toEqual(["lead"]);
+			expect(() => loadTeamConfig(join(dir, "missing.yaml"))).toThrow();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});

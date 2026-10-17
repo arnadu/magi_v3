@@ -60,7 +60,7 @@ npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
 team config YAML — local/dev, used by the CLI examples above) or `MISSION_ID` (control-plane-
 provisioned missions — the daemon reads its structured config directly from MongoDB, ADR-0021)
 
-**Optional env vars:**
+**Optional env vars** (the complete, generated and test-checked list is [docs/env.md](docs/env.md); the notes below are the operationally important ones):
 - `MODEL` (default: `claude-sonnet-4-6`)
 - `VISION_MODEL` (default: `claude-haiku-4-5-20251001`; used by FetchUrl, InspectImage, BrowseWeb; accepts Anthropic or OpenRouter model IDs)
 - `AGENT_WORKDIR` (default: cwd)

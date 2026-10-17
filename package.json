@@ -22,7 +22,8 @@
 		"security:sast": "semgrep scan --config p/default packages/ --error",
 		"security:secrets": "gitleaks detect --source . --no-banner --redact --config .gitleaks.toml",
 		"security:deps": "better-npm-audit audit --level high --production",
-		"security": "npm run security:sast && npm run security:secrets && npm run security:deps"
+		"security": "npm run security:sast && npm run security:secrets && npm run security:deps",
+		"docs:env": "UPDATE_ENV_DOC=1 vitest run packages/agent-config/tests/env-catalog.unit.test.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.4",

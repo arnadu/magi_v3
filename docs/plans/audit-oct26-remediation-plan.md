@@ -544,3 +544,5 @@ Disposition codes: **FIXED** (shipped, commit) · **FIX** (this sprint, workstre
 - 2026-10-17 — **M5 R-1 done** (#35): missions router split into six route modules with module-level handler factories; tests unchanged. CI on 9c1c83f fully green, including the first execution-image build with the M3 G Dockerfile changes.
 - Next: **M5 R-2** (runAgent phases), R-8 (env.ts per package), R-15 (typed stored-document schemas).
 - 2026-10-17 — **M5 R-2 partial**: five runAgent phases named and moved (`agent-runner-phases.ts`), runAgent 682 → 449 lines, tests unchanged. Remaining: the shared-state core needs a turn-state object.
+- 2026-10-17 — **M5 R-8 done (MODIFY)**: `env-catalog.ts` + generated `docs/env.md` + a test that the code's reads, the catalog and the doc agree (51 variables). Call sites keep reading process.env; the catalog is the contract.
+- Next: R-15 typed stored-document schemas (or move to M6 contract tests, which overlap: `schema.consumers` already seeded by transcript-queries.unit).
