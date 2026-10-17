@@ -91,6 +91,11 @@ function extractSkillInfo(toolName, argsRaw) {
 }
 
 // Strip the mission's shared-dir prefix so file paths read as short, chart-friendly labels.
+/** Text that lands in the report's markup (not in the JSON): mission names and ids come from Mongo. */
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -377,14 +382,23 @@ console.log(`\nReport written to: ${outPath}`);
 // ── HTML builder ─────────────────────────────────────────────────────────────
 
 function buildHtml(trace) {
-  const dataJson = JSON.stringify(trace);
+  // Embedded in a <script> block: a "</script>" (or "<!--") inside any traced
+  // string — a tool result, a mailbox body — would otherwise end the block and
+  // the rest of the page would run as markup. Escaping these in the JSON text
+  // is lossless; JSON.parse never sees the difference.
+  const dataJson = JSON.stringify(trace)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MAGI Trace — ${trace.mission.name}</title>
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<title>MAGI Trace — ${escapeHtml(trace.mission.name)}</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -719,7 +733,7 @@ details.tool-block > summary::-webkit-details-marker { display: none; }
 <body>
 
 <div id="header">
-  <h1>⬡ ${trace.mission.name}</h1>
+  <h1>⬡ ${escapeHtml(trace.mission.name)}</h1>
   <div class="stat"><div class="val">${trace.summary.durationHours.toFixed(1)}h</div><div class="lbl">Duration</div></div>
   <div class="stat"><div class="val">$${trace.summary.totalCostUsd.toFixed(2)}</div><div class="lbl">Cost</div></div>
   <div class="stat"><div class="val">${trace.summary.totalLlmCalls}</div><div class="lbl">LLM calls</div></div>
@@ -728,7 +742,7 @@ details.tool-block > summary::-webkit-details-marker { display: none; }
   <div class="stat"><div class="val">${trace.summary.totalMessages}</div><div class="lbl">Messages</div></div>
   <div class="stat"><div class="val">${trace.summary.agentIds.length}</div><div class="lbl">Agents</div></div>
   <div class="spacer"></div>
-  <div class="mid">${trace.mission.missionId}</div>
+  <div class="mid">${escapeHtml(trace.mission.missionId)}</div>
 </div>
 
 <div id="page-tabs">
@@ -1310,16 +1324,16 @@ function redraw() {
           ? \` · <span style="color:#ff6666">✕ \${errCount} error\${errSuffix}</span>\`
           : '';
         tooltip.innerHTML =
-          \`<b>\${c.agentId}</b> · turn \${c.turnNumber}\${c.isReflection?' · <em>reflect</em>':''}\${evt.isFirst?' · <b style="color:#aaa">wakeup</b>':''}\${errPart}<br>\` +
+          \`<b>\${esc(c.agentId)}</b> · turn \${c.turnNumber}\${c.isReflection?' · <em>reflect</em>':''}\${evt.isFirst?' · <b style="color:#aaa">wakeup</b>':''}\${errPart}<br>\` +
           \`\${fmtDT(c.savedAt)}<br>\` +
           \`in:\${fmtK(c.inputTokens)} cache:\${fmtK(c.cacheReadTokens)} out:\${fmtK(c.outputTokens)}<br>\` +
-          \`cost: \${fmtC(c.costUsd)} · stop: \${c.stopReason||'—'}<br>\` +
-          (tools.length ? \`tools: \${tools.slice(0,6).join(', ')}\${tools.length>6?'…':''}\` : '<em>no tools</em>');
+          \`cost: \${fmtC(c.costUsd)} · stop: \${esc(c.stopReason||'—')}<br>\` +
+          (tools.length ? \`tools: \${esc(tools.slice(0,6).join(', '))}\${tools.length>6?'…':''}\` : '<em>no tools</em>');
       } else if (evt.msg) {
         const m = evt.msg;
         tooltip.innerHTML =
-          \`<b>\${evt.kind === 'user-in' ? '▲ user → '+evt.agentId : '■ '+evt.agentId+' → user'}</b><br>\` +
-          \`"\${m.subject}"<br>\${fmtDT(m.timestamp)}\`;
+          \`<b>\${esc(evt.kind === 'user-in' ? '▲ user → '+evt.agentId : '■ '+evt.agentId+' → user')}</b><br>\` +
+          \`"\${esc(m.subject)}"<br>\${fmtDT(m.timestamp)}\`;
       }
     })
     .on('mousemove', event => {
