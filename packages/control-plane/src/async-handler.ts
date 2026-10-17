@@ -21,7 +21,7 @@ export function asyncHandler(fn: Handler): RequestHandler {
 }
 
 type Method = "get" | "post" | "put" | "patch" | "delete" | "use";
-type AsyncRoutes = Record<
+export type AsyncRoutes = Record<
 	Method,
 	(path: string, ...handlers: RequestHandler[]) => void
 >;

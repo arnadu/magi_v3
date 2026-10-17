@@ -221,13 +221,9 @@
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
-		"lines": 1540,
+		"lines": 408,
 		"fns": {
-			"readLimits@197": 172,
-			"createMissionsRouter@428": 1112,
-			"<anonymous>@807": 134,
-			"<anonymous>@1167": 133,
-			"<anonymous>@1399": 128
+			"readLimits@156": 172
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {
