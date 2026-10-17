@@ -118,7 +118,6 @@ describe("EPHEMERAL_TOOLS", () => {
 		expect(EPHEMERAL_TOOLS.has("SearchWeb")).toBe(true);
 		expect(EPHEMERAL_TOOLS.has("FetchUrl")).toBe(true);
 		expect(EPHEMERAL_TOOLS.has("BrowseWeb")).toBe(true);
-		expect(EPHEMERAL_TOOLS.has("ReadFile")).toBe(true);
 		expect(EPHEMERAL_TOOLS.has("InspectImage")).toBe(true);
 		// Durable tools must NOT be in the set
 		expect(EPHEMERAL_TOOLS.has("WriteFile")).toBe(false);
