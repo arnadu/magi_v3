@@ -69,6 +69,7 @@ provisioned missions — the daemon reads its structured config directly from Mo
 - `BRAVE_SEARCH_API_KEY` (enables SearchWeb; free tier: 2000 req/month)
 - `FIREBASE_SERVICE_ACCOUNT_KEY` (control plane only; Firebase Admin SDK service account JSON, minified to one line — required for Google Sign-In)
 - `FIREBASE_CLIENT_API_KEY`, `FIREBASE_CLIENT_AUTH_DOMAIN`, `FIREBASE_CLIENT_PROJECT_ID` (control plane only; served to the browser via `/firebase-config.js`; public client-side values)
+- `PLATFORM_MAX_COST_CEILING_USD` (control plane only; the spend-cap ceiling written on every new mission and back-filled onto existing ones at start, default 100. A mission's cap can never exceed its ceiling, and only an admin — `CONTROL_API_KEY` — can set a mission's ceiling above this value; the default per-mission cap at creation is $25. ADR-0034)
 - `MONITOR_SIGNING_KEY` (control plane only; HMAC key for per-mission MonitorServer tokens — generate with `openssl rand -hex 32`; never forwarded to execution plane machines)
 - `CSP_ENFORCE` (control plane only; `"true"` switches the cockpit's Content Security Policy from `Content-Security-Policy-Report-Only` to enforcing. Default report-only: violations are logged from the browser's `POST /api/csp-report` reports as `[csp] violation …` — flip it once a few days of dev logs show none for normal cockpit use)
 - `GH_TOKEN` (control plane only; GitHub personal access token with `repo` scope — used by copilot's `ListIssues`/`CreateIssue`/`CloseIssue`/`AddIssueComment` tools; optional but required for issue tracking)

@@ -68,9 +68,13 @@ export {
 } from "./mission-copilot.js";
 export {
 	anthropicModel,
+	assertKnownModels,
 	CLAUDE_HAIKU,
 	CLAUDE_SONNET,
+	isKnownModelId,
+	KNOWN_ANTHROPIC_MODEL_IDS,
 	resolveModel,
+	unknownModelIds,
 } from "./models.js";
 export type {
 	ObjectivesReadOptions,

@@ -261,3 +261,18 @@ describe("templates.ts (ADR-0021 disk-only templates)", () => {
 		});
 	});
 });
+
+describe("every shipped template sets a spend cap (TPL5)", () => {
+	it("no template under config/teams leaves maxCostUsd unset", async () => {
+		const { readdirSync, readFileSync } = await import("node:fs");
+		const { join } = await import("node:path");
+		const dir = join(import.meta.dirname, "..", "..", "..", "config", "teams");
+		const files = readdirSync(dir).filter((f) => f.endsWith(".yaml"));
+		expect(files.length).toBeGreaterThan(0);
+		for (const f of files) {
+			expect(readFileSync(join(dir, f), "utf8"), f).toMatch(
+				/^\s+maxCostUsd:\s*\d/m,
+			);
+		}
+	});
+});

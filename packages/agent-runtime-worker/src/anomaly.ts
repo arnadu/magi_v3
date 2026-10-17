@@ -45,6 +45,7 @@ export type AnomalyCategory =
 	// instead of going through this recorder.
 	| "disk-usage-high"
 	| "spend-cap-near"
+	| "uncapped-spend"
 	| "spend-spike"
 	| "upgrade-cap-near"
 	| "upgrade-cap-reached"

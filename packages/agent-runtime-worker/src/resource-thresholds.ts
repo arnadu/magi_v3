@@ -24,6 +24,10 @@ export const ATLAS_STORAGE: LevelThresholds = { soft: 0.7, hard: 0.85 };
 /** Lifetime LLM spend against the mission's spend cap. */
 export const SPEND_CAP: LevelThresholds = { soft: 0.9, hard: 0.98 };
 
+/** `uncapped-spend`: a mission with no cap at all, measured as spend / UNCAPPED_SPEND_UNIT_USD — soft at $10, hard at $50. */
+export const UNCAPPED_SPEND_UNIT_USD = 10;
+export const UNCAPPED_SPEND: LevelThresholds = { soft: 1, hard: 5 };
+
 /** `spend-spike`: 24 h spend above `multiplier` × the trailing daily average, and above `minUsd`. */
 export const SPEND_SPIKE = {
 	multiplier: 3,

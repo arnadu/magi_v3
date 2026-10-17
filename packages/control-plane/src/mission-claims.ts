@@ -79,3 +79,18 @@ export async function ensureMissionIdIndex(db: Db): Promise<void> {
 			),
 		);
 }
+
+/** The `$set` that records a freshly provisioned machine on its mission document. */
+export function runningPatch(
+	handle: { machineId: string; privateIp: string; volumeId: string },
+	extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return {
+		machineId: handle.machineId,
+		privateIp: handle.privateIp,
+		volumeId: handle.volumeId,
+		status: "running",
+		updatedAt: new Date(),
+		...extra,
+	};
+}

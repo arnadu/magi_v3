@@ -141,10 +141,15 @@ function supportsVisionFallback(id: string): boolean {
  * ($3/$15 per MTok, 128k context) and image support inferred from
  * VISION_CAPABLE_ID_PATTERNS above. Add an explicit constant above to override.
  */
+/** The pre-generated OpenRouter registry entry for an id, if pi-ai ships one. */
+function registeredOpenRouterModel(id: string) {
+	// biome-ignore lint/suspicious/noExplicitAny: getBuiltinModel expects a literal from models.generated; arbitrary IDs require the cast
+	return getBuiltinModel("openrouter", id as any) ?? undefined;
+}
+
 export function parseModel(id: string): Model<string> {
 	if (id.includes("/")) {
-		// biome-ignore lint/suspicious/noExplicitAny: getBuiltinModel expects a literal from models.generated; arbitrary IDs require the cast
-		const registered = getBuiltinModel("openrouter", id as any);
+		const registered = registeredOpenRouterModel(id);
 		if (registered) return withOpenRouterAffinity(registered);
 		// Not in the pre-generated registry — construct a descriptor directly.
 		return withOpenRouterAffinity({
@@ -161,4 +166,44 @@ export function parseModel(id: string): Model<string> {
 		});
 	}
 	return anthropicModel(id);
+}
+
+/** First-party Anthropic ids the platform prices and offers; anything else without a "/" is unknown. */
+export const KNOWN_ANTHROPIC_MODEL_IDS: readonly string[] = [
+	"claude-opus-4-8",
+	CLAUDE_SONNET.id,
+	CLAUDE_HAIKU.id,
+];
+
+/**
+ * True when the id is priced from a real table: a known Anthropic id or an
+ * OpenRouter id present in pi-ai's generated registry. `parseModel` accepts
+ * anything and prices the unknown at Sonnet rates — fine for a developer's
+ * experiment, not for a tenant's config (audit MD1).
+ */
+export function isKnownModelId(id: string): boolean {
+	if (id.includes("/")) return registeredOpenRouterModel(id) !== undefined;
+	return KNOWN_ANTHROPIC_MODEL_IDS.includes(id);
+}
+
+/** The model ids a config names that are not known — empty when the config is acceptable. */
+export function unknownModelIds(mission: {
+	model?: string;
+	visionModel?: string;
+}): string[] {
+	return [mission.model, mission.visionModel].filter(
+		(id): id is string => typeof id === "string" && !isKnownModelId(id),
+	);
+}
+
+/** Throws in parseTeamConfig's own message style when a config names a model the platform cannot price (MD1). */
+export function assertKnownModels(mission: {
+	model?: string;
+	visionModel?: string;
+}): void {
+	const unknown = unknownModelIds(mission);
+	if (unknown.length === 0) return;
+	throw new Error(
+		`Team config validation failed:\n  mission.model: unknown model id(s) ${unknown.map((u) => `"${u}"`).join(", ")} — use a model from the catalog (GET /api/models)`,
+	);
 }

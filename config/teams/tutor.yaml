@@ -1,6 +1,7 @@
 mission:
   id: tutor
   name: "Tutor"
+  maxCostUsd: 25
   model: z-ai/glm-5.2
 
 agents:

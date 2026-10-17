@@ -1,6 +1,7 @@
 mission:
   id: gold-digest
   name: "Gold Macro Digest"
+  maxCostUsd: 25
   model: deepseek/deepseek-chat
   visionModel: google/gemini-flash-1.5-8b
 

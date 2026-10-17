@@ -97,3 +97,52 @@ describe("MID1: mission creation rejects reserved and malformed ids", () => {
 		expect(data.missions).toHaveLength(0);
 	});
 });
+
+describe("spend containment at creation (ADR-0034)", () => {
+	it("a mission created without a cap gets the default cap and the platform ceiling", async () => {
+		const { baseUrl, data } = await startApp();
+		vi.mocked(provisionTracked).mockResolvedValue({
+			machineId: "mach",
+			privateIp: "fdaa::1",
+			volumeId: "vol",
+		});
+		const res = await fetch(baseUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				missionId: "capped-by-default",
+				name: "x",
+				teamConfig: "inline",
+				mission: { name: "x" },
+				agents,
+			}),
+		});
+		expect(res.status).toBe(201);
+		const doc = data.missions[0] as {
+			mission: { maxCostUsd?: number };
+			maxCostCeilingUsd?: number;
+		};
+		expect(doc.mission.maxCostUsd).toBe(25);
+		expect(doc.maxCostCeilingUsd).toBe(100);
+	});
+
+	it("keeps an explicit cap and refuses a model the platform cannot price", async () => {
+		const { baseUrl, data } = await startApp();
+		const bad = await fetch(baseUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				missionId: "unknown-model",
+				name: "x",
+				teamConfig: "inline",
+				mission: { name: "x", model: "nobody/such-model-v9", maxCostUsd: 7 },
+				agents,
+			}),
+		});
+		expect(bad.status).toBe(400);
+		expect(((await bad.json()) as { error: string }).error).toMatch(
+			/unknown model id/,
+		);
+		expect(data.missions).toHaveLength(0);
+	});
+});

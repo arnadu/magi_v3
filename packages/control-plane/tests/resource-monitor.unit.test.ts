@@ -43,12 +43,14 @@ const missionRow = (over: Partial<MissionRow> = {}): MissionRow => ({
 });
 
 describe("checkMission > spend-cap-near", () => {
-	it("does nothing when no cap is configured", async () => {
+	it("never raises spend-cap-near when no cap is configured (that case is uncapped-spend's)", async () => {
 		const { db, data, alertStore } = setup({
 			missionStats: [{ missionId: "m1", agentId: "a1", lifetimeCostUsd: 1000 }],
 		});
 		await checkMission(db, missionRow(), alertStore, NOW);
-		expect(data.missionAnomalies).toHaveLength(0);
+		expect(
+			data.missionAnomalies.map((a) => (a as { category: string }).category),
+		).toEqual(["uncapped-spend"]);
 	});
 
 	it("raises soft at 90% of the cap", async () => {
@@ -445,5 +447,52 @@ describe("runResourceMonitorTick", () => {
 		expect(u1Mail.every((m) => !(m.body as string).includes("m2"))).toBe(true);
 		expect(u2Mail.every((m) => (m.body as string).includes("m2"))).toBe(true);
 		expect(u2Mail.every((m) => !(m.body as string).includes("m1"))).toBe(true);
+	});
+});
+
+describe("checkMission > uncapped-spend", () => {
+	it("stays quiet for an uncapped mission that has spent little", async () => {
+		const { db, data, alertStore } = setup({
+			missionStats: [{ missionId: "m1", agentId: "a1", lifetimeCostUsd: 4 }],
+		});
+		await checkMission(db, missionRow(), alertStore, NOW);
+		expect(data.missionAnomalies).toHaveLength(0);
+	});
+
+	it("raises soft at $10 and hard at $50 of uncapped spend, once each", async () => {
+		const stats = [{ missionId: "m1", agentId: "a1", lifetimeCostUsd: 12 }];
+		const { db, data, alertStore } = setup({ missionStats: stats });
+		await checkMission(db, missionRow(), alertStore, NOW);
+		await checkMission(db, missionRow(), alertStore, NOW);
+		expect(
+			data.missionAnomalies.map((a) => (a as { category: string }).category),
+		).toEqual(["uncapped-spend"]);
+		expect((data.missionAnomalies[0] as { severity: string }).severity).toBe(
+			"soft",
+		);
+		stats[0].lifetimeCostUsd = 60;
+		await checkMission(
+			db,
+			missionRow(),
+			alertStore,
+			new Date(NOW.getTime() + HOUR),
+		);
+		expect(data.missionAnomalies).toHaveLength(2);
+		expect((data.missionAnomalies[1] as { severity: string }).severity).toBe(
+			"hard",
+		);
+	});
+
+	it("does not fire for a capped mission (the cap-near alert owns that case)", async () => {
+		const { db, data, alertStore } = setup({
+			missionStats: [{ missionId: "m1", agentId: "a1", lifetimeCostUsd: 60 }],
+		});
+		await checkMission(
+			db,
+			missionRow({ mission: { maxCostUsd: 1000 } }),
+			alertStore,
+			NOW,
+		);
+		expect(data.missionAnomalies).toHaveLength(0);
 	});
 });

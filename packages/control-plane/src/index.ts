@@ -43,6 +43,7 @@ import { mountPublicSurface } from "./public-routes.js";
 import { startResourceMonitor } from "./resource-monitor.js";
 import { startScheduler } from "./scheduler.js";
 import { createSessionRouter } from "./session-routes.js";
+import { backfillMissionCeilings } from "./spend-policy.js";
 import { createTemplatesRouter, loadTemplates } from "./templates.js";
 
 const REPO_ROOT = join(
@@ -134,6 +135,7 @@ async function main(): Promise<void> {
 	const pendingActions = new MongoPendingActionsStore(db);
 	await pendingActions.ensureIndexes();
 	await ensureMissionIdIndex(db);
+	await backfillMissionCeilings(db);
 	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);
 
 	app.use(

@@ -25,6 +25,8 @@ import {
 	SPEND_CAP,
 	SPEND_SPIKE,
 	SPEND_SPIKE_RATIO,
+	UNCAPPED_SPEND,
+	UNCAPPED_SPEND_UNIT_USD,
 	UPGRADE_CAP_NEAR,
 	UPGRADE_IDLE,
 	UPGRADE_IDLE_MINUTES,
@@ -92,7 +94,12 @@ async function checkSpendCapNear(
 		0,
 	);
 	const ratio = spendCapRatio(totalSpendUsd, mission.mission?.maxCostUsd);
-	if (ratio === null) return;
+	if (ratio === null) {
+		// No cap at all (cleared after creation — every new mission gets one):
+		// the one state the cap-near alert can never report on.
+		await checkUncappedSpend(db, mission, alertStore, now, totalSpendUsd);
+		return;
+	}
 
 	const level = await evaluateAlert(
 		alertStore,
@@ -113,6 +120,33 @@ async function checkSpendCapNear(
 		category: "spend-cap-near",
 		severity: level,
 		message: `Mission spend is at ${Math.round(ratio * 100)}% of its $${capUsd.toFixed(2)} cap ($${totalSpendUsd.toFixed(2)} spent).`,
+	});
+}
+
+async function checkUncappedSpend(
+	db: Db,
+	mission: MissionRow,
+	alertStore: AlertStateStore,
+	now: Date,
+	totalSpendUsd: number,
+): Promise<void> {
+	const level = await evaluateAlert(
+		alertStore,
+		`${mission.missionId}:uncapped-spend`,
+		totalSpendUsd / UNCAPPED_SPEND_UNIT_USD,
+		UNCAPPED_SPEND,
+		now,
+	);
+	if (!level) return;
+	await createMongoAnomalyRecorderForMission(
+		db,
+		mission.missionId,
+		mission.userId,
+	).record({
+		missionId: mission.missionId,
+		category: "uncapped-spend",
+		severity: level,
+		message: `Mission has no spend cap and has spent $${totalSpendUsd.toFixed(2)} so far. Set one in the Limits panel (or SetMissionSpendCap) — the platform ceiling applies, but it is not a cap.`,
 	});
 }
 

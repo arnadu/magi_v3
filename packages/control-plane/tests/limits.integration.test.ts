@@ -388,15 +388,47 @@ describe("Limits panel backend", () => {
 			expect(result.status).toBe(200);
 		});
 
-		it("is unbounded when no ceiling is configured", async () => {
-			const result = await writeMissionCap(
+		it("is bounded by the platform ceiling when the mission has none (ADR-0034)", async () => {
+			const tooHigh = await writeMissionCap(
 				col(),
 				db,
 				missionId,
 				{ userId: userA },
 				1_000_000,
 			);
-			expect(result.status).toBe(200);
+			expect(tooHigh.status).toBe(403);
+			expect((tooHigh.body as { error: string }).error).toMatch(/\$100\.00/);
+			const atPlatform = await writeMissionCap(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				100,
+			);
+			expect(atPlatform.status).toBe(200);
+		});
+	});
+
+	describe("writeMissionCostCeiling vs the platform ceiling (ADR-0034)", () => {
+		it("refuses a non-admin above the platform ceiling and lets an admin through", async () => {
+			const denied = await writeMissionCostCeiling(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				5_000,
+				false,
+			);
+			expect(denied.status).toBe(403);
+			const allowed = await writeMissionCostCeiling(
+				col(),
+				db,
+				missionId,
+				{ userId: userA },
+				5_000,
+				true,
+			);
+			expect(allowed.status).toBe(200);
 		});
 	});
 

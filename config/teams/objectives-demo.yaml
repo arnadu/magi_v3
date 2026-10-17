@@ -1,6 +1,7 @@
 mission:
   id: objectives-demo
   name: "Objectives Demo (DPO)"
+  maxCostUsd: 25
 
 agents:
   - id: officer

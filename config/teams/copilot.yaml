@@ -1,6 +1,7 @@
 mission:
   id: copilot
   name: "MAGI Copilot"
+  maxCostUsd: 25
 
 agents:
   - id: copilot

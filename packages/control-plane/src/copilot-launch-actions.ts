@@ -10,6 +10,10 @@ import { validateNewMissionId } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { ActionPayload } from "./copilot-actions.js";
 import { provisionTracked } from "./machine-lifecycle.js";
+import {
+	platformMaxCostCeilingUsd,
+	withDefaultSpendCap,
+} from "./spend-policy.js";
 import { getTemplate } from "./templates.js";
 
 export async function executeLaunchMission(
@@ -28,7 +32,10 @@ export async function executeLaunchMission(
 	const template = getTemplate(templateId);
 	if (!template) throw new Error(`Template "${templateId}" not found`);
 
-	const resolvedMission = { ...template.config.mission, id: missionId };
+	const resolvedMission = withDefaultSpendCap({
+		...template.config.mission,
+		id: missionId,
+	});
 	try {
 		await missions.insertOne({
 			missionId,
@@ -39,6 +46,7 @@ export async function executeLaunchMission(
 			agents: template.config.agents,
 			missionCopilotLimits: template.config.missionCopilotLimits,
 			teamFiles: template.teamFiles,
+			maxCostCeilingUsd: platformMaxCostCeilingUsd(),
 			status: "provisioning",
 			createdAt: now,
 			updatedAt: now,

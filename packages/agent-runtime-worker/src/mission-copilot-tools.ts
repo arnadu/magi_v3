@@ -53,6 +53,7 @@ import {
 	resolveDeliverAt,
 	scheduleInputProblem,
 } from "./mission-copilot-schedule-input.js";
+import { assertKnownModels } from "./models.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
 import { type ObjectiveDef, ObjectiveDefSchema } from "./objectives/types.js";
 import { createResourceUpgradeTools } from "./resource-upgrade-tool.js";
@@ -322,6 +323,7 @@ export function createMissionCopilotTools(
 					agents: nextAgents,
 					missionCopilotLimits: nextMissionCopilotLimits,
 				});
+				assertKnownModels(validated.mission);
 			} catch (e) {
 				return err(`Invalid team config: ${(e as Error).message}`);
 			}

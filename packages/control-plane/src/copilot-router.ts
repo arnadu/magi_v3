@@ -19,6 +19,7 @@ import {
 	validateTeamFiles,
 } from "@magi/agent-config";
 import {
+	assertKnownModels,
 	createMongoAgentStatsRepository,
 	createMongoMailboxRepository,
 	createMongoMissionConfigWriter,
@@ -423,6 +424,7 @@ export async function executeAction(
 					agents: draft.agents,
 					missionCopilotLimits: draft.missionCopilotLimits,
 				});
+				assertKnownModels(validated.mission);
 			} catch (e) {
 				throw new Error(`Invalid team config: ${(e as Error).message}`);
 			}
@@ -634,6 +636,7 @@ export async function executeAction(
 					agents: nextAgents,
 					missionCopilotLimits: nextMissionCopilotLimits,
 				});
+				assertKnownModels(scValidated.mission);
 			} catch (e) {
 				throw new Error(`Invalid team config: ${(e as Error).message}`);
 			}
