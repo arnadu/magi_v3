@@ -190,8 +190,12 @@ export function createMailboxTools(
 			"embedded image from your shared workspace — read the " +
 			"postmessage-conventions skill for the exact syntax each needs.",
 		parameters: Type.Object({
-			to: Type.Array(Type.String(), {
-				description: 'Recipient agent ids (or "user" for the operator)',
+			// A single id is accepted as well as a list: background-job scripts
+			// (magi_tool.py's post_message(to: str, …)) reach this tool through
+			// the Tool API, which validates against this same schema.
+			to: Type.Union([Type.Array(Type.String()), Type.String()], {
+				description:
+					'Recipient agent ids (or "user" for the operator) — a list, or one id',
 			}),
 			subject: Type.String({ description: "Message subject line" }),
 			body: Type.String({
@@ -201,13 +205,8 @@ export function createMailboxTools(
 			}),
 		}),
 		async execute(_id, args) {
-			// The schema declares to: string[] for LLM-driven tool calls (always
-			// schema-conformant), but this tool is also reachable via the raw HTTP
-			// tool-api-server path (background job scripts), which sends whatever
-			// JSON shape the caller built — no schema validation applied. A single
-			// recipient string is common there (e.g. magi_tool.py's post_message(to:
-			// str, ...)); coerce it rather than let `.filter` below throw a raw
-			// TypeError that surfaces as an unhandled 500.
+			// Both shapes the schema admits; arguments were validated before this
+			// ran (LP2), so anything else is unreachable and only kept as a guard.
 			const rawTo = args.to;
 			const to = Array.isArray(rawTo)
 				? (rawTo as string[])

@@ -40,6 +40,7 @@ import type { TeamConfig } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
+import { checkToolArguments } from "./tool-args.js";
 import {
 	tryCreateDataFmpTool,
 	tryCreateDataFredTool,
@@ -186,12 +187,27 @@ export class ToolApiServer {
 			return;
 		}
 
+		// Background-job scripts send whatever JSON they built; hold them to the
+		// same schema the LLM is held to (LP2/MB1) instead of letting a wrong
+		// shape throw inside the tool as a 500.
+		const callId = randomUUID();
+		const checked = checkToolArguments(tool, {
+			id: callId,
+			name: toolName,
+			arguments: params,
+		});
+		if (!checked.ok) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: checked.message }));
+			return;
+		}
+
 		// Execute with timeout.
 		const ac = new AbortController();
 		const timer = setTimeout(() => ac.abort(), TOOL_TIMEOUT_MS);
 		let result: Awaited<ReturnType<MagiTool["execute"]>>;
 		try {
-			result = await tool.execute(randomUUID(), params, ac.signal);
+			result = await tool.execute(callId, checked.args, ac.signal);
 		} catch (err) {
 			clearTimeout(timer);
 			if (ac.signal.aborted) {

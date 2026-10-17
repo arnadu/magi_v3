@@ -9,6 +9,7 @@ import type {
 } from "@mariozechner/pi-ai";
 import { pruneEphemeralResults } from "./context-utils.js";
 import { piModels } from "./models.js";
+import { checkToolArguments } from "./tool-args.js";
 import type { MagiTool } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -433,12 +434,22 @@ export async function runInnerLoop(
 			const tool = tools.find((t) => t.name === block.name);
 			let toolResult: ToolResultMessage;
 
+			// Arguments are checked against the tool's own schema before execute
+			// sees them (LP2); a failure is an ordinary tool error the model reads
+			// and corrects, never a cast-and-crash inside the tool.
+			const checked = tool ? checkToolArguments(tool, block) : undefined;
 			if (!tool) {
 				toolResult = makeError(block, `Tool "${block.name}" not found`);
+			} else if (checked && !checked.ok) {
+				toolResult = makeError(block, checked.message);
 			} else {
 				try {
 					const result = await withTimeout(
-						tool.execute(block.id, block.arguments, signal),
+						tool.execute(
+							block.id,
+							checked?.ok ? checked.args : block.arguments,
+							signal,
+						),
 						toolTimeoutMs,
 						block.name,
 					);
