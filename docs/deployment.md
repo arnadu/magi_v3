@@ -39,7 +39,7 @@ cloud path.
 
 You need:
 - **Fly.io account** — free tier covers the control plane machine; execution plane machines are billed when running (see §9)
-- **MongoDB Atlas** — free M0 cluster (512 MB) is sufficient for development and light production use
+- **MongoDB Atlas** — the shared cluster is an M10 (10 GB, continuous backups) since 2026-10-17; a free M0 (512 MB) works for a throwaway dev setup but hit its quota twice in live use
 - **Anthropic API key** — missions use Claude Sonnet by default; each daily equity-research cycle costs roughly $1–5 depending on team size and research depth
 - **Optional data keys**: `BRAVE_SEARCH_API_KEY` (free tier: 2000 req/month), `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY` — only needed for equity-research or data-factory missions
 
@@ -50,7 +50,7 @@ You need:
 | Control plane machine (512 MB, always-on) | ~$3.88/month (shared-cpu-1x 512 MB) |
 | Execution plane machine (1 GB, shared CPU) | ~$0.006/hour while running; $0 when suspended |
 | Fly Volume (10 GB per mission) | ~$1.50/month while attached |
-| MongoDB Atlas M0 | Free |
+| MongoDB Atlas M10 (shared by every environment) | ~$57/month |
 | Anthropic API | ~$1–10 per mission-day depending on workload |
 
 A typical single-mission dev environment costs under $5/month total.
@@ -808,10 +808,10 @@ when not in use.
 
 | Tier | Cost | Notes |
 |------|------|-------|
-| M0 Free | $0 | 512 MB storage; sufficient for dev + light production |
-| M10 Dedicated | ~$57/month | Use if M0 hits storage or connection limits |
+| M0 Free | $0 | 512 MB storage; a throwaway dev setup only — hit its quota twice in live use |
+| M10 Dedicated (current) | ~$57/month | 10 GB, continuous backups; set `ATLAS_STORAGE_LIMIT_MB=10240` on the control plane |
 
-For a single equity-research mission, M0 is sufficient for months of history.
+The pruner (`LOG_RETENTION_DAYS` in `scheduler.ts`) was tightened to 1 day under M0; revisit it now that storage is not the constraint.
 
 ### Anthropic API
 

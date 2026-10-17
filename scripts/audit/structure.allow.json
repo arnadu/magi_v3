@@ -1,8 +1,8 @@
 {
 	"packages/agent-runtime-worker/src/agent-runner.ts": {
-		"lines": 945,
+		"lines": 880,
 		"fns": {
-			"runAgent@267": 682
+			"runAgent@258": 622
 		}
 	},
 	"packages/agent-runtime-worker/src/agent-stats.ts": {
@@ -20,7 +20,7 @@
 	"packages/agent-runtime-worker/src/conversation-repository.ts": {
 		"lines": 316,
 		"fns": {
-			"createMongoConversationRepository@130": 186
+			"createMongoConversationRepository@133": 186
 		}
 	},
 	"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts": {
@@ -32,7 +32,7 @@
 	"packages/agent-runtime-worker/src/daemon.ts": {
 		"lines": 440,
 		"fns": {
-			"main@218": 214
+			"main@241": 214
 		}
 	},
 	"packages/agent-runtime-worker/src/document-processor.ts": {
@@ -44,7 +44,7 @@
 	"packages/agent-runtime-worker/src/loop.ts": {
 		"lines": 521,
 		"fns": {
-			"runInnerLoop@236": 220
+			"runInnerLoop@249": 220
 		}
 	},
 	"packages/agent-runtime-worker/src/mailbox.ts": {
@@ -60,9 +60,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot-tools.ts": {
-		"lines": 1257,
+		"lines": 1140,
 		"fns": {
-			"createMissionCopilotTools@145": 1113
+			"createMissionCopilotTools@132": 1008
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot.ts": {
@@ -188,11 +188,11 @@
 	"packages/cockpit/src/TranscriptsPanel.tsx": {
 		"lines": 404,
 		"fns": {
-			"TranscriptsPanel@199": 205
+			"TranscriptsPanel@204": 202
 		}
 	},
 	"packages/cockpit/src/data.ts": {
-		"lines": 1088,
+		"lines": 1075,
 		"fns": {}
 	},
 	"packages/control-plane/src/copilot-daemon.ts": {
@@ -221,13 +221,13 @@
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
-		"lines": 1637,
+		"lines": 1572,
 		"fns": {
-			"readLimits@196": 172,
-			"createMissionsRouter@427": 1201,
-			"<anonymous>@872": 134,
-			"<anonymous>@1225": 133,
-			"<anonymous>@1457": 128
+			"readLimits@197": 172,
+			"createMissionsRouter@428": 1144,
+			"<anonymous>@807": 134,
+			"<anonymous>@1160": 133,
+			"<anonymous>@1392": 128
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {

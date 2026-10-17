@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { callIndexFor } from "./call-index.js";
 import {
 	type Agent,
 	fetchAgents,
@@ -160,8 +161,10 @@ export function LlmCallView({
 		>
 			<summary className="llmcall-sum">
 				⚙ LLM call · {summary.model}
-				{summary.isReflection ? " · refl" : ""} · {fmtTok(summary.usage?.input)}
-				→{fmtTok(summary.usage?.output)} · {fmtUsd(summary.cost?.totalUsd)}
+				{summary.isReflection ? " · refl" : ""} ·{" "}
+				{fmtTok(summary.usage?.inputTokens)}→
+				{fmtTok(summary.usage?.outputTokens)} ·{" "}
+				{fmtUsd(summary.costUsd ?? undefined)}
 				{summary.costEstimated ? "~" : ""}
 				{summary.stopReason ? ` · ${summary.stopReason}` : ""}
 			</summary>
@@ -175,13 +178,15 @@ export function LlmCallView({
 						{detail.input ? (
 							<JsonNode k="Input" v={detail.input} />
 						) : (
-							<p className="mut">Input not retained (past the 7-day window).</p>
+							<p className="mut">
+								Input not retained (past the log retention window).
+							</p>
 						)}
 						{detail.output ? (
-							<JsonNode k="Output" v={detail.output.response} />
+							<JsonNode k="Output" v={detail.output.message} />
 						) : (
 							<p className="mut">
-								Output not retained (past the 7-day window).
+								Output not retained (past the log retention window).
 							</p>
 						)}
 					</>
@@ -305,10 +310,7 @@ export function TranscriptsPanel({
 	// Each top-level assistant message IS the output of one LLM call. Map them
 	// 1:1 in chronological order (both the transcript and llmCallLog are ordered),
 	// so the k-th assistant message links to the k-th logged call.
-	let asstSeq = -1;
-	const callIndexFor = topLevel.map((e) =>
-		e.message.role === "assistant" ? ++asstSeq : -1,
-	);
+	const callIndex = callIndexFor(topLevel, calls);
 
 	return (
 		<div className="tx">
@@ -357,7 +359,7 @@ export function TranscriptsPanel({
 								)}
 								{topLevel.map((e, idx) => {
 									const tcs = toolCallsIn(e.message);
-									const ci = callIndexFor[idx];
+									const ci = callIndex[idx];
 									return (
 										// biome-ignore lint/suspicious/noArrayIndexKey: entries are positional
 										<div key={idx} className="tx-entry">

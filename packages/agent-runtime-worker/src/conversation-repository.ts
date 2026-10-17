@@ -37,6 +37,8 @@ export interface StoredMessage {
 	 * undefined for reflection messages.
 	 */
 	callSeq?: number;
+	/** The `llmCallLog` entry that produced this assistant message (exact join; see loop.ts). */
+	callId?: string;
 	/**
 	 * Snapshot of the agent's mental map HTML at the time of this LLM call.
 	 * Only set on AssistantMessage documents.
@@ -121,6 +123,7 @@ interface ConversationDoc {
 	isReflection?: boolean;
 	/** Which LLM call (0-based) within the session this message belongs to. */
 	callSeq?: number;
+	callId?: string;
 	/** Mental map HTML snapshot at the time of this LLM call (AssistantMessages only). */
 	mentalMapHtml?: string;
 	/** Parent tool_use block id for sub-loop messages. */
@@ -223,6 +226,7 @@ export function createMongoConversationRepository(
 							savedAt: new Date(),
 							...(sm.isReflection ? { isReflection: true } : {}),
 							...(sm.callSeq !== undefined ? { callSeq: sm.callSeq } : {}),
+							...(sm.callId !== undefined ? { callId: sm.callId } : {}),
 							...(sm.mentalMapHtml !== undefined
 								? { mentalMapHtml: sm.mentalMapHtml }
 								: {}),

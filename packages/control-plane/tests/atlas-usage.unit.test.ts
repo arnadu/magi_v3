@@ -211,13 +211,13 @@ describe("readAtlasUsage", () => {
 		expect(usage.collections[0]).toEqual({ name: "col14", bytes: 14 });
 	});
 
-	it("applies the limit (default 512 MB, or a custom limitMb)", async () => {
+	it("applies the limit (default 10 GB, or a custom limitMb)", async () => {
 		const { client, db } = fakeCluster({
 			databases: ["magi_v3_dev"],
 			statsByDb: { magi_v3_dev: { dataSize: 1, indexSize: 1 } },
 		});
 		expect((await readAtlasUsage({ client, db })).limitBytes).toBe(
-			512 * 1024 * 1024,
+			10_240 * 1024 * 1024,
 		);
 		expect(
 			(await readAtlasUsage({ client, db, limitMb: 1024 })).limitBytes,

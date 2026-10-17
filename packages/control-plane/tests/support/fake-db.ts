@@ -2,10 +2,11 @@
  * Minimal in-memory Mongo fake for control-plane unit tests. Supports only
  * what the resource modules use: dotted paths; equality (Dates and ObjectIds
  * by value); $exists, $in, $nin, $ne, $gt, $gte, $lt, $lte, $or; $set / $unset;
- * find/sort/limit, findOne, findOneAndUpdate, updateOne (with upsert)/Many, insertOne,
+ * find/sort/skip/limit, findOne, findOneAndUpdate, updateOne (with upsert)/Many, insertOne,
  * deleteOne, distinct; a two-stage `aggregate([{$match}, {$group: {_id, field: {$sum: "$path"}}}])`
  * (exactly resource-monitor.ts's windowed spend query — not a general aggregation engine).
- * Not a general Mongo emulator.
+ * Array fields follow Mongo's element-matching rules for equality, $in/$nin/$ne and the
+ * comparison operators. Not a general Mongo emulator.
  */
 
 import type { Db } from "mongodb";
@@ -58,6 +59,20 @@ function comparable(v: unknown): unknown {
 }
 
 function matchesValue(actual: unknown, cond: unknown): boolean {
+	// Mongo array semantics: a scalar condition matches an array field when
+	// any element matches; the negative operators require that no element does.
+	if (Array.isArray(actual) && !Array.isArray(cond)) {
+		if (!isOperatorObject(cond)) {
+			return actual.some((el) => comparable(el) === comparable(cond));
+		}
+		const ops = Object.keys(cond as Doc);
+		if (ops.every((op) => op === "$ne" || op === "$nin")) {
+			return actual.every((el) => matchesValue(el, cond));
+		}
+		if (!ops.includes("$exists")) {
+			return actual.some((el) => matchesValue(el, cond));
+		}
+	}
 	if (!isOperatorObject(cond)) return comparable(actual) === comparable(cond);
 	for (const [op, arg] of Object.entries(cond)) {
 		const a = comparable(actual);
@@ -229,6 +244,10 @@ function collectionOver(docs: Doc[]) {
 								(comparable(getPath(b, key)) as number)) *
 							dir,
 					);
+					return cursor;
+				},
+				skip(n: number) {
+					result = result.slice(n);
 					return cursor;
 				},
 				limit(n: number) {

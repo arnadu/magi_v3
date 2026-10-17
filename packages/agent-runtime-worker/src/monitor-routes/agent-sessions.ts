@@ -92,7 +92,7 @@ export function createAgentSessionsRoutes(
 							outputTokens: acc.outputTokens + (d.usage?.outputTokens ?? 0),
 							cacheReadTokens:
 								acc.cacheReadTokens + (d.usage?.cacheReadTokens ?? 0),
-							costUsd: acc.costUsd + (d.usage?.cost?.total ?? 0),
+							costUsd: acc.costUsd + (d.usage?.cost?.totalCostUsd ?? 0),
 						}),
 						{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 },
 					);

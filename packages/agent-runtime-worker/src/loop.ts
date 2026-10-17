@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
 	AssistantMessage,
 	Context,
@@ -136,7 +137,12 @@ export interface InnerLoopConfig {
 	 * Fires for: new user message, each assistant message, each tool result.
 	 * Does NOT fire for previousMessages — those are already persisted.
 	 */
-	onMessage?: (msg: Message, allMessages: Message[]) => Promise<void>;
+	onMessage?: (
+		msg: Message,
+		allMessages: Message[],
+		/** For an assistant message: the `callId` of the LLM call that produced it. */
+		meta?: { callId?: string },
+	) => Promise<void>;
 	/**
 	 * Maximum milliseconds to wait for a single tool call before recording a
 	 * timeout error and continuing the loop. Default: 120_000 (2 minutes).
@@ -171,6 +177,13 @@ export interface InnerLoopConfig {
 		messages: Message[];
 		toolNames: string[];
 		response: AssistantMessage;
+		/**
+		 * Identifies this call on both sides of the audit trail: the same id is
+		 * handed to onMessage with the assistant message the call produced, so
+		 * a log entry and a transcript message can be joined exactly rather
+		 * than by position (retries, errors and sub-loop calls shift positions).
+		 */
+		callId: string;
 	}) => Promise<void>;
 	/**
 	 * Called immediately after each tool result is produced (and persisted via
@@ -275,9 +288,12 @@ export async function runInnerLoop(
 	}
 
 	/** Append a message and notify the caller immediately. */
-	async function pushAndNotify(msg: Message): Promise<void> {
+	async function pushAndNotify(
+		msg: Message,
+		meta?: { callId?: string },
+	): Promise<void> {
 		messages.push(msg);
-		await onMessage?.(msg, [...messages]);
+		await onMessage?.(msg, [...messages], meta);
 	}
 
 	// Append the new task as a user message — persisted before the first LLM
@@ -341,6 +357,8 @@ export async function runInnerLoop(
 				deadline.cleanup();
 			}
 		}
+		// One id per logical call — retries below are attempts at the same call.
+		const callId = randomUUID();
 		let assistantMessage = await callWithDeadline();
 		// Retry on 429 (upstream rate-limit) or a known-transient provider error
 		// with exponential backoff — both recover within seconds and shouldn't
@@ -367,9 +385,10 @@ export async function runInnerLoop(
 				messages: [...messages], // snapshot before assistant msg is pushed
 				toolNames: tools.map((t) => t.name),
 				response: assistantMessage,
+				callId,
 			});
 		}
-		await pushAndNotify(assistantMessage);
+		await pushAndNotify(assistantMessage, { callId });
 
 		// Mid-session pruning: stub old ephemeral tool results and strip thinking
 		// blocks when context grows large, to prevent hitting the 200k limit.

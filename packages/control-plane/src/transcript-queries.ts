@@ -49,6 +49,8 @@ export async function queryTurns(
 
 export interface TranscriptEntry {
 	callSeq: number;
+	/** Joins an assistant message to its `LlmCallSummary.callId`; null for older data and non-assistant messages. */
+	callId: string | null;
 	parentToolUseId: string | null;
 	message: unknown;
 }
@@ -66,20 +68,72 @@ export async function queryTranscript(
 		.toArray();
 	return docs.map((d) => ({
 		callSeq: d.callSeq ?? 0,
+		callId: d.callId ?? null,
 		parentToolUseId: d.parentToolUseId ?? null,
 		message: d.message,
 	}));
 }
 
+/** The stored `llmCallLog` fields these queries read (the writer's type is `LlmCallLogEntry`). */
+interface StoredLlmCall {
+	callId?: string;
+	savedAt?: unknown;
+	model: string;
+	isReflection?: boolean;
+	costEstimated?: boolean;
+	input?: { systemPrompt?: string; messages?: unknown[]; toolNames?: string[] };
+	output?: { message?: unknown; stopReason?: string };
+	usage?: {
+		inputTokens?: number;
+		outputTokens?: number;
+		cacheReadTokens?: number;
+		cacheWriteTokens?: number;
+		cost?: { totalCostUsd?: number };
+	};
+}
+
+/** Token counts as the UI shows them. */
+export interface CallUsage {
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	cacheWriteTokens: number;
+}
+
+/**
+ * The stored entry is `LlmCallLogEntry` (agent-runtime-worker/src/llm-call-log.ts):
+ * tokens under `usage.*Tokens`, the money under `usage.cost.totalCostUsd`.
+ * Flattened here so the cockpit reads one documented shape instead of the
+ * writer's — it used to read `usage.input` and `cost.totalUsd`, two names
+ * that never existed, and showed blanks (CK-STALE).
+ */
+export function callUsageOf(c: Pick<StoredLlmCall, "usage">): {
+	usage: CallUsage | null;
+	costUsd: number | null;
+} {
+	const u = c.usage;
+	if (!u) return { usage: null, costUsd: null };
+	return {
+		usage: {
+			inputTokens: u.inputTokens ?? 0,
+			outputTokens: u.outputTokens ?? 0,
+			cacheReadTokens: u.cacheReadTokens ?? 0,
+			cacheWriteTokens: u.cacheWriteTokens ?? 0,
+		},
+		costUsd: u.cost?.totalCostUsd ?? null,
+	};
+}
+
 export interface LlmCallSummary {
 	index: number;
+	callId: string | null;
 	savedAt: unknown;
 	model: string;
 	isReflection: boolean;
 	costEstimated: boolean;
 	stopReason: string | null;
-	usage: unknown;
-	cost: unknown;
+	usage: CallUsage | null;
+	costUsd: number | null;
 	toolNames: string[];
 	messageCount: number;
 	hasBody: boolean;
@@ -92,19 +146,19 @@ export async function queryLlmCalls(
 	turn: number,
 ): Promise<LlmCallSummary[]> {
 	const calls = await db
-		.collection("llmCallLog")
+		.collection<StoredLlmCall>("llmCallLog")
 		.find({ missionId, agentId, turnNumber: turn })
 		.sort({ savedAt: 1 })
 		.toArray();
 	return calls.map((c, i) => ({
 		index: i,
+		callId: c.callId ?? null,
 		savedAt: c.savedAt,
 		model: c.model,
 		isReflection: c.isReflection ?? false,
 		costEstimated: c.costEstimated ?? false,
-		stopReason: c.output?.response?.stopReason ?? null,
-		usage: c.usage ?? null,
-		cost: c.cost ?? null,
+		stopReason: c.output?.stopReason ?? null,
+		...callUsageOf(c),
 		toolNames: c.input?.toolNames ?? [],
 		messageCount: Array.isArray(c.input?.messages)
 			? c.input.messages.length
@@ -115,13 +169,15 @@ export async function queryLlmCalls(
 
 export interface LlmCallDetail {
 	index: number;
+	callId: string | null;
 	savedAt: unknown;
 	model: string;
 	isReflection: boolean;
 	costEstimated: boolean;
-	usage: unknown;
-	cost: unknown;
+	usage: CallUsage | null;
+	costUsd: number | null;
 	input: unknown;
+	/** `{ message, stopReason }` as stored; absent once pruned. */
 	output: unknown;
 }
 
@@ -135,7 +191,7 @@ export async function queryLlmCall(
 ): Promise<LlmCallDetail | null> {
 	const c = (
 		await db
-			.collection("llmCallLog")
+			.collection<StoredLlmCall>("llmCallLog")
 			.find({ missionId, agentId, turnNumber: turn })
 			.sort({ savedAt: 1 })
 			.skip(i)
@@ -145,12 +201,12 @@ export async function queryLlmCall(
 	if (!c) return null;
 	return {
 		index: i,
+		callId: c.callId ?? null,
 		savedAt: c.savedAt,
 		model: c.model,
 		isReflection: c.isReflection ?? false,
 		costEstimated: c.costEstimated ?? false,
-		usage: c.usage ?? null,
-		cost: c.cost ?? null,
+		...callUsageOf(c),
 		input: c.input ?? null,
 		output: c.output ?? null,
 	};

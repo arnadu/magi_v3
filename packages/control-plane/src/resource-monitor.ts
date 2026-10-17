@@ -310,7 +310,7 @@ export async function checkMission(
 
 export interface ResourceMonitorDeps {
 	platformAdminUserIds: string[];
-	/** Defaults to `ATLAS_STORAGE_LIMIT_MB` env, else 512 — see `atlas-usage.ts`. */
+	/** Defaults to `ATLAS_STORAGE_LIMIT_MB` env, else the tier default — see `atlas-usage.ts`. */
 	atlasStorageLimitMb?: number;
 	/** Defaults to `RESOURCE_REPORT_HOUR_UTC` env, else 12 — see `resource-report.ts`. */
 	reportHourUtc?: number;

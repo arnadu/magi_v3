@@ -45,7 +45,7 @@ export interface AtlasUsageDeps {
 	client: MongoClient;
 	/** The app's own connected database (used for the collection breakdown and as the fallback). */
 	db: Db;
-	/** Defaults to `ATLAS_STORAGE_LIMIT_MB` env, else 512 (the M0 default). */
+	/** Defaults to `ATLAS_STORAGE_LIMIT_MB` env, else the tier default in `resource-thresholds.ts`. */
 	limitMb?: number;
 	/** Injected for tests; defaults to a real Mongo-backed store. */
 	alertStore?: AlertStateStore;

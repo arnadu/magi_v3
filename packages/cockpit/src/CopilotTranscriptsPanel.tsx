@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { callIndexFor } from "./call-index.js";
 import {
 	fetchCopilotLlmCall,
 	fetchCopilotLlmCalls,
@@ -64,10 +65,7 @@ export function CopilotTranscriptsPanel() {
 	}
 	const topLevel = transcript.filter((e) => !e.parentToolUseId);
 
-	let asstSeq = -1;
-	const callIndexFor = topLevel.map((e) =>
-		e.message.role === "assistant" ? ++asstSeq : -1,
-	);
+	const callIndex = callIndexFor(topLevel, calls);
 
 	return (
 		<div className="tx">
@@ -94,7 +92,7 @@ export function CopilotTranscriptsPanel() {
 							)}
 							{topLevel.map((e, idx) => {
 								const tcs = toolCallsIn(e.message);
-								const ci = callIndexFor[idx];
+								const ci = callIndex[idx];
 								return (
 									// biome-ignore lint/suspicious/noArrayIndexKey: entries are positional
 									<div key={idx} className="tx-entry">

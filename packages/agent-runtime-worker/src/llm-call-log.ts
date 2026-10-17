@@ -90,8 +90,9 @@ export interface LlmCallUsage {
  * result bodies truncated). Combined with `input.systemPrompt` this
  * reconstructs exactly what the model was shown at this call.
  *
- * `input` and `output` are absent on entries older than 7 days (pruned by the
- * control-plane daily cron). `usage` and all metadata fields are always present.
+ * Entries older than the control-plane pruner's window (`LOG_RETENTION_DAYS` in
+ * scheduler.ts) are deleted outright; `usage` and all metadata fields are always
+ * present on the ones that remain.
  */
 export interface LlmCallLogEntry {
 	missionId: string;
@@ -104,6 +105,13 @@ export interface LlmCallLogEntry {
 	/** Model id (e.g. "claude-sonnet-4-6"). */
 	model: string;
 	/**
+	 * Joins this entry to the `conversationMessages` assistant message it
+	 * produced (both carry the id runInnerLoop generated). Absent on tool-side
+	 * calls (vision, OCR), which have no transcript message, and on entries
+	 * written before the field existed.
+	 */
+	callId?: string;
+	/**
 	 * True when `usage.cost.totalCostUsd` is a static-price-table estimate
 	 * rather than an authoritative figure. False for first-party Anthropic
 	 * (exact list prices) and for OpenRouter calls where the provider reported
@@ -113,7 +121,7 @@ export interface LlmCallLogEntry {
 	 * existed (treat as unknown).
 	 */
 	costEstimated?: boolean;
-	/** Full call input — absent after the 7-day retention window. */
+	/** Full call input — absent once the pruner's retention window has passed. */
 	input?: {
 		systemPrompt: string;
 		/** Full message context sent to the model (tool bodies truncated). */
@@ -121,7 +129,7 @@ export interface LlmCallLogEntry {
 		/** Names of tools made available on this call. */
 		toolNames: string[];
 	};
-	/** Full model response — absent after the 7-day retention window. */
+	/** Full model response — absent once the pruner's retention window has passed. */
 	output?: {
 		/** Full AssistantMessage returned by the model. */
 		message: AssistantMessage;

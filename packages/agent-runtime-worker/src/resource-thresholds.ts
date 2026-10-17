@@ -90,8 +90,12 @@ export const REPORT_FLAGS = {
 	staleSampleMinutes: 5,
 } as const;
 
-/** Atlas M0 storage limit, used when `ATLAS_STORAGE_LIMIT_MB` is not set. */
-export const ATLAS_STORAGE_LIMIT_MB_DEFAULT = 512;
+/**
+ * Storage included with the shared cluster's tier, used when
+ * `ATLAS_STORAGE_LIMIT_MB` is not set: 10 GB since the move to Atlas M10
+ * (2026-10-17). Set the env var when the cluster's storage is changed.
+ */
+export const ATLAS_STORAGE_LIMIT_MB_DEFAULT = 10_240;
 
 /** Temporary machine upgrades (ADR-0031). */
 export const UPGRADE_LIMITS = {

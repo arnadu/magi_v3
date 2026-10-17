@@ -1,5 +1,6 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
+import { createLlmCallHook } from "./agent-runner-llm-log.js";
 import type { MissionStats, StatsCollector } from "./agent-stats.js";
 import type { AnomalyRecorder } from "./anomaly.js";
 import type {
@@ -9,17 +10,7 @@ import type {
 import type { LimitAlert, LimitConfig } from "./limits.js";
 import { buildRules, evaluateLimits, LimitExceededError } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
-import {
-	computeCost,
-	resolveCallCost,
-	truncateOldMessages,
-	truncateToolBodies,
-} from "./llm-call-log.js";
-import {
-	type LlmCallEvent,
-	type LlmCallMeter,
-	stripImageData,
-} from "./llm-meter.js";
+import type { LlmCallMeter } from "./llm-meter.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
@@ -339,82 +330,7 @@ export async function runAgent(
 	 * before startTurn (no active turn accumulator exists yet) and is surfaced via
 	 * the turn's reflectionTriggered flag instead.
 	 */
-	const makeOnLlmCall = (turnNumber: number, isReflection: boolean) => {
-		if (!ctx.llmCallLog && !ctx.statsCollector) return undefined;
-		return async (event: LlmCallEvent) => {
-			// A vision call (InspectImage, captioning, OCR) names its own model;
-			// pricing it with the loop model's table misstated its cost (COST-1).
-			const model = event.model ?? ctx.model;
-			const usage = event.response.usage as {
-				input: number;
-				output: number;
-				cacheRead: number;
-				cacheWrite: number;
-				providerCost?: number;
-			};
-			const modelCost = model.cost as {
-				input: number;
-				output: number;
-				cacheRead: number;
-				cacheWrite: number;
-			};
-			const estimatedCost = computeCost(usage, modelCost);
-			const { cost, costEstimated } = resolveCallCost(
-				estimatedCost,
-				model.provider,
-				usage.providerCost,
-			);
-			if (ctx.llmCallLog) {
-				await ctx.llmCallLog.append({
-					missionId,
-					agentId,
-					turnNumber,
-					isReflection,
-					savedAt: new Date(),
-					model: model.id,
-					costEstimated,
-					input: {
-						systemPrompt: event.systemPrompt,
-						messages: truncateOldMessages(
-							truncateToolBodies(stripImageData(event.messages)),
-						),
-						toolNames: event.toolNames,
-					},
-					output: {
-						message: event.response,
-						stopReason: event.response.stopReason,
-					},
-					usage: {
-						inputTokens: usage.input,
-						outputTokens: usage.output,
-						cacheReadTokens: usage.cacheRead,
-						cacheWriteTokens: usage.cacheWrite,
-						cost,
-					},
-				});
-			}
-			if (ctx.statsCollector) {
-				if (isReflection) {
-					// Reflection has no active turn to attribute to (it runs before
-					// startTurn) — record its cost against lifetime totals directly so
-					// missionStats/the mission-wide cap don't under-count real spend.
-					await ctx.statsCollector.recordReflectionCost(
-						missionId,
-						agentId,
-						cost.totalCostUsd,
-					);
-				} else {
-					await ctx.statsCollector.recordLlmCall(agentId, {
-						inputTokens: usage.input,
-						outputTokens: usage.output,
-						cacheReadTokens: usage.cacheRead,
-						cacheWriteTokens: usage.cacheWrite,
-						costUsd: cost.totalCostUsd,
-					});
-				}
-			}
-		};
-	};
+	const makeOnLlmCall = createLlmCallHook(ctx, missionId, agentId);
 
 	// Load mental map from the most recent AssistantMessage snapshot in conversationMessages.
 	// Falls back to initMentalMap if this is the first wakeup.
@@ -631,7 +547,11 @@ export async function runAgent(
 
 	// Persist each message immediately as it arrives. Uses activeTurnNumber via
 	// closure so the retry can update the turn without rebuilding the handler.
-	const onMessageHandler = async (msg: Message, allMessages: Message[]) => {
+	const onMessageHandler = async (
+		msg: Message,
+		allMessages: Message[],
+		meta?: { callId?: string },
+	) => {
 		if (msg.role === "assistant") {
 			currentCallSeq++;
 			// Capture the last plain-text reply for use in the auto-post fallback.
@@ -644,6 +564,7 @@ export async function runAgent(
 				{
 					turnNumber: activeTurnNumber,
 					callSeq: currentCallSeq,
+					...(meta?.callId ? { callId: meta.callId } : {}),
 					mentalMapHtml: snapshotHtml,
 					message: msg,
 				},

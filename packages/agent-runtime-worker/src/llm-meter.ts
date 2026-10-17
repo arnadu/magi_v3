@@ -33,6 +33,8 @@ export interface LlmCallEvent {
 	response: AssistantMessage;
 	/** The model that answered; absent means the caller's own loop model. */
 	model?: Model<string>;
+	/** Set by runInnerLoop; absent for tool-side calls, which produce no transcript message. */
+	callId?: string;
 }
 
 export type LlmCallMeter = (event: LlmCallEvent) => Promise<void>;

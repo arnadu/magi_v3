@@ -38,7 +38,10 @@ export {
 	evaluateLimits,
 	LimitExceededError,
 } from "./limits.js";
-export type { LlmCallLogRepository } from "./llm-call-log.js";
+export type {
+	LlmCallLogEntry,
+	LlmCallLogRepository,
+} from "./llm-call-log.js";
 export { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 export type { CompleteFn, InnerLoopConfig, LoopResult } from "./loop.js";
 export { runInnerLoop } from "./loop.js";

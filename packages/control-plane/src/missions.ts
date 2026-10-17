@@ -62,6 +62,7 @@ import {
 	writeMissionCap,
 	writeMissionCostCeiling,
 } from "./mission-limits.js";
+import { summarizeMissions } from "./mission-stats-summary.js";
 import { liveStateToStatus } from "./mission-status.js";
 import { monitorAuthHeaders } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
@@ -448,78 +449,12 @@ export function createMissionsRouter(db: Db): Router {
 				{ projection: { missionId: 1, _id: 0 } },
 			)
 			.toArray();
-		const missionIds = missions.map((m) => m.missionId);
-
-		const now = new Date();
-		const oneHourAgo = new Date(now.getTime() - 3_600_000);
-		const todayStart = new Date(
-			now.getFullYear(),
-			now.getMonth(),
-			now.getDate(),
+		res.json(
+			await summarizeMissions(
+				db,
+				missions.map((m) => m.missionId),
+			),
 		);
-
-		const [unreadCounts, spendDocs, lastActivityDocs] = await Promise.all([
-			db
-				.collection("mailbox")
-				.aggregate([
-					{ $match: { missionId: { $in: missionIds }, read: false } },
-					{ $group: { _id: "$missionId", count: { $sum: 1 } } },
-				])
-				.toArray(),
-			db
-				.collection("llmCallLog")
-				.aggregate([
-					{ $match: { missionId: { $in: missionIds } } },
-					{
-						$group: {
-							_id: "$missionId",
-							total: { $sum: "$cost" },
-							today: {
-								$sum: {
-									$cond: [{ $gte: ["$createdAt", todayStart] }, "$cost", 0],
-								},
-							},
-							lastHour: {
-								$sum: {
-									$cond: [{ $gte: ["$createdAt", oneHourAgo] }, "$cost", 0],
-								},
-							},
-						},
-					},
-				])
-				.toArray(),
-			db
-				.collection("conversationMessages")
-				.aggregate([
-					{ $match: { missionId: { $in: missionIds } } },
-					{ $sort: { createdAt: -1 } },
-					{
-						$group: {
-							_id: "$missionId",
-							lastActivity: { $first: "$createdAt" },
-							snippet: { $first: "$content" },
-						},
-					},
-				])
-				.toArray(),
-		]);
-
-		const stats: Record<string, object> = {};
-		for (const id of missionIds) {
-			const u = unreadCounts.find((d) => d._id === id);
-			const s = spendDocs.find((d) => d._id === id);
-			const a = lastActivityDocs.find((d) => d._id === id);
-			stats[id] = {
-				unread: u?.count ?? 0,
-				spendTotal: s?.total ?? 0,
-				spendToday: s?.today ?? 0,
-				spendLastHour: s?.lastHour ?? 0,
-				lastActivity: a?.lastActivity ?? null,
-				snippet:
-					typeof a?.snippet === "string" ? a.snippet.slice(0, 120) : null,
-			};
-		}
-		res.json(stats);
 	});
 
 	// Get one mission.

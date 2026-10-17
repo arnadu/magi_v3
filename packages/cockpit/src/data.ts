@@ -1,3 +1,8 @@
+import type {
+	LlmCallDetail,
+	LlmCallSummary,
+	TranscriptEntry,
+} from "./llm-call-types.js";
 import type { FoldedTree } from "./types";
 
 // The cockpit is served same-origin by the control plane, so the magi_session
@@ -300,48 +305,12 @@ export interface RawMessage {
 	[k: string]: unknown;
 }
 
-export interface TranscriptEntry {
-	callSeq: number;
-	parentToolUseId: string | null;
-	message: RawMessage;
-}
-
-export interface Usage {
-	input?: number;
-	output?: number;
-	cacheRead?: number;
-	cacheWrite?: number;
-}
-
-export interface LlmCallSummary {
-	index: number;
-	savedAt: string;
-	model: string;
-	isReflection: boolean;
-	costEstimated: boolean;
-	stopReason: string | null;
-	usage: Usage | null;
-	cost: { totalUsd?: number } | null;
-	toolNames: string[];
-	messageCount: number;
-	hasBody: boolean;
-}
-
-export interface LlmCallDetail {
-	index: number;
-	savedAt: string;
-	model: string;
-	isReflection: boolean;
-	costEstimated: boolean;
-	usage: Usage | null;
-	cost: { totalUsd?: number } | null;
-	input: {
-		systemPrompt: string;
-		messages: RawMessage[];
-		toolNames: string[];
-	} | null;
-	output: { response: RawMessage } | null;
-}
+export type {
+	LlmCallDetail,
+	LlmCallSummary,
+	TranscriptEntry,
+	Usage,
+} from "./llm-call-types.js";
 
 const mp = (id: string) => encodeURIComponent(id);
 
