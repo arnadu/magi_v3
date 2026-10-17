@@ -33,20 +33,19 @@ import {
 	managedRegionKeys,
 	UPGRADE_LIMITS,
 } from "@magi/agent-runtime-worker";
-import type { Request, Response, Router } from "express";
+import type { Request, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Collection, Db, ObjectId } from "mongodb";
 import { asyncRoutes } from "./async-handler.js";
 import { configChangedSince } from "./config-version.js";
 import {
 	deleteMachine,
-	destroyLocal,
 	getMachineState,
 	isLocalExecution,
 	provisionLocal,
 	volumeExists,
 } from "./fly-machines.js";
-import { destroyTracked, provisionTracked } from "./machine-lifecycle.js";
+import { provisionTracked } from "./machine-lifecycle.js";
 import { upgradedMsSince } from "./machine-segments.js";
 import { postMailbox } from "./mailbox-writer.js";
 import {
@@ -1526,54 +1525,15 @@ export function createMissionsRouter(db: Db): Router {
 		}
 	});
 
-	// Destroy (irreversible) — DISABLED 2026-09-12 after a real accidental
-	// destruction with zero server-side confirmation of any kind (no token, no
-	// grace period, no distinction by mission status — see the matching removal
-	// of the cockpit's "Destroy" button in MissionsPanel.tsx for the full
-	// rationale). Returns 403 unconditionally. The real logic lives in
-	// performDestroy() below, kept callable (not inlined) so it stays normally
-	// type-checked instead of sitting as unreachable dead code — re-enable by
-	// replacing this handler's body with `await performDestroy(req, res);`.
+	// Mission destruction stays disabled (decision D-6): it was turned off
+	// after an accidental, unconfirmed destruction on 2026-09-12. An archive
+	// path is Post-MVP; the destroy primitives remain in machine-lifecycle.ts.
 	routes.delete("/:id", async (_req, res) => {
 		res.status(403).json({
 			error:
-				"Mission destruction is temporarily disabled — see CLAUDE.md's Sprint Roadmap.",
+				"Mission destruction is disabled; suspend the mission instead. An archive path is planned.",
 		});
 	});
-
-	async function performDestroy(req: Request, res: Response): Promise<void> {
-		const mission = await col.findOne({
-			missionId: req.params.id,
-			...userFilter(req),
-		});
-		if (!mission) {
-			res.status(404).json({ error: "Not found" });
-			return;
-		}
-		try {
-			if (mission.machineId?.startsWith("local-")) {
-				destroyLocal(req.params.id);
-			} else if (mission.machineId && mission.volumeId) {
-				await destroyTracked(
-					db,
-					req.params.id,
-					mission.machineId,
-					mission.volumeId,
-				);
-			}
-			await col.updateOne(
-				{ missionId: req.params.id },
-				{ $set: { status: "destroyed", updatedAt: new Date() } },
-			);
-			res.json({ status: "destroyed" });
-		} catch (e) {
-			console.error(
-				`[missions] destroy failed { missionId: "${req.params.id}", error: "${(e as Error).message}" }`,
-			);
-			res.status(500).json({ error: (e as Error).message });
-		}
-	}
-	void performDestroy; // referenced only to re-enable later; not wired to a route
 
 	return router;
 }

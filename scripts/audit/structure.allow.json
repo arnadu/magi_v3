@@ -130,9 +130,9 @@
 		}
 	},
 	"packages/cockpit/src/ConfigPanel.tsx": {
-		"lines": 544,
+		"lines": 499,
 		"fns": {
-			"ConfigPanel@160": 385
+			"ConfigPanel@139": 360
 		}
 	},
 	"packages/cockpit/src/ConversationsPanel.tsx": {
@@ -149,9 +149,9 @@
 		}
 	},
 	"packages/cockpit/src/DraftEditor.tsx": {
-		"lines": 496,
+		"lines": 472,
 		"fns": {
-			"DraftEditor@50": 451
+			"DraftEditor@52": 420
 		}
 	},
 	"packages/cockpit/src/FilesPanel.tsx": {
@@ -217,17 +217,17 @@
 	"packages/control-plane/src/index.ts": {
 		"lines": 314,
 		"fns": {
-			"main@77": 256
+			"main@78": 256
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
-		"lines": 1572,
+		"lines": 1540,
 		"fns": {
-			"readLimits@198": 172,
-			"createMissionsRouter@429": 1144,
-			"<anonymous>@808": 134,
-			"<anonymous>@1168": 133,
-			"<anonymous>@1400": 128
+			"readLimits@197": 172,
+			"createMissionsRouter@428": 1112,
+			"<anonymous>@807": 134,
+			"<anonymous>@1167": 133,
+			"<anonymous>@1399": 128
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {

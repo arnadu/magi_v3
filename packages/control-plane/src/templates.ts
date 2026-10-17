@@ -89,7 +89,7 @@ function allowedTemplateIds(): Set<string> | null {
 }
 
 /**
- * Parse every config/teams/*.yaml file (excluding copilot.yaml and test/)
+ * Parse every config/teams/*.yaml file except copilot.yaml (the listing is not recursive, so config/teams/test/ is never read)
  * into the in-memory template store. Called once at control-plane startup.
  * A file that fails to parse is logged and skipped — one bad template must
  * not prevent the control plane from starting.
@@ -113,7 +113,6 @@ export function loadTemplates(repoRoot: string): void {
 
 	for (const file of files) {
 		const templateId = basename(file, ".yaml");
-		if (templateId.startsWith("test/") || file.includes("/test/")) continue;
 		if (allowlist && !allowlist.has(templateId)) {
 			console.log(
 				`[templates] Skipping ${templateId} — not in TEMPLATE_ALLOWLIST`,

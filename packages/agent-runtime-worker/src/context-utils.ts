@@ -26,7 +26,6 @@ export const EPHEMERAL_TOOLS = new Set([
 	"SearchWeb",
 	"FetchUrl",
 	"BrowseWeb",
-	"ReadFile",
 	"InspectImage",
 	"ReadAgentSessionDetail",
 	"ReadAgentLlmCall",
