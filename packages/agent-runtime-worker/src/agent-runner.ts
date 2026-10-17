@@ -1,35 +1,29 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
 import { createLlmCallHook } from "./agent-runner-llm-log.js";
-import type { MissionStats, StatsCollector } from "./agent-stats.js";
+import {
+	createLimitEnforcer,
+	finalizeTurn,
+	postSupervisorFallback,
+	printSessionDebug,
+	syncObjectivesSection,
+} from "./agent-runner-phases.js";
+import type { StatsCollector } from "./agent-stats.js";
 import type { AnomalyRecorder } from "./anomaly.js";
 import type {
 	ConversationRepository,
 	SummaryMessage,
 } from "./conversation-repository.js";
 import type { LimitAlert, LimitConfig } from "./limits.js";
-import { buildRules, evaluateLimits, LimitExceededError } from "./limits.js";
+import { LimitExceededError } from "./limits.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { LlmCallMeter } from "./llm-meter.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
-import {
-	createMentalMapTools,
-	initMentalMap,
-	upsertManagedRegion,
-} from "./mental-map.js";
+import { createMentalMapTools, initMentalMap } from "./mental-map.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
-import {
-	MY_OBJECTIVES_KEY,
-	renderMyObjectives,
-} from "./objectives/agent-view.js";
-import {
-	attributeTurnCost,
-	STALE_TURNS,
-	turnsSinceLastAttribution,
-} from "./objectives/attribution.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
 import { createObjectivesTools } from "./objectives/tools.js";
 import {
@@ -368,40 +362,16 @@ export async function runAgent(
 	let activeTurnNumber =
 		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
 
-	// Sync the daemon-managed #my-objectives mental-map section from the
-	// objectives store (Sprint 26a, B1; MongoDB-backed since ADR-0019). The
-	// agent reads its owned tasks/KPIs here and acts via the AddTask/
-	// UpdateTask/RecordKpi/Allocate tools. The staleness nudge (B2b) is shown
-	// when the agent has cost unattributed for several turns. Store load must
-	// never break the turn — on any error, leave the mental map alone.
-	if (ctx.objectivesRepo) {
-		try {
-			const tree = await ctx.objectivesRepo.readTree(missionId);
-			const costEvents = await ctx.objectivesRepo.readCostEvents(missionId);
-			const staleAttributionTurns = turnsSinceLastAttribution(
-				costEvents,
-				agentId,
-				activeTurnNumber,
-			);
-			const section = renderMyObjectives(tree, agentId, {
-				staleAttributionTurns,
-				staleThreshold: STALE_TURNS,
-			});
-			if (section !== null) {
-				currentMentalMapHtml = upsertManagedRegion(
-					currentMentalMapHtml,
-					MY_OBJECTIVES_KEY,
-					section,
-				);
-				ctx.onMentalMapUpdate?.(agentId, currentMentalMapHtml);
-			}
-		} catch (e) {
-			console.error("[agent-runner] objectives sync failed", {
-				missionId,
-				agentId,
-				error: (e as Error).message,
-			});
-		}
+	const synced = await syncObjectivesSection(
+		ctx,
+		missionId,
+		agentId,
+		activeTurnNumber,
+		currentMentalMapHtml,
+	);
+	if (synced !== null) {
+		currentMentalMapHtml = synced;
+		ctx.onMentalMapUpdate?.(agentId, currentMentalMapHtml);
 	}
 
 	const previousMessages = convertToLlm(history);
@@ -428,34 +398,14 @@ export async function runAgent(
 
 	const task = formatMessages(messages);
 
-	// Debug: print context passed to the LLM at session start.
-	// Enable with DEBUG_SESSIONS=1 in the environment.
 	if (process.env.DEBUG_SESSIONS === "1") {
-		const sep = "═".repeat(72);
-		console.log(`\n${sep}`);
-		console.log(`[DEBUG] Agent: ${agentId}  Turn: ${activeTurnNumber}`);
-		console.log(`${sep}`);
-		console.log("[DEBUG] SYSTEM PROMPT:\n");
-		console.log(getSystemPrompt());
-		console.log(`\n${"─".repeat(72)}`);
-		console.log("[DEBUG] DYNAMIC CONTEXT (messages[0], not persisted):\n");
-		console.log(getDynamicContext());
-		if (previousMessages.length > 0) {
-			console.log(`\n${"─".repeat(72)}`);
-			console.log("[DEBUG] PREVIOUS MESSAGES (passed as prior context):\n");
-			for (const m of previousMessages) {
-				const preview =
-					typeof m.content === "string"
-						? m.content.slice(0, 500)
-						: JSON.stringify(m.content).slice(0, 500);
-				console.log(
-					`  [${m.role}] ${preview}${preview.length >= 500 ? "…" : ""}`,
-				);
-			}
-		} else {
-			console.log("\n[DEBUG] PREVIOUS MESSAGES: (none — first session)");
-		}
-		console.log(`${sep}\n`);
+		printSessionDebug(
+			agentId,
+			activeTurnNumber,
+			getSystemPrompt(),
+			getDynamicContext(),
+			previousMessages,
+		);
 	}
 
 	const visionModel = ctx.visionModel ?? ctx.model;
@@ -585,75 +535,12 @@ export async function runAgent(
 	// Used to decide whether the auto-post safety net should fire.
 	const supervisorTriggered = messages.some((m) => m.from === supervisorId);
 
-	// Limit enforcement (Sprint 24; live config reads added ADR-0018). Rules are
-	// built from the agent's `limits` config layered over conservative soft
-	// defaults; enforcement is a no-op without a stats collector (the rules
-	// read its in-memory turn accumulator + fresh lifetime reads).
-	// Soft alerts are fired at most once per rule per turn.
-	const firedSoftLimits = new Set<string>();
-	const enforceLimits = ctx.statsCollector
-		? async () => {
-				const turn = ctx.statsCollector?.getTurn(agentId);
-				if (!turn) return;
-				// Read the agent's current `limits` config fresh from MongoDB —
-				// never trust the boot-time teamConfig snapshot, so a cockpit edit
-				// takes effect on the very next check, no suspend/resume required
-				// (ADR-0018). A transient read failure falls back to the snapshot
-				// rather than skipping enforcement — a strictly safer degrade than
-				// the cost-metric fresh reads below, since a last-known-good config
-				// is available for free.
-				let liveLimits: LimitConfig = agent.limits ?? {};
-				try {
-					const live =
-						(await ctx.missionConfig?.readTeamConfig(missionId)) ?? null;
-					liveLimits = resolveLiveLimits(live, agentId, agent.limits ?? {});
-				} catch (e) {
-					console.error(
-						`[agent-runner] readTeamConfig failed during limit check, falling back to boot-time snapshot { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
-					);
-				}
-				const limitRules = buildRules(liveLimits);
-				if (limitRules.length === 0) return;
-				// Always read fresh from missionStats — never trust a cache for a
-				// value a hard limit is checked against (see agent-stats.ts header).
-				// A transient read failure must not abort the turn (statistics must
-				// never break a mission): fail open by treating lifetime as unknown
-				// for this one check — it is re-read on every subsequent call/tool
-				// result, so a one-off Mongo hiccup self-heals on the next check.
-				let lifetime: MissionStats | undefined;
-				try {
-					lifetime =
-						(await ctx.statsCollector?.readLifetime(missionId, agentId)) ??
-						undefined;
-				} catch (e) {
-					console.error(
-						`[agent-runner] readLifetime failed during limit check { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
-					);
-				}
-				const breaches = evaluateLimits(turn, lifetime, limitRules);
-				for (const b of breaches) {
-					if (b.rule.severity === "soft" && !firedSoftLimits.has(b.rule.id)) {
-						firedSoftLimits.add(b.rule.id);
-						ctx.onLimitAlert?.({
-							agentId,
-							turnNumber: activeTurnNumber,
-							breach: b,
-						});
-					}
-				}
-				// A hard breach aborts the turn: alert first, then throw so the inner
-				// loop stops before the next LLM call / tool round.
-				const hard = breaches.find((b) => b.rule.severity === "hard");
-				if (hard) {
-					ctx.onLimitAlert?.({
-						agentId,
-						turnNumber: activeTurnNumber,
-						breach: hard,
-					});
-					throw new LimitExceededError(hard);
-				}
-			}
-		: undefined;
+	const enforceLimits = createLimitEnforcer(
+		ctx,
+		agent,
+		missionId,
+		() => activeTurnNumber,
+	);
 
 	// Feed tool usage to the statistics collector (tool counts, errors, touched
 	// files, sent messages, visited URLs), then re-check limits. Undefined
@@ -778,42 +665,15 @@ export async function runAgent(
 			});
 		}
 
-		// Safety net: if the supervisor triggered this run but the agent never
-		// posted back to them, auto-post a brief status message so the operator
-		// always sees an acknowledgment.
 		if (supervisorTriggered && !postedToSupervisor && !signal?.aborted) {
-			// Prefer the last LLM text response. If that's empty (e.g. the very
-			// first LLM call errored out), surface the error message instead of
-			// the misleading "Task completed." placeholder.
-			const loopError = result.messages
-				.filter((m): m is AssistantMessage => m.role === "assistant")
-				.map((m) => m.errorMessage)
-				.find((e) => !!e);
-			const fallbackBody =
-				lastAssistantText ||
-				(loopError
-					? `I encountered an error and could not complete the task.\n\nError: ${loopError}`
-					: "Task completed.");
-			const incomingSubject = messages[0]?.subject ?? "";
-			const autoSubject = incomingSubject
-				? `Re: ${incomingSubject}`
-				: "Re: (no subject)";
-			console.warn(
-				`[runAgent] ${agentId}: no PostMessage to supervisor "${supervisorId}" — sending auto-reply`,
-			);
-			const autoReply = await ctx.mailboxRepo.post({
+			await postSupervisorFallback(ctx, {
 				missionId,
-				from: agentId,
-				to: [supervisorId],
-				subject: autoSubject,
-				body: fallbackBody,
+				agentId,
+				supervisorId,
+				incoming: messages,
+				lastAssistantText,
+				loopMessages: result.messages,
 			});
-			// Fire the callback so SSE-based frontends (copilot chat) receive the
-			// auto-reply immediately. Without this the message lands in MongoDB but
-			// is never pushed to the browser.
-			if (supervisorId === "user") {
-				ctx.onUserMessage?.(autoReply);
-			}
 		}
 	} catch (e) {
 		// A hard-limit breach is a deliberate stop, not a crash: log and let the
@@ -828,51 +688,12 @@ export async function runAgent(
 			throw e;
 		}
 	} finally {
-		// Checkpoint the shared workspace (git-commit-on-sleep). Captures files
-		// written by any tool, including Bash/skills. Runs regardless of outcome
-		// so an aborted turn's partial work is still preserved. Best-effort.
-		const git =
-			(await ctx.commitWorkspace?.(`turn: ${agentId}/${activeTurnNumber}`)) ??
-			undefined;
-		// Capture the turn window before endTurn() drops the accumulator (B2).
-		const turnSnapshot = ctx.statsCollector?.getTurn(agentId);
-		// Finalize turn statistics regardless of success, error, or abort. An
-		// aborted run still incurred cost, so its lifetime totals must be recorded.
-		await ctx.statsCollector?.endTurn(
+		await finalizeTurn(ctx, {
+			missionId,
 			agentId,
-			limitAborted || signal?.aborted || lastCallAborted
-				? "aborted"
-				: "complete",
-			git ?? undefined,
-		);
-		// Attribute the turn's cost to the task(s) the agent updated this turn
-		// (Sprint 26a, B2). Runs after endTurn so lifetimeCostUsd includes this
-		// turn. Best-effort: a failure here must never break the turn.
-		if (ctx.objectivesRepo && ctx.statsCollector && turnSnapshot) {
-			try {
-				// Fresh read: endTurn() just persisted this turn's contribution to
-				// missionStats, so this picks it up directly rather than relying on
-				// cache-ordering with endTurn's internal write.
-				const freshLifetime = await ctx.statsCollector.readLifetime(
-					missionId,
-					agentId,
-				);
-				await attributeTurnCost(ctx.objectivesRepo, missionId, {
-					agentId,
-					turnNumber: turnSnapshot.turnNumber,
-					windowStart: turnSnapshot.startedAt,
-					windowEnd: new Date(),
-					lifetimeCostUsd:
-						freshLifetime?.lifetimeCostUsd ?? turnSnapshot.costUsd,
-				});
-			} catch (e) {
-				console.error("[agent-runner] cost attribution failed", {
-					missionId,
-					agentId,
-					error: (e as Error).message,
-				});
-			}
-		}
+			turnNumber: activeTurnNumber,
+			aborted: limitAborted || signal?.aborted === true || lastCallAborted,
+		});
 		// Close the browser session regardless of success or failure.
 		await browseWebHandle?.close();
 	}
