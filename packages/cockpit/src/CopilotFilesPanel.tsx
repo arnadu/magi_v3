@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { type DirEntry, type FileNode, fetchCopilotFileNode } from "./data";
+import { LoadError, useLoadError } from "./load-error";
 import { Markdown } from "./Markdown";
 
 const joinPath = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
@@ -25,6 +26,7 @@ function DirNode({
 	selectedPath: string | null;
 	onSelectFile: (path: string) => void;
 }) {
+	const { loadError, failed } = useLoadError();
 	const [open, setOpen] = useState(depth === 0);
 	const [entries, setEntries] = useState<DirEntry[] | null>(null);
 
@@ -32,12 +34,16 @@ function DirNode({
 		if (!open || entries !== null) return;
 		fetchCopilotFileNode(path).then(
 			(n) => setEntries(n.type === "dir" ? n.entries : []),
-			() => setEntries([]),
+			(e) => {
+				setEntries([]);
+				failed("Listing this directory")(e);
+			},
 		);
-	}, [open, entries, path]);
+	}, [open, entries, path, failed]);
 
 	return (
 		<div>
+			<LoadError message={loadError} />
 			<button
 				type="button"
 				className="fn-row fn-dir"

@@ -16,6 +16,7 @@ import {
 	type MessageEvent,
 	type TurnCost,
 } from "./data";
+import { LoadError, useLoadError } from "./load-error";
 
 const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
 const fmtCompact = (n: number) =>
@@ -852,6 +853,7 @@ export function TracePanel({
 	/** Jump to a turn's full transcript (Transcripts tab) — same deep link the Files panel uses. */
 	onInspectTurn: (agent: string, turn: number) => void;
 }) {
+	const { loadError, failed } = useLoadError();
 	const [agents, setAgents] = useState<string[]>([]);
 	const [stats, setStats] = useState<AgentMissionStats[] | null>(null);
 	const [interactions, setInteractions] = useState<Interaction[] | null>(null);
@@ -865,7 +867,7 @@ export function TracePanel({
 		const loadAgents = () =>
 			fetchAgents(missionId).then(
 				(as) => setAgents(as.map((a) => a.id)),
-				() => setAgents([]),
+				failed("Loading the roster"),
 			);
 		loadAgents();
 		// Poll rather than fetch once — see ConversationsPanel's identical fix
@@ -874,19 +876,22 @@ export function TracePanel({
 		// of the session.
 		const t = setInterval(loadAgents, AGENTS_POLL_MS);
 		return () => clearInterval(t);
-	}, [missionId]);
+	}, [missionId, failed]);
 
 	useEffect(() => {
 		if (!missionId) return;
-		fetchMissionStats(missionId).then(setStats, () => setStats([]));
+		fetchMissionStats(missionId).then(setStats, failed("Loading stats"));
 		fetchInteractions(missionId).then(setInteractions, () =>
 			setInteractions([]),
 		);
-		fetchCostSeries(missionId).then(setCostSeries, () => setCostSeries([]));
+		fetchCostSeries(missionId).then(
+			setCostSeries,
+			failed("Loading the cost series"),
+		);
 		fetchMessageEvents(missionId).then(setMessageEvents, () =>
 			setMessageEvents([]),
 		);
-	}, [missionId]);
+	}, [missionId, failed]);
 
 	if (!missionId)
 		return <p className="mut">Select a live mission to see its trace.</p>;
@@ -911,6 +916,7 @@ export function TracePanel({
 
 	return (
 		<div className="trace">
+			<LoadError message={loadError} />
 			<div className="stat-row">
 				<StatTile label="Mission cost" value={fmtUsd(totalCost)} />
 				<StatTile label="Turns" value={String(totalTurns)} />

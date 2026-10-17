@@ -19,7 +19,9 @@ import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import {
 	containOrReply,
+	editHeadConflict,
 	handleDownload,
+	parseEditRequest,
 	safeUploadName,
 	serveFileNode,
 	TEXT_EXTENSIONS,
@@ -777,24 +779,9 @@ export class MonitorServer {
 		rawBody: string,
 		res: ServerResponse,
 	): void {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(rawBody);
-		} catch {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Invalid JSON" }));
-			return;
-		}
-		const { path: userPath, content } = parsed as Record<string, unknown>;
-		if (typeof userPath !== "string" || typeof content !== "string") {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify({
-					error: "path (string) and content (string) are required",
-				}),
-			);
-			return;
-		}
+		const edit = parseEditRequest(rawBody, res);
+		if (!edit) return;
+		const { userPath, content } = edit;
 		if (touchesGitMetadata(userPath)) {
 			res.writeHead(400, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "Git metadata paths are not writable" }));
@@ -844,24 +831,9 @@ export class MonitorServer {
 			// for this connection. Nothing to write; the client sees a reset.
 			return;
 		}
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(rawBody);
-		} catch {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ error: "Invalid JSON" }));
-			return;
-		}
-		const { path: userPath, content } = parsed as Record<string, unknown>;
-		if (typeof userPath !== "string" || typeof content !== "string") {
-			res.writeHead(400, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify({
-					error: "path (string) and content (string) are required",
-				}),
-			);
-			return;
-		}
+		const edit = parseEditRequest(rawBody, res);
+		if (!edit) return;
+		const { userPath, content, expectedHead } = edit;
 
 		const abs = containOrReply(this.sharedDir, userPath, res);
 		if (!abs) return;
@@ -898,6 +870,17 @@ export class MonitorServer {
 		// the file prior to this edit, not this edit's own (not-yet-created) commit.
 		const history = await this.resolveFileHistory(userPath);
 		const lastAgentId = history?.[0]?.agentId ?? null;
+
+		const conflict = editHeadConflict(
+			history?.[0]?.commit ?? null,
+			expectedHead,
+			relPath,
+		);
+		if (conflict) {
+			res.writeHead(409, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: conflict }));
+			return;
+		}
 
 		try {
 			writeFileInside(this.sharedDir, userPath, content);

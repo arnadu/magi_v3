@@ -16,15 +16,16 @@ import { useEffect, useState } from "react";
 import {
 	type DirEntry,
 	type FileHistoryEntry,
-	type FileNode,
 	fetchFileHistory,
 	fetchFileNode,
 	fileDownloadUrl,
 	saveFile,
 } from "./data";
 import { JsonNode } from "./JsonTree";
+import { LoadError, useLoadError } from "./load-error";
 import { Markdown } from "./Markdown";
 import { parseCsv } from "./markdown";
+import { useFileNode } from "./use-file-node";
 
 const joinPath = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 const extOf = (name: string) => {
@@ -83,6 +84,7 @@ function DirNode({
 	selectedPath: string | null;
 	onSelectFile: (path: string) => void;
 }) {
+	const { loadError, failed } = useLoadError();
 	const [open, setOpen] = useState(depth === 0);
 	const [entries, setEntries] = useState<DirEntry[] | null>(null);
 
@@ -90,12 +92,16 @@ function DirNode({
 		if (!open || entries !== null) return;
 		fetchFileNode(missionId, path).then(
 			(n) => setEntries(n.type === "dir" ? n.entries : []),
-			() => setEntries([]),
+			(e) => {
+				setEntries([]);
+				failed("Listing this directory")(e);
+			},
 		);
-	}, [open, entries, missionId, path]);
+	}, [open, entries, missionId, path, failed]);
 
 	return (
 		<div>
+			<LoadError message={loadError} />
 			<button
 				type="button"
 				className="fn-row fn-dir"
@@ -229,23 +235,22 @@ function FileViewer({
 	path: string;
 	onInspectTurn: (agentId: string, turn: number) => void;
 }) {
-	const [node, setNode] = useState<FileNode | null>(null);
-	const [history, setHistory] = useState<FileHistoryEntry[] | null>(null);
+	const { node, setNode, history, setHistory, loadError } = useFileNode(
+		missionId,
+		path,
+	);
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [htmlView, setHtmlView] = useState<"rendered" | "source">("rendered");
 
+	// Path change: leave edit mode and the rendered/source toggle behind.
 	useEffect(() => {
-		setNode(null);
-		setHistory(null);
 		setEditing(false);
 		setSaveError(null);
 		setHtmlView("rendered");
-		fetchFileNode(missionId, path).then(setNode, () => setNode(null));
-		fetchFileHistory(missionId, path).then(setHistory, () => setHistory([]));
-	}, [missionId, path]);
+	}, []);
 
 	const name = path.split("/").pop() ?? path;
 	const ext = extOf(name);
@@ -257,7 +262,9 @@ function FileViewer({
 		setSaving(true);
 		setSaveError(null);
 		try {
-			await saveFile(missionId, path, draft);
+			// The commit this editor loaded: the server refuses the save (409) if
+			// an agent has committed the file since, instead of overwriting it.
+			await saveFile(missionId, path, draft, history?.[0]?.commit ?? null);
 			const [freshNode, freshHistory] = await Promise.all([
 				fetchFileNode(missionId, path),
 				fetchFileHistory(missionId, path),
@@ -348,6 +355,10 @@ function FileViewer({
 						onChange={setDraft}
 						height="70vh"
 					/>
+				) : loadError ? (
+					<p className="error-msg" role="alert">
+						{loadError}
+					</p>
 				) : node === null ? (
 					<p className="mut">Loading…</p>
 				) : node.type === "dir" ? (

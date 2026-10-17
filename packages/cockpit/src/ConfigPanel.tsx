@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
 	fetchMissionConfig,
 	fetchMissionStatus,
+	fetchMissionUpdatedAt,
 	type MissionConfigAgent,
 	type MissionConfigData,
 	type MissionStatusValue,
@@ -175,14 +176,21 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
+	/** updatedAt as loaded — sent with the save so a stale tab cannot overwrite a newer config. */
+	const loadedUpdatedAtRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		if (!missionId) return;
 		let cancelled = false;
 		setConfig(null);
-		Promise.all([fetchMissionConfig(missionId), fetchMissionStatus(missionId)])
-			.then(([c, s]) => {
+		Promise.all([
+			fetchMissionConfig(missionId),
+			fetchMissionStatus(missionId),
+			fetchMissionUpdatedAt(missionId),
+		])
+			.then(([c, s, updatedAt]) => {
 				if (cancelled) return;
+				loadedUpdatedAtRef.current = updatedAt;
 				setConfig(c);
 				setStatus(s);
 				setMissionDraft({
@@ -259,8 +267,11 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 				missionCopilotLimits: config.missionCopilotLimits,
 				teamFiles: config.teamFiles,
 				mentalMaps: mentalMapDrafts,
+				expectedUpdatedAt: loadedUpdatedAtRef.current ?? undefined,
 			});
 			setConfig({ ...config, mission: nextMission, agents: agentsDraft });
+			// Our own write moved updatedAt; re-read it so the next save is not refused.
+			loadedUpdatedAtRef.current = await fetchMissionUpdatedAt(missionId);
 			setSaved(true);
 			setTimeout(() => setSaved(false), 3000);
 		} catch (e) {

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { availableSkills, MentalMapEditor, TIER_A_TOOLS } from "./ConfigPanel";
 import {
+	DraftMissionFields,
+	type MissionDraftFields,
+	validateDraft,
+} from "./DraftMissionFields";
+import {
 	fetchMissionConfig,
 	fetchMissionUpdatedAt,
 	launchDraft,
@@ -55,15 +60,15 @@ export function DraftEditor({
 	const [config, setConfig] = useState<MissionConfigData | "error" | null>(
 		null,
 	);
-	const [missionDraft, setMissionDraft] = useState({
+	const [missionDraft, setMissionDraft] = useState<MissionDraftFields>({
 		name: "",
 		model: "",
 		visionModel: "",
 		timezone: "",
+		maxCostUsd: "",
 	});
 	const [agentsDraft, setAgentsDraft] = useState<MissionConfigAgent[]>([]);
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-	const [nextAgentSeq, setNextAgentSeq] = useState(1);
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
@@ -88,6 +93,10 @@ export function DraftEditor({
 			model: c.mission.model ?? "",
 			visionModel: c.mission.visionModel ?? "",
 			timezone: c.mission.timezone ?? "",
+			maxCostUsd:
+				typeof c.mission.maxCostUsd === "number"
+					? String(c.mission.maxCostUsd)
+					: "",
 		});
 		setAgentsDraft(c.agents);
 		setSelectedAgentId((prev) =>
@@ -192,11 +201,20 @@ export function DraftEditor({
 
 	function handleAddAgent() {
 		setDirty(true);
-		const id = `new-agent-${nextAgentSeq}`;
-		setNextAgentSeq((n) => n + 1);
+		// Derived from the ids that exist, not a counter: a counter restarted at
+		// 1 on reload and produced a second "new-agent-1".
+		const taken = new Set(agentsDraft.map((a) => a.id));
+		let n = 1;
+		while (taken.has(`new-agent-${n}`)) n++;
+		const id = `new-agent-${n}`;
 		setAgentsDraft((prev) => [...prev, blankAgent(id)]);
 		setSelectedAgentId(id);
 	}
+
+	/** Ids used more than once — a save with one of these is refused, the server would reject it anyway. */
+	const duplicateIds = agentsDraft
+		.map((a) => a.id)
+		.filter((id, i, all) => all.indexOf(id) !== i);
 
 	function handleRemoveAgent(id: string) {
 		setDirty(true);
@@ -209,8 +227,15 @@ export function DraftEditor({
 		});
 	}
 
-	async function handleSave() {
-		if (config === null || config === "error") return;
+	/** Resolves true only when the server accepted the save — the launch depends on it. */
+	async function handleSave(): Promise<boolean> {
+		if (config === null || config === "error") return false;
+		const checked = validateDraft(agentsDraft, missionDraft);
+		if ("error" in checked) {
+			setSaveError(checked.error);
+			return false;
+		}
+		const { maxCostUsd } = checked;
 		setSaving(true);
 		setSaveError(null);
 		setSaved(false);
@@ -220,6 +245,7 @@ export function DraftEditor({
 			model: missionDraft.model.trim() || undefined,
 			visionModel: missionDraft.visionModel.trim() || undefined,
 			timezone: missionDraft.timezone.trim() || undefined,
+			maxCostUsd,
 		};
 		try {
 			await saveDraftConfig(missionId, {
@@ -243,8 +269,10 @@ export function DraftEditor({
 				});
 			setSaved(true);
 			setTimeout(() => setSaved(false), 3000);
+			return true;
 		} catch (e) {
 			setSaveError((e as Error).message);
+			return false;
 		} finally {
 			setSaving(false);
 		}
@@ -254,7 +282,12 @@ export function DraftEditor({
 		setLaunching(true);
 		setLaunchError(null);
 		try {
-			await handleSave();
+			// A failed save used to be swallowed here and the paid mission started
+			// from the previous server config, dropping the edits on screen.
+			if (!(await handleSave())) {
+				setLaunchError("Not launched — fix the save error above first.");
+				return;
+			}
 			await launchDraft(missionId);
 			onLaunched(missionId);
 		} catch (e) {
@@ -290,45 +323,13 @@ export function DraftEditor({
 				</p>
 			)}
 
-			<div className="config-mission-fields">
-				<div className="create-mission-row">
-					<label htmlFor="draft-mission-name">Mission name</label>
-					<input
-						id="draft-mission-name"
-						value={missionDraft.name}
-						onChange={(e) => updateMissionField({ name: e.target.value })}
-					/>
-				</div>
-				<div className="create-mission-row">
-					<label htmlFor="draft-mission-model">Model</label>
-					<input
-						id="draft-mission-model"
-						value={missionDraft.model}
-						placeholder="(deployment default)"
-						onChange={(e) => updateMissionField({ model: e.target.value })}
-					/>
-				</div>
-				<div className="create-mission-row">
-					<label htmlFor="draft-mission-vmodel">Vision model</label>
-					<input
-						id="draft-mission-vmodel"
-						value={missionDraft.visionModel}
-						placeholder="(deployment default)"
-						onChange={(e) =>
-							updateMissionField({ visionModel: e.target.value })
-						}
-					/>
-				</div>
-				<div className="create-mission-row">
-					<label htmlFor="draft-mission-tz">Timezone</label>
-					<input
-						id="draft-mission-tz"
-						value={missionDraft.timezone}
-						placeholder="e.g. America/New_York"
-						onChange={(e) => updateMissionField({ timezone: e.target.value })}
-					/>
-				</div>
-			</div>
+			<DraftMissionFields value={missionDraft} onChange={updateMissionField} />
+			{duplicateIds.length > 0 && (
+				<p className="error-msg">
+					Duplicate agent id: {[...new Set(duplicateIds)].join(", ")} — ids must
+					be unique.
+				</p>
+			)}
 
 			<nav className="config-agent-tabs">
 				{agentsDraft.map((a) => (
@@ -357,8 +358,15 @@ export function DraftEditor({
 								setDirty(true);
 								const nextId = e.target.value;
 								const prevId = selectedAgent.id;
+								// Renaming cascades to whoever reported to the old id — a
+								// stale `supervisor` is a config the server rejects at launch.
 								setAgentsDraft((prev) =>
-									prev.map((a) => (a.id === prevId ? { ...a, id: nextId } : a)),
+									prev.map((a) => {
+										if (a.id === prevId) return { ...a, id: nextId };
+										return a.supervisor === prevId
+											? { ...a, supervisor: nextId }
+											: a;
+									}),
 								);
 								setSelectedAgentId(nextId);
 							}}

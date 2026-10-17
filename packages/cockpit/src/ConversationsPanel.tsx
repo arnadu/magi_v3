@@ -8,7 +8,9 @@ import {
 	sendMessage,
 	uploadAttachment,
 } from "./data";
+import { LoadError, useLoadError } from "./load-error";
 import { Markdown } from "./Markdown";
+import { useVisiblePoll } from "./use-visible-poll";
 
 const POLL_MS = 5000;
 const MIN_W = 300;
@@ -87,6 +89,8 @@ export function ConversationsPanel({
 	const [draft, setDraft] = useState("");
 	const [file, setFile] = useState<File | null>(null);
 	const [sending, setSending] = useState(false);
+	const [sendError, setSendError] = useState<string | null>(null);
+	const { loadError, failed, clearLoadError } = useLoadError();
 	const [width, setWidth] = useState(
 		() => Number(localStorage.getItem("magi-rail-width")) || DEFAULT_W,
 	);
@@ -99,25 +103,21 @@ export function ConversationsPanel({
 		setConversations(mission);
 	}, [missionId]);
 
-	useEffect(() => {
-		void load();
-		const t = setInterval(load, POLL_MS);
-		return () => clearInterval(t);
-	}, [load]);
+	useVisiblePoll(load, POLL_MS);
 
-	useEffect(() => {
+	// Poll rather than fetch once: the roster (esp. the in-memory-injected
+	// mission-copilot) can be transiently missing right after a daemon crash
+	// restart, and a one-shot fetch that lands in that window would cache a
+	// stale roster for the rest of the session with nothing to invalidate it
+	// (github#26).
+	const loadAgents = useCallback(() => {
 		if (!missionId) return;
-		const loadAgents = () =>
-			fetchAgents(missionId).then(setAgents, () => setAgents([]));
-		loadAgents();
-		// Poll rather than fetch once: the roster (esp. the in-memory-injected
-		// mission-copilot) can be transiently missing right after a daemon crash
-		// restart, and a one-shot fetch that lands in that window would cache a
-		// stale roster for the rest of the session with nothing to invalidate it
-		// (github#26).
-		const t = setInterval(loadAgents, POLL_MS);
-		return () => clearInterval(t);
-	}, [missionId]);
+		fetchAgents(missionId).then((as) => {
+			setAgents(as);
+			clearLoadError();
+		}, failed("Loading the roster"));
+	}, [missionId, failed, clearLoadError]);
+	useVisiblePoll(loadAgents, POLL_MS);
 
 	const roster: Agent[] = agents;
 	const agentName = useCallback(
@@ -210,6 +210,7 @@ export function ConversationsPanel({
 		const to = active ?? [];
 		if (!missionId || to.length === 0 || (!body && !file) || sending) return;
 		setSending(true);
+		setSendError(null);
 		try {
 			if (file) {
 				await uploadAttachment(missionId, to, file, body);
@@ -219,6 +220,11 @@ export function ConversationsPanel({
 			setDraft("");
 			setFile(null);
 			await load();
+		} catch (e) {
+			// The draft and the file stay in the composer; the failure is shown
+			// where the operator is looking instead of becoming an unhandled
+			// rejection in the console (CNV2).
+			setSendError(`Send failed: ${(e as Error).message}`);
 		} finally {
 			setSending(false);
 		}
@@ -406,6 +412,12 @@ export function ConversationsPanel({
 								Send
 							</button>
 						</div>
+						{sendError && (
+							<p className="error-msg" role="alert">
+								{sendError}
+							</p>
+						)}
+						<LoadError message={loadError} />
 					</div>
 				</>
 			)}

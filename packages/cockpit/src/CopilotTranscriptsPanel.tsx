@@ -9,6 +9,7 @@ import {
 	type TranscriptEntry,
 	type TurnSummary,
 } from "./data";
+import { LoadError, useLoadError } from "./load-error";
 import {
 	type CallDetailState,
 	LlmCallView,
@@ -24,6 +25,7 @@ import {
  * applies outside a mission context.
  */
 export function CopilotTranscriptsPanel() {
+	const { loadError, failed } = useLoadError();
 	const [turns, setTurns] = useState<TurnSummary[]>([]);
 	const [turn, setTurn] = useState<number | null>(null);
 	const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -31,8 +33,8 @@ export function CopilotTranscriptsPanel() {
 	const [detail, setDetail] = useState<Record<number, CallDetailState>>({});
 
 	useEffect(() => {
-		fetchCopilotTurns().then(setTurns, () => setTurns([]));
-	}, []);
+		fetchCopilotTurns().then(setTurns, failed("Loading turns"));
+	}, [failed]);
 
 	useEffect(() => {
 		setDetail({});
@@ -41,9 +43,12 @@ export function CopilotTranscriptsPanel() {
 			setCalls([]);
 			return;
 		}
-		fetchCopilotTranscript(turn).then(setTranscript, () => setTranscript([]));
-		fetchCopilotLlmCalls(turn).then(setCalls, () => setCalls([]));
-	}, [turn]);
+		fetchCopilotTranscript(turn).then(
+			setTranscript,
+			failed("Loading the transcript"),
+		);
+		fetchCopilotLlmCalls(turn).then(setCalls, failed("Loading LLM calls"));
+	}, [turn, failed]);
 
 	const ensureDetail = (i: number) => {
 		if (detail[i] !== undefined || turn == null) return;
@@ -69,6 +74,7 @@ export function CopilotTranscriptsPanel() {
 
 	return (
 		<div className="tx">
+			<LoadError message={loadError} />
 			<div className="tx-body">
 				<div className="tx-turns">
 					{turns.length === 0 && <p className="mut rail-pad">No turns yet.</p>}

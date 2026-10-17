@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchAgents } from "./data";
+import { LoadError, useLoadError } from "./load-error";
 import type {
 	FoldedKpi,
 	FoldedObjective,
@@ -219,6 +220,7 @@ export function ObjectivesPanel({
 	missionId?: string | null;
 	onAgentClick?: (agentId: string) => void;
 }) {
+	const { loadError, failed } = useLoadError();
 	const roots = tree.objectives.filter((o) => o.parent === null);
 	const [filterAgent, setFilterAgent] = useState<string | null>(null);
 	const [rosterIds, setRosterIds] = useState<string[]>([]);
@@ -230,7 +232,7 @@ export function ObjectivesPanel({
 		const loadAgents = () =>
 			fetchAgents(missionId).then(
 				(agents) => setRosterIds(agents.map((a) => a.id)),
-				() => setRosterIds([]),
+				failed("Loading the roster"),
 			);
 		loadAgents();
 		// Poll rather than fetch once — see ConversationsPanel's identical fix
@@ -239,7 +241,7 @@ export function ObjectivesPanel({
 		// of the session.
 		const t = setInterval(loadAgents, AGENTS_POLL_MS);
 		return () => clearInterval(t);
-	}, [missionId]);
+	}, [missionId, failed]);
 	// Union of "agents with something in the tree" and "agents actually on
 	// the mission's roster" — an agent with zero objectives assigned yet
 	// (e.g. just added to the team) still gets a chip, showing the existing
@@ -251,6 +253,7 @@ export function ObjectivesPanel({
 	].sort();
 	return (
 		<div className="panel">
+			<LoadError message={loadError} />
 			<h2 className="sec">Objectives</h2>
 			{agentIds.length > 1 && (
 				<div className="obj-filter">

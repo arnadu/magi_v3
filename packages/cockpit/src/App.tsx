@@ -27,7 +27,6 @@ import { MissionsPanel } from "./MissionsPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { RuntimePanel } from "./RuntimePanel";
 import { SchedulePanel } from "./SchedulePanel";
-import { SAMPLE_TREE } from "./sample";
 import { TemplatesPanel } from "./TemplatesPanel";
 import { TracePanel } from "./TracePanel";
 import { TranscriptsPanel } from "./TranscriptsPanel";
@@ -66,7 +65,6 @@ type View =
 			kind: "ready";
 			tree: FoldedTree;
 			mission: string | null;
-			demo: boolean;
 			updatedAt: number;
 	  }
 	| { kind: "picker"; missions: MissionSummary[] }
@@ -124,7 +122,6 @@ function useView(refreshKey: number, authStatus: AuthState["status"]): View {
 							kind: "ready",
 							tree,
 							mission,
-							demo: false,
 							updatedAt: Date.now(),
 						});
 				} catch (e) {
@@ -138,20 +135,26 @@ function useView(refreshKey: number, authStatus: AuthState["status"]): View {
 				}
 			};
 			void load();
-			const timer = setInterval(load, POLL_MS);
+			// A hidden tab keeps the last good tree; it refreshes when shown again.
+			const timer = setInterval(() => {
+				if (document.visibilityState !== "hidden") void load();
+			}, POLL_MS);
+			const onVisible = () => {
+				if (document.visibilityState === "visible") void load();
+			};
+			document.addEventListener("visibilitychange", onVisible);
 			return () => {
 				cancelled = true;
 				clearInterval(timer);
+				document.removeEventListener("visibilitychange", onVisible);
 			};
 		}
 
-		// No mission selected — offer the picker (creation flow lives there, so
-		// a signed-in user with zero missions must land there too, not on demo
-		// data with no path out — found live, 2026-09-11: a brand-new user's
-		// first login had no missions yet, got the demo dashboard instead of
-		// the picker, and had no way to reach "New mission"/"Customize first").
-		// Demo data is reserved for the fetch *failing* below, not for a
-		// legitimately empty list.
+		// No mission selected — offer the picker (the creation flow lives there,
+		// so a signed-in user with zero missions lands there too). A failed
+		// list fetch is shown as the failure it is: this used to fall back to a
+		// bundled demo dashboard, which made an outage or a 500 look like a
+		// working cockpit with odd data (CK2).
 		(async () => {
 			try {
 				const missions = await fetchMissions();
@@ -159,20 +162,13 @@ function useView(refreshKey: number, authStatus: AuthState["status"]): View {
 				setView({ kind: "picker", missions });
 			} catch (e) {
 				if (cancelled) return;
-				// An expired/missing session must surface the login screen, not
-				// silently fall back to demo data — a signed-out operator hitting
-				// the bare cockpit URL used to see demo data with no indication
-				// anything was wrong (only the ?mission= branch above checked this).
 				if (e instanceof AuthError) {
 					setView({ kind: "auth" });
 					return;
 				}
 				setView({
-					kind: "ready",
-					tree: SAMPLE_TREE,
-					mission: null,
-					demo: true,
-					updatedAt: Date.now(),
+					kind: "error",
+					message: `Could not load your missions: ${(e as Error).message}`,
 				});
 			}
 		})();
@@ -685,17 +681,13 @@ export function App() {
 	return (
 		<div className="app">
 			<Header
-				subtitle={
-					view.demo
-						? "demo data — append ?mission=<id> for a live mission"
-						: `● live · updated ${updated}`
-				}
+				subtitle={`● live · updated ${updated}`}
 				tree={view.tree}
-				budgetPaused={view.demo ? false : budgetPaused}
+				budgetPaused={budgetPaused}
 				onBack={() => {
 					window.location.search = "";
 				}}
-				missionId={view.demo ? undefined : (view.mission ?? undefined)}
+				missionId={view.mission ?? undefined}
 			/>
 			{agentError && view.mission && (
 				<AgentErrorBanner

@@ -69,6 +69,31 @@ const IMAGE_FILE_MAX_BYTES = 25 * 1024 * 1024;
  * is agent-writable), and `budget.remaining` is decremented per file so a
  * subtree bigger than the cap fails before anything is buffered in memory.
  */
+
+/**
+ * `Content-Disposition` for an agent-chosen filename. Node refuses a header
+ * value outside Latin-1 (a non-ASCII name made every download a 500), and a
+ * quote in the name broke the quoted-string. RFC 6266: an ASCII-safe
+ * `filename=` fallback plus `filename*=UTF-8''` with the real name encoded.
+ */
+export function contentDisposition(
+	name: string,
+	disposition: "attachment" | "inline" = "attachment",
+): string {
+	const safe =
+		name
+			.replace(/[\r\n]/g, "")
+			.replace(/[^\x20-\x7e]/g, "_")
+			.replace(/["\\]/g, "_")
+			.trim() || "download";
+	const encoded = encodeURIComponent(name).replace(
+		/['()*]/g,
+		(c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+	);
+	const star = name && encoded !== safe ? `; filename*=UTF-8''${encoded}` : "";
+	return `${disposition}; filename="${safe}"${star}`;
+}
+
 export function addToZip(
 	zip: JSZip,
 	abs: string,
@@ -189,7 +214,9 @@ export function handleDownload(
 			.then((buf) => {
 				res.writeHead(200, {
 					"Content-Type": "application/zip",
-					"Content-Disposition": `attachment; filename="${basename(abs) || "download"}.zip"`,
+					"Content-Disposition": contentDisposition(
+						`${basename(abs) || "download"}.zip`,
+					),
 				});
 				res.end(buf);
 			})
@@ -231,8 +258,7 @@ export function handleDownload(
 		// origin (MS4/MT1): force a download on navigation and sandbox it.
 		const headers: Record<string, string> = { "Content-Type": imageMime };
 		if (imageMime === "image/svg+xml") {
-			headers["Content-Disposition"] =
-				`attachment; filename="${basename(abs)}"`;
+			headers["Content-Disposition"] = contentDisposition(basename(abs));
 			headers["Content-Security-Policy"] =
 				"sandbox; default-src 'none'; style-src 'unsafe-inline'";
 		}
@@ -243,7 +269,7 @@ export function handleDownload(
 
 	res.writeHead(200, {
 		"Content-Type": "application/octet-stream",
-		"Content-Disposition": `attachment; filename="${basename(abs)}"`,
+		"Content-Disposition": contentDisposition(basename(abs)),
 	});
 	createReadStream(abs, { fd }).pipe(res);
 }
@@ -336,4 +362,52 @@ export function serveFileNode(
 	res.end(
 		JSON.stringify({ type: "file", name: basename(abs), encoding: "binary" }),
 	);
+}
+
+/** The cockpit editor's request body, or null after a 400 has been written. */
+export function parseEditRequest(
+	rawBody: string,
+	res: ServerResponse,
+): { userPath: string; content: string; expectedHead?: string } | null {
+	const bad = (error: string): null => {
+		res.writeHead(400, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ error }));
+		return null;
+	};
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(rawBody);
+	} catch {
+		return bad("Invalid JSON");
+	}
+	const { path, content, expectedHead } = (parsed ?? {}) as Record<
+		string,
+		unknown
+	>;
+	if (typeof path !== "string" || typeof content !== "string") {
+		return bad("path (string) and content (string) are required");
+	}
+	if (expectedHead !== undefined && typeof expectedHead !== "string") {
+		return bad("expectedHead must be a string");
+	}
+	return {
+		userPath: path,
+		content,
+		...(expectedHead !== undefined ? { expectedHead } : {}),
+	};
+}
+
+/**
+ * Optimistic concurrency for the editor: it sends the commit it loaded; if an
+ * agent has committed the file since, refuse rather than overwrite its work
+ * (FP1). A file with no history yet has nothing to compare against.
+ */
+export function editHeadConflict(
+	currentHead: string | null,
+	expectedHead: string | undefined,
+	relPath: string,
+): string | null {
+	if (expectedHead === undefined || currentHead === null) return null;
+	if (currentHead === expectedHead) return null;
+	return `${relPath} changed since you opened it (now at ${currentHead.slice(0, 8)}, you loaded ${expectedHead.slice(0, 8)}) — reload the file and re-apply your edit.`;
 }

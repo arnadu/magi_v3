@@ -14,6 +14,7 @@ import {
 	type TurnSummary,
 } from "./data";
 import { JsonNode } from "./JsonTree";
+import { LoadError, useLoadError } from "./load-error";
 import { Markdown } from "./Markdown";
 
 const AGENTS_POLL_MS = 5000;
@@ -214,6 +215,7 @@ export function TranscriptsPanel({
 	/** Agent ids currently dispatched, live — for a busy indicator on chips. */
 	runningAgents?: Set<string>;
 }) {
+	const { loadError, failed } = useLoadError();
 	const [agents, setAgents] = useState<Agent[]>([]);
 	const [agent, setAgent] = useState<string | null>(null);
 	const [turns, setTurns] = useState<TurnSummary[]>([]);
@@ -225,7 +227,7 @@ export function TranscriptsPanel({
 	useEffect(() => {
 		if (!missionId) return;
 		const loadAgents = () =>
-			fetchAgents(missionId).then(setAgents, () => setAgents([]));
+			fetchAgents(missionId).then(setAgents, failed("Loading the roster"));
 		loadAgents();
 		// Poll rather than fetch once — see ConversationsPanel's identical fix
 		// (github#26): a one-shot fetch landing right after a daemon crash
@@ -233,14 +235,14 @@ export function TranscriptsPanel({
 		// of the session.
 		const t = setInterval(loadAgents, AGENTS_POLL_MS);
 		return () => clearInterval(t);
-	}, [missionId]);
+	}, [missionId, failed]);
 
 	useEffect(() => {
 		if (missionId && agent)
-			fetchTurns(missionId, agent).then(setTurns, () => setTurns([]));
+			fetchTurns(missionId, agent).then(setTurns, failed("Loading turns"));
 		else setTurns([]);
 		setTurn(null);
-	}, [missionId, agent]);
+	}, [missionId, agent, failed]);
 
 	// Re-fetch the turn list the moment the selected agent finishes its
 	// current turn (running → idle), instead of requiring a manual tab
@@ -278,12 +280,15 @@ export function TranscriptsPanel({
 			fetchTranscript(missionId, agent, turn).then(setTranscript, () =>
 				setTranscript([]),
 			);
-			fetchLlmCalls(missionId, agent, turn).then(setCalls, () => setCalls([]));
+			fetchLlmCalls(missionId, agent, turn).then(
+				setCalls,
+				failed("Loading LLM calls"),
+			);
 		} else {
 			setTranscript([]);
 			setCalls([]);
 		}
-	}, [missionId, agent, turn]);
+	}, [missionId, agent, turn, failed]);
 
 	if (!missionId)
 		return <p className="mut">Select a live mission to inspect its agents.</p>;
@@ -314,6 +319,7 @@ export function TranscriptsPanel({
 
 	return (
 		<div className="tx">
+			<LoadError message={loadError} />
 			<div className="tx-agents">
 				<span className="kpilbl">Agent</span>
 				{agents.map((a) => (

@@ -37,6 +37,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Collection, Db, ObjectId } from "mongodb";
 import { asyncRoutes } from "./async-handler.js";
+import { configChangedSince } from "./config-version.js";
 import {
 	deleteMachine,
 	destroyLocal,
@@ -826,15 +827,22 @@ export function createMissionsRouter(db: Db): Router {
 			missionCopilotLimits,
 			teamFiles,
 			mentalMaps,
+			expectedUpdatedAt,
 		} = req.body as {
 			mission?: TeamConfig["mission"];
 			agents?: AgentConfig[];
 			missionCopilotLimits?: Limits;
 			teamFiles?: Array<{ path: string; content: string }>;
 			mentalMaps?: Record<string, string>;
+			expectedUpdatedAt?: string;
 		};
 		if (!nextMission || !agents) {
 			res.status(400).json({ error: "mission and agents are required" });
+			return;
+		}
+		const conflict = configChangedSince(mission.updatedAt, expectedUpdatedAt);
+		if (conflict) {
+			res.status(409).json({ error: conflict });
 			return;
 		}
 		let validated: TeamConfig;

@@ -11,18 +11,42 @@ import type { FoldedTree } from "./types";
 // `/api/missions/:id/*` is control-plane-native, reading Mongo directly, and
 // works regardless of mission running state.
 
+/** 401: no usable session — the app shows the login screen. */
 export class AuthError extends Error {}
+/** 403: signed in, but this action is refused (cap above the ceiling, disabled route, not the owner). Shown, never treated as signed-out. */
+export class ForbiddenError extends Error {}
 
-async function api<T>(path: string): Promise<T> {
+async function errorText(res: Response, path: string): Promise<string> {
+	const body = (await res
+		.clone()
+		.json()
+		.catch(() => null)) as { error?: string } | null;
+	return body?.error ?? `HTTP ${res.status} for ${path}`;
+}
+
+/**
+ * Every cockpit call goes through here so the status mapping exists once:
+ * 401 → AuthError, 403 → ForbiddenError with the server's message, any other
+ * non-2xx → Error with the server's message. Callers never see a failed
+ * response as success.
+ */
+export async function request(
+	path: string,
+	init: RequestInit = {},
+): Promise<Response> {
 	const res = await fetch(path, {
 		credentials: "include",
-		headers: { Accept: "application/json" },
+		...init,
+		headers: { Accept: "application/json", ...(init.headers ?? {}) },
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
-	return (await res.json()) as T;
+	if (res.status === 401) throw new AuthError("not signed in");
+	if (res.status === 403) throw new ForbiddenError(await errorText(res, path));
+	if (!res.ok) throw new Error(await errorText(res, path));
+	return res;
+}
+
+async function api<T>(path: string): Promise<T> {
+	return (await (await request(path)).json()) as T;
 }
 
 /** Folded objectives tree — reads Mongo directly (ADR-0019), works while suspended. */
@@ -61,37 +85,19 @@ export async function createMission(
 	name: string,
 	templateId: string,
 ): Promise<void> {
-	const res = await fetch("/api/missions", {
+	await request("/api/missions", {
 		method: "POST",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ missionId, name, teamConfig: templateId }),
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 async function missionAction(missionId: string, action: string): Promise<void> {
-	const res = await fetch(`/api/missions/${mp(missionId)}/${action}`, {
+	await request(`/api/missions/${mp(missionId)}/${action}`, {
 		method: "POST",
 		credentials: "include",
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 export const suspendMission = (missionId: string): Promise<void> =>
@@ -101,19 +107,10 @@ export const resumeMission = (missionId: string): Promise<void> =>
 	missionAction(missionId, "resume");
 
 export async function deleteMission(missionId: string): Promise<void> {
-	const res = await fetch(`/api/missions/${mp(missionId)}`, {
+	await request(`/api/missions/${mp(missionId)}`, {
 		method: "DELETE",
 		credentials: "include",
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 // ── Mission-prep drafts ──────────────────────────────────────────────────────
@@ -129,21 +126,12 @@ export async function createDraft(
 	name: string,
 	templateId?: string,
 ): Promise<void> {
-	const res = await fetch("/api/missions/draft", {
+	await request("/api/missions/draft", {
 		method: "POST",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ missionId, name, teamConfig: templateId }),
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 /** Full-replace save of a draft's config — permissive, no validation (see PUT /:id/draft). */
@@ -156,21 +144,12 @@ export async function saveDraftConfig(
 		teamFiles: Array<{ path: string; content: string }>;
 	},
 ): Promise<void> {
-	const res = await fetch(`/api/missions/${mp(missionId)}/draft`, {
+	await request(`/api/missions/${mp(missionId)}/draft`, {
 		method: "PUT",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 /**
@@ -179,19 +158,10 @@ export async function saveDraftConfig(
  * exact missing field, surfaced verbatim in the Draft Editor's error banner.
  */
 export async function launchDraft(missionId: string): Promise<void> {
-	const res = await fetch(`/api/missions/${mp(missionId)}/launch`, {
+	await request(`/api/missions/${mp(missionId)}/launch`, {
 		method: "POST",
 		credentials: "include",
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 // ── Templates (read-only, disk-only — ADR-0021/0022) ────────────────────────
@@ -257,12 +227,15 @@ export async function markMessagesRead(
 	ids: string[],
 ): Promise<void> {
 	if (ids.length === 0) return;
-	await fetch(`/api/missions/${encodeURIComponent(missionId)}/messages/read`, {
-		method: "POST",
-		credentials: "include",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ ids }),
-	});
+	await request(
+		`/api/missions/${encodeURIComponent(missionId)}/messages/read`,
+		{
+			method: "POST",
+			credentials: "include",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ ids }),
+		},
+	);
 }
 
 /** Send an operator message to one or more agents (wakes them). */
@@ -272,12 +245,15 @@ export async function sendMessage(
 	body: string,
 	subject?: string,
 ): Promise<void> {
-	await fetch(`/api/missions/${encodeURIComponent(missionId)}/messages/send`, {
-		method: "POST",
-		credentials: "include",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ to, body, subject }),
-	});
+	await request(
+		`/api/missions/${encodeURIComponent(missionId)}/messages/send`,
+		{
+			method: "POST",
+			credentials: "include",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ to, body, subject }),
+		},
+	);
 }
 
 // ── Transcript + LLM-log explorer ───────────────────────────────────────────
@@ -378,7 +354,7 @@ export async function uploadAttachment(
 	body: string,
 ): Promise<void> {
 	const contentBase64 = await fileToBase64(file);
-	await fetch(`/missions/${encodeURIComponent(missionId)}/upload`, {
+	await request(`/missions/${encodeURIComponent(missionId)}/upload`, {
 		method: "POST",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
@@ -457,6 +433,8 @@ export async function saveFile(
 	missionId: string,
 	path: string,
 	content: string,
+	/** The file's last commit as loaded; the server refuses (409) when it has moved. Null = no check. */
+	expectedHead: string | null = null,
 ): Promise<{ ok: boolean; commit: string | null }> {
 	const res = await fetch(
 		`/missions/${encodeURIComponent(missionId)}/files/shared/edit`,
@@ -464,7 +442,11 @@ export async function saveFile(
 			method: "POST",
 			credentials: "include",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ path, content }),
+			body: JSON.stringify({
+				path,
+				content,
+				...(expectedHead ? { expectedHead } : {}),
+			}),
 		},
 	);
 	if (!res.ok) {
@@ -771,34 +753,22 @@ export function fetchCopilotSettings(): Promise<CopilotSettings> {
 
 /** Throws with the server's real error text on failure (e.g. a 409 while a turn is in flight). */
 export async function saveCopilotSettings(model: string | null): Promise<void> {
-	const res = await fetch("/api/copilot/settings", {
+	await request("/api/copilot/settings", {
 		method: "POST",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ model }),
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 /** Throws with the server's real error text on failure (e.g. a 402 naming the exact spend cap reached). */
 export async function sendCopilotMessage(body: string): Promise<void> {
-	const res = await fetch("/api/copilot/message", {
+	const res = await request("/api/copilot/message", {
 		method: "POST",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ subject: "Operator message", body }),
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
 	if (!res.ok) {
 		const errBody = await res.json().catch(() => null);
 		throw new Error(
@@ -828,7 +798,7 @@ export async function confirmCopilotAction(
 export async function dismissCopilotAction(
 	pendingActionId: string,
 ): Promise<void> {
-	await fetch("/api/copilot/dismiss", {
+	await request("/api/copilot/dismiss", {
 		method: "POST",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
@@ -876,21 +846,12 @@ export function fetchCopilotLimits(): Promise<CopilotLimits> {
 }
 
 export async function saveCopilotLimits(capUsd: number | null): Promise<void> {
-	const res = await fetch("/api/copilot/limits", {
+	await request("/api/copilot/limits", {
 		method: "PATCH",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ capUsd }),
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 // ── Scheduled wake-ups — ported from the mission-local dashboard's Schedule
@@ -912,13 +873,10 @@ export async function cancelScheduledMessage(
 	missionId: string,
 	id: string,
 ): Promise<void> {
-	const res = await fetch(`/missions/${mp(missionId)}/schedule/${mp(id)}`, {
+	const res = await request(`/missions/${mp(missionId)}/schedule/${mp(id)}`, {
 		method: "DELETE",
 		credentials: "include",
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
 	if (!res.ok)
 		throw new Error(`HTTP ${res.status} cancelling scheduled message`);
 }
@@ -929,12 +887,9 @@ export async function fetchDaemonLog(
 	missionId: string,
 	lines = 300,
 ): Promise<string> {
-	const res = await fetch(`/missions/${mp(missionId)}/log?lines=${lines}`, {
+	const res = await request(`/missions/${mp(missionId)}/log?lines=${lines}`, {
 		credentials: "include",
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
 	if (!res.ok) throw new Error(`HTTP ${res.status} fetching log`);
 	return res.text();
 }
@@ -1009,23 +964,16 @@ export async function saveMissionConfig(
 		teamFiles: Array<{ path: string; content: string }>;
 		/** agentId -> full replacement HTML, including "mission-copilot" if edited. */
 		mentalMaps?: Record<string, string>;
+		/** The document's updatedAt when the form was loaded; the server refuses (409) if it has moved. */
+		expectedUpdatedAt?: string;
 	},
 ): Promise<void> {
-	const res = await fetch(`/api/missions/${mp(missionId)}/config`, {
+	await request(`/api/missions/${mp(missionId)}/config`, {
 		method: "PUT",
 		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (res.status === 401 || res.status === 403) {
-		throw new AuthError("not signed in");
-	}
-	if (!res.ok) {
-		const body = await res.json().catch(() => null);
-		throw new Error(
-			(body as { error?: string } | null)?.error ?? `HTTP ${res.status}`,
-		);
-	}
 }
 
 /** Just the fields the config editor needs to know whether editing is allowed right now. */
