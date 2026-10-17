@@ -21,6 +21,7 @@ import {
 	createMongoConversationRepository,
 	createMongoLlmCallLogRepository,
 	createMongoMailboxRepository,
+	failureBackoffMs,
 	type LlmCallLogRepository,
 	type Message,
 	resolveModel,
@@ -525,10 +526,7 @@ export function turnFailureBackoffMs(
 	failedTurns: number,
 	errorMessage: string,
 ): number {
-	const exp = Math.min(30_000 * 2 ** Math.max(0, failedTurns - 1), 300_000);
-	const m = errorMessage.match(/Retry-After\D{0,8}(\d{1,5})/i);
-	const retryAfterMs = m ? Number(m[1]) * 1000 : 0;
-	return Math.max(exp, Math.min(retryAfterMs, 600_000));
+	return failureBackoffMs(failedTurns, errorMessage);
 }
 
 async function sleepMs(ms: number, signal: AbortSignal): Promise<void> {

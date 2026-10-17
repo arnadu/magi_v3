@@ -233,3 +233,13 @@ describe("forceCompactSession", () => {
 		expect(remaining[0].message.role).toBe("summary");
 	});
 });
+
+describe("shouldForceReflection (issue #64)", () => {
+	it("fires only after a run of zero-output turns with a large context", async () => {
+		const { shouldForceReflection } = await import("../src/reflection.js");
+		expect(shouldForceReflection(117_000, 200_000, 3)).toBe(true);
+		expect(shouldForceReflection(117_000, 200_000, 2)).toBe(false);
+		expect(shouldForceReflection(20_000, 200_000, 10)).toBe(false);
+		expect(shouldForceReflection(15_000, 32_768, 3)).toBe(true);
+	});
+});

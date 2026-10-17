@@ -36,6 +36,57 @@ import { createMentalMapTools } from "./mental-map.js";
  * All other messages (user, assistant, toolResult) are passed through unchanged.
  * They represent the current in-flight session and are never collapsed here.
  */
+/**
+ * Tool calls in the stored history that never got a result (the daemon
+ * died, or was replaced by a machine upgrade, between saving the assistant
+ * message and the tool's completion). `convertToLlm` papers over them with a
+ * synthetic result on every load; persisting that result once — what
+ * `syntheticResultsFor` builds — stops the history from growing a fresh
+ * placeholder turn after turn (#56: 50 injected results until the
+ * prompt exceeded the model's window).
+ */
+export function findDanglingToolCalls(
+	history: StoredMessage[],
+): Array<{ turnNumber: number; id: string; name: string }> {
+	const resultIds = new Set<string>();
+	for (const sm of history) {
+		if (sm.message.role === "toolResult") {
+			resultIds.add((sm.message as ToolResultMessage).toolCallId);
+		}
+	}
+	const out: Array<{ turnNumber: number; id: string; name: string }> = [];
+	for (const sm of history) {
+		if (sm.message.role !== "assistant") continue;
+		for (const block of (sm.message as AssistantMessage).content) {
+			if (block.type === "toolCall" && !resultIds.has(block.id)) {
+				out.push({ turnNumber: sm.turnNumber, id: block.id, name: block.name });
+			}
+		}
+	}
+	return out;
+}
+
+export function syntheticResultsFor(
+	dangling: Array<{ turnNumber: number; id: string; name: string }>,
+): StoredMessage[] {
+	return dangling.map((d) => ({
+		turnNumber: d.turnNumber,
+		message: {
+			role: "toolResult",
+			toolCallId: d.id,
+			toolName: d.name,
+			content: [
+				{
+					type: "text",
+					text: `Tool result was lost — the session was interrupted before ${d.name} completed. Treat the call as failed; re-run it only if its effect is not visible.`,
+				},
+			],
+			isError: true,
+			timestamp: Date.now(),
+		} as ToolResultMessage,
+	}));
+}
+
 export function convertToLlm(stored: StoredMessage[]): Message[] {
 	const raw = stored.flatMap((sm): Message[] => {
 		const m = sm.message;
@@ -388,4 +439,107 @@ export async function reflectGuarded(
 			})
 			.catch(() => {});
 	}
+}
+
+/** Reflect when the previous session used at least this fraction of the model's window. */
+export const REFLECTION_CTX_FRACTION = 0.6;
+/** After this many zero-output turns with a context above FORCE_REFLECTION_FRACTION of the window, reflect regardless (#64). */
+export const FORCE_REFLECTION_AFTER_ZERO_OUTPUT_TURNS = 3;
+export const FORCE_REFLECTION_FRACTION = 0.4;
+
+export function shouldForceReflection(
+	peakInputTokens: number,
+	contextWindow: number,
+	zeroOutputStreak: number,
+): boolean {
+	return (
+		zeroOutputStreak >= FORCE_REFLECTION_AFTER_ZERO_OUTPUT_TURNS &&
+		peakInputTokens >= FORCE_REFLECTION_FRACTION * contextWindow
+	);
+}
+
+/**
+ * The reflection decision. Threshold relative to the model's own window
+ * (a 32k-window model never reached one computed for 200k) and overridable
+ * via REFLECTION_THRESHOLD (tokens) for tests; plus the circuit breaker:
+ * ephemeral pruning can hold the context just under the threshold while the
+ * agent produces nothing turn after turn — a dead zone where it can neither
+ * compact nor progress (#64).
+ */
+export async function shouldReflect(input: {
+	peakInputTokens: number;
+	contextWindow: number;
+	zeroOutputStreak: number;
+}): Promise<boolean> {
+	const threshold = process.env.REFLECTION_THRESHOLD
+		? Number.parseInt(process.env.REFLECTION_THRESHOLD, 10)
+		: REFLECTION_CTX_FRACTION * input.contextWindow;
+	return (
+		input.peakInputTokens >= threshold ||
+		shouldForceReflection(
+			input.peakInputTokens,
+			input.contextWindow,
+			input.zeroOutputStreak,
+		)
+	);
+}
+
+/** Persist one synthetic error result per dangling tool call and return the reloaded history (#56). */
+export async function repairDanglingToolCalls(
+	repo: Pick<ConversationRepository, "append" | "load">,
+	agentId: string,
+	missionId: string,
+	history: StoredMessage[],
+): Promise<StoredMessage[]> {
+	const dangling = findDanglingToolCalls(history);
+	if (dangling.length === 0) return history;
+	console.warn(
+		`[runAgent] ${agentId}: ${dangling.length} tool call(s) without a stored result (${dangling.map((d) => d.name).join(", ")}) — persisting synthetic error results once`,
+	);
+	await repo.append(agentId, missionId, syntheticResultsFor(dangling));
+	return repo.load(agentId, missionId);
+}
+
+/**
+ * One reflection pass over the previous session, then the reloaded history
+ * (compacted documents excluded, the new summary visible).
+ */
+export async function reflectSession(
+	ctx: {
+		model: Parameters<typeof runReflection>[3]["model"];
+		conversationRepo: ConversationRepository;
+		onMessage?: (msg: Message, allMessages: Message[]) => void | Promise<void>;
+	},
+	agentId: string,
+	missionId: string,
+	input: {
+		sessionMessages: Message[];
+		nonSummaryHistory: StoredMessage[];
+		history: StoredMessage[];
+		getMentalMap: () => string;
+		setMentalMap: (html: string) => void;
+		makeOnLlmCall: (
+			turnNumber: number,
+			isReflection: boolean,
+		) => Parameters<typeof runReflection>[3]["onLlmCall"];
+	},
+): Promise<StoredMessage[]> {
+	const lastTurnNumber = input.nonSummaryHistory.reduce(
+		(max, sm) => Math.max(max, sm.turnNumber),
+		-1,
+	);
+	const previousSummaries = input.history
+		.filter((sm) => sm.message.role === "summary")
+		.map((sm) => (sm.message as SummaryMessage).content);
+	await runReflection(agentId, missionId, input.sessionMessages, {
+		model: ctx.model,
+		getMentalMap: input.getMentalMap,
+		setMentalMap: input.setMentalMap,
+		conversationRepo: ctx.conversationRepo,
+		turnNumber: lastTurnNumber,
+		previousSummaries,
+		onMessage: ctx.onMessage ? (msg) => ctx.onMessage?.(msg, []) : undefined,
+		onLlmCall: input.makeOnLlmCall(lastTurnNumber + 1, true),
+	});
+	return ctx.conversationRepo.load(agentId, missionId);
 }

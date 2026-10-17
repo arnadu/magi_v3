@@ -27,7 +27,7 @@ export function initFirebase(): void {
 }
 
 /**
- * AUTH2 (issue #7): a revoked session (sign-out everywhere, disabled user)
+ * AUTH2 (#7): a revoked session (sign-out everywhere, disabled user)
  * kept working until the ID token expired, because `verifyIdToken` only
  * checks the signature. Checking revocation is a round trip to Firebase, so
  * it is done at most once per token per REVOCATION_RECHECK_MS; the cached

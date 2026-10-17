@@ -103,6 +103,7 @@ export {
 	levelFor,
 } from "./resource-alert-state.js";
 export * from "./resource-thresholds.js";
+export { failureBackoffMs } from "./retry-backoff.js";
 export { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 export { createFetchUrlTool } from "./tools/fetch-url.js";
 export { tryCreateSearchWebTool } from "./tools/search-web.js";

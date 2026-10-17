@@ -41,7 +41,13 @@ import {
 	buildSystemPrompt,
 	formatMessages,
 } from "./prompt.js";
-import { convertToLlm, reflectGuarded, runReflection } from "./reflection.js";
+import {
+	convertToLlm,
+	reflectGuarded,
+	reflectSession,
+	repairDanglingToolCalls,
+	shouldReflect,
+} from "./reflection.js";
 import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
@@ -58,16 +64,6 @@ import type { AgentIdentity } from "./workspace-manager.js";
 
 /** Input token limit for Claude Sonnet 4.6. */
 const CTX_LIMIT = 200_000;
-
-/**
- * Reflection is only run when the last LLM call in the previous session used
- * at least this fraction of the context window. Sessions smaller than this
- * threshold are too cheap to justify a separate reflection call.
- * Override via REFLECTION_THRESHOLD env var (tokens) for testing.
- */
-const REFLECTION_CTX_THRESHOLD = process.env.REFLECTION_THRESHOLD
-	? Number.parseInt(process.env.REFLECTION_THRESHOLD, 10)
-	: 0.6 * CTX_LIMIT; // 120 000 tokens
 
 // ---------------------------------------------------------------------------
 // Types
@@ -297,6 +293,12 @@ export async function runAgent(
 
 	// Load conversation history from previous wakeups.
 	let history = await ctx.conversationRepo.load(agentId, missionId);
+	history = await repairDanglingToolCalls(
+		ctx.conversationRepo,
+		agentId,
+		missionId,
+		history,
+	);
 
 	// Reflect on the previous session before starting this one (skip on first wakeup).
 	// sessionMessages are the full raw messages from the previous session — no
@@ -417,12 +419,16 @@ export async function runAgent(
 		(await ctx.conversationRepo.loadMostRecentMentalMap(agentId, missionId)) ??
 		initMentalMap(agent, sharedDir, workdir);
 
-	// Read threshold lazily so REFLECTION_THRESHOLD env var set by tests is honoured.
-	const reflectionThreshold = process.env.REFLECTION_THRESHOLD
-		? Number.parseInt(process.env.REFLECTION_THRESHOLD, 10)
-		: REFLECTION_CTX_THRESHOLD;
 	const reflectionTriggered =
-		sessionMessages.length > 0 && peakInputTokens >= reflectionThreshold;
+		sessionMessages.length > 0 &&
+		(await shouldReflect({
+			peakInputTokens,
+			contextWindow: ctx.model.contextWindow || CTX_LIMIT,
+			zeroOutputStreak:
+				(
+					await ctx.statsCollector?.readLifetime(missionId, agentId)
+				)?.consecutiveZeroOutputTurns ?? 0,
+		}));
 	if (reflectionTriggered) {
 		await reflectGuarded(
 			agentId,
@@ -432,28 +438,17 @@ export async function runAgent(
 		);
 	}
 	async function runReflectionStep(): Promise<void> {
-		const lastTurnNumber = nonSummaryHistory.reduce(
-			(max, sm) => Math.max(max, sm.turnNumber),
-			-1,
-		);
-		const previousSummaries = history
-			.filter((sm) => sm.message.role === "summary")
-			.map((sm) => (sm.message as SummaryMessage).content);
-		await runReflection(agentId, missionId, sessionMessages, {
-			model: ctx.model,
+		history = await reflectSession(ctx, agentId, missionId, {
+			sessionMessages,
+			nonSummaryHistory,
+			history,
 			getMentalMap: () => currentMentalMapHtml,
 			setMentalMap: (html) => {
 				currentMentalMapHtml = html;
 				ctx.onMentalMapUpdate?.(agentId, html);
 			},
-			conversationRepo: ctx.conversationRepo,
-			turnNumber: lastTurnNumber,
-			previousSummaries,
-			onMessage: ctx.onMessage ? (msg) => ctx.onMessage?.(msg, []) : undefined,
-			onLlmCall: makeOnLlmCall(lastTurnNumber + 1, true),
+			makeOnLlmCall,
 		});
-		// Reload: compacted docs are now excluded and the new summary is visible.
-		history = await ctx.conversationRepo.load(agentId, missionId);
 	}
 
 	let activeTurnNumber =

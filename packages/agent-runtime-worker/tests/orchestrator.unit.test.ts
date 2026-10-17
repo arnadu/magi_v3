@@ -798,3 +798,63 @@ describe("daemon mode (waitForMail) runs past the CLI's 50-dispatch default", ()
 		expect(started.length).toBe(3);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// #55: an agent whose LLM call failed is not re-dispatched immediately
+// ---------------------------------------------------------------------------
+
+describe("LLM-error cooldown (issue #55)", () => {
+	it("waits errorCooldownMs before dispatching the failing agent again, then resumes", async () => {
+		const tc = makeTeamConfig(["agent-a"]);
+		const { repo } = makeMockMailbox({ "agent-a": ["task"] });
+		repo.markRead.mockImplementation(async () => {});
+		const ac = new AbortController();
+		const startedAt: number[] = [];
+		const t0 = Date.now();
+		mockRunAgent.mockImplementation(
+			async (
+				_id: string,
+				_msgs: unknown,
+				ctx: { onMessage?: (m: unknown) => Promise<void> },
+			) => {
+				startedAt.push(Date.now() - t0);
+				await ctx.onMessage?.({
+					role: "assistant",
+					content: [],
+					api: "anthropic-messages",
+					provider: "anthropic",
+					model: "m",
+					usage: {
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
+						cost: {
+							input: 0,
+							output: 0,
+							cacheRead: 0,
+							cacheWrite: 0,
+							total: 0,
+						},
+					},
+					stopReason: "error",
+					errorMessage: "402 in-flight budget",
+					timestamp: Date.now(),
+				});
+				if (startedAt.length >= 2) ac.abort();
+			},
+		);
+		await runOrchestrationLoop(
+			buildConfig(tc, repo, {
+				waitForMail: () => new Promise<void>((r) => setTimeout(r, 5)),
+				errorCooldownMs: () => 150,
+			}),
+			ac.signal,
+		);
+		expect(startedAt.length).toBe(2);
+		// Mail was waiting the whole time (5 ms ticks); the second dispatch still
+		// waited for the cooldown.
+		expect(startedAt[1] - startedAt[0]).toBeGreaterThanOrEqual(140);
+	});
+});

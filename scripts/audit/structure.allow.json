@@ -2,7 +2,7 @@
 	"packages/agent-runtime-worker/src/agent-runner.ts": {
 		"lines": 945,
 		"fns": {
-			"runAgent@266": 682
+			"runAgent@262": 682
 		}
 	},
 	"packages/agent-runtime-worker/src/agent-stats.ts": {
@@ -44,7 +44,7 @@
 	"packages/agent-runtime-worker/src/loop.ts": {
 		"lines": 521,
 		"fns": {
-			"runInnerLoop@236": 240
+			"runInnerLoop@236": 220
 		}
 	},
 	"packages/agent-runtime-worker/src/mailbox.ts": {
@@ -92,8 +92,8 @@
 	"packages/agent-runtime-worker/src/orchestrator.ts": {
 		"lines": 643,
 		"fns": {
-			"runOrchestrationLoop@214": 419,
-			"dispatchOnePass@407": 157
+			"runOrchestrationLoop@217": 419,
+			"dispatchOnePass@412": 157
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/browse-web.ts": {

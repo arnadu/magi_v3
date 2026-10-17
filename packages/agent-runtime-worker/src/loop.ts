@@ -23,7 +23,7 @@ export function is429(msg: AssistantMessage): boolean {
 
 // Substrings of known-transient provider errors (stream interruptions, upstream
 // timeouts, connection drops) that recover within seconds — observed repeatedly
-// in production (issue #38) ending a turn and losing in-progress work for no
+// in production (#38) ending a turn and losing in-progress work for no
 // reason, since the provider itself was back within the same session.
 const TRANSIENT_ERROR_PATTERNS = [
 	"stream ended",
@@ -106,7 +106,7 @@ export interface InnerLoopConfig {
 	 * prompt.ts's buildDynamicContextMessage) injected as messages[0]. Pulled
 	 * fresh each iteration like getSystemPrompt, but only actually replaces
 	 * messages[0] when the content has changed — see the OpenRouter caching
-	 * investigation (issue #24): keeping the system prompt itself byte-stable
+	 * investigation (#24): keeping the system prompt itself byte-stable
 	 * across a session is what lets it stay cached/routed to the same backend
 	 * even when the mental map or time block legitimately change mid-turn.
 	 * Optional — omitted by sub-loop callers (reflection, Research, BrowseWeb)
@@ -148,7 +148,7 @@ export interface InnerLoopConfig {
 	 * thinking responses, but bounded (unlike the prior state: only the 4-hour
 	 * MAX_AGENT_RUN_SECONDS wall-clock guarded this, and a stalled streaming
 	 * connection is not guaranteed to unwind promptly from that abort — see
-	 * GitHub issue #17, a Research sub-loop's first LLM call hanging for days
+	 * GitHub #17, a Research sub-loop's first LLM call hanging for days
 	 * with no recovery). Applies to every runInnerLoop call, so a nested
 	 * sub-loop (e.g. Research) is covered by the same guard as the main loop —
 	 * no separate wiring needed there.
@@ -287,6 +287,8 @@ export async function runInnerLoop(
 	let turnCount = 0;
 
 	while (true) {
+		// The run's own signal ends the loop even when the provider ignores it (#65).
+		if (signal?.aborted) break;
 		turnCount++;
 
 		const systemPrompt = config.getSystemPrompt();
@@ -431,44 +433,12 @@ export async function runInnerLoop(
 		for (const block of toolCalls) {
 			if (block.type !== "toolCall") continue;
 
-			const tool = tools.find((t) => t.name === block.name);
-			let toolResult: ToolResultMessage;
-
-			// Arguments are checked against the tool's own schema before execute
-			// sees them (LP2); a failure is an ordinary tool error the model reads
-			// and corrects, never a cast-and-crash inside the tool.
-			const checked = tool ? checkToolArguments(tool, block) : undefined;
-			if (!tool) {
-				toolResult = makeError(block, `Tool "${block.name}" not found`);
-			} else if (checked && !checked.ok) {
-				toolResult = makeError(block, checked.message);
-			} else {
-				try {
-					const result = await withTimeout(
-						tool.execute(
-							block.id,
-							checked?.ok ? checked.args : block.arguments,
-							signal,
-						),
-						toolTimeoutMs,
-						block.name,
-					);
-					toolResult = {
-						role: "toolResult",
-						toolCallId: block.id,
-						toolName: block.name,
-						content: result.content,
-						isError: result.isError ?? false,
-						timestamp: Date.now(),
-					};
-				} catch (e) {
-					toolResult = makeError(
-						block,
-						e instanceof Error ? e.message : String(e),
-					);
-				}
-			}
-
+			const toolResult = await executeToolCall(
+				tools,
+				block,
+				signal,
+				toolTimeoutMs,
+			);
 			await pushAndNotify(toolResult);
 
 			if (onToolResult) {
@@ -514,6 +484,45 @@ function withTimeout<T>(
 			},
 		);
 	});
+}
+
+/**
+ * One tool call: schema check (LP2), the run's abort state, the per-tool
+ * timeout, and every failure folded into an isError result the model reads.
+ */
+async function executeToolCall(
+	tools: MagiTool[],
+	block: { id: string; name: string; arguments: unknown },
+	signal: AbortSignal | undefined,
+	toolTimeoutMs: number,
+): Promise<ToolResultMessage> {
+	const tool = tools.find((t) => t.name === block.name);
+	if (!tool) return makeError(block, `Tool "${block.name}" not found`);
+	if (signal?.aborted) {
+		return makeError(
+			block,
+			"Run aborted (wall-clock limit or shutdown) before this tool ran",
+		);
+	}
+	const checked = checkToolArguments(tool, block);
+	if (!checked.ok) return makeError(block, checked.message);
+	try {
+		const result = await withTimeout(
+			tool.execute(block.id, checked.args, signal),
+			toolTimeoutMs,
+			block.name,
+		);
+		return {
+			role: "toolResult",
+			toolCallId: block.id,
+			toolName: block.name,
+			content: result.content,
+			isError: result.isError ?? false,
+			timestamp: Date.now(),
+		};
+	} catch (e) {
+		return makeError(block, e instanceof Error ? e.message : String(e));
+	}
 }
 
 function makeError(

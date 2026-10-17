@@ -11,6 +11,7 @@ import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
+import { createErrorCooldown } from "./retry-backoff.js";
 import type { MagiTool } from "./tools.js";
 import { verifyIsolation } from "./tools.js";
 import { processUserInput } from "./user-input.js";
@@ -156,6 +157,8 @@ export interface OrchestratorConfig {
 	 * dispatch. Reserved for the Copilot sprint (PauseAgent capability).
 	 */
 	isAgentPaused?: (agentId: string) => boolean;
+	/** Cooldown before re-dispatching an agent whose last LLM call failed; default failureBackoffMs (30 s → 5 min, or Retry-After). */
+	errorCooldownMs?: (failures: number, errorMessage: string) => number;
 	/**
 	 * Optional per-agent elevated tool set, appended to that agent's tool list
 	 * for this dispatch. Introduced for the mission copilot (ADR-0016): the
@@ -322,6 +325,8 @@ export async function runOrchestrationLoop(
 
 	// Concurrent dispatcher state.
 	const active = new Map<string, AbortController>(); // agentId → AbortController
+	// Per-agent LLM-error cooldown (#55); a timer re-dispatches when it ends.
+	const cooldown = createErrorCooldown(config, () => void dispatchReady());
 	const activePromises = new Map<string, Promise<void>>(); // agentId → completion promise
 	let totalRuns = 0;
 
@@ -354,7 +359,7 @@ export async function runOrchestrationLoop(
 	 * Change Stream fires on a *new* insert — a message that arrived while
 	 * this agent was active and is still unread now that it's finished would
 	 * otherwise sit unprocessed until an unrelated later insert happens to
-	 * wake the loop (issue #48, observed live losing a message for ~16
+	 * wake the loop (#48, observed live losing a message for ~16
 	 * hours). dispatchReady() is safe to call repeatedly — it skips agents
 	 * with no unread mail or already active — so re-dispatching here whenever
 	 * unread mail exists is the correct general fix, not daemon-mode-only.
@@ -370,7 +375,7 @@ export async function runOrchestrationLoop(
 
 	// dispatchReady() itself already tolerates being called while a previous
 	// call is still mid-flight *for the same agent* (the active.has() re-check
-	// after the step/budget gate, see the comment below) — but issue #48's
+	// after the step/budget gate, see the comment below) — but #48's
 	// checkIdle() fix adds a new call site that can fire while an existing
 	// dispatchReady() call is still parked inside a step/budget gate for a
 	// *later* agent in its own for-loop. Without this guard, both calls would
@@ -414,6 +419,7 @@ export async function runOrchestrationLoop(
 			if (active.has(agentId)) continue;
 			if (config.isAgentPaused?.(agentId)) continue;
 			if (agent.active === false) continue;
+			if (cooldown.active(agentId)) continue;
 			if (totalRuns >= maxRuns) break;
 
 			// Skip agents with no pending mail before acquiring step/budget permits.
@@ -521,11 +527,10 @@ export async function runOrchestrationLoop(
 					identity,
 					anomalyRecorder: config.anomalyRecorder,
 					additionalTools: config.getAdditionalTools?.(agentId),
-					onMessage: config.onAgentMessage
-						? async (msg: Message) => {
-								await config.onAgentMessage?.(agentId, msg);
-							}
-						: undefined,
+					onMessage: async (msg: Message) => {
+						cooldown.note(agentId, msg);
+						await config.onAgentMessage?.(agentId, msg);
+					},
 				},
 				ctrl.signal,
 			)
@@ -630,6 +635,7 @@ export async function runOrchestrationLoop(
 
 		console.log(`\n[orchestrator] Mission complete (${totalRuns} run(s))`);
 	} finally {
+		cooldown.dispose();
 		rl?.close();
 		if (config.teardownOnExit) {
 			workspaceManager.teardown(teamConfig.mission.id, identities);
