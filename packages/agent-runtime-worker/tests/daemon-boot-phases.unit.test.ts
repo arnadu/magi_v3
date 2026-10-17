@@ -51,6 +51,9 @@ import { WorkspaceManager } from "../src/workspace-manager.js";
 const mockConnectMongo = vi.fn();
 vi.mock("../src/mongo.js", () => ({
 	connectMongo: (...args: unknown[]) => mockConnectMongo(...args),
+	// The retry wrapper is covered by mongo-connect-retry.unit.test.ts; here it
+	// is a pass-through so a failing connect surfaces immediately.
+	connectWithRetry: (connect: () => Promise<unknown>) => connect(),
 }));
 
 // recoverOrphanedJobs touches the real filesystem (jobs/running,

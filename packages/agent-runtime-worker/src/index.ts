@@ -76,6 +76,7 @@ export {
 	resolveModel,
 	unknownModelIds,
 } from "./models.js";
+export { connectMongo, connectWithRetry } from "./mongo.js";
 export type {
 	ObjectivesReadOptions,
 	ObjectivesRepository,
