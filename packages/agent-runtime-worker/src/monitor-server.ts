@@ -4,8 +4,7 @@ import {
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import { extname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { extname, relative } from "node:path";
 import type { Model } from "@mariozechner/pi-ai";
 import type { Db } from "mongodb";
 import type { StatsCollector } from "./agent-stats.js";
@@ -38,7 +37,6 @@ import { createMailboxRoutes } from "./monitor-routes/mailbox.js";
 import { createPauseResumeRoutes } from "./monitor-routes/pause-resume.js";
 import { createRunControlRoutes } from "./monitor-routes/run-control.js";
 import { createScheduleRoutes } from "./monitor-routes/schedule.js";
-import { createStaticAssetsRoutes } from "./monitor-routes/static-assets.js";
 import { createTraceRoutes } from "./monitor-routes/trace.js";
 import type { RouteEntry } from "./monitor-routes/types.js";
 import { createUploadDownloadRoutes } from "./monitor-routes/upload-download.js";
@@ -77,19 +75,6 @@ export const UPLOAD_MAX_BODY_BYTES = 30 * 1024 * 1024;
  * messages) is far too small for this route.
  */
 export const FILE_EDIT_MAX_BODY_BYTES = TEXT_FILE_MAX_BYTES * 2;
-
-// Default public/ dir: next to the compiled JS (dist/public/).
-// Tests running from src/ via Vitest pass an explicit publicDir to the constructor.
-const DEFAULT_PUBLIC_DIR = join(
-	fileURLToPath(new URL(".", import.meta.url)),
-	"public",
-);
-
-export const MIME: Record<string, string> = {
-	".html": "text/html; charset=utf-8",
-	".css": "text/css",
-	".js": "application/javascript",
-};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -246,7 +231,6 @@ export class MonitorServer {
 		private readonly workdir: string = process.cwd(),
 		private readonly sharedDir: string = process.cwd(),
 		private readonly cancelSchedule?: (id: string) => Promise<void>,
-		private readonly publicDir: string = DEFAULT_PUBLIC_DIR,
 		/**
 		 * Git-commit-on-sleep checkpointer, shared with the orchestrator so an
 		 * operator's file edit (POST /files/shared/edit) commits through the same
@@ -263,7 +247,6 @@ export class MonitorServer {
 				clients: this.clients,
 				agents: this.agents,
 			}),
-			...createStaticAssetsRoutes({ publicDir: this.publicDir }),
 			...createMailboxRoutes({
 				db: this.db,
 				missionId: this.missionId,

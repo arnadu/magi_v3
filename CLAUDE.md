@@ -318,7 +318,6 @@ Three tiers:
 
 - **Unit tests** — pure, deterministic logic only (config validation, ACL policy, HTML patching). `npm test`, no LLM calls, no network.
 - **Integration tests** — real LLM calls with deterministic-outcome prompts. Full stack including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` and `MONGODB_URI`. Each test uses a unique `missionId`; `afterEach` cleans up with `deleteMany({ missionId })`.
-- **Dashboard UI test** (`tests/dashboard.integration.test.ts`) — headless Playwright test that spins up a real `MonitorServer` + orchestration loop on a free port and drives the full operator-message → agent-reply round-trip through the browser UI. Run with `npm run test:integration -- "dashboard"`. Also requires pool users (`setup-dev.sh`). Use this when debugging or changing the dashboard to confirm the SSE message flow end-to-end without a running daemon.
 - **Evaluation tests** (`eval/`, **planned — not yet implemented**, see [issue #45](https://github.com/arnadu/magi_v3/issues/45)) — golden scenarios for structural/policy outcomes, run on demand, not in CI. Until this exists, do not claim eval coverage for research quality, citations, agent collaboration, or operator workload.
 
 Test runner: **vitest** — native ESM, no build step. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.

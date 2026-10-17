@@ -88,7 +88,6 @@ export async function startMonitorServer(
 				.collection("scheduled_messages")
 				.deleteOne({ _id: new ObjectId(id), missionId: ctx.missionId });
 		},
-		undefined, // publicDir — use the default
 		workspaceGit,
 	);
 	// Vision model for the upload pipeline's image captioning (Sprint 25).

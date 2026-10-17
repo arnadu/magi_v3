@@ -188,46 +188,25 @@ This hard-kills every process holding port 4000. Only needed if the daemon was k
 
 ---
 
-## Monitor dashboard
+## Monitoring a running daemon
 
-When the daemon is running, open **http://localhost:4000** to see the mission monitor dashboard.
+The daemon's monitor server on **http://localhost:4000** serves JSON, SSE and file routes only —
+there is no HTML dashboard on the execution plane any more (the pre-cockpit dashboard was deleted
+in Sprint 28f, F-052). The cockpit, served by the control plane, is the only UI; in local
+development without a control plane, use the CLI and the monitor routes directly:
 
-### Layout
+```bash
+MISSION_ID=... npm run cli:tail -w packages/agent-runtime-worker      # follow the mailbox
+MISSION_ID=... npm run cli:post -w packages/agent-runtime-worker -- --to lead "message"
+curl -s localhost:4000/status | jq .                                   # agents, cost, context usage
+curl -s localhost:4000/team | jq .
+curl -sN localhost:4000/events                                         # live SSE stream
+curl -s "localhost:4000/files/shared?path=" | jq .                     # browse the shared folder
+```
 
-The dashboard is a two-panel layout:
-
-**Left panel — Chat**
-- **Thread list** (top): all mailbox messages grouped by subject, sorted by most-recent. Unread threads show a filled dot. Click a thread to open it.
-- **Chat view** (middle): selected thread rendered as a chat conversation. Messages display sender, recipients, timestamp, and full body with markdown formatting.
-- **Compose bar** (bottom): toggle recipient chips to select agents, type a message, and click Send to inject a mailbox message.
-
-**Right panel — Detail**
-- **Agent tabs**: one tab per agent showing name, role, and context-window usage bar. A `▶` prefix and green highlight indicate the agent is currently running. An amber name indicates context usage above 75%.
-- **Mission tab**: mission-level overview.
-- **Content tabs** (below agent/mission tabs):
-  - Agent selected → **Activity** | **Mental Map** | **Files**
-  - Mission selected → **Schedule** | **Files** | **Log** | **Stats**
-
-### Content tabs
-
-| Tab | What it shows |
-|-----|--------------|
-| Activity | Collapsible sessions tree: each session shows LLM call count, tool calls, token usage, and cost. Expand a session to see individual LLM calls and tool call details. |
-| Mental Map | The agent's current mental map rendered as an HTML iframe. |
-| Files (agent) | Browse the agent's private workdir. Click directories to navigate; click files to preview (text/markdown rendered, images shown inline). |
-| Files (shared) | Browse the mission's shared directory. Same navigation as above. |
-| Schedule | Table of pending scheduled messages. Click Cancel to delete an entry immediately. |
-| Log | Tail of `daemon.log` (last 300 lines). Refresh button at top. |
-| Stats | Per-agent cost and context breakdown; mission total and spending cap. |
-
-### Header controls
-
-| Control | Effect |
-|---------|--------|
-| `▶ Start` | Unblock a mission that is waiting for operator start (when `waitForStart` is configured). Disabled once running. |
-| `✉ Send` | Focus the compose bar to send a message to agents. |
-| `Step ○ / Step ● / ▶ Run` | Toggle step mode on/off; when step is enabled and waiting, the button changes to `▶ Run` to advance one step. |
-| `■ Kill` | Confirmation dialog → graceful daemon shutdown. Red button. |
+Every route also answers through the control plane's proxy at `/missions/<id>/…` with the
+operator's session, which is how the cockpit reaches it. On Fly machines each route requires the
+per-mission `x-monitor-token`, which the proxy injects.
 
 ---
 

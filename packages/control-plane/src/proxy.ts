@@ -73,8 +73,10 @@ export function createProxyRouter(db: Db): Router {
 		return proxy;
 	}
 
-	// Proxy /missions/:id/dashboard/** and /missions/:id/events to the execution
-	// plane machine's monitor server (port 4000).
+	// Proxy /missions/:id/** — the monitor server's JSON, SSE and file routes the
+	// cockpit calls (`/events`, `/status`, `/files/*`, `/download`, …) — to the
+	// execution plane machine's port 4000. The monitor serves no HTML of its own
+	// since the legacy dashboard was deleted (F-052); the cockpit is the only UI.
 	router.use(
 		"/missions/:id",
 		async (req: Request, res: Response, next: NextFunction) => {

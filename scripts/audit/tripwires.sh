@@ -84,10 +84,10 @@ check T1-env-in-config "process.env read inside agent-config (tenant-supplied in
 	'process\.env' packages/agent-config/src
 # T2 XSS1/LEG-XSS: raw HTML sinks need escaping of & < > " ' and a URL-scheme allow-list.
 check T2-html-sinks "raw HTML sink (escape and scheme-check before use)" \
-	'dangerouslySetInnerHTML|\.innerHTML[[:space:]]*=|insertAdjacentHTML' $CK packages/agent-runtime-worker/public
+	'dangerouslySetInnerHTML|\.innerHTML[[:space:]]*=|insertAdjacentHTML' $CK
 # T3 LEG-XSS: href built from data without a scheme allow-list.
 check T3-href-from-data "href built from data (needs scheme allow-list)" \
-	'href="\$|href=\\"\$' packages/agent-runtime-worker/public $CK
+	'href="\$|href=\\"\$' $CK
 # T4 TF1/MS1/RS2/AR1: path joins with a dynamic segment in daemon-identity file code.
 check T4-path-join "join/resolve with dynamic segment in daemon/monitor file code; must go through resolveInside()" \
 	'(path\.)?(join|resolve)\([^)]*(\.path|\.name|relPath|params\.|query\.|body\.)' \

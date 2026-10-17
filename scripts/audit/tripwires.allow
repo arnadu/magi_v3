@@ -8,10 +8,10 @@
 T1-env-in-config ^packages/agent-config/src/loader\.ts:[0-9]+:[[:space:]]*\* # comment, not code (remyh, 2026-10-16)
 
 # T2: the cockpit's single sanctioned HTML sink; its input goes through renderMarkdown's escaping
-# (hardened in M1 C1). Everything else is the legacy dashboard, deleted in M1 C2 (LEG-XSS).
+# (F-049: & < > " ' escaped before any tag, URL-parser scheme allow-list). The legacy dashboard's
+# 55 sinks are gone with it (M1 C2, F-052); any new hit here is a new sink to justify.
 T2-html-sinks ^packages/cockpit/src/Markdown\.tsx: # sanctioned sink, escaped upstream (remyh, 2026-10-16)
-T2-html-sinks maxcount=55 # public/app.js only; goes to 0 when the legacy dashboard is deleted in M1 (remyh, 2026-10-16)
-T3-href-from-data maxcount=1 # public/app.js:554; goes to 0 with M1 C2 (remyh, 2026-10-16)
+# T3: no entries — the only href-from-data was the legacy dashboard (deleted M1 C2).
 
 # T4: no entries — every daemon-identity path join goes through safe-path.ts since M1 B1 (F-037..F-041).
 # A new hit here means a new raw join on agent-controlled input: use resolveInside/readInside/writeFileInside.

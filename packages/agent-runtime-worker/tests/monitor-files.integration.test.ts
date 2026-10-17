@@ -84,8 +84,6 @@ beforeAll(async () => {
 		new Date(),
 		workdir,
 		sharedDir,
-		undefined,
-		workdir, // publicDir (unused here)
 	);
 	await monitor.start(port);
 	base = `http://127.0.0.1:${port}`;
