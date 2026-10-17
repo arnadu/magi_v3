@@ -2347,3 +2347,21 @@ h2.sec {
 	font-size: 11px;
 	margin-bottom: 4px;
 }
+
+/* The exact payload behind a confirmation card (file_github_issue etc.) — collapsed by default. */
+.cop-action-card .action-payload {
+	margin-top: 6px;
+	font-size: 12px;
+}
+.cop-action-card .action-payload summary {
+	cursor: pointer;
+	color: var(--muted, #888);
+}
+.cop-action-card .action-payload pre {
+	margin: 6px 0 0;
+	max-height: 240px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-size: 11px;
+}

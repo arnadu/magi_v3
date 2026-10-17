@@ -38,6 +38,11 @@ import {
 	listVolumes,
 	provisionLocal,
 } from "./fly-machines.js";
+import {
+	executeGithubIssueAction,
+	GITHUB_ISSUE_ACTION,
+	parseGithubIssuePayload,
+} from "./github-issues.js";
 import { provisionTracked, wakeTracked } from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
@@ -433,6 +438,13 @@ export async function executeAction(
 	const now = new Date();
 
 	switch (action.type) {
+		case GITHUB_ISSUE_ACTION: {
+			// Re-validated at execution: the card showed this payload, and the
+			// store is in-memory, but nothing else guarantees its shape.
+			return executeGithubIssueAction(parseGithubIssuePayload(payload), {
+				userId: action.userId,
+			});
+		}
 		case "launch_mission": {
 			const missionId = payload.missionId;
 			// MID1: the id here is LLM-authored; same namespace rule as POST /.

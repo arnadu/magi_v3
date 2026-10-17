@@ -1207,7 +1207,7 @@ export function createMissionCopilotTools(
 	const reportGithubIssue: MagiTool = {
 		name: "ReportGithubIssue",
 		description:
-			"File a new GitHub issue for a genuine platform bug (not a mission-content problem). Routed through the control-plane proxy — auto-labeled mission-copilot and tagged with this mission's id server-side.",
+			"Propose a new GitHub issue for a genuine platform bug (not a mission-content problem). Nothing is filed by this call: the proposal appears as a confirmation card in the operator's cockpit and is created only when they confirm — the issue tracker is public. Auto-labeled mission-copilot and tagged with this mission's id server-side.",
 		parameters: Type.Object({
 			title: Type.String(),
 			body: Type.String(),

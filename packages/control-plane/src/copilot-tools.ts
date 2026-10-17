@@ -42,7 +42,13 @@ import {
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
 import { getMachineState, volumeExists } from "./fly-machines.js";
-import { GITHUB_REPO, ghFetch } from "./github.js";
+import {
+	GITHUB_ISSUE_ACTION,
+	type GithubIssuePayload,
+	githubIssuePendingAction,
+	parseGithubIssuePayload,
+	searchOpenIssues,
+} from "./github-issues.js";
 import {
 	defaultShapeOf,
 	getOpenSegment,
@@ -532,7 +538,9 @@ export function createCopilotTools(
 			"- create_schedule: { missionId, to, subject, body, cron?, deliverAt?, label? }\n" +
 			"- pause_agent: { missionId, agentId } — halt one agent at its next dispatch boundary (e.g. a runaway flagged by a limit alert)\n" +
 			"- resume_agent: { missionId, agentId } — lift a previous pause\n" +
-			"- set_mission_budget: { missionId, capUsd } — set the mission's absolute spending cap in USD",
+			"- set_mission_budget: { missionId, capUsd } — set the mission's absolute spending cap in USD\n" +
+			"- file_github_issue: { op: 'create', title, body, labels? } | { op: 'comment', number, body } | { op: 'close', number, comment? } " +
+			"— the CreateIssue/CloseIssue/AddIssueComment tools build this for you; the label is computed server-side",
 		parameters: Type.Object({
 			type: Type.String({ description: "Action type (see description)" }),
 			label: Type.String({
@@ -564,12 +572,14 @@ export function createCopilotTools(
 				"pause_agent",
 				"resume_agent",
 				"set_mission_budget",
+				GITHUB_ISSUE_ACTION,
 			]);
 			if (!VALID_TYPES.has(type)) {
 				return err(
 					`Unknown action type "${type}". Valid: ${[...VALID_TYPES].join(", ")}`,
 				);
 			}
+			if (type === GITHUB_ISSUE_ACTION) return proposeGithubIssue(payload);
 
 			const action: PendingAction = {
 				id: randomUUID(),
@@ -600,38 +610,32 @@ export function createCopilotTools(
 	const listIssues: MagiTool = {
 		name: "ListIssues",
 		description:
-			"List open GitHub Issues in the MAGI repository. " +
+			"List or search open GitHub Issues in the MAGI repository. " +
 			"Use to check known bugs and deferred items before raising a new issue. " +
-			"Optionally filter by label: bug, enhancement, deferred, ux, security.",
+			"Optionally filter by label (bug, enhancement, deferred, ux, security) and/or search text.",
 		parameters: Type.Object({
 			label: Type.Optional(
 				Type.String({
 					description: "Filter by label name (omit for all open issues)",
 				}),
 			),
+			q: Type.Optional(
+				Type.String({
+					description:
+						"Search text (GitHub issue search syntax); omit to list the newest",
+				}),
+			),
 		}),
 		async execute(_id, args) {
 			const label = args.label as string | undefined;
-			const qs = label ? `&labels=${encodeURIComponent(label)}` : "";
+			const q = args.q as string | undefined;
 			try {
-				const res = await ghFetch(
-					`/repos/${GITHUB_REPO}/issues?state=open&per_page=50${qs}`,
-				);
-				if (!res.ok) return err(`GitHub API returned ${res.status}`);
-				const issues = (await res.json()) as Array<{
-					number: number;
-					title: string;
-					labels: Array<{ name: string }>;
-					body: string | null;
-					html_url: string;
-					created_at: string;
-				}>;
+				const issues = await searchOpenIssues({ label, q });
 				if (issues.length === 0) return ok("(no open issues)");
 				const rows = issues
 					.map((i) => {
-						const labels =
-							i.labels.map((l) => l.name).join(", ") || "(no labels)";
-						const first = (i.body ?? "").split("\n")[0].slice(0, 120);
+						const labels = i.labels.join(", ") || "(no labels)";
+						const first = i.body.split("\n")[0].slice(0, 120);
 						return `#${i.number} [${labels}] ${i.title}${first ? `\n  ${first}` : ""}`;
 					})
 					.join("\n\n");
@@ -642,13 +646,39 @@ export function createCopilotTools(
 		},
 	};
 
+	// The three GitHub write tools do not write. Each validates its arguments
+	// into a `file_github_issue` payload and proposes it for operator
+	// confirmation, exactly like ProposeAction — the repository is public and
+	// a copilot's context can carry text from untrusted sources (F-021).
+	const proposeGithubIssue = (raw: unknown): ToolResult => {
+		let payload: GithubIssuePayload;
+		try {
+			payload = parseGithubIssuePayload(raw);
+		} catch (e) {
+			return err((e as Error).message);
+		}
+		const action = githubIssuePendingAction(userId, payload);
+		pending.add(action);
+		pushEvent("copilot-action", {
+			id: action.id,
+			type: action.type,
+			label: action.label,
+			payload: action.payload,
+		});
+		return ok(
+			`Proposed for operator confirmation: ${action.label} (id: ${action.id}). ` +
+				"Nothing is written to GitHub until the operator confirms the card.",
+		);
+	};
+
 	const createIssue: MagiTool = {
 		name: "CreateIssue",
 		description:
-			"Create a GitHub Issue in the MAGI repository. " +
+			"Propose a new GitHub Issue in the MAGI repository for operator confirmation. " +
 			"Use to record bugs or deferred improvements discovered during a session. " +
 			"Always call ListIssues first to avoid duplicates. " +
-			"Good body structure: **Observed:** … **Expected:** … **Impact:** … **Proposed fix:** …",
+			"Good body structure: **Observed:** … **Expected:** … **Impact:** … **Proposed fix:** … " +
+			"The issue is created only when the operator confirms the card.",
 		parameters: Type.Object({
 			title: Type.String({
 				description: "Issue title — concise, action-oriented",
@@ -662,33 +692,14 @@ export function createCopilotTools(
 			),
 		}),
 		async execute(_id, args) {
-			const title = args.title as string;
-			const body = args.body as string;
-			const labels = (args.labels as string[] | undefined) ?? [];
-			try {
-				const res = await ghFetch(`/repos/${GITHUB_REPO}/issues`, {
-					method: "POST",
-					body: JSON.stringify({ title, body, labels }),
-				});
-				if (!res.ok) {
-					const text = await res.text();
-					return err(`GitHub API returned ${res.status}: ${text}`);
-				}
-				const issue = (await res.json()) as {
-					number: number;
-					html_url: string;
-				};
-				return ok(`Created #${issue.number}: ${issue.html_url}`);
-			} catch (e) {
-				return err(`GitHub API error: ${(e as Error).message}`);
-			}
+			return proposeGithubIssue({ op: "create", ...(args as object) });
 		},
 	};
 
 	const closeIssue: MagiTool = {
 		name: "CloseIssue",
 		description:
-			"Close a GitHub Issue, optionally adding a closing comment first.",
+			"Propose closing a GitHub Issue (optionally with a closing comment) for operator confirmation.",
 		parameters: Type.Object({
 			number: Type.Number({ description: "Issue number" }),
 			comment: Type.Optional(
@@ -696,49 +707,20 @@ export function createCopilotTools(
 			),
 		}),
 		async execute(_id, args) {
-			const number = args.number as number;
-			const comment = args.comment as string | undefined;
-			try {
-				if (comment) {
-					const cRes = await ghFetch(
-						`/repos/${GITHUB_REPO}/issues/${number}/comments`,
-						{ method: "POST", body: JSON.stringify({ body: comment }) },
-					);
-					if (!cRes.ok) return err(`Failed to add comment: ${cRes.status}`);
-				}
-				const res = await ghFetch(`/repos/${GITHUB_REPO}/issues/${number}`, {
-					method: "PATCH",
-					body: JSON.stringify({ state: "closed" }),
-				});
-				if (!res.ok) return err(`GitHub API returned ${res.status}`);
-				return ok(`Closed #${number}`);
-			} catch (e) {
-				return err(`GitHub API error: ${(e as Error).message}`);
-			}
+			return proposeGithubIssue({ op: "close", ...(args as object) });
 		},
 	};
 
 	const addIssueComment: MagiTool = {
 		name: "AddIssueComment",
-		description: "Add a comment to an existing GitHub Issue.",
+		description:
+			"Propose a comment on an existing GitHub Issue for operator confirmation.",
 		parameters: Type.Object({
 			number: Type.Number({ description: "Issue number" }),
 			body: Type.String({ description: "Comment text (markdown supported)" }),
 		}),
 		async execute(_id, args) {
-			const number = args.number as number;
-			const body = args.body as string;
-			try {
-				const res = await ghFetch(
-					`/repos/${GITHUB_REPO}/issues/${number}/comments`,
-					{ method: "POST", body: JSON.stringify({ body }) },
-				);
-				if (!res.ok) return err(`GitHub API returned ${res.status}`);
-				const comment = (await res.json()) as { html_url: string };
-				return ok(`Comment added: ${comment.html_url}`);
-			} catch (e) {
-				return err(`GitHub API error: ${(e as Error).message}`);
-			}
+			return proposeGithubIssue({ op: "comment", ...(args as object) });
 		},
 	};
 

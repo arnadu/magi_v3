@@ -340,7 +340,9 @@ Label conventions:
 | `security` | Security finding (link to `docs/security/findings.md`) |
 
 The **copilot** has built-in `ListIssues`, `CreateIssue`, `CloseIssue`, and `AddIssueComment`
-tools and will proactively raise issues when it encounters bugs during troubleshooting.
+tools and will proactively propose issues when it encounters bugs during troubleshooting — every
+GitHub write (create, comment, close) is a `file_github_issue` pending action that you confirm in
+the cockpit, with the exact payload on the card; nothing reaches the public tracker unconfirmed.
 Execution-plane agents can use the `github-issues` platform skill (`packages/skills/github-issues/`).
 
 When closing a sprint, check open `deferred` issues to decide if any should be promoted

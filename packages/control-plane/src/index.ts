@@ -126,6 +126,12 @@ async function main(): Promise<void> {
 	// limit per mission — one mission's copilot going haywire can't exhaust
 	// the quota for every other mission. That's a property of the *default*
 	// per-IP keying; re-check this comment if the keying is ever changed.
+	// Shared by the control-plane copilot and the mission-copilot proxy: a
+	// mission copilot's GitHub-issue request becomes a pending action in the
+	// mission owner's cockpit (github-issues.ts).
+	const pendingActions = new PendingActionsStore();
+	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);
+
 	app.use(
 		"/api/mission-copilot",
 		express.json({ limit: "1mb" }),
@@ -135,7 +141,11 @@ async function main(): Promise<void> {
 			standardHeaders: true,
 			legacyHeaders: false,
 		}),
-		createMissionCopilotRouter(db),
+		createMissionCopilotRouter(db, {
+			pending: pendingActions,
+			notify: (userId, type, data) =>
+				copilotRuntime.eventBus.push(userId, type, data),
+		}),
 	);
 
 	// ── Authenticated routes ──────────────────────────────────────────────────
@@ -161,8 +171,6 @@ async function main(): Promise<void> {
 	);
 
 	// Copilot chat API + SSE (per-user daemon started lazily on first message).
-	const pendingActions = new PendingActionsStore();
-	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);
 	app.use(
 		"/api/copilot",
 		express.json({ limit: "4mb" }),

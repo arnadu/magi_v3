@@ -34,8 +34,17 @@ type Entry =
 			actionId: string;
 			type: string;
 			label: string;
+			payload?: unknown;
 			resolved?: { ok: boolean; text: string };
 	  };
+
+/** The full payload the operator is confirming — the label alone is not enough to judge an external write. */
+function formatPayload(payload: unknown): string {
+	const text = JSON.stringify(payload, null, 2) ?? "";
+	return text.length > 4000
+		? `${text.slice(0, 4000)}\n… (${text.length - 4000} more characters)`
+		: text;
+}
 
 function fmtTokens(n: number): string {
 	return n >= 1000 ? `${Math.round(n / 1000)}k tok` : `${n} tok`;
@@ -175,12 +184,14 @@ export function CopilotPanel() {
 				id: string;
 				type: string;
 				label: string;
+				payload?: unknown;
 			};
 			push({
 				kind: "action",
 				actionId: action.id,
 				type: action.type,
 				label: action.label,
+				payload: action.payload,
 			});
 			setThinking(false);
 			scrollBottom();
@@ -436,6 +447,12 @@ export function CopilotPanel() {
 						<div key={entry.id} className="cop-action-card">
 							<div className="action-label">{entry.label}</div>
 							<div className="action-type">type: {entry.type}</div>
+							{entry.payload !== undefined && (
+								<details className="action-payload">
+									<summary>What exactly will be done</summary>
+									<pre>{formatPayload(entry.payload)}</pre>
+								</details>
+							)}
 							{entry.resolved ? (
 								<div
 									className={`action-result${entry.resolved.ok ? "" : " error"}`}

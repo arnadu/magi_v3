@@ -26,7 +26,11 @@ import type { Router as ExpressRouter, Request, Response } from "express";
 import { Router } from "express";
 import type { Db } from "mongodb";
 import { safeEqual } from "./auth.js";
-import { GITHUB_REPO, ghFetch } from "./github.js";
+import {
+	type ProposeForOwnerDeps,
+	proposeIssueForMissionOwner,
+	searchOpenIssues,
+} from "./github-issues.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import {
 	requestUpgrade,
@@ -88,8 +92,12 @@ export function resourceRoute(
 	};
 }
 
-export function createMissionCopilotRouter(db: Db): ExpressRouter {
+export function createMissionCopilotRouter(
+	db: Db,
+	proposals: Pick<ProposeForOwnerDeps, "pending" | "notify">,
+): ExpressRouter {
 	const router = Router();
+	const deps: ProposeForOwnerDeps = { db, ...proposals };
 
 	router.use((req, res, next) => verifyMissionToken(req, res, next));
 
@@ -108,27 +116,14 @@ export function createMissionCopilotRouter(db: Db): ExpressRouter {
 
 	router.get("/github/issues", async (req, res) => {
 		const query = req.query.query as string | undefined;
-		const qs = query ? `&q=${encodeURIComponent(query)}` : "";
 		try {
-			const ghRes = await ghFetch(
-				`/repos/${GITHUB_REPO}/issues?state=open&per_page=50${qs}`,
-			);
-			if (!ghRes.ok) {
-				res.status(502).json({ error: `GitHub API returned ${ghRes.status}` });
-				return;
-			}
-			const issues = (await ghRes.json()) as Array<{
-				number: number;
-				title: string;
-				state: string;
-				labels: Array<{ name: string }>;
-			}>;
+			const issues = await searchOpenIssues({ q: query });
 			res.json(
 				issues.map((i) => ({
 					number: i.number,
 					title: i.title,
-					state: i.state,
-					labels: i.labels.map((l) => l.name),
+					state: "open",
+					labels: i.labels,
 				})),
 			);
 		} catch (e) {
@@ -136,49 +131,33 @@ export function createMissionCopilotRouter(db: Db): ExpressRouter {
 		}
 	});
 
+	// A mission copilot does not file issues: it proposes one, and the pending
+	// action lands in the mission owner's cockpit for confirmation (F-023,
+	// EXFIL1 — the repository is public and the copilot's context carries
+	// teammates' output, which may quote untrusted sources). The forced
+	// `mission-copilot` label and the provenance block are applied at
+	// execution, server-side.
 	router.post("/github/issue", async (req, res) => {
 		const missionId = req.body?.missionId as string;
-		const title = req.body?.title as string | undefined;
-		const body = req.body?.body as string | undefined;
-		const labels = req.body?.labels as string[] | undefined;
-		if (typeof title !== "string" || title.trim() === "") {
-			res.status(400).json({ error: "title is required" });
-			return;
-		}
-		if (typeof body !== "string" || body.trim() === "") {
-			res.status(400).json({ error: "body is required" });
-			return;
-		}
-		// Server-side, not tool-side: forced label and provenance footer can't
-		// be stripped or spoofed by whatever the mission copilot's tool call
-		// actually sent (F-023 — no confirmation gate on this write yet).
-		const forcedLabels = Array.from(
-			new Set(["mission-copilot", ...(Array.isArray(labels) ? labels : [])]),
-		);
-		const footer = `\n\n---\n_Filed by the mission copilot for mission \`${missionId}\`._`;
 		try {
-			const ghRes = await ghFetch(`/repos/${GITHUB_REPO}/issues`, {
-				method: "POST",
-				body: JSON.stringify({
-					title,
-					body: `${body}${footer}`,
-					labels: forcedLabels,
-				}),
+			const result = await proposeIssueForMissionOwner(deps, missionId, {
+				title: req.body?.title,
+				body: req.body?.body,
+				labels: req.body?.labels,
 			});
-			if (!ghRes.ok) {
-				const text = await ghRes.text();
-				res
-					.status(502)
-					.json({ error: `GitHub API returned ${ghRes.status}: ${text}` });
-				return;
-			}
-			const issue = (await ghRes.json()) as {
-				number: number;
-				html_url: string;
-			};
-			res.json({ ok: true, issueNumber: issue.number, url: issue.html_url });
+			res.json({
+				ok: true,
+				proposed: true,
+				pendingActionId: result.pendingActionId,
+				message: result.message,
+			});
 		} catch (e) {
-			res.status(502).json({ error: (e as Error).message });
+			const msg = (e as Error).message;
+			res
+				.status(/required|invalid|must be|exceeds/.test(msg) ? 400 : 502)
+				.json({
+					error: msg,
+				});
 		}
 	});
 
