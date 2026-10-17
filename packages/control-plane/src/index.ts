@@ -36,8 +36,10 @@ import { createMissionResourceRoutes } from "./mission-resource-routes.js";
 import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { createProxyRouter } from "./proxy.js";
+import { mountPublicSurface } from "./public-routes.js";
 import { startResourceMonitor } from "./resource-monitor.js";
 import { startScheduler } from "./scheduler.js";
+import { createSessionRouter } from "./session-routes.js";
 import { createTemplatesRouter, loadTemplates } from "./templates.js";
 
 const REPO_ROOT = join(
@@ -92,32 +94,7 @@ async function main(): Promise<void> {
 	// ── Public routes (no auth) ───────────────────────────────────────────────
 
 	// Serve static UI without authentication — the login page is public.
-	const publicDir = join(
-		dirname(fileURLToPath(import.meta.url)),
-		"..",
-		"public",
-	);
-	app.use(
-		express.static(publicDir, {
-			setHeaders: (res) => {
-				res.setHeader("Cache-Control", "no-store");
-			},
-		}),
-	);
-
-	// Firebase client config — served from env vars so dev/prod use different projects.
-	// These are public client-side identifiers, not secrets.
-	app.get("/firebase-config.js", (_req, res) => {
-		res.setHeader("Content-Type", "application/javascript");
-		res.setHeader("Cache-Control", "no-store");
-		res.send(
-			`window.FIREBASE_CONFIG = ${JSON.stringify({
-				apiKey: process.env.FIREBASE_CLIENT_API_KEY ?? "",
-				authDomain: process.env.FIREBASE_CLIENT_AUTH_DOMAIN ?? "",
-				projectId: process.env.FIREBASE_CLIENT_PROJECT_ID ?? "",
-			})};`,
-		);
-	});
+	const publicDir = mountPublicSurface(app);
 
 	// Mission-copilot GitHub proxy (ADR-0016) — machine-to-machine auth via
 	// per-mission MONITOR_TOKEN, not Firebase/CONTROL_API_KEY, so it must be
@@ -161,6 +138,10 @@ async function main(): Promise<void> {
 		res.setHeader("Cache-Control", "no-store");
 		next();
 	});
+
+	// Session cookie issue/inspect/clear — the bearer presented to /session has
+	// already passed requireAuth above.
+	app.use("/api/auth", createSessionRouter());
 
 	// Mission templates — list available team configs.
 	// 4 MB limit: template payloads include teamFiles (skills, scripts) which can exceed 100 KB.

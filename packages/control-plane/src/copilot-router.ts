@@ -318,7 +318,8 @@ export function createCopilotRouter(
 	});
 
 	// ── GET /api/copilot/events ───────────────────────────────────────────────
-	// Token is already verified by requireAuth via ?token= query param.
+	// Auth already ran (requireAuth is mounted above this router); the browser's
+	// EventSource sends the HttpOnly session cookie with `withCredentials`.
 
 	router.get("/events", (req: Request, res: Response) => {
 		res.setHeader("Content-Type", "text/event-stream");

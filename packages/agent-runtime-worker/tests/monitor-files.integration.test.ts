@@ -454,3 +454,30 @@ describe("file routes never follow a symlink out of (or inside) sharedDir", () =
 		}
 	});
 });
+
+describe("inline image downloads (MS4/MT1)", () => {
+	it("serves an SVG as an attachment with a sandbox CSP and nosniff", async () => {
+		writeFileSync(
+			join(sharedDir, "evil.svg"),
+			'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>',
+		);
+		const res = await fetch(`${base}/download?path=evil.svg&inline=1`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("image/svg+xml");
+		expect(res.headers.get("content-disposition")).toMatch(/^attachment/);
+		expect(res.headers.get("content-security-policy")).toMatch(/\bsandbox\b/);
+		expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+	});
+
+	it("serves a raster image inline, still nosniff", async () => {
+		writeFileSync(
+			join(sharedDir, "dot.png"),
+			Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"),
+		);
+		const res = await fetch(`${base}/download?path=dot.png&inline=1`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("image/png");
+		expect(res.headers.get("content-disposition")).toBeNull();
+		expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+	});
+});

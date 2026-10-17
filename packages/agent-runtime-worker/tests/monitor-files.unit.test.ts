@@ -48,10 +48,15 @@ function fakeResponse(): Captured {
 	const done = new Promise<void>((resolve) => w.on("finish", () => resolve()));
 	const res = w as unknown as ServerResponse & {
 		writeHead: (s: number, h?: Record<string, string>) => ServerResponse;
+		setHeader: (k: string, v: string) => ServerResponse;
+	};
+	res.setHeader = (k, v) => {
+		headers[k] = v;
+		return res;
 	};
 	res.writeHead = (s, h) => {
 		status = s;
-		headers = h ?? {};
+		headers = { ...headers, ...(h ?? {}) };
 		return res;
 	};
 	const origEnd = w.end.bind(w);
@@ -82,6 +87,10 @@ beforeEach(() => {
 	mkdirSync(outside);
 	writeFileSync(join(root, "docs", "a.md"), "# A");
 	writeFileSync(join(root, "docs", "pic.png"), Buffer.from([0x89, 0x50]));
+	writeFileSync(
+		join(root, "docs", "evil.svg"),
+		'<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>',
+	);
 	writeFileSync(join(root, "docs", "blob.bin"), Buffer.from([0, 1, 2]));
 	writeFileSync(join(outside, "secret.txt"), "secret");
 	symlinkSync(join(outside, "secret.txt"), join(root, "docs", "leak.txt"));
@@ -136,6 +145,7 @@ describe("helpers", () => {
 		expect(Object.keys(zip.files).sort()).toEqual([
 			"a.md",
 			"blob.bin",
+			"evil.svg",
 			"pic.png",
 		]);
 		expect(() =>
@@ -160,6 +170,7 @@ describe("serveFileNode", () => {
 			"a.md": "file",
 			"alias.md": "symlink",
 			"blob.bin": "file",
+			"evil.svg": "file",
 			"leak.txt": "symlink",
 			"pic.png": "file",
 		});
@@ -215,7 +226,19 @@ describe("handleDownload", () => {
 		handleDownload(root, "/download?path=docs%2Fpic.png&inline=1", i.res);
 		expect(i.headers()["Content-Type"]).toBe("image/png");
 		expect(i.headers()["Content-Disposition"]).toBeUndefined();
+		expect(i.headers()["X-Content-Type-Options"]).toBe("nosniff");
 		await i.body();
+	});
+
+	it("never serves an SVG inline: attachment, sandbox CSP, nosniff", async () => {
+		const r = fakeResponse();
+		handleDownload(root, "/download?path=docs%2Fevil.svg&inline=1", r.res);
+		expect(r.status()).toBe(200);
+		expect(r.headers()["Content-Type"]).toBe("image/svg+xml");
+		expect(r.headers()["Content-Disposition"]).toContain("attachment");
+		expect(r.headers()["Content-Security-Policy"]).toMatch(/\bsandbox\b/);
+		expect(r.headers()["X-Content-Type-Options"]).toBe("nosniff");
+		await r.body();
 	});
 
 	it("zips a directory without its symlinks", async () => {
@@ -226,6 +249,7 @@ describe("handleDownload", () => {
 		expect(Object.keys(zip.files).sort()).toEqual([
 			"a.md",
 			"blob.bin",
+			"evil.svg",
 			"pic.png",
 		]);
 	});

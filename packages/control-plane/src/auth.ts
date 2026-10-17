@@ -8,10 +8,13 @@ import { syncFirebaseUser } from "./users.js";
  * Dual-mode authentication middleware.
  *
  * Accepts credentials via:
- *   Authorization: Bearer <token>   (preferred)
+ *   Authorization: Bearer <token>   (preferred; also what POST /api/auth/session takes)
  *   X-Api-Key: <key>
- *   Cookie: magi_session=<key>       (set by legacy login form)
- *   ?token=<token>                   (query param — required for EventSource SSE)
+ *   Cookie: magi_session=<token>     (HttpOnly, issued by POST /api/auth/session —
+ *                                     carries browser requests, EventSource included)
+ * A `?token=` query credential is deliberately not accepted: it lands in
+ * proxy logs, browser history and referrers (C2), and nothing needs it —
+ * EventSource sends the cookie with `withCredentials`.
  *
  * Two credential types are accepted:
  *   CONTROL_API_KEY  → req.userId = "admin", req.isAdmin = true  (sees all missions)
@@ -26,8 +29,7 @@ export function createAuthMiddleware(db: Db) {
 		const provided =
 			extractBearer(req.headers.authorization) ??
 			(req.headers["x-api-key"] as string | undefined) ??
-			extractCookie(req.headers.cookie, "magi_session") ??
-			(req.query.token as string | undefined);
+			extractCookie(req.headers.cookie, "magi_session");
 
 		// 1. CONTROL_API_KEY → admin (CI, headless scripts, bootstrap.sh)
 		const apiKey = process.env.CONTROL_API_KEY;

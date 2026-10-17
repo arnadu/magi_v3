@@ -9,12 +9,16 @@ import {
 } from "firebase/auth";
 
 /**
- * Ports the legacy dashboard's auth mechanism (index.html) to the cockpit —
- * same magi_session cookie, same admin-key sessionStorage key, same
- * onIdTokenChanged-drives-the-cookie pattern — but via the modular `firebase`
- * npm package instead of the compat CDN scripts index.html loaded. Those CDN
- * scripts (gstatic.com, no SRI) are finding F-018; retiring index.html only
- * closes that finding if the cockpit doesn't reintroduce the same pattern.
+ * Browser-side sign-in. The credential — a Firebase ID token or the admin
+ * API key — is presented once, as a bearer token, to `POST /api/auth/session`;
+ * the server answers with an `HttpOnly; Secure; SameSite=Strict` cookie, and
+ * every later request (fetch with `credentials: "include"`, EventSource with
+ * `withCredentials`) carries that. Nothing credential-bearing is kept where
+ * page script can read it: before this, the cookie was written from JS and
+ * the admin key sat in `sessionStorage`, so an XSS in rendered agent output
+ * (TB-8/TB-18/TB-20) could have walked off with CONTROL_API_KEY itself. A
+ * reload therefore asks the server whether a session exists
+ * (`GET /api/auth/me`) instead of consulting local storage.
  */
 
 declare global {
@@ -27,28 +31,51 @@ declare global {
 	}
 }
 
-const ADMIN_KEY_SESSION = "magi_admin_key";
-// Firebase's own auth-state listener only fires for Firebase-driven changes
-// (popup sign-in, sign-out, token refresh) — the admin-key path is plain
-// sessionStorage with no such listener, so subscribeAuth also listens for
-// this to react to it.
-const ADMIN_KEY_EVENT = "magi-admin-key-changed";
+// Firebase's own listener only fires for Firebase-driven changes (popup
+// sign-in, sign-out, token refresh); the admin-key path has no such listener,
+// so subscribeAuth also listens for this.
+const SESSION_EVENT = "magi-session-changed";
 
 export type AuthState =
 	| { status: "loading" }
 	| { status: "signed-out"; error: string | null }
 	| { status: "signed-in"; email: string };
 
-function setSessionCookie(token: string): void {
-	// SameSite=Strict prevents cross-site requests from carrying the cookie.
-	// No Secure flag needed — the server enforces HTTPS at the load balancer.
-	// biome-ignore lint/suspicious/noDocumentCookie: intentional cross-tab session cookie, matches the legacy dashboard's mechanism
-	document.cookie = `magi_session=${encodeURIComponent(token)}; path=/; SameSite=Strict; max-age=3600`;
+type IssueResult = "ok" | "invalid" | { error: string };
+
+async function issueSession(credential: string): Promise<IssueResult> {
+	try {
+		const res = await fetch("/api/auth/session", {
+			method: "POST",
+			credentials: "include",
+			headers: { Authorization: `Bearer ${credential}` },
+		});
+		if (res.ok) return "ok";
+		if (res.status === 401) return "invalid";
+		return { error: `Sign-in failed (HTTP ${res.status}).` };
+	} catch (e) {
+		return { error: (e as Error).message || "Sign-in failed." };
+	}
 }
 
-function clearSessionCookie(): void {
-	// biome-ignore lint/suspicious/noDocumentCookie: intentional cross-tab session cookie
-	document.cookie = "magi_session=; path=/; SameSite=Strict; max-age=0";
+async function currentSession(): Promise<{
+	userId: string;
+	isAdmin: boolean;
+} | null> {
+	try {
+		const res = await fetch("/api/auth/me", { credentials: "include" });
+		if (!res.ok) return null;
+		return (await res.json()) as { userId: string; isAdmin: boolean };
+	} catch {
+		return null;
+	}
+}
+
+async function endSession(): Promise<void> {
+	await fetch("/api/auth/logout", {
+		method: "POST",
+		credentials: "include",
+	}).catch(() => {});
 }
 
 let firebaseAuth: Auth | null | undefined;
@@ -65,44 +92,57 @@ function getFirebaseAuth(): Auth | null {
 	return firebaseAuth;
 }
 
-/** Subscribes to auth state; returns an unsubscribe function. Fires once immediately with the current state. */
+/** Subscribes to auth state; returns an unsubscribe function. Fires once with the current state. */
 export function subscribeAuth(
 	onChange: (state: AuthState) => void,
 ): () => void {
 	const auth = getFirebaseAuth();
+	let firebaseSignedIn = false;
 
-	const recheckAdminKey = () => {
-		if (auth?.currentUser) return; // Firebase already covers this case
-		const key = sessionStorage.getItem(ADMIN_KEY_SESSION);
+	// The cookie session is the source of truth for the admin-key path: ask
+	// the server rather than any client-side storage.
+	const recheckSession = async () => {
+		if (firebaseSignedIn) return;
+		const me = await currentSession();
 		onChange(
-			key
-				? { status: "signed-in", email: "admin" }
+			me
+				? { status: "signed-in", email: me.isAdmin ? "admin" : me.userId }
 				: { status: "signed-out", error: null },
 		);
 	};
-	window.addEventListener(ADMIN_KEY_EVENT, recheckAdminKey);
+	const onSessionEvent = () => void recheckSession();
+	window.addEventListener(SESSION_EVENT, onSessionEvent);
 
 	if (!auth) {
-		recheckAdminKey();
-		return () => window.removeEventListener(ADMIN_KEY_EVENT, recheckAdminKey);
+		void recheckSession();
+		return () => window.removeEventListener(SESSION_EVENT, onSessionEvent);
 	}
 
-	// Fires on sign-in, sign-out, AND every hourly token refresh, so
-	// magi_session is always a valid, non-expired token.
+	// Fires on sign-in, sign-out, AND every hourly token refresh, so the
+	// server-issued cookie is always re-issued from a valid, unexpired token.
 	const unsubscribe = onIdTokenChanged(auth, async (user) => {
 		if (user) {
-			setSessionCookie(await user.getIdToken());
-			onChange({ status: "signed-in", email: user.email ?? "" });
-		} else if (sessionStorage.getItem(ADMIN_KEY_SESSION)) {
-			onChange({ status: "signed-in", email: "admin" });
+			firebaseSignedIn = true;
+			const result = await issueSession(await user.getIdToken());
+			if (result === "ok") {
+				onChange({ status: "signed-in", email: user.email ?? "" });
+			} else {
+				onChange({
+					status: "signed-out",
+					error:
+						result === "invalid"
+							? "This Google account is not authorised."
+							: result.error,
+				});
+			}
 		} else {
-			clearSessionCookie();
-			onChange({ status: "signed-out", error: null });
+			firebaseSignedIn = false;
+			await recheckSession();
 		}
 	});
 	return () => {
 		unsubscribe();
-		window.removeEventListener(ADMIN_KEY_EVENT, recheckAdminKey);
+		window.removeEventListener(SESSION_EVENT, onSessionEvent);
 	};
 }
 
@@ -122,21 +162,16 @@ export async function signInWithGoogle(): Promise<string | null> {
 export async function signInWithApiKey(key: string): Promise<string | null> {
 	const trimmed = key.trim();
 	if (!trimmed) return "Enter an API key.";
-	// Validate by probing /api/missions — server returns 401 if wrong, 200 if correct.
-	const res = await fetch("/api/missions", {
-		headers: { Authorization: `Bearer ${trimmed}` },
-	});
-	if (res.status === 401) return "Invalid key.";
-	sessionStorage.setItem(ADMIN_KEY_SESSION, trimmed);
-	setSessionCookie(trimmed);
-	window.dispatchEvent(new Event(ADMIN_KEY_EVENT));
+	const result = await issueSession(trimmed);
+	if (result === "invalid") return "Invalid key.";
+	if (result !== "ok") return result.error;
+	window.dispatchEvent(new Event(SESSION_EVENT));
 	return null;
 }
 
 export async function signOut(): Promise<void> {
-	sessionStorage.removeItem(ADMIN_KEY_SESSION);
-	clearSessionCookie();
-	window.dispatchEvent(new Event(ADMIN_KEY_EVENT));
+	await endSession();
+	window.dispatchEvent(new Event(SESSION_EVENT));
 	const auth = getFirebaseAuth();
 	if (auth) await firebaseSignOut(auth).catch(() => {});
 }

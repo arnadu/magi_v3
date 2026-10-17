@@ -221,10 +221,22 @@ export function handleDownload(
 	}
 
 	const imageMime = inline ? IMAGE_MIME[extname(abs).toLowerCase()] : undefined;
+	// Never let the browser guess a type, on any of these responses: the
+	// bytes are agent-authored.
+	res.setHeader("X-Content-Type-Options", "nosniff");
 	if (imageMime) {
-		// No Content-Disposition — this must render in an <img> tag, not
-		// prompt a save dialog.
-		res.writeHead(200, { "Content-Type": imageMime });
+		// An <img> renders regardless of Content-Disposition, so the inline
+		// variant still works for the markdown image syntax — but SVG is a
+		// document, and navigating to it would run its scripts on the cockpit
+		// origin (MS4/MT1): force a download on navigation and sandbox it.
+		const headers: Record<string, string> = { "Content-Type": imageMime };
+		if (imageMime === "image/svg+xml") {
+			headers["Content-Disposition"] =
+				`attachment; filename="${basename(abs)}"`;
+			headers["Content-Security-Policy"] =
+				"sandbox; default-src 'none'; style-src 'unsafe-inline'";
+		}
+		res.writeHead(200, headers);
 		createReadStream(abs, { fd }).pipe(res);
 		return;
 	}

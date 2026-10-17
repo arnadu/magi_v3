@@ -70,6 +70,7 @@ provisioned missions — the daemon reads its structured config directly from Mo
 - `FIREBASE_SERVICE_ACCOUNT_KEY` (control plane only; Firebase Admin SDK service account JSON, minified to one line — required for Google Sign-In)
 - `FIREBASE_CLIENT_API_KEY`, `FIREBASE_CLIENT_AUTH_DOMAIN`, `FIREBASE_CLIENT_PROJECT_ID` (control plane only; served to the browser via `/firebase-config.js`; public client-side values)
 - `MONITOR_SIGNING_KEY` (control plane only; HMAC key for per-mission MonitorServer tokens — generate with `openssl rand -hex 32`; never forwarded to execution plane machines)
+- `CSP_ENFORCE` (control plane only; `"true"` switches the cockpit's Content Security Policy from `Content-Security-Policy-Report-Only` to enforcing. Default report-only: violations are logged from the browser's `POST /api/csp-report` reports as `[csp] violation …` — flip it once a few days of dev logs show none for normal cockpit use)
 - `GH_TOKEN` (control plane only; GitHub personal access token with `repo` scope — used by copilot's `ListIssues`/`CreateIssue`/`CloseIssue`/`AddIssueComment` tools; optional but required for issue tracking)
 - `GITHUB_REPO` (control plane only; GitHub repo in `owner/repo` format; default `arnadu/magi_v3`)
 - `FLY_MISSIONS_IMAGE` (control plane only; overrides the default `registry.fly.io/<missions-app>:latest` image used when provisioning execution plane machines — set to a specific deployment tag when `:latest` hasn't been updated yet)

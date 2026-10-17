@@ -145,8 +145,8 @@
 	"packages/cockpit/src/CopilotPanel.tsx": {
 		"lines": 489,
 		"fns": {
-			"CopilotPanel@76": 413,
-			"<anonymous>@137": 149
+			"CopilotPanel@85": 413,
+			"<anonymous>@146": 149
 		}
 	},
 	"packages/cockpit/src/DraftEditor.tsx": {
@@ -205,20 +205,20 @@
 	"packages/control-plane/src/copilot-router.ts": {
 		"lines": 877,
 		"fns": {
-			"createCopilotRouter@65": 338,
-			"executeAction@426": 378
+			"createCopilotRouter@70": 338,
+			"executeAction@432": 378
 		}
 	},
 	"packages/control-plane/src/copilot-tools.ts": {
-		"lines": 981,
+		"lines": 972,
 		"fns": {
-			"createCopilotTools@142": 839
+			"createCopilotTools@148": 824
 		}
 	},
 	"packages/control-plane/src/index.ts": {
-		"lines": 325,
+		"lines": 314,
 		"fns": {
-			"main@51": 269
+			"main@53": 256
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
