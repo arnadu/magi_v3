@@ -166,7 +166,7 @@ The Mental Map is the agent's persistent working memory and planning document. I
 - **Injected as context** — included in every system prompt so the agent always has access to its current state
 - **Observable** — rendered in the Mission Inbox UI so operators can see what the agent is thinking
 
-The Mental Map is the agent's scratchpad and plan, not its deliverable. Deliverables are published to the artifact store via `PublishArtifact`.
+The Mental Map is the agent's scratchpad and plan, not its deliverable. Deliverables are files in the shared mission folder (committed by the daemon at the end of each turn); fetched and uploaded documents become artifacts under `shared/artifacts/`.
 
 ### Document structure
 
@@ -200,23 +200,27 @@ The Mental Map is HTML with stable section IDs. The agent authors prose content 
 
 The `data-priority` attribute (0–100 continuous scale) is set by the agent during planning. Tasks are surfaced in order of priority in the system prompt.
 
-### UpdateMentalMap tool
+### Mental-map tools
 
-Directly adapted from MAG_v2's `Editor` tool. Targets elements by `id` for surgical updates rather than rewriting the whole document.
+Targeted by element `id` for surgical updates rather than rewriting the whole document
+(adapted from MAG_v2's `Editor` tool; `mental-map.ts`):
 
 ```typescript
-UpdateMentalMap({
-  operation: "replace" | "append-child" | "prepend-child" | "remove",
-  elementId: "tasks",
-  content: "<li ...>...</li>"   // new HTML (for replace/append/prepend)
-})
+mental_map_update({ target_id: "tasks", mode: "replace" | "append", content: "<li ...>...</li>" })
+mental_map_add({ new_id: "task-42", parent_id: "tasks", content: "<li ...>...</li>" })
+mental_map_remove({ target_id: "task-17" })
 ```
 
-Agents use `UpdateMentalMap` to: add new tasks from inbound messages, reprioritize existing tasks, mark tasks done, record findings during execution, and update working notes. The reflection pass also calls `UpdateMentalMap` to update the Mental Map with a cumulative session summary.
+Agents use them to add tasks from inbound messages, reprioritize, mark tasks done, record findings
+and keep working notes. Daemon-managed regions (`data-managed`, e.g. `#my-objectives`) are synced
+from their real source at turn start and cannot be removed by an edit.
 
 ### Persistence
 
-Each agent has one Mental Map document in MongoDB per active mission assignment (`mental_maps` collection, keyed by `agentId`). At the start of each session the agent loads its current Mental Map from MongoDB; `UpdateMentalMap` tool calls are atomic patches to that document. No in-memory state survives between sessions.
+The current Mental Map travels with the conversation: each assistant message saved to
+`conversationMessages` carries a `mentalMapHtml` snapshot, and a session starts from the most recent
+one (or the agent's `initialMentalMap` on its first wakeup). The tools patch the in-memory copy for
+the rest of the turn. No other state survives between sessions.
 
 ---
 
@@ -301,7 +305,7 @@ Tools are organised into two tiers:
 ```
 Tier A — Standard tools (agent-runtime-worker)     selectable per-agent via disabledTools[]
 ├── Always on:  Bash, WriteFile, EditFile
-│               PostMessage, ListMessages, ReadMessage, ListTeam, UpdateMentalMap
+│               PostMessage, ListMessages, ReadMessage, ListTeam, mental_map_*
 │               FetchUrl, AnalyzeMemories
 ├── Optional:   Research, InspectImage, BrowseWeb, SearchWeb
 └── Conditional: SearchWeb (needs BRAVE_SEARCH_API_KEY), BrowseWeb (needs Chromium)
@@ -327,7 +331,7 @@ Every tool name is case-sensitive and can appear in `disabledTools` in the agent
 | `ListMessages` | Coordination | List inbox headers | — |
 | `ReadMessage` | Coordination | Read a message body and mark as read | — |
 | `ListTeam` | Coordination | List all agents: id, name, role, supervisor | — |
-| `UpdateMentalMap` | Coordination | Surgical HTML patch of the agent's Mental Map by element ID | — |
+| `mental_map_update` / `mental_map_add` / `mental_map_remove` | Coordination | Surgical HTML patch of the agent's Mental Map by element ID | — |
 | `FetchUrl` | Web/data | HTTP GET → HTML (Readability) or PDF; auto-describes images via vision LLM | — |
 | `InspectImage` | Web/data | On-demand detailed analysis of an image in workdir via vision LLM | — |
 | `SearchWeb` | Web/data | Brave Search API → ranked result list | `BRAVE_SEARCH_API_KEY` |
@@ -660,7 +664,7 @@ and rejects configs with duplicate agent IDs or unknown supervisor references.
 |------|---------|
 | Zod config validation | Invalid YAML variants; assert exact error messages |
 | ACL policy evaluation | `(linuxUser, path, operation)` → allow/deny |
-| `UpdateMentalMap` HTML patching | Assert DOM state after each operation |
+| `mental_map_*` HTML patching | Assert DOM state after each operation |
 | `patchMentalMap` idempotency | Same patch applied twice → same result |
 | SSRF regex | Known-private hosts and Fly WireGuard ranges |
 | Cost computation | `computeCost(usage, model)` for cache/non-cache variants |
@@ -711,7 +715,7 @@ future capability (Sprint 20+).
 - **`@mariozechner/pi-ai`** — `completeSimple(model, context)` is the non-streaming LLM call
   used by `runInnerLoop` and `runReflection`. `getModel("openrouter", id)` provides OpenRouter
   model descriptors. This is the only direct runtime dependency on pi-mono.
-- **MAGI v2** — Mental Map design (§4), image handling strategy (§5), and `UpdateMentalMap`
+- **MAGI v2** — Mental Map design (§4), image handling strategy (§5), and the mental-map editing tools
   semantics are adapted from v2's `Editor` tool and vision pipeline.
 
 For full details on these projects, see [docs/references.md](docs/references.md).

@@ -131,7 +131,7 @@ table, which only covers tool *names*):
   active (\`disabledSkills\`).
 - **A Mental Map is self-authored HTML with stable section IDs (§4)** — conventionally
   \`#mission-context\`, \`#tasks\`, \`#working-notes\`, \`#waiting-for\` — patched surgically by ID via
-  \`UpdateMentalMap\`, never fully rewritten, and only by the owning agent itself. You cannot write
+  the \`mental_map_update\` / \`mental_map_add\` / \`mental_map_remove\` tools, never fully rewritten, and only by the owning agent itself. You cannot write
   a teammate's Mental Map directly: agents run in parallel, and an out-of-band write from you
   could collide with that agent's own in-flight turn. When you notice a teammate's Mental Map is
   stale or wrong, read it with \`ReadAgentMentalMap\`, then \`PostMessage\` the user a specific

@@ -105,8 +105,10 @@ not lose the day's stories.
 | `newsapi` | news headlines | `NEWSAPIORG_API_KEY` |
 | `fmp` | price/volume, SEC filings | `FMP_API_KEY` |
 
-API keys are injected automatically by the daemon when running via background job.
-Direct `magi-python3` calls in agent turns do NOT receive data API keys — use background jobs for any adapter that requires a key.
+No API key ever reaches an adapter. The keyed adapters call the daemon's `data-fred` / `data-fmp` /
+`data-newsapi` tools through `magi-tool`, which only a background job can reach (it holds a scoped
+`MAGI_TOOL_TOKEN`). Run refresh.py as a background job; a direct `magi-python3` call in an agent turn
+has no token, so every keyed source fails.
 
 ## CSV format
 

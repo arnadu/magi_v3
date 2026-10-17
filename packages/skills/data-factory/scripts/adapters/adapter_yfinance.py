@@ -46,7 +46,7 @@ def discover() -> None:
 
     The catalog and agents call --discover to learn what series this adapter
     can produce without actually fetching any data.  The output lists the
-    default series (the ones refresh.sh will fetch) and the full param schema
+    default series (the ones refresh.py will fetch) and the full param schema
     so agents can request non-default tickers or periods if needed.
     """
     print(json.dumps({
