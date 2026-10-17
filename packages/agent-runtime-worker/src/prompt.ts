@@ -1,5 +1,6 @@
 import type { AgentConfig } from "@magi/agent-config";
 import { type MailboxMessage, safeTimestamp } from "./mailbox.js";
+import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { discoverSkills, formatSkillsBlock } from "./skills.js";
 
 /**
@@ -109,7 +110,12 @@ export function buildSystemPrompt(
 		.replace(/\{\{mentalMap\}\}/g, MENTAL_MAP_POINTER)
 		.replace(/\{\{sharedDir\}\}/g, sharedDir)
 		.replace(/\{\{workdir\}\}/g, workdir);
-	const block = discoverSkills(sharedDir, workdir);
+	// The mission copilot holds config, spend and pause tools: nothing a
+	// teammate writes into shared/skills/mission or its own skills/ may reach
+	// its system prompt (it can still read those files deliberately).
+	const block = discoverSkills(sharedDir, workdir, {
+		includeAgentAuthored: agent.id !== MISSION_COPILOT_AGENT_ID,
+	});
 	const disabled = new Set(agent.disabledSkills ?? []);
 	const filtered = {
 		...block,

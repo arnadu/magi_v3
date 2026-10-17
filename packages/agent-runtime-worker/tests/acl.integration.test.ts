@@ -209,6 +209,46 @@ describe("Bash ACL enforcement", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Scenario 3 — private workdirs are not readable by other agents (ISO1)
+// ---------------------------------------------------------------------------
+
+describe("Private workdir read denial", () => {
+	it("denies Bash reads of another agent's private dir, not just writes", async () => {
+		const tools = makeTools(
+			AGENT_1,
+			agent1WorkDir,
+			agent1PermittedPaths,
+			POOL_USER_1,
+		);
+		const result = await tool(tools, "Bash").execute("t-read", {
+			command: `cat "${join(agent2WorkDir, "secret.txt")}"`,
+		});
+		const text = result.content
+			.map((c) => ("text" in c ? c.text : ""))
+			.join("");
+		expect(text).not.toContain("agent2 private data");
+		expect(text).toMatch(/Permission denied|cannot open|No such file/);
+	});
+
+	it("still lets the agent read its own private dir", async () => {
+		writeFileSync(join(agent1WorkDir, "mine.txt"), "agent1 data");
+		const tools = makeTools(
+			AGENT_1,
+			agent1WorkDir,
+			agent1PermittedPaths,
+			POOL_USER_1,
+		);
+		const result = await tool(tools, "Bash").execute("t-read-own", {
+			command: `cat "${join(agent1WorkDir, "mine.txt")}"`,
+		});
+		const text = result.content
+			.map((c) => ("text" in c ? c.text : ""))
+			.join("");
+		expect(text).toContain("agent1 data");
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Fixture teardown check
 // ---------------------------------------------------------------------------
 

@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import {
+	chmodSync,
 	cpSync,
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
@@ -116,6 +118,11 @@ export class WorkspaceManager {
 				missionId,
 			);
 			mkdirSync(workdir, { recursive: true });
+			// Private means private: no "other" bits, so another agent's OS user
+			// cannot read this tree. The agent and the daemon get in through the
+			// named ACL entries below (mkdir's mode is umask-dependent and does
+			// not touch a directory that already exists, hence the explicit chmod).
+			chmodSync(workdir, 0o700);
 			applyWorkdirAcl(workdir, linuxUser, userInfo().username);
 			identities.set(agent.id, { workdir, sharedDir, linuxUser });
 		}
@@ -251,10 +258,27 @@ function provisionSkills(
 	platformSkillsPath: string,
 	teamSkillsPath: string | undefined,
 ): void {
-	const platformDest = join(sharedDir, "skills", "_platform");
-	const teamDest = join(sharedDir, "skills", "_team");
-	const missionDest = join(sharedDir, "skills", "mission");
+	const skillsRoot = join(sharedDir, "skills");
+	const platformDest = join(skillsRoot, "_platform");
+	const teamDest = join(skillsRoot, "_team");
+	const missionDest = join(skillsRoot, "mission");
 
+	// The tier directories are copied into as the daemon, so a symlink an agent
+	// managed to plant at one of these paths would redirect that copy: refuse
+	// to write through anything that is not a plain directory.
+	for (const p of [skillsRoot, platformDest, teamDest, missionDest]) {
+		let st: ReturnType<typeof lstatSync> | undefined;
+		try {
+			st = lstatSync(p);
+		} catch {
+			continue;
+		}
+		if (!st.isDirectory()) {
+			throw new Error(
+				`[workspace] ${p} exists but is not a directory (${st.isSymbolicLink() ? "symlink" : "file"}) — refusing to provision skills through it`,
+			);
+		}
+	}
 	mkdirSync(platformDest, { recursive: true });
 	mkdirSync(teamDest, { recursive: true });
 	mkdirSync(missionDest, { recursive: true });
@@ -267,6 +291,14 @@ function provisionSkills(
 	}
 
 	for (const user of linuxUsers) {
+		// skills/ itself: traverse and list only. Agents inherit rwx on it from
+		// sharedDir's default ACL, which would let them rename or replace
+		// _platform/_team wholesale even though the files inside are r-x
+		// (unlink/rename needs write on the parent). An explicit r-x entry
+		// on the directory overrides the inherited one for this user.
+		execFileSync("setfacl", ["-m", `u:${user}:r-x`, skillsRoot], {
+			stdio: "ignore",
+		});
 		// _platform and _team: read-only; apply recursively to cover copied files.
 		execFileSync("setfacl", ["-R", "-m", `u:${user}:r-x`, platformDest], {
 			stdio: "ignore",
