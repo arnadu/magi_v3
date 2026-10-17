@@ -67,9 +67,64 @@ export const ObjectiveDefSchema = z.object({
 });
 export type ObjectiveDef = z.infer<typeof ObjectiveDefSchema>;
 
-export const GoalsFileSchema = z.object({
-	objectives: z.array(ObjectiveDefSchema).default([]),
-});
+export const GoalsFileSchema = z
+	.object({
+		objectives: z.array(ObjectiveDefSchema).default([]),
+	})
+	.superRefine((goals, ctx) => {
+		// The fold walks parent chains and recurses over children: a duplicate
+		// id, an unknown parent or a cycle (`parent` = itself, or a → b → a)
+		// used to wedge every reader of the store in an infinite loop (OB3) —
+		// and the poison persisted in Mongo. Rejected at parse time, on write
+		// and on read.
+		const byId = new Map<string, ObjectiveDef>();
+		goals.objectives.forEach((o, i) => {
+			if (byId.has(o.id)) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["objectives", i, "id"],
+					message: `duplicate objective id "${o.id}"`,
+				});
+			}
+			byId.set(o.id, o);
+		});
+		const kpiIds = new Set<string>();
+		goals.objectives.forEach((o, i) => {
+			o.kpis.forEach((k, j) => {
+				if (kpiIds.has(k.id)) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["objectives", i, "kpis", j, "id"],
+						message: `duplicate KPI id "${k.id}"`,
+					});
+				}
+				kpiIds.add(k.id);
+			});
+			if (o.parent === null) return;
+			if (!byId.has(o.parent)) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["objectives", i, "parent"],
+					message: `parent "${o.parent}" is not an objective id`,
+				});
+				return;
+			}
+			const seen = new Set<string>([o.id]);
+			let cur: string | null = o.parent;
+			while (cur !== null) {
+				if (seen.has(cur)) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["objectives", i, "parent"],
+						message: `objective "${o.id}" is its own ancestor (cycle through "${cur}")`,
+					});
+					return;
+				}
+				seen.add(cur);
+				cur = byId.get(cur)?.parent ?? null;
+			}
+		});
+	});
 export type GoalsFile = z.infer<typeof GoalsFileSchema>;
 
 // ---------------------------------------------------------------------------

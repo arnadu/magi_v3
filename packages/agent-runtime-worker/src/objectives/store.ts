@@ -178,12 +178,19 @@ export function foldStore(
 		else orphanTasks.push(t);
 	}
 
-	// Link children; top-level = parent null or parent not found.
+	// Link children; top-level = parent null, parent not found, or parent chain
+	// that never reaches a root. GoalsFileSchema rejects cycles, but this fold
+	// also runs on data handed to it directly, and a cycle here means an
+	// infinite loop on every turn start (OB3): a node on a cycle is detached
+	// and shown as a root rather than followed.
 	const roots: FoldedObjective[] = [];
 	for (const node of nodeById.values()) {
 		const parent = node.parent ? nodeById.get(node.parent) : undefined;
-		if (parent) parent.children.push(node);
-		else roots.push(node);
+		if (parent && !onCycle(node, nodeById)) parent.children.push(node);
+		else {
+			node.parent = null;
+			roots.push(node);
+		}
 	}
 
 	// Roll up cost: post-order so children are summed before parents.
@@ -228,6 +235,21 @@ export function foldStore(
 		orphanTasks,
 		overheadCostUsd,
 	};
+}
+
+/** True when following `parent` from this node revisits a node before reaching a root. */
+function onCycle(
+	node: FoldedObjective,
+	nodeById: Map<string, FoldedObjective>,
+): boolean {
+	const seen = new Set<string>([node.id]);
+	let cur = node.parent ? nodeById.get(node.parent) : undefined;
+	while (cur) {
+		if (seen.has(cur.id)) return true;
+		seen.add(cur.id);
+		cur = cur.parent ? nodeById.get(cur.parent) : undefined;
+	}
+	return false;
 }
 
 /** Add cost allocated directly to an objective (overhead), propagating to ancestors. */

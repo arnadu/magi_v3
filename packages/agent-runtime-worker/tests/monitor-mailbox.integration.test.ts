@@ -83,7 +83,7 @@ afterAll(async () => {
 		.deleteMany({ missionId });
 	await client?.db("magi-test").collection("mailbox").deleteMany({ missionId });
 	await client?.close();
-});
+}, 30_000);
 
 describe("GET /mailbox", () => {
 	it("returns posted messages with the documented JSON shape", async () => {
@@ -137,4 +137,37 @@ describe("GET /mailbox", () => {
 		expect(msg?.bodyPreview).toBe(`${"x".repeat(400)}…`);
 		expect(msg?.bodyPreview.length).toBe(401);
 	});
+});
+
+describe("GET /mailbox window (MR1)", () => {
+	it("returns the newest 500 messages, oldest first — not the oldest 500", async () => {
+		const col = client.db("magi-test").collection("mailbox");
+		const base0 = Date.UTC(2026, 0, 1);
+		await col.insertMany(
+			Array.from({ length: 510 }, (_, i) => ({
+				id: `bulk-${i}`,
+				missionId,
+				from: "user",
+				to: ["lead"],
+				subject: `bulk ${i}`,
+				body: "x",
+				timestamp: new Date(base0 + i * 60_000),
+				readBy: [],
+			})),
+		);
+		const res = await fetch(`${base}/mailbox`);
+		const msgs = (await res.json()) as Array<{ subject: string }>;
+		expect(msgs.length).toBe(500);
+		// Earlier tests posted a few messages with a newer timestamp than the
+		// bulk ones; they occupy the tail of the window, so the oldest bulk
+		// rows are the ones that drop out.
+		const bulk = msgs.filter((m) => m.subject.startsWith("bulk "));
+		const dropped = 510 - bulk.length;
+		expect(dropped).toBeGreaterThanOrEqual(10);
+		expect(bulk[0].subject).toBe(`bulk ${dropped}`);
+		expect(bulk[bulk.length - 1].subject).toBe("bulk 509");
+		expect(bulk.map((m) => m.subject)).not.toContain("bulk 0");
+		// Chronological order is preserved end to end.
+		expect(msgs[msgs.length - 1].subject).not.toMatch(/^bulk /);
+	}, 30_000);
 });

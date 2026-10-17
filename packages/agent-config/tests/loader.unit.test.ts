@@ -205,3 +205,69 @@ agents:
 		expect(config.agents[0].systemPrompt).toBe(`key=\${${SECRET_VAR}}`);
 	});
 });
+
+describe("parseTeamConfig — team-level integrity (LU1/RID1/CFG1)", () => {
+	const agent = (id: string, extra: Record<string, unknown> = {}) => ({
+		id,
+		supervisor: "user",
+		systemPrompt: "x",
+		initialMentalMap: '<section id="tasks"></section>',
+		...extra,
+	});
+	const team = (agents: unknown[]) => ({
+		mission: { id: "t", name: "T" },
+		agents,
+	});
+
+	it("rejects duplicate agent ids", () => {
+		expect(() => parseTeamConfig(team([agent("lead"), agent("lead")]))).toThrow(
+			/duplicate agent id "lead"/,
+		);
+	});
+
+	it("rejects two agents sharing an OS user, explicitly or via id", () => {
+		expect(() =>
+			parseTeamConfig(
+				team([
+					agent("a", { linuxUser: "magi-w1" }),
+					agent("b", { linuxUser: "magi-w1" }),
+				]),
+			),
+		).toThrow(/share the OS user "magi-w1"/);
+		expect(() =>
+			parseTeamConfig(team([agent("a"), agent("b", { linuxUser: "a" })])),
+		).toThrow(/share the OS user "a"/);
+	});
+
+	it("rejects reserved ids and ids the OS user helper would refuse", () => {
+		for (const id of ["user", "system", "scheduler", "mission-copilot"]) {
+			expect(() => parseTeamConfig(team([agent(id)])), id).toThrow(/reserved/);
+		}
+		expect(() => parseTeamConfig(team([agent("data_bot")]))).toThrow(
+			/lowercase slug/,
+		);
+		expect(() => parseTeamConfig(team([agent("_x")]))).toThrow(
+			/lowercase slug/,
+		);
+		expect(() => parseTeamConfig(team([agent("copilot")]))).not.toThrow();
+	});
+
+	it('rejects a supervisor that is neither "user" nor a teammate', () => {
+		expect(() =>
+			parseTeamConfig(team([agent("a", { supervisor: "ghost" })])),
+		).toThrow(/supervisor "ghost"/);
+		expect(() =>
+			parseTeamConfig(team([agent("a"), agent("b", { supervisor: "a" })])),
+		).not.toThrow();
+	});
+
+	it("caps the roster and the prompt sizes", () => {
+		const many = Array.from({ length: 26 }, (_, i) => agent(`a${i}`));
+		expect(() => parseTeamConfig(team(many))).toThrow(/agents/);
+		expect(() =>
+			parseTeamConfig(
+				team([agent("a", { systemPrompt: "x".repeat(200_001) })]),
+			),
+		).toThrow(/systemPrompt/);
+	});
+});

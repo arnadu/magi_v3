@@ -504,6 +504,7 @@ describe("mission-copilot-tools", () => {
 			const { tools } = buildTools(fake.db);
 			const result = await get(tools, "CreateScheduledMessage").execute("t1", {
 				to: ["worker"],
+				body: "b",
 				subject: "Daily check-in",
 				cron: "0 6 * * *",
 			});
@@ -532,6 +533,7 @@ describe("mission-copilot-tools", () => {
 			const before = Date.now();
 			const result = await get(tools, "CreateScheduledMessage").execute("t1", {
 				to: ["worker"],
+				body: "b",
 				subject: "Weekly check-in",
 				cron: "0 8 * * 1", // Monday 08:00
 			});
@@ -550,6 +552,7 @@ describe("mission-copilot-tools", () => {
 			const { tools } = buildTools(fake.db);
 			const result = await get(tools, "CreateScheduledMessage").execute("t1", {
 				to: ["worker"],
+				body: "b",
 				subject: "Bad schedule",
 				cron: "not a cron expression",
 			});
@@ -562,6 +565,7 @@ describe("mission-copilot-tools", () => {
 			const { tools } = buildTools(fake.db);
 			const result = await get(tools, "CreateScheduledMessage").execute("t1", {
 				to: ["worker"],
+				body: "b",
 				subject: "No schedule given",
 			});
 			expect(result.isError).toBe(true);
@@ -573,6 +577,7 @@ describe("mission-copilot-tools", () => {
 			const { tools } = buildTools(fake.db);
 			await get(tools, "CreateScheduledMessage").execute("t1", {
 				to: ["worker"],
+				body: "b",
 				subject: "Daily check-in",
 				cron: "0 6 * * *",
 				label: "daily-checkin",
@@ -997,6 +1002,69 @@ describe("mission-copilot-tools", () => {
 			});
 			expect(result.isError).toBe(true);
 			expect(result.content[0].text).toContain("401");
+		});
+	});
+
+	describe("mission-copilot-tools input validation (MC6/MC7)", () => {
+		it("SetMissionSpendCap refuses a non-positive, infinite or absurd cap without touching the monitor", async () => {
+			const fake = makeFakeDb();
+			const { tools } = buildTools(fake.db);
+			for (const capUsd of [0, -5, Number.POSITIVE_INFINITY, Number.NaN, 1e9]) {
+				const r = await get(tools, "SetMissionSpendCap").execute("t1", {
+					capUsd,
+				});
+				expect(r.isError, String(capUsd)).toBe(true);
+			}
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it("CreateScheduledMessage refuses garbage deliverAt, a far-future date, a sub-5-minute cron and oversized text", async () => {
+			const fake = makeFakeDb();
+			const { tools } = buildTools(fake.db);
+			const base = { to: ["worker"], subject: "s", body: "b" };
+			const cases: Array<[Record<string, unknown>, RegExp]> = [
+				[{ ...base, deliverAt: "next tuesday" }, /not an ISO date-time/],
+				[
+					{ ...base, deliverAt: "2999-01-01T00:00:00Z" },
+					/more than a year ahead/,
+				],
+				[{ ...base, cron: "* * * * *" }, /more often than every 5 minutes/],
+				[{ ...base, cron: "0 6 * * *", subject: "x".repeat(201) }, /subject/],
+				[{ ...base, cron: "0 6 * * *", to: [] }, /recipients/],
+			];
+			for (const [args, re] of cases) {
+				const r = await get(tools, "CreateScheduledMessage").execute(
+					"t1",
+					args,
+				);
+				expect(r.isError, JSON.stringify(args).slice(0, 60)).toBe(true);
+				expect(r.content[0].text, JSON.stringify(args).slice(0, 60)).toMatch(
+					re,
+				);
+			}
+			expect(fake.insertOneCalls).toHaveLength(0);
+		});
+
+		it("CreateScheduledMessage checks recipients against the mission's roster when one is stored", async () => {
+			const fake = makeFakeDb({
+				missions: [{ missionId: "m1", agents: [{ id: "worker" }] }],
+			});
+			const { tools } = buildTools(fake.db);
+			const bad = await get(tools, "CreateScheduledMessage").execute("t1", {
+				to: ["worker", "ghost"],
+				subject: "s",
+				body: "b",
+				cron: "0 6 * * *",
+			});
+			expect(bad.isError).toBe(true);
+			expect(bad.content[0].text).toMatch(/unknown recipient\(s\) ghost/);
+			const good = await get(tools, "CreateScheduledMessage").execute("t1", {
+				to: ["worker", "user", MISSION_COPILOT_AGENT_ID],
+				subject: "s",
+				body: "b",
+				cron: "0 6 * * *",
+			});
+			expect(good.isError).toBeFalsy();
 		});
 	});
 });

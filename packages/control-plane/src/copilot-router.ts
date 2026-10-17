@@ -27,7 +27,7 @@ import {
 } from "@magi/agent-runtime-worker";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
-import { type Collection, type Db, ObjectId } from "mongodb";
+import type { Collection, Db } from "mongodb";
 import { type ActionPayload, parseActionPayload } from "./copilot-actions.js";
 import { COPILOT_WORKDIR, copilotWorkdirFor } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";

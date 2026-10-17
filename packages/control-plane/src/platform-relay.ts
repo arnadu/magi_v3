@@ -8,26 +8,23 @@
  * `timestamp.toISOString()` unconditionally.
  */
 
-import { randomUUID } from "node:crypto";
 import type { Db } from "mongodb";
+import { postMailbox } from "./mailbox-writer.js";
 
 export async function relayToPlatformAdmins(
 	db: Db,
 	platformAdminUserIds: readonly string[],
 	alert: { category: string; body: string; now?: Date },
 ): Promise<void> {
-	const timestamp = alert.now ?? new Date();
+	const _timestamp = alert.now ?? new Date();
 	for (const userId of platformAdminUserIds) {
 		try {
-			await db.collection("mailbox").insertOne({
-				id: randomUUID(),
+			await postMailbox(db, {
 				missionId: `copilot-${userId}`,
 				from: "system",
 				to: ["copilot"],
 				subject: `Anomaly (hard): ${alert.category}`,
 				body: alert.body,
-				timestamp,
-				readBy: [],
 			});
 		} catch (e) {
 			console.error(

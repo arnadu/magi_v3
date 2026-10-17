@@ -17,10 +17,25 @@ import { truncate } from "../tools.js";
 import type { ObjectivesRepository } from "./repository.js";
 import {
 	type AllocEvent,
+	type FoldedObjective,
 	type KpiEvent,
 	type TaskEvent,
 	TaskStatusSchema,
 } from "./types.js";
+
+function findObjective(
+	roots: FoldedObjective[],
+	id: string,
+): FoldedObjective | undefined {
+	const stack = [...roots];
+	while (stack.length) {
+		const o = stack.pop();
+		if (!o) break;
+		if (o.id === id) return o;
+		stack.push(...o.children);
+	}
+	return undefined;
+}
 
 function ok(text: string): ToolResult {
 	return { content: [{ type: "text", text: truncate(text) }] };
@@ -30,6 +45,90 @@ function err(text: string): ToolResult {
 }
 
 const TASK_STATUSES = TaskStatusSchema.options;
+
+/** Identities that may touch any task or KPI: the operator and the mission copilot (its tools act for the operator). */
+const PRIVILEGED = new Set(["user", "mission-copilot"]);
+/** An allocation target: a task id, an objective id or "overhead" — never a prototype key. */
+const ALLOC_TARGET_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
+const MAX_ALLOC_TARGETS = 50;
+
+// Ownership (OB5): a task can be updated by its assignee, its creator, the
+// owner of its objective, or a privileged identity; a KPI value can be
+// recorded by the KPI's owner or a privileged identity. Everyone else gets
+// a tool error rather than a silent write into someone else's record.
+async function taskWriteDenied(
+	repo: ObjectivesRepository,
+	missionId: string,
+	agentId: string,
+	taskId: string,
+): Promise<string | null> {
+	if (PRIVILEGED.has(agentId)) return null;
+	const tree = await repo.readTree(missionId);
+	const task = tree.tasks.find((t) => t.id === taskId);
+	if (!task) return `unknown task "${taskId}"`;
+	if (task.assignee === agentId || task.createdBy === agentId) return null;
+	const objectiveOwner = task.objective
+		? findObjective(tree.objectives, task.objective)?.owner
+		: undefined;
+	if (objectiveOwner === agentId) return null;
+	return `task "${taskId}" is assigned to ${task.assignee ?? "nobody"} (created by ${task.createdBy}); you may only update your own tasks or those under an objective you own`;
+}
+async function kpiWriteDenied(
+	repo: ObjectivesRepository,
+	missionId: string,
+	agentId: string,
+	kpiId: string,
+): Promise<string | null> {
+	const goals = await repo.readGoals(missionId);
+	const def = goals.objectives
+		.flatMap((o) => o.kpis)
+		.find((k) => k.id === kpiId);
+	if (!def) return `unknown KPI "${kpiId}"`;
+	if (PRIVILEGED.has(agentId) || def.owner === agentId) return null;
+	return `KPI "${kpiId}" is owned by ${def.owner}; only its owner records values`;
+}
+
+async function taskExists(
+	repo: ObjectivesRepository,
+	missionId: string,
+	id: string,
+): Promise<boolean> {
+	const tree = await repo.readTree(missionId);
+	return tree.tasks.some((t) => t.id === id);
+}
+
+/**
+ * "target:weight,…" → a null-prototype map (a target named "__proto__" or
+ * "constructor" must be a plain key, never a prototype write — OB6); targets
+ * are slugs (a task id, an objective id or "overhead"), weights finite and > 0.
+ */
+function parseAllocationKey(
+	raw: string,
+): { key: Record<string, number> } | { error: string } {
+	const key: Record<string, number> = Object.create(null);
+	const pairs = raw.split(",");
+	if (pairs.length > MAX_ALLOC_TARGETS) {
+		return { error: `at most ${MAX_ALLOC_TARGETS} targets per call` };
+	}
+	for (const pair of pairs) {
+		const idx = pair.indexOf(":");
+		const target = idx >= 0 ? pair.slice(0, idx).trim() : "";
+		const weight = idx >= 0 ? Number(pair.slice(idx + 1).trim()) : Number.NaN;
+		if (
+			!ALLOC_TARGET_RE.test(target) ||
+			!Number.isFinite(weight) ||
+			weight <= 0
+		) {
+			return {
+				error: `invalid pair "${pair}" — expected target:weight with a task/objective id or "overhead" and weight > 0 (e.g. TASK-1:60)`,
+			};
+		}
+		key[target] = (key[target] ?? 0) + weight;
+	}
+	if (Object.keys(key).length === 0)
+		return { error: "key produced no targets" };
+	return { key };
+}
 
 export function createObjectivesTools(
 	repo: ObjectivesRepository,
@@ -73,6 +172,11 @@ export function createObjectivesTools(
 			}
 			const id =
 				(args.id as string | undefined) || `TASK-${randomUUID().slice(0, 8)}`;
+			if (args.id && (await taskExists(repo, missionId, id))) {
+				return err(
+					`AddTask: task "${id}" already exists — use UpdateTask to change it`,
+				);
+			}
 			const event: TaskEvent = {
 				id,
 				at: new Date().toISOString(),
@@ -134,6 +238,13 @@ export function createObjectivesTools(
 					`UpdateTask: invalid status "${status}" (one of: ${TASK_STATUSES.join(", ")})`,
 				);
 			}
+			const denied = await taskWriteDenied(
+				repo,
+				missionId,
+				agentId,
+				args.id as string,
+			);
+			if (denied) return err(`UpdateTask: ${denied}`);
 			const event: TaskEvent = {
 				id: args.id as string,
 				at: new Date().toISOString(),
@@ -188,6 +299,13 @@ export function createObjectivesTools(
 							const asNum = Number(s);
 							return s.trim() !== "" && !Number.isNaN(asNum) ? asNum : s;
 						})();
+			const denied = await kpiWriteDenied(
+				repo,
+				missionId,
+				agentId,
+				args.kpi as string,
+			);
+			if (denied) return err(`RecordKpi: ${denied}`);
 			const event: KpiEvent = {
 				kpi: args.kpi as string,
 				value,
@@ -215,23 +333,9 @@ export function createObjectivesTools(
 			}),
 		}),
 		async execute(_id, args) {
-			const raw = args.key as string;
-			const key: Record<string, number> = {};
-			for (const pair of raw.split(",")) {
-				const idx = pair.indexOf(":");
-				const target = idx >= 0 ? pair.slice(0, idx).trim() : "";
-				const weight =
-					idx >= 0 ? Number(pair.slice(idx + 1).trim()) : Number.NaN;
-				if (!target || Number.isNaN(weight) || weight <= 0) {
-					return err(
-						`Allocate: invalid pair "${pair}" — expected target:weight with weight > 0 (e.g. TASK-1:60)`,
-					);
-				}
-				key[target] = (key[target] ?? 0) + weight;
-			}
-			if (Object.keys(key).length === 0) {
-				return err("Allocate: key produced no targets");
-			}
+			const parsed = parseAllocationKey(args.key as string);
+			if ("error" in parsed) return err(`Allocate: ${parsed.error}`);
+			const key = parsed.key;
 			const event: AllocEvent = {
 				by: agentId,
 				at: new Date().toISOString(),

@@ -26,6 +26,27 @@ export const LimitsSchema = z
 	})
 	.strict();
 
+/**
+ * The one username rule, shared by `id` and `linuxUser`: exactly what the
+ * daemon's root-owned `magi-create-user` helper accepts (`^[a-z][a-z0-9-]{0,31}$`
+ * in the worker Dockerfile). The schema used to admit `_`, so an id like
+ * `data_bot` passed validation and then failed at OS-user creation on the
+ * mission's first boot (LU1).
+ */
+export const LINUX_USERNAME_RE = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** Ids an authored config may not use: identities the platform itself speaks as. */
+export const RESERVED_AGENT_IDS = new Set([
+	"user",
+	"system",
+	"scheduler",
+	"mission-copilot",
+]);
+
+export const MAX_AGENTS = 25;
+export const MAX_SYSTEM_PROMPT_CHARS = 200_000;
+export const MAX_MENTAL_MAP_CHARS = 500_000;
+
 const AgentInputSchema = z.object({
 	/**
 	 * Also this agent's Linux OS username by default (linux-user.ts's
@@ -40,34 +61,34 @@ const AgentInputSchema = z.object({
 		.string()
 		.trim()
 		.regex(
-			/^[a-z_][a-z0-9_-]{0,31}$/,
-			'must be a valid Linux username-safe slug (e.g. "lead-analyst") — this id doubles as the agent\'s OS username',
+			LINUX_USERNAME_RE,
+			'must be a lowercase slug: a letter, then letters, digits or hyphens, at most 32 chars (e.g. "lead-analyst") — this id doubles as the agent\'s OS username',
 		),
 	/** Display name — optional on input, defaulted to id below (ADR-0021: the
 	 * disk-YAML authoring format may omit it; every downstream consumer — the
 	 * in-memory template cache, every `missions` document, every tool payload —
 	 * always sees an explicit value, resolved exactly once, here). */
-	name: z.string().trim().optional(),
+	name: z.string().trim().max(200).optional(),
 	/** Free-text role label — same optional-on-input, defaulted-on-output rule as `name`. */
-	role: z.string().trim().optional(),
-	supervisor: z.string().trim().min(1),
-	systemPrompt: z.string().trim().min(1),
-	initialMentalMap: z.string().trim().min(1),
+	role: z.string().trim().max(200).optional(),
+	supervisor: z.string().trim().min(1).max(32),
+	systemPrompt: z.string().trim().min(1).max(MAX_SYSTEM_PROMPT_CHARS),
+	initialMentalMap: z.string().trim().min(1).max(MAX_MENTAL_MAP_CHARS),
 	limits: LimitsSchema.optional(),
 	/**
 	 * The Linux OS user this agent runs as.
 	 * In dev/test: set to a pool user provisioned by setup-dev.sh (e.g. "magi-w1").
 	 * In production Docker: omit — the daemon derives the username from agent.id
 	 * via ensureAgentUsers() at startup.
-	 * When present, must follow Linux username conventions: starts with a letter
-	 * or underscore, followed by letters, digits, hyphens, or underscores (max 32 chars).
+	 * When present, must satisfy LINUX_USERNAME_RE — the rule the OS-user helper
+	 * enforces: a letter, then letters, digits or hyphens (max 32 chars).
 	 */
 	linuxUser: z
 		.string()
 		.trim()
 		.regex(
-			/^[a-z_][a-z0-9_-]{0,31}$/,
-			'must be a valid Linux username (e.g. "magi-w1")',
+			LINUX_USERNAME_RE,
+			'must be a valid Linux username (e.g. "magi-w1"): a letter, then letters, digits or hyphens, at most 32 chars',
 		)
 		.optional(),
 	active: z.boolean().optional(),
@@ -100,7 +121,7 @@ export const AgentSchema = AgentInputSchema.transform((a) => ({
 export const TeamConfigSchema = z.object({
 	mission: z.object({
 		id: z.string().trim().min(1),
-		name: z.string().trim().min(1),
+		name: z.string().trim().min(1).max(200),
 		/** Inner-loop LLM. Overrides the MODEL env var. Use "/" for OpenRouter (e.g. "anthropic/claude-sonnet-4-6"). */
 		model: z.string().trim().min(1).optional(),
 		/** Vision model for FetchUrl, InspectImage, BrowseWeb. Overrides VISION_MODEL env var. */
@@ -154,7 +175,7 @@ export const TeamConfigSchema = z.object({
 		/** Fly Machines guest CPU count. Same trust/effect caveats as memoryMb. */
 		cpus: z.number().int().positive().max(4).optional(),
 	}),
-	agents: z.array(AgentSchema).min(1),
+	agents: z.array(AgentSchema).min(1).max(MAX_AGENTS),
 	/**
 	 * Limits for the daemon-injected mission-copilot agent (see ADR-0016).
 	 * A separate top-level field, not an entry in `agents[]`, because that
@@ -165,6 +186,60 @@ export const TeamConfigSchema = z.object({
 	 */
 	missionCopilotLimits: LimitsSchema.optional(),
 });
+
+/**
+ * Cross-field rules the per-field schema cannot express (LU1/RID1): agent
+ * ids are unique, no two agents share an OS user, no agent takes a reserved
+ * identity ("mission-copilot" is the daemon-injected copilot, ADR-0016 — but
+ * not "copilot", which is the control-plane copilot's own bootstrap config),
+ * and every supervisor is "user" or another agent of the team. Reported
+ * with zod paths so the message names the offending agent.
+ */
+function refineTeam(
+	cfg: z.infer<typeof TeamConfigSchema>,
+	ctx: z.RefinementCtx,
+): void {
+	const ids = new Set<string>();
+	const users = new Map<string, string>();
+	cfg.agents.forEach((a, i) => {
+		if (RESERVED_AGENT_IDS.has(a.id)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["agents", i, "id"],
+				message: `"${a.id}" is reserved for the platform (${[...RESERVED_AGENT_IDS].join(", ")}) and cannot be an agent id`,
+			});
+		}
+		if (ids.has(a.id)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["agents", i, "id"],
+				message: `duplicate agent id "${a.id}"`,
+			});
+		}
+		ids.add(a.id);
+		const user = a.linuxUser ?? a.id;
+		const other = users.get(user);
+		if (other !== undefined && other !== a.id) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["agents", i, "linuxUser"],
+				message: `agents "${other}" and "${a.id}" would share the OS user "${user}" — per-agent isolation requires one user each`,
+			});
+		}
+		users.set(user, a.id);
+	});
+	cfg.agents.forEach((a, i) => {
+		if (a.supervisor !== "user" && !ids.has(a.supervisor)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["agents", i, "supervisor"],
+				message: `supervisor "${a.supervisor}" is neither "user" nor an agent of this team`,
+			});
+		}
+	});
+}
+
+const RefinedTeamConfigSchema = TeamConfigSchema.superRefine(refineTeam);
 
 export type AgentConfig = z.infer<typeof AgentSchema>;
 export type TeamConfig = z.infer<typeof TeamConfigSchema>;
@@ -195,7 +270,7 @@ export type Limits = z.infer<typeof LimitsSchema>;
 export function parseTeamConfig(obj: unknown): TeamConfig {
 	let parsed: TeamConfig;
 	try {
-		parsed = TeamConfigSchema.parse(obj);
+		parsed = RefinedTeamConfigSchema.parse(obj);
 	} catch (e) {
 		if (e instanceof ZodError) {
 			const issues = e.issues
@@ -206,20 +281,6 @@ export function parseTeamConfig(obj: unknown): TeamConfig {
 			throw new Error(`Team config validation failed:\n${issues}`);
 		}
 		throw e;
-	}
-
-	// "mission-copilot" is reserved for the daemon-injected mission copilot
-	// agent (see ADR-0016) — it is never parsed from authored mission YAML.
-	// This is defense in depth for the structural guarantee that elevated
-	// tools are granted only to that literal agent id: rejecting it here means
-	// an authored team config can never collide with or spoof that identity.
-	// (Not "copilot" — that id belongs to the control-plane copilot's own
-	// bootstrap config, config/teams/copilot.yaml, an unrelated identity this
-	// check has no reason to touch.)
-	if (parsed.agents.some((a) => a.id === "mission-copilot")) {
-		throw new Error(
-			'Team config validation failed:\n  agents: id "mission-copilot" is reserved for the mission copilot (daemon-injected, see ADR-0016) and cannot be used in authored team config',
-		);
 	}
 
 	return parsed;

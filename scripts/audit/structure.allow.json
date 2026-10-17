@@ -63,7 +63,7 @@
 	"packages/agent-runtime-worker/src/mission-copilot-tools.ts": {
 		"lines": 1259,
 		"fns": {
-			"createMissionCopilotTools@144": 1117
+			"createMissionCopilotTools@148": 1113
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot.ts": {
@@ -87,7 +87,7 @@
 	"packages/agent-runtime-worker/src/objectives/tools.ts": {
 		"lines": 251,
 		"fns": {
-			"createObjectivesTools@34": 217
+			"createObjectivesTools@133": 217
 		}
 	},
 	"packages/agent-runtime-worker/src/orchestrator.ts": {
@@ -222,25 +222,25 @@
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
-		"lines": 1870,
+		"lines": 1863,
 		"fns": {
-			"readLimits@223": 172,
-			"createMissionsRouter@665": 1206,
-			"<anonymous>@1112": 137,
-			"<anonymous>@1461": 137,
-			"<anonymous>@1696": 124
+			"readLimits@220": 172,
+			"createMissionsRouter@662": 1201,
+			"<anonymous>@1106": 134,
+			"<anonymous>@1452": 137,
+			"<anonymous>@1687": 124
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {
-		"lines": 663,
+		"lines": 660,
 		"fns": {
 			"computeFlags@237": 166
 		}
 	},
 	"packages/control-plane/src/resource-upgrade.ts": {
-		"lines": 789,
+		"lines": 780,
 		"fns": {
-			"requestUpgrade@320": 143
+			"requestUpgrade@311": 143
 		}
 	}
 }

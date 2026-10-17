@@ -11,6 +11,7 @@ import type {
 	KpiEvent,
 	TaskEvent,
 } from "../src/objectives/types.js";
+import { GoalsFileSchema } from "../src/objectives/types.js";
 
 const T = (n: number) => `2026-06-25T0${n}:00:00.000Z`;
 
@@ -321,5 +322,86 @@ describe("objectives store — KPI fold", () => {
 			findObj(tree.objectives, "OBJ-1")?.kpis.find((k) => k.id === "K-auto")
 				?.value,
 		).toBeNull();
+	});
+});
+
+describe("objective tree integrity (OB3)", () => {
+	const base = {
+		title: "t",
+		owner: "lead",
+		status: "active" as const,
+		kpis: [],
+	};
+
+	it("GoalsFileSchema rejects duplicate ids, unknown parents and cycles", () => {
+		const parse = (objectives: unknown[]) =>
+			GoalsFileSchema.safeParse({ objectives });
+		expect(
+			parse([
+				{ id: "a", parent: null, ...base },
+				{ id: "a", parent: null, ...base },
+			]).success,
+		).toBe(false);
+		expect(parse([{ id: "a", parent: "ghost", ...base }]).success).toBe(false);
+		expect(parse([{ id: "a", parent: "a", ...base }]).success).toBe(false);
+		const two = parse([
+			{ id: "a", parent: "b", ...base },
+			{ id: "b", parent: "a", ...base },
+		]);
+		expect(two.success).toBe(false);
+		if (!two.success) {
+			expect(two.error.issues.map((i) => i.message).join("\n")).toMatch(
+				/own ancestor/,
+			);
+		}
+		expect(
+			parse([
+				{ id: "a", parent: null, ...base },
+				{ id: "b", parent: "a", ...base },
+				{ id: "c", parent: "b", ...base },
+			]).success,
+		).toBe(true);
+	});
+
+	it("GoalsFileSchema rejects a KPI id used twice across the tree", () => {
+		const kpi = {
+			id: "k1",
+			label: "x",
+			owner: "lead",
+			kind: "quantitative",
+			source: "agent-reported",
+		};
+		expect(
+			GoalsFileSchema.safeParse({
+				objectives: [
+					{ id: "a", parent: null, ...base, kpis: [kpi] },
+					{ id: "b", parent: null, ...base, kpis: [kpi] },
+				],
+			}).success,
+		).toBe(false);
+	});
+
+	it("foldStore terminates on a cyclic parent chain handed to it directly, showing the cycle members as roots", () => {
+		const goals = {
+			objectives: [
+				{ id: "a", parent: "b", ...base, budgetUsd: 0 },
+				{ id: "b", parent: "a", ...base, budgetUsd: 0 },
+				{ id: "root", parent: null, ...base, budgetUsd: 0 },
+			],
+		};
+		const tree = foldStore({
+			goals,
+			taskEvents: [],
+			kpiEvents: [],
+			costEvents: [
+				{ at: T(1), by: "lead", agentId: "lead", usd: 2, alloc: { a: 2 } },
+			],
+		});
+		// The cycle is broken at the first member visited: that one becomes a
+		// root, the other hangs under it; both stay visible and the fold ends.
+		expect(tree.objectives.map((o) => o.id)).toContain("root");
+		expect(findObj(tree.objectives, "a")).toBeDefined();
+		expect(findObj(tree.objectives, "b")).toBeDefined();
+		expect(findObj(tree.objectives, "a")?.costUsd).toBe(2);
 	});
 });

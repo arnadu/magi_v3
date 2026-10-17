@@ -24,4 +24,6 @@ T8-empty-catch maxcount=11 # R-11 (M5): log operation/input/consequence, or just
 T9-escape-hatches maxcount=20 # R-12 (M5): each cast gets a one-line constraint or goes (remyh, 2026-10-16)
 T10-optional-cap maxcount=1 # LM1: mandatory default cap lands in M3 (WS-1 F) (remyh, 2026-10-16)
 T11-comment-history maxcount=115 # INV-9: shrinks as comments are touched; no bulk rewrite (remyh, 2026-10-16)
-T12-raw-mailbox-insert maxcount=6 # MBX1: postMailbox() helper lands in M2 (WS-1 D4) (remyh, 2026-10-16)
+# T12: no entries — the control plane writes mail through mailbox-writer.ts (postMailbox) and the
+# daemon through MailboxRepository.post(); the repository's own insert is the one sanctioned site.
+T12-raw-mailbox-insert ^packages/agent-runtime-worker/src/mailbox\.ts: # MailboxRepository.post, the writer itself (remyh, 2026-10-17)

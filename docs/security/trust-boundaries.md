@@ -52,6 +52,9 @@ findings scheduled in `docs/plans/audit-oct26-remediation-plan.md`; the audit it
 | Deliver scheduled messages, wake machines (control plane) | `scheduled_messages` docs | mission copilot, control-plane copilot | mission-scoped; control-plane copilot create/cancel verified against the mission’s owner and roster, cancel requires a `pending` match (F-055); mission-copilot `CreateScheduledMessage` validation is M2 D5 |
 | Provision / resize / destroy machines (control plane) | mission doc fields, Fly API | operator routes; mission copilot (TB-22, bounded) | `machine-lifecycle.ts` single choke point; `volumeExists` guard; `fix_mission_volume` derives ids server-side |
 | Relay anomalies into copilot inboxes (daemon, control plane) | message text | agent-influenced strings (paths, errors) | **open** — AN1: unwrapped `from: "system"` text (M2) |
+| Write to the objectives store (daemon, in-process tools) | task/KPI/allocation events, goals tree | any agent of the mission; the control-plane copilot (goals) | `GoalsFileSchema` rejects duplicates/unknown parents/cycles on write and read, `foldStore` detaches cycles; task/KPI writes require ownership (assignee/creator/objective owner, or operator/mission copilot); `Allocate` targets slug-only into a null-prototype map (F-056) |
+| Write a mailbox message (control plane) | from/to/subject/body | control-plane routes, resource monitor, relays | one writer, `postMailbox` → daemon `MailboxRepository.post`; tripwire T12 blocks raw inserts (F-057) |
+| Parse a team config (agent roster) | agent ids, `linuxUser`, supervisors | tenant, mission copilot, control-plane copilot | `refineTeam`: unique ids, one OS user per agent, reserved ids refused, supervisors resolve, size caps; username rule = the OS helper’s (F-058) |
 
 ## Changing who can supply an input (INV-3)
 

@@ -28,7 +28,6 @@
  * Approach: prompt/report wording is judged manually, not asserted on.
  */
 
-import { randomUUID } from "node:crypto";
 import {
 	ATLAS_STORAGE,
 	createMongoAgentStatsRepository,
@@ -45,6 +44,7 @@ import {
 	upgradedMsSince,
 } from "./machine-segments.js";
 import type { MachineShape } from "./machine-shapes.js";
+import { postMailbox } from "./mailbox-writer.js";
 import { upgradeIdleRatio } from "./resource-alerts.js";
 import {
 	lastActivityAt,
@@ -577,15 +577,12 @@ async function claimAndPersistSnapshot(
 }
 
 async function postReportMail(db: Db, report: DailyReport): Promise<void> {
-	await db.collection("mailbox").insertOne({
-		id: randomUUID(),
+	await postMailbox(db, {
 		missionId: `copilot-${report.userId}`,
 		from: "system",
 		to: ["copilot"],
 		subject: `Daily resource report — ${report.date}`,
 		body: renderDailyReport(report),
-		timestamp: new Date(),
-		readBy: [],
 	});
 }
 

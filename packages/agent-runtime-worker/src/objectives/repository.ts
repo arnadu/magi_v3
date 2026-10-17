@@ -18,7 +18,7 @@
  * about the fold logic changed, only where the events come from.
  */
 
-import type { Db } from "mongodb";
+import type { Collection, Db } from "mongodb";
 import type { FoldOptions } from "./store.js";
 import { foldStore } from "./store.js";
 import {
@@ -69,6 +69,54 @@ interface GoalsDoc {
 
 type EventDoc<K extends string, E> = { missionId: string; kind: K } & E;
 
+interface Indexable {
+	createIndex(
+		spec: Record<string, 1 | -1>,
+		opts?: { unique?: boolean },
+	): Promise<string>;
+}
+
+/** OB4: every turn start folds all of a mission's events; without these the reads scanned the whole collection across missions. */
+function ensureObjectivesIndexes(
+	eventsCol: Indexable,
+	goalsCol: Indexable,
+): void {
+	eventsCol
+		.createIndex({ missionId: 1, kind: 1, at: 1 })
+		.catch((e: unknown) =>
+			console.warn(
+				`[objectives] Failed to create objectivesEvents index: ${(e as Error).message} — reads fall back to a collection scan`,
+			),
+		);
+	goalsCol
+		.createIndex({ missionId: 1 }, { unique: true })
+		.catch((e: unknown) =>
+			console.warn(
+				`[objectives] Failed to create objectivesGoals index: ${(e as Error).message}`,
+			),
+		);
+}
+
+/** A stored tree that no longer passes the schema (e.g. a cycle written before F-056) folds as empty rather than wedging every reader. */
+async function readGoals(
+	goalsCol: Collection<GoalsDoc>,
+	missionId: string,
+): Promise<GoalsFile> {
+	const doc = await goalsCol.findOne(
+		{ missionId },
+		{ projection: { objectives: 1 } },
+	);
+	if (!doc) return { objectives: [] };
+	try {
+		return GoalsFileSchema.parse({ objectives: doc.objectives });
+	} catch (e) {
+		console.warn(
+			`[objectives] ignoring invalid stored goals for mission ${missionId}: ${(e as Error).message}`,
+		);
+		return { objectives: [] };
+	}
+}
+
 export function createMongoObjectivesRepository(db: Db): ObjectivesRepository {
 	const goalsCol = db.collection<GoalsDoc>("objectivesGoals");
 	const eventsCol = db.collection<
@@ -77,6 +125,8 @@ export function createMongoObjectivesRepository(db: Db): ObjectivesRepository {
 		| EventDoc<"cost", CostEvent>
 		| EventDoc<"alloc", AllocEvent>
 	>("objectivesEvents");
+
+	ensureObjectivesIndexes(eventsCol, goalsCol);
 
 	async function readEvents<K extends string, E>(
 		missionId: string,
@@ -103,25 +153,9 @@ export function createMongoObjectivesRepository(db: Db): ObjectivesRepository {
 		} as never);
 	}
 
-	async function readGoalsImpl(missionId: string): Promise<GoalsFile> {
-		const doc = await goalsCol.findOne(
-			{ missionId },
-			{ projection: { objectives: 1 } },
-		);
-		if (!doc) return { objectives: [] };
-		try {
-			return GoalsFileSchema.parse({ objectives: doc.objectives });
-		} catch (e) {
-			console.warn(
-				`[objectives] ignoring invalid stored goals for mission ${missionId}: ${(e as Error).message}`,
-			);
-			return { objectives: [] };
-		}
-	}
-
 	return {
 		async readTree(missionId, opts = {}) {
-			const goals = await readGoalsImpl(missionId);
+			const goals = await readGoals(goalsCol, missionId);
 			const [taskEvents, kpiEvents, costEvents] = await Promise.all([
 				readEvents<"task", TaskEvent>(missionId, "task"),
 				readEvents<"kpi", KpiEvent>(missionId, "kpi"),
@@ -139,7 +173,7 @@ export function createMongoObjectivesRepository(db: Db): ObjectivesRepository {
 			);
 		},
 
-		readGoals: readGoalsImpl,
+		readGoals: (missionId) => readGoals(goalsCol, missionId),
 
 		async saveGoals(missionId, goals, updatedBy) {
 			const validated = GoalsFileSchema.parse(goals);

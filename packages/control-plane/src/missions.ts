@@ -14,7 +14,6 @@
  * DELETE /api/missions/:id          — destroy machine + volume (irreversible)
  */
 
-import { randomUUID } from "node:crypto";
 import {
 	type AgentConfig,
 	type Limits,
@@ -48,6 +47,7 @@ import {
 } from "./fly-machines.js";
 import { destroyTracked, provisionTracked } from "./machine-lifecycle.js";
 import { upgradedMsSince } from "./machine-segments.js";
+import { postMailbox } from "./mailbox-writer.js";
 import { liveStateToStatus } from "./mission-status.js";
 import { deriveMonitorToken, monitorAuthHeaders } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
@@ -208,15 +208,12 @@ export async function postLimitsAudit(
 	subject: string,
 	body: string,
 ): Promise<void> {
-	await db.collection("mailbox").insertOne({
-		id: randomUUID(),
+	await postMailbox(db, {
 		missionId,
 		from: "user",
 		to: ["mission-copilot"],
 		subject,
 		body,
-		timestamp: new Date(),
-		readBy: [],
 	});
 }
 
@@ -944,16 +941,13 @@ export function createMissionsRouter(db: Db): Router {
 				.json({ error: "to (string | string[]) and body are required" });
 			return;
 		}
-		await db.collection("mailbox").insertOne({
-			id: randomUUID(),
+		await postMailbox(db, {
 			missionId: req.params.id,
 			from: "user",
 			to,
 			subject:
 				(req.body?.subject as string | undefined) ?? "Message from operator",
 			body,
-			timestamp: new Date(),
-			readBy: [],
 		});
 		res.json({ ok: true });
 	});
@@ -1232,15 +1226,12 @@ export function createMissionsRouter(db: Db): Router {
 				{ _id: latest._id },
 				{ $set: { mentalMapHtml: html } },
 			);
-			await db.collection("mailbox").insertOne({
-				id: randomUUID(),
+			await postMailbox(db, {
 				missionId: req.params.id,
 				from: "user",
 				to: [agentId],
 				subject: "Your mental map was edited directly",
 				body: "The operator edited your mental map directly while the mission was suspended. Review the current content.",
-				timestamp: new Date(),
-				readBy: [],
 			});
 		}
 

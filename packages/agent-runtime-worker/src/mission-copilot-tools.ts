@@ -50,6 +50,10 @@ import type { MailboxRepository } from "./mailbox.js";
 import { createMongoMissionConfigRepository } from "./mission-config.js";
 import { createMongoMissionConfigWriter } from "./mission-config-revisions.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
+import {
+	resolveDeliverAt,
+	scheduleInputProblem,
+} from "./mission-copilot-schedule-input.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
 import { type ObjectiveDef, ObjectiveDefSchema } from "./objectives/types.js";
 import { createResourceUpgradeTools } from "./resource-upgrade-tool.js";
@@ -764,6 +768,11 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const capUsd = args.capUsd as number;
+			if (!Number.isFinite(capUsd) || capUsd <= 0 || capUsd > 100_000) {
+				return err(
+					`SetMissionSpendCap: capUsd must be a positive finite amount in USD (got ${String(capUsd)})`,
+				);
+			}
 			const result = await monitorPost("/set-budget", { capUsd });
 			if (!result.ok) return err(`Failed to set budget: ${result.body}`);
 			await auditPost(
@@ -839,30 +848,21 @@ export function createMissionCopilotTools(
 			),
 		}),
 		async execute(_id, args) {
-			const to = args.to as string[];
+			const to = [...new Set(args.to as string[])];
 			const subject = args.subject as string;
 			const body = args.body as string;
 			const cron = args.cron as string | undefined;
 			const label = args.label as string | undefined;
-			let deliverAt: Date;
-			if (args.deliverAt) {
-				deliverAt = new Date(args.deliverAt as string);
-			} else if (cron) {
-				// A cron-only schedule's first delivery must be the expression's
-				// own next occurrence — defaulting to "now" (a real bug found
-				// live: a "0 8 * * 1" weekly schedule fired within minutes of
-				// being created, not next Monday) fires it immediately instead
-				// of respecting the schedule the caller actually asked for.
-				try {
-					deliverAt = parseExpression(cron).next().toDate();
-				} catch (e) {
-					return err(
-						`Invalid cron expression "${cron}": ${(e as Error).message}`,
-					);
-				}
-			} else {
-				return err("Provide either deliverAt or cron.");
-			}
+			const invalid = await scheduleInputProblem(db, missionId, {
+				to,
+				subject,
+				body,
+				label,
+			});
+			if (invalid) return err(`CreateScheduledMessage: ${invalid}`);
+			const when = resolveDeliverAt(args.deliverAt as string | undefined, cron);
+			if ("error" in when) return err(`CreateScheduledMessage: ${when.error}`);
+			const deliverAt = when.deliverAt;
 			const result = await db.collection("scheduled_messages").insertOne({
 				missionId,
 				to,

@@ -16,12 +16,18 @@ export function createMailboxRoutes(deps: MailboxRoutesDeps): RouteEntry[] {
 			method: "GET",
 			path: "/mailbox",
 			async handler({ res }) {
-				const msgs = await deps.db
-					.collection("mailbox")
-					.find({ missionId: deps.missionId })
-					.sort({ timestamp: 1 })
-					.limit(500)
-					.toArray();
+				// The newest 500, delivered oldest-first: sorting ascending and
+				// limiting returned the *oldest* 500 and hid every recent message
+				// once a mission passed that count (MR1; same bug as #63 had in
+				// /conversations).
+				const msgs = (
+					await deps.db
+						.collection("mailbox")
+						.find({ missionId: deps.missionId })
+						.sort({ timestamp: -1 })
+						.limit(500)
+						.toArray()
+				).reverse();
 				const payload = msgs.map((doc) => {
 					const d = doc as {
 						_id: unknown;

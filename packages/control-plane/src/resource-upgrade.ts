@@ -18,7 +18,6 @@
  * requesting daemon is stopped by the resize itself.
  */
 
-import { randomUUID } from "node:crypto";
 import {
 	createMongoAlertStateStore,
 	createMongoAnomalyRecorderForMission,
@@ -44,6 +43,7 @@ import {
 	sameShape,
 	validateUpgradeRequest,
 } from "./machine-shapes.js";
+import { postMailbox } from "./mailbox-writer.js";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -116,16 +116,7 @@ async function post(
 	subject: string,
 	body: string,
 ): Promise<void> {
-	await db.collection("mailbox").insertOne({
-		id: randomUUID(),
-		missionId,
-		from: "system",
-		to: [...new Set(to)],
-		subject,
-		body,
-		timestamp: new Date(),
-		readBy: [],
-	});
+	await postMailbox(db, { missionId, from: "system", to, subject, body });
 }
 
 /** Tell the operator, the mission-copilot and (if any) the requesting agent; best-effort. */
