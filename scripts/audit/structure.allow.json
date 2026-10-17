@@ -38,7 +38,7 @@
 	"packages/agent-runtime-worker/src/document-processor.ts": {
 		"lines": 1147,
 		"fns": {
-			"processPdf@632": 151
+			"processPdf@690": 146
 		}
 	},
 	"packages/agent-runtime-worker/src/loop.ts": {

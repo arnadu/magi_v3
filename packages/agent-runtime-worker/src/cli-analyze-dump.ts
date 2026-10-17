@@ -139,11 +139,19 @@ function extractBashVerb(cmd: string): string {
 	return "";
 }
 
+/**
+ * CSV cell. A leading `=`, `+`, `-`, `@`, tab or CR makes a spreadsheet
+ * evaluate the cell as a formula when the export is opened — and these cells
+ * carry agent- and web-influenced text (Bash commands, tool names), so a
+ * crafted value could exfiltrate via `=HYPERLINK(...)`. Such cells get a
+ * leading apostrophe, the conventional neutraliser.
+ */
 function escapeCsv(value: string): string {
-	if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-		return `"${value.replace(/"/g, '""')}"`;
+	const v = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+	if (v.includes(",") || v.includes('"') || v.includes("\n") || v !== value) {
+		return `"${v.replace(/"/g, '""')}"`;
 	}
-	return value;
+	return v;
 }
 
 main().catch((e: unknown) => {

@@ -102,18 +102,41 @@ async function main(): Promise<void> {
 
 	const { client, db } = await connectMongo(mongoUri);
 	try {
-		const results = await Promise.all([
-			db.collection("mailbox").deleteMany({ missionId }),
-			db.collection("conversationMessages").deleteMany({ missionId }),
-			db.collection("llmCallLog").deleteMany({ missionId }),
-			db.collection("scheduled_messages").deleteMany({ missionId }),
-		]);
-		const [mailbox, conv, llm, sched] = results;
+		// Every collection keyed by missionId. Leaving missionStats behind kept
+		// a tripped spend cap tripped after a "full" reset; leaving the turn
+		// stats, objectives, revisions, anomalies and resource samples behind
+		// made the cockpit show a history the mission no longer had.
+		const byMissionId = [
+			"mailbox",
+			"conversationMessages",
+			"llmCallLog",
+			"scheduled_messages",
+			"missionStats",
+			"agentTurnStats",
+			"objectivesGoals",
+			"missionConfigRevisions",
+			"missionAnomalies",
+			"missionResources",
+			"machineSegments",
+		];
+		const results = await Promise.all(
+			byMissionId.map((name) => db.collection(name).deleteMany({ missionId })),
+		);
+		// resourceAlertState is keyed `<missionId>:<category>` in _id.
+		const alerts = await db
+			.collection<{ _id: string }>("resourceAlertState")
+			.deleteMany({
+				_id: {
+					$regex: `^${missionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`,
+				},
+			});
 		console.log(`\nDeleted:`);
-		console.log(`  mailbox:              ${mailbox.deletedCount} documents`);
-		console.log(`  conversationMessages: ${conv.deletedCount} documents`);
-		console.log(`  llmCallLog:           ${llm.deletedCount} documents`);
-		console.log(`  scheduled_messages:   ${sched.deletedCount} documents`);
+		byMissionId.forEach((name, i) => {
+			console.log(`  ${name.padEnd(22)} ${results[i].deletedCount} documents`);
+		});
+		console.log(
+			`  ${"resourceAlertState".padEnd(22)} ${alerts.deletedCount} documents`,
+		);
 	} finally {
 		await client.close();
 	}

@@ -40,7 +40,9 @@ import {
 	createMongoAgentStatsRepository,
 	StatsCollector,
 } from "./agent-stats.js";
+import { resolveCliSpendCap, stopWhenCapReached } from "./cli-cap.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
+import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
 import { resolveModel } from "./models.js";
 import { connectMongo } from "./mongo.js";
@@ -170,6 +172,8 @@ async function main(): Promise<void> {
 	const statsCollector = new StatsCollector(
 		createMongoAgentStatsRepository(db),
 	);
+	const llmCallLog = createMongoLlmCallLogRepository(db);
+	const maxCostUsd = resolveCliSpendCap(teamConfig.mission.maxCostUsd);
 
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config has no agents");
@@ -206,12 +210,23 @@ async function main(): Promise<void> {
 				mailboxRepo,
 				conversationRepo,
 				statsCollector,
+				llmCallLog,
 				model,
 				visionModel,
 				workdir,
 				workspaceManager,
 				step: flags.has("--step"),
-				onAgentMessage: (agentId, msg) => logMessage(msg, agentId),
+				onAgentMessage: (agentId, msg) => {
+					logMessage(msg, agentId);
+					if (maxCostUsd !== null && msg.role === "assistant") {
+						void stopWhenCapReached(
+							statsCollector,
+							teamConfig.mission.id,
+							maxCostUsd,
+							ac,
+						);
+					}
+				},
 				teardownOnExit: true,
 			},
 			ac.signal,

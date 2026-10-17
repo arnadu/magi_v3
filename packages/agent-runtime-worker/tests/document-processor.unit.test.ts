@@ -406,3 +406,77 @@ describe("processBuffer", () => {
 		).resolves.toBeInstanceOf(Buffer);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// ZIP bounds (DOC1 / DOC2)
+// ---------------------------------------------------------------------------
+
+describe("processBuffer — ZIP bounds", () => {
+	async function zipOf(
+		files: Record<string, Buffer | string>,
+	): Promise<Buffer> {
+		const { default: JSZip } = await import("jszip");
+		const z = new JSZip();
+		for (const [name, data] of Object.entries(files)) z.file(name, data);
+		return Buffer.from(
+			await z.generateAsync({
+				type: "nodebuffer",
+				compression: "DEFLATE",
+				compressionOptions: { level: 9 },
+			}),
+		);
+	}
+
+	it("never expands an archive inside an archive, whatever it is called", async () => {
+		const inner = await zipOf({ "deep.txt": "secret depth" });
+		const outer = await zipOf({ "layer.dat": inner, "note.txt": "hello" });
+		const r = await processBuffer(outer, {
+			filename: "bundle.zip",
+			artifactsDir: dir,
+		});
+		expect(r.format).toBe("zip");
+		expect(r.processingStatus).toBe("partial");
+		const content = await readContent(r.contentPath);
+		expect(content).toContain("note.txt");
+		expect(content).not.toContain("secret depth");
+		expect(
+			r.unprocessed?.some(
+				(u) => u.item === "layer.dat" && u.reason === "nested-zip",
+			),
+		).toBe(true);
+	});
+
+	it("skips an entry whose declared uncompressed size exceeds the per-file limit without inflating it", async () => {
+		const big = Buffer.alloc(2 * 1024 * 1024, 0); // compresses to a few KB
+		const archive = await zipOf({ "zeros.bin": big, "small.txt": "ok" });
+		const r = await processBuffer(archive, {
+			filename: "bomb.zip",
+			artifactsDir: dir,
+			limits: { maxZipEntryBytes: 1024 * 1024 },
+		});
+		expect(r.processingStatus).toBe("partial");
+		expect(r.unprocessed).toEqual(
+			expect.arrayContaining([{ item: "zeros.bin", reason: "too-large" }]),
+		);
+		const content = await readContent(r.contentPath);
+		expect(content).toContain("small.txt");
+	});
+
+	it("stops once the archive's total inflated size would pass the limit", async () => {
+		const chunk = Buffer.alloc(600 * 1024, 1);
+		const archive = await zipOf({
+			"a.bin": chunk,
+			"b.bin": chunk,
+			"c.bin": chunk,
+		});
+		const r = await processBuffer(archive, {
+			filename: "many.zip",
+			artifactsDir: dir,
+			limits: { maxZipTotalBytes: 1300 * 1024 },
+		});
+		expect(r.unprocessed?.map((u) => u.reason)).toContain("over-size-limit");
+		expect(
+			r.unprocessed?.filter((u) => u.reason === "over-size-limit"),
+		).toHaveLength(1);
+	});
+});
