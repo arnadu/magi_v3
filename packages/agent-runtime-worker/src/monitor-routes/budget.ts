@@ -38,6 +38,19 @@ export interface BudgetDeps {
 	statusPayload: () => Promise<unknown>;
 }
 
+/**
+ * "Extend by $X" on a mission with no cap used to *create* a cap of $X —
+ * usually below what was already spent, so the mission paused immediately
+ * (audit BD1). Without a cap the extension starts from the spend so far.
+ */
+export function capAfterExtend(
+	currentCap: number | undefined,
+	spentUsd: number,
+	addUsd: number,
+): number {
+	return (currentCap ?? spentUsd) + addUsd;
+}
+
 /** POST /extend-budget, /set-budget — operator-driven spend-cap changes. */
 export function createBudgetRoutes(deps: BudgetDeps): RouteEntry[] {
 	return [
@@ -60,8 +73,14 @@ export function createBudgetRoutes(deps: BudgetDeps): RouteEntry[] {
 				// including a value set by another writer (cockpit, mission copilot)
 				// since this process last checked.
 				const live = await deps.missionConfig.readTeamConfig(deps.missionId);
-				const previousCap = live?.mission.maxCostUsd ?? 0;
-				const newCapUsd = previousCap + addUsd;
+				const snapshot = await deps.statsCollector.readMissionSnapshot(
+					deps.missionId,
+				);
+				const newCapUsd = capAfterExtend(
+					live?.mission.maxCostUsd,
+					missionLifetimeCostUsd(snapshot),
+					addUsd,
+				);
 				try {
 					await deps.missionConfig.writeMissionCap(deps.missionId, newCapUsd);
 				} catch (e) {

@@ -39,6 +39,7 @@ export type AnomalyCategory =
 	| "job-failure"
 	| "scheduling-failure"
 	| "unclean-restart"
+	| "reflection-failed"
 	// Resource oversight (ADR-0031/0032). The platform-level Atlas storage alert
 	// has no mission and is posted straight to the admin copilots' mailboxes
 	// instead of going through this recorder.

@@ -1,6 +1,22 @@
-import { createWriteStream, mkdirSync } from "node:fs";
+import { createWriteStream, mkdirSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { BootContext } from "./context.js";
+
+/** Above this the previous log is kept once as `daemon.log.1` and a fresh file starts (LG1). */
+export const LOG_ROTATE_BYTES = 50 * 1024 * 1024;
+
+export function rotateIfLarge(
+	logPath: string,
+	limit: number = LOG_ROTATE_BYTES,
+): boolean {
+	try {
+		if (statSync(logPath).size < limit) return false;
+		renameSync(logPath, `${logPath}.1`);
+		return true;
+	} catch {
+		return false; // no file yet, or not renameable — append as before
+	}
+}
 
 /**
  * Tee all stdout/stderr to $AGENT_WORKDIR/daemon.log (append mode, survives
@@ -22,21 +38,36 @@ export function setupLogTee(): Pick<BootContext, never> {
 	const workdirForLog = process.env.AGENT_WORKDIR ?? process.cwd();
 	try {
 		mkdirSync(workdirForLog, { recursive: true });
-		const logStream = createWriteStream(join(workdirForLog, "daemon.log"), {
-			flags: "a",
-		});
+		const logPath = join(workdirForLog, "daemon.log");
+		const rotated = rotateIfLarge(logPath);
+		const logStream = createWriteStream(logPath, { flags: "a" });
 		const origStdoutWrite = process.stdout.write.bind(process.stdout);
 		const origStderrWrite = process.stderr.write.bind(process.stderr);
+		// A write error on the log file (ENOSPC is the documented one) used to be
+		// an unhandled stream error — a crash of the whole daemon because its
+		// log disk was full. Stop teeing, keep running.
+		let teeing = true;
+		logStream.on("error", (e) => {
+			teeing = false;
+			origStderrWrite(
+				`[daemon] daemon.log write failed: ${e.message} — file logging disabled for this process; stdout/stderr continue\n`,
+			);
+		});
 		// biome-ignore lint/suspicious/noExplicitAny: wrapping native write
 		(process.stdout.write as any) = (chunk: any, ...args: any[]) => {
-			logStream.write(chunk);
+			if (teeing) logStream.write(chunk);
 			return origStdoutWrite(chunk, ...args);
 		};
 		// biome-ignore lint/suspicious/noExplicitAny: wrapping native write
 		(process.stderr.write as any) = (chunk: any, ...args: any[]) => {
-			logStream.write(chunk);
+			if (teeing) logStream.write(chunk);
 			return origStderrWrite(chunk, ...args);
 		};
+		if (rotated) {
+			console.log(
+				`[daemon] daemon.log exceeded ${LOG_ROTATE_BYTES} bytes — previous log kept as daemon.log.1`,
+			);
+		}
 	} catch {
 		// Log setup failure is non-fatal — daemon continues without file logging.
 	}

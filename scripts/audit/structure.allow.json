@@ -2,7 +2,7 @@
 	"packages/agent-runtime-worker/src/agent-runner.ts": {
 		"lines": 945,
 		"fns": {
-			"runAgent@263": 682
+			"runAgent@266": 682
 		}
 	},
 	"packages/agent-runtime-worker/src/agent-stats.ts": {
@@ -26,8 +26,7 @@
 	"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts": {
 		"lines": 343,
 		"fns": {
-			"createOnAgentMessage@79": 123,
-			"createRemainingOrchestrationCallbacks@219": 124
+			"createRemainingOrchestrationCallbacks@274": 124
 		}
 	},
 	"packages/agent-runtime-worker/src/daemon.ts": {

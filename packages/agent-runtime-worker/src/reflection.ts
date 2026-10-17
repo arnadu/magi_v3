@@ -10,6 +10,8 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from "@mariozechner/pi-ai";
+import type { AnomalyRecorder } from "./anomaly.js";
+
 import { pruneEphemeralResults } from "./context-utils.js";
 import type {
 	ConversationRepository,
@@ -329,15 +331,61 @@ export async function runReflection(
 	//    isReflection is NOT set — the summary must appear in load() so the agent
 	//    sees it as prior context on the next wakeup.
 	//    The summary lives above the compact cutpoint so compact() can never catch it.
-	if (summary) {
-		const summaryMsg: SummaryMessage = { role: "summary", content: summary };
-		await ctx.conversationRepo.append(agentId, missionId, [
-			{ turnNumber: reflectionTurnNumber, message: summaryMsg },
-		]);
+	if (!summary) {
+		// Compacting without a summary would delete the session's memory and
+		// replace it with nothing (audit RF1). Leave the history uncompacted —
+		// the next wakeup reflects again — and say so loudly.
+		console.error(
+			`[reflection] ${agentId}: reflection produced no summary { missionId: "${missionId}", turn: ${ctx.turnNumber} } — history left uncompacted, retried at the next wakeup`,
+		);
+		return;
 	}
+	// The summary record also carries the post-reflection mental map, so a
+	// crash between here and the next assistant message cannot lose the
+	// edits reflection just made (audit RF3).
+	const summaryMsg: SummaryMessage = { role: "summary", content: summary };
+	await ctx.conversationRepo.append(agentId, missionId, [
+		{
+			turnNumber: reflectionTurnNumber,
+			message: summaryMsg,
+			mentalMapHtml: ctx.getMentalMap() ?? undefined,
+		},
+	]);
 
 	// 5. Compact ALL messages from the previous session.
 	//    keepFrom = turnNumber + 1 targets everything with turnNumber < turnNumber+1,
 	//    i.e. the entire session just reflected on.
 	await ctx.conversationRepo.compact(agentId, missionId, ctx.turnNumber + 1);
+}
+
+/**
+ * A reflection that throws (provider error, abort) used to fail the whole
+ * turn before the loop ran, and since nothing was compacted the next wakeup
+ * retried the same reflection first — a livelock while the provider was
+ * unhappy (audit RF2). The turn proceeds on the uncompacted history and the
+ * failure is recorded as a soft anomaly.
+ */
+export async function reflectGuarded(
+	agentId: string,
+	missionId: string,
+	recorder: Pick<AnomalyRecorder, "record"> | undefined,
+	run: () => Promise<void>,
+): Promise<void> {
+	try {
+		await run();
+	} catch (e) {
+		const message = e instanceof Error ? e.message : String(e);
+		console.error(
+			`[runAgent] ${agentId}: reflection failed { missionId: "${missionId}", error: ${JSON.stringify(message)} } — continuing the turn without compaction`,
+		);
+		await recorder
+			?.record({
+				missionId,
+				agentId,
+				category: "reflection-failed",
+				severity: "soft",
+				message: `Reflection for "${agentId}" failed: ${message}. The turn ran on uncompacted history; it is retried at the next wakeup.`,
+			})
+			.catch(() => {});
+	}
 }

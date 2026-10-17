@@ -76,6 +76,117 @@ function logMessage(msg: Message, agentId?: string): void {
  * callbacks, extracted on its own given its size and the safety-critical
  * spend-cap logic it contains.
  */
+/** Repeat the over-cap mail/anomaly at most this often while a mission stays over its cap. */
+export const CAP_ALERT_DEDUPE_MS = 10 * 60_000;
+/** After this many consecutive failed cap checks the mission pauses rather than spending blind. */
+export const CAP_CHECK_FAIL_CLOSED_AFTER = 3;
+
+/**
+ * OC1: one alert per cap breach, not one per LLM call (N concurrent calls
+ * over the cap used to produce N mails and N copilot wake-ups), and a check
+ * that keeps failing stops failing *open*.
+ */
+export interface CapCheckState {
+	alertedAt: number;
+	consecutiveFailures: number;
+}
+
+export async function enforceMissionCap(
+	ctx: Pick<
+		BootContext,
+		| "monitor"
+		| "statsCollector"
+		| "missionId"
+		| "missionConfigRepo"
+		| "maxCostUsd"
+		| "anomalyRecorder"
+		| "mailboxRepo"
+	>,
+	state: CapCheckState,
+): Promise<void> {
+	// Mission-wide spend cap (ADR-0018): read the cap fresh from the
+	// mission's persisted config on every call — never the boot-time
+	// teamConfig snapshot — so a cap added, changed, or cleared live
+	// (cockpit or mission copilot) is enforced without a restart.
+	// Falls back to the boot-time value (mission config or
+	// MAX_COST_USD env var, resolved once above) when a live read
+	// fails or the live doc genuinely has no cap configured. A
+	// transient Mongo read failure must not crash the agent's turn —
+	// fail open (skip this one check) and log; both reads are
+	// re-attempted on every subsequent LLM call, so a one-off hiccup
+	// self-heals rather than blocking the mission.
+	try {
+		const [snapshot, liveConfig] = await Promise.all([
+			ctx.statsCollector.readMissionSnapshot(ctx.missionId),
+			ctx.missionConfigRepo.readTeamConfig(ctx.missionId),
+		]);
+		const effectiveCap = liveConfig?.mission.maxCostUsd ?? ctx.maxCostUsd;
+		if (effectiveCap !== null) {
+			const missionTotal = missionLifetimeCostUsd(snapshot);
+			if (missionTotal >= effectiveCap) {
+				await ctx.monitor.notifyCostPause(missionTotal, effectiveCap);
+				const now = Date.now();
+				if (now - state.alertedAt < CAP_ALERT_DEDUPE_MS) return;
+				state.alertedAt = now;
+				// This path previously never woke the copilot or the
+				// operator (issue #41) — only a dashboard-only SSE event,
+				// unlike the per-agent path above. A silent mission-wide
+				// pause cost 5 days of unattended operation in production.
+				const pauseBody = `Mission-wide spend cap reached: $${missionTotal.toFixed(2)} of $${effectiveCap.toFixed(2)}. All agents are paused until the cap is raised or cleared.`;
+				ctx.anomalyRecorder
+					.record({
+						missionId: ctx.missionId,
+						category: "limit-breach",
+						severity: "hard",
+						message: pauseBody,
+					})
+					.catch((e: Error) =>
+						console.error(
+							`[daemon] failed to record mission-cap anomaly { missionId: "${ctx.missionId}" }: ${e.message}`,
+						),
+					);
+				ctx.mailboxRepo
+					.post({
+						missionId: ctx.missionId,
+						from: "system",
+						to: ["user"],
+						subject: "Mission spend cap reached",
+						body: pauseBody,
+					})
+					.catch((e: Error) =>
+						console.error(
+							`[daemon] failed to notify operator of mission-cap pause { missionId: "${ctx.missionId}" }: ${e.message}`,
+						),
+					);
+			}
+		}
+		state.consecutiveFailures = 0;
+	} catch (e) {
+		state.consecutiveFailures++;
+		console.error(
+			`[daemon] mission cap check failed { missionId: ${ctx.missionId}, consecutive: ${state.consecutiveFailures} }: ${(e as Error).message}`,
+		);
+		if (state.consecutiveFailures >= CAP_CHECK_FAIL_CLOSED_AFTER) {
+			// Three LLM calls in a row with no way to read the spend: stop
+			// spending until an operator (or a recovered Mongo) says
+			// otherwise — the same pause the cap itself triggers.
+			await ctx.monitor
+				.notifyCostPause(Number.NaN, ctx.maxCostUsd ?? Number.NaN)
+				.catch(() => {});
+			ctx.mailboxRepo
+				.post({
+					missionId: ctx.missionId,
+					from: "system",
+					to: ["user"],
+					subject: "Mission paused: spend cannot be verified",
+					body: `The spend-cap check failed ${state.consecutiveFailures} times in a row (${(e as Error).message}). All agents are paused until the cap check succeeds again or you resume the mission.`,
+				})
+				.catch(() => {});
+			state.consecutiveFailures = 0;
+		}
+	}
+}
+
 export function createOnAgentMessage(
 	ctx: Pick<
 		BootContext,
@@ -89,6 +200,7 @@ export function createOnAgentMessage(
 		| "mailboxRepo"
 	>,
 ): (agentId: string, msg: Message) => Promise<void> {
+	const capState: CapCheckState = { alertedAt: 0, consecutiveFailures: 0 };
 	return async (agentId, msg) => {
 		logMessage(msg, agentId);
 		if (msg.role !== "assistant") return;
@@ -111,64 +223,7 @@ export function createOnAgentMessage(
 					?.costUsd ?? 0,
 			missionTotalUsd: ctx.usageAccumulator.totalCostUsd(),
 		});
-		// Mission-wide spend cap (ADR-0018): read the cap fresh from the
-		// mission's persisted config on every call — never the boot-time
-		// teamConfig snapshot — so a cap added, changed, or cleared live
-		// (cockpit or mission copilot) is enforced without a restart.
-		// Falls back to the boot-time value (mission config or
-		// MAX_COST_USD env var, resolved once above) when a live read
-		// fails or the live doc genuinely has no cap configured. A
-		// transient Mongo read failure must not crash the agent's turn —
-		// fail open (skip this one check) and log; both reads are
-		// re-attempted on every subsequent LLM call, so a one-off hiccup
-		// self-heals rather than blocking the mission.
-		try {
-			const [snapshot, liveConfig] = await Promise.all([
-				ctx.statsCollector.readMissionSnapshot(ctx.missionId),
-				ctx.missionConfigRepo.readTeamConfig(ctx.missionId),
-			]);
-			const effectiveCap = liveConfig?.mission.maxCostUsd ?? ctx.maxCostUsd;
-			if (effectiveCap !== null) {
-				const missionTotal = missionLifetimeCostUsd(snapshot);
-				if (missionTotal >= effectiveCap) {
-					await ctx.monitor.notifyCostPause(missionTotal, effectiveCap);
-					// This path previously never woke the copilot or the
-					// operator (issue #41) — only a dashboard-only SSE event,
-					// unlike the per-agent path above. A silent mission-wide
-					// pause cost 5 days of unattended operation in production.
-					const pauseBody = `Mission-wide spend cap reached: $${missionTotal.toFixed(2)} of $${effectiveCap.toFixed(2)}. All agents are paused until the cap is raised or cleared.`;
-					ctx.anomalyRecorder
-						.record({
-							missionId: ctx.missionId,
-							category: "limit-breach",
-							severity: "hard",
-							message: pauseBody,
-						})
-						.catch((e: Error) =>
-							console.error(
-								`[daemon] failed to record mission-cap anomaly { missionId: "${ctx.missionId}" }: ${e.message}`,
-							),
-						);
-					ctx.mailboxRepo
-						.post({
-							missionId: ctx.missionId,
-							from: "system",
-							to: ["user"],
-							subject: "Mission spend cap reached",
-							body: pauseBody,
-						})
-						.catch((e: Error) =>
-							console.error(
-								`[daemon] failed to notify operator of mission-cap pause { missionId: "${ctx.missionId}" }: ${e.message}`,
-							),
-						);
-				}
-			}
-		} catch (e) {
-			console.error(
-				`[daemon] mission cap check failed { missionId: ${ctx.missionId} }: ${(e as Error).message}`,
-			);
-		}
+		await enforceMissionCap(ctx, capState);
 		const am = msg as AssistantMessage;
 		if (am.stopReason === "error") {
 			const errMsg = am.errorMessage ?? "";

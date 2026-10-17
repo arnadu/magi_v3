@@ -160,7 +160,9 @@ describe("ListMessages", () => {
 		if (!tool) throw new Error("ListMessages tool not registered");
 		const result = await tool.execute("id1", {});
 		expect(result.content[0].text).toContain(
-			"[Output truncated: 600 lines total, showing first 500]",
+			// Both caps apply (T2): the 500 kept lines also exceed the character
+			// cap, so the note reports the character cut and the line total.
+			"[Output truncated at 20000 chars; 600 lines total]",
 		);
 	});
 });

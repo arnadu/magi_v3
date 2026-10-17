@@ -204,13 +204,27 @@ export class ToolApiServer {
 
 		// Execute with timeout.
 		const ac = new AbortController();
-		const timer = setTimeout(() => ac.abort(), TOOL_TIMEOUT_MS);
+		let timedOut = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => {
+				timedOut = true;
+				ac.abort();
+				reject(new Error(`tool ${toolName} timed out`));
+			}, TOOL_TIMEOUT_MS);
+		});
 		let result: Awaited<ReturnType<MagiTool["execute"]>>;
 		try {
-			result = await tool.execute(callId, checked.args, ac.signal);
+			// Raced, not merely signalled: a tool that ignores the AbortSignal
+			// used to hold the request open forever and the documented 504 never
+			// happened (audit TA2).
+			result = await Promise.race([
+				tool.execute(callId, checked.args, ac.signal),
+				timeout,
+			]);
 		} catch (err) {
 			clearTimeout(timer);
-			if (ac.signal.aborted) {
+			if (timedOut || ac.signal.aborted) {
 				res.writeHead(504, { "Content-Type": "application/json" });
 				res.end(JSON.stringify({ error: `tool ${toolName} timed out` }));
 			} else {

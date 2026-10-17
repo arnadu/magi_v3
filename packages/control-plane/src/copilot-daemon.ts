@@ -272,6 +272,7 @@ async function runWatchLoop(
 	console.log("[copilot-daemon] Ready — watching for operator messages");
 
 	let readySignaled = false;
+	let failedTurns = 0;
 
 	while (!signal.aborted) {
 		// Drain any messages that arrived while the previous turn was running.
@@ -324,12 +325,6 @@ async function runWatchLoop(
 
 		const messages = await mailboxRepo.listUnread(agentId).catch(() => []);
 		if (messages.length === 0) continue;
-		await mailboxRepo
-			.markRead(
-				messages.map((m) => m.id),
-				agentId,
-			)
-			.catch(() => {});
 
 		console.log(
 			`[copilot-daemon] Starting turn (${messages.length} message(s))`,
@@ -370,12 +365,22 @@ async function runWatchLoop(
 			};
 			busyRef.current = true;
 			await runAgent(agentId, messages, ctx, signal);
+			// Marked read only after the turn: a crash, redeploy or abort
+			// mid-turn used to lose the operator's message silently (at-most-
+			// once, audit CD1). Now it is retried — at least once.
+			await markTurnRead(mailboxRepo, agentId, messages);
+			failedTurns = 0;
 			console.log("[copilot-daemon] Turn complete");
 		} catch (e) {
 			if (!signal.aborted) {
 				const errorMessage = (e as Error).message;
-				console.error(`[copilot-daemon] Turn error: ${errorMessage}`);
+				failedTurns++;
+				const backoffMs = turnFailureBackoffMs(failedTurns, errorMessage);
+				console.error(
+					`[copilot-daemon] Turn error (attempt ${failedTurns}): ${errorMessage} — retrying in ${Math.round(backoffMs / 1000)} s`,
+				);
 				pushEvent("copilot-error", { errorMessage });
+				await sleepMs(backoffMs, signal);
 			}
 		} finally {
 			busyRef.current = false;
@@ -424,7 +429,9 @@ function waitForMailboxInsert(
 			],
 			{ fullDocument: "updateLookup" },
 		);
-		// Notify callers that the stream is now open and events will not be missed.
+		// Tells callers that watch() has been *called*; the stream may not yet be
+		// open server-side, so an insert landing in that window is only caught by
+		// the next poll-fallback iteration (audit CD2).
 		onStreamOpen?.();
 		const onAbort = () => {
 			stream.close().catch(() => {});
@@ -441,6 +448,38 @@ function waitForMailboxInsert(
 			reject(err);
 		});
 	});
+}
+
+async function markTurnRead(
+	mailboxRepo: { markRead: (ids: string[], agentId: string) => Promise<void> },
+	agentId: string,
+	messages: Array<{ id: string }>,
+): Promise<void> {
+	await mailboxRepo
+		.markRead(
+			messages.map((m) => m.id),
+			agentId,
+		)
+		.catch((err: Error) =>
+			console.error(
+				`[copilot-daemon] failed to mark ${messages.length} message(s) read: ${err.message} — they will be re-delivered`,
+			),
+		);
+}
+
+/**
+ * How long to wait before retrying a failed copilot turn: exponential from
+ * 30 s to 5 min, or the provider's own `Retry-After` when the error carries
+ * one — a tight retry loop once produced 42 failed turns in 40 s (2026-09-21).
+ */
+export function turnFailureBackoffMs(
+	failedTurns: number,
+	errorMessage: string,
+): number {
+	const exp = Math.min(30_000 * 2 ** Math.max(0, failedTurns - 1), 300_000);
+	const m = errorMessage.match(/Retry-After\D{0,8}(\d{1,5})/i);
+	const retryAfterMs = m ? Number(m[1]) * 1000 : 0;
+	return Math.max(exp, Math.min(retryAfterMs, 600_000));
 }
 
 async function sleepMs(ms: number, signal: AbortSignal): Promise<void> {

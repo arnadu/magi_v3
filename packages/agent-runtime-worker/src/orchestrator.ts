@@ -519,6 +519,7 @@ export async function runOrchestrationLoop(
 				{
 					...agentCtx,
 					identity,
+					anomalyRecorder: config.anomalyRecorder,
 					additionalTools: config.getAdditionalTools?.(agentId),
 					onMessage: config.onAgentMessage
 						? async (msg: Message) => {

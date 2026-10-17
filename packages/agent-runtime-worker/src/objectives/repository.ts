@@ -97,7 +97,7 @@ function ensureObjectivesIndexes(
 		);
 }
 
-/** A stored tree that no longer passes the schema (e.g. a cycle written before F-056) folds as empty rather than wedging every reader. */
+/** A stored tree that no longer passes the schema (e.g. a cycle written before the schema rejected them) folds as empty rather than wedging every reader. */
 async function readGoals(
 	goalsCol: Collection<GoalsDoc>,
 	missionId: string,

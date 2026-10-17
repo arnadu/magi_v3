@@ -35,3 +35,30 @@ describe("truncate", () => {
 		expect(result).toContain("lines total, showing first 500");
 	});
 });
+
+describe("truncate applies both caps (T2)", () => {
+	it("caps characters even when the line count is under the line cap", () => {
+		const out = truncate("x".repeat(25_000));
+		expect(out.length).toBeLessThan(20_200);
+		expect(out).toContain("[Output truncated at 20000 chars");
+	});
+
+	it("caps characters after the line cap when the kept lines are still too long", () => {
+		const out = truncate(
+			Array.from({ length: 600 }, () => "y".repeat(100)).join("\n"),
+		);
+		expect(out.length).toBeLessThan(20_200);
+		expect(out).toMatch(
+			/\[Output truncated at 20000 chars; 600 lines total\]$/,
+		);
+	});
+
+	it("reports only the line cap when the kept lines fit", () => {
+		const out = truncate(
+			Array.from({ length: 600 }, (_, i) => `l${i}`).join("\n"),
+		);
+		expect(out).toMatch(
+			/\[Output truncated: 600 lines total, showing first 500\]$/,
+		);
+	});
+});

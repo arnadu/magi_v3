@@ -1,6 +1,7 @@
 import type { TeamConfig } from "@magi/agent-config";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
 import type { MissionStats, StatsCollector } from "./agent-stats.js";
+import type { AnomalyRecorder } from "./anomaly.js";
 import type {
 	ConversationRepository,
 	SummaryMessage,
@@ -40,7 +41,7 @@ import {
 	buildSystemPrompt,
 	formatMessages,
 } from "./prompt.js";
-import { convertToLlm, runReflection } from "./reflection.js";
+import { convertToLlm, reflectGuarded, runReflection } from "./reflection.js";
 import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
@@ -113,6 +114,8 @@ export interface AgentRunContext {
 	 * copilot mailbox and the monitor dashboard. Requires `statsCollector`.
 	 */
 	onLimitAlert?: (alert: LimitAlert) => void;
+	/** Records soft/hard anomalies (reflection failures here); absent in the CLI and in tests. */
+	anomalyRecorder?: Pick<AnomalyRecorder, "record">;
 	/**
 	 * Commit the shared workspace at turn end (git-commit-on-sleep, Sprint 25).
 	 * Returns the commit SHA + changed files, or null when nothing changed.
@@ -421,6 +424,14 @@ export async function runAgent(
 	const reflectionTriggered =
 		sessionMessages.length > 0 && peakInputTokens >= reflectionThreshold;
 	if (reflectionTriggered) {
+		await reflectGuarded(
+			agentId,
+			missionId,
+			ctx.anomalyRecorder,
+			runReflectionStep,
+		);
+	}
+	async function runReflectionStep(): Promise<void> {
 		const lastTurnNumber = nonSummaryHistory.reduce(
 			(max, sm) => Math.max(max, sm.turnNumber),
 			-1,
@@ -832,7 +843,9 @@ export async function runAgent(
 				getSystemPrompt,
 				getDynamicContext,
 				task,
-				tools,
+				// Same set as the first attempt — the unfiltered list re-enabled
+				// disabledTools and dropped Tier B tools on retry (audit R1).
+				tools: effectiveTools,
 				signal,
 				previousMessages: convertToLlm(cleanHistory),
 				onMessage: onMessageHandler,

@@ -160,17 +160,20 @@ const MAX_CHARS = 20_000;
  * found most files had done exactly that.
  */
 export function truncate(text: string): string {
+	// Both caps apply: a few very long lines used to pass the line cap and
+	// skip the character cap entirely (audit T2).
 	const lines = text.split("\n");
+	let out = text;
+	let note = "";
 	if (lines.length > MAX_LINES) {
-		return (
-			lines.slice(0, MAX_LINES).join("\n") +
-			`\n[Output truncated: ${lines.length} lines total, showing first ${MAX_LINES}]`
-		);
+		out = lines.slice(0, MAX_LINES).join("\n");
+		note = `\n[Output truncated: ${lines.length} lines total, showing first ${MAX_LINES}]`;
 	}
-	if (text.length > MAX_CHARS) {
-		return `${text.slice(0, MAX_CHARS)}\n[Output truncated at ${MAX_CHARS} chars]`;
+	if (out.length > MAX_CHARS) {
+		out = out.slice(0, MAX_CHARS);
+		note = `\n[Output truncated at ${MAX_CHARS} chars${lines.length > MAX_LINES ? `; ${lines.length} lines total` : ""}]`;
 	}
-	return text;
+	return out + note;
 }
 
 function ok(text: string): ToolResult {
