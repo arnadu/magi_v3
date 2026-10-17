@@ -49,7 +49,10 @@ interface ScheduledMessageDoc {
 	deliverAt: Date;
 	cron?: string;
 	label?: string;
-	status: "pending" | "delivered" | "cancelled" | "failed";
+	status: "pending" | "delivering" | "delivered" | "cancelled" | "failed";
+	/** Set when a tick claims the entry; a stale claim is re-opened after DELIVERY_LEASE_MS. */
+	claimedAt?: Date;
+	deliveredAt?: Date;
 	deliveryAttempts?: number;
 }
 
@@ -134,18 +137,54 @@ async function wakeIfNotRunning(db: Db, mission: MissionDoc): Promise<void> {
 // Exported for unit testing (deliver's attempt-cap/escalation logic) —
 // mirrors why job-recovery.ts's recoverOrphanedJobs is exported separately
 // from daemon.ts.
+/** A claim older than this with no outcome belongs to a tick that died mid-delivery; it is re-opened (SCH1). */
+export const DELIVERY_LEASE_MS = 5 * 60_000;
+let deliverInFlight = false;
+
 export async function deliver(db: Db): Promise<void> {
+	// A slow tick (Fly wake-ups take tens of seconds) used to overlap the next
+	// one and both worked the same queue (SCH5).
+	if (deliverInFlight) return;
+	deliverInFlight = true;
+	try {
+		await deliverAll(db);
+	} finally {
+		deliverInFlight = false;
+	}
+}
+
+/**
+ * Leases abandoned by a crashed or redeployed control plane go back to
+ * pending: at-least-once, where the old claim-as-delivered was at-most-once
+ * and lost the message — and, for a cron entry, the recurrence (SCH1).
+ */
+async function reopenStaleLeases(
+	scheduledCol: Collection<ScheduledMessageDoc>,
+	now: Date,
+): Promise<void> {
+	await scheduledCol.updateMany(
+		{
+			status: "delivering",
+			claimedAt: { $lt: new Date(now.getTime() - DELIVERY_LEASE_MS) },
+		},
+		{ $set: { status: "pending" } },
+	);
+}
+
+async function deliverAll(db: Db): Promise<void> {
 	const scheduledCol = db.collection<ScheduledMessageDoc>("scheduled_messages");
 	const mailboxCol = db.collection("mailbox");
 	const missionsCol = db.collection<MissionDoc>("missions");
 
 	const now = new Date();
 
+	await reopenStaleLeases(scheduledCol, now);
+
 	while (true) {
-		// Atomically claim one pending message.
+		// Atomically claim one pending message under a lease.
 		const doc = await scheduledCol.findOneAndUpdate(
 			{ status: "pending", deliverAt: { $lte: now } },
-			{ $set: { status: "delivered" } },
+			{ $set: { status: "delivering", claimedAt: now } },
 		);
 		if (!doc) break;
 
@@ -176,6 +215,12 @@ export async function deliver(db: Db): Promise<void> {
 			console.log(
 				`[scheduler] Delivered "${doc.subject}" to ${doc.to.join(", ")} (mission ${doc.missionId})`,
 			);
+			if (!doc.cron) {
+				await scheduledCol.updateOne(
+					{ _id: doc._id },
+					{ $set: { status: "delivered", deliveredAt: new Date() } },
+				);
+			}
 		} catch (e) {
 			const attempts = (doc.deliveryAttempts ?? 0) + 1;
 			console.error(

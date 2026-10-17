@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import type { Db } from "mongodb";
+import { FailedAuthLimiter } from "./auth-limiter.js";
 import { verifyFirebaseToken } from "./firebase.js";
 import { syncFirebaseUser } from "./users.js";
 
@@ -20,7 +21,10 @@ import { syncFirebaseUser } from "./users.js";
  *   CONTROL_API_KEY  → req.userId = "admin", req.isAdmin = true  (sees all missions)
  *   Firebase JWT     → req.userId = Firebase UID, req.isAdmin = false
  */
-export function createAuthMiddleware(db: Db) {
+export function createAuthMiddleware(
+	db: Db,
+	limiter: FailedAuthLimiter = new FailedAuthLimiter(),
+) {
 	return async function requireAuth(
 		req: Request,
 		res: Response,
@@ -30,6 +34,18 @@ export function createAuthMiddleware(db: Db) {
 			extractBearer(req.headers.authorization) ??
 			(req.headers["x-api-key"] as string | undefined) ??
 			extractCookie(req.headers.cookie, "magi_session");
+
+		// AUTH-BF: a client that keeps failing is answered 429 for the rest of
+		// its window; successes do not reset it (a guesser interleaving a valid
+		// Firebase token with admin-key guesses gains nothing).
+		const client = req.ip ?? "unknown";
+		if (limiter.isBlocked(client)) {
+			res.setHeader("Retry-After", String(limiter.retryAfterSeconds(client)));
+			res
+				.status(429)
+				.json({ error: "Too many failed authentication attempts" });
+			return;
+		}
 
 		// 1. CONTROL_API_KEY → admin (CI, headless scripts, bootstrap.sh)
 		const apiKey = process.env.CONTROL_API_KEY;
@@ -58,6 +74,7 @@ export function createAuthMiddleware(db: Db) {
 			console.warn(`[auth] 401 — no credential on ${req.method} ${req.path}`);
 		}
 
+		if (provided) limiter.fail(client);
 		res.status(401).json({ error: "Unauthorized" });
 	};
 }

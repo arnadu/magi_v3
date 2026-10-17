@@ -19,6 +19,8 @@ interface ScheduledDoc {
 	cron?: string;
 	status: "pending" | "delivered" | "cancelled" | "failed";
 	deliveryAttempts?: number;
+	claimedAt?: Date;
+	deliveredAt?: Date;
 }
 
 function fakeDb(opts: {
@@ -54,6 +56,23 @@ function fakeDb(opts: {
 						const doc = scheduled.find((d) => d._id === filter._id);
 						if (doc) Object.assign(doc, update.$set);
 						return { acknowledged: true };
+					},
+					async updateMany(
+						filter: { status: string; claimedAt: { $lt: Date } },
+						update: { $set: Partial<ScheduledDoc> },
+					) {
+						let n = 0;
+						for (const d of scheduled) {
+							if (
+								d.status === filter.status &&
+								d.claimedAt !== undefined &&
+								d.claimedAt.getTime() < filter.claimedAt.$lt.getTime()
+							) {
+								Object.assign(d, update.$set);
+								n++;
+							}
+						}
+						return { matchedCount: n };
 					},
 				};
 			}
@@ -203,5 +222,95 @@ describe("scheduler deliver()", () => {
 
 		expect(scheduled[0].status).toBe("pending");
 		expect(scheduled[0].deliveryAttempts).toBeUndefined();
+	});
+});
+
+describe("deliver() lease semantics (SCH1/SCH5)", () => {
+	const past = new Date(Date.now() - 60_000);
+
+	it("claims under a lease, delivers, then marks a one-off delivered", async () => {
+		const { db, scheduled, mailboxInserts } = fakeDb({
+			scheduled: [
+				{
+					_id: "s1",
+					missionId: "m1",
+					to: ["lead"],
+					subject: "one-off",
+					body: "b",
+					deliverAt: past,
+					status: "pending",
+				},
+			],
+		});
+		await deliver(db as never);
+		expect(mailboxInserts).toHaveLength(1);
+		expect(scheduled[0].status).toBe("delivered");
+		expect(scheduled[0].deliveredAt).toBeInstanceOf(Date);
+	});
+
+	it("re-opens a lease abandoned by a dead tick and delivers it", async () => {
+		const { db, scheduled, mailboxInserts } = fakeDb({
+			scheduled: [
+				{
+					_id: "s2",
+					missionId: "m1",
+					to: ["lead"],
+					subject: "abandoned",
+					body: "b",
+					deliverAt: past,
+					status: "delivering",
+					claimedAt: new Date(Date.now() - 10 * 60_000),
+				},
+				{
+					_id: "s3",
+					missionId: "m1",
+					to: ["lead"],
+					subject: "fresh claim",
+					body: "b",
+					deliverAt: past,
+					status: "delivering",
+					claimedAt: new Date(),
+				},
+			],
+		});
+		await deliver(db as never);
+		expect(mailboxInserts.map((m) => m.subject)).toEqual(["abandoned"]);
+		expect(scheduled[0].status).toBe("delivered");
+		expect(scheduled[1].status).toBe("delivering");
+	});
+
+	it("does not run two deliveries at once", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const { db, mailboxInserts } = fakeDb({
+			scheduled: [
+				{
+					_id: "s4",
+					missionId: "m1",
+					to: ["lead"],
+					subject: "slow",
+					body: "b",
+					deliverAt: past,
+					status: "pending",
+				},
+			],
+		});
+		const mailbox = db.collection("mailbox") as {
+			insertOne: (d: unknown) => Promise<unknown>;
+		};
+		const realInsert = mailbox.insertOne.bind(mailbox);
+		mailbox.insertOne = async (d: unknown) => {
+			await gate;
+			return realInsert(d);
+		};
+		const first = deliver(db as never);
+		const second = deliver(db as never); // overlaps: returns immediately
+		await second;
+		expect(mailboxInserts).toHaveLength(0);
+		release();
+		await first;
+		expect(mailboxInserts).toHaveLength(1);
 	});
 });

@@ -30,6 +30,7 @@ import {
 import type { Collection, Db } from "mongodb";
 import type { PendingActionsStore } from "./copilot-tools.js";
 import { createCopilotTools } from "./copilot-tools.js";
+import { getCopilotSpendCap } from "./users.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -84,6 +85,8 @@ export interface CopilotDaemonHandle {
 	 * before deciding to call stop() at all. See copilot-router.ts's busy guard.
 	 */
 	isBusy(): boolean;
+	/** True once the watch loop has crashed; the runtime replaces such a handle instead of treating the user's copilot as running (CW2). */
+	isDead(): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +122,7 @@ export function startCopilotDaemon(
 	});
 
 	const busyRef = { current: false };
+	let dead = false;
 
 	runWatchLoop(
 		db,
@@ -133,8 +137,9 @@ export function startCopilotDaemon(
 	).catch((e) => {
 		resolveReady(); // unblock waiters even on crash
 		if (!signal.aborted) {
+			dead = true;
 			console.error(
-				`[copilot-daemon] watch loop crashed: ${(e as Error).message}`,
+				`[copilot-daemon] watch loop crashed: ${(e as Error).message} — the runtime starts a fresh daemon on the next wake`,
 			);
 		}
 	});
@@ -144,6 +149,7 @@ export function startCopilotDaemon(
 			ac.abort();
 		},
 		ready,
+		isDead: () => dead,
 		isBusy() {
 			return busyRef.current;
 		},
@@ -326,6 +332,12 @@ async function runWatchLoop(
 		const messages = await mailboxRepo.listUnread(agentId).catch(() => []);
 		if (messages.length === 0) continue;
 
+		const capStop = await copilotCapReached(db, missionId);
+		if (capStop) {
+			pushEvent("copilot-error", { errorMessage: capStop });
+			await markTurnRead(mailboxRepo, agentId, messages);
+			continue;
+		}
 		console.log(
 			`[copilot-daemon] Starting turn (${messages.length} message(s))`,
 		);
@@ -365,22 +377,13 @@ async function runWatchLoop(
 			};
 			busyRef.current = true;
 			await runAgent(agentId, messages, ctx, signal);
-			// Marked read only after the turn: a crash, redeploy or abort
-			// mid-turn used to lose the operator's message silently (at-most-
-			// once, audit CD1). Now it is retried — at least once.
 			await markTurnRead(mailboxRepo, agentId, messages);
 			failedTurns = 0;
 			console.log("[copilot-daemon] Turn complete");
 		} catch (e) {
 			if (!signal.aborted) {
-				const errorMessage = (e as Error).message;
 				failedTurns++;
-				const backoffMs = turnFailureBackoffMs(failedTurns, errorMessage);
-				console.error(
-					`[copilot-daemon] Turn error (attempt ${failedTurns}): ${errorMessage} — retrying in ${Math.round(backoffMs / 1000)} s`,
-				);
-				pushEvent("copilot-error", { errorMessage });
-				await sleepMs(backoffMs, signal);
+				await afterFailedTurn(failedTurns, e, pushEvent, signal);
 			}
 		} finally {
 			busyRef.current = false;
@@ -450,6 +453,52 @@ function waitForMailboxInsert(
 	});
 }
 
+/**
+ * COPCAP1: the copilot spend cap (users.copilotSpendCapUsd) used to be
+ * checked only on POST /message; relays, reports and scheduled wakeups kept
+ * spending past it. Over the cap the batch is dropped (marked read so it does
+ * not loop) and the UI told. Returns the message to show, or null.
+ */
+async function copilotCapReached(
+	db: Db,
+	missionId: string,
+): Promise<string | null> {
+	const uid = missionId.startsWith("copilot-")
+		? missionId.slice("copilot-".length)
+		: missionId;
+	const cap = await getCopilotSpendCap(db, uid).catch(() => undefined);
+	if (cap === undefined) return null;
+	const [agg] = await db
+		.collection("llmCallLog")
+		.aggregate<{ costUsd: number }>([
+			{ $match: { missionId } },
+			{ $group: { _id: null, costUsd: { $sum: "$usage.cost.totalCostUsd" } } },
+		])
+		.toArray()
+		.catch(() => []);
+	const spent = agg?.costUsd ?? 0;
+	return spent >= cap
+		? `Copilot spend cap reached ($${spent.toFixed(2)} of $${cap.toFixed(2)}) — raise it in the copilot settings to continue`
+		: null;
+}
+
+/** Log, tell the UI and back off (turnFailureBackoffMs) before the next attempt. */
+async function afterFailedTurn(
+	failedTurns: number,
+	error: unknown,
+	pushEvent: (type: string, data: unknown) => void,
+	signal: AbortSignal,
+): Promise<void> {
+	const errorMessage = error instanceof Error ? error.message : String(error);
+	const backoffMs = turnFailureBackoffMs(failedTurns, errorMessage);
+	console.error(
+		`[copilot-daemon] Turn error (attempt ${failedTurns}): ${errorMessage} — retrying in ${Math.round(backoffMs / 1000)} s`,
+	);
+	pushEvent("copilot-error", { errorMessage });
+	await sleepMs(backoffMs, signal);
+}
+
+/** Read only after a successful turn — at-least-once; marking first lost the message on a mid-turn crash (CD1). */
 async function markTurnRead(
 	mailboxRepo: { markRead: (ids: string[], agentId: string) => Promise<void> },
 	agentId: string,

@@ -150,7 +150,7 @@ function collectionOver(docs: Doc[]) {
 			const d = docs.find((x) => matches(x, filter));
 			if (d) {
 				applyUpdate(d, update);
-				return { modifiedCount: 1 };
+				return { matchedCount: 1, modifiedCount: 1 };
 			}
 			if (opts.upsert) {
 				const fresh: Doc = {};
@@ -159,9 +159,9 @@ function collectionOver(docs: Doc[]) {
 				}
 				applyUpdate(fresh, update);
 				docs.push(fresh);
-				return { modifiedCount: 0, upsertedCount: 1 };
+				return { matchedCount: 0, modifiedCount: 0, upsertedCount: 1 };
 			}
-			return { modifiedCount: 0 };
+			return { matchedCount: 0, modifiedCount: 0 };
 		},
 		async updateMany(filter: Doc, update: Doc) {
 			let modifiedCount = 0;
@@ -171,7 +171,7 @@ function collectionOver(docs: Doc[]) {
 					modifiedCount++;
 				}
 			}
-			return { modifiedCount };
+			return { matchedCount: modifiedCount, modifiedCount };
 		},
 		async deleteOne(filter: Doc) {
 			const i = docs.findIndex((x) => matches(x, filter));

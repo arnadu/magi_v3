@@ -19,11 +19,12 @@ vi.mock("../src/users.js", () => ({ getCopilotModel: vi.fn() }));
 const startDaemon = vi.mocked(startCopilotDaemon);
 const modelFor = vi.mocked(getCopilotModel);
 
-function fakeHandle(): CopilotDaemonHandle {
+function fakeHandle(dead = false): CopilotDaemonHandle {
 	return {
 		stop: vi.fn(),
 		ready: Promise.resolve(),
 		isBusy: () => false,
+		isDead: () => dead,
 	};
 }
 
@@ -118,5 +119,16 @@ describe("createCopilotRuntime", () => {
 		await runtime.ensureCopilotRunning("u1");
 		expect(startDaemon).toHaveBeenCalledTimes(1);
 		expect(runtime.getDaemon("u1")).toBeDefined();
+	});
+
+	it("replaces a daemon whose watch loop has crashed instead of treating it as running (CW2)", async () => {
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		startDaemon.mockImplementationOnce(() => fakeHandle(true));
+		const runtime = makeRuntime();
+		await runtime.ensureCopilotRunning("u1");
+		expect(startDaemon).toHaveBeenCalledTimes(1);
+		await runtime.ensureCopilotRunning("u1");
+		expect(startDaemon).toHaveBeenCalledTimes(2);
+		expect(runtime.getDaemon("u1")?.isDead()).toBe(false);
 	});
 });

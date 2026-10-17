@@ -198,14 +198,14 @@
 	"packages/control-plane/src/copilot-daemon.ts": {
 		"lines": 455,
 		"fns": {
-			"runWatchLoop@218": 186
+			"runWatchLoop@224": 186
 		}
 	},
 	"packages/control-plane/src/copilot-router.ts": {
-		"lines": 826,
+		"lines": 798,
 		"fns": {
-			"createCopilotRouter@77": 284,
-			"executeAction@385": 370
+			"createCopilotRouter@76": 284,
+			"executeAction@384": 341
 		}
 	},
 	"packages/control-plane/src/copilot-tools.ts": {
@@ -217,17 +217,17 @@
 	"packages/control-plane/src/index.ts": {
 		"lines": 314,
 		"fns": {
-			"main@75": 256
+			"main@76": 256
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
 		"lines": 1863,
 		"fns": {
-			"readLimits@221": 172,
-			"createMissionsRouter@663": 1201,
-			"<anonymous>@1108": 134,
-			"<anonymous>@1454": 134,
-			"<anonymous>@1689": 124
+			"readLimits@226": 172,
+			"createMissionsRouter@668": 1201,
+			"<anonymous>@1113": 134,
+			"<anonymous>@1464": 134,
+			"<anonymous>@1699": 128
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {

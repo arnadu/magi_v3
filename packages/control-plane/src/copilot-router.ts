@@ -16,7 +16,6 @@ import {
 	type Limits,
 	parseTeamConfig,
 	type TeamConfig,
-	validateNewMissionId,
 	validateTeamFiles,
 } from "@magi/agent-config";
 import {
@@ -32,6 +31,7 @@ import { asyncRoutes } from "./async-handler.js";
 import { type ActionPayload, parseActionPayload } from "./copilot-actions.js";
 import { COPILOT_WORKDIR, copilotWorkdirFor } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
+import { executeLaunchMission } from "./copilot-launch-actions.js";
 import { createPendingActionRoutes } from "./copilot-pending-routes.js";
 import type { CopilotRuntime } from "./copilot-runtime.js";
 import {
@@ -53,7 +53,6 @@ import { provisionTracked, wakeTracked } from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 import type { PendingAction, PendingActionsStore } from "./pending-actions.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
-import { getTemplate } from "./templates.js";
 import {
 	queryLlmCall,
 	queryLlmCalls,
@@ -402,42 +401,13 @@ export async function executeAction(
 				userId: action.userId,
 			});
 		}
-		case "launch_mission": {
-			const missionId = payload.missionId;
-			// MID1: the id here is LLM-authored; same namespace rule as POST /.
-			validateNewMissionId(missionId);
-			const name = (payload.name as string | undefined) ?? missionId;
-			const templateId = payload.templateId as string;
-
-			const template = getTemplate(templateId);
-			if (!template) throw new Error(`Template "${templateId}" not found`);
-
-			const existing = await missions.findOne({ missionId });
-			if (existing) throw new Error(`Mission "${missionId}" already exists`);
-
-			const resolvedMission = { ...template.config.mission, id: missionId };
-			const handle = await provisionTracked(db, missionId, {
-				teamFiles: template.teamFiles,
-			});
-
-			await missions.insertOne({
-				missionId,
+		case "launch_mission":
+			return executeLaunchMission(
+				db,
+				payload as ActionPayload<"launch_mission">,
 				userId,
-				name,
-				teamConfig: templateId,
-				mission: resolvedMission,
-				agents: template.config.agents,
-				missionCopilotLimits: template.config.missionCopilotLimits,
-				teamFiles: template.teamFiles,
-				machineId: handle.machineId,
-				privateIp: handle.privateIp,
-				volumeId: handle.volumeId,
-				status: "running",
-				createdAt: now,
-				updatedAt: now,
-			});
-			return `Mission "${missionId}" launched (machine: ${handle.machineId})`;
-		}
+				now,
+			);
 
 		case "launch_draft": {
 			const missionId = payload.missionId as string;

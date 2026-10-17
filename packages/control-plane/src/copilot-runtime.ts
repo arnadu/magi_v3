@@ -92,7 +92,17 @@ export function createCopilotRuntime(
 		eventBus,
 		defaultModelId,
 		async ensureCopilotRunning(userId) {
-			if (daemons.has(userId)) return;
+			const existing = daemons.get(userId);
+			if (existing && !existing.isDead()) return;
+			if (existing) {
+				// A crashed watch loop used to leave its handle in place, so this
+				// returned early forever and the user's copilot stayed dead until
+				// a control-plane restart (CW2).
+				daemons.delete(userId);
+				console.warn(
+					`[copilot-runtime] replacing crashed copilot daemon { userId: "${userId}" }`,
+				);
+			}
 			let inFlight = starting.get(userId);
 			if (!inFlight) {
 				inFlight = start(userId).finally(() => starting.delete(userId));

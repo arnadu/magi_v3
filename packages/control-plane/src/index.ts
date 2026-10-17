@@ -31,6 +31,7 @@ import { createCopilotRouter } from "./copilot-router.js";
 import { createCopilotRuntime } from "./copilot-runtime.js";
 import { startCopilotWaker } from "./copilot-waker.js";
 import { initFirebase } from "./firebase.js";
+import { ensureMissionIdIndex } from "./mission-claims.js";
 import { createMissionCopilotRouter } from "./mission-copilot-router.js";
 import { createMissionResourceRoutes } from "./mission-resource-routes.js";
 import { createMissionsRouter } from "./missions.js";
@@ -132,6 +133,7 @@ async function main(): Promise<void> {
 	// mission owner's cockpit (github-issues.ts).
 	const pendingActions = new MongoPendingActionsStore(db);
 	await pendingActions.ensureIndexes();
+	await ensureMissionIdIndex(db);
 	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);
 
 	app.use(

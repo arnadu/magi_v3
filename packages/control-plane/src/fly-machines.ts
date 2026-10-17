@@ -38,20 +38,43 @@ function apiToken(): string {
 	return token;
 }
 
+/** Every Fly call is bounded (FLY6): a hung call used to hang the Express handler or the scheduler tick that made it. */
+export const FLY_TIMEOUT_MS = 30_000;
+/** 429/5xx on an idempotent call (and 429 on any call — not processed) is retried this many times with backoff. */
+export const FLY_RETRIES = 3;
+
 async function flyFetch(
 	path: string,
 	options: RequestInit = {},
+	fetchFn: typeof fetch = fetch,
 ): Promise<Response> {
 	const url = `${FLY_API_BASE}${path}`;
-	const res = await fetch(url, {
-		...options,
-		headers: {
-			Authorization: `Bearer ${apiToken()}`,
-			"Content-Type": "application/json",
-			...options.headers,
-		},
-	});
-	return res;
+	const method = (options.method ?? "GET").toUpperCase();
+	const idempotent = method === "GET" || method === "DELETE";
+	let lastErr: unknown;
+	for (let attempt = 1; attempt <= FLY_RETRIES; attempt++) {
+		try {
+			const res = await fetchFn(url, {
+				...options,
+				signal: options.signal ?? AbortSignal.timeout(FLY_TIMEOUT_MS),
+				headers: {
+					Authorization: `Bearer ${apiToken()}`,
+					"Content-Type": "application/json",
+					...options.headers,
+				},
+			});
+			const retryable = res.status === 429 || (idempotent && res.status >= 500);
+			if (!retryable || attempt === FLY_RETRIES) return res;
+			lastErr = new Error(`Fly API ${res.status}`);
+		} catch (e) {
+			// Timeouts and connection errors: safe to retry only when the call
+			// cannot have been applied twice.
+			if (!idempotent || attempt === FLY_RETRIES) throw e;
+			lastErr = e;
+		}
+		await new Promise((r) => setTimeout(r, 1_000 * attempt));
+	}
+	throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 export interface MachineHandle {
@@ -76,6 +99,12 @@ export interface ProvisionOptions {
 	cpus?: number;
 	/** Guest CPU kind. Defaults to "shared"; temporary upgrades (ADR-0031) may ask for "performance". */
 	cpuKind?: CpuKind;
+	/**
+	 * Called as soon as a new volume exists, before the machine is created.
+	 * Persisting the id at that point means a provisioning failure after it
+	 * leaves a mission that knows its volume rather than an orphan (LAUNCH2).
+	 */
+	onVolumeCreated?: (volumeId: string) => Promise<void>;
 }
 
 /**
@@ -142,6 +171,7 @@ export async function provisionMission(
 		}
 		const vol = (await volRes.json()) as { id: string };
 		volumeId = vol.id;
+		await opts.onVolumeCreated?.(volumeId);
 	}
 
 	// 2. Create machine. No team-config env vars — the daemon reads its own
@@ -453,10 +483,11 @@ export async function destroyMission(
 		// Already stopped — proceed.
 	}
 
-	const machineRes = await flyFetch(`/apps/${app}/machines/${machineId}`, {
-		method: "DELETE",
-		body: JSON.stringify({ kill: true }),
-	});
+	// `kill` belongs to the stop endpoint; DELETE takes `?force=true` (FLY4).
+	const machineRes = await flyFetch(
+		`/apps/${app}/machines/${machineId}?force=true`,
+		{ method: "DELETE" },
+	);
 	if (!machineRes.ok && machineRes.status !== 404) {
 		const body = await machineRes.text();
 		throw new Error(

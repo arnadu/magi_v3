@@ -49,6 +49,11 @@ import {
 import { destroyTracked, provisionTracked } from "./machine-lifecycle.js";
 import { upgradedMsSince } from "./machine-segments.js";
 import { postMailbox } from "./mailbox-writer.js";
+import {
+	claimStatus,
+	insertMissionOrConflict,
+	persistVolumeId,
+} from "./mission-claims.js";
 import { liveStateToStatus } from "./mission-status.js";
 import { deriveMonitorToken, monitorAuthHeaders } from "./monitor-token.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
@@ -1333,12 +1338,17 @@ export function createMissionsRouter(db: Db): Router {
 			return;
 		}
 
+		if (!(await claimStatus(col, req.params.id, "draft", "provisioning"))) {
+			res.status(409).json({ error: "Mission is already being launched" });
+			return;
+		}
 		try {
 			const handle = isLocalExecution()
 				? provisionLocal(req.params.id, { teamFiles: mission.teamFiles ?? [] })
 				: await provisionTracked(db, req.params.id, {
 						memoryMb: validated.mission.memoryMb,
 						cpus: validated.mission.cpus,
+						onVolumeCreated: persistVolumeId(col, req.params.id),
 					});
 			await col.updateOne(
 				{ missionId: req.params.id },
@@ -1552,7 +1562,7 @@ export function createMissionsRouter(db: Db): Router {
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		};
-		await col.insertOne(doc);
+		if (!(await insertMissionOrConflict(col, doc, res))) return;
 
 		try {
 			// Cloud: omit teamFiles from the machine env — daemon fetches from MongoDB.
@@ -1651,7 +1661,7 @@ export function createMissionsRouter(db: Db): Router {
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		};
-		await col.insertOne(doc);
+		if (!(await insertMissionOrConflict(col, doc, res))) return;
 		res.status(201).json(doc);
 	});
 
@@ -1706,6 +1716,10 @@ export function createMissionsRouter(db: Db): Router {
 			res.status(409).json({
 				error: `Mission is already ${mission.status} — resume not needed`,
 			});
+			return;
+		}
+		if (!(await claimStatus(col, missionId, mission.status, "provisioning"))) {
+			res.status(409).json({ error: "Mission is already being resumed" });
 			return;
 		}
 		try {

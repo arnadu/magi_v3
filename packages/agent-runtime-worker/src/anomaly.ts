@@ -82,6 +82,31 @@ export interface AnomalyRecorder {
 // MongoDB implementation
 // ---------------------------------------------------------------------------
 
+/** Identical anomalies within this window are relayed once, then summarised when the window closes (FE1, issue-58 flood). */
+export const ANOMALY_DEDUPE_WINDOW_MS = 5 * 60_000;
+
+/** The de-duplication key: same mission, agent, category and message shape (digits and hex ids stripped). */
+export function anomalyDedupeKey(
+	a: Pick<MissionAnomaly, "missionId" | "agentId" | "category" | "message">,
+): string {
+	const shape = a.message
+		.replace(/[0-9a-f]{8,}/gi, "#")
+		.replace(/\d+(\.\d+)?/g, "#")
+		.slice(0, 160);
+	return `${a.missionId}|${a.agentId ?? ""}|${a.category}|${shape}`;
+}
+
+interface DedupeEntry {
+	suppressed: number;
+	firstAt: number;
+	timer: ReturnType<typeof setTimeout>;
+}
+
+export interface AnomalyRecorderOptions {
+	dedupeWindowMs?: number;
+	now?: () => number;
+}
+
 export function createMongoAnomalyRecorder(
 	db: Db,
 	mailboxRepo: MailboxRepository,
@@ -90,10 +115,78 @@ export function createMongoAnomalyRecorder(
 		mailboxRepo: MailboxRepository;
 		missionId: string; // `copilot-{userId}`
 	},
+	options: AnomalyRecorderOptions = {},
 ): AnomalyRecorder {
 	const col = db.collection<MissionAnomaly & { _id?: unknown }>(
 		"missionAnomalies",
 	);
+	const windowMs = options.dedupeWindowMs ?? ANOMALY_DEDUPE_WINDOW_MS;
+	const now = options.now ?? Date.now;
+	// Every anomaly is persisted; only the copilot *notifications* are
+	// de-duplicated. A tight failure loop used to put 45 identical hard
+	// anomalies into a copilot inbox in 30 s, each costing a copilot turn.
+	const recent = new Map<string, DedupeEntry>();
+
+	async function notify(
+		anomaly: Omit<MissionAnomaly, "createdAt">,
+		suffix = "",
+	): Promise<void> {
+		if (missionCopilotAgentId) {
+			try {
+				await mailboxRepo.post({
+					missionId: anomaly.missionId,
+					from: "system",
+					to: [missionCopilotAgentId],
+					subject: `Anomaly (${anomaly.severity}): ${anomaly.category}`,
+					body: anomaly.message + suffix,
+				});
+			} catch (e) {
+				console.error(
+					`[anomaly] Failed to notify mission copilot { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
+				);
+			}
+		}
+		// Coarse cross-mission triage layer only sees hard breaches — every
+		// soft blip from every mission would drown out what it's meant to
+		// catch (its own prompt says it's a top-level check, not a
+		// diagnosis tool; the mission copilot handles the rest).
+		if (anomaly.severity === "hard" && controlPlaneCopilot) {
+			try {
+				await controlPlaneCopilot.mailboxRepo.post({
+					missionId: controlPlaneCopilot.missionId,
+					from: "system",
+					to: ["copilot"],
+					subject: `Anomaly (hard): ${anomaly.category} — mission ${anomaly.missionId}`,
+					body: `Mission "${anomaly.missionId}": ${anomaly.message}${suffix}`,
+				});
+			} catch (e) {
+				console.error(
+					`[anomaly] Failed to relay to control-plane copilot { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
+				);
+			}
+		}
+	}
+
+	function openWindow(
+		key: string,
+		anomaly: Omit<MissionAnomaly, "createdAt">,
+	): void {
+		const entry: DedupeEntry = {
+			suppressed: 0,
+			firstAt: now(),
+			timer: setTimeout(() => {
+				recent.delete(key);
+				if (entry.suppressed > 0) {
+					void notify(
+						anomaly,
+						`\n\n(${entry.suppressed} further identical anomal${entry.suppressed === 1 ? "y" : "ies"} suppressed since ${new Date(entry.firstAt).toISOString()}; all are recorded in missionAnomalies.)`,
+					);
+				}
+			}, windowMs),
+		};
+		entry.timer.unref?.();
+		recent.set(key, entry);
+	}
 
 	// Primary access pattern: a mission's anomalies in time order (Trace panel,
 	// mission copilot's own investigative tools).
@@ -117,41 +210,14 @@ export function createMongoAnomalyRecorder(
 				);
 			}
 
-			if (missionCopilotAgentId) {
-				try {
-					await mailboxRepo.post({
-						missionId: anomaly.missionId,
-						from: "system",
-						to: [missionCopilotAgentId],
-						subject: `Anomaly (${anomaly.severity}): ${anomaly.category}`,
-						body: anomaly.message,
-					});
-				} catch (e) {
-					console.error(
-						`[anomaly] Failed to notify mission copilot { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
-					);
-				}
+			const key = anomalyDedupeKey(anomaly);
+			const open = recent.get(key);
+			if (open) {
+				open.suppressed++;
+				return;
 			}
-
-			// Coarse cross-mission triage layer only sees hard breaches — every
-			// soft blip from every mission would drown out what it's meant to
-			// catch (its own prompt says it's a top-level check, not a
-			// diagnosis tool; the mission copilot handles the rest).
-			if (anomaly.severity === "hard" && controlPlaneCopilot) {
-				try {
-					await controlPlaneCopilot.mailboxRepo.post({
-						missionId: controlPlaneCopilot.missionId,
-						from: "system",
-						to: ["copilot"],
-						subject: `Anomaly (hard): ${anomaly.category} — mission ${anomaly.missionId}`,
-						body: `Mission "${anomaly.missionId}": ${anomaly.message}`,
-					});
-				} catch (e) {
-					console.error(
-						`[anomaly] Failed to relay to control-plane copilot { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
-					);
-				}
-			}
+			openWindow(key, anomaly);
+			await notify(anomaly);
 		},
 	};
 }

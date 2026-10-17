@@ -14,7 +14,11 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { provisionLocal, provisionMission } from "../src/fly-machines.js";
+import {
+	provisionLocal,
+	provisionMission,
+	volumeExists,
+} from "../src/fly-machines.js";
 
 describe("provisionMission (ADR-0021: no config payload)", () => {
 	const ORIGINAL_ENV = { ...process.env };
@@ -173,5 +177,54 @@ describe("provisionLocal (ADR-0021: no team.yaml written)", () => {
 	it("works with no teamFiles at all", () => {
 		const handle = provisionLocal("mission-local-2", {});
 		expect(handle.machineId).toBe("local-mission-local-2");
+	});
+});
+
+describe("flyFetch resilience (FLY6)", () => {
+	const ORIGINAL_ENV = { ...process.env };
+	beforeEach(() => {
+		process.env.FLY_MISSIONS_APP_NAME = "magi-missions-test";
+		process.env.FLY_API_TOKEN_MACHINES = "test-token";
+	});
+	afterEach(() => {
+		process.env = { ...ORIGINAL_ENV };
+		vi.unstubAllGlobals();
+		vi.useRealTimers();
+	});
+
+	it("retries a GET that gets 429 then succeeds", async () => {
+		vi.useFakeTimers();
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(new Response("slow down", { status: 429 }))
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ id: "vol_1" }), { status: 200 }),
+			);
+		vi.stubGlobal("fetch", fetchMock);
+		const p = volumeExists("vol_1");
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(await p).toBe(true);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not retry a POST on a 5xx (it may have been applied)", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response("boom", { status: 502 }));
+		vi.stubGlobal("fetch", fetchMock);
+		await expect(provisionMission("mission-x")).rejects.toThrow();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("sends a bounded request: every call carries an AbortSignal", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ id: "v" }), { status: 200 }),
+			);
+		vi.stubGlobal("fetch", fetchMock);
+		await volumeExists("v");
+		const init = fetchMock.mock.calls[0][1] as RequestInit;
+		expect(init.signal).toBeInstanceOf(AbortSignal);
 	});
 });
