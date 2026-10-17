@@ -1,7 +1,6 @@
 ---
 name: market-analysis-framework
 description: Structural-forces methodology for macro market analysis. Defines the 9-section living analysis format, conviction scoring, daily brief format, and analytical discipline. Designed for gold but applicable to any macro asset.
-scope: platform
 ---
 
 # Market Analysis Framework
@@ -170,12 +169,14 @@ FACTORY="$SHARED/data-factory"
 SKILL_SCRIPTS="$SHARED/skills/_platform/data-factory/scripts"
 magi-python3 "$SKILL_SCRIPTS/catalog.py" list "$FACTORY"
 
-# 3. Read news digests (new items only)
-bash "$SHARED/skills/_platform/data-factory-client/scripts/read-digest.sh" \
-  "$SHARED/data-factory/news/gold_newsapi"
+# 3. Read news digests (new items only) — the argument is the digest id, the
+#    directory name under data-factory/news/, not a path
+bash "$SHARED/skills/_platform/data-factory-client/scripts/read-digest.sh" gold_market_newsapi
+bash "$SHARED/skills/_platform/data-factory-client/scripts/read-digest.sh" gold_market_gdelt
 
 # 4. Update only changed sections in ANALYSIS (use EditFile, not full rewrite)
 # 5. Write BRIEF with marginal changes only
-# 6. Commit both via git-provenance
-# 7. PostMessage user with direction, score, one-sentence rationale, commit SHA
+# 6. Do not commit — the daemon commits your files at the end of the turn
+#    (git-provenance skill); the turn's commit is what provenance points at
+# 7. PostMessage user with direction, score and a one-sentence rationale
 ```

@@ -82,7 +82,7 @@ Running record: {N} trading days tracked. Win rate: {X}%. Cumulative PnL: ${Y}.
 ## Quality checklist
 
 Before finishing this turn (the file is committed automatically once you stop writing to it):
-- [ ] All four sections are populated (no empty sections)
+- [ ] All five sections are populated (no empty sections)
 - [ ] Recommendation is one of: LONG, SHORT, HOLD
 - [ ] Confidence level stated
 - [ ] Every claim has a source (URL or commit SHA)

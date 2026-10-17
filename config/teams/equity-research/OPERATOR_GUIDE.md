@@ -23,7 +23,8 @@ ANTHROPIC_API_KEY=...
 MONGODB_URI=...
 BRAVE_SEARCH_API_KEY=...   # recommended — enables SearchWeb
 
-# .env.data-keys (data API keys — forwarded to background jobs only)
+# .env.data-keys (data API keys — held by the daemon; background jobs reach the providers
+# through its data-fred / data-fmp / data-newsapi tools and never see a key)
 FRED_API_KEY=...           # free at fred.stlouisfed.org
 FMP_API_KEY=...            # financialmodelingprep.com (250 calls/day free)
 NEWSAPIORG_API_KEY=...     # newsapi.org (100 req/day free tier)
@@ -107,10 +108,10 @@ TEAM_CONFIG=$PWD/config/teams/equity-research.yaml npm run cli:post -w packages/
   --to data-scientist \
   "Please set up the data factory now. Follow the instructions in your data-factory skill:
 1. mkdir -p \$SHARED_DIR/data-factory
-2. pip install requirements (magi-python3 handles the venv)
+2. (no install step — the data-factory Python dependencies are baked into the image)
 3. Copy sources.json and schedule.json from \$SKILL_DIR into \$SHARED_DIR/data-factory/
-4. Run a first full refresh: \$SKILL_DIR/scripts/refresh.py \$SHARED_DIR
-5. Register the daily 05:30 refresh using the schedule-task skill
+4. Run a first full refresh as a background job (run-background skill, submit-job.sh)
+5. Register the daily 05:30 refresh with the run-background skill's schedule-job.sh
 6. PostMessage me (lead-analyst) with the catalog summary and any errors."
 ```
 
@@ -177,8 +178,10 @@ MISSION_ID=equity-research npm run cli:stop -w packages/agent-runtime-worker
 
 ## Daily operations
 
-Once the daily cycle is running, the daemon delivers a `[task] Daily cycle — begin` message
-to the Lead every weekday at 06:00. No operator action is required.
+Once the Lead has registered the daily cycle (schedule-task skill), the control plane delivers
+a `[task] Daily cycle — begin` message to the Lead every weekday at 06:00 — waking the mission
+if it is suspended. No operator action is required. Check it is registered with the mission
+copilot ("list scheduled messages") or in the cockpit's Schedule tab.
 
 To read the latest brief:
 ```bash
@@ -205,13 +208,15 @@ The data factory is a pre-fetched time-series store at `$SHARED_DIR/data-factory
 ```bash
 SHARED_DIR=missions/equity-research/shared
 FACTORY=$SHARED_DIR/data-factory
-DF_SCRIPTS=$SHARED_DIR/skills/_team/data-factory/scripts
+DF_SCRIPTS=$SHARED_DIR/skills/_platform/data-factory/scripts
 
 # Check catalog status (ok / error / stale)
 magi-python3 $DF_SCRIPTS/catalog.py list $FACTORY
 
-# Manual refresh (runs all adapters + news digests + brief synthesis)
-magi-python3 $DF_SCRIPTS/refresh.py $SHARED_DIR
+# Manual refresh (runs all adapters + news digests + brief synthesis). Ask Lin to run it
+# as a background job — run directly, it has no Tool API token and every keyed source fails:
+#   bash $SHARED_DIR/skills/_platform/run-background/scripts/submit-job.sh \
+#     --script $DF_SCRIPTS/refresh.py --args $SHARED_DIR
 
 # Read the latest NVDA news brief
 cat $FACTORY/news/nvda_competitive_landscape/brief.md

@@ -15,6 +15,12 @@
 set -euo pipefail
 
 NEWS_ID="${1:?Usage: read-digest.sh <news-id> [--all]}"
+# An id is a source name such as "yfinance/NVDA_daily" or "gold_market_newsapi",
+# never a path: refuse "..", absolute paths and anything outside the charset.
+if [[ ! "${NEWS_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._=/-]*$ || "${NEWS_ID}" == *..* ]]; then
+    echo "Invalid id \"${NEWS_ID}\" — pass the source id (e.g. from read-catalog.sh), not a path" >&2
+    exit 1
+fi
 ALL=0
 
 shift

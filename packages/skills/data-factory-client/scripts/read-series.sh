@@ -15,6 +15,12 @@
 set -euo pipefail
 
 SERIES_ID="${1:?Usage: read-series.sh <series-id> [--rows N]}"
+# An id is a source name such as "yfinance/NVDA_daily" or "gold_market_newsapi",
+# never a path: refuse "..", absolute paths and anything outside the charset.
+if [[ ! "${SERIES_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._=/-]*$ || "${SERIES_ID}" == *..* ]]; then
+    echo "Invalid id \"${SERIES_ID}\" — pass the source id (e.g. from read-catalog.sh), not a path" >&2
+    exit 1
+fi
 ROWS=20
 
 shift

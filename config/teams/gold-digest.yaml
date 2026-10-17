@@ -32,8 +32,8 @@ agents:
 
       ## Analytical framework
 
-      Use the `market-analysis-framework` platform skill (full methodology in
-      `{{sharedDir}}/skills/_platform/market-analysis-framework/SKILL.md`).
+      Use the `market-analysis-framework` team skill (full methodology in
+      `{{sharedDir}}/skills/_team/market-analysis-framework/SKILL.md`).
 
       Core discipline in brief:
       - Identify forces across 8 structural dimensions: real rates, USD, inflation expectations,
@@ -64,15 +64,15 @@ agents:
          `magi-python3 "$SKILL_SCRIPTS/catalog.py" list "$FACTORY"` where
          `SKILL_SCRIPTS="{{sharedDir}}/skills/_platform/data-factory/scripts"` and
          `FACTORY="{{sharedDir}}/data-factory"`
-      2. Read new news digests (is_new items only):
-         `bash "{{sharedDir}}/skills/_platform/data-factory-client/scripts/read-digest.sh" \
-           "{{sharedDir}}/data-factory/news/gold_market_newsapi"`
+      2. Read new news digests (is_new items only) — the argument is the digest id:
+         `bash "{{sharedDir}}/skills/_platform/data-factory-client/scripts/read-digest.sh" gold_market_newsapi`
+         (also `gold_market_gdelt`, `fed_policy_newsapi`, `central_bank_gold_gdelt`)
       3. Check key series for material moves (tail -5 for each):
          real rate (DFII10), DXY, gold price (GLD), breakeven (T10YIE)
       4. Update the living analysis — changed sections only (use EditFile)
       5. Write today's brief — marginal changes only
-      6. Commit both via git-provenance (type: analysis, label: gold-YYYY-MM-DD)
-      7. PostMessage user with: Direction, Score, one-sentence rationale, commit SHA
+      6. Do not commit — the daemon commits your files at the end of the turn (git-provenance)
+      7. PostMessage user with: Direction, Score, one-sentence rationale
 
       ## Research efficiency
 
@@ -139,9 +139,10 @@ agents:
 
       ## IMPORTANT: API keys and background jobs
 
-      Data API keys (FRED_API_KEY, NEWSAPIORG_API_KEY) are only available to background jobs
-      spawned via the run-background skill — NOT to direct Bash calls. Always run refresh.py
-      through submit-job.sh or schedule-job.sh, never with magi-python3 directly.
+      No API key ever reaches your Bash or your scripts. Keyed providers (FRED, FMP, NewsAPI)
+      are called through the daemon's data tools, which only a background job can reach (its
+      MAGI_TOOL_TOKEN). Always run refresh.py through submit-job.sh or schedule-job.sh, never
+      with magi-python3 directly — a direct run has no token and every keyed source fails.
 
       ## Setup (first run only)
 
@@ -155,11 +156,10 @@ agents:
       cp "{{sharedDir}}/skills/_team/data-factory/sources.json" "$FACTORY/sources.json"
       cp "{{sharedDir}}/skills/_team/data-factory/schedule.json" "$FACTORY/schedule.json"
 
-      # Run first refresh as a background job (keys are injected by the daemon)
+      # Run first refresh as a background job (it reaches keyed providers via the daemon's data tools)
       bash "$RUN_BG/submit-job.sh" \
         --script "$SKILL_SCRIPTS/refresh.py" \
         --args "{{sharedDir}}" \
-        --agent "data-scientist" \
         --notify-subject "First gold data refresh complete"
       ```
 
@@ -185,16 +185,16 @@ agents:
       1. Check the refresh log: `tail -50 "$FACTORY/refresh.log"`
       2. Check the catalog: `magi-python3 "$SKILL_SCRIPTS/catalog.py" show "$FACTORY" "<id>"`
       3. If it is a FRED series on a weekend/holiday, the empty result is normal — log it and move on.
-      4. If an API-keyed source fails with an auth error, PostMessage the user — the key may be missing
-         from .env.data-keys (only the operator can fix this).
+      4. If an API-keyed source fails with an auth error or "daily call cap", PostMessage the user —
+         the key may be missing on the platform or the cap reached (only the operator can fix either).
       5. PostMessage macro-analyst if a data source fails and you cannot fix it within this session.
 
       ## How you work
 
       Read the data-factory SKILL.md for operator commands.
-      Commit data updates and config changes via git-provenance (type: data, label: daily-data-YYYY-MM-DD).
+      Do not commit — the daemon commits your data and config changes at the end of the turn.
       PostMessage macro-analyst when your refresh is done with: catalog summary, any errors found.
-      Stop calling tools when your data work is committed and reported.
+      Stop calling tools when your data work is written and reported.
 
       ## Efficiency
 
