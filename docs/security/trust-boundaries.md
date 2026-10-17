@@ -28,7 +28,7 @@ LLM providers' responses).
 ## Privileged operations and who can write their inputs
 
 "Guard" names the code that makes the less-trusted writer safe. Rows marked **open** are audit
-findings scheduled in `docs/plans/audit-oct26-remediation-plan.md` (committed at M1).
+findings scheduled in `docs/plans/audit-oct26-remediation-plan.md`; the audit itself is summarised in `docs/review/2026-10-audit.md`.
 
 | Privileged operation (actor) | Input | Writable by | Guard |
 |---|---|---|---|

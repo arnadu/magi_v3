@@ -34,11 +34,11 @@ packages/agent-runtime-worker/team/
 \\\\wsl.localhost*/
 **/*\\wsl.localhost*/
 packages/agent-runtime-worker/tests/browse-web-last-run.ndjson
-# Third-party audit kit and its per-finding tracker: local only while the repo is public and
-# High-severity findings are still open (they contain repro payloads). A closed-out, redacted
-# copy is committed under docs/review/ at the end of the remediation sprint's milestone M1.
+# Third-party audit kit and its per-finding tracker: local only (they contain repro payloads;
+# the repo is public). Only the closed-out, redacted summary is committed from docs/review/.
 audit-oct26/
-docs/review/
+docs/review/*
+!docs/review/2026-10-audit.md
 fly.control-*.toml
 !fly.control-dev.toml
 !fly.control-test-hello-world.toml
