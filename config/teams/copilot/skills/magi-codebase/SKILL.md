@@ -55,5 +55,6 @@ in development. Use `find`, `cat`, and `grep` to read files as needed.
 | `mailbox` | Inter-agent and operator messages |
 | `llmCallLog` | Audit log of every LLM call with cost breakdown |
 | `scheduled_messages` | Cron-based agent wakeups |
-| `missions` | Mission records with status, machineId, teamConfigYaml |
+| `missions` | Mission records: status, machineId/volumeId, structured config (`mission`, `agents`, `missionCopilotLimits`, `teamFiles`) |
+| `copilotPendingActions` | Proposed-but-unconfirmed copilot actions (survive a control-plane restart; 7-day TTL) |
 | `templates` | Team config templates with teamFiles |

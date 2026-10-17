@@ -15,8 +15,8 @@
 
 import { randomUUID } from "node:crypto";
 import type { Db } from "mongodb";
-import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
 import { GITHUB_REPO, ghFetch } from "./github.js";
+import type { PendingAction, PendingActionsStore } from "./pending-actions.js";
 
 export const GITHUB_ISSUE_ACTION = "file_github_issue";
 export const MAX_ISSUE_TITLE_CHARS = 200;
@@ -273,7 +273,7 @@ export async function proposeIssueForMissionOwner(
 	});
 	if (payload.op !== "create") throw new Error("unreachable: op is create");
 	const action = githubIssuePendingAction(mission.userId, payload);
-	deps.pending.add(action);
+	await deps.pending.add(action);
 	deps.notify(mission.userId, "copilot-action", {
 		id: action.id,
 		type: action.type,

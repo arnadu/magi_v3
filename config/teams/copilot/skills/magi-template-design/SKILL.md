@@ -30,7 +30,7 @@ never to author or version templates yourself.
 
 A session must be **suspended** before its config can be edited:
 1. Propose `suspend_mission` — wait for confirmation
-2. Propose `save_session_config` with `{ missionId, teamConfigYaml, teamFiles?, mentalMaps? }`
+2. Propose `save_session_config` with `{ missionId, mission?, agents?, missionCopilotLimits?, teamFiles?, mentalMaps? }` — a structured partial patch (there is no `teamConfigYaml` field): `mission` is shallow-merged, `agents` are upserted by id, `missionCopilotLimits` replaces wholesale
 3. Operator confirms → config saved; propose `resume_mission` when ready
 
 `mentalMaps` is optional: `{ [agentId]: htmlString }` — updates each agent's persisted

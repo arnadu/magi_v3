@@ -4,7 +4,6 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { PendingActionsStore } from "../src/copilot-tools.js";
 import {
 	executeGithubIssueAction,
 	GITHUB_ISSUE_ACTION,
@@ -16,6 +15,7 @@ import {
 	provenanceBlock,
 	searchOpenIssues,
 } from "../src/github-issues.js";
+import { MemoryPendingActionsStore } from "./helpers/pending-actions.js";
 
 function fakeGh(responses: Array<{ status: number; body: unknown }>) {
 	const calls: Array<{ path: string; init?: RequestInit }> = [];
@@ -200,7 +200,7 @@ describe("executeGithubIssueAction", () => {
 
 describe("proposeIssueForMissionOwner", () => {
 	it("creates a pending action for the mission's owner and notifies their cockpit; nothing is filed", async () => {
-		const pending = new PendingActionsStore();
+		const pending = new MemoryPendingActionsStore();
 		const notified: Array<{ userId: string; type: string; data: unknown }> = [];
 		const db = {
 			collection: () => ({
@@ -218,7 +218,7 @@ describe("proposeIssueForMissionOwner", () => {
 			{ title: "Daemon crash", body: "trace", labels: ["bug"] },
 		);
 		expect(r.ownerUserId).toBe("owner-1");
-		const action = pending.get(r.pendingActionId);
+		const action = await pending.get(r.pendingActionId);
 		expect(action).toMatchObject({
 			userId: "owner-1",
 			type: GITHUB_ISSUE_ACTION,

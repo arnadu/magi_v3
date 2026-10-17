@@ -45,13 +45,13 @@
 	"packages/agent-runtime-worker/src/loop.ts": {
 		"lines": 521,
 		"fns": {
-			"runInnerLoop@235": 240
+			"runInnerLoop@236": 240
 		}
 	},
 	"packages/agent-runtime-worker/src/mailbox.ts": {
-		"lines": 326,
+		"lines": 325,
 		"fns": {
-			"createMailboxTools@160": 166
+			"createMailboxTools@160": 165
 		}
 	},
 	"packages/agent-runtime-worker/src/mental-map.ts": {
@@ -81,7 +81,7 @@
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
 		"lines": 1154,
 		"fns": {
-			"handleUpload@549": 142
+			"handleUpload@532": 142
 		}
 	},
 	"packages/agent-runtime-worker/src/objectives/tools.ts": {
@@ -145,8 +145,8 @@
 	"packages/cockpit/src/CopilotPanel.tsx": {
 		"lines": 489,
 		"fns": {
-			"CopilotPanel@85": 413,
-			"<anonymous>@146": 149
+			"CopilotPanel@120": 405,
+			"<anonymous>@181": 135
 		}
 	},
 	"packages/cockpit/src/DraftEditor.tsx": {
@@ -203,16 +203,16 @@
 		}
 	},
 	"packages/control-plane/src/copilot-router.ts": {
-		"lines": 877,
+		"lines": 826,
 		"fns": {
-			"createCopilotRouter@70": 338,
-			"executeAction@432": 378
+			"createCopilotRouter@76": 284,
+			"executeAction@383": 370
 		}
 	},
 	"packages/control-plane/src/copilot-tools.ts": {
-		"lines": 972,
+		"lines": 903,
 		"fns": {
-			"createCopilotTools@148": 824
+			"createCopilotTools@127": 776
 		}
 	},
 	"packages/control-plane/src/index.ts": {

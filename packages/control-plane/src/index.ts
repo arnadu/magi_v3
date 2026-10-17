@@ -28,13 +28,13 @@ import rateLimit from "express-rate-limit";
 import { createAuthMiddleware } from "./auth.js";
 import { createCopilotRouter } from "./copilot-router.js";
 import { createCopilotRuntime } from "./copilot-runtime.js";
-import { PendingActionsStore } from "./copilot-tools.js";
 import { startCopilotWaker } from "./copilot-waker.js";
 import { initFirebase } from "./firebase.js";
 import { createMissionCopilotRouter } from "./mission-copilot-router.js";
 import { createMissionResourceRoutes } from "./mission-resource-routes.js";
 import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
+import { MongoPendingActionsStore } from "./pending-actions.js";
 import { createProxyRouter } from "./proxy.js";
 import { mountPublicSurface } from "./public-routes.js";
 import { startResourceMonitor } from "./resource-monitor.js";
@@ -106,7 +106,8 @@ async function main(): Promise<void> {
 	// Shared by the control-plane copilot and the mission-copilot proxy: a
 	// mission copilot's GitHub-issue request becomes a pending action in the
 	// mission owner's cockpit (github-issues.ts).
-	const pendingActions = new PendingActionsStore();
+	const pendingActions = new MongoPendingActionsStore(db);
+	await pendingActions.ensureIndexes();
 	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);
 
 	app.use(

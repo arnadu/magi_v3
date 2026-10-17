@@ -11,10 +11,8 @@ import { randomUUID } from "node:crypto";
 import type { Db, MongoClient } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
-import {
-	createCopilotTools,
-	PendingActionsStore,
-} from "../src/copilot-tools.js";
+import { createCopilotTools } from "../src/copilot-tools.js";
+import { MongoPendingActionsStore } from "../src/pending-actions.js";
 
 describe("copilot B1 tools — userId scoping", () => {
 	// biome-ignore lint/style/noNonNullAssertion: required env var; vitest.setup.ts validates presence
@@ -101,7 +99,12 @@ describe("copilot B1 tools — userId scoping", () => {
 	});
 
 	function toolsFor(userId: string) {
-		return createCopilotTools(db, () => {}, new PendingActionsStore(), userId);
+		return createCopilotTools(
+			db,
+			() => {},
+			new MongoPendingActionsStore(db),
+			userId,
+		);
 	}
 
 	function get(tools: ReturnType<typeof toolsFor>, name: string) {
@@ -252,7 +255,12 @@ describe("copilot B5 tool — EditDraftConfig", () => {
 	});
 
 	function toolsFor(userId: string) {
-		return createCopilotTools(db, () => {}, new PendingActionsStore(), userId);
+		return createCopilotTools(
+			db,
+			() => {},
+			new MongoPendingActionsStore(db),
+			userId,
+		);
 	}
 
 	function get(tools: ReturnType<typeof toolsFor>, name: string) {

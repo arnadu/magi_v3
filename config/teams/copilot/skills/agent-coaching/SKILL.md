@@ -67,7 +67,6 @@ The mental map is an HTML string. To patch a single section:
   "type": "save_session_config",
   "payload": {
     "missionId": "gold-digest-001",
-    "teamConfigYaml": "... (unchanged YAML) ...",
     "mentalMaps": {
       "lead-analyst": "<section id=\"status\"><p>Ready. Awaiting daily brief task.</p></section><section id=\"active-missions\"><p>No active subtasks.</p></section>"
     }

@@ -4,6 +4,7 @@ import {
 	confirmCopilotAction,
 	dismissCopilotAction,
 	fetchCopilotHistory,
+	fetchCopilotPendingActions,
 	fetchCopilotSettings,
 	fetchCopilotUsage,
 	type RawMessage,
@@ -82,6 +83,40 @@ function loadStoredWidth(): number {
 		: DEFAULT_WIDTH;
 }
 
+/** A confirmation card entry, from an SSE `copilot-action` event or the replay of a persisted pending action. */
+function actionEntry(a: {
+	id: string;
+	type: string;
+	label: string;
+	payload?: unknown;
+}): Omit<Extract<Entry, { kind: "action" }>, "id"> {
+	return {
+		kind: "action",
+		actionId: a.id,
+		type: a.type,
+		label: a.label,
+		payload: a.payload,
+	};
+}
+
+/** Marks the card for `result.id` resolved; every other entry is untouched. */
+function withActionResult(
+	prev: Entry[],
+	result: { id: string; ok: boolean; result?: string; error?: string },
+): Entry[] {
+	return prev.map((entry) =>
+		entry.kind === "action" && entry.actionId === result.id
+			? {
+					...entry,
+					resolved: {
+						ok: result.ok,
+						text: result.ok ? (result.result ?? "") : (result.error ?? ""),
+					},
+				}
+			: entry,
+	);
+}
+
 export function CopilotPanel() {
 	const [width, setWidth] = useState(loadStoredWidth);
 
@@ -147,10 +182,11 @@ export function CopilotPanel() {
 		let cancelled = false;
 
 		(async () => {
-			const [history, u, s] = await Promise.all([
+			const [history, u, s, pendingCards] = await Promise.all([
 				fetchCopilotHistory().catch(() => []),
 				fetchCopilotUsage().catch(() => null),
 				fetchCopilotSettings().catch(() => null),
+				fetchCopilotPendingActions().catch(() => []),
 			]);
 			if (cancelled) return;
 			if (history.length > 0) {
@@ -165,6 +201,9 @@ export function CopilotPanel() {
 			}
 			if (u) setUsage(u);
 			if (s) setSettings(s);
+			// Replay cards that were proposed before this page loaded (or before
+			// a control-plane restart) and are still unconfirmed.
+			for (const card of pendingCards) push(actionEntry(card));
 			scrollBottom();
 		})();
 
@@ -186,13 +225,7 @@ export function CopilotPanel() {
 				label: string;
 				payload?: unknown;
 			};
-			push({
-				kind: "action",
-				actionId: action.id,
-				type: action.type,
-				label: action.label,
-				payload: action.payload,
-			});
+			push(actionEntry(action));
 			setThinking(false);
 			scrollBottom();
 		});
@@ -204,21 +237,7 @@ export function CopilotPanel() {
 				result?: string;
 				error?: string;
 			};
-			setEntries((prev) =>
-				prev.map((entry) =>
-					entry.kind === "action" && entry.actionId === result.id
-						? {
-								...entry,
-								resolved: {
-									ok: result.ok,
-									text: result.ok
-										? (result.result ?? "")
-										: (result.error ?? ""),
-								},
-							}
-						: entry,
-				),
-			);
+			setEntries((prev) => withActionResult(prev, result));
 			scrollBottom();
 		});
 

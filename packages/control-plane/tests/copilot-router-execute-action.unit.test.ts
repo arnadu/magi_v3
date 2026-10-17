@@ -148,32 +148,27 @@ function suspendedMission(overrides: Partial<MissionDoc> = {}): MissionDoc {
 }
 
 describe("executeAction: save_session_config", () => {
-	it("requires missionId", async () => {
+	it("requires missionId (rejected by the action registry before any handler runs)", async () => {
 		const db = fakeDb({ missions: [] });
-		const result = await executeAction(db, makeAction({}), "user1");
-		expect(result).toBe("save_session_config: missionId is required");
+		await expect(executeAction(db, makeAction({}), "user1")).rejects.toThrow(
+			/missionId/,
+		);
 	});
 
-	it("returns an error when the mission is not found (or not owned by the caller)", async () => {
+	it("throws when the mission is not found (or not owned by the caller)", async () => {
 		const db = fakeDb({ missions: [] });
-		const result = await executeAction(
-			db,
-			makeAction({ missionId: "m1" }),
-			"user1",
-		);
-		expect(result).toBe("Mission m1 not found");
+		await expect(
+			executeAction(db, makeAction({ missionId: "m1" }), "user1"),
+		).rejects.toThrow("Mission m1 not found");
 	});
 
 	it("refuses to edit a running (non-suspended) mission", async () => {
 		const db = fakeDb({
 			missions: [suspendedMission({ status: "running" })],
 		});
-		const result = await executeAction(
-			db,
-			makeAction({ missionId: "m1" }),
-			"user1",
-		);
-		expect(result).toBe(
+		await expect(
+			executeAction(db, makeAction({ missionId: "m1" }), "user1"),
+		).rejects.toThrow(
 			"Mission m1 must be suspended before editing config (current: running)",
 		);
 	});
@@ -181,12 +176,13 @@ describe("executeAction: save_session_config", () => {
 	it("rejects an invalid resulting config without writing", async () => {
 		const missions = [suspendedMission()];
 		const db = fakeDb({ missions });
-		const result = await executeAction(
-			db,
-			makeAction({ missionId: "m1", mission: { name: "" } }),
-			"user1",
-		);
-		expect(result).toContain("Invalid team config:");
+		await expect(
+			executeAction(
+				db,
+				makeAction({ missionId: "m1", mission: { name: "" } }),
+				"user1",
+			),
+		).rejects.toThrow("Invalid team config:");
 		expect(missions[0].mission?.name).toBe("M1");
 	});
 
@@ -252,22 +248,23 @@ describe("executeAction: save_session_config", () => {
 	it("rejects a payload naming the reserved mission-copilot agent id", async () => {
 		const missions = [suspendedMission()];
 		const db = fakeDb({ missions });
-		const result = await executeAction(
-			db,
-			makeAction({
-				missionId: "m1",
-				agents: [
-					{
-						id: "mission-copilot",
-						supervisor: "user",
-						systemPrompt: "x",
-						initialMentalMap: "x",
-					},
-				],
-			}),
-			"user1",
-		);
-		expect(result).toContain("Invalid team config:");
+		await expect(
+			executeAction(
+				db,
+				makeAction({
+					missionId: "m1",
+					agents: [
+						{
+							id: "mission-copilot",
+							supervisor: "user",
+							systemPrompt: "x",
+							initialMentalMap: "x",
+						},
+					],
+				}),
+				"user1",
+			),
+		).rejects.toThrow("Invalid team config:");
 	});
 
 	it("TF1/CHAIN-A: rejects a teamFiles traversal path and writes nothing", async () => {
@@ -275,17 +272,18 @@ describe("executeAction: save_session_config", () => {
 			suspendedMission({ teamFiles: [{ path: "old.md", content: "keep" }] }),
 		];
 		const db = fakeDb({ missions });
-		const result = await executeAction(
-			db,
-			makeAction({
-				missionId: "m1",
-				teamFiles: [
-					{ path: "../../home/magi-operator/.gitconfig", content: "evil" },
-				],
-			}),
-			"user1",
-		);
-		expect(result).toMatch(/escape/);
+		await expect(
+			executeAction(
+				db,
+				makeAction({
+					missionId: "m1",
+					teamFiles: [
+						{ path: "../../home/magi-operator/.gitconfig", content: "evil" },
+					],
+				}),
+				"user1",
+			),
+		).rejects.toThrow(/escape/);
 		expect(missions[0].teamFiles).toEqual([
 			{ path: "old.md", content: "keep" },
 		]);
@@ -423,15 +421,12 @@ describe("executeAction: launch_draft", () => {
 		).rejects.toThrow('Mission "m1" is not a draft');
 	});
 
-	it("returns a validation error string (does not throw) on an empty roster, leaving status as draft", async () => {
+	it("throws on an empty roster (so /confirm reports a failure), leaving status as draft", async () => {
 		const missions = [draftMission()];
 		const db = fakeDb({ missions });
-		const result = await executeAction(
-			db,
-			draftAction({ missionId: "m1" }),
-			"user1",
-		);
-		expect(result).toContain("Invalid team config:");
+		await expect(
+			executeAction(db, draftAction({ missionId: "m1" }), "user1"),
+		).rejects.toThrow("Invalid team config:");
 		expect(missions[0].status).toBe("draft");
 	});
 

@@ -128,6 +128,7 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 - `missionResources` — latest per-mission resource sample (ADR-0032): disk usage, daemon RSS, in-flight background job count; upserted every 60 s by the daemon's job-runner tick; one doc per `missionId`
 - `platformResources` — cluster-wide (not per-mission) resource samples (ADR-0032); today just `_id: "atlas"`: shared MongoDB Atlas storage usage and its per-database/per-collection breakdown, upserted by the control plane's 5-min resource-monitor tick
 - `resourceSnapshots` — one doc per `(userId, date)` (unique index), written by the daily resource report (ADR-0032): per-mission `{diskUsedBytes, llmTotalUsd, upgradedMs}` plus `atlasBytes` for admins; its existence is the idempotency/send-claim for that user's report that day, and the last 7 days back the "chronic upgrade" flag and disk/Atlas growth-rate projections
+- `copilotPendingActions` — control-plane copilot actions proposed via `ProposeAction` and not yet confirmed/dismissed (F-055); one doc per action, `_id` = action id, 7-day TTL on `createdAt`; claimed atomically by `POST /api/copilot/confirm`
 - `missionStats` — lifetime per-agent totals (cost, LLM calls, turn count, consecutive zero-output turns), `$inc`-updated once at turn end; one doc per `(missionId, agentId)`
 
 ### Data flow

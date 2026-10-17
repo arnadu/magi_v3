@@ -31,7 +31,7 @@ import { createMongoMailboxRepository } from "../../agent-runtime-worker/src/mai
 import { CLAUDE_SONNET } from "../../agent-runtime-worker/src/models.js";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
 import { startCopilotDaemon } from "../src/copilot-daemon.js";
-import { PendingActionsStore } from "../src/copilot-tools.js";
+import { MongoPendingActionsStore } from "../src/pending-actions.js";
 import { loadTemplates } from "../src/templates.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -72,7 +72,7 @@ describe("copilot daemon — template selection + mission launch", () => {
 
 		const { client, db } = await connectMongo(MONGODB_URI, "magi-test");
 		const mailboxRepo = createMongoMailboxRepository(db, missionId);
-		const pending = new PendingActionsStore();
+		const pending = new MongoPendingActionsStore(db);
 		const events: Array<{ type: string; data: unknown }> = [];
 
 		// Seed the message BEFORE starting the daemon so the first hasUnread()

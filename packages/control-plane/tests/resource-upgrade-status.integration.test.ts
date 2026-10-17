@@ -18,11 +18,9 @@ import {
 	vi,
 } from "vitest";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
-import {
-	createCopilotTools,
-	PendingActionsStore,
-} from "../src/copilot-tools.js";
+import { createCopilotTools } from "../src/copilot-tools.js";
 import { volumeExists } from "../src/fly-machines.js";
+import { MongoPendingActionsStore } from "../src/pending-actions.js";
 
 vi.mock("../src/fly-machines.js", () => ({
 	getMachineState: vi.fn(),
@@ -60,7 +58,7 @@ describe("GetMissionStatus — machine tier and upgraded runtime", () => {
 		const tools = createCopilotTools(
 			db,
 			() => {},
-			new PendingActionsStore(),
+			new MongoPendingActionsStore(db),
 			userId,
 		);
 		const tool = tools.find((t) => t.name === "GetMissionStatus");

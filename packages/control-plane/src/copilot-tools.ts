@@ -41,6 +41,11 @@ import {
 } from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
+import {
+	ActionValidationError,
+	describeActions,
+	parseActionPayload,
+} from "./copilot-actions.js";
 import { getMachineState, volumeExists } from "./fly-machines.js";
 import {
 	GITHUB_ISSUE_ACTION,
@@ -55,42 +60,16 @@ import {
 	upgradedMsSince,
 } from "./machine-segments.js";
 import { deriveMonitorToken, monitorAuthHeaders } from "./monitor-token.js";
+import type { PendingAction, PendingActionsStore } from "./pending-actions.js";
 import { latestResourceSample } from "./resource-queries.js";
 import {
 	getTemplate as getTemplateData,
 	listTemplates as listTemplateData,
 } from "./templates.js";
 
-// ---------------------------------------------------------------------------
-// Pending-actions store (ProposeAction ↔ /confirm endpoint)
-// ---------------------------------------------------------------------------
-
-export interface PendingAction {
-	id: string;
-	/** Firebase UID of the user whose copilot proposed this action. */
-	userId: string;
-	type: string;
-	label: string;
-	payload: unknown;
-	createdAt: Date;
-}
-
-/** In-memory store for unconfirmed proposed actions. */
-export class PendingActionsStore {
-	private readonly store = new Map<string, PendingAction>();
-
-	add(action: PendingAction): void {
-		this.store.set(action.id, action);
-	}
-
-	get(id: string): PendingAction | undefined {
-		return this.store.get(id);
-	}
-
-	delete(id: string): void {
-		this.store.delete(id);
-	}
-}
+// Pending actions live in pending-actions.ts (Mongo-backed); re-exported so
+// existing importers keep one path.
+export type { PendingAction, PendingActionsStore } from "./pending-actions.js";
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -504,101 +483,53 @@ export function createCopilotTools(
 		name: "ProposeAction",
 		description:
 			"Propose a mutating action for operator confirmation. " +
-			"The action is shown to the operator in the chat UI as a confirmation card. " +
-			"This tool returns immediately — execution happens when the operator confirms.\n\n" +
-			"Valid types and required payload fields:\n" +
-			"- launch_mission: { missionId, name?, templateId }\n" +
-			"- launch_draft: { missionId } — validate a draft's stored config (full TeamConfig " +
-			"rules, unlike EditDraftConfig's permissive writes) and provision it, flipping status " +
-			"from draft to running. Stays operator-confirmed because it's the one step that " +
-			"actually spins up a paid machine.\n" +
-			"- suspend_mission: { missionId }\n" +
-			"- resume_mission: { missionId } — also recovers a mission whose machine " +
-			"was destroyed (e.g. after a prior failed resume), by reprovisioning " +
-			"fresh against the mission's volumeId. If that volumeId itself no longer " +
-			"exists on Fly, propose fix_mission_volume first.\n" +
-			"- fix_mission_volume: { missionId } — for a mission whose GetMissionStatus " +
-			"shows its volumeId as NOT FOUND on Fly (drifted MongoDB record, not a real " +
-			"data loss — see the mission-recovery skill). Finds the mission's real " +
-			"volume on Fly by name and corrects mission.volumeId; never touches Fly " +
-			"itself, and refuses rather than guessing if the match is ambiguous or " +
-			"missing. Follow with resume_mission to actually bring the mission back up.\n" +
-			"- write_mission_file: { missionId, path, content, agentId? }\n" +
-			"- save_session_config: { missionId, mission?, agents?, missionCopilotLimits?, teamFiles?: [{path, content}], mentalMaps?: {[agentId]: html} } " +
-			"— mission must be suspended first. Structured partial patch (ADR-0021): omit mission/agents/" +
-			"missionCopilotLimits to leave that field untouched; mission is shallow-merged, agents are " +
-			"upserted by id into the current roster: an existing id is replaced in place, a new id is " +
-			"appended. To RENAME an agent, reuse its existing id and just change name/systemPrompt — " +
-			"submitting a new id creates a SEPARATE agent and leaves the old one in the roster " +
-			"unchanged. To remove an agent, submit it with active: false — omitting an existing agent " +
-			"from this list does NOT delete it. missionCopilotLimits replaces wholesale. " +
-			"Omit teamFiles to preserve the current ones; " +
-			"WARNING: passing teamFiles: [] will clear all attached files — only do this intentionally.\n" +
-			"- cancel_schedule: { id }\n" +
-			"- create_schedule: { missionId, to, subject, body, cron?, deliverAt?, label? }\n" +
-			"- pause_agent: { missionId, agentId } — halt one agent at its next dispatch boundary (e.g. a runaway flagged by a limit alert)\n" +
-			"- resume_agent: { missionId, agentId } — lift a previous pause\n" +
-			"- set_mission_budget: { missionId, capUsd } — set the mission's absolute spending cap in USD\n" +
-			"- file_github_issue: { op: 'create', title, body, labels? } | { op: 'comment', number, body } | { op: 'close', number, comment? } " +
-			"— the CreateIssue/CloseIssue/AddIssueComment tools build this for you; the label is computed server-side",
+			"The action is shown to the operator in the chat UI as a confirmation card with its " +
+			"full validated payload under a server-computed label. This tool returns immediately — " +
+			"execution happens when the operator confirms. The payload is validated strictly: a " +
+			"missing, mistyped or unknown field is rejected here (nothing is proposed), so pass " +
+			"exactly the fields listed.\n\n" +
+			`Action types and payloads:\n${describeActions()}`,
 		parameters: Type.Object({
 			type: Type.String({ description: "Action type (see description)" }),
-			label: Type.String({
-				description:
-					"Short human-readable label shown on the confirmation card",
-			}),
 			payload: Type.Unknown({
 				description:
 					"Action-specific parameters. Pass as a JSON object, not a string.",
 			}),
+			label: Type.Optional(
+				Type.String({
+					description:
+						"Ignored — the card's label is computed from the validated payload.",
+				}),
+			),
 		}),
 		async execute(_id, args) {
-			const type = args.type as string;
-			const label = args.label as string;
-			const rawPayload = args.payload;
-			const payload =
-				typeof rawPayload === "string" ? JSON.parse(rawPayload) : rawPayload;
-
-			const VALID_TYPES = new Set([
-				"launch_mission",
-				"launch_draft",
-				"suspend_mission",
-				"resume_mission",
-				"fix_mission_volume",
-				"write_mission_file",
-				"save_session_config",
-				"cancel_schedule",
-				"create_schedule",
-				"pause_agent",
-				"resume_agent",
-				"set_mission_budget",
-				GITHUB_ISSUE_ACTION,
-			]);
-			if (!VALID_TYPES.has(type)) {
-				return err(
-					`Unknown action type "${type}". Valid: ${[...VALID_TYPES].join(", ")}`,
-				);
+			let parsed: ReturnType<typeof parseActionPayload>;
+			try {
+				parsed = parseActionPayload(args.type, args.payload);
+			} catch (e) {
+				if (e instanceof ActionValidationError) return err(e.message);
+				throw e;
 			}
-			if (type === GITHUB_ISSUE_ACTION) return proposeGithubIssue(payload);
-
+			if (parsed.type === GITHUB_ISSUE_ACTION) {
+				return proposeGithubIssue(parsed.payload);
+			}
 			const action: PendingAction = {
 				id: randomUUID(),
 				userId,
-				type,
-				label,
-				payload,
+				type: parsed.type,
+				label: parsed.label,
+				payload: parsed.payload,
 				createdAt: new Date(),
 			};
-			pending.add(action);
+			await pending.add(action);
 			pushEvent("copilot-action", {
 				id: action.id,
 				type: action.type,
 				label: action.label,
 				payload: action.payload,
 			});
-
 			return ok(
-				`Action proposed: "${label}" (id: ${action.id}).\n` +
+				`Action proposed: "${action.label}" (id: ${action.id}).\n` +
 					"Waiting for operator confirmation. You can continue your response — " +
 					"execution will happen when the operator confirms.",
 			);
@@ -650,7 +581,7 @@ export function createCopilotTools(
 	// into a `file_github_issue` payload and proposes it for operator
 	// confirmation, exactly like ProposeAction — the repository is public and
 	// a copilot's context can carry text from untrusted sources (F-021).
-	const proposeGithubIssue = (raw: unknown): ToolResult => {
+	const proposeGithubIssue = async (raw: unknown): Promise<ToolResult> => {
 		let payload: GithubIssuePayload;
 		try {
 			payload = parseGithubIssuePayload(raw);
@@ -658,7 +589,7 @@ export function createCopilotTools(
 			return err((e as Error).message);
 		}
 		const action = githubIssuePendingAction(userId, payload);
-		pending.add(action);
+		await pending.add(action);
 		pushEvent("copilot-action", {
 			id: action.id,
 			type: action.type,

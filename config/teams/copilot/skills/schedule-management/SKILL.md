@@ -9,56 +9,80 @@ description: |
 
 ## How scheduled wakeups work
 
-Scheduled messages live in the `scheduled_messages` MongoDB collection. The daemon's
-cron heartbeat (every minute) scans for entries with `fireAt <= now` and `status: "pending"`,
-then delivers them to the target agent's mailbox and marks them `delivered`.
+Scheduled messages live in the `scheduled_messages` MongoDB collection. The **control plane's**
+scheduler tick (every minute) claims entries with `deliverAt <= now` and `status: "pending"`,
+wakes the mission's machine if it is stopped, posts the message into the recipients' mailboxes
+and marks the entry `delivered` — or, for a `cron` entry, re-arms it with the next `deliverAt`.
 
-Each schedule entry has:
+Each entry has:
 - `missionId` — which mission
-- `agentId` — which agent receives the message
-- `cronExpression` — when to fire (standard 5-field cron, UTC)
-- `message` — the message content delivered to the agent
-- `status` — `pending` | `delivered` | `cancelled`
-- `fireAt` — next computed fire time
+- `to` — recipient agent ids (and/or `"user"` for the operator)
+- `subject`, `body` — the mailbox message that is delivered
+- `cron` — optional 5-field cron (UTC) for a recurring wakeup; the entry re-arms after each fire
+- `deliverAt` — the next delivery time (computed from `cron`, or given directly for a one-off)
+- `label` — optional short name shown in listings
+- `status` — `pending` | `delivered` | `cancelled` | `failed`
 
 ## Listing schedules
 
+Call the `ListSchedule` tool:
 ```json
-{ "type": "list_schedule", "missionId": "gold-digest-001" }
+{ "missionId": "gold-digest-001" }
 ```
-Omit `missionId` to list all schedules across all missions.
+Omit `missionId` to list every schedule across your missions. Each row shows the entry's id
+(a 24-hex MongoDB id) — that is what `cancel_schedule` takes.
 
 ## Creating a schedule
 
-Use `ProposeAction` with type `create_schedule`:
+Use `ProposeAction` with type `create_schedule`. The payload is validated strictly: exactly
+these keys, `to` is a list, and one of `cron` / `deliverAt` is required (a schedule with
+neither would be delivered immediately). The card the operator confirms shows the full payload.
 
 ```json
 {
   "type": "create_schedule",
-  "label": "Daily brief — 08:30 UTC weekdays",
   "payload": {
     "missionId": "gold-digest-001",
-    "agentId": "lead-analyst",
-    "cronExpression": "30 8 * * 1-5",
-    "message": "Good morning. Please produce today's gold market brief and post it to the operator when complete."
+    "to": ["lead-analyst"],
+    "subject": "Daily gold market brief",
+    "body": "Good morning. Please produce today's gold market brief and post it to the operator when complete.",
+    "cron": "30 8 * * 1-5",
+    "label": "Daily brief — 08:30 UTC weekdays"
   }
 }
 ```
 
+A one-off wakeup uses `deliverAt` (ISO-8601, UTC) instead of `cron`:
+
+```json
+{
+  "type": "create_schedule",
+  "payload": {
+    "missionId": "gold-digest-001",
+    "to": ["lead-analyst", "user"],
+    "subject": "FOMC decision follow-up",
+    "body": "The FOMC statement is out — summarise the gold reaction in the next hour.",
+    "deliverAt": "2026-11-05T19:30:00Z"
+  }
+}
+```
+
+Recipients must be agents of that mission (or `"user"`); the action is refused otherwise.
+
 ## Cancelling a schedule
 
-Use `ProposeAction` with type `cancel_schedule`:
+Use `ProposeAction` with type `cancel_schedule`, with the 24-hex id from `ListSchedule`:
 
 ```json
 {
   "type": "cancel_schedule",
-  "label": "Cancel daily brief schedule",
   "payload": {
-    "scheduleId": "<MongoDB _id of the schedule entry>"
+    "id": "6710a1b2c3d4e5f60718293a"
   }
 }
 ```
-Get the `scheduleId` from `ListSchedule` output.
+Cancelling an entry that is no longer `pending` (already delivered, or cancelled) is reported
+as a failure, not a success.
 
 ## Cron expression reference (UTC, 5-field)
 
@@ -83,19 +107,19 @@ Common patterns:
 | `0 0 1 * *` | Midnight on the 1st of each month |
 | `*/30 9-17 * * 1-5` | Every 30 min during market hours (UTC) |
 
-## Important limitation — missed fires (G-3 gap)
+## Timing guarantees and their limits
 
-**The daemon does NOT replay missed fires on restart.** If the execution plane machine
-is down when a cron expression fires, that fire is silently skipped. There is no
-catch-up scan on startup.
+The control plane keeps time, so a schedule fires even while the mission's machine is stopped:
+the scheduler wakes the machine and the agent finds the message on its first turn. What the
+scheduler cannot do:
 
-Implications:
-- Do not rely on scheduled tasks for hard-deadline critical actions
-- After a machine restart, check `ListSchedule` — if a fire was missed, manually post
-  the message to trigger the task
-- Inform the operator of this limitation when setting up time-sensitive schedules
+- **Fire while the control plane itself is down.** A missed `deliverAt` is delivered on the
+  first tick after the control plane is back (late, not skipped); a `cron` entry then re-arms
+  from that point, so one occurrence may be delivered late and none are duplicated.
+- **Fire more precisely than the minute tick.** Expect up to ~60 s of jitter, plus machine
+  start time (~30–60 s) if the mission was stopped.
 
-This is a known gap (G-3) on the backlog; it has not been fixed yet.
+Tell the operator both limits when setting up anything deadline-sensitive.
 
 ## Typical schedule patterns by mission type
 

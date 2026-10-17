@@ -12,10 +12,8 @@ import { randomUUID } from "node:crypto";
 import type { Db, MongoClient } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
-import {
-	createCopilotTools,
-	PendingActionsStore,
-} from "../src/copilot-tools.js";
+import { createCopilotTools } from "../src/copilot-tools.js";
+import { MongoPendingActionsStore } from "../src/pending-actions.js";
 
 describe("copilot ReviewObjectives / AssessKpi — MongoDB-direct (ADR-0019)", () => {
 	// biome-ignore lint/style/noNonNullAssertion: required env var; vitest.setup.ts validates presence
@@ -30,7 +28,7 @@ describe("copilot ReviewObjectives / AssessKpi — MongoDB-direct (ADR-0019)", (
 		const tools = createCopilotTools(
 			db,
 			() => {},
-			new PendingActionsStore(),
+			new MongoPendingActionsStore(db),
 			userId,
 		);
 		const t = tools.find((t) => t.name === name);
@@ -97,7 +95,7 @@ describe("copilot ReviewObjectives / AssessKpi — MongoDB-direct (ADR-0019)", (
 		const otherUserTools = createCopilotTools(
 			db,
 			() => {},
-			new PendingActionsStore(),
+			new MongoPendingActionsStore(db),
 			`other-${randomUUID()}`,
 		);
 		const reviewObjectives = otherUserTools.find(
@@ -185,7 +183,7 @@ describe("copilot ReviewObjectives / AssessKpi — MongoDB-direct (ADR-0019)", (
 			const otherUserTools = createCopilotTools(
 				db,
 				() => {},
-				new PendingActionsStore(),
+				new MongoPendingActionsStore(db),
 				`other-${randomUUID()}`,
 			);
 			const saveObjectiveTree = otherUserTools.find(

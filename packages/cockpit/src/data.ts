@@ -761,6 +761,24 @@ export function fetchCopilotHistory(): Promise<CopilotHistoryEntry[]> {
 	return api<CopilotHistoryEntry[]>("/api/copilot/history");
 }
 
+export interface CopilotPendingAction {
+	id: string;
+	type: string;
+	label: string;
+	payload?: unknown;
+	createdAt: string;
+}
+
+/** Cards still awaiting confirmation — persisted server-side, so a reload or a control-plane restart does not lose them. */
+export async function fetchCopilotPendingActions(): Promise<
+	CopilotPendingAction[]
+> {
+	const r = await api<{ actions: CopilotPendingAction[] }>(
+		"/api/copilot/pending",
+	);
+	return r.actions;
+}
+
 export interface CopilotUsage {
 	calls: number;
 	inputTokens: number;

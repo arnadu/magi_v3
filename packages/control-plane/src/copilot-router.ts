@@ -28,10 +28,15 @@ import {
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { type Collection, type Db, ObjectId } from "mongodb";
+import { type ActionPayload, parseActionPayload } from "./copilot-actions.js";
 import { COPILOT_WORKDIR, copilotWorkdirFor } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
+import { createPendingActionRoutes } from "./copilot-pending-routes.js";
 import type { CopilotRuntime } from "./copilot-runtime.js";
-import type { PendingAction, PendingActionsStore } from "./copilot-tools.js";
+import {
+	executeCancelSchedule,
+	executeCreateSchedule,
+} from "./copilot-schedule-actions.js";
 import {
 	flyVolumeName,
 	isLocalExecution,
@@ -45,6 +50,7 @@ import {
 } from "./github-issues.js";
 import { provisionTracked, wakeTracked } from "./machine-lifecycle.js";
 import { deriveMonitorToken } from "./monitor-token.js";
+import type { PendingAction, PendingActionsStore } from "./pending-actions.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
 import { getTemplate } from "./templates.js";
 import {
@@ -344,65 +350,10 @@ export function createCopilotRouter(
 		});
 	});
 
-	// ── POST /api/copilot/confirm ─────────────────────────────────────────────
-
-	router.post("/confirm", async (req: Request, res: Response) => {
-		const { pendingActionId } = req.body as { pendingActionId?: string };
-		if (!pendingActionId) {
-			res.status(400).json({ error: "pendingActionId is required" });
-			return;
-		}
-
-		const action = pending.get(pendingActionId);
-		if (!action) {
-			res
-				.status(404)
-				.json({ error: "Pending action not found or already executed" });
-			return;
-		}
-
-		if (!req.isAdmin && action.userId !== req.userId) {
-			res.status(403).json({ error: "Forbidden" });
-			return;
-		}
-
-		pending.delete(pendingActionId);
-
-		try {
-			const result = await executeAction(db, action, req.userId);
-			eventBus.push(req.userId, "copilot-action-result", {
-				id: pendingActionId,
-				ok: true,
-				result,
-			});
-			res.json({ ok: true, result });
-		} catch (e) {
-			const msg = (e as Error).message;
-			eventBus.push(req.userId, "copilot-action-result", {
-				id: pendingActionId,
-				ok: false,
-				error: msg,
-			});
-			res.status(500).json({ error: msg });
-		}
-	});
-
-	// ── POST /api/copilot/dismiss ─────────────────────────────────────────────
-
-	router.post("/dismiss", (req: Request, res: Response) => {
-		const { pendingActionId } = req.body as { pendingActionId?: string };
-		if (!pendingActionId) {
-			res.status(400).json({ error: "pendingActionId is required" });
-			return;
-		}
-		const action = pending.get(pendingActionId);
-		if (action && !req.isAdmin && action.userId !== req.userId) {
-			res.status(403).json({ error: "Forbidden" });
-			return;
-		}
-		pending.delete(pendingActionId);
-		res.json({ ok: true });
-	});
+	// Proposed-action confirmation, replay and dismissal (copilot-pending-routes.ts).
+	router.use(
+		createPendingActionRoutes({ db, pending, eventBus, executeAction }),
+	);
 
 	return router;
 }
@@ -434,14 +385,17 @@ export async function executeAction(
 	action: PendingAction,
 	userId: string,
 ): Promise<string> {
-	const payload = action.payload as Record<string, unknown>;
+	// Re-validated at execution against the same registry that admitted it at
+	// proposal time: the card showed this payload, but nothing between the
+	// store and here guarantees its shape, and a stale stored action should
+	// fail loudly rather than run with missing fields.
+	const parsed = parseActionPayload(action.type, action.payload);
+	const payload = parsed.payload as Record<string, unknown>;
 	const missions = db.collection<MissionDoc>("missions");
 	const now = new Date();
 
-	switch (action.type) {
+	switch (parsed.type) {
 		case GITHUB_ISSUE_ACTION: {
-			// Re-validated at execution: the card showed this payload, and the
-			// store is in-memory, but nothing else guarantees its shape.
 			return executeGithubIssueAction(parseGithubIssuePayload(payload), {
 				userId: action.userId,
 			});
@@ -498,7 +452,7 @@ export async function executeAction(
 					missionCopilotLimits: draft.missionCopilotLimits,
 				});
 			} catch (e) {
-				return `Invalid team config: ${(e as Error).message}`;
+				throw new Error(`Invalid team config: ${(e as Error).message}`);
 			}
 
 			try {
@@ -530,7 +484,9 @@ export async function executeAction(
 					{ missionId },
 					{ $set: { status: "error", errorMessage, updatedAt: now } },
 				);
-				return `Launch failed for mission "${missionId}": ${errorMessage}`;
+				throw new Error(
+					`Launch failed for mission "${missionId}": ${errorMessage}`,
+				);
 			}
 		}
 
@@ -665,18 +621,22 @@ export async function executeAction(
 				| undefined;
 
 			if (!scMissionId) {
-				return "save_session_config: missionId is required";
+				throw new Error("save_session_config: missionId is required");
 			}
 			const scMission = await missions.findOne({
 				missionId: scMissionId,
 				userId,
 			});
-			if (!scMission) return `Mission ${scMissionId} not found`;
+			if (!scMission) throw new Error(`Mission ${scMissionId} not found`);
 			if (scMission.status !== "suspended") {
-				return `Mission ${scMissionId} must be suspended before editing config (current: ${scMission.status})`;
+				throw new Error(
+					`Mission ${scMissionId} must be suspended before editing config (current: ${scMission.status})`,
+				);
 			}
 			if (!scMission.mission || !scMission.agents) {
-				return `Mission ${scMissionId} has no structured config stored`;
+				throw new Error(
+					`Mission ${scMissionId} has no structured config stored`,
+				);
 			}
 
 			const nextMission = {
@@ -703,17 +663,11 @@ export async function executeAction(
 					missionCopilotLimits: nextMissionCopilotLimits,
 				});
 			} catch (e) {
-				return `Invalid team config: ${(e as Error).message}`;
+				throw new Error(`Invalid team config: ${(e as Error).message}`);
 			}
 			// TF1/CHAIN-A: scFiles is copilot/LLM-authored and reaches the
 			// daemon's filesystem unvalidated otherwise (team-files-sync.ts).
-			if (scTeamFilesProvided) {
-				try {
-					validateTeamFiles(scFiles);
-				} catch (e) {
-					return (e as Error).message;
-				}
-			}
+			if (scTeamFilesProvided) validateTeamFiles(scFiles);
 
 			await createMongoMissionConfigWriter(db).write(
 				scMissionId,
@@ -752,38 +706,20 @@ export async function executeAction(
 			return `Session config saved for mission ${scMissionId}`;
 		}
 
-		case "cancel_schedule": {
-			const scheduleId = payload.id as string;
-			const oid = new ObjectId(scheduleId);
-			await db
-				.collection("scheduled_messages")
-				.updateOne({ _id: oid }, { $set: { status: "cancelled" } });
-			return `Scheduled message "${scheduleId}" cancelled`;
-		}
+		case "cancel_schedule":
+			return executeCancelSchedule(
+				db,
+				payload as ActionPayload<"cancel_schedule">,
+				userId,
+			);
 
-		case "create_schedule": {
-			const missionId = payload.missionId as string;
-			const to = payload.to as string[];
-			const subject = payload.subject as string;
-			const body = payload.body as string;
-			const cron = payload.cron as string | undefined;
-			const deliverAt = payload.deliverAt
-				? new Date(payload.deliverAt as string)
-				: new Date();
-			const label = payload.label as string | undefined;
-
-			await db.collection("scheduled_messages").insertOne({
-				missionId,
-				to,
-				subject,
-				body,
-				deliverAt,
-				cron,
-				label,
-				status: "pending",
-			});
-			return `Scheduled message created for mission "${missionId}"`;
-		}
+		case "create_schedule":
+			return executeCreateSchedule(
+				db,
+				payload as ActionPayload<"create_schedule">,
+				userId,
+				now,
+			);
 
 		case "pause_agent":
 		case "resume_agent": {

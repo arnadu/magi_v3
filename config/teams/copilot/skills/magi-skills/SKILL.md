@@ -39,20 +39,11 @@ Include it in `teamFiles` at path `skills/{name}/SKILL.md` (no tier prefix — n
 `_platform/` or other prefix). At provision time this is written to
 `sharedDir/skills/{name}/SKILL.md` and discovered under the mission tier.
 
-Use ProposeAction `save_template`:
-```json
-{
-  "type": "save_template",
-  "payload": {
-    "id": "my-template",
-    "name": "My Template",
-    "teamConfigYaml": "...",
-    "teamFiles": [
-      { "path": "skills/my-skill/SKILL.md", "content": "---\nname: my-skill\n..." }
-    ]
-  }
-}
-```
+There is no copilot action that writes a template: templates are files under
+`config/teams/` in the repository, loaded at control-plane start. To add or change one, describe
+the change to the operator (template id, the `teamFiles` entries and the YAML diff) — or propose
+a GitHub issue with CreateIssue — and a developer commits it. For a mission that already runs,
+use `write_mission_file` below instead.
 
 ## Adding a skill to a live mission (no relaunch)
 
