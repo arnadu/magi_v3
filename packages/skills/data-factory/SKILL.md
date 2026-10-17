@@ -81,12 +81,17 @@ Write this to `$FACTORY/sources.json`:
       "adapter": "newsapi",
       "params": { "q": "S&P 500 stock market", "language": "en" },
       "schedule": "daily",
-      "output_dir": "news/my-topic-news"
+      "output_dir": "news/my-topic-news",
+      "keywords": ["s&p 500", "earnings", "fed"]
     }
-  ],
-  "documents": []
+  ]
 }
 ```
+
+`keywords` (optional, per news source) ranks the digest: an article hitting more of them ranks
+higher; without keywords the digest is ordered by recency. An item counts as `is_new` until a
+brief has been written from it (`consumed.json` beside `digest.json`), so a failed synthesis does
+not lose the day's stories.
 
 ## Supported adapters and required API keys
 

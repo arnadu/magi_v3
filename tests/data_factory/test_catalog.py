@@ -38,7 +38,6 @@ def minimal_sources(factory_dir: str, adapter: str = "yfinance") -> dict:
             }
         ],
         "news": [],
-        "documents": [],
     }
 
 
@@ -107,8 +106,7 @@ def test_refresh_invalid_ticker_error():
                 }
             ],
             "news": [],
-            "documents": [],
-        }
+            }
         sources_path = Path(factory) / "sources.json"
         sources_path.write_text(json.dumps(sources))
 
@@ -204,8 +202,7 @@ def test_path_traversal_in_series_output_is_rejected():
                 }
             ],
             "news": [],
-            "documents": [],
-        }
+            }
         sources_path = factory / "sources.json"
         sources_path.write_text(json.dumps(sources))
 
@@ -243,8 +240,7 @@ def test_path_traversal_in_news_output_dir_is_rejected():
                     "output_dir": f"../../{Path(outside).name}",
                 }
             ],
-            "documents": [],
-        }
+            }
         sources_path = factory / "sources.json"
         sources_path.write_text(json.dumps(sources))
 
@@ -303,8 +299,7 @@ def test_refresh_bounds_concurrent_adapter_subprocesses():
                 for i in range(N_SOURCES)
             ],
             "news": [],
-            "documents": [],
-        }
+            }
         sources_path = factory / "sources.json"
         sources_path.write_text(json.dumps(sources))
 
@@ -338,3 +333,29 @@ def test_refresh_max_workers_cli_flag():
             pytest.skip("network unavailable")
         assert result.returncode == 0, result.stderr
         assert (Path(factory) / "catalog.json").exists()
+
+
+# ── freshness and persistence (DF3 / ADP2) ───────────────────────────────────
+
+def test_failed_fetch_today_is_not_fresh_once_the_catalog_knows_the_source(tmp_path):
+    """A truncated file left by today's failed run must be re-fetched."""
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import catalog
+    out = tmp_path / "series" / "x.csv"
+    out.parent.mkdir(parents=True)
+    out.write_text("date,value\n2026-01-0")  # truncated, mtime = today
+    source = {"id": "x", "adapter": "nope", "params": {}, "schedule": "daily", "output": "series/x.csv"}
+    prev = {"id": "x", "status": "error", "fetched_at": "2026-10-17T05:30:00"}
+    log = tmp_path / "refresh.log"
+    entry = catalog._run_adapter(tmp_path, SCRIPTS_DIR, source, log, [prev])
+    # Not skipped as fresh: it went on to (fail to) run the adapter.
+    assert entry["status"] == "error"
+    assert "SKIP x" not in log.read_text()
+
+
+def test_save_catalog_is_atomic(tmp_path):
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import catalog
+    catalog.save_catalog(str(tmp_path), [{"id": "a", "status": "ok"}])
+    assert json.loads((tmp_path / "catalog.json").read_text())[0]["id"] == "a"
+    assert not (tmp_path / ".catalog.json.tmp").exists()

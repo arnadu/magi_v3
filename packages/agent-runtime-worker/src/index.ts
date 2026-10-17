@@ -112,6 +112,7 @@ export {
 } from "./resource-alert-state.js";
 export * from "./resource-thresholds.js";
 export { failureBackoffMs } from "./retry-backoff.js";
+export { TIER_A_TOOL_NAMES } from "./tool-catalog.js";
 export { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 export { createFetchUrlTool } from "./tools/fetch-url.js";
 export { tryCreateSearchWebTool } from "./tools/search-web.js";

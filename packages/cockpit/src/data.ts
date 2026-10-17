@@ -1020,3 +1020,13 @@ export function fetchMissionsStats(): Promise<
 > {
 	return api<Record<string, MissionStatsEntry>>("/api/missions/stats");
 }
+
+/** Skill and tool names the config editors may toggle (GET /api/catalog). */
+export interface ToggleCatalog {
+	platformSkills: string[];
+	tierATools: string[];
+}
+
+export function fetchCatalog(): Promise<ToggleCatalog> {
+	return api<ToggleCatalog>("/api/catalog");
+}

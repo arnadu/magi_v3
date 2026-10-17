@@ -28,7 +28,7 @@ Its job is entirely mechanical (no tokens consumed):
      is_new=True for URLs that were not in yesterday's run.  The LLM uses
      is_new to decide which articles are worth fetching in full.
 
-CALL SEQUENCE (inside refresh.sh)
+CALL SEQUENCE (inside refresh.py)
 ----------------------------------
   # Step 1: adapter writes raw.json (list of articles, adapter-specific schema)
   python3 adapter_newsapi.py --fetch $FACTORY/news/nvda/raw.json ...
@@ -75,6 +75,7 @@ USAGE
 
 import argparse
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,15 +83,10 @@ from pathlib import Path
 
 MAX_ITEMS = 30
 
-# Keywords scored against title + summary to compute relevance.
-# Each keyword that appears adds 1.0 to the item's score.
-# Order does not matter; all keywords are checked independently.
-RELEVANCE_KEYWORDS = [
-    "nvidia", "nvda", "gpu", "datacenter", "data center",
-    "ai chip", "h100", "h200", "blackwell", "hopper",
-    "jensen huang", "cuda", "inference", "training",
-    "amd", "intel", "tsmc", "semiconductor",
-]
+# Relevance keywords are per news source ("keywords" in sources.json), not
+# built in: a generic factory that ranked every mission's news by NVIDIA terms
+# was wrong for every mission that was not about NVIDIA. With no keywords,
+# ranking is by recency alone.
 
 
 # ---------------------------------------------------------------------------
@@ -205,9 +201,9 @@ def deduplicate(items: list[dict]) -> list[dict]:
 # Ranking
 # ---------------------------------------------------------------------------
 
-def _relevance_score(item: dict) -> float:
+def _relevance_score(item: dict, keywords: list[str]) -> float:
     """
-    Count how many RELEVANCE_KEYWORDS appear in the item's text fields.
+    Count how many of the source's keywords appear in the item's text fields.
 
     Concatenates title + description + summary (all lowercased), then counts
     keyword hits.  Each keyword contributes 1.0 regardless of how many times
@@ -218,7 +214,7 @@ def _relevance_score(item: dict) -> float:
         (item.get("description") or ""),
         (item.get("summary")     or ""),
     ]).lower()
-    return sum(1.0 for kw in RELEVANCE_KEYWORDS if kw in text)
+    return sum(1.0 for kw in keywords if kw.lower() in text)
 
 
 def _published_dt(item: dict) -> datetime:
@@ -235,20 +231,21 @@ def _published_dt(item: dict) -> datetime:
         return datetime.min.replace(tzinfo=timezone.utc)
 
 
-def rank(items: list[dict]) -> list[dict]:
+def rank(items: list[dict], keywords: list[str] | None = None) -> list[dict]:
     """
     Sort items by (relevance_score DESC, published_at DESC).
 
-    Primary sort is relevance: an article that mentions NVIDIA, GPU, and Blackwell
-    ranks above one that only mentions "semiconductor".  Within the same relevance
-    band, newer articles rank first.
+    Primary sort is relevance against the source's keywords: an article that
+    hits three of them ranks above one that hits one.  Within the same
+    relevance band (and always, when the source has no keywords), newer
+    articles rank first.
 
     Note: this function returns a new sorted list; it does NOT truncate to
     MAX_ITEMS — that happens in process() after this call.
     """
     return sorted(
         items,
-        key=lambda x: (_relevance_score(x), _published_dt(x)),
+        key=lambda x: (_relevance_score(x, keywords or []), _published_dt(x)),
         reverse=True,
     )
 
@@ -257,33 +254,85 @@ def rank(items: list[dict]) -> list[dict]:
 # is_new marking
 # ---------------------------------------------------------------------------
 
-def mark_new(items: list[dict], existing_digest: dict) -> list[dict]:
-    """
-    Set the is_new flag on each item based on comparison with the previous digest.
+def _norm_url(url: str | None) -> str:
+    return (url or "").strip().rstrip("/")
 
-    An item is "new" if its URL was not present in existing_digest["items"].
-    The LLM synthesis step uses is_new to prioritise which articles to fetch
-    in full (only new ones are worth fetching; old ones were already processed
-    in a previous run).
 
-    existing_digest may be an empty dict (first run or missing file) — in that
-    case all items are marked is_new=True.
+def mark_new(
+    items: list[dict],
+    existing_digest: dict,
+    consumed: set[str] | None = None,
+) -> list[dict]:
     """
-    existing_urls: set[str] = {
-        (i.get("url") or "").strip().rstrip("/")
-        for i in existing_digest.get("items", [])
-    }
+    Set the is_new flag on each item.
+
+    With a `consumed` set (the URLs a brief has already been written from —
+    see load_consumed / record_consumed), "new" means *not yet consumed by a
+    brief*. That is the meaning the synthesis step needs: comparing against
+    the previous digest instead lost stories for good whenever synthesis
+    failed after a refresh — the re-run saw them in the (overwritten) digest
+    and marked them old, so no brief ever covered them.
+
+    Without it (a standalone CLI run), "new" falls back to "not in the
+    previous digest".
+    """
+    if consumed is not None:
+        return [{**item, "is_new": _norm_url(item.get("url")) not in consumed} for item in items]
+    existing_urls: set[str] = {_norm_url(i.get("url")) for i in existing_digest.get("items", [])}
     return [
-        {**item, "is_new": (item.get("url") or "").strip().rstrip("/") not in existing_urls}
+        {**item, "is_new": _norm_url(item.get("url")) not in existing_urls}
         for item in items
     ]
+
+
+CONSUMED_FILE = "consumed.json"
+MAX_CONSUMED = 5000
+
+
+def load_consumed(path: str | Path) -> set[str]:
+    """URLs already covered by a brief; an absent or unreadable file means none."""
+    p = Path(path)
+    if not p.exists():
+        return set()
+    try:
+        return {_norm_url(u) for u in json.loads(p.read_text())}
+    except (json.JSONDecodeError, TypeError):
+        return set()
+
+
+def record_consumed(path: str | Path, urls: list[str]) -> None:
+    """Add the URLs a successful brief was written from (newest kept when over the cap). Atomic."""
+    p = Path(path)
+    existing: list[str] = []
+    if p.exists():
+        try:
+            existing = [u for u in json.loads(p.read_text()) if isinstance(u, str)]
+        except json.JSONDecodeError:
+            existing = []
+    seen = set(existing)
+    merged = existing + [u for u in (_norm_url(x) for x in urls) if u and u not in seen]
+    atomic_write_text(p, json.dumps(merged[-MAX_CONSUMED:]))
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write via a temp file and rename, so a crash never leaves a truncated file behind."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
 
 
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def process(raw_path: str, existing_path: str | None, output_path: str) -> None:
+def process(
+    raw_path: str,
+    existing_path: str | None,
+    output_path: str,
+    keywords: list[str] | None = None,
+    consumed_path: str | None = None,
+) -> None:
     """
     Full pipeline: load raw → normalise → deduplicate → rank → truncate → mark_new → write.
 
@@ -321,18 +370,17 @@ def process(raw_path: str, existing_path: str | None, output_path: str) -> None:
     # Pipeline: normalise → deduplicate → rank → truncate → mark_new
     items = [normalise(i) for i in raw_items if i.get("url") or i.get("link")]
     items = deduplicate(items)
-    items = rank(items)
+    items = rank(items, keywords)
     items = items[:MAX_ITEMS]
-    items = mark_new(items, existing_digest)
+    consumed = load_consumed(consumed_path) if consumed_path else None
+    items = mark_new(items, existing_digest, consumed)
 
     digest = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "items": items,
     }
 
-    out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(digest, indent=2, ensure_ascii=False))
+    atomic_write_text(Path(output_path), json.dumps(digest, indent=2, ensure_ascii=False))
 
     new_count = sum(1 for i in items if i["is_new"])
     print(f"[process_news] {len(items)} items ({new_count} new) → {output_path}")

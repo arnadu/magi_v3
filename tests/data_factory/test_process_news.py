@@ -116,14 +116,55 @@ def test_newer_ranked_before_older():
     assert ranked[0]["url"] == "https://example.com/new"
 
 
-def test_nvda_keyword_boosts_relevance():
-    """Article mentioning NVIDIA/NVDA keywords ranks above one that does not."""
+def test_source_keywords_boost_relevance():
+    """An article hitting the source's keywords ranks above a newer one that does not."""
     items = [
         make_item("Apple announces new iPhone", "https://example.com/apple", published_at=offset_iso(10)),
         make_item("NVIDIA GPU dominates AI training", "https://example.com/nvda", published_at=offset_iso(60)),
     ]
-    ranked = process_news.rank(items)
+    ranked = process_news.rank(items, ["nvidia", "gpu"])
     assert ranked[0]["url"] == "https://example.com/nvda"
+
+
+def test_no_keywords_ranks_by_recency_only():
+    """A generic factory has no built-in topic: without keywords, newest first."""
+    items = [
+        make_item("NVIDIA GPU dominates AI training", "https://example.com/nvda", published_at=offset_iso(60)),
+        make_item("Gold hits record", "https://example.com/gold", published_at=offset_iso(10)),
+    ]
+    assert process_news.rank(items)[0]["url"] == "https://example.com/gold"
+
+
+# ── consumed tracking (NEWS1) ────────────────────────────────────────────────
+
+def test_item_stays_new_until_a_brief_consumes_it(tmp_path):
+    """A same-day re-run after a failed synthesis must still offer the stories."""
+    raw = tmp_path / "raw.json"
+    digest = tmp_path / "digest.json"
+    consumed = tmp_path / "consumed.json"
+    raw.write_text(json.dumps([make_item("Story", "https://example.com/s")]))
+
+    process_news.process(str(raw), str(digest), str(digest), consumed_path=str(consumed))
+    assert json.loads(digest.read_text())["items"][0]["is_new"] is True
+
+    # Synthesis failed: nothing recorded. The re-run sees the item in the
+    # previous digest but it is still new.
+    process_news.process(str(raw), str(digest), str(digest), consumed_path=str(consumed))
+    assert json.loads(digest.read_text())["items"][0]["is_new"] is True
+
+    # A brief was written from it: now it is old.
+    process_news.record_consumed(consumed, ["https://example.com/s/"])
+    process_news.process(str(raw), str(digest), str(digest), consumed_path=str(consumed))
+    assert json.loads(digest.read_text())["items"][0]["is_new"] is False
+
+
+def test_record_consumed_dedupes_and_caps(tmp_path, monkeypatch):
+    path = tmp_path / "consumed.json"
+    monkeypatch.setattr(process_news, "MAX_CONSUMED", 3)
+    process_news.record_consumed(path, ["https://a", "https://b"])
+    process_news.record_consumed(path, ["https://b", "https://c", "https://d"])
+    assert json.loads(path.read_text()) == ["https://b", "https://c", "https://d"]
+    assert not (tmp_path / ".consumed.json.tmp").exists()
 
 
 # ── truncation ────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { html as htmlLang } from "@codemirror/lang-html";
 import CodeMirror from "@uiw/react-codemirror";
 import { useEffect, useRef, useState } from "react";
+import { AgentToggles } from "./AgentToggles";
 import {
 	fetchMissionConfig,
 	fetchMissionStatus,
@@ -10,6 +11,7 @@ import {
 	type MissionStatusValue,
 	saveMissionConfig,
 } from "./data";
+import { useCatalog } from "./use-catalog";
 
 /**
  * Ported from index.html's renderConfigForm/renderAgentPane/saveConfig.
@@ -42,40 +44,17 @@ import {
 /** Not a real roster entry — injected in-memory at daemon startup (ADR-0016), never in mission.agents. */
 const MISSION_COPILOT_AGENT_ID = "mission-copilot";
 
-export const PLATFORM_SKILLS = [
-	"git-provenance",
-	"skill-creator",
-	"postmessage-conventions",
-	"run-background",
-	"schedule-task",
-	"objectives",
-];
-
-export const TIER_A_TOOLS = [
-	"Bash",
-	"WriteFile",
-	"EditFile",
-	"PostMessage",
-	"ListMessages",
-	"ReadMessage",
-	"ListTeam",
-	"UpdateMentalMap",
-	"FetchUrl",
-	"InspectImage",
-	"SearchWeb",
-	"BrowseWeb",
-	"Research",
-	"AnalyzeMemories",
-];
-
-export function availableSkills(teamFiles: Array<{ path: string }>): string[] {
+export function availableSkills(
+	platformSkills: string[],
+	teamFiles: Array<{ path: string }>,
+): string[] {
 	const team = teamFiles
 		.map((f) => {
 			const m = f.path.match(/^skills\/([^/]+)\/SKILL\.md$/);
 			return m ? m[1] : null;
 		})
 		.filter((s): s is string => s !== null);
-	return [...new Set([...PLATFORM_SKILLS, ...team])];
+	return [...new Set([...platformSkills, ...team])];
 }
 
 function orUndef(v: string): string | undefined {
@@ -158,6 +137,7 @@ export function MentalMapEditor({
 }
 
 export function ConfigPanel({ missionId }: { missionId: string | null }) {
+	const { catalog } = useCatalog();
 	const [config, setConfig] = useState<MissionConfigData | "error" | null>(
 		null,
 	);
@@ -219,27 +199,13 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 		return <p className="error-msg">Could not load this mission's config.</p>;
 
 	const canEdit = status === "suspended";
-	const skills = availableSkills(config.teamFiles);
+	const skills = availableSkills(catalog.platformSkills, config.teamFiles);
 	const selectedAgent = agentsDraft.find((a) => a.id === selectedAgentId);
 
 	function updateAgent(id: string, patch: Partial<MissionConfigAgent>) {
 		setAgentsDraft((prev) =>
 			prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
 		);
-	}
-
-	function toggleSkill(agent: MissionConfigAgent, skill: string) {
-		const disabled = new Set(agent.disabledSkills ?? []);
-		if (disabled.has(skill)) disabled.delete(skill);
-		else disabled.add(skill);
-		updateAgent(agent.id, { disabledSkills: [...disabled] });
-	}
-
-	function toggleTool(agent: MissionConfigAgent, tool: string) {
-		const disabled = new Set(agent.disabledTools ?? []);
-		if (disabled.has(tool)) disabled.delete(tool);
-		else disabled.add(tool);
-		updateAgent(agent.id, { disabledTools: [...disabled] });
 	}
 
 	function updateMentalMap(agentId: string, html: string) {
@@ -451,35 +417,13 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 						</>
 					)}
 
-					<div className="config-section-label mut">Skills</div>
-					<div className="config-toggle-grid">
-						{skills.map((s) => (
-							<label key={s} className="skill-toggle-row">
-								<input
-									type="checkbox"
-									checked={!(selectedAgent.disabledSkills ?? []).includes(s)}
-									disabled={!canEdit}
-									onChange={() => toggleSkill(selectedAgent, s)}
-								/>
-								{s}
-							</label>
-						))}
-					</div>
-
-					<div className="config-section-label mut">Tools</div>
-					<div className="config-toggle-grid">
-						{TIER_A_TOOLS.map((t) => (
-							<label key={t} className="skill-toggle-row">
-								<input
-									type="checkbox"
-									checked={!(selectedAgent.disabledTools ?? []).includes(t)}
-									disabled={!canEdit}
-									onChange={() => toggleTool(selectedAgent, t)}
-								/>
-								{t}
-							</label>
-						))}
-					</div>
+					<AgentToggles
+						agent={selectedAgent}
+						skills={skills}
+						tools={catalog.tierATools}
+						disabled={!canEdit}
+						onChange={(patch) => updateAgent(selectedAgent.id, patch)}
+					/>
 				</div>
 			)}
 

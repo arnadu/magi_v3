@@ -10,7 +10,7 @@ is fresh or stale. Think of it as the Makefile + manifest for the data factory.
 
 TYPICAL CALL FLOW
 -----------------
-1. Lin (data-scientist agent) runs `refresh.sh`, which calls:
+1. A background job runs `refresh.py` (submit-job.sh / schedule-job.sh), which calls:
        catalog.py refresh $FACTORY sources.json
    This iterates every entry in sources.json, spawns the matching adapter
    script, and writes (or updates) the catalog entry in catalog.json.
@@ -40,7 +40,6 @@ $FACTORY/
       raw.json                      ← adapter output (list of articles)
       digest.json                   ← process_news.py output
       brief.md                      ← LLM-synthesised brief (Research tool)
-  documents/                        ← reserved for future document downloads
 
 DATA MODEL
 ----------
@@ -61,12 +60,12 @@ catalog.json is a JSON array of catalog entries:
     ...
   ]
 
-sources.json (the input to `refresh`) has three sections:
+sources.json (the input to `refresh`) has two sections:
 
   {
     "series":    [ { "id", "adapter", "params", "schedule", "output" }, ... ],
-    "news":      [ { "id", "adapter", "params", "schedule", "output_dir" }, ... ],
-    "documents": [ { "id", "adapter", "params", "schedule", "output" }, ... ]
+    "news":      [ { "id", "adapter", "params", "schedule", "output_dir",
+                     "keywords"? }, ... ],
   }
 
 USAGE
@@ -124,9 +123,11 @@ def load_catalog(factory_dir: str) -> list:
 
 
 def save_catalog(factory_dir: str, entries: list) -> None:
-    """Persist the catalog list to $FACTORY/catalog.json (pretty-printed)."""
+    """Persist the catalog list to $FACTORY/catalog.json (pretty-printed), atomically."""
     path = Path(factory_dir) / CATALOG_FILE
-    path.write_text(json.dumps(entries, indent=2, default=str))
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(json.dumps(entries, indent=2, default=str))
+    os.replace(tmp, path)
 
 
 def upsert_entry(entries: list, entry: dict) -> list:
@@ -259,8 +260,8 @@ def cmd_refresh(
       Each call first checks the daily counter file; if the budget is already
       exhausted the entry is marked "skipped" and the adapter is not called.
 
-    The catalog is saved once at the end, so a crash mid-refresh will leave
-    catalog.json from the previous run intact.
+    The catalog is saved (atomically) after every source, so a crash
+    mid-refresh keeps every result recorded so far.
     """
     factory = Path(factory_dir)
     factory.mkdir(parents=True, exist_ok=True)
@@ -308,6 +309,15 @@ def cmd_refresh(
     results: dict[str, dict] = {}
     results_lock = threading.Lock()
 
+    def record(source_id: str, entry: dict) -> None:
+        """Merge one result and persist immediately: an exception later in the run
+        used to lose every result, because the catalog was saved once at the end."""
+        nonlocal entries
+        with results_lock:
+            results[source_id] = entry
+            entries = upsert_entry(entries, entry)
+            save_catalog(factory_dir, entries)
+
     # Discover rate limits once per unique adapter (--discover is fast: no I/O).
     adapter_rate_limits: dict[str, float] = {}
     for adapter_name in {s["adapter"] for s in other_sources}:
@@ -344,8 +354,7 @@ def cmd_refresh(
                 last[0] = time.monotonic()
         else:
             entry = _run_adapter(factory, script_dir, source, log_path, entries)
-        with results_lock:
-            results[source["id"]] = entry
+        record(source["id"], entry)
 
     # Bounded pool: at most max_workers adapter subprocesses run at once,
     # regardless of how many sources are configured (was one unbounded thread
@@ -361,17 +370,12 @@ def cmd_refresh(
             msg = (f"[catalog] FMP budget exhausted (≥{fmp_budget} calls today),"
                    f" skipping {source['id']}")
             _log(log_path, msg)
-            results[source["id"]] = _make_entry(
+            record(source["id"], _make_entry(
                 source, "skipped", error="FMP daily budget reached"
-            )
+            ))
             continue
         fmp_inc()
-        results[source["id"]] = _run_adapter(factory, script_dir, source, log_path, entries)
-
-    # Merge all results into the existing catalog and persist
-    for source_entry in results.values():
-        entries = upsert_entry(entries, source_entry)
-    save_catalog(factory_dir, entries)
+        record(source["id"], _run_adapter(factory, script_dir, source, log_path, entries))
 
     ok  = sum(1 for e in results.values() if e.get("status") == "ok")
     err = sum(1 for e in results.values() if e.get("status") == "error")
@@ -457,11 +461,18 @@ def _run_adapter(
     # This prevents live network calls from clobbering fixture files in tests
     # and avoids redundant fetches when refresh runs more than once in a day.
     if out_path.exists():
-        file_fresh = (date.fromtimestamp(out_path.stat().st_mtime) == date.today())
-        catalog_fresh = False
-        if existing_entries:
-            prev = next((e for e in existing_entries if e.get("id") == source_id), None)
-            catalog_fresh = bool(prev and prev.get("status") == "ok" and not is_stale(prev))
+        prev = next(
+            (e for e in (existing_entries or []) if e.get("id") == source_id), None
+        )
+        catalog_fresh = bool(prev and prev.get("status") == "ok" and not is_stale(prev))
+        # The mtime rule is only for files with no catalog history at all
+        # (pre-seeded fixtures, manual placements). Once the catalog knows the
+        # source, its status decides: a fetch that failed today may have left
+        # a truncated file with today's mtime, which used to count as fresh
+        # and was never re-fetched.
+        file_fresh = prev is None and (
+            date.fromtimestamp(out_path.stat().st_mtime) == date.today()
+        )
         if file_fresh or catalog_fresh:
             _log(log_path, f"[catalog] SKIP {source_id}: output is fresh, not re-fetching")
             # Return existing catalog entry if available, otherwise synthesise one.
@@ -480,12 +491,14 @@ def _run_adapter(
     ]
 
     _log(log_path, f"[catalog] running {source_id} ...")
+    started = time.time()
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
         if result.returncode != 0:
             err = (result.stderr or result.stdout or "non-zero exit").strip()[:300]
             _log(log_path, f"[catalog] ERROR {source_id}: {err}")
+            _drop_partial(out_path, started)
             return _make_entry(source, "error", error=err)
 
         # Count data rows in CSV outputs so agents can sanity-check the result
@@ -499,10 +512,20 @@ def _run_adapter(
 
     except subprocess.TimeoutExpired:
         _log(log_path, f"[catalog] TIMEOUT {source_id}")
+        _drop_partial(out_path, started)
         return _make_entry(source, "error", error="timeout after 120s")
     except Exception as exc:
         _log(log_path, f"[catalog] EXCEPTION {source_id}: {exc}")
         return _make_entry(source, "error", error=str(exc))
+
+
+def _drop_partial(out_path: Path, started: float) -> None:
+    """Remove an output the failed run itself wrote (it may be truncated); keep an older good file."""
+    try:
+        if out_path.exists() and out_path.stat().st_mtime >= started:
+            out_path.unlink()
+    except OSError:
+        pass
 
 
 def _make_entry(

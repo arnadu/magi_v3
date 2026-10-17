@@ -130,9 +130,21 @@ jobs:
           find scripts packages/skills -name '*.sh' -not -path '*/node_modules/*' -print0 \
             | xargs -0 shellcheck -S error
 
+  data-factory-python:
+    name: data-factory Python tests (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: pytest (network-dependent adapter tests excluded)
+        run: |
+          python3 -m pip install --quiet pytest==9.1.1
+          cd tests/data_factory
+          python3 -m pytest -q test_process_news.py test_refresh.py test_catalog.py \
+            -k "not yfinance and not invalid_ticker"
+
   deploy-control-plane:
     name: Deploy control plane (dev)
-    needs: [changes, verify, semgrep, dependencies, secrets, workflows-and-shell]
+    needs: [changes, verify, semgrep, dependencies, secrets, workflows-and-shell, data-factory-python]
     if: >-
       (github.event_name == 'push' && needs.changes.outputs.control == 'true') ||
       (github.event_name == 'workflow_dispatch' && inputs.deploy_control)
@@ -144,7 +156,7 @@ jobs:
     # Runs after the control-plane deploy (or its skip): its last step pins FLY_MISSIONS_IMAGE on the
     # control-plane machine, which needs the same machine lease `flyctl deploy` holds — running the
     # two in parallel made the pin fail with "lease currently held" and left the secret staged.
-    needs: [changes, verify, semgrep, dependencies, secrets, workflows-and-shell, deploy-control-plane]
+    needs: [changes, verify, semgrep, dependencies, secrets, workflows-and-shell, data-factory-python, deploy-control-plane]
     if: >-
       !cancelled() &&
       (needs.deploy-control-plane.result == 'success' || needs.deploy-control-plane.result == 'skipped') &&

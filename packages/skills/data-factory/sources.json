@@ -4,11 +4,12 @@
 		{
 			"id": "yfinance/SPY_daily",
 			"adapter": "yfinance",
-			"params": { "ticker": "SPY" },
+			"params": {
+				"ticker": "SPY"
+			},
 			"schedule": "daily",
 			"output": "series/yfinance/SPY_daily.csv"
 		}
 	],
-	"news": [],
-	"documents": []
+	"news": []
 }

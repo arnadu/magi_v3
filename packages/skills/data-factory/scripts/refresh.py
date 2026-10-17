@@ -5,7 +5,7 @@ refresh.py — Data factory full refresh orchestrator.
 PURPOSE
 -------
 This is the single entry point for refreshing all data factory sources.
-It is called daily by the scheduled background job (via refresh.sh) and can
+It is run as a background job (submit-job.sh / schedule-job.sh) and can
 also be run manually by the data-scientist agent for an immediate refresh.
 
 PIPELINE
@@ -136,16 +136,13 @@ class _Log:
 
 def ensure_deps(skill_dir: Path, log: _Log) -> None:
     """
-    Verify that required Python packages are importable; install if missing.
+    Verify that required Python packages are importable; report any that are missing.
 
     Checks for the two packages most likely to be absent on a fresh agent
     environment: requests (used by several adapters) and yfinance (the Yahoo
-    Finance client).  If either is missing, installs everything from
-    requirements.txt using the current interpreter's pip.
-
-    This is intentionally a best-effort check: if pip is unavailable (unusual
-    but possible in some container configurations) we log a warning and
-    continue — some adapters may still work without all packages.
+    Finance client).  They are installed at image build; a missing one is an
+    image problem, reported in the log, and the refresh continues with the
+    adapters that do not need it.
     """
     missing = []
     for pkg in ("requests", "yfinance"):
@@ -157,21 +154,13 @@ def ensure_deps(skill_dir: Path, log: _Log) -> None:
     if not missing:
         return
 
-    log(f"[refresh] Missing packages: {missing}. Installing from requirements.txt ...")
-    req_file = skill_dir / "requirements.txt"
-    if not req_file.exists():
-        log(f"[refresh] WARNING: requirements.txt not found at {req_file}, skipping install")
-        return
-
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-q", "-r", str(req_file)],
-        capture_output=True,
-        text=True,
+    # No install at run time: the shared venv is root-owned in the image and
+    # an agent's job cannot write to it, so `pip install` here always failed.
+    # The dependencies are installed at image build (requirements.txt).
+    log(
+        f"[refresh] ERROR: missing Python packages {missing} — they are installed at image build; "
+        "adapters that need them will fail. Report this to the operator."
     )
-    if result.returncode != 0:
-        log(f"[refresh] WARNING: pip install failed: {result.stderr.strip()[:200]}")
-    else:
-        log("[refresh] Dependencies installed.")
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +285,8 @@ def process_news_digests(factory: Path, sources_path: Path, log: _Log) -> None:
                 raw_path=str(raw_json),
                 existing_path=str(digest),   # process() handles missing file gracefully
                 output_path=str(digest),
+                keywords=news_src.get("keywords") or [],
+                consumed_path=str(out_dir / process_news.CONSUMED_FILE),
             )
         except Exception as exc:
             log(f"[process_news] ERROR {src_id}: {exc}")
@@ -392,8 +383,14 @@ def synthesise_briefs(factory: Path, sources_path: Path, log: _Log) -> None:
             log(f"[brief] TIMEOUT {src_id}: magi-tool research did not complete within 300s")
             continue
         if result.returncode != 0:
+            # Not recorded as consumed: the next run offers the same items again.
             log(f"[brief] ERROR {src_id}: {result.stderr.strip()[:300]}")
         else:
+            import process_news
+            process_news.record_consumed(
+                out_dir / process_news.CONSUMED_FILE,
+                [it.get("url", "") for it in new_items],
+            )
             log(f"[brief] Updated {brief_path}")
 
 

@@ -120,7 +120,7 @@ def _make_sources(news_ids: list[str] = None, series_ids: list[str] = None) -> d
         }
         for sid in (series_ids or [])
     ]
-    return {"series": series, "news": news, "documents": []}
+    return {"series": series, "news": news}
 
 
 def _make_digest(items: list[dict]) -> dict:
@@ -354,6 +354,8 @@ class TestProcessNewsDigests(unittest.TestCase):
             self.assertEqual(kwargs["output_path"], str(raw_dir / "digest.json"))
             # existing_path points to digest.json (process() handles missing file)
             self.assertEqual(kwargs["existing_path"], str(raw_dir / "digest.json"))
+            self.assertEqual(kwargs["consumed_path"], str(raw_dir / "consumed.json"))
+            self.assertEqual(kwargs["keywords"], [])
 
     def test_processes_multiple_sources(self):
         with tempfile.TemporaryDirectory() as tmp:

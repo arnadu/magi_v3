@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { availableSkills, MentalMapEditor, TIER_A_TOOLS } from "./ConfigPanel";
+import { AgentToggles } from "./AgentToggles";
+import { availableSkills, MentalMapEditor } from "./ConfigPanel";
 import {
 	DraftMissionFields,
 	type MissionDraftFields,
@@ -13,6 +14,7 @@ import {
 	type MissionConfigData,
 	saveDraftConfig,
 } from "./data";
+import { useCatalog } from "./use-catalog";
 
 /** How often to check whether the copilot changed this draft while the operator has it open. */
 const POLL_MS = 5000;
@@ -57,6 +59,7 @@ export function DraftEditor({
 	onLaunched: (missionId: string) => void;
 	onBack: () => void;
 }) {
+	const { catalog } = useCatalog();
 	const [config, setConfig] = useState<MissionConfigData | "error" | null>(
 		null,
 	);
@@ -170,7 +173,7 @@ export function DraftEditor({
 	if (config === "error")
 		return <p className="error-msg">Could not load this draft's config.</p>;
 
-	const skills = availableSkills(config.teamFiles);
+	const skills = availableSkills(catalog.platformSkills, config.teamFiles);
 	const selectedAgent = agentsDraft.find((a) => a.id === selectedAgentId);
 
 	function updateMissionField(patch: Partial<typeof missionDraft>) {
@@ -183,20 +186,6 @@ export function DraftEditor({
 		setAgentsDraft((prev) =>
 			prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
 		);
-	}
-
-	function toggleSkill(agent: MissionConfigAgent, skill: string) {
-		const disabled = new Set(agent.disabledSkills ?? []);
-		if (disabled.has(skill)) disabled.delete(skill);
-		else disabled.add(skill);
-		updateAgent(agent.id, { disabledSkills: [...disabled] });
-	}
-
-	function toggleTool(agent: MissionConfigAgent, tool: string) {
-		const disabled = new Set(agent.disabledTools ?? []);
-		if (disabled.has(tool)) disabled.delete(tool);
-		else disabled.add(tool);
-		updateAgent(agent.id, { disabledTools: [...disabled] });
 	}
 
 	function handleAddAgent() {
@@ -435,33 +424,12 @@ export function DraftEditor({
 						}
 					/>
 
-					<div className="config-section-label mut">Skills</div>
-					<div className="config-toggle-grid">
-						{skills.map((s) => (
-							<label key={s} className="skill-toggle-row">
-								<input
-									type="checkbox"
-									checked={!(selectedAgent.disabledSkills ?? []).includes(s)}
-									onChange={() => toggleSkill(selectedAgent, s)}
-								/>
-								{s}
-							</label>
-						))}
-					</div>
-
-					<div className="config-section-label mut">Tools</div>
-					<div className="config-toggle-grid">
-						{TIER_A_TOOLS.map((t) => (
-							<label key={t} className="skill-toggle-row">
-								<input
-									type="checkbox"
-									checked={!(selectedAgent.disabledTools ?? []).includes(t)}
-									onChange={() => toggleTool(selectedAgent, t)}
-								/>
-								{t}
-							</label>
-						))}
-					</div>
+					<AgentToggles
+						agent={selectedAgent}
+						skills={skills}
+						tools={catalog.tierATools}
+						onChange={(patch) => updateAgent(selectedAgent.id, patch)}
+					/>
 
 					<button
 						type="button"

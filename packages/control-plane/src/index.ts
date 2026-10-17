@@ -27,6 +27,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { asyncRoutes } from "./async-handler.js";
 import { createAuthMiddleware } from "./auth.js";
+import { createCatalogRouter } from "./catalog-routes.js";
 import { createCopilotRouter } from "./copilot-router.js";
 import { createCopilotRuntime } from "./copilot-runtime.js";
 import { startCopilotWaker } from "./copilot-waker.js";
@@ -171,6 +172,9 @@ async function main(): Promise<void> {
 	// Session cookie issue/inspect/clear — the bearer presented to /session has
 	// already passed requireAuth above.
 	app.use("/api/auth", createSessionRouter());
+
+	// Skill and tool names the cockpit's config editors may toggle.
+	app.use("/api/catalog", createCatalogRouter(REPO_ROOT));
 
 	// Mission templates — list available team configs.
 	// 4 MB limit: template payloads include teamFiles (skills, scripts) which can exceed 100 KB.

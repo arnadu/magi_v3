@@ -90,7 +90,7 @@ For local development setup and environment variables, see [USER_GUIDE.md](USER_
 | `packages/control-plane/` | Express API, Fly Machines client, cron scheduler, HTTP reverse proxy, single-page UI |
 | `packages/agent-runtime-worker/` | Daemon, orchestration loop, agent runner, monitor server (:4000), tool API server (:4001) |
 | `packages/agent-config/` | Zod schema for team YAML; `loadTeamConfig()`, `parseTeamConfig()` |
-| `packages/skills/` | Platform skills: `skill-creator`, `git-provenance`, `postmessage-conventions`, `run-background`, `schedule-task`, `request-resources` (ADR-0031), `incident-triage` (ADR-0020) |
+| `packages/skills/` | Platform skills — every directory with a `SKILL.md` ships to every mission (`_platform/`); the cockpit's toggle list comes from the same directory via `GET /api/catalog`. Domain playbooks belong in a template's own `skills/` (e.g. `market-analysis-framework` under `config/teams/gold-digest/`) |
 
 ### Technology Stack
 
