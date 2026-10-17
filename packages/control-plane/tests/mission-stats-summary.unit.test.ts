@@ -108,3 +108,63 @@ describe("summarizeMissions", () => {
 		expect(await summarizeMissions(db as never, [], NOW)).toEqual({});
 	});
 });
+
+describe("summarizeMissions on sparse documents", () => {
+	it("tolerates missing cost, timestamps, sender and subject, and ignores other missions' rows", async () => {
+		const { db } = fakeDb({
+			missionStats: [
+				{ missionId: "m1", agentId: "a" },
+				{
+					missionId: "m1",
+					agentId: "b",
+					lifetimeCostUsd: 2,
+					lastTurnAt: ago(30),
+				},
+				{
+					missionId: "m1",
+					agentId: "c",
+					lifetimeCostUsd: 1,
+					lastTurnAt: ago(90),
+				},
+				{ missionId: "zz", agentId: "x", lifetimeCostUsd: 5 },
+			],
+			agentTurnStats: [
+				{ missionId: "m1", agentId: "a", startedAt: ago(5) },
+				{ missionId: "zz", agentId: "x", startedAt: ago(5), costUsd: 9 },
+			],
+			mailbox: [
+				{
+					missionId: "m1",
+					to: ["user"],
+					subject: "  ",
+					readBy: ["user"],
+					timestamp: ago(1),
+				},
+				{
+					missionId: "m1",
+					to: ["user"],
+					subject: "Hello",
+					readBy: ["user"],
+					timestamp: ago(2),
+				},
+				{
+					missionId: "zz",
+					to: ["user"],
+					subject: "other",
+					readBy: [],
+					timestamp: ago(1),
+				},
+			],
+		});
+		const stats = await summarizeMissions(db as never, ["m1"], NOW);
+		expect(stats.m1).toEqual({
+			unread: 0,
+			spendTotal: 3,
+			spendToday: 0,
+			spendLastHour: 0,
+			lastActivity: ago(30),
+			snippet: "?: Hello",
+		});
+		expect(stats.zz).toBeUndefined();
+	});
+});

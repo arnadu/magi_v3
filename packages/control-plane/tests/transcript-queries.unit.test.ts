@@ -12,6 +12,7 @@ import {
 	queryLlmCall,
 	queryLlmCalls,
 	queryTranscript,
+	queryTurns,
 } from "../src/transcript-queries.js";
 import { fakeDb } from "./support/fake-db.js";
 
@@ -122,5 +123,107 @@ describe("queryTranscript", () => {
 		});
 		const t = await queryTranscript(db as never, "m1", "a1", 3);
 		expect(t.map((e) => e.callId)).toEqual([null, "c-1"]);
+	});
+});
+
+describe("transcript queries on sparse, older documents", () => {
+	it("queryTurns fills every missing counter with a neutral default", async () => {
+		const { db } = fakeDb({
+			agentTurnStats: [
+				{
+					missionId: "m1",
+					agentId: "a1",
+					turnNumber: 2,
+					status: "running",
+					startedAt: new Date(0),
+				},
+				{
+					missionId: "m1",
+					agentId: "a1",
+					turnNumber: 1,
+					status: "complete",
+					startedAt: new Date(0),
+					completedAt: new Date(1),
+					llmCallCount: 3,
+					costUsd: 0.5,
+					peakContextTokens: 9,
+					toolCalls: { Bash: 1 },
+					toolErrors: { Bash: 1 },
+				},
+			],
+		});
+		const turns = await queryTurns(db as never, "m1", "a1");
+		expect(turns.map((t) => t.turnNumber)).toEqual([1, 2]);
+		expect(turns[1]).toMatchObject({
+			completedAt: null,
+			llmCallCount: 0,
+			costUsd: 0,
+			peakContextTokens: 0,
+			toolCalls: {},
+			toolErrors: {},
+		});
+		expect(turns[0]).toMatchObject({ llmCallCount: 3, toolCalls: { Bash: 1 } });
+	});
+
+	it("queryTranscript defaults callSeq and parentToolUseId", async () => {
+		const { db } = fakeDb({
+			conversationMessages: [
+				{
+					missionId: "m1",
+					agentId: "a1",
+					turnNumber: 1,
+					message: { role: "user" },
+				},
+				{
+					missionId: "m1",
+					agentId: "a1",
+					turnNumber: 1,
+					callSeq: 0,
+					parentToolUseId: "tu-1",
+					message: { role: "assistant" },
+				},
+			],
+		});
+		const t = await queryTranscript(db as never, "m1", "a1", 1);
+		expect(t[0]).toMatchObject({
+			callSeq: 0,
+			callId: null,
+			parentToolUseId: null,
+		});
+		expect(t[1]).toMatchObject({ parentToolUseId: "tu-1" });
+	});
+
+	it("a call with no body, no flags and partial usage still summarises", async () => {
+		const { db } = fakeDb({
+			llmCallLog: [
+				{
+					missionId: "m1",
+					agentId: "a1",
+					turnNumber: 3,
+					savedAt: new Date(0),
+					model: "m",
+					usage: { inputTokens: 5 },
+				},
+			],
+		});
+		const [c] = await queryLlmCalls(db as never, "m1", "a1", 3);
+		expect(c).toMatchObject({
+			callId: null,
+			isReflection: false,
+			costEstimated: false,
+			stopReason: null,
+			usage: {
+				inputTokens: 5,
+				outputTokens: 0,
+				cacheReadTokens: 0,
+				cacheWriteTokens: 0,
+			},
+			costUsd: null,
+			toolNames: [],
+			messageCount: 0,
+			hasBody: false,
+		});
+		const d = await queryLlmCall(db as never, "m1", "a1", 3, 0);
+		expect(d).toMatchObject({ input: null, output: null, isReflection: false });
 	});
 });
