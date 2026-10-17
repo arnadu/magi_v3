@@ -2,7 +2,7 @@
 	"packages/agent-runtime-worker/src/agent-runner.ts": {
 		"lines": 945,
 		"fns": {
-			"runAgent@262": 682
+			"runAgent@267": 682
 		}
 	},
 	"packages/agent-runtime-worker/src/agent-stats.ts": {
@@ -38,7 +38,7 @@
 	"packages/agent-runtime-worker/src/document-processor.ts": {
 		"lines": 1147,
 		"fns": {
-			"processPdf@622": 151
+			"processPdf@632": 151
 		}
 	},
 	"packages/agent-runtime-worker/src/loop.ts": {
@@ -80,7 +80,7 @@
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
 		"lines": 1154,
 		"fns": {
-			"handleUpload@532": 142
+			"handleUpload@536": 142
 		}
 	},
 	"packages/agent-runtime-worker/src/objectives/tools.ts": {
@@ -106,8 +106,8 @@
 	"packages/agent-runtime-worker/src/tools/fetch-url.ts": {
 		"lines": 428,
 		"fns": {
-			"createFetchUrlTool@180": 261,
-			"execute@219": 220
+			"createFetchUrlTool@181": 261,
+			"execute@222": 220
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/inspect-image.ts": {
@@ -119,8 +119,8 @@
 	"packages/agent-runtime-worker/src/tools/research.ts": {
 		"lines": 455,
 		"fns": {
-			"createResearchTool@292": 220,
-			"execute@370": 140
+			"createResearchTool@293": 220,
+			"execute@373": 140
 		}
 	},
 	"packages/cockpit/src/App.tsx": {

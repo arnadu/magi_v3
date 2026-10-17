@@ -15,6 +15,11 @@ import {
 	truncateOldMessages,
 	truncateToolBodies,
 } from "./llm-call-log.js";
+import {
+	type LlmCallEvent,
+	type LlmCallMeter,
+	stripImageData,
+} from "./llm-meter.js";
 import { runInnerLoop } from "./loop.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
@@ -43,9 +48,9 @@ import {
 } from "./prompt.js";
 import {
 	convertToLlm,
+	loadRepairedHistory,
 	reflectGuarded,
 	reflectSession,
-	repairDanglingToolCalls,
 	shouldReflect,
 } from "./reflection.js";
 import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
@@ -292,12 +297,10 @@ export async function runAgent(
 	const missionId = ctx.teamConfig.mission.id;
 
 	// Load conversation history from previous wakeups.
-	let history = await ctx.conversationRepo.load(agentId, missionId);
-	history = await repairDanglingToolCalls(
+	let history = await loadRepairedHistory(
 		ctx.conversationRepo,
 		agentId,
 		missionId,
-		history,
 	);
 
 	// Reflect on the previous session before starting this one (skip on first wakeup).
@@ -338,12 +341,10 @@ export async function runAgent(
 	 */
 	const makeOnLlmCall = (turnNumber: number, isReflection: boolean) => {
 		if (!ctx.llmCallLog && !ctx.statsCollector) return undefined;
-		return async (event: {
-			systemPrompt: string;
-			messages: Message[];
-			toolNames: string[];
-			response: AssistantMessage;
-		}) => {
+		return async (event: LlmCallEvent) => {
+			// A vision call (InspectImage, captioning, OCR) names its own model;
+			// pricing it with the loop model's table misstated its cost (COST-1).
+			const model = event.model ?? ctx.model;
 			const usage = event.response.usage as {
 				input: number;
 				output: number;
@@ -351,7 +352,7 @@ export async function runAgent(
 				cacheWrite: number;
 				providerCost?: number;
 			};
-			const modelCost = ctx.model.cost as {
+			const modelCost = model.cost as {
 				input: number;
 				output: number;
 				cacheRead: number;
@@ -360,7 +361,7 @@ export async function runAgent(
 			const estimatedCost = computeCost(usage, modelCost);
 			const { cost, costEstimated } = resolveCallCost(
 				estimatedCost,
-				ctx.model.provider,
+				model.provider,
 				usage.providerCost,
 			);
 			if (ctx.llmCallLog) {
@@ -370,11 +371,13 @@ export async function runAgent(
 					turnNumber,
 					isReflection,
 					savedAt: new Date(),
-					model: ctx.model.id,
+					model: model.id,
 					costEstimated,
 					input: {
 						systemPrompt: event.systemPrompt,
-						messages: truncateOldMessages(truncateToolBodies(event.messages)),
+						messages: truncateOldMessages(
+							truncateToolBodies(stripImageData(event.messages)),
+						),
 						toolNames: event.toolNames,
 					},
 					output: {
@@ -430,12 +433,7 @@ export async function runAgent(
 				)?.consecutiveZeroOutputTurns ?? 0,
 		}));
 	if (reflectionTriggered) {
-		await reflectGuarded(
-			agentId,
-			missionId,
-			ctx.anomalyRecorder,
-			runReflectionStep,
-		);
+		await reflectGuarded(ctx, agentId, missionId, runReflectionStep);
 	}
 	async function runReflectionStep(): Promise<void> {
 		history = await reflectSession(ctx, agentId, missionId, {
@@ -580,6 +578,11 @@ export async function runAgent(
 	let postedToSupervisor = false;
 	let lastAssistantText = "";
 
+	// Tool-side LLM calls (vision, OCR, Research) count against the active turn.
+	const meter: LlmCallMeter = async (event) => {
+		await makeOnLlmCallWithLimits(activeTurnNumber)?.(event);
+	};
+
 	const tools = [
 		...createFileTools(workdir, acl),
 		...createMailboxTools(ctx.mailboxRepo, ctx.teamConfig, agentId, {
@@ -595,11 +598,14 @@ export async function runAgent(
 				ctx.onMentalMapUpdate?.(agentId, html);
 			},
 		),
-		createFetchUrlTool(visionModel, sharedDir, ctx.allowedHosts ?? []),
-		createInspectImageTool(workdir, visionModel, [sharedDir]),
+		createFetchUrlTool(visionModel, sharedDir, ctx.allowedHosts ?? [], {
+			meter,
+		}),
+		createInspectImageTool(workdir, visionModel, [sharedDir], meter),
 		createResearchTool(ctx.model, sharedDir, researchAcl, {
 			visionModel,
 			onSubLoopMessage: appendSubLoop,
+			onSubLoopLlmCall: meter,
 		}),
 		createAnalyzeMemoriesTool({
 			conversationRepo: ctx.conversationRepo,

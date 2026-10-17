@@ -297,6 +297,7 @@ async function main(): Promise<void> {
 		await startMonitorServer({
 			db,
 			missionId,
+			llmCallLog,
 			teamConfig,
 			modelId,
 			usageAccumulator,

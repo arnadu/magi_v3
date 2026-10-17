@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { ObjectId } from "mongodb";
+import { createLogOnlyMeter } from "../llm-meter.js";
 import { MonitorServer } from "../monitor-server.js";
 import { ToolApiServer } from "../tool-api-server.js";
 import { WorkspaceGit } from "../workspace-git.js";
@@ -30,6 +31,7 @@ export async function startMonitorServer(
 		| "ac"
 		| "workdir"
 		| "visionModel"
+		| "llmCallLog"
 	>,
 ): Promise<
 	Pick<
@@ -92,6 +94,11 @@ export async function startMonitorServer(
 	);
 	// Vision model for the upload pipeline's image captioning (Sprint 25).
 	monitor.visionModel = ctx.visionModel;
+	monitor.llmMeter = createLogOnlyMeter(
+		ctx.llmCallLog,
+		ctx.missionId,
+		"operator-upload",
+	);
 	await monitor.start(monitorPort);
 	process.stdout.write(
 		`[daemon] Monitor server listening on port ${monitorPort}\n`,

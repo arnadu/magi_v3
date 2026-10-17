@@ -417,11 +417,12 @@ export async function runReflection(
  * failure is recorded as a soft anomaly.
  */
 export async function reflectGuarded(
+	ctx: { anomalyRecorder?: Pick<AnomalyRecorder, "record"> },
 	agentId: string,
 	missionId: string,
-	recorder: Pick<AnomalyRecorder, "record"> | undefined,
 	run: () => Promise<void>,
 ): Promise<void> {
+	const recorder = ctx.anomalyRecorder;
 	try {
 		await run();
 	} catch (e) {
@@ -484,13 +485,13 @@ export async function shouldReflect(input: {
 	);
 }
 
-/** Persist one synthetic error result per dangling tool call and return the reloaded history (#56). */
-export async function repairDanglingToolCalls(
+/** Load the history, persisting one synthetic error result per dangling tool call first (#56). */
+export async function loadRepairedHistory(
 	repo: Pick<ConversationRepository, "append" | "load">,
 	agentId: string,
 	missionId: string,
-	history: StoredMessage[],
 ): Promise<StoredMessage[]> {
+	const history = await repo.load(agentId, missionId);
 	const dangling = findDanglingToolCalls(history);
 	if (dangling.length === 0) return history;
 	console.warn(

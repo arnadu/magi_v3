@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
 import type { Model, UserMessage } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
+import { type LlmCallMeter, meteredCompleteSimple } from "../llm-meter.js";
 import { EXT_TO_MIME } from "../mime-types.js";
-import { piModels } from "../models.js";
 import { PathNotFoundError, readInside, resolveInside } from "../safe-path.js";
 import type { MagiTool, ToolResult } from "../tools.js";
 
@@ -72,6 +72,7 @@ export function createInspectImageTool(
 	workdir: string,
 	model: Model<string>,
 	allowedDirs: string[] = [],
+	meter?: LlmCallMeter,
 ): MagiTool {
 	return {
 		name: "InspectImage",
@@ -163,10 +164,11 @@ export function createInspectImageTool(
 
 			let description: string;
 			try {
-				const response = await piModels.completeSimple(
+				const response = await meteredCompleteSimple(
 					model,
 					{ messages: [message] },
 					{ signal },
+					meter,
 				);
 
 				if (

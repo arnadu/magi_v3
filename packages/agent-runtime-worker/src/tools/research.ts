@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
+import type { LlmCallMeter } from "../llm-meter.js";
 import { runInnerLoop } from "../loop.js";
 import { readInside, resolveInside, writeFileInside } from "../safe-path.js";
 import type { AclPolicy, MagiTool, ToolResult } from "../tools.js";
@@ -300,6 +301,8 @@ export function createResearchTool(
 			toolUseId: string,
 			msg: import("@mariozechner/pi-ai").Message,
 		) => Promise<void>;
+		/** Meters every sub-loop LLM call against the calling agent's turn (COST-1). */
+		onSubLoopLlmCall?: LlmCallMeter;
 	},
 ): MagiTool {
 	const visionModel = opts?.visionModel ?? model;
@@ -466,6 +469,7 @@ export function createResearchTool(
 								await opts.onSubLoopMessage?.(id as string, msg);
 							}
 						: undefined,
+					onLlmCall: opts?.onSubLoopLlmCall,
 				});
 			} catch (e) {
 				return toolErr(

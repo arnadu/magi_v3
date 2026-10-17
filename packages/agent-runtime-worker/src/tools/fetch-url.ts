@@ -16,6 +16,7 @@ import {
 	type ProcessResult,
 	processBuffer,
 } from "../document-processor.js";
+import type { LlmCallMeter } from "../llm-meter.js";
 import { MIME_TO_EXT } from "../mime-types.js";
 import { safeGet } from "../safe-http.js";
 import { isPrivateHost } from "../ssrf.js";
@@ -184,7 +185,9 @@ export function createFetchUrlTool(
 	// constructs this tool with no allowedHosts (→ []), so SSRF stays fully
 	// enforced. Mirrors tryCreateBrowseWebTool's parameter.
 	allowedHosts: string[] = [],
+	opts: { meter?: LlmCallMeter } = {},
 ): MagiTool {
+	const { meter } = opts;
 	return {
 		name: "FetchUrl",
 		description:
@@ -269,14 +272,14 @@ export function createFetchUrlTool(
 			const mimeType = contentType.split(";")[0].trim().toLowerCase();
 
 			// Single captioner shared with the document processor (and uploads).
-			const describeImage = createDescribeImage(model, signal);
+			const describeImage = createDescribeImage(model, signal, meter);
 			// A PDF page's "Page visual" note gets a description-only prompt — its
 			// real text is already captured by mupdf, so transcribing it again in
 			// the caption just duplicates it (found live, see document-processor.ts).
-			const describePageVisual = createPageVisualDescribe(model, signal);
+			const describePageVisual = createPageVisualDescribe(model, signal, meter);
 			// Issue #50: a scanned PDF found on the web gets the same OCR fallback
 			// as an uploaded one.
-			const ocrPage = createOcrPage(model, signal);
+			const ocrPage = createOcrPage(model, signal, meter);
 
 			// --- Route by content type -----------------------------------------
 			// PDF and direct images go through the shared document processor so

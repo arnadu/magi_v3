@@ -58,6 +58,8 @@ export {
 	TEXT_FILE_MAX_BYTES,
 } from "./monitor-files.js";
 
+import type { LlmCallMeter } from "./llm-meter.js";
+
 export const UPLOAD_MAX_BODY_BYTES = 30 * 1024 * 1024;
 
 /**
@@ -199,6 +201,8 @@ export class MonitorServer {
 	 * auto-described — they fall back to InspectImage pointers.
 	 */
 	visionModel?: Model<string>;
+	/** Meters the upload pipeline's vision/OCR calls into the audit log (COST-1); set at boot. */
+	llmMeter?: LlmCallMeter;
 
 	// Per-agent pause gate (copilot/operator intervention). Agents in this set are
 	// skipped by the orchestrator at the next dispatch boundary until resumed.
@@ -603,18 +607,18 @@ export class MonitorServer {
 
 		try {
 			const describeImage = this.visionModel
-				? createDescribeImage(this.visionModel)
+				? createDescribeImage(this.visionModel, undefined, this.llmMeter)
 				: undefined;
 			// A PDF page's "Page visual" note gets a description-only prompt, not
 			// describeImage's — that page's real text is already captured by mupdf,
 			// so asking for a transcription too just duplicates it (found live).
 			const describePageVisual = this.visionModel
-				? createPageVisualDescribe(this.visionModel)
+				? createPageVisualDescribe(this.visionModel, undefined, this.llmMeter)
 				: undefined;
 			// Issue #50: scanned PDFs (no embedded text layer) reuse the same
 			// vision model, prompted for verbatim transcription instead of a caption.
 			const ocrPage = this.visionModel
-				? createOcrPage(this.visionModel)
+				? createOcrPage(this.visionModel, undefined, this.llmMeter)
 				: undefined;
 			const result = await processBuffer(bytes, {
 				filename: safeName,

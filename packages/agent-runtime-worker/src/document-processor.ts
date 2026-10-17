@@ -72,8 +72,9 @@ import {
 	generateArtifactId,
 	saveArtifact,
 } from "./artifacts.js";
+import { type LlmCallMeter, meteredCompleteSimple } from "./llm-meter.js";
 import { MIME_TO_EXT, VISION_MIMES } from "./mime-types.js";
-import { piModels } from "./models.js";
+import { MAX_OCR_PAGES_PER_DOCUMENT, withOcrPageCap } from "./ocr-cap.js";
 import { reconstructPageText, type StextLine } from "./pdf-tables.js";
 
 // ---------------------------------------------------------------------------
@@ -201,6 +202,7 @@ function createVisionTextCall(
 	model: Model<string>,
 	prompt: string,
 	signal?: AbortSignal,
+	meter?: LlmCallMeter,
 ): DescribeImageFn {
 	return async (bytes, mimeType) => {
 		const mime = mimeType.split(";")[0].trim();
@@ -215,10 +217,11 @@ function createVisionTextCall(
 					{ type: "image", data: bytes.toString("base64"), mimeType: mime },
 				],
 			};
-			const response = await piModels.completeSimple(
+			const response = await meteredCompleteSimple(
 				model,
 				{ messages: [msg] },
 				{ signal },
+				meter,
 			);
 			if (
 				response.stopReason === "error" ||
@@ -245,8 +248,9 @@ function createVisionTextCall(
 export function createDescribeImage(
 	model: Model<string>,
 	signal?: AbortSignal,
+	meter?: LlmCallMeter,
 ): DescribeImageFn {
-	return createVisionTextCall(model, AUTO_DESCRIBE_PROMPT, signal);
+	return createVisionTextCall(model, AUTO_DESCRIBE_PROMPT, signal, meter);
 }
 
 /** Build the production describer for a PDF page's "Page visual" note — see
@@ -254,8 +258,9 @@ export function createDescribeImage(
 export function createPageVisualDescribe(
 	model: Model<string>,
 	signal?: AbortSignal,
+	meter?: LlmCallMeter,
 ): DescribeImageFn {
-	return createVisionTextCall(model, PAGE_VISUAL_PROMPT, signal);
+	return createVisionTextCall(model, PAGE_VISUAL_PROMPT, signal, meter);
 }
 
 /**
@@ -269,8 +274,13 @@ export function createPageVisualDescribe(
 export function createOcrPage(
 	model: Model<string>,
 	signal?: AbortSignal,
+	meter?: LlmCallMeter,
+	maxPages: number = MAX_OCR_PAGES_PER_DOCUMENT,
 ): OcrPageFn {
-	return createVisionTextCall(model, OCR_TRANSCRIBE_PROMPT, signal);
+	return withOcrPageCap(
+		createVisionTextCall(model, OCR_TRANSCRIBE_PROMPT, signal, meter),
+		maxPages,
+	);
 }
 
 export interface ProcessOptions {
