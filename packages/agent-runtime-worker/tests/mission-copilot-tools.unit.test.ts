@@ -5,7 +5,13 @@
  * store; HTTP calls to the monitor server are faked via global.fetch.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ObjectId } from "mongodb";
@@ -1066,5 +1072,60 @@ describe("mission-copilot-tools", () => {
 			});
 			expect(good.isError).toBeFalsy();
 		});
+	});
+});
+
+describe("CancelScheduledMessage for a file-backed schedule (ADR-0033 §3)", () => {
+	it("removes the schedule file and marks the document cancelled instead of deleting it", async () => {
+		const sharedDir = join(
+			mkdtempSync(join(tmpdir(), "magi-mc-sched-")),
+			"shared",
+		);
+		mkdirSync(join(sharedDir, "schedules"), { recursive: true });
+		try {
+			const id = new ObjectId();
+			const file = join(sharedDir, "schedules", "daily-brief.json");
+			writeFileSync(file, "{}");
+			const fake = makeFakeDb({
+				scheduled_messages: [
+					{
+						_id: id,
+						missionId: "m1",
+						status: "pending",
+						origin: "shared-schedules",
+						label: "daily-brief",
+					},
+				],
+			});
+			const tools = createMissionCopilotTools({
+				// biome-ignore lint/suspicious/noExplicitAny: minimal fake Db surface for tests
+				db: fake.db as any,
+				missionId: "m1",
+				sharedDir,
+				// biome-ignore lint/suspicious/noExplicitAny: minimal fake MailboxRepository
+				mailboxRepo: { post: async () => ({}) } as any,
+				monitorPort: 4000,
+				monitorToken: "test-token",
+				cancelBackgroundJob: () => false,
+				controlPlaneUrl: "",
+			});
+			const cancel = tools.find((t) => t.name === "CancelScheduledMessage");
+			if (!cancel) throw new Error("tool missing");
+			const result = await cancel.execute("t1", { id: id.toHexString() });
+			expect(result.isError).toBeFalsy();
+			expect(existsSync(file)).toBe(false);
+			// The fake records updates rather than applying them: the document
+			// must survive (not deleteOne) and receive a status: cancelled $set.
+			expect(fake.getDocs("scheduled_messages")).toHaveLength(1);
+			const cancelled = fake.updateOneCalls.find(
+				(c) =>
+					c.collection === "scheduled_messages" &&
+					(c.update as { $set?: { status?: string } }).$set?.status ===
+						"cancelled",
+			);
+			expect(cancelled).toBeDefined();
+		} finally {
+			rmSync(join(sharedDir, ".."), { recursive: true, force: true });
+		}
 	});
 });

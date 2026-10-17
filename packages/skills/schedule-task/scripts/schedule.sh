@@ -3,17 +3,22 @@
 #
 # Register a recurring scheduled message for this mission.
 # Writes a JSON spec file to sharedDir/schedules/<label>.json.
-# The daemon picks this up on its next heartbeat and upserts it into the
-# scheduled_messages collection. The entry is automatically re-armed after
-# each delivery so the schedule recurs indefinitely.
+# The daemon imports it within a minute into the scheduled_messages
+# collection; the control plane delivers it on the cron and re-arms it, so the
+# schedule recurs indefinitely — including while the mission is suspended
+# (the delivery wakes the machine).
 #
-# Re-running with the same label updates the schedule — safe to call multiple times.
+# Re-running with the same label updates the schedule (a changed cron re-arms
+# it); `rm` the file to cancel it — the pending entry is cancelled within a
+# minute and will not fire. The schedule is attributed to the agent that owns
+# the file (you); recipients must be agents of this mission (or "user").
 #
 # Usage:
 #   bash schedule.sh <label> <to> <cron> <subject> <body>
 #
 # Arguments:
-#   label    Unique name for this schedule (e.g. "daily-brief"). Re-using overwrites.
+#   label    Unique name for this schedule (e.g. "daily-brief"): lower-case
+#            letters, digits, "." "_" "-", up to 64 characters. Re-using overwrites.
 #   to       Comma-separated agent ids (e.g. "lead-analyst" or "lead-analyst,economist")
 #   cron     Standard 5-field cron expression (e.g. "0 6 * * 1-5" for Mon-Fri 06:00)
 #   subject  Message subject line
@@ -31,6 +36,11 @@ TO="${2:?Missing argument: to (comma-separated agent ids)}"
 CRON="${3:?Missing argument: cron (e.g. \"0 6 * * 1-5\")}"
 SUBJECT="${4:?Missing argument: subject}"
 BODY="${5:?Missing argument: body}"
+
+if [[ ! "${LABEL}" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]]; then
+    echo "schedule.sh: label \"${LABEL}\" must be a lower-case slug (a-z 0-9 . _ -, up to 64 chars)" >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Derive sharedDir from this script's location.
@@ -87,4 +97,5 @@ echo "  To      : ${TO}"
 echo "  Cron    : ${CRON}"
 echo "  Subject : ${SUBJECT}"
 echo ""
-echo "The daemon will import this schedule on its next heartbeat (within 1 minute)."
+echo "The daemon imports this schedule within 1 minute (log: '[daemon:scheduler] Schedule imported: ${LABEL} → next at …')."
+echo "Edit and re-run to change it; rm the file to cancel it."

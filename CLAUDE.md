@@ -124,7 +124,7 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 - `conversationMessages` — full agent conversation history with compaction and reflection
 - `mailbox` — inter-agent and operator messages
 - `llmCallLog` — audit log of every LLM call with cost breakdown
-- `scheduled_messages` — cron-based agent wakeups
+- `scheduled_messages` — cron-based agent wakeups; documents with `origin: shared-schedules` are imported by the daemon from agents' `shared/schedules/*.json` files, and `kind: job` ones fire a background job instead of a message (ADR-0033 §3)
 - `agentTurnStats` — per-turn (per-wakeup) statistics, upserted incrementally during a turn (LLM call count, tokens, cost, peak context, tool counts/errors, files written, messages sent, URLs visited); one doc per `(missionId, agentId, turnNumber)`
 - `machineSegments` — runtime segments per machine shape (ADR-0031): one doc per stretch a mission's machine ran with one shape; drives the runtime cockpit tab and the cumulative upgrade cap
 - `resourceAlertState` — per-alert de-duplication/hysteresis state for resource alerts (ADR-0032); one doc per `<missionId|platform>:<category>` key

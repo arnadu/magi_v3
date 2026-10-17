@@ -49,6 +49,15 @@ interface ScheduledMessageDoc {
 	deliverAt: Date;
 	cron?: string;
 	label?: string;
+	/**
+	 * Absent or "message": deliver to the mailbox. "job" (ADR-0033 §3, written
+	 * only by the daemon's schedule ingestion from `shared/schedules/`): no
+	 * mail — stamp `pendingFire` and wake the machine; the mission daemon turns
+	 * the stamp into a background job. Overwriting the stamp coalesces the
+	 * occurrences a long-suspended mission missed into one.
+	 */
+	kind?: "message" | "job";
+	pendingFire?: { dueAt: Date; requestedAt: Date };
 	status: "pending" | "delivering" | "delivered" | "cancelled" | "failed";
 	/** Set when a tick claims the entry; a stale claim is re-opened after DELIVERY_LEASE_MS. */
 	claimedAt?: Date;
@@ -171,9 +180,39 @@ async function reopenStaleLeases(
 	);
 }
 
+/**
+ * Insert the message. Fields must match MailboxMessage
+ * (agent-runtime-worker/src/mailbox.ts) exactly — this insert bypasses the
+ * shared repository, so nothing enforces that at the type level. A prior
+ * version used createdAt/read instead of timestamp/readBy: prompt.ts's
+ * formatMessages() calls m.timestamp.toISOString() unconditionally, so a
+ * message missing timestamp crashes the receiving agent's very next dispatch
+ * with "Cannot read properties of undefined (reading 'toISOString')" — found
+ * live when a mission copilot's CreateScheduledMessage first exercised this
+ * delivery path for a real mission.
+ */
+async function deliverToMailbox(
+	mailboxCol: Collection<Record<string, unknown>>,
+	doc: ScheduledMessageDoc,
+): Promise<void> {
+	await mailboxCol.insertOne({
+		id: randomUUID(),
+		missionId: doc.missionId,
+		from: "scheduler",
+		to: doc.to,
+		subject: doc.subject,
+		body: doc.body,
+		timestamp: new Date(),
+		readBy: [],
+	});
+	console.log(
+		`[scheduler] Delivered "${doc.subject}" to ${doc.to.join(", ")} (mission ${doc.missionId})`,
+	);
+}
+
 async function deliverAll(db: Db): Promise<void> {
 	const scheduledCol = db.collection<ScheduledMessageDoc>("scheduled_messages");
-	const mailboxCol = db.collection("mailbox");
+	const mailboxCol = db.collection<Record<string, unknown>>("mailbox");
 	const missionsCol = db.collection<MissionDoc>("missions");
 
 	const now = new Date();
@@ -192,29 +231,21 @@ async function deliverAll(db: Db): Promise<void> {
 			const mission = await missionsCol.findOne({ missionId: doc.missionId });
 			if (mission) await wakeIfNotRunning(db, mission);
 
-			// Deliver to mailbox. Fields must match MailboxMessage
-			// (agent-runtime-worker/src/mailbox.ts) exactly — this insert
-			// bypasses the shared repository, so nothing enforces that at the
-			// type level. A prior version used createdAt/read instead of
-			// timestamp/readBy: prompt.ts's formatMessages() calls
-			// m.timestamp.toISOString() unconditionally, so a message missing
-			// timestamp crashes the receiving agent's very next dispatch with
-			// "Cannot read properties of undefined (reading 'toISOString')" —
-			// found live when a mission copilot's CreateScheduledMessage first
-			// exercised this delivery path for a real mission.
-			await mailboxCol.insertOne({
-				id: randomUUID(),
-				missionId: doc.missionId,
-				from: "scheduler",
-				to: doc.to,
-				subject: doc.subject,
-				body: doc.body,
-				timestamp: new Date(),
-				readBy: [],
-			});
-			console.log(
-				`[scheduler] Delivered "${doc.subject}" to ${doc.to.join(", ")} (mission ${doc.missionId})`,
-			);
+			if (doc.kind === "job") {
+				await scheduledCol.updateOne(
+					{ _id: doc._id },
+					{
+						$set: {
+							pendingFire: { dueAt: doc.deliverAt, requestedAt: new Date() },
+						},
+					},
+				);
+				console.log(
+					`[scheduler] Job schedule "${doc.label ?? doc.subject}" due — flagged for the mission daemon (mission ${doc.missionId})`,
+				);
+			} else {
+				await deliverToMailbox(mailboxCol, doc);
+			}
 			if (!doc.cron) {
 				await scheduledCol.updateOne(
 					{ _id: doc._id },
@@ -271,7 +302,10 @@ async function deliverAll(db: Db): Promise<void> {
 		// Re-arm cron-based entries.
 		if (doc.cron) {
 			try {
-				const next = parseExpression(doc.cron).next().toDate();
+				// UTC, matching how the daemon arms a schedule file's first fire
+				// (mission-copilot-schedule-input.ts); on Fly the process TZ is UTC
+				// anyway, this makes local dev agree.
+				const next = parseExpression(doc.cron, { tz: "UTC" }).next().toDate();
 				await scheduledCol.updateOne(
 					{ _id: doc._id },
 					// Reset deliveryAttempts on a successful delivery — otherwise a

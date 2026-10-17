@@ -110,6 +110,7 @@ import type { MailboxRepository } from "./mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
 import { sampleDiskUsage } from "./resource-sampler.js";
+import { createScheduleIngestor } from "./schedule-ingest.js";
 import type { ToolApiServer } from "./tool-api-server.js";
 
 /**
@@ -135,10 +136,11 @@ const missionCopilotEnabled = process.env.MISSION_COPILOT_ENABLED !== "false";
 // ---------------------------------------------------------------------------
 
 /**
- * Start a heartbeat that checks for pending background jobs every minute.
- * Scheduled message delivery has moved to the control plane (Sprint 14);
- * the daemon only handles job files written directly to jobs/pending/ by
- * agents (submit-job.sh) or by the control plane's scheduler.
+ * Start a heartbeat that, every minute: imports the agents' schedule files
+ * into `scheduled_messages` and turns the control plane's job-fire stamps
+ * into queued jobs (schedule-ingest.ts, ADR-0033 §3), then runs pending
+ * background jobs. Scheduled delivery itself — the clock — is the control
+ * plane's (scheduler.ts); the daemon only executes.
  *
  * Returns a cleanup function that stops the interval.
  */
@@ -169,6 +171,15 @@ function startJobRunner(
 	// the daemon runs (a config change restarts it).
 	const uidToAgentId = buildUidToAgentId(teamConfig.agents);
 	const daemonUid = process.getuid?.() ?? -1;
+	const schedules = createScheduleIngestor({
+		sharedDir,
+		missionId,
+		db,
+		teamConfig,
+		uidToAgentId,
+		daemonUid,
+		anomalyRecorder,
+	});
 	function tick(): void {
 		logMemoryUsage(missionId);
 		sampleDiskUsage({
@@ -190,18 +201,30 @@ function startJobRunner(
 				`[resource-sampler] Uncaught failure { missionId: "${missionId}", error: "${(e as Error).message}" }`,
 			),
 		);
-		runPendingJobs({
-			sharedDir,
-			workdir,
-			missionId,
-			teamConfig,
-			toolApiServer,
-			toolPort,
-			mailboxRepo,
-			missionCopilotEnabled,
-			uidToAgentId,
-			daemonUid,
-		});
+		// Schedules first so a job fired this minute runs this minute; a
+		// failure there must not stop the job runner.
+		schedules
+			.ingest()
+			.then(() => schedules.claimJobFires())
+			.catch((e) =>
+				console.error(
+					`[daemon:scheduler] Schedule tick failed { missionId: "${missionId}", error: "${(e as Error).message}" } — schedule files and job fires are retried next minute`,
+				),
+			)
+			.then(() =>
+				runPendingJobs({
+					sharedDir,
+					workdir,
+					missionId,
+					teamConfig,
+					toolApiServer,
+					toolPort,
+					mailboxRepo,
+					missionCopilotEnabled,
+					uidToAgentId,
+					daemonUid,
+				}),
+			);
 	}
 
 	// Run any pending jobs immediately on startup (handles crash recovery).

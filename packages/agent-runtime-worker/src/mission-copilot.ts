@@ -341,12 +341,12 @@ export function buildMissionCopilotAgentConfig(
 		// which the execution plane never has (that's the whole point of the
 		// GitHub proxy), so leaving it enabled would just let the copilot
 		// wander into a script that always fails.
-		// schedule-task: its daemon-side ingestion (sharedDir/schedules/ →
-		// scheduled_messages) does not exist in this codebase — verified by
-		// reading daemon.ts, nothing consumes that directory. The copilot has
-		// its own CreateScheduledMessage/CancelScheduledMessage tools, which
-		// write the real schema directly; no reason to risk it reaching for
-		// the skill instead.
+		// schedule-task: the file-based path (sharedDir/schedules/ →
+		// scheduled_messages, schedule-ingest.ts) is for worker agents, whose
+		// files are attributed to them by uid. The copilot has its own
+		// CreateScheduledMessage/CancelScheduledMessage tools that write the
+		// collection directly; a file it wrote would be attributed to it
+		// anyway, so the skill is just a slower duplicate here.
 		// data-factory / data-factory-client / market-analysis-framework:
 		// analyst-domain skills, not this role — visible only as prompt
 		// bloat, and could tempt the copilot into doing the team's

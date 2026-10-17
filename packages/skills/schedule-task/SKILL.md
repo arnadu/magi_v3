@@ -9,11 +9,14 @@ scope: platform
 ## Purpose
 
 Writes a JSON schedule file to `sharedDir/schedules/<label>.json`.
-The daemon picks this up on its next heartbeat and registers the entry in the
-`scheduled_messages` collection. Messages are then delivered on the cron schedule
-and the entry is automatically re-armed after each delivery.
+The daemon imports it within a minute into the `scheduled_messages` collection. The control
+plane then delivers the message on the cron schedule — waking the mission's machine first if
+it is suspended — and re-arms the entry after each delivery.
 
-Re-running the script with the same label updates the schedule (safe to call multiple times).
+The schedule is attributed to you (the owner of the file). Recipients must be agents of this
+mission or `user`; crons firing more often than every 5 minutes are refused (each fire is a
+paid agent turn). Re-running the script with the same label updates the schedule; a changed
+cron re-arms it at the new expression's next occurrence.
 
 ## Usage
 
@@ -30,7 +33,7 @@ bash <platform-skills-path>/schedule-task/scripts/schedule.sh \
 
 | Argument | Description | Example |
 |----------|-------------|---------|
-| `label`  | Unique name for this schedule. Re-using overwrites. | `daily-brief` |
+| `label`  | Unique name for this schedule: lower-case letters, digits, `.` `_` `-`, up to 64 chars. Re-using overwrites. | `daily-brief` |
 | `to`     | Comma-separated recipient agent ids | `lead-analyst` |
 | `cron`   | Standard 5-field cron expression | `0 6 * * 1-5` |
 | `subject`| Message subject line | `[task] Daily cycle — begin` |
@@ -72,4 +75,5 @@ To cancel a schedule, delete the JSON file:
 rm <sharedDir>/schedules/<label>.json
 ```
 
-Note: an already-pending entry in the database will still fire once. To also cancel the pending delivery, you would need operator intervention via `cli:post` or direct database access.
+The pending entry is cancelled within a minute and will not fire. (The mission copilot can
+also cancel it with `CancelScheduledMessage`, which removes the file for you.)

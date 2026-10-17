@@ -70,7 +70,12 @@ export function resolveDeliverAt(
 	}
 	if (cron) {
 		try {
-			const it = parseExpression(cron);
+			// UTC everywhere: the control plane re-arms in UTC (Fly machines run
+			// UTC), so a cron must mean the same thing where it is first armed.
+			const it = parseExpression(cron, {
+				currentDate: new Date(now()),
+				tz: "UTC",
+			});
 			const first = it.next().toDate();
 			const second = it.next().toDate();
 			if (second.getTime() - first.getTime() < MIN_CRON_INTERVAL_MS) {

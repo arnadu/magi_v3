@@ -50,7 +50,7 @@ what `readFailedJobStatus` reads. `shared/jobs/status/` is kept as an **agent-re
 so `ls` and `ListBackgroundJobs` keep showing finished jobs. `recoverOrphanedJobs` operates on
 the private directories only.
 
-### 3. One `scheduled_messages` collection; the control plane keeps time, the daemon keeps execution *(planned, M4)*
+### 3. One `scheduled_messages` collection; the control plane keeps time, the daemon keeps execution *(implemented 2026-10-17, M4 — `schedule-ingest.ts`, `scheduler.ts`)*
 
 `ScheduledMessageDoc` gains optional `kind: "message" | "job"` (absent = message, so existing
 writers are untouched), `origin: "shared-schedules"`, `specHash`, `createdBy` (the agent derived
@@ -66,9 +66,16 @@ from the schedule file's owner uid — the same attribution as §1), `jobSpec`, 
 - *Firing jobs* (control plane `scheduler.ts deliver()`): for `kind: "job"` no mailbox insert —
   `$set pendingFire` (overwrite = coalesce missed occurrences), then the existing re-arm and
   machine wake. The daemon's tick `claimJobFires()` writes `jobs-private/queue/<label>-<dueAtEpoch>.json`
-  (deterministic → idempotent across a crash) then clears `pendingFire` with a CAS on `dueAt`.
+  (deterministic → idempotent across a crash; a fire whose id already exists in queue/running/
+  status/failed is not enqueued again) then clears `pendingFire` with a CAS on `dueAt`.
   Catch-up after a suspend fires once; if `now - dueAt > 6 h` it skips and records a
   `scheduling-failure` anomaly.
+- *As built:* the spec hash covers the sanitised fields plus the author, so a whitespace edit does
+  not re-arm; a refused file is reported once per distinct reason, not every minute;
+  `shared/schedules/` is daemon-owned and sticky-writable (like `jobs/pending/`) so the copilot's
+  `CancelScheduledMessage` can remove an agent's file; the copilot's `ListScheduledMessages`
+  shows `kind`/`origin`/`createdBy`; `schedule-job.sh` lost its `LINUX_USER`/`linuxUser` field
+  and refuses `--agent` other than `$AGENT_ID`; both skills now describe this mechanism.
 
 ## Consequences
 

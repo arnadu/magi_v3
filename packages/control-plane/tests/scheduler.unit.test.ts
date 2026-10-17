@@ -17,6 +17,9 @@ interface ScheduledDoc {
 	body: string;
 	deliverAt: Date;
 	cron?: string;
+	label?: string;
+	kind?: "message" | "job";
+	pendingFire?: { dueAt: Date; requestedAt: Date };
 	status: "pending" | "delivered" | "cancelled" | "failed";
 	deliveryAttempts?: number;
 	claimedAt?: Date;
@@ -311,6 +314,78 @@ describe("deliver() lease semantics (SCH1/SCH5)", () => {
 		expect(mailboxInserts).toHaveLength(0);
 		release();
 		await first;
+		expect(mailboxInserts).toHaveLength(1);
+	});
+});
+
+describe('deliver() for kind: "job" schedules (ADR-0033 §3)', () => {
+	it("stamps pendingFire with the due time, posts no mail, and re-arms the cron", async () => {
+		const { db, scheduled, mailboxInserts } = fakeDb({
+			scheduled: [
+				{
+					_id: "j1",
+					missionId: "m1",
+					to: ["a1"],
+					subject: "Scheduled job: nightly",
+					body: "",
+					label: "nightly",
+					kind: "job",
+					cron: "0 2 * * *",
+					deliverAt: PAST,
+					status: "pending",
+				},
+			],
+		});
+
+		await deliver(db);
+
+		expect(mailboxInserts).toHaveLength(0);
+		expect(scheduled[0].pendingFire?.dueAt).toEqual(PAST);
+		expect(scheduled[0].pendingFire?.requestedAt).toBeInstanceOf(Date);
+		expect(scheduled[0].status).toBe("pending");
+		expect(scheduled[0].deliverAt.getTime()).toBeGreaterThan(Date.now());
+	});
+
+	it("overwrites an unclaimed stamp on the next occurrence (missed fires coalesce)", async () => {
+		const older = new Date(PAST.getTime() - 86_400_000);
+		const { db, scheduled } = fakeDb({
+			scheduled: [
+				{
+					_id: "j1",
+					missionId: "m1",
+					to: ["a1"],
+					subject: "Scheduled job: nightly",
+					body: "",
+					label: "nightly",
+					kind: "job",
+					cron: "0 2 * * *",
+					deliverAt: PAST,
+					status: "pending",
+					pendingFire: { dueAt: older, requestedAt: older },
+				},
+			],
+		});
+
+		await deliver(db);
+
+		expect(scheduled[0].pendingFire?.dueAt).toEqual(PAST);
+	});
+
+	it("still mails a document with no kind (every pre-existing writer)", async () => {
+		const { db, mailboxInserts } = fakeDb({
+			scheduled: [
+				{
+					_id: "m",
+					missionId: "m1",
+					to: ["a1"],
+					subject: "hello",
+					body: "x",
+					deliverAt: PAST,
+					status: "pending",
+				},
+			],
+		});
+		await deliver(db);
 		expect(mailboxInserts).toHaveLength(1);
 	});
 });

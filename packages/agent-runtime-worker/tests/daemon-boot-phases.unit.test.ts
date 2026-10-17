@@ -706,7 +706,10 @@ describe("startBackgroundJobs", () => {
 		const teamConfig = {} as Parameters<
 			typeof startBackgroundJobs
 		>[0]["teamConfig"];
-		const db = {} as Parameters<typeof startBackgroundJobs>[0]["db"];
+		// ensureScheduleIndexes runs at boot (ADR-0033 §3); only createIndex is touched.
+		const db = {
+			collection: () => ({ createIndex: async () => "ok" }),
+		} as unknown as Parameters<typeof startBackgroundJobs>[0]["db"];
 
 		const { stopJobRunner } = await startBackgroundJobs(
 			{

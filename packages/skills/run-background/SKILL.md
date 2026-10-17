@@ -54,8 +54,15 @@ bash $SKILL_DIR/../run-background/scripts/schedule-job.sh \
   --notify-subject "Daily refresh complete"
 ```
 
-Writes `sharedDir/schedules/<label>.json`. The daemon fires the script on schedule
-and re-arms it automatically. Re-running with the same label updates the schedule.
+Writes `sharedDir/schedules/<label>.json` (label: lower-case slug, up to 64 chars). The daemon
+imports it within a minute and logs `[daemon:scheduler] Schedule imported: <label> → next at …`.
+The control plane keeps the clock: on each cron fire it wakes the mission's machine if it is
+suspended and hands the daemon one job to run — as you, the owner of the file (`--agent` defaults
+to `$AGENT_ID` and may only name yourself). Each fire shows up as job `<label>-<epoch-ms>` in
+`job-status.sh` and in the completion notification. Re-running with the same label updates the
+schedule (a changed cron re-arms it). A fire the mission slept through for more than 6 hours is
+skipped and reported to the copilot rather than run late. Crons firing more often than every
+5 minutes are refused.
 
 ## Check job status
 
@@ -119,5 +126,6 @@ Maximum **3 background jobs** run simultaneously. Additional jobs wait in
 rm $SHARED_DIR/schedules/<label>.json
 ```
 
-The current pending entry will still fire once. To cancel pending jobs already queued in
-`jobs/pending/`, delete the corresponding `.json` file there.
+The schedule is cancelled within a minute and its pending entry will not fire. A job that was
+already handed to the daemon for the current fire still runs; the mission copilot can kill it
+with `CancelBackgroundJob`.

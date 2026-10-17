@@ -460,8 +460,12 @@ with sections for the new categories.
 
 Agents submit long-running work via the `run-background` skill (`magi-job` CLI), which calls the
 Tool IPC server. The server dispatches to Research, SearchWeb, FetchUrl, Bash, or BrowseWeb and
-writes results to `sharedDir/jobs/`. The `schedule-task` skill submits jobs to
-`scheduled_messages` for future delivery.
+writes results to `sharedDir/jobs/`. Recurring work goes through files: the `schedule-task`
+skill (`schedule.sh`, a message) and the `run-background` skill (`schedule-job.sh`, a job) write
+`sharedDir/schedules/<label>.json`; the daemon imports each file within a minute into
+`scheduled_messages`, attributed to the file's owner (ADR-0033 §3, `schedule-ingest.ts`); the
+control plane keeps the clock, waking the mission's machine on each fire and either mailing the
+message or stamping the document for the daemon to run the job.
 
 ### ACL enforcement
 

@@ -4,6 +4,7 @@ import type { AnomalyRecorder } from "../anomaly.js";
 import { recoverOrphanedJobs } from "../job-recovery.js";
 import { ensureJobDirs, jobDirs } from "../job-runner.js";
 import type { MailboxRepository } from "../mailbox.js";
+import { ensureScheduleIndexes } from "../schedule-ingest.js";
 import type { ToolApiServer } from "../tool-api-server.js";
 import type { BootContext } from "./context.js";
 
@@ -47,6 +48,8 @@ export async function startBackgroundJobs(
 ): Promise<Pick<BootContext, "stopJobRunner">> {
 	const dirs = jobDirs(ctx.sharedDir);
 	ensureJobDirs(dirs);
+	// One document per schedule file even if two ticks race (ADR-0033 §3).
+	await ensureScheduleIndexes(ctx.db);
 	await recoverOrphanedJobs(
 		dirs,
 		ctx.missionId,

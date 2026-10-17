@@ -177,7 +177,6 @@ agents:
         --cron "30 5 * * *" \
         --script "{{sharedDir}}/skills/_platform/data-factory/scripts/refresh.py" \
         --args "{{sharedDir}}" \
-        --agent "data-scientist" \
         --notify-subject "Daily gold data refresh complete"
       ```
 
