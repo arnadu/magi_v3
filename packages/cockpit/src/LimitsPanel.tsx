@@ -8,7 +8,8 @@ import {
 } from "./data";
 import { UpgradeLimitsSection } from "./UpgradeLimitsSection";
 
-const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
+const fmtUsd = (n: number) =>
+	`$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** Same 90/70 threshold + color convention as ObjectivesPanel's budgetPct() —
  * duplicated rather than imported: it's a 6-line pure function, and pulling
@@ -239,6 +240,25 @@ function AgentCard({
 	);
 }
 
+/**
+ * The ceiling sentence, phrased so the figure that limits *this* user is the
+ * one stated as the maximum (the platform ceiling read as "the max" next to
+ * a higher current ceiling was confusing).
+ */
+export function ceilingRangeText(
+	current: number,
+	platform: number,
+	canExceed: boolean,
+): string {
+	if (canExceed) {
+		return `Currently ${fmtUsd(current)}. As a platform admin you can set any amount; for other users the most is the platform ceiling, ${fmtUsd(platform)}.`;
+	}
+	if (current > platform) {
+		return `Currently ${fmtUsd(current)}, set by a platform admin above the platform ceiling of ${fmtUsd(platform)}. You can lower it; only a platform admin can raise it.`;
+	}
+	return `Currently ${fmtUsd(current)}. You can raise it to at most ${fmtUsd(platform)} (the platform ceiling); a platform admin can go higher.`;
+}
+
 function CeilingField({
 	missionId,
 	maxCostCeilingUsd,
@@ -289,11 +309,12 @@ function CeilingField({
 			<span className="kpilbl">Spend-cap ceiling</span>
 			<p className="mut">
 				The most the spend cap above may be set to — by you, or by the mission
-				copilot&apos;s own tools. Currently{" "}
-				{fmtUsd(maxCostCeilingUsd ?? platformCeilingUsd)}.{" "}
-				{canExceedPlatformCeiling
-					? `As a platform admin you may set it above the platform ceiling (${fmtUsd(platformCeilingUsd)}).`
-					: `It can be raised up to the platform ceiling of ${fmtUsd(platformCeilingUsd)}.`}
+				copilot&apos;s own tools.{" "}
+				{ceilingRangeText(
+					maxCostCeilingUsd ?? platformCeilingUsd,
+					platformCeilingUsd,
+					canExceedPlatformCeiling,
+				)}
 			</p>
 			<LimitField label="Ceiling ($)" value={draft} onChange={setDraft} />
 			{error && <p className="mut limits-error">{error}</p>}
