@@ -575,10 +575,13 @@ export interface LimitsData {
 		maxCostUsd: number | null;
 		missionTotalUsd: number | null;
 		budgetPaused: boolean | null;
-		/** Issue #49 / F-025 — operator-only ceiling on the spend cap above;
-		 * null means none configured (unbounded, legacy default). No mission
-		 * tool can ever raise this — only the cockpit Limits panel can. */
+		/** The most the cap may be set to, by anyone including the mission
+		 * copilot; only the Limits panel writes it. Null = the platform ceiling. */
 		maxCostCeilingUsd: number | null;
+		/** PLATFORM_MAX_COST_CEILING_USD — the most a ceiling may be set to... */
+		platformCeilingUsd: number;
+		/** ...unless this user is a platform admin. */
+		canExceedPlatformCeiling: boolean;
 	};
 	agents: AgentLimitsRow[];
 	/** False when suspended/provisioning/etc — live numbers are unavailable then. */
@@ -632,14 +635,10 @@ export function fetchLimits(missionId: string): Promise<LimitsData> {
 export async function resetUpgradedRuntime(
 	missionId: string,
 ): Promise<{ resetAt: string }> {
-	const res = await fetch(
+	const res = await request(
 		`/api/missions/${mp(missionId)}/limits/upgrade-reset`,
-		{
-			method: "PATCH",
-			credentials: "include",
-		},
+		{ method: "PATCH" },
 	);
-	if (!res.ok) throw new Error(`HTTP ${res.status} resetting upgraded runtime`);
 	return (await res.json()) as { resetAt: string };
 }
 
@@ -650,13 +649,11 @@ export async function saveMissionCap(
 	missionId: string,
 	maxCostUsd: number,
 ): Promise<{ liveUpdateApplied: boolean }> {
-	const res = await fetch(`/api/missions/${mp(missionId)}/limits/mission`, {
+	const res = await request(`/api/missions/${mp(missionId)}/limits/mission`, {
 		method: "PATCH",
-		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ maxCostUsd }),
 	});
-	if (!res.ok) throw new Error(`HTTP ${res.status} saving mission cap`);
 	return (await res.json()) as { liveUpdateApplied: boolean };
 }
 
@@ -669,13 +666,11 @@ export async function saveMissionCostCeiling(
 	missionId: string,
 	ceilingUsd: number,
 ): Promise<{ maxCostCeilingUsd: number }> {
-	const res = await fetch(`/api/missions/${mp(missionId)}/limits/ceiling`, {
+	const res = await request(`/api/missions/${mp(missionId)}/limits/ceiling`, {
 		method: "PATCH",
-		credentials: "include",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ ceilingUsd }),
 	});
-	if (!res.ok) throw new Error(`HTTP ${res.status} saving spend-cap ceiling`);
 	return (await res.json()) as { maxCostCeilingUsd: number };
 }
 
@@ -686,16 +681,11 @@ export async function saveAgentLimits(
 	agentId: string,
 	limits: AgentLimits | null,
 ): Promise<void> {
-	const res = await fetch(
-		`/api/missions/${mp(missionId)}/limits/agent/${mp(agentId)}`,
-		{
-			method: "PATCH",
-			credentials: "include",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ limits }),
-		},
-	);
-	if (!res.ok) throw new Error(`HTTP ${res.status} saving agent limits`);
+	await request(`/api/missions/${mp(missionId)}/limits/agent/${mp(agentId)}`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ limits }),
+	});
 }
 
 // ── Standalone copilot chat — cross-mission, control-plane-native ──────────

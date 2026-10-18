@@ -706,6 +706,11 @@ curl -X DELETE -H "X-API-Key: $CONTROL_API_KEY" \
 This deletes the Fly machine AND the Fly Volume. MongoDB data is not deleted — conversation
 history, mental maps, and the LLM call log remain queryable at any time.
 
+### Spend limits
+
+The mission cap, its ceiling and the platform ceiling, who may change each, and how to unblock a
+mission that has reached its budget: [spend-limits.md](spend-limits.md).
+
 ### Update the worker image
 
 Always use the deploy script — never bare `flyctl deploy`:

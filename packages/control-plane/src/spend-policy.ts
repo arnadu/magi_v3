@@ -51,7 +51,7 @@ export function ceilingChangeRefusal(
 ): string | null {
 	const platform = platformMaxCostCeilingUsd(env);
 	if (!isAdmin && requestedUsd > platform) {
-		return `A ceiling of $${requestedUsd.toFixed(2)} exceeds the platform ceiling of $${platform.toFixed(2)}; only a platform admin can set one above it.`;
+		return `A ceiling of $${requestedUsd.toFixed(2)} is above the platform ceiling of $${platform.toFixed(2)}, the most any mission may spend unless a platform admin allows more. Set a ceiling of $${platform.toFixed(2)} or less, or ask a platform admin (a user listed in PLATFORM_ADMIN_USER_IDS) to set it. The platform owner can also raise PLATFORM_MAX_COST_CEILING_USD. See docs/spend-limits.md.`;
 	}
 	return null;
 }

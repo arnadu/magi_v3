@@ -17,11 +17,20 @@ import {
 	readObjectives,
 	writeUpgradedRuntimeReset,
 } from "./missions.js";
-import { mayExceedPlatformCeiling } from "./spend-policy.js";
+import {
+	mayExceedPlatformCeiling,
+	platformMaxCostCeilingUsd,
+} from "./spend-policy.js";
 
 function getLimits({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const result = await readLimits(col, db, req.params.id, userFilter(req));
+		if (result.status === 200) {
+			// So the panel can say how high the ceiling may go for this user.
+			const body = result.body as { mission: Record<string, unknown> };
+			body.mission.platformCeilingUsd = platformMaxCostCeilingUsd();
+			body.mission.canExceedPlatformCeiling = mayExceedPlatformCeiling(req);
+		}
 		res.status(result.status).json(result.body);
 	};
 }

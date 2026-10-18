@@ -109,7 +109,7 @@ export async function writeMissionCap(
 		return {
 			status: 403,
 			body: {
-				error: `Requested cap $${maxCostUsd.toFixed(2)} exceeds this mission's spend-cap ceiling of $${ceiling.toFixed(2)} — raise the ceiling first.`,
+				error: `A cap of $${maxCostUsd.toFixed(2)} is above this mission's spend-cap ceiling of $${ceiling.toFixed(2)}. Raise the ceiling first (Limits panel, "Spend-cap ceiling"), then the cap. The ceiling is the most anyone — including the mission copilot — may set the cap to. See docs/spend-limits.md.`,
 			},
 		};
 	}

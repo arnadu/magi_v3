@@ -242,10 +242,14 @@ function AgentCard({
 function CeilingField({
 	missionId,
 	maxCostCeilingUsd,
+	platformCeilingUsd,
+	canExceedPlatformCeiling,
 	onSaved,
 }: {
 	missionId: string;
 	maxCostCeilingUsd: number | null;
+	platformCeilingUsd: number;
+	canExceedPlatformCeiling: boolean;
 	onSaved: () => void;
 }) {
 	const [draft, setDraft] = useState<number | undefined>(
@@ -258,6 +262,12 @@ function CeilingField({
 	async function save() {
 		if (draft === undefined || draft <= 0) {
 			setError("Enter a positive amount.");
+			return;
+		}
+		if (draft > platformCeilingUsd && !canExceedPlatformCeiling) {
+			setError(
+				`The platform ceiling is ${fmtUsd(platformCeilingUsd)}; only a platform admin can set a mission ceiling above it.`,
+			);
 			return;
 		}
 		setSaving(true);
@@ -276,13 +286,14 @@ function CeilingField({
 
 	return (
 		<div className="limits-section">
-			<span className="kpilbl">
-				Spend-cap ceiling (operator only — issue #49)
-			</span>
+			<span className="kpilbl">Spend-cap ceiling</span>
 			<p className="mut">
-				{maxCostCeilingUsd != null
-					? `The spend cap above can never be raised past ${fmtUsd(maxCostCeilingUsd)} by any mission tool.`
-					: "No ceiling set — the spend cap above is unbounded, including by the mission copilot's own tools."}
+				The most the spend cap above may be set to — by you, or by the mission
+				copilot&apos;s own tools. Currently{" "}
+				{fmtUsd(maxCostCeilingUsd ?? platformCeilingUsd)}.{" "}
+				{canExceedPlatformCeiling
+					? `As a platform admin you may set it above the platform ceiling (${fmtUsd(platformCeilingUsd)}).`
+					: `It can be raised up to the platform ceiling of ${fmtUsd(platformCeilingUsd)}.`}
 			</p>
 			<LimitField label="Ceiling ($)" value={draft} onChange={setDraft} />
 			{error && <p className="mut limits-error">{error}</p>}
@@ -320,6 +331,14 @@ function MissionSection({
 	async function save() {
 		if (draft === undefined || draft <= 0) {
 			setError("Enter a positive amount.");
+			return;
+		}
+		const ceiling =
+			data.mission.maxCostCeilingUsd ?? data.mission.platformCeilingUsd;
+		if (draft > ceiling) {
+			setError(
+				`${fmtUsd(draft)} is above this mission's spend-cap ceiling of ${fmtUsd(ceiling)}. Raise the ceiling below first, then save the cap.`,
+			);
 			return;
 		}
 		setSaving(true);
@@ -391,6 +410,8 @@ function MissionSection({
 			<CeilingField
 				missionId={missionId}
 				maxCostCeilingUsd={data.mission.maxCostCeilingUsd}
+				platformCeilingUsd={data.mission.platformCeilingUsd}
+				canExceedPlatformCeiling={data.mission.canExceedPlatformCeiling}
 				onSaved={onSaved}
 			/>
 		</div>

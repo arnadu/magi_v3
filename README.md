@@ -28,7 +28,7 @@ A mission is built around a handful of core ideas:
   without limit on its own, so MAGI doesn't rely on a single safeguard: a hard cap at your LLM
   provider (no auto-replenishment) is the outermost layer, MAGI's own hard limits on cost and
   call-count stop a turn outright, and softer thresholds alert the mission's copilot before
-  anything reaches a hard ceiling.
+  anything reaches a hard ceiling. How the layers fit together: [docs/spend-limits.md](docs/spend-limits.md).
 - **Sub-agents, not just tool calls.** Some tool calls are themselves small agents: `Research`
   delegates a question to its own nested agent, with its own LLM budget and isolated context, and
   returns a synthesized finding the whole team can reuse. Browsing the web is different but similar
