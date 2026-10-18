@@ -48,6 +48,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # here for the install CLI — runtime uses playwright-core.
 RUN npx --yes playwright@1.58.2 install chromium --with-deps
 
+# Managed Chromium policy: the browser may not open file://, chrome:// and
+# other non-web schemes. Stagehand's agent can navigate to any URL the model
+# picks, and a file:// page is read locally without passing the egress proxy
+# (F-044). Root-owned and read-only to every agent; BrowseWeb refuses to start
+# on Fly when this file is missing (browse-web.ts, chromiumPolicyProblem).
+COPY packages/agent-runtime-worker/chromium-policy.json /etc/opt/chrome_for_testing/policies/managed/magi.json
+RUN chmod 644 /etc/opt/chrome_for_testing/policies/managed/magi.json
+
 # magi-shared group — all agent users belong to this group for sharedDir access.
 RUN groupadd -g 60100 magi-shared
 

@@ -98,6 +98,7 @@ general Post-MVP backlog below.
 
 | Item | Notes |
 |------|-------|
+| Independent auditor agent | A reviewer agent outside any mission team that periodically checks missions for behaviour inconsistent with their objectives (unexpected tools, spend, external writes, config changes by the copilot) and reports to the operator. Detection layer for prompt injection and drift that structural controls do not stop (accepted A-006..A-008). Proposed 2026-10-18 |
 | Multi-tenant + billing | Per-user API key (BYOK); usage-based billing; tenant isolation beyond shared system key |
 | Evaluation harness | Golden scenarios for structural/policy outcomes; CI regression suite ([#45](https://github.com/arnadu/magi_v3/issues/45)) |
 | Mission builder UI | Guided copilot flow + form-based config; `DestroyMission` tool |

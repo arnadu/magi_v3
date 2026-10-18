@@ -472,6 +472,7 @@ export async function runAgent(
 			visionModel,
 			onSubLoopMessage: appendSubLoop,
 			onSubLoopLlmCall: meter,
+			disabledTools: agent.disabledTools,
 		}),
 		createAnalyzeMemoriesTool({
 			conversationRepo: ctx.conversationRepo,

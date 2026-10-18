@@ -1,0 +1,9 @@
+{
+	"URLBlocklist": [
+		"file://*",
+		"chrome://*",
+		"chrome-extension://*",
+		"devtools://*",
+		"view-source:*"
+	]
+}

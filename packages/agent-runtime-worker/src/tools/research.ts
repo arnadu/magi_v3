@@ -282,6 +282,27 @@ function extractFinding(
 // ---------------------------------------------------------------------------
 
 /**
+ * The sub-loop's stateless tools, built once per Research tool and reused
+ * across calls: FetchUrl (metered against the calling turn), Bash rooted at
+ * sharedDir (artifacts, research index), and SearchWeb when configured —
+ * minus anything the calling agent has disabled (RS1).
+ */
+function statelessResearchTools(
+	visionModel: Model<string>,
+	sharedDir: string,
+	acl: AclPolicy,
+	disabled: ReadonlySet<string>,
+	meter: LlmCallMeter | undefined,
+): MagiTool[] {
+	const searchWebTool = tryCreateSearchWebTool();
+	return [
+		createFetchUrlTool(visionModel, sharedDir, [], { meter }),
+		createBashTool(sharedDir, acl),
+		...(searchWebTool ? [searchWebTool] : []),
+	].filter((t) => !disabled.has(t.name));
+}
+
+/**
  * Create the Research agentic tool.
  *
  * @param model     - LLM used for the research sub-loop (same as main agent).
@@ -303,21 +324,23 @@ export function createResearchTool(
 		) => Promise<void>;
 		/** Meters every sub-loop LLM call against the calling agent's turn (COST-1). */
 		onSubLoopLlmCall?: LlmCallMeter;
+		/**
+		 * The calling agent's disabledTools. The sub-loop must not hand back a
+		 * tool the operator switched off for this agent (RS1) — Research would
+		 * otherwise be a way around the switch.
+		 */
+		disabledTools?: readonly string[];
 	},
 ): MagiTool {
 	const visionModel = opts?.visionModel ?? model;
-
-	// Stateless tools — built once and reused across Research calls.
-	const searchWebTool = tryCreateSearchWebTool();
-	const fetchUrlTool = createFetchUrlTool(visionModel, sharedDir);
-	// Bash with sharedDir as cwd — permits reading artifacts, research index, etc.
-	const bashTool = createBashTool(sharedDir, acl);
-
-	const statelessTools: MagiTool[] = [
-		fetchUrlTool,
-		bashTool,
-		...(searchWebTool ? [searchWebTool] : []),
-	];
+	const disabled = new Set(opts?.disabledTools ?? []);
+	const statelessTools = statelessResearchTools(
+		visionModel,
+		sharedDir,
+		acl,
+		disabled,
+		opts?.onSubLoopLlmCall,
+	);
 
 	// Inject sharedDir into the system prompt so the agent knows where to look.
 	const systemPrompt = RESEARCH_SYSTEM_PROMPT.replace(
@@ -450,7 +473,9 @@ export function createResearchTool(
 			// 4. Run research sub-loop.
 			// BrowseWeb is stateful (browser session), so create a fresh handle per call
 			// and close it in a finally block regardless of success or failure.
-			const browseHandle = tryCreateBrowseWebTool(visionModel, sharedDir);
+			const browseHandle = disabled.has("BrowseWeb")
+				? undefined
+				: tryCreateBrowseWebTool(visionModel, sharedDir);
 			const subLoopTools = browseHandle
 				? [...statelessTools, browseHandle.tool]
 				: statelessTools;

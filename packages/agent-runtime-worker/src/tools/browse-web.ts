@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { LogLine, V3 as Stagehand } from "@browserbasehq/stagehand";
 import type { Model } from "@mariozechner/pi-ai";
@@ -68,7 +68,43 @@ export function tryCreateBrowseWebTool(
 	} catch {
 		return undefined;
 	}
+	// On a mission machine the browser must not be able to open local files
+	// or browser-internal pages: Stagehand's agent has a `goto` tool whose URL
+	// the model chooses, and a file:// page is read without touching the
+	// egress proxy (F-044). The image installs a Chromium policy that blocks
+	// those schemes; without it, BrowseWeb is not offered at all.
+	if (process.env.FLY_APP_NAME) {
+		const problem = chromiumPolicyProblem();
+		if (problem) {
+			console.error(
+				`[browse-web] BrowseWeb disabled: ${problem} — the browser could read local files through file:// URLs`,
+			);
+			return undefined;
+		}
+	}
 	return createBrowseWebHandle(model, sharedDir, chromiumPath, allowedHosts);
+}
+
+/** Where Chrome for Testing (Playwright's bundled Chromium) reads managed policy. */
+export const CHROMIUM_POLICY_PATH =
+	"/etc/opt/chrome_for_testing/policies/managed/magi.json";
+const REQUIRED_BLOCKS = ["file://*", "chrome://*"];
+
+/** Null when the URL blocklist policy is installed and blocks the dangerous schemes. */
+export function chromiumPolicyProblem(
+	read: (path: string) => string = (p) => readFileSync(p, "utf8"),
+): string | null {
+	let policy: { URLBlocklist?: unknown };
+	try {
+		policy = JSON.parse(read(CHROMIUM_POLICY_PATH));
+	} catch (e) {
+		return `Chromium policy ${CHROMIUM_POLICY_PATH} missing or unreadable (${(e as Error).message})`;
+	}
+	const list = Array.isArray(policy.URLBlocklist) ? policy.URLBlocklist : [];
+	const missing = REQUIRED_BLOCKS.filter((b) => !list.includes(b));
+	return missing.length > 0
+		? `Chromium policy does not block ${missing.join(", ")}`
+		: null;
 }
 
 // ---------------------------------------------------------------------------
