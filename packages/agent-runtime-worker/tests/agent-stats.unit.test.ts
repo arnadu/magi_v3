@@ -266,6 +266,16 @@ describe("StatsCollector", () => {
 		expect(doc?.messagesSent).toEqual([
 			{ to: ["lead", "user"], subject: "status" },
 		]);
+		// The single-recipient string form (what models usually send) counts too.
+		await collector.recordToolResult(AGENT, {
+			toolName: "PostMessage",
+			args: { to: "user", subject: "done", body: "x" },
+			isError: false,
+		});
+		expect(turnDoc()?.messagesSent.at(-1)).toEqual({
+			to: ["user"],
+			subject: "done",
+		});
 		expect(doc?.urlsVisited).toEqual(["https://example.com"]);
 	});
 

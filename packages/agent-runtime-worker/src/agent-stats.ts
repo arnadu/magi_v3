@@ -488,9 +488,15 @@ export class StatsCollector {
 			turn.filesWritten.push({ path: args.path, tool: toolName });
 		}
 		if (toolName === "PostMessage") {
-			const to = Array.isArray(args.to)
-				? (args.to.filter((t) => typeof t === "string") as string[])
-				: [];
+			// PostMessage accepts `to` as one id or a list (models usually send
+			// a single string); both must count, or messages sent to one
+			// recipient vanish from the turn stats.
+			const to =
+				typeof args.to === "string"
+					? [args.to]
+					: Array.isArray(args.to)
+						? (args.to.filter((t) => typeof t === "string") as string[])
+						: [];
 			const subject = typeof args.subject === "string" ? args.subject : "";
 			turn.messagesSent.push({ to, subject });
 		}

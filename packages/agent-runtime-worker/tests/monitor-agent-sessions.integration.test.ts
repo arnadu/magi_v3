@@ -148,7 +148,7 @@ describe("GET /agents/:id/sessions and /sessions/:turn", () => {
 					inputTokens: 100,
 					outputTokens: 50,
 					cacheReadTokens: 10,
-					cost: { total: 0.01 },
+					cost: { totalCostUsd: 0.01 },
 				},
 			},
 			{
@@ -161,7 +161,7 @@ describe("GET /agents/:id/sessions and /sessions/:turn", () => {
 					inputTokens: 200,
 					outputTokens: 75,
 					cacheReadTokens: 20,
-					cost: { total: 0.02 },
+					cost: { totalCostUsd: 0.02 },
 				},
 			},
 		]);
