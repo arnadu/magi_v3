@@ -44,7 +44,10 @@ import { mountPublicSurface } from "./public-routes.js";
 import { startResourceMonitor } from "./resource-monitor.js";
 import { startScheduler } from "./scheduler.js";
 import { createSessionRouter } from "./session-routes.js";
-import { backfillMissionCeilings } from "./spend-policy.js";
+import {
+	backfillMissionCeilings,
+	platformAdminUserIds,
+} from "./spend-policy.js";
 import { createTemplatesRouter, loadTemplates } from "./templates.js";
 
 const REPO_ROOT = join(
@@ -62,10 +65,7 @@ function resourceMonitorOptionsFromEnv(env: NodeJS.ProcessEnv): {
 	reportHourUtc?: number;
 } {
 	return {
-		platformAdminUserIds: (env.PLATFORM_ADMIN_USER_IDS ?? "")
-			.split(",")
-			.map((id) => id.trim())
-			.filter((id) => id.length > 0),
+		platformAdminUserIds: [...platformAdminUserIds(env)],
 		atlasStorageLimitMb: env.ATLAS_STORAGE_LIMIT_MB
 			? Number.parseInt(env.ATLAS_STORAGE_LIMIT_MB, 10)
 			: undefined,

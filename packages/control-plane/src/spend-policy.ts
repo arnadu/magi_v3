@@ -64,20 +64,80 @@ export type MissionBlock = TeamConfig["mission"];
  * the document's own ceiling) bound them too. Idempotent: documents that
  * already have a ceiling are untouched.
  */
+/** Firebase UIDs listed in PLATFORM_ADMIN_USER_IDS: platform operators signed in through the cockpit. */
+export function platformAdminUserIds(
+	env: NodeJS.ProcessEnv = process.env,
+): Set<string> {
+	return new Set(
+		(env.PLATFORM_ADMIN_USER_IDS ?? "")
+			.split(",")
+			.map((id) => id.trim())
+			.filter((id) => id.length > 0),
+	);
+}
+
+/**
+ * May this request set a mission's ceiling above the platform ceiling? The
+ * admin key, or a signed-in user listed in PLATFORM_ADMIN_USER_IDS — the
+ * platform operator should not need the raw admin key to unblock a mission.
+ */
+export function mayExceedPlatformCeiling(
+	req: { isAdmin?: boolean; userId?: string },
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	return (
+		Boolean(req.isAdmin) ||
+		(req.userId !== undefined && platformAdminUserIds(env).has(req.userId))
+	);
+}
+
+/**
+ * Start-up pass over the ceiling field (ADR-0034):
+ * - a mission with no ceiling gets the platform ceiling, or its own existing
+ *   cap if that is higher — a ceiling below the cap would refuse every cap
+ *   change on a mission that was legitimately running above $100;
+ * - a mission still carrying exactly that mistake (ceiling equal to the
+ *   platform default, cap above it — what the first back-fill of 2026-10-17
+ *   wrote) is repaired the same way.
+ * A cap above its ceiling is never a valid state (every cap writer checks
+ * the ceiling), so raising the ceiling to the cap only restores consistency.
+ */
 export async function backfillMissionCeilings(
 	db: Db,
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<number> {
-	const r = await db
-		.collection("missions")
-		.updateMany(
-			{ maxCostCeilingUsd: { $exists: false } },
-			{ $set: { maxCostCeilingUsd: platformMaxCostCeilingUsd(env) } },
+	const platform = platformMaxCostCeilingUsd(env);
+	const col = db.collection<{
+		missionId: string;
+		maxCostCeilingUsd?: number;
+		mission?: { maxCostUsd?: number };
+	}>("missions");
+	const candidates = await col
+		.find({
+			$or: [
+				{ maxCostCeilingUsd: { $exists: false } },
+				{
+					maxCostCeilingUsd: platform,
+					"mission.maxCostUsd": { $gt: platform },
+				},
+			],
+		})
+		.toArray();
+	let changed = 0;
+	for (const m of candidates) {
+		const cap = m.mission?.maxCostUsd;
+		const ceiling = typeof cap === "number" && cap > platform ? cap : platform;
+		if (m.maxCostCeilingUsd === ceiling) continue;
+		await col.updateOne(
+			{ missionId: m.missionId },
+			{ $set: { maxCostCeilingUsd: ceiling } },
 		);
-	if (r.modifiedCount > 0) {
+		changed++;
+	}
+	if (changed > 0) {
 		console.log(
-			`[control-plane] applied the platform spend-cap ceiling to ${r.modifiedCount} mission(s) that had none`,
+			`[control-plane] spend-cap ceilings: set or repaired on ${changed} mission(s) (platform ceiling $${platform}; never below a mission's existing cap)`,
 		);
 	}
-	return r.modifiedCount;
+	return changed;
 }

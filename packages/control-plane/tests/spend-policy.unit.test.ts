@@ -50,3 +50,46 @@ describe("spend policy (ADR-0034 / D-3)", () => {
 		expect(ceilingChangeRefusal(500, true, {})).toBeNull();
 	});
 });
+
+describe("ceiling back-fill and repair (2026-10-18 regression)", () => {
+	it("never writes a ceiling below a mission's existing cap, and repairs the first back-fill's mistake", async () => {
+		const { fakeDb } = await import("./support/fake-db.js");
+		const { backfillMissionCeilings } = await import("../src/spend-policy.js");
+		const { db, data } = fakeDb({
+			missions: [
+				{ missionId: "none-low", mission: { maxCostUsd: 25 } },
+				{ missionId: "none-high", mission: { maxCostUsd: 350 } },
+				{ missionId: "none-uncapped", mission: {} },
+				{
+					missionId: "bad",
+					maxCostCeilingUsd: 100,
+					mission: { maxCostUsd: 200 },
+				},
+				{
+					missionId: "operator-set",
+					maxCostCeilingUsd: 60,
+					mission: { maxCostUsd: 50 },
+				},
+			],
+		});
+		const n = await backfillMissionCeilings(db as never, {});
+		const ceiling = (id: string) =>
+			data.missions.find((m) => m.missionId === id)?.maxCostCeilingUsd;
+		expect(ceiling("none-low")).toBe(100);
+		expect(ceiling("none-high")).toBe(350);
+		expect(ceiling("none-uncapped")).toBe(100);
+		expect(ceiling("bad")).toBe(200);
+		expect(ceiling("operator-set")).toBe(60);
+		expect(n).toBe(4);
+		expect(await backfillMissionCeilings(db as never, {})).toBe(0);
+	});
+
+	it("lets a PLATFORM_ADMIN_USER_IDS user exceed the platform ceiling, nobody else", async () => {
+		const { mayExceedPlatformCeiling } = await import("../src/spend-policy.js");
+		const env = { PLATFORM_ADMIN_USER_IDS: " uid-a , uid-b" };
+		expect(mayExceedPlatformCeiling({ userId: "uid-b" }, env)).toBe(true);
+		expect(mayExceedPlatformCeiling({ userId: "uid-c" }, env)).toBe(false);
+		expect(mayExceedPlatformCeiling({ isAdmin: true }, {})).toBe(true);
+		expect(mayExceedPlatformCeiling({}, env)).toBe(false);
+	});
+});

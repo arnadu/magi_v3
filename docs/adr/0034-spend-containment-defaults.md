@@ -68,3 +68,17 @@ Separately, `parseModel` accepted any model id and priced an unknown one at Sonn
 - Metering of the remaining unmetered LLM paths (vision calls in InspectImage and the document
   processor, the Research sub-loop, BrowseWeb) is tracked separately (COST-1) and is not part
   of this decision.
+
+## Amendment (2026-10-18) — back-fill regression
+
+The first back-fill wrote the $100 platform ceiling onto every mission without one, including
+missions whose existing cap was already higher (two dev missions: caps $350 and $200, spent $272 and
+$188). Every cap change on them was then refused with a 403, and only the admin key could raise the
+ceiling, so the operator could not unblock missions that had reached their budget. Fixed:
+
+- the start-up pass never writes a ceiling below the mission's existing cap, and repairs any mission
+  still carrying the bad value (ceiling equal to the platform default, cap above it);
+- a signed-in user listed in `PLATFORM_ADMIN_USER_IDS` may set a ceiling above the platform ceiling
+  from the cockpit, like the admin key (`mayExceedPlatformCeiling`).
+
+The two affected dev missions were unblocked immediately by an admin-key ceiling change to $1,000.

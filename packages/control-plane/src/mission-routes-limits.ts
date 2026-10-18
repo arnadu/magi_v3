@@ -17,6 +17,7 @@ import {
 	readObjectives,
 	writeUpgradedRuntimeReset,
 } from "./missions.js";
+import { mayExceedPlatformCeiling } from "./spend-policy.js";
 
 function getLimits({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
@@ -70,7 +71,7 @@ function patchLimitsCeiling({ db, col }: MissionRouteDeps): RequestHandler {
 			req.params.id,
 			userFilter(req),
 			ceilingUsd,
-			Boolean(req.isAdmin),
+			mayExceedPlatformCeiling(req),
 		);
 		res.status(result.status).json(result.body);
 	};
