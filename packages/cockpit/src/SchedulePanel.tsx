@@ -1,32 +1,12 @@
-import { useEffect, useState } from "react";
-import {
-	cancelScheduledMessage,
-	fetchSchedule,
-	type ScheduledMessage,
-} from "./data";
+import { useState } from "react";
+import { cancelScheduledMessage, fetchSchedule } from "./data";
+import { useApiResource } from "./use-api-resource";
 
-/** Ported from the mission-local dashboard's Schedule tab (agent-runtime-worker/public/app.js) — no cockpit surface existed for this before. */
+/** A mission's pending scheduled messages and jobs, with cancel. */
 export function SchedulePanel({ missionId }: { missionId: string | null }) {
-	const [items, setItems] = useState<ScheduledMessage[] | "error" | null>(null);
+	const { resource, reload } = useApiResource(missionId, fetchSchedule);
 	const [busyId, setBusyId] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [refreshKey, setRefreshKey] = useState(0);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is a deliberate manual-refetch trigger, not a value read inside the effect
-	useEffect(() => {
-		if (!missionId) return;
-		let cancelled = false;
-		fetchSchedule(missionId)
-			.then((s) => {
-				if (!cancelled) setItems(s);
-			})
-			.catch(() => {
-				if (!cancelled) setItems("error");
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [missionId, refreshKey]);
 
 	if (!missionId) {
 		return <p className="mut">Select a live mission to see its schedule.</p>;
@@ -38,7 +18,7 @@ export function SchedulePanel({ missionId }: { missionId: string | null }) {
 		setError(null);
 		try {
 			await cancelScheduledMessage(missionId, id);
-			setRefreshKey((k) => k + 1);
+			reload();
 		} catch (e) {
 			setError((e as Error).message);
 		} finally {
@@ -46,12 +26,17 @@ export function SchedulePanel({ missionId }: { missionId: string | null }) {
 		}
 	}
 
-	if (items === null) {
+	if (resource.status === "loading") {
 		return <p className="mut">Loading…</p>;
 	}
-	if (items === "error") {
-		return <p className="error-msg">Could not load the schedule.</p>;
+	if (resource.status === "error") {
+		return (
+			<p className="error-msg">
+				Could not load the schedule: {resource.message}
+			</p>
+		);
 	}
+	const items = resource.data;
 
 	return (
 		<div className="schedule-panel">

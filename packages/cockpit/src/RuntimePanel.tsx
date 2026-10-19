@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import type { MachineRuntimeData, MachineRuntimeRow } from "./data";
 import { fetchMachineRuntime } from "./data";
+import { useApiResource } from "./use-api-resource";
 
 const HORIZONS: Array<{
 	key: keyof MachineRuntimeData["byHorizon"];
@@ -90,31 +90,24 @@ function HorizonSection({
  * display-only, computed server-side from a maintained Fly price table, and
  * never used for any enforcement. */
 export function RuntimePanel({ missionId }: { missionId: string | null }) {
-	const [data, setData] = useState<MachineRuntimeData | null | "error">(null);
-	const [refreshKey, setRefreshKey] = useState(0);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is a signal-only dependency (re-fetch on refresh), not read in the body
-	useEffect(() => {
-		if (!missionId) return;
-		setData(null);
-		fetchMachineRuntime(missionId).then(setData, () => setData("error"));
-	}, [missionId, refreshKey]);
+	const { resource, reload } = useApiResource(missionId, fetchMachineRuntime);
 
 	if (!missionId)
 		return <p className="mut">Select a live mission to see its runtime.</p>;
-	if (data === "error")
-		return <p className="mut">Could not load runtime data for this mission.</p>;
-	if (data === null) return <p className="mut">Loading…</p>;
+	if (resource.status === "error")
+		return (
+			<p className="mut">
+				Could not load runtime data for this mission: {resource.message}
+			</p>
+		);
+	if (resource.status === "loading") return <p className="mut">Loading…</p>;
+	const data = resource.data;
 
 	return (
 		<div className="limits">
 			<div className="trace-card-head" style={{ marginBottom: 4 }}>
 				<span className="grow" />
-				<button
-					type="button"
-					className="rail-btn"
-					onClick={() => setRefreshKey((k) => k + 1)}
-				>
+				<button type="button" className="rail-btn" onClick={reload}>
 					Refresh
 				</button>
 			</div>
