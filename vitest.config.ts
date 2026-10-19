@@ -11,7 +11,7 @@ export default defineConfig({
 		setupFiles: ["./vitest.setup.ts"],
 		coverage: {
 			provider: "v8",
-			reporter: ["text", "html"],
+			reporter: ["text", "html", "json-summary"],
 			include: ["packages/*/src/**/*.ts"],
 			// The cockpit counts only its pure modules: components (.tsx) and hooks
 			// need React and a DOM this node suite does not run, auth needs
