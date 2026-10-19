@@ -126,4 +126,86 @@ describe("FetchUrl → document-processor wiring", () => {
 		expect(r.isError).toBe(true);
 		expect(resultText(r)).toContain("unsupported content type");
 	});
+
+	it("saves an HTML article with a provenance banner and its images", async () => {
+		const png = readFileSync(join(DOCS, "dog.png"));
+		const html =
+			"<html><head><title>Gold today</title></head><body><article>" +
+			"<h1>Gold today</h1><p>Gold rose on central-bank buying. ".repeat(20) +
+			'</p><img src="/img/chart.png"><img src="https://cdn.example.com/missing.png">' +
+			"</article></body></html>";
+		vi.mocked(safeGet).mockImplementation(async (input) => {
+			const url = typeof input === "string" ? new URL(input) : input;
+			if (url.pathname.endsWith("chart.png"))
+				return {
+					status: 200,
+					headers: { "content-type": "image/png" },
+					bytes: png,
+					finalUrl: url,
+				};
+			if (url.pathname.endsWith("missing.png"))
+				return {
+					status: 404,
+					headers: {},
+					bytes: Buffer.alloc(0),
+					finalUrl: url,
+				};
+			return {
+				status: 200,
+				headers: { "content-type": "text/html; charset=utf-8" },
+				bytes: Buffer.from(html),
+				finalUrl: url,
+			};
+		});
+		const tool = createFetchUrlTool(TEXT_MODEL, dir);
+		const r = await tool.execute("call-4", {
+			url: "https://example.com/news/gold",
+		});
+		expect(r.isError ?? false).toBe(false);
+		const text = resultText(r);
+		expect(text).toContain("including 1 image description");
+		const id = text.match(/Artifact id: (\S+)/)?.[1] as string;
+		const md = await readFile(join(dir, "artifacts", id, "content.md"), "utf8");
+		expect(md).toMatch(
+			/^> Fetched from https:\/\/example\.com\/news\/gold on /,
+		);
+		expect(md).toContain("untrusted content");
+		expect(md).toContain("central-bank buying");
+		expect(md).toContain("### image-0.png");
+		expect(md).toContain("Visual description unavailable");
+		expect(md).toContain("1 image could not be fetched");
+		await expect(
+			readFile(join(dir, "artifacts", id, "image-0.png")),
+		).resolves.toBeInstanceOf(Buffer);
+	});
+
+	it("skips images when download_images is false", async () => {
+		vi.mocked(safeGet).mockReset();
+		stubFetch(
+			Buffer.from(
+				'<html><body><p>Plain text page</p><img src="/a.png"></body></html>',
+			),
+			"text/html",
+		);
+		const tool = createFetchUrlTool(TEXT_MODEL, dir);
+		const r = await tool.execute("call-5", {
+			url: "https://example.com/plain",
+			download_images: false,
+		});
+		expect(r.isError ?? false).toBe(false);
+		expect(resultText(r)).not.toContain("image description");
+		expect(vi.mocked(safeGet)).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects a malformed URL and a non-http protocol before fetching", async () => {
+		vi.mocked(safeGet).mockReset();
+		const tool = createFetchUrlTool(TEXT_MODEL, dir);
+		const bad = await tool.execute("call-6", { url: "not a url" });
+		expect(bad.isError).toBe(true);
+		expect(resultText(bad)).toContain("invalid URL");
+		const ftp = await tool.execute("call-7", { url: "ftp://example.com/x" });
+		expect(ftp.isError).toBe(true);
+		expect(resultText(ftp)).toContain("unsupported protocol");
+		expect(vi.mocked(safeGet)).not.toHaveBeenCalled();
+	});
 });
