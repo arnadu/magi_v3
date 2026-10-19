@@ -173,12 +173,6 @@
 			"TemplatesPanel@10": 121
 		}
 	},
-	"packages/cockpit/src/TracePanel.tsx": {
-		"lines": 930,
-		"fns": {
-			"CostTimeline@175": 545
-		}
-	},
 	"packages/cockpit/src/TranscriptsPanel.tsx": {
 		"lines": 404,
 		"fns": {
