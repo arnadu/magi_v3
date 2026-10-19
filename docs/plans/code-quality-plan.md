@@ -422,3 +422,17 @@ independent once step 1 is done.
 
 - 2026-10-19 — plan agreed (summary), then expanded into this detailed plan.
 - 2026-10-19 — **Step 0 done**: T8 7, new T8b (`.catch(() => {})`) 21, T11 107, T10 a reasoned regex entry; selftest covers T8b.
+- 2026-10-19 — **Step 1 code done** (R-15): `agent-config/src/stored/` holds `COLLECTION_NAMES`,
+  `storedCollection(db, key)`, `PER_MISSION_COLLECTIONS` and the canonical types of every
+  collection read by more than one module (missions, scheduled_messages, llmCallLog, mailbox,
+  conversationMessages, agentTurnStats, missionStats, missionAnomalies, missionResources,
+  platformResources); single-module collections keep their module's type and take the name from
+  the map. `field`/`ref` typed paths with compile-time tests (`type-tests/paths.ts`). T13 bans
+  collection-name literals (0 left). Contract test `stored-schema.consumers.unit`. Transcript API
+  shapes shared with the cockpit (`agent-config/src/api/`). Found and fixed on the way:
+  **F-071** (copilot spend cap counted only the last day: it summed the pruned call log),
+  `cli-reset` never deleted `objectivesEvents`, the scheduler's mail delivery bypassed
+  `postMailbox`, CLAUDE.md's collection list missed six collections (now tested). T9 20 → 14.
+  Deviation: single-module collections are not moved (their types depend on module-local domain
+  types such as the objectives fold); the zod 3/4 split is untouched (types only).
+
