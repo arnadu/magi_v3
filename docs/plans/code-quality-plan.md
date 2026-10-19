@@ -484,4 +484,9 @@ independent once step 1 is done.
   BrowseWeb → browse-web-session.ts + six named execute steps, real-browser tests green).
   CI now prints per-package coverage totals; floors raised to them (they were stale, not
   environment-skewed — an earlier note here was wrong).
+- 2026-10-19 — **Later items started**: #43's last cast (sessions aggregate) typed; #59 done —
+  resource-report → types/flags (pure per-category checks)/render/build, resource-upgrade →
+  notify/claim/request-revert with `requestUpgrade` in named steps. Structure allowlist 23,
+  complexity exemptions 20. BrowseWeb's browser-free steps unit-tested (worker function
+  coverage held above its raised floor).
 
