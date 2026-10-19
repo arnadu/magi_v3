@@ -506,4 +506,6 @@ independent once step 1 is done.
   Allowlist 18, exemptions 16. Daemon `main` → bootDataLayer / startServices / runAndShutdown
   (daemon-job integration green); allowlist 17. Control-plane `main` → requireEnv /
   mountMissionCopilotProxy / mountAuthenticatedApi / startBackgroundServices, usage and model routes
-  to `platform-routes.ts` with a unit test; allowlist 16.
+  to `platform-routes.ts` with a unit test; allowlist 16. TranscriptsPanel → useTranscriptData +
+  TurnTranscript; allowlist 15. Left allowlisted on purpose: `buildSystemPromptTemplate` (prompt
+  prose, not logic).

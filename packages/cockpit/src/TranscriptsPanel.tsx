@@ -1,23 +1,15 @@
-import { useEffect, useRef, useState } from "react";
 import { callIndexFor } from "./call-index.js";
-import {
-	type Agent,
-	fetchAgents,
-	fetchLlmCall,
-	fetchLlmCalls,
-	fetchTranscript,
-	fetchTurns,
-	type LlmCallDetail,
-	type LlmCallSummary,
-	type RawMessage,
-	type TranscriptEntry,
-	type TurnSummary,
+import type {
+	LlmCallDetail,
+	LlmCallSummary,
+	RawMessage,
+	TranscriptEntry,
+	TurnSummary,
 } from "./data";
 import { JsonNode } from "./JsonTree";
 import { LoadError, useLoadError } from "./load-error";
 import { Markdown } from "./Markdown";
-
-const AGENTS_POLL_MS = 5000;
+import { useTranscriptData } from "./transcripts/use-transcript-data";
 
 const fmtUsd = (n: number | undefined) => `$${(n ?? 0).toFixed(4)}`;
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString();
@@ -202,106 +194,21 @@ export interface TurnJump {
 	turn: number;
 }
 
-export function TranscriptsPanel({
-	missionId,
-	jumpTo,
-	onJumped,
-	runningAgents,
+/**
+ * One turn's transcript: each top-level message with its LLM call and any
+ * Research sub-loop nested under the tool call that started it.
+ */
+function TurnTranscript({
+	transcript,
+	calls,
+	detail,
+	ensureDetail,
 }: {
-	missionId: string | null;
-	/** A "inspect turn →" deep link from the Files panel's provenance header. */
-	jumpTo?: TurnJump | null;
-	onJumped?: () => void;
-	/** Agent ids currently dispatched, live — for a busy indicator on chips. */
-	runningAgents?: Set<string>;
+	transcript: TranscriptEntry[];
+	calls: LlmCallSummary[];
+	detail: Record<number, CallDetailState>;
+	ensureDetail: (i: number) => void;
 }) {
-	const { loadError, failed } = useLoadError();
-	const [agents, setAgents] = useState<Agent[]>([]);
-	const [agent, setAgent] = useState<string | null>(null);
-	const [turns, setTurns] = useState<TurnSummary[]>([]);
-	const [turn, setTurn] = useState<number | null>(null);
-	const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-	const [calls, setCalls] = useState<LlmCallSummary[]>([]);
-	const [detail, setDetail] = useState<Record<number, CallDetailState>>({});
-
-	useEffect(() => {
-		if (!missionId) return;
-		const loadAgents = () =>
-			fetchAgents(missionId).then(setAgents, failed("Loading the roster"));
-		loadAgents();
-		// Poll rather than fetch once — see ConversationsPanel's identical fix
-		// (github#26): a one-shot fetch landing right after a daemon crash
-		// restart can cache a roster missing the mission-copilot for the rest
-		// of the session.
-		const t = setInterval(loadAgents, AGENTS_POLL_MS);
-		return () => clearInterval(t);
-	}, [missionId, failed]);
-
-	useEffect(() => {
-		if (missionId && agent)
-			fetchTurns(missionId, agent).then(setTurns, failed("Loading turns"));
-		else setTurns([]);
-		setTurn(null);
-	}, [missionId, agent, failed]);
-
-	// Re-fetch the turn list the moment the selected agent finishes its
-	// current turn (running → idle), instead of requiring a manual tab
-	// switch to see the newly-completed turn appear.
-	const wasRunningRef = useRef(false);
-	useEffect(() => {
-		const isRunning = !!agent && !!runningAgents?.has(agent);
-		if (wasRunningRef.current && !isRunning && missionId && agent) {
-			fetchTurns(missionId, agent).then(setTurns, () => {});
-		}
-		wasRunningRef.current = isRunning;
-	}, [missionId, agent, runningAgents]);
-
-	// Deep link from Files: jump straight to an agent + turn. Fetches its own
-	// turn list and sets the turn directly (a harmless duplicate of the effect
-	// above when the agent also changes — that effect's setTurn(null) always
-	// fires synchronously first, so the turn set here always wins).
-	// biome-ignore lint/correctness/useExhaustiveDependencies: fires only when jumpTo changes
-	useEffect(() => {
-		if (!missionId || !jumpTo) return;
-		setAgent(jumpTo.agent);
-		fetchTurns(missionId, jumpTo.agent).then(
-			(ts) => {
-				setTurns(ts);
-				setTurn(jumpTo.turn);
-			},
-			() => {},
-		);
-		onJumped?.();
-	}, [jumpTo]);
-
-	useEffect(() => {
-		setDetail({});
-		if (missionId && agent && turn != null) {
-			fetchTranscript(missionId, agent, turn).then(setTranscript, () =>
-				setTranscript([]),
-			);
-			fetchLlmCalls(missionId, agent, turn).then(
-				setCalls,
-				failed("Loading LLM calls"),
-			);
-		} else {
-			setTranscript([]);
-			setCalls([]);
-		}
-	}, [missionId, agent, turn, failed]);
-
-	if (!missionId)
-		return <p className="mut">Select a live mission to inspect its agents.</p>;
-
-	const ensureDetail = (i: number) => {
-		if (detail[i] !== undefined || !agent || turn == null) return;
-		setDetail((d) => ({ ...d, [i]: "loading" }));
-		fetchLlmCall(missionId, agent, turn, i).then(
-			(full) => setDetail((d) => ({ ...d, [i]: full })),
-			() => setDetail((d) => ({ ...d, [i]: null })),
-		);
-	};
-
 	// Group Research sub-loop messages under their parent tool call.
 	const subByParent = new Map<string, TranscriptEntry[]>();
 	for (const e of transcript) {
@@ -316,6 +223,83 @@ export function TranscriptsPanel({
 	// 1:1 in chronological order (both the transcript and llmCallLog are ordered),
 	// so the k-th assistant message links to the k-th logged call.
 	const callIndex = callIndexFor(topLevel, calls);
+
+	return (
+		<div className="transcript">
+			{transcript.length === 0 && (
+				<p className="mut">No messages in this turn.</p>
+			)}
+			{topLevel.map((e, idx) => {
+				const tcs = toolCallsIn(e.message);
+				const ci = callIndex[idx];
+				return (
+					// biome-ignore lint/suspicious/noArrayIndexKey: entries are positional
+					<div key={idx} className="tx-entry">
+						<MessageView m={e.message} />
+						{ci >= 0 && ci < calls.length && (
+							<LlmCallView
+								summary={calls[ci]}
+								detail={detail[ci]}
+								onOpen={() => ensureDetail(ci)}
+							/>
+						)}
+						{tcs.map((tc) => {
+							const steps = subByParent.get(tc.id);
+							if (!steps || steps.length === 0) return null;
+							return (
+								<details key={tc.id} className="subloop">
+									<summary>
+										🔬 {tc.name} sub-loop · {steps.length} steps
+									</summary>
+									<div className="subloop-body">
+										{steps.map((se, i) => (
+											<MessageView
+												// biome-ignore lint/suspicious/noArrayIndexKey: positional
+												key={i}
+												m={se.message}
+												sub
+											/>
+										))}
+									</div>
+								</details>
+							);
+						})}
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
+export function TranscriptsPanel({
+	missionId,
+	jumpTo,
+	onJumped,
+	runningAgents,
+}: {
+	missionId: string | null;
+	/** A "inspect turn →" deep link from the Files panel's provenance header. */
+	jumpTo?: TurnJump | null;
+	onJumped?: () => void;
+	/** Agent ids currently dispatched, live — for a busy indicator on chips. */
+	runningAgents?: Set<string>;
+}) {
+	const { loadError, failed } = useLoadError();
+	const {
+		agents,
+		agent,
+		setAgent,
+		turns,
+		turn,
+		setTurn,
+		transcript,
+		calls,
+		detail,
+		ensureDetail,
+	} = useTranscriptData(missionId, failed, { jumpTo, onJumped, runningAgents });
+
+	if (!missionId)
+		return <p className="mut">Select a live mission to inspect its agents.</p>;
 
 	return (
 		<div className="tx">
@@ -359,49 +343,12 @@ export function TranscriptsPanel({
 						{turn == null ? (
 							<p className="mut">Pick a turn.</p>
 						) : (
-							<div className="transcript">
-								{transcript.length === 0 && (
-									<p className="mut">No messages in this turn.</p>
-								)}
-								{topLevel.map((e, idx) => {
-									const tcs = toolCallsIn(e.message);
-									const ci = callIndex[idx];
-									return (
-										// biome-ignore lint/suspicious/noArrayIndexKey: entries are positional
-										<div key={idx} className="tx-entry">
-											<MessageView m={e.message} />
-											{ci >= 0 && ci < calls.length && (
-												<LlmCallView
-													summary={calls[ci]}
-													detail={detail[ci]}
-													onOpen={() => ensureDetail(ci)}
-												/>
-											)}
-											{tcs.map((tc) => {
-												const steps = subByParent.get(tc.id);
-												if (!steps || steps.length === 0) return null;
-												return (
-													<details key={tc.id} className="subloop">
-														<summary>
-															🔬 {tc.name} sub-loop · {steps.length} steps
-														</summary>
-														<div className="subloop-body">
-															{steps.map((se, i) => (
-																<MessageView
-																	// biome-ignore lint/suspicious/noArrayIndexKey: positional
-																	key={i}
-																	m={se.message}
-																	sub
-																/>
-															))}
-														</div>
-													</details>
-												);
-											})}
-										</div>
-									);
-								})}
-							</div>
+							<TurnTranscript
+								transcript={transcript}
+								calls={calls}
+								detail={detail}
+								ensureDetail={ensureDetail}
+							/>
 						)}
 					</div>
 				</div>

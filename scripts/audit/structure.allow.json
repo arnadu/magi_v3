@@ -78,12 +78,6 @@
 			"MissionsPanel@347": 157
 		}
 	},
-	"packages/cockpit/src/TranscriptsPanel.tsx": {
-		"lines": 404,
-		"fns": {
-			"TranscriptsPanel@205": 202
-		}
-	},
 	"packages/control-plane/src/copilot-daemon.ts": {
 		"lines": 455,
 		"fns": {
