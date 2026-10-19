@@ -38,6 +38,7 @@ import {
 	type AgentConfig,
 	type Limits,
 	parseTeamConfig,
+	storedCollection,
 	type TeamConfig,
 	validateTeamFiles,
 } from "@magi/agent-config";
@@ -547,8 +548,7 @@ export function createMissionCopilotTools(
 			const agentId = args.agentId as string;
 			const turn = args.turn as number;
 			const callIndex = args.callIndex as number;
-			const docs = await db
-				.collection("llmCallLog")
+			const docs = await storedCollection(db, "llmCallLog")
 				.find({ missionId, agentId, turnNumber: turn })
 				.sort({ savedAt: 1 })
 				.toArray();

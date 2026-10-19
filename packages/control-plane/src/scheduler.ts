@@ -335,9 +335,9 @@ async function pruneOldLogEntries(db: Db): Promise<void> {
 	const cutoff = new Date(
 		Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000,
 	);
-	const result = await db
-		.collection("llmCallLog")
-		.deleteMany({ savedAt: { $lt: cutoff } });
+	const result = await storedCollection(db, "llmCallLog").deleteMany({
+		savedAt: { $lt: cutoff },
+	});
 	if (result.deletedCount > 0) {
 		console.log(
 			`[scheduler] Log pruning: deleted ${result.deletedCount} entries older than ${LOG_RETENTION_DAYS} day(s)`,

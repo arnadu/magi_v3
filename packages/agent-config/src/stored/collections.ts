@@ -8,6 +8,7 @@
  */
 
 import type { Collection, Db, Document } from "mongodb";
+import type { LlmCallLogEntry } from "./llm-calls.js";
 import type { ScheduledMessageDoc } from "./scheduling.js";
 
 export const COLLECTION_NAMES = {
@@ -40,7 +41,7 @@ export interface StoredDocs {
 	scheduledMessages: ScheduledMessageDoc;
 	mailbox: Document;
 	conversationMessages: Document;
-	llmCallLog: Document;
+	llmCallLog: LlmCallLogEntry;
 	agentTurnStats: Document;
 	missionStats: Document;
 	missionAnomalies: Document;

@@ -14,6 +14,11 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	field,
+	type LlmCallLogEntry,
+	storedCollection,
+} from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
 
 dotenvConfig({
@@ -37,19 +42,20 @@ async function main(): Promise<void> {
 
 	const { client, db } = await connectMongo(mongoUri);
 	try {
-		const col = db.collection("llmCallLog");
+		const col = storedCollection(db, "llmCallLog");
+		const f = field<LlmCallLogEntry>();
 		const projection = {
 			agentId: 1,
 			turnNumber: 1,
 			isReflection: 1,
 			savedAt: 1,
-			"usage.inputTokens": 1,
-			"usage.outputTokens": 1,
-			"usage.cacheReadTokens": 1,
-			"usage.cacheWriteTokens": 1,
-			"usage.cost.totalCostUsd": 1,
-			"output.message.content": 1,
-			"output.stopReason": 1,
+			[f("usage.inputTokens")]: 1,
+			[f("usage.outputTokens")]: 1,
+			[f("usage.cacheReadTokens")]: 1,
+			[f("usage.cacheWriteTokens")]: 1,
+			[f("usage.cost.totalCostUsd")]: 1,
+			[f("output.message.content")]: 1,
+			[f("output.stopReason")]: 1,
 		};
 
 		const cursor = col

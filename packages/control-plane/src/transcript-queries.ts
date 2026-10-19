@@ -10,6 +10,7 @@
  * named above — no dependency on a `missions` document exists or is assumed.
  */
 
+import { type LlmCallLogEntry, storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 export interface TurnSummary {
@@ -74,24 +75,6 @@ export async function queryTranscript(
 	}));
 }
 
-/** The stored `llmCallLog` fields these queries read (the writer's type is `LlmCallLogEntry`). */
-interface StoredLlmCall {
-	callId?: string;
-	savedAt?: unknown;
-	model: string;
-	isReflection?: boolean;
-	costEstimated?: boolean;
-	input?: { systemPrompt?: string; messages?: unknown[]; toolNames?: string[] };
-	output?: { message?: unknown; stopReason?: string };
-	usage?: {
-		inputTokens?: number;
-		outputTokens?: number;
-		cacheReadTokens?: number;
-		cacheWriteTokens?: number;
-		cost?: { totalCostUsd?: number };
-	};
-}
-
 /** Token counts as the UI shows them. */
 export interface CallUsage {
 	inputTokens: number;
@@ -101,13 +84,10 @@ export interface CallUsage {
 }
 
 /**
- * The stored entry is `LlmCallLogEntry` (agent-runtime-worker/src/llm-call-log.ts):
- * tokens under `usage.*Tokens`, the money under `usage.cost.totalCostUsd`.
- * Flattened here so the cockpit reads one documented shape instead of the
- * writer's — it used to read `usage.input` and `cost.totalUsd`, two names
- * that never existed, and showed blanks (CK-STALE).
+ * Flattened from the stored `LlmCallLogEntry` so the cockpit reads one
+ * documented shape instead of the writer's.
  */
-export function callUsageOf(c: Pick<StoredLlmCall, "usage">): {
+export function callUsageOf(c: Partial<Pick<LlmCallLogEntry, "usage">>): {
 	usage: CallUsage | null;
 	costUsd: number | null;
 } {
@@ -145,8 +125,7 @@ export async function queryLlmCalls(
 	agentId: string,
 	turn: number,
 ): Promise<LlmCallSummary[]> {
-	const calls = await db
-		.collection<StoredLlmCall>("llmCallLog")
+	const calls = await storedCollection(db, "llmCallLog")
 		.find({ missionId, agentId, turnNumber: turn })
 		.sort({ savedAt: 1 })
 		.toArray();
@@ -190,8 +169,7 @@ export async function queryLlmCall(
 	i: number,
 ): Promise<LlmCallDetail | null> {
 	const c = (
-		await db
-			.collection<StoredLlmCall>("llmCallLog")
+		await storedCollection(db, "llmCallLog")
 			.find({ missionId, agentId, turnNumber: turn })
 			.sort({ savedAt: 1 })
 			.skip(i)

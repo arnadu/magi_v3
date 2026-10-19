@@ -6,6 +6,12 @@ export {
 	type StoredDocs,
 	storedCollection,
 } from "./collections.js";
+export type {
+	LlmCallCost,
+	LlmCallLogEntry,
+	LlmCallUsage,
+	LoggedMessage,
+} from "./llm-calls.js";
 export { field, type Path, ref } from "./paths.js";
 export {
 	SCHEDULE_ORIGIN,

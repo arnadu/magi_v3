@@ -1,3 +1,4 @@
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { RouteEntry } from "./types.js";
 
@@ -41,18 +42,16 @@ export function createAgentSessionsRoutes(
 			method: "GET",
 			path: /^\/agents\/([^/]+)\/sessions$/,
 			async handler({ res }, agentId) {
-				const llmDocs = await deps.db
-					.collection("llmCallLog")
+				const llmDocs = await storedCollection(deps.db, "llmCallLog")
 					.find({ agentId, missionId: deps.missionId })
 					.sort({ turnNumber: 1, savedAt: 1 })
 					.toArray();
 
 				const byTurn = new Map<number, typeof llmDocs>();
 				for (const d of llmDocs) {
-					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB document
-					const t = (d as any).turnNumber ?? 0;
-					if (!byTurn.has(t)) byTurn.set(t, []);
-					byTurn.get(t)?.push(d);
+					const turnDocs = byTurn.get(d.turnNumber) ?? [];
+					turnDocs.push(d);
+					byTurn.set(d.turnNumber, turnDocs);
 				}
 
 				const toolCounts = await deps.db
@@ -75,32 +74,24 @@ export function createAgentSessionsRoutes(
 				);
 
 				const sessions = Array.from(byTurn.entries()).map(([turn, docs]) => {
-					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
-					const isReflection = (docs[0] as any)?.isReflection ?? false;
-					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
-					const startTime = (docs[0] as any)?.savedAt;
-					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
-					const endTime = (docs[docs.length - 1] as any)?.savedAt;
-					const durationMs =
-						startTime && endTime
-							? new Date(endTime).getTime() - new Date(startTime).getTime()
-							: 0;
+					// Every group holds at least one call: it was created from one.
+					const first = docs[0];
+					const last = docs[docs.length - 1];
+					const durationMs = last.savedAt.getTime() - first.savedAt.getTime();
 					const totals = docs.reduce(
-						// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB documents
-						(acc: any, d: any) => ({
-							inputTokens: acc.inputTokens + (d.usage?.inputTokens ?? 0),
-							outputTokens: acc.outputTokens + (d.usage?.outputTokens ?? 0),
-							cacheReadTokens:
-								acc.cacheReadTokens + (d.usage?.cacheReadTokens ?? 0),
-							costUsd: acc.costUsd + (d.usage?.cost?.totalCostUsd ?? 0),
+						(acc, d) => ({
+							inputTokens: acc.inputTokens + d.usage.inputTokens,
+							outputTokens: acc.outputTokens + d.usage.outputTokens,
+							cacheReadTokens: acc.cacheReadTokens + d.usage.cacheReadTokens,
+							costUsd: acc.costUsd + d.usage.cost.totalCostUsd,
 						}),
 						{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 },
 					);
 					return {
 						turnNumber: turn,
-						isReflection,
-						startTime,
-						endTime,
+						isReflection: first.isReflection,
+						startTime: first.savedAt,
+						endTime: last.savedAt,
 						durationMs,
 						llmCalls: docs.length,
 						toolCalls: toolCountMap.get(turn) ?? 0,
@@ -125,8 +116,7 @@ export function createAgentSessionsRoutes(
 					.sort({ seqInTurn: 1 })
 					.toArray();
 
-				const llmCalls = await deps.db
-					.collection("llmCallLog")
+				const llmCalls = await storedCollection(deps.db, "llmCallLog")
 					.find({ agentId, missionId: deps.missionId, turnNumber })
 					.sort({ savedAt: 1 })
 					.toArray();
@@ -139,8 +129,7 @@ export function createAgentSessionsRoutes(
 			method: "GET",
 			path: /^\/agents\/([^/]+)\/usage$/,
 			async handler({ res }, agentId) {
-				const docs = await deps.db
-					.collection("llmCallLog")
+				const docs = await storedCollection(deps.db, "llmCallLog")
 					.find({ missionId: deps.missionId, agentId })
 					.sort({ turnNumber: 1, savedAt: 1 })
 					.toArray();
@@ -148,17 +137,14 @@ export function createAgentSessionsRoutes(
 				res.end(
 					JSON.stringify(
 						docs.map((d) => ({
-							turnNumber: d.turnNumber ?? 0,
-							isReflection: d.isReflection ?? false,
+							turnNumber: d.turnNumber,
+							isReflection: d.isReflection,
 							savedAt: d.savedAt,
-							model: d.model ?? null,
-							// input is absent after the 7-day retention window — same
-							// window that governs d.output; toolNames degrades to
-							// undefined for older calls rather than an empty array, so
-							// callers can distinguish "no tools available" from "no
-							// longer known".
+							model: d.model,
+							// undefined (not []) when the call body is gone, so callers can
+							// tell "no tools offered" from "no longer known".
 							toolNames: d.input?.toolNames,
-							usage: d.usage ?? null,
+							usage: d.usage,
 						})),
 					),
 				);
