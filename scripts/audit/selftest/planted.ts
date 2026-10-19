@@ -9,6 +9,7 @@
 /* T6 */ execFile("git", ["-C", dir, "status"]);
 /* T7 */ router.get("/x", async (req, res) => {});
 /* T8 */ try { x(); } catch (e) {}
+/* T8b */ void p.catch(() => {});
 /* T9 */ const t9 = value as any;
 /* T10 */ maxCostUsd: z.number().optional(),
 // T11: Sprint 99 bookkeeping comment that should be an ADR link

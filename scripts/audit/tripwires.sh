@@ -104,6 +104,9 @@ check T7-async-handler "async Express 4 handler without a rejection wrapper" \
 # T8 swallowed errors.
 check T8-empty-catch "empty catch (log operation, input and consequence, or say why ignoring is safe)" \
 	'catch[[:space:]]*(\([^)]*\))?[[:space:]]*\{[[:space:]]*\}' packages/*/src
+# T8b swallowed promise rejections: same rule as T8.
+check T8b-swallowed-promise "promise rejection swallowed (log operation, input and consequence, or say why ignoring is safe)" \
+	'\.catch\(\(\)[[:space:]]*=>[[:space:]]*\{\}\)' packages/*/src
 # T9 type escape hatches (biome-ignore already requires a reason by syntax).
 check T9-escape-hatches "type escape hatch (each needs a one-line constraint)" \
 	'@ts-ignore|@ts-expect-error|as any\b|as unknown as' packages/*/src
