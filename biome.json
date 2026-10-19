@@ -69,7 +69,6 @@
 				"packages/cockpit/src/Markdown.tsx",
 				"packages/control-plane/src/copilot-daemon.ts",
 				"packages/control-plane/src/copilot-router.ts",
-				"packages/control-plane/src/copilot-tools.ts",
 				"packages/control-plane/src/mission-routes-config.ts",
 				"packages/control-plane/src/missions.ts",
 				"packages/control-plane/src/resource-report.ts",
