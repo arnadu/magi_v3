@@ -98,7 +98,7 @@ function mergeConfigPatch(
 			agents: patch.agentsPatch,
 			missionCopilotLimits: patch.missionCopilotLimitsPatch,
 		});
-		assertKnownModels(config.mission);
+		assertKnownModels(config.mission, current.mission);
 		return { config };
 	} catch (e) {
 		return { error: `Invalid team config: ${(e as Error).message}` };

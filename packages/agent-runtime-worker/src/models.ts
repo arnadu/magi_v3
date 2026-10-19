@@ -196,24 +196,48 @@ export function isKnownModelId(id: string): boolean {
 	return KNOWN_ANTHROPIC_MODEL_IDS.includes(id);
 }
 
-/** The model ids a config names that are not known — empty when the config is acceptable. */
-export function unknownModelIds(mission: {
-	model?: string;
-	visionModel?: string;
-}): string[] {
-	return [mission.model, mission.visionModel].filter(
-		(id): id is string => typeof id === "string" && !isKnownModelId(id),
-	);
+type ModelFields = { model?: string; visionModel?: string };
+const MODEL_FIELDS = ["model", "visionModel"] as const;
+
+/**
+ * The model fields a config sets to an unknown id — empty when acceptable.
+ * With `previous` (an edit of a stored config), a field whose value is
+ * unchanged is not re-checked: an id that was accepted when the mission was
+ * created, or before this check existed, must not block unrelated edits
+ * (issue #86). Only an id the edit introduces is refused.
+ */
+export function unknownModelFields(
+	mission: ModelFields,
+	previous?: ModelFields,
+): { field: (typeof MODEL_FIELDS)[number]; id: string }[] {
+	return MODEL_FIELDS.flatMap((field) => {
+		const id = mission[field];
+		if (typeof id !== "string" || isKnownModelId(id)) return [];
+		if (previous && previous[field] === id) return [];
+		return [{ field, id }];
+	});
 }
 
-/** Throws in parseTeamConfig's own message style when a config names a model the platform cannot price (MD1). */
-export function assertKnownModels(mission: {
-	model?: string;
-	visionModel?: string;
-}): void {
-	const unknown = unknownModelIds(mission);
+/** The unknown model ids a config names (see unknownModelFields). */
+export function unknownModelIds(
+	mission: ModelFields,
+	previous?: ModelFields,
+): string[] {
+	return unknownModelFields(mission, previous).map((u) => u.id);
+}
+
+/**
+ * Throws in parseTeamConfig's own message style when a config names a model
+ * the platform cannot price (MD1). Pass the stored mission as `previous` when
+ * validating an edit, so only newly introduced ids are refused.
+ */
+export function assertKnownModels(
+	mission: ModelFields,
+	previous?: ModelFields,
+): void {
+	const unknown = unknownModelFields(mission, previous);
 	if (unknown.length === 0) return;
 	throw new Error(
-		`Team config validation failed:\n  mission.model: unknown model id(s) ${unknown.map((u) => `"${u}"`).join(", ")} — use a model from the catalog (GET /api/models)`,
+		`Team config validation failed:\n${unknown.map((u) => `  mission.${u.field}: unknown model id "${u.id}"`).join("\n")} — use a model from the catalog (GET /api/models)`,
 	);
 }

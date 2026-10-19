@@ -186,7 +186,7 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 				agents,
 				missionCopilotLimits,
 			});
-			assertKnownModels(validated.mission);
+			assertKnownModels(validated.mission, mission.mission);
 		} catch (e) {
 			res
 				.status(400)

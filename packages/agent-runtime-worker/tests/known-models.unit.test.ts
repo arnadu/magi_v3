@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	assertKnownModels,
 	isKnownModelId,
 	KNOWN_ANTHROPIC_MODEL_IDS,
 	unknownModelIds,
@@ -22,5 +23,26 @@ describe("known model ids (MD1)", () => {
 				visionModel: "nope/model",
 			}),
 		).toEqual(["nope/model"]);
+	});
+
+	it("on an edit, refuses only ids that differ from the stored config (#86)", () => {
+		const stored = {
+			model: "claude-retired-1",
+			visionModel: "retired/vision-v0",
+		};
+		expect(unknownModelIds(stored, stored)).toEqual([]);
+		expect(
+			unknownModelIds({ ...stored, visionModel: "nope/model" }, stored),
+		).toEqual(["nope/model"]);
+		expect(unknownModelIds(stored)).toEqual([
+			"claude-retired-1",
+			"retired/vision-v0",
+		]);
+	});
+
+	it("names the offending field in the refusal", () => {
+		expect(() => assertKnownModels({ visionModel: "nope/model" })).toThrow(
+			/mission\.visionModel: unknown model id "nope\/model"/,
+		);
 	});
 });

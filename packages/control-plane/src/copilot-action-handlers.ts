@@ -329,7 +329,7 @@ async function saveSessionConfig(ctx: ActionContext): Promise<string> {
 				missionCopilotLimits: scMissionCopilotLimitsPatch,
 			},
 		);
-		assertKnownModels(scValidated.mission);
+		assertKnownModels(scValidated.mission, scMission.mission);
 	} catch (e) {
 		throw new Error(`Invalid team config: ${(e as Error).message}`);
 	}

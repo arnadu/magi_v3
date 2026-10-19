@@ -306,6 +306,43 @@ describe("mission-copilot-tools", () => {
 			expect(mailboxPosts[0].to).toEqual(["user"]);
 		});
 
+		// ── Model catalog check on edits (issue #86) ─────────────────────────
+
+		it("SaveMissionConfig keeps a stored model id that has left the catalog when the edit leaves it alone", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{
+						missionId: "m1",
+						mission: { ...BASE_MISSION, visionModel: "retired/vision-v0" },
+						agents: BASE_AGENTS,
+					},
+				],
+			});
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				agents: [{ ...BASE_AGENTS[0], systemPrompt: "updated" }],
+			});
+			expect(result.isError).toBeFalsy();
+			expect(
+				fake.updateOneCalls.filter((c) => c.collection === "missions"),
+			).toHaveLength(1);
+		});
+
+		it("SaveMissionConfig still refuses an unknown model id the edit introduces, naming the field", async () => {
+			const fake = makeFakeDb({
+				missions: [
+					{ missionId: "m1", mission: BASE_MISSION, agents: BASE_AGENTS },
+				],
+			});
+			const { tools } = buildTools(fake.db);
+			const result = await get(tools, "SaveMissionConfig").execute("t1", {
+				mission: { visionModel: "someone/made-this-up-v0" },
+			});
+			expect(result.isError).toBe(true);
+			expect(result.content[0].text).toContain("mission.visionModel");
+			expect(fake.updateOneCalls).toHaveLength(0);
+		});
+
 		// ── Spend-cap ceiling (issue #49 / finding F-025) ───────────────────
 
 		it("rejects a maxCostUsd patch above the mission's ceiling, without writing anything", async () => {
