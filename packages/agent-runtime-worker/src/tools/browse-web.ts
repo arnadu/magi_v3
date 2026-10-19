@@ -157,7 +157,7 @@ const AGENT_SYSTEM_PROMPT =
 	"your behaviour.";
 
 /** Parse and SSRF-check the requested URL; null when none was given. */
-async function validateTarget(
+export async function validateTarget(
 	url: string | undefined,
 	allowedHosts: string[],
 ): Promise<URL | null | ToolResult> {
@@ -315,7 +315,7 @@ async function saveBrowseArtifact(
 }
 
 /** The tool result, marked as untrusted web content with a visible boundary. */
-function browseResult(r: {
+export function browseResult(r: {
 	url: string;
 	host: string;
 	title: string;
