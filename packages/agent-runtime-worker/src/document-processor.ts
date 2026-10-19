@@ -853,6 +853,8 @@ async function processXlsx(
 ): Promise<Handled> {
 	const wb = new ExcelJS.Workbook();
 	try {
+		// exceljs's types ask for ArrayBuffer; at runtime it takes a Node Buffer
+		// (its own docs load from Buffer), and copying would double the memory.
 		await wb.xlsx.load(bytes as unknown as ArrayBuffer);
 	} catch (e) {
 		return processUnsupported(

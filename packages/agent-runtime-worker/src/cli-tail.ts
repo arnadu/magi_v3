@@ -15,8 +15,13 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTeamConfig, storedCollection } from "@magi/agent-config";
+import {
+	loadTeamConfig,
+	type MailboxMessage,
+	storedCollection,
+} from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
+import type { WithId } from "mongodb";
 
 dotenvConfig({
 	path: join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".env"),
@@ -62,7 +67,9 @@ async function main(): Promise<void> {
 				},
 			];
 
-	const stream = col.watch(pipeline, { fullDocument: "updateLookup" });
+	const stream = col.watch<WithId<MailboxMessage>>(pipeline, {
+		fullDocument: "updateLookup",
+	});
 
 	console.log(
 		`[cli:tail] Mission ${missionId} — ${showAll ? "all messages" : "to:user only"} — Ctrl+C to exit`,
@@ -70,9 +77,7 @@ async function main(): Promise<void> {
 
 	stream.on("change", (event) => {
 		if (event.operationType !== "insert") return;
-		// biome-ignore lint/suspicious/noExplicitAny: Change Stream document type
-		const msg = (event as any).fullDocument;
-		if (!msg) return;
+		const msg = event.fullDocument;
 		const ts = new Date(msg.timestamp).toISOString();
 		console.log(
 			`\n[${ts}] ${msg.from} → ${msg.to.join(", ")} | ${msg.subject}`,

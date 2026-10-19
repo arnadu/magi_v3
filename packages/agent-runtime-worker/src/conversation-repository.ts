@@ -258,15 +258,7 @@ export function createMongoConversationRepository(
 
 			for (const doc of docs) {
 				if (results.length >= limit) break;
-				const m = doc.message as unknown as Record<string, unknown>;
-				let fullText = "";
-				if (typeof m.content === "string") {
-					fullText = m.content;
-				} else if (Array.isArray(m.content)) {
-					fullText = (m.content as Array<{ text?: string }>)
-						.map((b) => b.text ?? "")
-						.join("\n");
-				}
+				const fullText = messageText(doc.message);
 				if (!re.test(fullText)) continue;
 				const idx = fullText.search(re);
 				const start = Math.max(0, idx - 100);
@@ -277,8 +269,11 @@ export function createMongoConversationRepository(
 					(end < fullText.length ? "…" : "");
 				results.push({
 					turnNumber: doc.turnNumber,
-					role: String(m.role ?? ""),
-					toolName: typeof m.toolName === "string" ? m.toolName : undefined,
+					role: doc.message.role,
+					toolName:
+						doc.message.role === "toolResult"
+							? doc.message.toolName
+							: undefined,
 					savedAt: doc.savedAt,
 					excerpt,
 				});
@@ -286,4 +281,14 @@ export function createMongoConversationRepository(
 			return results;
 		},
 	};
+}
+
+/** The searchable text of a stored message: its string content, or its text blocks joined. */
+function messageText(message: Message | SummaryMessage): string {
+	const { content } = message;
+	if (typeof content === "string") return content;
+	const blocks: ReadonlyArray<{ type: string; text?: string }> = content;
+	return blocks
+		.map((b) => (b.type === "text" ? (b.text ?? "") : ""))
+		.join("\n");
 }

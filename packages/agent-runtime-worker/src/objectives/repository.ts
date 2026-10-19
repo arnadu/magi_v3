@@ -139,6 +139,8 @@ export function createMongoObjectivesRepository(db: Db): ObjectivesRepository {
 				{ projection: { _id: 0, missionId: 0, kind: 0 } },
 			)
 			.toArray();
+		// One collection holds every event kind; the caller names the kind and
+		// its event type together, and the projection strips the envelope.
 		return docs as unknown as E[];
 	}
 

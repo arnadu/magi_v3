@@ -35,8 +35,7 @@ export function createAgentSessionsRoutes(
 				res.end(
 					JSON.stringify({
 						agentId,
-						// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB document
-						html: (doc as any)?.mentalMapHtml ?? "",
+						html: doc?.mentalMapHtml ?? "",
 					}),
 				);
 			},
