@@ -1,23 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AgentToggles } from "./AgentToggles";
-import { availableSkills, MentalMapEditor } from "./ConfigPanel";
-import {
-	DraftMissionFields,
-	type MissionDraftFields,
-	validateDraft,
-} from "./DraftMissionFields";
-import {
-	fetchMissionConfig,
-	fetchMissionUpdatedAt,
-	launchDraft,
-	type MissionConfigAgent,
-	type MissionConfigData,
-	saveDraftConfig,
-} from "./data";
+import { useState } from "react";
+import { availableSkills } from "./ConfigPanel";
+import { DraftAgentForm } from "./DraftAgentForm";
+import { DraftMissionFields, validateDraft } from "./DraftMissionFields";
+import { launchDraft, saveDraftConfig } from "./data";
 import { useCatalog } from "./use-catalog";
-
-/** How often to check whether the copilot changed this draft while the operator has it open. */
-const POLL_MS = 5000;
+import { useDraftState } from "./use-draft-state";
 
 /**
  * Pre-launch config editor for a "draft" mission — visually modeled on
@@ -37,18 +24,6 @@ const POLL_MS = 5000;
  * only on Launch (POST /:id/launch), surfaced here as a plain error banner
  * naming the exact missing field.
  */
-function blankAgent(id: string): MissionConfigAgent {
-	return {
-		id,
-		name: "",
-		role: "",
-		supervisor: "user",
-		systemPrompt: "",
-		initialMentalMap: "<h1>Role</h1>\n<p></p>\n",
-		active: true,
-	};
-}
-
 export function DraftEditor({
 	missionId,
 	onLaunched,
@@ -60,114 +35,13 @@ export function DraftEditor({
 	onBack: () => void;
 }) {
 	const { catalog } = useCatalog();
-	const [config, setConfig] = useState<MissionConfigData | "error" | null>(
-		null,
-	);
-	const [missionDraft, setMissionDraft] = useState<MissionDraftFields>({
-		name: "",
-		model: "",
-		visionModel: "",
-		timezone: "",
-		maxCostUsd: "",
-	});
-	const [agentsDraft, setAgentsDraft] = useState<MissionConfigAgent[]>([]);
-	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
 	const [launching, setLaunching] = useState(false);
 	const [launchError, setLaunchError] = useState<string | null>(null);
-
-	// Tracks whether the copilot may have changed this draft out from under an
-	// operator who has unsaved local edits open — EditDraftConfig gives it
-	// direct, unconfirmed write access (ADR: safe pre-launch, no live agent to
-	// collide with), so silently polling and overwriting the form would just
-	// trade one kind of data loss (stale view) for a worse one (destroying
-	// edits in progress). `dirty` gates whether a poll can auto-apply a
-	// server-side change or must instead surface it as a banner.
-	const [dirty, setDirty] = useState(false);
-	const [remoteUpdateAvailable, setRemoteUpdateAvailable] = useState(false);
-	const lastLoadedUpdatedAtRef = useRef<string | null>(null);
-
-	const applyConfig = useCallback((c: MissionConfigData) => {
-		setConfig(c);
-		setMissionDraft({
-			name: c.mission.name ?? "",
-			model: c.mission.model ?? "",
-			visionModel: c.mission.visionModel ?? "",
-			timezone: c.mission.timezone ?? "",
-			maxCostUsd:
-				typeof c.mission.maxCostUsd === "number"
-					? String(c.mission.maxCostUsd)
-					: "",
-		});
-		setAgentsDraft(c.agents);
-		setSelectedAgentId((prev) =>
-			prev && c.agents.some((a) => a.id === prev)
-				? prev
-				: (c.agents[0]?.id ?? null),
-		);
-		setDirty(false);
-		setRemoteUpdateAvailable(false);
-	}, []);
-
-	useEffect(() => {
-		let cancelled = false;
-		setConfig(null);
-		Promise.all([
-			fetchMissionConfig(missionId),
-			fetchMissionUpdatedAt(missionId),
-		])
-			.then(([c, updatedAt]) => {
-				if (cancelled) return;
-				applyConfig(c);
-				lastLoadedUpdatedAtRef.current = updatedAt;
-			})
-			.catch(() => {
-				if (!cancelled) setConfig("error");
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [missionId, applyConfig]);
-
-	useEffect(() => {
-		const timer = setInterval(async () => {
-			if (saving || launching) return;
-			let updatedAt: string;
-			try {
-				updatedAt = await fetchMissionUpdatedAt(missionId);
-			} catch {
-				return; // Transient poll failure — try again next tick.
-			}
-			if (updatedAt === lastLoadedUpdatedAtRef.current) return;
-			if (dirty) {
-				setRemoteUpdateAvailable(true);
-				return;
-			}
-			try {
-				const c = await fetchMissionConfig(missionId);
-				applyConfig(c);
-				lastLoadedUpdatedAtRef.current = updatedAt;
-			} catch {
-				// Transient — the next tick will retry.
-			}
-		}, POLL_MS);
-		return () => clearInterval(timer);
-	}, [missionId, dirty, saving, launching, applyConfig]);
-
-	async function handleReloadFromServer() {
-		try {
-			const [c, updatedAt] = await Promise.all([
-				fetchMissionConfig(missionId),
-				fetchMissionUpdatedAt(missionId),
-			]);
-			applyConfig(c);
-			lastLoadedUpdatedAtRef.current = updatedAt;
-		} catch (e) {
-			setSaveError((e as Error).message);
-		}
-	}
+	const draft = useDraftState(missionId, saving || launching);
+	const { config, missionDraft, agentsDraft, selectedAgentId, edit } = draft;
 
 	if (config === null) return <p className="mut">Loading…</p>;
 	if (config === "error")
@@ -175,46 +49,10 @@ export function DraftEditor({
 
 	const skills = availableSkills(catalog.platformSkills, config.teamFiles);
 	const selectedAgent = agentsDraft.find((a) => a.id === selectedAgentId);
-
-	function updateMissionField(patch: Partial<typeof missionDraft>) {
-		setDirty(true);
-		setMissionDraft((d) => ({ ...d, ...patch }));
-	}
-
-	function updateAgent(id: string, patch: Partial<MissionConfigAgent>) {
-		setDirty(true);
-		setAgentsDraft((prev) =>
-			prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
-		);
-	}
-
-	function handleAddAgent() {
-		setDirty(true);
-		// Derived from the ids that exist, not a counter: a counter restarted at
-		// 1 on reload and produced a second "new-agent-1".
-		const taken = new Set(agentsDraft.map((a) => a.id));
-		let n = 1;
-		while (taken.has(`new-agent-${n}`)) n++;
-		const id = `new-agent-${n}`;
-		setAgentsDraft((prev) => [...prev, blankAgent(id)]);
-		setSelectedAgentId(id);
-	}
-
 	/** Ids used more than once — a save with one of these is refused, the server would reject it anyway. */
 	const duplicateIds = agentsDraft
 		.map((a) => a.id)
 		.filter((id, i, all) => all.indexOf(id) !== i);
-
-	function handleRemoveAgent(id: string) {
-		setDirty(true);
-		setAgentsDraft((prev) => {
-			const next = prev.filter((a) => a.id !== id);
-			if (selectedAgentId === id) {
-				setSelectedAgentId(next[0]?.id ?? null);
-			}
-			return next;
-		});
-	}
 
 	/** Resolves true only when the server accepted the save — the launch depends on it. */
 	async function handleSave(): Promise<boolean> {
@@ -224,7 +62,6 @@ export function DraftEditor({
 			setSaveError(checked.error);
 			return false;
 		}
-		const { maxCostUsd } = checked;
 		setSaving(true);
 		setSaveError(null);
 		setSaved(false);
@@ -234,7 +71,7 @@ export function DraftEditor({
 			model: missionDraft.model.trim() || undefined,
 			visionModel: missionDraft.visionModel.trim() || undefined,
 			timezone: missionDraft.timezone.trim() || undefined,
-			maxCostUsd,
+			maxCostUsd: checked.maxCostUsd,
 		};
 		try {
 			await saveDraftConfig(missionId, {
@@ -243,19 +80,7 @@ export function DraftEditor({
 				missionCopilotLimits: config.missionCopilotLimits,
 				teamFiles: config.teamFiles,
 			});
-			setConfig({ ...config, mission: nextMission, agents: agentsDraft });
-			setDirty(false);
-			setRemoteUpdateAvailable(false);
-			// This save itself just changed the server's updatedAt — refetch it so
-			// the next poll doesn't mistake our own write for a copilot change.
-			fetchMissionUpdatedAt(missionId)
-				.then((updatedAt) => {
-					lastLoadedUpdatedAtRef.current = updatedAt;
-				})
-				.catch(() => {
-					// Non-fatal — worst case, the next poll re-reads a config that
-					// already matches what's on screen and reloads it silently.
-				});
+			draft.markSaved({ ...config, mission: nextMission, agents: agentsDraft });
 			setSaved(true);
 			setTimeout(() => setSaved(false), 3000);
 			return true;
@@ -298,153 +123,56 @@ export function DraftEditor({
 				Nothing is running yet — edit freely, save as often as you like, and
 				click Launch when the roster is ready.
 			</p>
-			{remoteUpdateAvailable && (
+			{draft.remoteUpdateAvailable && (
 				<p className="config-hint">
 					The copilot updated this draft while you were editing it.{" "}
 					<button
 						type="button"
 						className="rail-btn"
-						onClick={handleReloadFromServer}
+						onClick={() =>
+							draft.reload().catch((e) => setSaveError((e as Error).message))
+						}
 					>
 						Reload
 					</button>{" "}
 					— this replaces your unsaved changes with the copilot's version.
 				</p>
 			)}
-
-			<DraftMissionFields value={missionDraft} onChange={updateMissionField} />
+			<DraftMissionFields value={missionDraft} onChange={edit.missionField} />
 			{duplicateIds.length > 0 && (
 				<p className="error-msg">
 					Duplicate agent id: {[...new Set(duplicateIds)].join(", ")} — ids must
 					be unique.
 				</p>
 			)}
-
 			<nav className="config-agent-tabs">
 				{agentsDraft.map((a) => (
 					<button
 						key={a.id}
 						type="button"
 						className={`home-tab${a.id === selectedAgentId ? " home-tab-active" : ""}`}
-						onClick={() => setSelectedAgentId(a.id)}
+						onClick={() => draft.setSelectedAgentId(a.id)}
 					>
 						{a.name || a.id}
 					</button>
 				))}
-				<button type="button" className="rail-btn" onClick={handleAddAgent}>
+				<button type="button" className="rail-btn" onClick={edit.addAgent}>
 					+ Add agent
 				</button>
 			</nav>
-
 			{selectedAgent && (
-				<div className="config-agent-form">
-					<div className="create-mission-row">
-						<label htmlFor="draft-agent-id">Agent ID</label>
-						<input
-							id="draft-agent-id"
-							value={selectedAgent.id}
-							onChange={(e) => {
-								setDirty(true);
-								const nextId = e.target.value;
-								const prevId = selectedAgent.id;
-								// Renaming cascades to whoever reported to the old id — a
-								// stale `supervisor` is a config the server rejects at launch.
-								setAgentsDraft((prev) =>
-									prev.map((a) => {
-										if (a.id === prevId) return { ...a, id: nextId };
-										return a.supervisor === prevId
-											? { ...a, supervisor: nextId }
-											: a;
-									}),
-								);
-								setSelectedAgentId(nextId);
-							}}
-						/>
-					</div>
-					<label className="config-active-row">
-						<input
-							type="checkbox"
-							checked={selectedAgent.active !== false}
-							onChange={(e) =>
-								updateAgent(selectedAgent.id, { active: e.target.checked })
-							}
-						/>
-						Active — agent participates in dispatch
-					</label>
-					<div className="create-mission-row">
-						<label htmlFor="draft-agent-name">Name</label>
-						<input
-							id="draft-agent-name"
-							value={selectedAgent.name ?? ""}
-							onChange={(e) =>
-								updateAgent(selectedAgent.id, { name: e.target.value })
-							}
-						/>
-					</div>
-					<div className="create-mission-row">
-						<label htmlFor="draft-agent-model">Model</label>
-						<input
-							id="draft-agent-model"
-							value={selectedAgent.model ?? ""}
-							placeholder="(inherits mission model)"
-							onChange={(e) =>
-								updateAgent(selectedAgent.id, { model: e.target.value })
-							}
-						/>
-					</div>
-
-					<div className="config-section-label mut">Supervisor</div>
-					<p className="mut config-readonly-note">
-						Agent id this one reports to — "user" for a top-level agent.
-					</p>
-					<input
-						value={selectedAgent.supervisor ?? ""}
-						onChange={(e) =>
-							updateAgent(selectedAgent.id, { supervisor: e.target.value })
-						}
-					/>
-
-					<div className="config-section-label mut">System prompt</div>
-					<textarea
-						className="config-readonly-textarea"
-						value={selectedAgent.systemPrompt ?? ""}
-						onChange={(e) =>
-							updateAgent(selectedAgent.id, { systemPrompt: e.target.value })
-						}
-						rows={6}
-					/>
-
-					<div className="config-section-label mut">Initial mental map</div>
-					<MentalMapEditor
-						key={selectedAgent.id}
-						html={selectedAgent.initialMentalMap ?? ""}
-						editable
-						onChange={(next) =>
-							updateAgent(selectedAgent.id, { initialMentalMap: next })
-						}
-					/>
-
-					<AgentToggles
-						agent={selectedAgent}
-						skills={skills}
-						tools={catalog.tierATools}
-						onChange={(patch) => updateAgent(selectedAgent.id, patch)}
-					/>
-
-					<button
-						type="button"
-						className="rail-btn mission-danger"
-						onClick={() => handleRemoveAgent(selectedAgent.id)}
-					>
-						Remove agent
-					</button>
-				</div>
+				<DraftAgentForm
+					agent={selectedAgent}
+					skills={skills}
+					tools={catalog.tierATools}
+					onUpdate={(patch) => edit.agent(selectedAgent.id, patch)}
+					onRename={(nextId) => edit.renameAgent(selectedAgent.id, nextId)}
+					onRemove={() => edit.removeAgent(selectedAgent.id)}
+				/>
 			)}
-
 			{agentsDraft.length === 0 && (
 				<p className="mut">No agents yet — click "+ Add agent" to start.</p>
 			)}
-
 			<div className="config-save-bar">
 				<button
 					type="button"

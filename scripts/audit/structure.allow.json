@@ -124,9 +124,9 @@
 		}
 	},
 	"packages/cockpit/src/DraftEditor.tsx": {
-		"lines": 472,
+		"lines": 200,
 		"fns": {
-			"DraftEditor@52": 420
+			"DraftEditor@27": 173
 		}
 	},
 	"packages/cockpit/src/FilesPanel.tsx": {
