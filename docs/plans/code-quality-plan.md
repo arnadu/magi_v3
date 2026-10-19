@@ -504,4 +504,6 @@ independent once step 1 is done.
   suite 218/219, the miss being tool-api-news-digest's 120 s research timeout — measured at
   108–112 s on the old loop too (the sub-loop opens a browser), so pre-existing, not a regression.
   Allowlist 18, exemptions 16. Daemon `main` → bootDataLayer / startServices / runAndShutdown
-  (daemon-job integration green); allowlist 17.
+  (daemon-job integration green); allowlist 17. Control-plane `main` → requireEnv /
+  mountMissionCopilotProxy / mountAuthenticatedApi / startBackgroundServices, usage and model routes
+  to `platform-routes.ts` with a unit test; allowlist 16.

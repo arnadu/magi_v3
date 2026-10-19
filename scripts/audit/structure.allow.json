@@ -90,12 +90,6 @@
 			"runWatchLoop@230": 177
 		}
 	},
-	"packages/control-plane/src/index.ts": {
-		"lines": 314,
-		"fns": {
-			"main@82": 248
-		}
-	},
 	"packages/control-plane/src/missions.ts": {
 		"lines": 359,
 		"fns": {
