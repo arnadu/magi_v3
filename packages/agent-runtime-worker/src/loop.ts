@@ -249,24 +249,7 @@ export interface LoopResult {
 export async function runInnerLoop(
 	config: InnerLoopConfig,
 ): Promise<LoopResult> {
-	const {
-		model,
-		task,
-		tools,
-		signal,
-		onMessage,
-		onLlmCall,
-		onToolResult,
-		toolTimeoutMs = 120_000,
-		llmCallTimeoutMs = 480_000,
-		maxTurns,
-		reasoning,
-		sessionId,
-	} = config;
-	const completeFn: CompleteFn =
-		config.completeFn ??
-		((model, context, options) =>
-			piModels.completeSimple(model, context, options));
+	const { task, tools, signal, onMessage, onLlmCall, maxTurns } = config;
 
 	// Seed with prior history if resuming; onMessage does not fire for these.
 	const messages: Message[] = config.previousMessages
@@ -276,8 +259,8 @@ export async function runInnerLoop(
 	// Dynamic-context message (current time + mental map) goes at index 0, ahead
 	// of any resumed history — never routed through pushAndNotify/onMessage, so
 	// it is never persisted to conversationMessages, exactly like systemPrompt
-	// itself. Replaced in place (not re-pushed) whenever it changes; see the
-	// per-iteration check below.
+	// itself. Replaced in place (not re-pushed) whenever it changes; see
+	// refreshDynamicContext.
 	let lastDynamicContext = config.getDynamicContext?.();
 	if (lastDynamicContext !== undefined) {
 		messages.unshift({
@@ -308,22 +291,13 @@ export async function runInnerLoop(
 		turnCount++;
 
 		const systemPrompt = config.getSystemPrompt();
-
-		// Pull-based, like getSystemPrompt — but only replace messages[0] when
-		// content actually changed, so the (much larger, cacheable) history after
-		// it stays byte-identical across iterations where nothing changed.
 		if (config.getDynamicContext) {
-			const freshDynamicContext = config.getDynamicContext();
-			if (freshDynamicContext !== lastDynamicContext) {
-				messages[0] = {
-					role: "user",
-					content: freshDynamicContext,
-					timestamp: Date.now(),
-				};
-				lastDynamicContext = freshDynamicContext;
-			}
+			lastDynamicContext = refreshDynamicContext(
+				messages,
+				config.getDynamicContext(),
+				lastDynamicContext,
+			);
 		}
-
 		const context: Context = {
 			systemPrompt,
 			messages,
@@ -334,51 +308,9 @@ export async function runInnerLoop(
 			})),
 		};
 
-		// ── LLM call ────────────────────────────────────────────────────────────
-		// Cap max output tokens: some OpenRouter model entries set maxTokens == contextWindow
-		// (no room for input). Mirror the 32k cap that the Anthropic provider uses.
-		const maxOutputTokens = Math.min(model.maxTokens, 32_000);
-		// Each attempt gets its own bounded signal (derived from the outer one)
-		// so a stalled call is actually torn down within llmCallTimeoutMs rather
-		// than only by the caller's much longer wall-clock limit — see
-		// deriveDeadline's doc comment.
-		async function callWithDeadline(): Promise<AssistantMessage> {
-			const deadline = deriveDeadline(llmCallTimeoutMs, signal);
-			const callOpts: SimpleStreamOptions = {
-				signal: deadline.signal,
-				maxTokens: maxOutputTokens,
-				// Enable extended thinking only when the model declares reasoning support.
-				...(reasoning && model.reasoning ? { reasoning } : {}),
-				...(sessionId ? { sessionId } : {}),
-			};
-			try {
-				return await completeFn(model, context, callOpts);
-			} finally {
-				deadline.cleanup();
-			}
-		}
-		// One id per logical call — retries below are attempts at the same call.
+		// One id per logical call — retries are attempts at the same call.
 		const callId = randomUUID();
-		let assistantMessage = await callWithDeadline();
-		// Retry on 429 (upstream rate-limit) or a known-transient provider error
-		// with exponential backoff — both recover within seconds and shouldn't
-		// end the turn.
-		for (
-			let attempt = 1;
-			attempt <= 3 && isRetryable(assistantMessage);
-			attempt++
-		) {
-			const delayMs = 5_000 * 2 ** (attempt - 1); // 5s, 10s, 20s
-			const reason = is429(assistantMessage)
-				? "429 rate-limit"
-				: `transient error (${assistantMessage.errorMessage})`;
-			console.warn(
-				`[loop] ${reason} from ${model.id} — retrying in ${delayMs / 1000}s (attempt ${attempt}/3)`,
-			);
-			await sleep(delayMs, signal);
-			if (signal?.aborted) break;
-			assistantMessage = await callWithDeadline();
-		}
+		const assistantMessage = await callLlmWithRetry(config, context);
 		if (onLlmCall) {
 			await onLlmCall({
 				systemPrompt,
@@ -389,52 +321,15 @@ export async function runInnerLoop(
 			});
 		}
 		await pushAndNotify(assistantMessage, { callId });
-
-		// Mid-session pruning: stub old ephemeral tool results and strip thinking
-		// blocks when context grows large, to prevent hitting the 200k limit.
-		const ctxSize =
-			(assistantMessage.usage?.input ?? 0) +
-			(assistantMessage.usage?.cacheRead ?? 0);
-		if (ctxSize > MID_SESSION_PRUNE_THRESHOLD) {
-			const pruned = pruneEphemeralResults(messages, 2);
-			messages.splice(0, messages.length, ...pruned);
-			console.warn(
-				`[loop] context ${Math.round(ctxSize / 1_000)}k tokens — pruned ephemeral tool results`,
-			);
-		}
+		pruneIfLarge(messages, assistantMessage);
 
 		// Abort on LLM error or explicit abort signal
 		if (
 			assistantMessage.stopReason === "error" ||
 			assistantMessage.stopReason === "aborted"
 		) {
-			// The loop is ending without ever executing any tool calls this
-			// message requested — a stream that was cut off (abort, or an error
-			// mid-stream) can still carry parsed toolCall blocks. Left as-is,
-			// that's a permanent dangling tool_use in persisted history: every
-			// future replay (regardless of provider) fails identically, since
-			// the provider's own tool_use/tool_result pairing validation rejects
-			// it. Persist matching synthetic results now, at write time, so
-			// history is self-consistent from the moment it's written — belt and
-			// suspenders alongside convertToLlm's read-time patch (reflection.ts),
-			// which stays as a backstop for any older/pre-existing corruption.
-			// Found live: a copilot model switch mid-turn aborted a call with an
-			// in-flight tool_use, corrupting history for every session after.
-			for (const block of assistantMessage.content) {
-				if (block.type !== "toolCall") continue;
-				await pushAndNotify({
-					role: "toolResult",
-					toolCallId: block.id,
-					toolName: block.name,
-					content: [
-						{
-							type: "text",
-							text: "Tool result was not saved — the session was interrupted before this tool completed.",
-						},
-					],
-					isError: true,
-					timestamp: Date.now(),
-				} as ToolResultMessage);
+			for (const result of interruptedToolResults(assistantMessage)) {
+				await pushAndNotify(result);
 			}
 			break;
 		}
@@ -450,27 +345,142 @@ export async function runInnerLoop(
 
 		// ── Tool execution ──────────────────────────────────────────────────────
 		for (const block of toolCalls) {
-			if (block.type !== "toolCall") continue;
-
 			const toolResult = await executeToolCall(
 				tools,
 				block,
 				signal,
-				toolTimeoutMs,
+				config.toolTimeoutMs ?? 120_000,
 			);
 			await pushAndNotify(toolResult);
-
-			if (onToolResult) {
-				await onToolResult({
-					toolName: block.name,
-					args: (block.arguments ?? {}) as Record<string, unknown>,
-					isError: toolResult.isError ?? false,
-				});
-			}
+			await config.onToolResult?.({
+				toolName: block.name,
+				args: (block.arguments ?? {}) as Record<string, unknown>,
+				isError: toolResult.isError ?? false,
+			});
 		}
 	}
 
 	return { messages, turnCount };
+}
+
+/**
+ * Pull-based, like getSystemPrompt — but messages[0] is replaced only when
+ * the content actually changed, so the (much larger, cacheable) history after
+ * it stays byte-identical across iterations where nothing changed. Returns
+ * the content now in place.
+ */
+function refreshDynamicContext(
+	messages: Message[],
+	fresh: string,
+	last: string | undefined,
+): string | undefined {
+	if (fresh === last) return last;
+	messages[0] = { role: "user", content: fresh, timestamp: Date.now() };
+	return fresh;
+}
+
+/**
+ * One logical LLM call. Each attempt gets its own bounded signal (derived
+ * from the run's) so a stalled call is torn down within llmCallTimeoutMs
+ * rather than only by the caller's much longer wall-clock limit — see
+ * deriveDeadline. A 429 or known-transient provider error is retried with
+ * exponential backoff (5 s, 10 s, 20 s): both recover within seconds and
+ * shouldn't end the turn.
+ */
+async function callLlmWithRetry(
+	config: InnerLoopConfig,
+	context: Context,
+): Promise<AssistantMessage> {
+	const { model, signal, reasoning, sessionId } = config;
+	const llmCallTimeoutMs = config.llmCallTimeoutMs ?? 480_000;
+	const completeFn: CompleteFn =
+		config.completeFn ??
+		((model, context, options) =>
+			piModels.completeSimple(model, context, options));
+	// Cap max output tokens: some OpenRouter model entries set maxTokens == contextWindow
+	// (no room for input). Mirror the 32k cap that the Anthropic provider uses.
+	const maxOutputTokens = Math.min(model.maxTokens, 32_000);
+	async function callWithDeadline(): Promise<AssistantMessage> {
+		const deadline = deriveDeadline(llmCallTimeoutMs, signal);
+		const callOpts: SimpleStreamOptions = {
+			signal: deadline.signal,
+			maxTokens: maxOutputTokens,
+			// Enable extended thinking only when the model declares reasoning support.
+			...(reasoning && model.reasoning ? { reasoning } : {}),
+			...(sessionId ? { sessionId } : {}),
+		};
+		try {
+			return await completeFn(model, context, callOpts);
+		} finally {
+			deadline.cleanup();
+		}
+	}
+	let assistantMessage = await callWithDeadline();
+	for (
+		let attempt = 1;
+		attempt <= 3 && isRetryable(assistantMessage);
+		attempt++
+	) {
+		const delayMs = 5_000 * 2 ** (attempt - 1);
+		const reason = is429(assistantMessage)
+			? "429 rate-limit"
+			: `transient error (${assistantMessage.errorMessage})`;
+		console.warn(
+			`[loop] ${reason} from ${model.id} — retrying in ${delayMs / 1000}s (attempt ${attempt}/3)`,
+		);
+		await sleep(delayMs, signal);
+		if (signal?.aborted) break;
+		assistantMessage = await callWithDeadline();
+	}
+	return assistantMessage;
+}
+
+/**
+ * Mid-session pruning: stub old ephemeral tool results and strip thinking
+ * blocks when context grows large, to prevent hitting the 200k limit.
+ */
+function pruneIfLarge(
+	messages: Message[],
+	assistantMessage: AssistantMessage,
+): void {
+	const ctxSize =
+		(assistantMessage.usage?.input ?? 0) +
+		(assistantMessage.usage?.cacheRead ?? 0);
+	if (ctxSize <= MID_SESSION_PRUNE_THRESHOLD) return;
+	const pruned = pruneEphemeralResults(messages, 2);
+	messages.splice(0, messages.length, ...pruned);
+	console.warn(
+		`[loop] context ${Math.round(ctxSize / 1_000)}k tokens — pruned ephemeral tool results`,
+	);
+}
+
+/**
+ * Synthetic results for the tool calls an errored or aborted message carries.
+ * The loop is ending without executing them — a stream that was cut off
+ * (abort, or an error mid-stream) can still carry parsed toolCall blocks.
+ * Left as-is, that's a permanent dangling tool_use in persisted history:
+ * every future replay (regardless of provider) fails identically, since the
+ * provider's own tool_use/tool_result pairing validation rejects it.
+ * Persisting matching results at write time keeps history self-consistent
+ * from the moment it's written — belt and suspenders alongside
+ * convertToLlm's read-time patch (reflection.ts), which stays as a backstop
+ * for older corruption. Found live: a copilot model switch mid-turn aborted
+ * a call with an in-flight tool_use, corrupting history for every session
+ * after.
+ */
+function interruptedToolResults(
+	assistantMessage: AssistantMessage,
+): ToolResultMessage[] {
+	return assistantMessage.content.flatMap((block) =>
+		block.type === "toolCall"
+			? [
+					makeError(
+						block,
+						"Tool result was not saved — the session was interrupted before this tool completed.",
+					),
+				]
+			: [],
+	);
 }
 
 // ---------------------------------------------------------------------------

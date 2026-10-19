@@ -29,12 +29,6 @@
 			"main@240": 214
 		}
 	},
-	"packages/agent-runtime-worker/src/loop.ts": {
-		"lines": 521,
-		"fns": {
-			"runInnerLoop@249": 220
-		}
-	},
 	"packages/agent-runtime-worker/src/mailbox.ts": {
 		"lines": 320,
 		"fns": {
