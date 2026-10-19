@@ -49,7 +49,6 @@
 				"packages/agent-runtime-worker/src/cli-tool.ts",
 				"packages/agent-runtime-worker/src/conversation-repository.ts",
 				"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts",
-				"packages/agent-runtime-worker/src/document-processor.ts",
 				"packages/agent-runtime-worker/src/loop.ts",
 				"packages/agent-runtime-worker/src/objectives/store.ts",
 				"packages/agent-runtime-worker/src/reflection.ts",
