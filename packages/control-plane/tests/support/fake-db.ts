@@ -1,8 +1,9 @@
 /**
  * Minimal in-memory Mongo fake for control-plane unit tests. Supports only
  * what the resource modules use: dotted paths; equality (Dates and ObjectIds
- * by value); $exists, $in, $nin, $ne, $gt, $gte, $lt, $lte, $or; $set / $unset;
- * find/sort/skip/limit, findOne, findOneAndUpdate, updateOne (with upsert)/Many, insertOne,
+ * by value); $exists, $in, $nin, $ne, $gt, $gte, $lt, $lte, $or; $set / $unset / $inc /
+ * $setOnInsert;
+ * find/sort/skip/limit, findOne, findOneAndUpdate and updateOne (with upsert), updateMany, insertOne,
  * deleteOne, distinct; a two-stage `aggregate([{$match}, {$group: {_id, field: {$sum: "$path"}}}])`
  * (exactly resource-monitor.ts's windowed spend query — not a general aggregation engine).
  * Array fields follow Mongo's element-matching rules for equality, $in/$nin/$ne and the
@@ -124,9 +125,19 @@ function matches(doc: Doc, filter: Doc): boolean {
 	return true;
 }
 
-function applyUpdate(doc: Doc, update: Doc): void {
+function applyUpdate(doc: Doc, update: Doc, inserting = false): void {
+	if (inserting) {
+		for (const [path, value] of Object.entries(
+			(update.$setOnInsert ?? {}) as Doc,
+		)) {
+			setPath(doc, path, value);
+		}
+	}
 	for (const [path, value] of Object.entries((update.$set ?? {}) as Doc)) {
 		setPath(doc, path, value);
+	}
+	for (const [path, by] of Object.entries((update.$inc ?? {}) as Doc)) {
+		setPath(doc, path, ((getPath(doc, path) as number) ?? 0) + (by as number));
 	}
 	for (const path of Object.keys((update.$unset ?? {}) as Doc)) {
 		unsetPath(doc, path);
@@ -134,6 +145,15 @@ function applyUpdate(doc: Doc, update: Doc): void {
 }
 
 const copy = (d: Doc): Doc => structuredClone(d);
+
+/** The equality fields of an upsert's filter, as Mongo copies them into the new document. */
+function upsertSeed(filter: Doc): Doc {
+	const fresh: Doc = {};
+	for (const [k, v] of Object.entries(filter)) {
+		if (!k.startsWith("$") && !isOperatorObject(v)) setPath(fresh, k, v);
+	}
+	return fresh;
+}
 
 function collectionOver(docs: Doc[]) {
 	return {
@@ -153,10 +173,16 @@ function collectionOver(docs: Doc[]) {
 		async findOneAndUpdate(
 			filter: Doc,
 			update: Doc,
-			opts: { returnDocument?: "before" | "after" } = {},
+			opts: { returnDocument?: "before" | "after"; upsert?: boolean } = {},
 		) {
 			const d = docs.find((x) => matches(x, filter));
-			if (!d) return null;
+			if (!d) {
+				if (!opts.upsert) return null;
+				const fresh = upsertSeed(filter);
+				applyUpdate(fresh, update, true);
+				docs.push(fresh);
+				return opts.returnDocument === "after" ? copy(fresh) : null;
+			}
 			const before = copy(d);
 			applyUpdate(d, update);
 			return opts.returnDocument === "before" ? before : copy(d);
@@ -168,11 +194,8 @@ function collectionOver(docs: Doc[]) {
 				return { matchedCount: 1, modifiedCount: 1 };
 			}
 			if (opts.upsert) {
-				const fresh: Doc = {};
-				for (const [k, v] of Object.entries(filter)) {
-					if (!k.startsWith("$") && !isOperatorObject(v)) setPath(fresh, k, v);
-				}
-				applyUpdate(fresh, update);
+				const fresh = upsertSeed(filter);
+				applyUpdate(fresh, update, true);
 				docs.push(fresh);
 				return { matchedCount: 0, modifiedCount: 0, upsertedCount: 1 };
 			}
