@@ -65,7 +65,6 @@
 				"packages/cockpit/src/Markdown.tsx",
 				"packages/control-plane/src/copilot-daemon.ts",
 				"packages/control-plane/src/missions.ts",
-				"packages/control-plane/src/resource-report.ts",
 				"packages/control-plane/src/resource-upgrade.ts",
 				"packages/control-plane/tests/support/fake-db.ts"
 			],

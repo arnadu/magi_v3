@@ -60,9 +60,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts": {
-		"lines": 158,
+		"lines": 155,
 		"fns": {
-			"createAgentSessionsRoutes@15": 143
+			"createAgentSessionsRoutes@15": 140
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
@@ -138,12 +138,6 @@
 		"lines": 359,
 		"fns": {
 			"readLimits@109": 171
-		}
-	},
-	"packages/control-plane/src/resource-report.ts": {
-		"lines": 658,
-		"fns": {
-			"computeFlags@236": 165
 		}
 	},
 	"packages/control-plane/src/resource-upgrade.ts": {

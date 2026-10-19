@@ -31,17 +31,11 @@
 import {
 	type AtlasUsageDoc,
 	COLLECTION_NAMES,
-	type MissionDoc,
 	platformResourceCollection,
 	storedCollection,
 } from "@magi/agent-config";
 import {
-	ATLAS_STORAGE,
 	createMongoAgentStatsRepository,
-	DISK_USAGE,
-	REPORT_FLAGS,
-	UPGRADE_CAP_NEAR_RATIO,
-	UPGRADE_IDLE_MINUTES,
 	UPGRADE_LIMITS,
 } from "@magi/agent-runtime-worker";
 import type { Db } from "mongodb";
@@ -50,102 +44,35 @@ import {
 	getOpenSegment,
 	upgradedMsSince,
 } from "./machine-segments.js";
-import type { MachineShape } from "./machine-shapes.js";
 import { postMailbox } from "./mailbox-writer.js";
-import { upgradeIdleRatio } from "./resource-alerts.js";
 import {
 	lastActivityAt,
 	latestResourceSample,
 	sumTurnCostUsd,
 } from "./resource-queries.js";
+import { computeFlags } from "./resource-report-flags.js";
+import { renderDailyReport } from "./resource-report-render.js";
+import {
+	type AtlasReportBlock,
+	DAY,
+	type DailyReport,
+	dateKey,
+	HOUR,
+	type MissionDocForReport,
+	type MissionReportRow,
+	type ResourceSnapshotDoc,
+	type SnapshotMissionEntry,
+} from "./resource-report-types.js";
 
-const HOUR = 3_600_000;
-const DAY = 24 * HOUR;
+export type {
+	AtlasReportBlock,
+	DailyReport,
+	MissionReportRow,
+	ReportFlag,
+} from "./resource-report-types.js";
+export { renderDailyReport };
+
 const REPORT_HOUR_UTC_DEFAULT = 12;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface MissionReportRow {
-	missionId: string;
-	status: string;
-	llm24hUsd: number;
-	llmTotalUsd: number;
-	llmCapUsd?: number;
-	shape: MachineShape;
-	upgraded: boolean;
-	runningJobs: number | null;
-	upgradedMs24h: number;
-	upgradedMsSinceReset: number;
-	upgradedCapMs: number;
-	activeUpgradeExpiresAt?: Date;
-	diskUsedBytes?: number;
-	diskTotalBytes?: number;
-	diskSampleAt?: Date;
-	lastActivityAt?: Date;
-}
-
-export interface AtlasReportBlock {
-	usedBytes: number;
-	limitBytes: number;
-	databases: Array<{ name: string; bytes: number }>;
-	collections: Array<{ name: string; bytes: number }>;
-	growthBytesPerDay?: number;
-	daysToFull?: number;
-}
-
-export interface ReportFlag {
-	/** A missionId, or "platform" for a cross-mission/Atlas flag. */
-	scope: string;
-	label: string;
-	detail: string;
-}
-
-export interface DailyReport {
-	userId: string;
-	date: string;
-	generatedAt: Date;
-	missions: MissionReportRow[];
-	atlas?: AtlasReportBlock;
-	flags: ReportFlag[];
-}
-
-type MissionDocForReport = Pick<
-	MissionDoc,
-	"missionId" | "status" | "mission" | "upgrade" | "upgradedRuntimeResetAt"
->;
-
-interface SnapshotMissionEntry {
-	diskUsedBytes?: number;
-	llmTotalUsd: number;
-	upgradedMs: number;
-}
-
-interface ResourceSnapshotDoc {
-	userId: string;
-	date: string;
-	generatedAt: Date;
-	missions: Record<string, SnapshotMissionEntry>;
-	atlasBytes?: number;
-}
-
-const dateKey = (d: Date): string => d.toISOString().slice(0, 10);
-const mb = (bytes: number): string => (bytes / 1024 ** 2).toFixed(1);
-const gb = (bytes: number): string => (bytes / 1024 ** 3).toFixed(1);
-const hours = (ms: number): string => (ms / HOUR).toFixed(1);
-
-function formatShape(s: MachineShape): string {
-	const gib = s.memoryMb / 1024;
-	return `${s.cpuKind} ${s.cpus} CPU / ${Number.isInteger(gib) ? gib : gib.toFixed(1)} GB`;
-}
-
-function minutesAgo(from: Date, to: Date): string {
-	const min = Math.round((to.getTime() - from.getTime()) / 60_000);
-	if (min < 60) return `${min} min ago`;
-	if (min < 24 * 60) return `${(min / 60).toFixed(1)} h ago`;
-	return `${Math.round(min / (24 * 60))} d ago`;
-}
 
 // ---------------------------------------------------------------------------
 // Build
@@ -233,172 +160,6 @@ async function readAtlasBlock(
 	return block;
 }
 
-async function computeFlags(
-	db: Db,
-	userId: string,
-	missions: MissionReportRow[],
-	atlas: AtlasReportBlock | undefined,
-	yesterday: ResourceSnapshotDoc | null,
-	now: Date,
-): Promise<ReportFlag[]> {
-	const flags: ReportFlag[] = [];
-
-	if (atlas) {
-		const ratio = atlas.usedBytes / atlas.limitBytes;
-		if (ratio >= ATLAS_STORAGE.soft) {
-			const growth =
-				atlas.growthBytesPerDay !== undefined
-					? `, +${mb(atlas.growthBytesPerDay)} MB/24h`
-					: "";
-			const full =
-				atlas.daysToFull !== undefined
-					? `, full in ~${Math.round(atlas.daysToFull)} days`
-					: "";
-			flags.push({
-				scope: "platform",
-				label: "Atlas storage",
-				detail: `${mb(atlas.usedBytes)} / ${mb(atlas.limitBytes)} MB (${Math.round(ratio * 100)}%)${growth}${full}`,
-			});
-		}
-	}
-
-	for (const m of missions) {
-		if (m.diskUsedBytes !== undefined && m.diskTotalBytes) {
-			const ratio = m.diskUsedBytes / m.diskTotalBytes;
-			const yesterdayUsed = yesterday?.missions[m.missionId]?.diskUsedBytes;
-			const growthPerDay =
-				yesterdayUsed !== undefined
-					? m.diskUsedBytes - yesterdayUsed
-					: undefined;
-			const daysToFull =
-				growthPerDay !== undefined && growthPerDay > 0
-					? (m.diskTotalBytes - m.diskUsedBytes) / growthPerDay
-					: undefined;
-			if (
-				ratio >= DISK_USAGE.soft ||
-				(daysToFull !== undefined &&
-					daysToFull <= REPORT_FLAGS.diskFullWithinDays)
-			) {
-				const growth =
-					growthPerDay !== undefined
-						? `, growing ~${gb(growthPerDay)} GB/day`
-						: "";
-				const full =
-					daysToFull !== undefined
-						? `, full in ~${Math.round(daysToFull)} days`
-						: "";
-				flags.push({
-					scope: m.missionId,
-					label: "Disk",
-					detail: `${gb(m.diskUsedBytes)} / ${gb(m.diskTotalBytes)} GB (${Math.round(ratio * 100)}%)${growth}${full}`,
-				});
-			}
-		}
-
-		if (m.llmCapUsd) {
-			const ratio = m.llmTotalUsd / m.llmCapUsd;
-			if (ratio >= REPORT_FLAGS.spendCapRatio) {
-				flags.push({
-					scope: m.missionId,
-					label: "Spend",
-					detail: `$${m.llmTotalUsd.toFixed(2)} / $${m.llmCapUsd.toFixed(2)} (${Math.round(ratio * 100)}%)`,
-				});
-			}
-		}
-
-		if (m.upgradedMsSinceReset > 0) {
-			const ratio = m.upgradedMsSinceReset / m.upgradedCapMs;
-			if (ratio >= UPGRADE_CAP_NEAR_RATIO) {
-				flags.push({
-					scope: m.missionId,
-					label: "Upgrade cap",
-					detail: `${Math.round(ratio * 100)}% of the ${UPGRADE_LIMITS.cumulativeCapHours}h cap since the last reset`,
-				});
-			}
-		}
-
-		if (m.upgraded) {
-			const ratio = upgradeIdleRatio({
-				isUpgraded: true,
-				runningJobs: m.runningJobs,
-				lastActivityAt: m.lastActivityAt ?? null,
-				now,
-				idleMinutesThreshold: UPGRADE_IDLE_MINUTES,
-			});
-			if (ratio >= 1) {
-				const idleMin = Math.round(ratio * UPGRADE_IDLE_MINUTES);
-				const expiresIn = m.activeUpgradeExpiresAt
-					? Math.round(
-							(m.activeUpgradeExpiresAt.getTime() - now.getTime()) / 60_000,
-						)
-					: undefined;
-				flags.push({
-					scope: m.missionId,
-					label: "Upgraded machine idle",
-					detail: `idle ${idleMin} min (${formatShape(m.shape)}${expiresIn !== undefined ? `, expires in ${expiresIn} min` : ""})`,
-				});
-			}
-		}
-
-		if (m.status === "running") {
-			if (!m.diskSampleAt) {
-				flags.push({
-					scope: m.missionId,
-					label: "Monitoring blind",
-					detail: "no resource sample yet",
-				});
-			} else {
-				const ageMin = (now.getTime() - m.diskSampleAt.getTime()) / 60_000;
-				if (ageMin > REPORT_FLAGS.staleSampleMinutes) {
-					flags.push({
-						scope: m.missionId,
-						label: "Monitoring blind",
-						detail: `resource sample is ${Math.round(ageMin)} min old`,
-					});
-				}
-			}
-		}
-	}
-
-	const recentSnapshots = await db
-		.collection<ResourceSnapshotDoc>(COLLECTION_NAMES.resourceSnapshots)
-		.find({ userId })
-		.sort({ date: -1 })
-		.limit(REPORT_FLAGS.chronicUpgradeWindowDays)
-		.toArray();
-	for (const m of missions) {
-		const upgradedDays = recentSnapshots.filter(
-			(s) => (s.missions[m.missionId]?.upgradedMs ?? 0) > 0,
-		).length;
-		if (upgradedDays >= REPORT_FLAGS.chronicUpgradeDays) {
-			flags.push({
-				scope: m.missionId,
-				label: "Chronic upgrade",
-				detail: `upgraded on ${upgradedDays} of the last ${REPORT_FLAGS.chronicUpgradeWindowDays} snapshots — consider raising the mission's default machine size`,
-			});
-		}
-	}
-
-	if (missions.length > 0) {
-		const rejected = await storedCollection(db, "missionAnomalies")
-			.find({
-				missionId: { $in: missions.map((m) => m.missionId) },
-				category: "upgrade-cap-reached",
-				createdAt: { $gte: new Date(now.getTime() - DAY) },
-			})
-			.toArray();
-		for (const r of rejected) {
-			flags.push({
-				scope: r.missionId,
-				label: "Upgrade rejected",
-				detail: r.message,
-			});
-		}
-	}
-
-	return flags;
-}
-
 /** Builds one user's report. Never throws for a missing sample/cap/etc — every field is optional. */
 export async function buildDailyReport(
 	db: Db,
@@ -424,93 +185,6 @@ export async function buildDailyReport(
 	const flags = await computeFlags(db, userId, missions, atlas, yesterday, now);
 
 	return { userId, date, generatedAt: now, missions, atlas, flags };
-}
-
-// ---------------------------------------------------------------------------
-// Render
-// ---------------------------------------------------------------------------
-
-/** Renders a `DailyReport` as plain text for the copilot's mailbox. */
-export function renderDailyReport(report: DailyReport): string {
-	const lines: string[] = [];
-	lines.push(`Daily resource report — ${report.date} (last 24 h)`);
-	lines.push("");
-
-	if (report.flags.length > 0) {
-		lines.push(`FLAGS (${report.flags.length})`);
-		for (const f of report.flags) {
-			lines.push(`  ! ${f.label} [${f.scope}]  ${f.detail}`);
-		}
-	} else {
-		lines.push("FLAGS: none — all clear");
-	}
-	lines.push("");
-
-	if (report.atlas) {
-		const pct = Math.round(
-			(report.atlas.usedBytes / report.atlas.limitBytes) * 100,
-		);
-		const growth =
-			report.atlas.growthBytesPerDay !== undefined
-				? `, +${mb(report.atlas.growthBytesPerDay)} MB/24h`
-				: "";
-		lines.push("PLATFORM");
-		lines.push(
-			`  MongoDB Atlas   ${mb(report.atlas.usedBytes)} / ${mb(report.atlas.limitBytes)} MB (${pct}%)${growth}`,
-		);
-		const top = report.atlas.collections
-			.slice(0, 5)
-			.map((c) => `${c.name} ${mb(c.bytes)} MB`)
-			.join(" · ");
-		if (top) lines.push(`    top collections: ${top}`);
-		lines.push("");
-	}
-
-	lines.push("MISSIONS");
-	if (report.missions.length === 0) {
-		lines.push("  (none)");
-	}
-	for (const m of report.missions) {
-		const cap =
-			m.llmCapUsd !== undefined ? ` / $${m.llmCapUsd.toFixed(2)}` : "";
-		const disk =
-			m.diskUsedBytes !== undefined && m.diskTotalBytes !== undefined
-				? `${gb(m.diskUsedBytes)} / ${gb(m.diskTotalBytes)} GB`
-				: "no sample";
-		const activity = m.lastActivityAt
-			? minutesAgo(m.lastActivityAt, report.generatedAt)
-			: "never";
-		lines.push(
-			`  ${m.missionId} (${m.status})  LLM 24h $${m.llm24hUsd.toFixed(2)}  total $${m.llmTotalUsd.toFixed(2)}${cap}  machine ${formatShape(m.shape)}${m.upgraded ? " [upgraded]" : ""}  upgraded ${hours(m.upgradedMsSinceReset)}h / ${hours(m.upgradedCapMs)}h cap  disk ${disk}  last activity ${activity}`,
-		);
-	}
-
-	const totalUpgradedMs24h = report.missions.reduce(
-		(sum, m) => sum + m.upgradedMs24h,
-		0,
-	);
-	const active = report.missions.filter((m) => m.upgraded);
-	if (totalUpgradedMs24h > 0 || active.length > 0) {
-		lines.push("");
-		lines.push("UPGRADES (ADR-0031 dataset)");
-		lines.push(
-			`  Total upgraded time in the last 24h: ${hours(totalUpgradedMs24h)}h`,
-		);
-		for (const m of active) {
-			const expiresIn = m.activeUpgradeExpiresAt
-				? Math.round(
-						(m.activeUpgradeExpiresAt.getTime() -
-							report.generatedAt.getTime()) /
-							60_000,
-					)
-				: undefined;
-			lines.push(
-				`  Active now: ${m.missionId} (${formatShape(m.shape)})${expiresIn !== undefined ? `, expires in ${expiresIn} min` : ""}`,
-			);
-		}
-	}
-
-	return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
