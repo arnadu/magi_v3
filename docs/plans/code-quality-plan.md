@@ -435,4 +435,17 @@ independent once step 1 is done.
   `postMailbox`, CLAUDE.md's collection list missed six collections (now tested). T9 20 → 14.
   Deviation: single-module collections are not moved (their types depend on module-local domain
   types such as the objectives fold); the zod 3/4 split is untouched (types only).
+- 2026-10-19 — **Step 1 gate passed**: integration 219/219 (one LLM-timing flake in
+  `tool-api-news-digest`, green on rerun). Pushed.
+- 2026-10-19 — **Step 5 mostly done**: cockpit `data.ts` → `src/api/` (12 modules), `App.tsx`
+  814 → 79 lines (app-hooks, Header, HomeView, MissionDashboard, TabBar; off the complexity
+  exemptions), `TracePanel.tsx` 935 → 113 with `src/trace/` (pure geometry with tests,
+  `useZoomBrush`, one file per chart piece, nothing over 120 lines), `useApiResource` (Schedule and
+  Runtime adopt it), cockpit coverage floors on its pure modules. Not yet verified in a browser.
+- 2026-10-19 — **Step 2 code done**: `runAgent` 449 → ~120 lines over `TurnState`
+  (`agent-runner-turn.ts`); fix: the conversation-recovery retry's outcome is now the turn's
+  outcome (it was discarded). `runOrchestrationLoop` 419 → ~60 lines (`orchestrator-setup.ts`,
+  `Dispatcher` class). Characterization tests first (10 + 3), unchanged across the refactor.
+  Both files off the structure allowlist and the complexity exemptions (32 → 29). Worker and
+  control-plane coverage floors still to be raised from CI's numbers (local runs measure higher).
 
