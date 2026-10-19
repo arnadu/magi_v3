@@ -32,7 +32,7 @@ function readMissionLogTool(deps: MissionCopilotToolDeps): MagiTool {
 }
 
 function readFileHistoryTool(deps: MissionCopilotToolDeps): MagiTool {
-	const { sharedDir, monitorGet } = deps;
+	const { monitorGet } = deps;
 	return {
 		name: "ReadFileHistory",
 		description:
@@ -52,7 +52,7 @@ function readFileHistoryTool(deps: MissionCopilotToolDeps): MagiTool {
 }
 
 function readSharedFileTool(deps: MissionCopilotToolDeps): MagiTool {
-	const { sharedDir, monitorGet } = deps;
+	const { monitorGet } = deps;
 	return {
 		name: "ReadSharedFile",
 		description:
