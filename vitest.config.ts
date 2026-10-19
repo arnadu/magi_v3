@@ -32,7 +32,8 @@ export default defineConfig({
 			// developer machine and the runner (tests that skip without pool users or
 			// setfacl) — `autoUpdate` wrote a local maximum here once and CI then failed
 			// by 0.06 points. Raise them deliberately after a sprint's tests land
-			// (read the numbers off the CI `verify` job); a drop fails `npm run verify`;
+			// (the CI `verify` job prints per-package totals after the coverage run —
+			// scripts/audit/coverage-totals.mjs); a drop fails `npm run verify`;
 			// lowering one is the visible escape hatch (e.g. deleting well-covered
 			// code), never a `?? default`.
 			thresholds: {
@@ -43,24 +44,24 @@ export default defineConfig({
 				"packages/control-plane/src/{spend-policy,auth-limiter,copilot-spend,usage-queries}.ts":
 					{ statements: 90 },
 				"packages/cockpit/src/**": {
-					statements: 97.6,
-					branches: 90.9,
+					statements: 97.8,
+					branches: 91,
 					functions: 89,
 				},
 				"packages/agent-config/src/**": {
-					statements: 93,
-					branches: 92,
-					functions: 87,
+					statements: 95.4,
+					branches: 95.4,
+					functions: 91,
 				},
 				"packages/agent-runtime-worker/src/**": {
-					statements: 51.5,
-					branches: 81.3,
-					functions: 70.1,
+					statements: 61.7,
+					branches: 82.6,
+					functions: 78.2,
 				},
 				"packages/control-plane/src/**": {
-					statements: 47.2,
-					branches: 87.5,
-					functions: 73,
+					statements: 57.6,
+					branches: 88.6,
+					functions: 74.8,
 				},
 			},
 		},

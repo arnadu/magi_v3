@@ -62,7 +62,6 @@
 				"packages/agent-runtime-worker/tests/fetch-share.integration.test.ts",
 				"packages/agent-runtime-worker/tests/multi-agent.integration.test.ts",
 				"packages/agent-runtime-worker/tests/skills.integration.test.ts",
-				"packages/cockpit/src/CopilotPanel.tsx",
 				"packages/cockpit/src/FilesPanel.tsx",
 				"packages/cockpit/src/Markdown.tsx",
 				"packages/control-plane/src/copilot-daemon.ts",
