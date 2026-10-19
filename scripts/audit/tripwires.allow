@@ -25,7 +25,7 @@ T8b-swallowed-promise close\(\)\.catch\(\(\) # closing a change stream, browser 
 T9-escape-hatches ^[^:]+:[0-9]+:[[:space:]]*(/?\*|//) # prose in comments ("as any other agent"), not a cast (remyh, 2026-10-19)
 T9-escape-hatches ^packages/agent-runtime-worker/src/models\.ts:[0-9]+:.*getBuiltinModel # pi-ai types the id as its generated literal union; runtime OpenRouter ids are arbitrary (remyh, 2026-10-19)
 T9-escape-hatches ^packages/agent-runtime-worker/src/daemon-boot/log-tee\.ts: # replacing process.stdout/stderr.write, whose overloads a wrapper cannot restate (remyh, 2026-10-19)
-T9-escape-hatches ^packages/agent-runtime-worker/src/document-processor\.ts:[0-9]+:.*(ArrayBuffer|mammoth) # library typings: exceljs takes a Buffer at runtime, mammoth omits convertToMarkdown (remyh, 2026-10-19)
+T9-escape-hatches ^packages/agent-runtime-worker/src/document-office\.ts:[0-9]+:.*(ArrayBuffer|mammoth) # library typings: exceljs takes a Buffer at runtime, mammoth omits convertToMarkdown (remyh, 2026-10-19)
 T9-escape-hatches ^packages/agent-runtime-worker/src/objectives/repository\.ts:[0-9]+:.*as[[:space:]]unknown[[:space:]]as[[:space:]]E # one events collection, typed per kind by the caller (remyh, 2026-10-19)
 T10-optional-cap ^packages/agent-config/src/loader\.ts:[0-9]+:[[:space:]]*maxCostUsd: # the ADR-0034 default is applied at every creation site; optional so stored/legacy configs still parse (remyh, 2026-10-19)
 T11-comment-history maxcount=107 # INV-9: shrinks as comments are touched; no bulk rewrite (remyh, 2026-10-16)
