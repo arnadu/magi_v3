@@ -13,14 +13,18 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AgentConfig } from "@magi/agent-config";
+import {
+	type AgentConfig,
+	type ScheduledMessageDoc,
+	storedCollection,
+} from "@magi/agent-config";
 import {
 	createMongoAnomalyRecorder,
 	createMongoMailboxRepository,
 	MISSION_COPILOT_AGENT_ID,
 } from "@magi/agent-runtime-worker";
 import cronParser from "cron-parser";
-import type { Collection, Db } from "mongodb";
+import type { Collection, Db, WithId } from "mongodb";
 import { schedule } from "node-cron";
 import { getMachineState } from "./fly-machines.js";
 import { wakeTracked } from "./machine-lifecycle.js";
@@ -39,31 +43,6 @@ const { parseExpression } = cronParser;
  * again on the next minute's tick.
  */
 const MAX_DELIVERY_ATTEMPTS = 5;
-
-interface ScheduledMessageDoc {
-	_id: unknown;
-	missionId: string;
-	to: string[];
-	subject: string;
-	body: string;
-	deliverAt: Date;
-	cron?: string;
-	label?: string;
-	/**
-	 * Absent or "message": deliver to the mailbox. "job" (ADR-0033 §3, written
-	 * only by the daemon's schedule ingestion from `shared/schedules/`): no
-	 * mail — stamp `pendingFire` and wake the machine; the mission daemon turns
-	 * the stamp into a background job. Overwriting the stamp coalesces the
-	 * occurrences a long-suspended mission missed into one.
-	 */
-	kind?: "message" | "job";
-	pendingFire?: { dueAt: Date; requestedAt: Date };
-	status: "pending" | "delivering" | "delivered" | "cancelled" | "failed";
-	/** Set when a tick claims the entry; a stale claim is re-opened after DELIVERY_LEASE_MS. */
-	claimedAt?: Date;
-	deliveredAt?: Date;
-	deliveryAttempts?: number;
-}
 
 interface MissionDoc {
 	_id: unknown;
@@ -89,7 +68,7 @@ interface MissionDoc {
 async function recordSchedulingFailure(
 	db: Db,
 	missionsCol: Collection<MissionDoc>,
-	doc: ScheduledMessageDoc,
+	doc: WithId<ScheduledMessageDoc>,
 	message: string,
 ): Promise<void> {
 	const mission = await missionsCol.findOne({ missionId: doc.missionId });
@@ -193,7 +172,7 @@ async function reopenStaleLeases(
  */
 async function deliverToMailbox(
 	mailboxCol: Collection<Record<string, unknown>>,
-	doc: ScheduledMessageDoc,
+	doc: WithId<ScheduledMessageDoc>,
 ): Promise<void> {
 	await mailboxCol.insertOne({
 		id: randomUUID(),
@@ -211,7 +190,7 @@ async function deliverToMailbox(
 }
 
 async function deliverAll(db: Db): Promise<void> {
-	const scheduledCol = db.collection<ScheduledMessageDoc>("scheduled_messages");
+	const scheduledCol = storedCollection(db, "scheduledMessages");
 	const mailboxCol = db.collection<Record<string, unknown>>("mailbox");
 	const missionsCol = db.collection<MissionDoc>("missions");
 

@@ -1,3 +1,4 @@
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { RouteEntry } from "./types.js";
 
@@ -14,16 +15,7 @@ export function createScheduleRoutes(deps: ScheduleRoutesDeps): RouteEntry[] {
 			method: "GET",
 			path: "/schedule",
 			async handler({ res }) {
-				// Field names must match ScheduledMessageDoc (scheduler.ts) exactly:
-				// pending/delivered/cancelled/failed status, deliverAt (Date, doubles
-				// as "next fire time" for cron entries too — scheduler.ts re-arms a
-				// delivered cron doc by writing its next occurrence back into this
-				// same field), optional cron expression string. The previous version
-				// read cronExpression/scheduledFor and filtered on deliveredAt — none
-				// of which are real fields on this collection, so every row always
-				// came back with a blank "when" column.
-				const docs = await deps.db
-					.collection("scheduled_messages")
+				const docs = await storedCollection(deps.db, "scheduledMessages")
 					.find({ missionId: deps.missionId, status: "pending" })
 					.sort({ deliverAt: 1 })
 					.limit(50)
@@ -33,12 +25,10 @@ export function createScheduleRoutes(deps: ScheduleRoutesDeps): RouteEntry[] {
 					JSON.stringify(
 						docs.map((d) => ({
 							id: String(d._id),
-							to: d.to ?? [],
-							subject: d.subject ?? "",
+							to: d.to,
+							subject: d.subject,
 							cronExpression: d.cron ?? null,
-							scheduledFor: d.deliverAt
-								? new Date(d.deliverAt).toISOString()
-								: null,
+							scheduledFor: d.deliverAt.toISOString(),
 						})),
 					),
 				);

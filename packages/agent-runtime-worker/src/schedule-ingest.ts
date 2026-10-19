@@ -42,7 +42,13 @@ import {
 	readdirSync,
 } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import type { TeamConfig } from "@magi/agent-config";
+import {
+	SCHEDULE_ORIGIN,
+	type ScheduledJobSpec,
+	type ScheduledMessageDoc,
+	storedCollection,
+	type TeamConfig,
+} from "@magi/agent-config";
 import type { Collection, Db } from "mongodb";
 import type { AnomalyRecorder } from "./anomaly.js";
 import type { JobSpec } from "./job-recovery.js";
@@ -51,7 +57,6 @@ import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { resolveDeliverAt } from "./mission-copilot-schedule-input.js";
 import { readInside } from "./safe-path.js";
 
-export const SCHEDULE_ORIGIN = "shared-schedules" as const;
 /** File stem = label. Lower-case slug so it is safe as a label, a job-id prefix and a path component. */
 export const SCHEDULE_LABEL_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 export const SCHEDULES_DIRNAME = "schedules";
@@ -60,39 +65,6 @@ const MAX_SCHEDULE_FILE_BYTES = 64 * 1024;
 export const MAX_JOB_FIRE_LATENESS_MS = 6 * 3600_000;
 const MAX_ARGS = 64;
 const MAX_ARG_LEN = 4096;
-
-export interface ScheduledJobSpec {
-	agentId: string;
-	scriptPath: string;
-	args: string[];
-	notifyAgentId?: string;
-	notifySubject?: string;
-}
-
-/** The fields ingestion owns on a `scheduled_messages` document. */
-export interface ScheduleDoc {
-	_id?: unknown;
-	missionId: string;
-	origin: typeof SCHEDULE_ORIGIN;
-	label: string;
-	kind: "message" | "job";
-	to?: string[];
-	subject?: string;
-	body?: string;
-	jobSpec?: ScheduledJobSpec;
-	cron: string;
-	specHash: string;
-	/** The agent that owns the file (uid attribution), never a field from the file. */
-	createdBy: string;
-	deliverAt: Date;
-	status: "pending" | "delivering" | "delivered" | "cancelled" | "failed";
-	deliveryAttempts: number;
-	pendingFire?: { dueAt: Date; requestedAt: Date };
-	lastFiredAt?: Date;
-	createdAt: Date;
-	updatedAt: Date;
-	cancelledAt?: Date;
-}
 
 export interface ScheduleIngestDeps {
 	sharedDir: string;
@@ -125,7 +97,7 @@ export interface FireSummary {
 
 /** Partial unique index so two ticks (or a crash mid-insert) cannot create two documents for one label. */
 export async function ensureScheduleIndexes(db: Db): Promise<void> {
-	await db.collection("scheduled_messages").createIndex(
+	await storedCollection(db, "scheduledMessages").createIndex(
 		{ missionId: 1, origin: 1, label: 1 },
 		{
 			unique: true,
@@ -307,7 +279,7 @@ interface IngestContext {
 	deps: ScheduleIngestDeps;
 	now: () => Date;
 	log: (line: string) => void;
-	col: Collection<ScheduleDoc>;
+	col: Collection<ScheduledMessageDoc>;
 	roster: ReadonlySet<string>;
 	/** file → last reported refusal, so a persistently bad file is reported once, not every minute. */
 	reported: Map<string, string>;
@@ -537,7 +509,8 @@ async function claimJobFires(ctx: IngestContext): Promise<FireSummary> {
 		.find({ ...ctx.base, kind: "job", pendingFire: { $exists: true } })
 		.toArray();
 	for (const doc of docs) {
-		if (!doc.pendingFire || !doc.jobSpec) continue;
+		// Imported documents always carry a label (the file stem); the check narrows the type.
+		if (doc.kind !== "job" || !doc.pendingFire || !doc.label) continue;
 		const dueAt = new Date(doc.pendingFire.dueAt);
 		const at = ctx.now();
 		const lateMs = at.getTime() - dueAt.getTime();
@@ -583,7 +556,7 @@ export function createScheduleIngestor(deps: ScheduleIngestDeps): {
 		deps,
 		now: deps.now ?? (() => new Date()),
 		log: deps.log ?? ((line: string) => console.log(line)),
-		col: deps.db.collection("scheduled_messages"),
+		col: storedCollection(deps.db, "scheduledMessages"),
 		roster: new Set<string>([
 			...deps.teamConfig.agents.map((a) => a.id),
 			"user",

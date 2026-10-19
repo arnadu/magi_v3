@@ -6,6 +6,7 @@
  * occurrence (SCHED3), and "nothing was pending" is a failure, not a success.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import cronParser from "cron-parser";
 import { type Db, ObjectId } from "mongodb";
 import type { ActionPayload } from "./copilot-actions.js";
@@ -18,18 +19,13 @@ interface MissionOwnerDoc {
 	agents?: Array<{ id: string }>;
 }
 
-interface ScheduledMessageDoc {
-	missionId: string;
-	status: string;
-}
-
 export async function executeCancelSchedule(
 	db: Db,
 	payload: ActionPayload<"cancel_schedule">,
 	userId: string,
 ): Promise<string> {
 	const missions = db.collection<MissionOwnerDoc>("missions");
-	const scheduled = db.collection<ScheduledMessageDoc>("scheduled_messages");
+	const scheduled = storedCollection(db, "scheduledMessages");
 	const oid = new ObjectId(payload.id);
 	const doc = await scheduled.findOne({ _id: oid });
 	const owned =
@@ -73,7 +69,7 @@ export async function executeCreateSchedule(
 		: parseExpression(p.cron as string)
 				.next()
 				.toDate();
-	const r = await db.collection("scheduled_messages").insertOne({
+	const r = await storedCollection(db, "scheduledMessages").insertOne({
 		missionId: p.missionId,
 		to: p.to,
 		subject: p.subject,

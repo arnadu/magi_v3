@@ -29,7 +29,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AgentConfig, Limits, TeamConfig } from "@magi/agent-config";
+import {
+	type AgentConfig,
+	type Limits,
+	type ScheduledMessageDoc,
+	storedCollection,
+	type TeamConfig,
+} from "@magi/agent-config";
 import {
 	createMongoMissionConfigWriter,
 	createMongoObjectivesRepository,
@@ -40,7 +46,7 @@ import {
 	UPGRADE_LIMITS,
 } from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
-import type { Db } from "mongodb";
+import type { Db, Filter } from "mongodb";
 import {
 	ActionValidationError,
 	describeActions,
@@ -99,18 +105,6 @@ interface MissionDoc {
 	};
 	/** Set by the operator-only reset route; upgraded time before it no longer counts against the cap. */
 	upgradedRuntimeResetAt?: Date;
-}
-
-interface ScheduledMessageDoc {
-	_id: unknown;
-	missionId: string;
-	to: string[];
-	subject: string;
-	body: string;
-	deliverAt: Date;
-	cron?: string;
-	label?: string;
-	status: "pending" | "delivered" | "cancelled";
 }
 
 // ---------------------------------------------------------------------------
@@ -404,7 +398,7 @@ export function createCopilotTools(
 			// queries only the caller's own mission IDs (matching ListMissions),
 			// since ScheduledMessageDoc itself carries no userId to filter on
 			// directly.
-			let filter: Record<string, unknown>;
+			let filter: Filter<ScheduledMessageDoc>;
 			if (missionId) {
 				const mission = await db
 					.collection<MissionDoc>("missions")
@@ -420,15 +414,14 @@ export function createCopilotTools(
 				).map((m) => m.missionId);
 				filter = { missionId: { $in: ownedMissionIds } };
 			}
-			const docs = await db
-				.collection<ScheduledMessageDoc>("scheduled_messages")
+			const docs = await storedCollection(db, "scheduledMessages")
 				.find(filter, { sort: { deliverAt: 1 } })
 				.toArray();
 			if (docs.length === 0) return ok("(no scheduled messages)");
 			const rows = docs
 				.map(
 					(d) =>
-						`[${d._id}] ${d.missionId} | ${d.status} | ${(d.deliverAt as Date).toISOString()} | ${d.subject}`,
+						`[${d._id}] ${d.missionId} | ${d.status} | ${d.deliverAt.toISOString()} | ${d.subject}`,
 				)
 				.join("\n");
 			return ok(rows);

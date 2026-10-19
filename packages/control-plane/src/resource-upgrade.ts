@@ -18,6 +18,7 @@
  * requesting daemon is stopped by the resize itself.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import {
 	createMongoAlertStateStore,
 	createMongoAnomalyRecorderForMission,
@@ -201,7 +202,7 @@ async function scheduleReminder(
 		...(upgrade.requestedByAgentId ? [upgrade.requestedByAgentId] : []),
 	];
 	try {
-		const r = await db.collection("scheduled_messages").insertOne({
+		const r = await storedCollection(db, "scheduledMessages").insertOne({
 			missionId: mission.missionId,
 			to,
 			subject: "Machine upgrade expires soon",
@@ -225,8 +226,7 @@ async function cancelReminder(
 	reminderId: string | undefined,
 ): Promise<void> {
 	if (!reminderId || !ObjectId.isValid(reminderId)) return;
-	await db
-		.collection("scheduled_messages")
+	await storedCollection(db, "scheduledMessages")
 		.deleteOne({ _id: new ObjectId(reminderId), missionId })
 		.catch((e: unknown) =>
 			console.error(

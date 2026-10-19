@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { storedCollection } from "@magi/agent-config";
 import { ObjectId } from "mongodb";
 import { createLogOnlyMeter } from "../llm-meter.js";
 import { MonitorServer } from "../monitor-server.js";
@@ -86,9 +87,10 @@ export async function startMonitorServer(
 			// leaked from another mission) could cancel a different mission's
 			// scheduled message — the same missing-scope bug class Track 1
 			// fixed for the control-plane copilot's B1 tools, found here too.
-			await ctx.db
-				.collection("scheduled_messages")
-				.deleteOne({ _id: new ObjectId(id), missionId: ctx.missionId });
+			await storedCollection(ctx.db, "scheduledMessages").deleteOne({
+				_id: new ObjectId(id),
+				missionId: ctx.missionId,
+			});
 		},
 		workspaceGit,
 	);

@@ -8,6 +8,7 @@
 
 import { unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { SCHEDULE_ORIGIN, storedCollection } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import { type Db, ObjectId } from "mongodb";
 import {
@@ -15,7 +16,7 @@ import {
 	scheduleInputProblem,
 } from "./mission-copilot-schedule-input.js";
 import { err, okJson } from "./mission-copilot-tool-result.js";
-import { SCHEDULE_ORIGIN, SCHEDULES_DIRNAME } from "./schedule-ingest.js";
+import { SCHEDULES_DIRNAME } from "./schedule-ingest.js";
 import type { MagiTool } from "./tools.js";
 
 interface ScheduleToolDeps {
@@ -67,7 +68,7 @@ function createScheduledMessageTool({
 			const when = resolveDeliverAt(args.deliverAt as string | undefined, cron);
 			if ("error" in when) return err(`CreateScheduledMessage: ${when.error}`);
 			const deliverAt = when.deliverAt;
-			const result = await db.collection("scheduled_messages").insertOne({
+			const result = await storedCollection(db, "scheduledMessages").insertOne({
 				missionId,
 				to,
 				subject,
@@ -109,12 +110,7 @@ function cancelScheduledMessageTool({
 			} catch {
 				return err(`"${scheduleId}" is not a valid scheduled message id`);
 			}
-			const col = db.collection<{
-				_id: ObjectId;
-				missionId: string;
-				origin?: string;
-				label?: string;
-			}>("scheduled_messages");
+			const col = storedCollection(db, "scheduledMessages");
 			const existing = await col.findOne({ _id: objectId, missionId });
 			if (!existing) {
 				return err(
@@ -164,8 +160,7 @@ function listScheduledMessagesTool({
 		description: "List this mission's pending scheduled wakeups.",
 		parameters: Type.Object({}),
 		async execute() {
-			const docs = await db
-				.collection("scheduled_messages")
+			const docs = await storedCollection(db, "scheduledMessages")
 				.find({ missionId, status: "pending" })
 				.sort({ deliverAt: 1 })
 				.limit(50)
@@ -174,10 +169,10 @@ function listScheduledMessagesTool({
 				docs.map((d) => ({
 					id: String(d._id),
 					kind: d.kind ?? "message",
-					to: d.to ?? [],
-					subject: d.subject ?? "",
+					to: d.to,
+					subject: d.subject,
 					cron: d.cron ?? null,
-					deliverAt: d.deliverAt ?? null,
+					deliverAt: d.deliverAt,
 					label: d.label ?? null,
 					// "shared-schedules": defined by a file an agent wrote with the
 					// schedule-task or run-background skill; cancelling removes that file.

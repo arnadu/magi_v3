@@ -17,6 +17,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TeamConfig } from "@magi/agent-config";
+import { SCHEDULE_ORIGIN, type ScheduledMessageDoc } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AnomalyRecorder, MissionAnomaly } from "../src/anomaly.js";
@@ -25,8 +26,6 @@ import {
 	createScheduleIngestor,
 	jobFireId,
 	MAX_JOB_FIRE_LATENESS_MS,
-	SCHEDULE_ORIGIN,
-	type ScheduleDoc,
 	type ScheduleIngestDeps,
 } from "../src/schedule-ingest.js";
 
@@ -125,7 +124,7 @@ function fakeDb() {
 		},
 	};
 	const db = { collection: () => collection } as unknown as Db;
-	return { db, docs: docs as unknown as ScheduleDoc[] };
+	return { db, docs: docs as unknown as ScheduledMessageDoc[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +296,7 @@ describe("ingest — refusals (uid attribution and validation)", () => {
 		label: string,
 		spec: unknown,
 		uid: number,
-	): Promise<{ rejected: string[]; docs: ScheduleDoc[] }> {
+	): Promise<{ rejected: string[]; docs: ScheduledMessageDoc[] }> {
 		const { db, docs } = fakeDb();
 		const deps = makeDeps(db);
 		writeSchedule(label, spec, uid);
@@ -404,7 +403,7 @@ describe("ingest — refusals (uid attribution and validation)", () => {
 describe("claimJobFires", () => {
 	async function seedJob(
 		db: Db,
-		docs: ScheduleDoc[],
+		docs: ScheduledMessageDoc[],
 		dueAt: Date,
 	): Promise<ReturnType<typeof createScheduleIngestor>> {
 		const deps = makeDeps(db);
