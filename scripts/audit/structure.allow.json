@@ -123,12 +123,6 @@
 			"execute@396": 140
 		}
 	},
-	"packages/cockpit/src/App.tsx": {
-		"lines": 813,
-		"fns": {
-			"App@520": 295
-		}
-	},
 	"packages/cockpit/src/ConfigPanel.tsx": {
 		"lines": 499,
 		"fns": {
