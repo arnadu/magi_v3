@@ -148,12 +148,6 @@
 			"MissionsPanel@347": 157
 		}
 	},
-	"packages/cockpit/src/TemplatesPanel.tsx": {
-		"lines": 131,
-		"fns": {
-			"TemplatesPanel@10": 121
-		}
-	},
 	"packages/cockpit/src/TranscriptsPanel.tsx": {
 		"lines": 404,
 		"fns": {

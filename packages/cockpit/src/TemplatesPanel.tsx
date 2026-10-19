@@ -90,41 +90,53 @@ export function TemplatesPanel({
 					<p className="error-msg">Could not load this template.</p>
 				)}
 				{detail && detail !== "error" && (
-					<>
-						<div className="template-detail-header">
-							<h3>{detail.name}</h3>
-							<button
-								type="button"
-								className="btn-primary"
-								onClick={() => onLaunch(detail.id)}
-							>
-								Launch
-							</button>
-						</div>
-						<dl className="template-meta">
-							<dt>Model</dt>
-							<dd>{detail.config.mission.model ?? "default"}</dd>
-							<dt>Agents</dt>
-							<dd>{detail.config.agents.length}</dd>
-							<dt>Files</dt>
-							<dd>{detail.teamFiles.length}</dd>
-						</dl>
-						<h4 className="template-roster-title">Roster</h4>
-						<ul className="template-roster">
-							{detail.config.agents.map((a) => (
-								<li key={a.id}>
-									<span className="template-agent-name">{a.name ?? a.id}</span>
-									{a.role && <span className="mut"> — {a.role}</span>}
-									<span className="mut template-agent-supervisor">
-										{" "}
-										reports to {a.supervisor}
-									</span>
-								</li>
-							))}
-						</ul>
-					</>
+					<TemplateDetailView detail={detail} onLaunch={onLaunch} />
 				)}
 			</div>
 		</main>
+	);
+}
+
+function TemplateDetailView({
+	detail,
+	onLaunch,
+}: {
+	detail: TemplateDetail;
+	onLaunch: (templateId: string) => void;
+}) {
+	return (
+		<>
+			<div className="template-detail-header">
+				<h3>{detail.name}</h3>
+				<button
+					type="button"
+					className="btn-primary"
+					onClick={() => onLaunch(detail.id)}
+				>
+					Launch
+				</button>
+			</div>
+			<dl className="template-meta">
+				<dt>Model</dt>
+				<dd>{detail.config.mission.model ?? "default"}</dd>
+				<dt>Agents</dt>
+				<dd>{detail.config.agents.length}</dd>
+				<dt>Files</dt>
+				<dd>{detail.teamFiles.length}</dd>
+			</dl>
+			<h4 className="template-roster-title">Roster</h4>
+			<ul className="template-roster">
+				{detail.config.agents.map((a) => (
+					<li key={a.id}>
+						<span className="template-agent-name">{a.name ?? a.id}</span>
+						{a.role && <span className="mut"> — {a.role}</span>}
+						<span className="mut template-agent-supervisor">
+							{" "}
+							reports to {a.supervisor}
+						</span>
+					</li>
+				))}
+			</ul>
+		</>
 	);
 }
