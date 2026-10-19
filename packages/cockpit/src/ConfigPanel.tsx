@@ -1,17 +1,12 @@
-import { html as htmlLang } from "@codemirror/lang-html";
-import CodeMirror from "@uiw/react-codemirror";
-import { useEffect, useRef, useState } from "react";
-import { AgentToggles } from "./AgentToggles";
+import { availableSkills } from "./available-skills";
+import { ConfigAgentForm } from "./ConfigAgentForm";
+import { ConfigMissionFields } from "./ConfigMissionFields";
 import {
-	fetchMissionConfig,
-	fetchMissionStatus,
-	fetchMissionUpdatedAt,
-	type MissionConfigAgent,
-	type MissionConfigData,
-	type MissionStatusValue,
-	saveMissionConfig,
-} from "./data";
+	CopilotConfigView,
+	MISSION_COPILOT_AGENT_ID,
+} from "./CopilotConfigView";
 import { useCatalog } from "./use-catalog";
+import { useMissionConfigEditor } from "./use-mission-config-editor";
 
 /**
  * Ported from index.html's renderConfigForm/renderAgentPane/saveConfig.
@@ -41,155 +36,25 @@ import { useCatalog } from "./use-catalog";
  * LLM's judgment.
  */
 
-/** Not a real roster entry — injected in-memory at daemon startup (ADR-0016), never in mission.agents. */
-const MISSION_COPILOT_AGENT_ID = "mission-copilot";
-
-export function availableSkills(
-	platformSkills: string[],
-	teamFiles: Array<{ path: string }>,
-): string[] {
-	const team = teamFiles
-		.map((f) => {
-			const m = f.path.match(/^skills\/([^/]+)\/SKILL\.md$/);
-			return m ? m[1] : null;
-		})
-		.filter((s): s is string => s !== null);
-	return [...new Set([...platformSkills, ...team])];
-}
-
-function orUndef(v: string): string | undefined {
-	const s = v.trim();
-	return s === "" ? undefined : s;
-}
-
-/**
- * Mental map viewer/editor — syntax-highlighted HTML source by default (never
- * executed, safe regardless of content), with an opt-in "Preview" toggle that
- * renders it in a sandboxed iframe. Same trust boundary FilesPanel's `.html`
- * viewer already uses for agent-authored (possibly web-influenced, TB-8)
- * HTML: no `allow-same-origin` on the sandbox, so even literal `<script>`
- * content can't read cookies or call the API with the operator's session.
- * `key={agentId}` at the call site remounts this fresh per agent, so the
- * view always resets to source when switching tabs.
- */
-export function MentalMapEditor({
-	html,
-	onChange,
-	editable,
-}: {
-	html: string;
-	onChange: (html: string) => void;
-	editable: boolean;
-}) {
-	const [view, setView] = useState<"source" | "rendered">("source");
-	// Applied imperatively on the DOM node, not via a React style prop — the
-	// native resize handle (below) also sets this element's inline height
-	// directly on drag, and a React-controlled style prop would fight it,
-	// snapping back to whatever this component last rendered on the very next
-	// keystroke's re-render.
-	const [expanded, setExpanded] = useState(false);
-	const wrapperRef = useRef<HTMLDivElement>(null);
-
-	function toggleExpanded() {
-		const next = !expanded;
-		setExpanded(next);
-		if (wrapperRef.current) {
-			wrapperRef.current.style.height = next ? "600px" : "220px";
-		}
-	}
-
-	return (
-		<div className="config-mentalmap">
-			<div className="config-mentalmap-toolbar">
-				<button type="button" className="rail-btn" onClick={toggleExpanded}>
-					{expanded ? "⤡ Collapse" : "⤢ Expand"}
-				</button>
-				<button
-					type="button"
-					className="rail-btn"
-					onClick={() =>
-						setView((v) => (v === "rendered" ? "source" : "rendered"))
-					}
-				>
-					{view === "rendered" ? "</> Source" : "👁 Preview"}
-				</button>
-			</div>
-			<div className="config-mentalmap-resizable" ref={wrapperRef}>
-				{view === "rendered" ? (
-					<iframe
-						className="config-mentalmap-frame"
-						title="Mental map preview"
-						srcDoc={html}
-						sandbox="allow-scripts"
-					/>
-				) : (
-					<CodeMirror
-						value={html}
-						extensions={[htmlLang()]}
-						readOnly={!editable}
-						onChange={onChange}
-						height="100%"
-					/>
-				)}
-			</div>
-		</div>
-	);
-}
-
 export function ConfigPanel({ missionId }: { missionId: string | null }) {
 	const { catalog } = useCatalog();
-	const [config, setConfig] = useState<MissionConfigData | "error" | null>(
-		null,
-	);
-	const [status, setStatus] = useState<MissionStatusValue | null>(null);
-	const [missionDraft, setMissionDraft] = useState({
-		name: "",
-		model: "",
-		visionModel: "",
-		timezone: "",
-	});
-	const [agentsDraft, setAgentsDraft] = useState<MissionConfigAgent[]>([]);
-	const [mentalMapDrafts, setMentalMapDrafts] = useState<
-		Record<string, string>
-	>({});
-	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-	const [saving, setSaving] = useState(false);
-	const [saveError, setSaveError] = useState<string | null>(null);
-	const [saved, setSaved] = useState(false);
-	/** updatedAt as loaded — sent with the save so a stale tab cannot overwrite a newer config. */
-	const loadedUpdatedAtRef = useRef<string | null>(null);
-
-	useEffect(() => {
-		if (!missionId) return;
-		let cancelled = false;
-		setConfig(null);
-		Promise.all([
-			fetchMissionConfig(missionId),
-			fetchMissionStatus(missionId),
-			fetchMissionUpdatedAt(missionId),
-		])
-			.then(([c, s, updatedAt]) => {
-				if (cancelled) return;
-				loadedUpdatedAtRef.current = updatedAt;
-				setConfig(c);
-				setStatus(s);
-				setMissionDraft({
-					name: c.mission.name ?? "",
-					model: c.mission.model ?? "",
-					visionModel: c.mission.visionModel ?? "",
-					timezone: c.mission.timezone ?? "",
-				});
-				setAgentsDraft(c.agents);
-				setMentalMapDrafts({ ...c.mentalMaps });
-				setSelectedAgentId(c.agents[0]?.id ?? null);
-			})
-			.catch(() => {
-				if (!cancelled) setConfig("error");
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [missionId]);
+	const editor = useMissionConfigEditor(missionId);
+	const {
+		config,
+		status,
+		missionDraft,
+		setMissionDraft,
+		agentsDraft,
+		mentalMapDrafts,
+		selectedAgentId,
+		setSelectedAgentId,
+		saving,
+		saveError,
+		saved,
+		updateAgent,
+		updateMentalMap,
+		save: handleSave,
+	} = editor;
 
 	if (!missionId) {
 		return <p className="mut">Select a live mission to see its config.</p>;
@@ -202,51 +67,6 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 	const skills = availableSkills(catalog.platformSkills, config.teamFiles);
 	const selectedAgent = agentsDraft.find((a) => a.id === selectedAgentId);
 
-	function updateAgent(id: string, patch: Partial<MissionConfigAgent>) {
-		setAgentsDraft((prev) =>
-			prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
-		);
-	}
-
-	function updateMentalMap(agentId: string, html: string) {
-		setMentalMapDrafts((prev) => ({ ...prev, [agentId]: html }));
-	}
-
-	async function handleSave() {
-		if (config === null || config === "error" || !missionId) return;
-		setSaving(true);
-		setSaveError(null);
-		setSaved(false);
-		const nextMission = {
-			...config.mission,
-			name: missionDraft.name.trim() ? missionDraft.name : config.mission.name,
-			model: orUndef(missionDraft.model),
-			visionModel: orUndef(missionDraft.visionModel),
-			timezone: orUndef(missionDraft.timezone),
-		};
-		try {
-			await saveMissionConfig(missionId, {
-				mission: nextMission,
-				agents: agentsDraft,
-				// Untouched by this editor (ADR-0022) — round-tripped so the save
-				// can't silently clear either one; the API is a full replace.
-				missionCopilotLimits: config.missionCopilotLimits,
-				teamFiles: config.teamFiles,
-				mentalMaps: mentalMapDrafts,
-				expectedUpdatedAt: loadedUpdatedAtRef.current ?? undefined,
-			});
-			setConfig({ ...config, mission: nextMission, agents: agentsDraft });
-			// Our own write moved updatedAt; re-read it so the next save is not refused.
-			loadedUpdatedAtRef.current = await fetchMissionUpdatedAt(missionId);
-			setSaved(true);
-			setTimeout(() => setSaved(false), 3000);
-		} catch (e) {
-			setSaveError((e as Error).message);
-		} finally {
-			setSaving(false);
-		}
-	}
-
 	return (
 		<div className="config-panel">
 			{!canEdit && (
@@ -255,55 +75,11 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 					{status ?? "unknown"}.
 				</p>
 			)}
-			<div className="config-mission-fields">
-				<div className="create-mission-row">
-					<label htmlFor="cfg-mission-name">Mission name</label>
-					<input
-						id="cfg-mission-name"
-						value={missionDraft.name}
-						disabled={!canEdit}
-						onChange={(e) =>
-							setMissionDraft((d) => ({ ...d, name: e.target.value }))
-						}
-					/>
-				</div>
-				<div className="create-mission-row">
-					<label htmlFor="cfg-mission-model">Model</label>
-					<input
-						id="cfg-mission-model"
-						value={missionDraft.model}
-						disabled={!canEdit}
-						placeholder="(deployment default)"
-						onChange={(e) =>
-							setMissionDraft((d) => ({ ...d, model: e.target.value }))
-						}
-					/>
-				</div>
-				<div className="create-mission-row">
-					<label htmlFor="cfg-mission-vmodel">Vision model</label>
-					<input
-						id="cfg-mission-vmodel"
-						value={missionDraft.visionModel}
-						disabled={!canEdit}
-						placeholder="(deployment default)"
-						onChange={(e) =>
-							setMissionDraft((d) => ({ ...d, visionModel: e.target.value }))
-						}
-					/>
-				</div>
-				<div className="create-mission-row">
-					<label htmlFor="cfg-mission-tz">Timezone</label>
-					<input
-						id="cfg-mission-tz"
-						value={missionDraft.timezone}
-						disabled={!canEdit}
-						placeholder="e.g. America/New_York"
-						onChange={(e) =>
-							setMissionDraft((d) => ({ ...d, timezone: e.target.value }))
-						}
-					/>
-				</div>
-			</div>
+			<ConfigMissionFields
+				value={missionDraft}
+				canEdit={canEdit}
+				onChange={(patch) => setMissionDraft((d) => ({ ...d, ...patch }))}
+			/>
 
 			<nav className="config-agent-tabs">
 				{agentsDraft.map((a) => (
@@ -326,159 +102,24 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 			</nav>
 
 			{selectedAgent && (
-				<div className="config-agent-form">
-					<div className="agent-id-badge mut">id: {selectedAgent.id}</div>
-					<label className="config-active-row">
-						<input
-							type="checkbox"
-							checked={selectedAgent.active !== false}
-							disabled={!canEdit}
-							onChange={(e) =>
-								updateAgent(selectedAgent.id, { active: e.target.checked })
-							}
-						/>
-						Active — agent participates in dispatch
-					</label>
-					<div className="create-mission-row">
-						<label htmlFor="cfg-agent-name">Name</label>
-						<input
-							id="cfg-agent-name"
-							value={selectedAgent.name ?? ""}
-							disabled={!canEdit}
-							onChange={(e) =>
-								updateAgent(selectedAgent.id, { name: e.target.value })
-							}
-						/>
-					</div>
-					<div className="create-mission-row">
-						<label htmlFor="cfg-agent-model">Model</label>
-						<input
-							id="cfg-agent-model"
-							value={selectedAgent.model ?? ""}
-							disabled={!canEdit}
-							placeholder="(inherits mission model)"
-							onChange={(e) =>
-								updateAgent(selectedAgent.id, { model: e.target.value })
-							}
-						/>
-					</div>
-
-					<div className="config-section-label mut">Supervisor</div>
-					<p className="mut config-readonly-note">
-						Agent id this one reports to — "user" for a top-level agent.
-						{!canEdit &&
-							" Suspend the mission to edit yourself, or ask the mission copilot for a suggested change."}
-					</p>
-					<input
-						value={selectedAgent.supervisor}
-						disabled={!canEdit}
-						onChange={(e) =>
-							updateAgent(selectedAgent.id, { supervisor: e.target.value })
-						}
-					/>
-
-					<div className="config-section-label mut">System prompt</div>
-					<p className="mut config-readonly-note">
-						{canEdit
-							? "Editable while suspended."
-							: "Read-only while running — suspend the mission to edit yourself, or ask the mission copilot for a suggested change."}
-					</p>
-					<textarea
-						className="config-readonly-textarea"
-						value={selectedAgent.systemPrompt}
-						disabled={!canEdit}
-						onChange={(e) =>
-							updateAgent(selectedAgent.id, { systemPrompt: e.target.value })
-						}
-						rows={6}
-					/>
-
-					{selectedAgent.id in mentalMapDrafts ? (
-						<>
-							<div className="config-section-label mut">Mental map</div>
-							<p className="mut config-readonly-note">
-								{canEdit
-									? "Editable while suspended — dropping a daemon-managed section (e.g. objectives sync) is blocked on save."
-									: "Read-only while running — suspend the mission to edit yourself, or ask the mission copilot for a suggested correction."}
-							</p>
-							<MentalMapEditor
-								key={selectedAgent.id}
-								html={mentalMapDrafts[selectedAgent.id]}
-								editable={canEdit}
-								onChange={(next) => updateMentalMap(selectedAgent.id, next)}
-							/>
-						</>
-					) : (
-						<>
-							<div className="config-section-label mut">Mental map</div>
-							<p className="mut config-readonly-note">
-								No live mental map yet — this agent hasn't run this mission.
-							</p>
-						</>
-					)}
-
-					<AgentToggles
-						agent={selectedAgent}
-						skills={skills}
-						tools={catalog.tierATools}
-						disabled={!canEdit}
-						onChange={(patch) => updateAgent(selectedAgent.id, patch)}
-					/>
-				</div>
+				<ConfigAgentForm
+					agent={selectedAgent}
+					canEdit={canEdit}
+					skills={skills}
+					tools={catalog.tierATools}
+					mentalMaps={mentalMapDrafts}
+					onUpdate={(patch) => updateAgent(selectedAgent.id, patch)}
+					onMentalMapChange={updateMentalMap}
+				/>
 			)}
 
 			{selectedAgentId === MISSION_COPILOT_AGENT_ID && (
-				<div className="config-agent-form">
-					<div className="agent-id-badge mut">
-						id: {MISSION_COPILOT_AGENT_ID}
-					</div>
-					<p className="mut config-readonly-note">
-						Injected automatically at daemon startup (ADR-0016) — not part of
-						the authored roster, so name/model/active/skills/tools don't apply
-						here.
-					</p>
-
-					<div className="config-section-label mut">Supervisor</div>
-					<input value="user" disabled />
-
-					<div className="config-section-label mut">System prompt</div>
-					<p className="mut config-readonly-note">
-						Read-only — generated fresh each session from a fixed platform
-						template plus this mission's name and roster, not a stored field.
-					</p>
-					<textarea
-						className="config-readonly-textarea"
-						value={config.missionCopilot.systemPrompt}
-						disabled
-						rows={6}
-					/>
-
-					{MISSION_COPILOT_AGENT_ID in mentalMapDrafts ? (
-						<>
-							<div className="config-section-label mut">Mental map</div>
-							<p className="mut config-readonly-note">
-								{canEdit
-									? "Editable while suspended — dropping a daemon-managed section is blocked on save."
-									: "Read-only while running — suspend the mission to edit."}
-							</p>
-							<MentalMapEditor
-								key={MISSION_COPILOT_AGENT_ID}
-								html={mentalMapDrafts[MISSION_COPILOT_AGENT_ID]}
-								editable={canEdit}
-								onChange={(next) =>
-									updateMentalMap(MISSION_COPILOT_AGENT_ID, next)
-								}
-							/>
-						</>
-					) : (
-						<>
-							<div className="config-section-label mut">Mental map</div>
-							<p className="mut config-readonly-note">
-								No live mental map yet — the copilot hasn't run this mission.
-							</p>
-						</>
-					)}
-				</div>
+				<CopilotConfigView
+					systemPrompt={config.missionCopilot.systemPrompt}
+					canEdit={canEdit}
+					mentalMaps={mentalMapDrafts}
+					onMentalMapChange={updateMentalMap}
+				/>
 			)}
 
 			<div className="config-save-bar">

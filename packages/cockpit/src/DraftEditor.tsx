@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { availableSkills } from "./ConfigPanel";
+import { availableSkills } from "./available-skills";
 import { DraftAgentForm } from "./DraftAgentForm";
 import { DraftMissionFields } from "./DraftMissionFields";
 import { useCatalog } from "./use-catalog";

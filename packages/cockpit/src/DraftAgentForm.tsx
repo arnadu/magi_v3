@@ -1,6 +1,6 @@
 import { AgentToggles } from "./AgentToggles";
-import { MentalMapEditor } from "./ConfigPanel";
 import type { MissionConfigAgent } from "./data";
+import { MentalMapEditor } from "./MentalMapEditor";
 
 type ToggleProps = Parameters<typeof AgentToggles>[0];
 
