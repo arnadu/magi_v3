@@ -121,6 +121,16 @@ Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 
 ### Storage (MongoDB collections)
 
+Every collection's name and canonical document type live in `packages/agent-config/src/stored/`;
+code reaches a collection through `storedCollection(db, key)`, and a test keeps this list in step
+with `COLLECTION_NAMES`.
+
+- `missions` — one doc per mission: owner, structured config (ADR-0021), status, Fly machine/volume ids, spend cap and ceiling
+- `missionConfigRevisions` — history of a mission's structured config, one doc per saved revision
+- `users` — Firebase users seen by the control plane (uid, email, last login)
+- `objectivesGoals` — one doc per mission: the authored objective tree and KPI definitions (ADR-0019)
+- `objectivesEvents` — append-only task, KPI, cost and allocation events the objectives tree is folded from (ADR-0019)
+- `missionAnomalies` — anomalies recorded by the daemon and the control plane (crash, timeout, scheduling failure, resource alerts)
 - `conversationMessages` — full agent conversation history with compaction and reflection
 - `mailbox` — inter-agent and operator messages
 - `llmCallLog` — audit log of every LLM call with cost breakdown

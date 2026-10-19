@@ -9,11 +9,8 @@
  *   TEAM_CONFIG=<yaml> MONGODB_URI=<uri> npm run cli:reset -- --yes        # skip confirmation
  *
  * What is deleted:
- *   MongoDB collections (scoped to missionId):
- *     - mailbox
- *     - conversationMessages
- *     - llmCallLog
- *     - scheduled_messages  (all docs for this mission)
+ *   MongoDB: every collection in PER_MISSION_COLLECTIONS (agent-config/stored),
+ *   scoped to missionId, plus this mission's resourceAlertState entries.
  *
  *   Filesystem (unless --db-only):
  *     - $AGENT_WORKDIR/missions/<missionId>/   (shared dir — briefs, scripts, git repo)
@@ -24,7 +21,11 @@ import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { loadTeamConfig } from "@magi/agent-config";
+import {
+	COLLECTION_NAMES,
+	loadTeamConfig,
+	PER_MISSION_COLLECTIONS,
+} from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
 
 dotenvConfig({
@@ -84,7 +85,7 @@ async function main(): Promise<void> {
 	console.log(`\nMission: ${missionId}`);
 	console.log(`\nMongoDB data to delete (missionId = "${missionId}"):`);
 	console.log(
-		`  mailbox, conversationMessages, llmCallLog, scheduled_messages`,
+		`  ${PER_MISSION_COLLECTIONS.map((k) => COLLECTION_NAMES[k]).join(", ")}, resourceAlertState`,
 	);
 	if (!dbOnly) {
 		console.log(`\nFilesystem paths to delete:`);
@@ -103,36 +104,25 @@ async function main(): Promise<void> {
 	const { client, db } = await connectMongo(mongoUri);
 	try {
 		// Every collection keyed by missionId. Leaving missionStats behind kept
-		// a tripped spend cap tripped after a "full" reset; leaving the turn
-		// stats, objectives, revisions, anomalies and resource samples behind
-		// made the cockpit show a history the mission no longer had.
-		const byMissionId = [
-			"mailbox",
-			"conversationMessages",
-			"llmCallLog",
-			"scheduled_messages",
-			"missionStats",
-			"agentTurnStats",
-			"objectivesGoals",
-			"missionConfigRevisions",
-			"missionAnomalies",
-			"missionResources",
-			"machineSegments",
-		];
+		// a tripped spend cap tripped after a "full" reset.
 		const results = await Promise.all(
-			byMissionId.map((name) => db.collection(name).deleteMany({ missionId })),
+			PER_MISSION_COLLECTIONS.map((key) =>
+				db.collection(COLLECTION_NAMES[key]).deleteMany({ missionId }),
+			),
 		);
 		// resourceAlertState is keyed `<missionId>:<category>` in _id.
 		const alerts = await db
-			.collection<{ _id: string }>("resourceAlertState")
+			.collection<{ _id: string }>(COLLECTION_NAMES.resourceAlertState)
 			.deleteMany({
 				_id: {
 					$regex: `^${missionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`,
 				},
 			});
 		console.log(`\nDeleted:`);
-		byMissionId.forEach((name, i) => {
-			console.log(`  ${name.padEnd(22)} ${results[i].deletedCount} documents`);
+		PER_MISSION_COLLECTIONS.forEach((key, i) => {
+			console.log(
+				`  ${COLLECTION_NAMES[key].padEnd(22)} ${results[i].deletedCount} documents`,
+			);
 		});
 		console.log(
 			`  ${"resourceAlertState".padEnd(22)} ${alerts.deletedCount} documents`,

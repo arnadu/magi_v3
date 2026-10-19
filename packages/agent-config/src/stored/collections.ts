@@ -21,6 +21,7 @@ export const COLLECTION_NAMES = {
 	missionStats: "missionStats",
 	missionAnomalies: "missionAnomalies",
 	objectivesGoals: "objectivesGoals",
+	objectivesEvents: "objectivesEvents",
 	missionResources: "missionResources",
 	platformResources: "platformResources",
 	resourceAlertState: "resourceAlertState",
@@ -44,6 +45,7 @@ export interface StoredDocs {
 	missionStats: Document;
 	missionAnomalies: Document;
 	objectivesGoals: Document;
+	objectivesEvents: Document;
 	missionResources: Document;
 	platformResources: Document;
 	resourceAlertState: Document;
@@ -52,6 +54,27 @@ export interface StoredDocs {
 	copilotPendingActions: Document;
 	users: Document;
 }
+
+/**
+ * Collections whose documents carry `missionId` and belong to one mission:
+ * what a full reset of a mission deletes. `missions` itself and
+ * `resourceAlertState` (keyed `<missionId>:<category>` in `_id`) are handled
+ * separately.
+ */
+export const PER_MISSION_COLLECTIONS = [
+	"mailbox",
+	"conversationMessages",
+	"llmCallLog",
+	"scheduledMessages",
+	"missionStats",
+	"agentTurnStats",
+	"objectivesGoals",
+	"objectivesEvents",
+	"missionConfigRevisions",
+	"missionAnomalies",
+	"missionResources",
+	"machineSegments",
+] as const satisfies readonly CollectionKey[];
 
 export function storedCollection<K extends CollectionKey>(
 	db: Db,
