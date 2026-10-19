@@ -23,7 +23,7 @@ T6-git ^packages/agent-runtime-worker/src/safe-git\.ts: # the one sanctioned git
 # `async (req, res)` handler is a hung request waiting to happen.
 T8-empty-catch maxcount=7 # code-quality plan step 3: log operation/input/consequence, or justify in a comment (remyh, 2026-10-19)
 T8b-swallowed-promise maxcount=21 # code-quality plan step 3: same rule as T8 (remyh, 2026-10-19)
-T9-escape-hatches maxcount=20 # R-12 (M5): each cast gets a one-line constraint or goes (remyh, 2026-10-16)
+T9-escape-hatches maxcount=14 # code-quality plan step 3: each cast gets a one-line constraint or goes (remyh, 2026-10-19)
 T10-optional-cap ^packages/agent-config/src/loader\.ts:[0-9]+:[[:space:]]*maxCostUsd: # the ADR-0034 default is applied at every creation site; optional so stored/legacy configs still parse (remyh, 2026-10-19)
 T11-comment-history maxcount=107 # INV-9: shrinks as comments are touched; no bulk rewrite (remyh, 2026-10-16)
 # T12: no entries — the control plane writes mail through mailbox-writer.ts (postMailbox) and the
