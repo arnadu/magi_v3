@@ -10,6 +10,8 @@
  * `npm run docs:env`.
  */
 
+import { DEFAULT_MODEL_ID, DEFAULT_VISION_MODEL_ID } from "./models.js";
+
 export type EnvPlane = "control" | "execution" | "cli" | "job";
 
 export interface EnvVar {
@@ -51,13 +53,13 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 	{
 		name: "MODEL",
 		planes: ["execution", "cli"],
-		default: "claude-sonnet-4-6",
+		default: DEFAULT_MODEL_ID,
 		description: "Default agent model when the mission config names none.",
 	},
 	{
 		name: "VISION_MODEL",
 		planes: ["execution", "cli"],
-		default: "claude-haiku-4-5-20251001",
+		default: DEFAULT_VISION_MODEL_ID,
 		description:
 			"Model for FetchUrl image captioning, InspectImage, OCR and BrowseWeb page understanding. Anthropic or OpenRouter id.",
 	},

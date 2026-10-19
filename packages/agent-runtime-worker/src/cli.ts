@@ -22,7 +22,11 @@
 
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTeamConfig } from "@magi/agent-config";
+import {
+	DEFAULT_MODEL_ID,
+	DEFAULT_VISION_MODEL_ID,
+	loadTeamConfig,
+} from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
 
 // Load .env from the repo root (two levels up from packages/agent-runtime-worker/).
@@ -90,11 +94,11 @@ function getModel(teamConfig: {
 	mission: { model?: string; visionModel?: string };
 }) {
 	const modelId =
-		teamConfig.mission.model ?? process.env.MODEL ?? "claude-sonnet-4-6";
+		teamConfig.mission.model ?? process.env.MODEL ?? DEFAULT_MODEL_ID;
 	const visionModelId =
 		teamConfig.mission.visionModel ??
 		process.env.VISION_MODEL ??
-		"claude-haiku-4-5-20251001";
+		DEFAULT_VISION_MODEL_ID;
 	return {
 		modelId,
 		model: resolveModel(modelId),

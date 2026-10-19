@@ -24,6 +24,7 @@ export {
 	RESERVED_MISSION_ID_NAMES,
 	validateNewMissionId,
 } from "./mission-id.js";
+export { DEFAULT_MODEL_ID, DEFAULT_VISION_MODEL_ID } from "./models.js";
 export * from "./stored/index.js";
 export type { TeamFileInput } from "./team-files.js";
 export {

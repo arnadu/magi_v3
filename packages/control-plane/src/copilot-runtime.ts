@@ -5,6 +5,7 @@
  * isn't running — ADR-0032).
  */
 
+import { DEFAULT_MODEL_ID } from "@magi/agent-config";
 import type { Response } from "express";
 import type { Db } from "mongodb";
 import {
@@ -65,7 +66,7 @@ export function createCopilotRuntime(
 	pending: PendingActionsStore,
 ): CopilotRuntime {
 	const eventBus = new CopilotEventBus();
-	const defaultModelId = process.env.MODEL ?? "claude-sonnet-4-6";
+	const defaultModelId = process.env.MODEL ?? DEFAULT_MODEL_ID;
 	const daemons = new Map<string, CopilotDaemonHandle>();
 	// The model lookup is async, so without this two overlapping callers (an
 	// operator message racing a waker wake-up) could each start a daemon for
