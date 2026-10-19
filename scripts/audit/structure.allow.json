@@ -104,12 +104,6 @@
 			"execute@396": 140
 		}
 	},
-	"packages/cockpit/src/ConversationsPanel.tsx": {
-		"lines": 415,
-		"fns": {
-			"ConversationsPanel@73": 344
-		}
-	},
 	"packages/cockpit/src/FilesPanel.tsx": {
 		"lines": 504,
 		"fns": {
