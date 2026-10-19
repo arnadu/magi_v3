@@ -6,27 +6,27 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/cli-usage.ts": {
-		"lines": 365,
+		"lines": 363,
 		"fns": {
-			"printAggregateSummary@208": 152
+			"printAggregateSummary@209": 152
 		}
 	},
 	"packages/agent-runtime-worker/src/conversation-repository.ts": {
 		"lines": 290,
 		"fns": {
-			"createMongoConversationRepository@103": 186
+			"createMongoConversationRepository@103": 182
 		}
 	},
 	"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts": {
 		"lines": 343,
 		"fns": {
-			"createRemainingOrchestrationCallbacks@274": 124
+			"createRemainingOrchestrationCallbacks@282": 124
 		}
 	},
 	"packages/agent-runtime-worker/src/daemon.ts": {
 		"lines": 440,
 		"fns": {
-			"main@241": 214
+			"main@240": 214
 		}
 	},
 	"packages/agent-runtime-worker/src/document-processor.ts": {
@@ -53,12 +53,6 @@
 			"createMentalMapTools@213": 122
 		}
 	},
-	"packages/agent-runtime-worker/src/mission-copilot-tools.ts": {
-		"lines": 1138,
-		"fns": {
-			"createMissionCopilotTools@133": 1005
-		}
-	},
 	"packages/agent-runtime-worker/src/mission-copilot.ts": {
 		"lines": 570,
 		"fns": {
@@ -66,15 +60,15 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts": {
-		"lines": 159,
+		"lines": 158,
 		"fns": {
-			"createAgentSessionsRoutes@15": 144
+			"createAgentSessionsRoutes@15": 143
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
 		"lines": 1137,
 		"fns": {
-			"handleUpload@539": 142
+			"handleUpload@541": 142
 		}
 	},
 	"packages/agent-runtime-worker/src/objectives/tools.ts": {
@@ -188,7 +182,7 @@
 	"packages/control-plane/src/index.ts": {
 		"lines": 314,
 		"fns": {
-			"main@80": 248
+			"main@82": 248
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
@@ -206,7 +200,7 @@
 	"packages/control-plane/src/resource-upgrade.ts": {
 		"lines": 764,
 		"fns": {
-			"requestUpgrade@295": 143
+			"requestUpgrade@299": 143
 		}
 	}
 }
