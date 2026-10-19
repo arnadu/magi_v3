@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TurnCost } from "../src/data";
+import { inspectKeyHandler } from "../src/trace/inspect-key";
 import {
 	cumulativeCostLines,
 	fullTimeDomain,
+	LANE_ROW,
+	laneY,
 	seqColor,
 } from "../src/trace/trace-geometry";
 
@@ -69,5 +72,30 @@ describe("cumulativeCostLines", () => {
 		expect(
 			cumulativeCostLines([], [], [0, 1], (t) => t).maxCum,
 		).toBeGreaterThan(0);
+	});
+});
+
+describe("laneY", () => {
+	it("stacks the lanes in definition order, one row apart", () => {
+		expect(laneY("messages") - laneY("files")).toBe(LANE_ROW);
+		expect(laneY("anomalies")).toBeGreaterThan(laneY("wakeups"));
+	});
+});
+
+describe("inspectKeyHandler", () => {
+	it("Enter and Space jump to the turn; other keys do nothing", () => {
+		const jumps: Array<[string, number]> = [];
+		const handler = inspectKeyHandler((a, t) => jumps.push([a, t]), "lead", 7);
+		let prevented = 0;
+		const key = (k: string) =>
+			handler({ key: k, preventDefault: () => prevented++ } as never);
+		key("Enter");
+		key(" ");
+		key("a");
+		expect(jumps).toEqual([
+			["lead", 7],
+			["lead", 7],
+		]);
+		expect(prevented).toBe(2);
 	});
 });

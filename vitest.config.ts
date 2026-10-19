@@ -13,7 +13,20 @@ export default defineConfig({
 			provider: "v8",
 			reporter: ["text", "html"],
 			include: ["packages/*/src/**/*.ts"],
-			exclude: ["packages/*/src/**/*.d.ts", "packages/cockpit/**"],
+			// The cockpit counts only its pure modules: components (.tsx) and hooks
+			// need React and a DOM this node suite does not run, auth needs
+			// Firebase, the API client a server, and type-only files have no code.
+			exclude: [
+				"packages/*/src/**/*.d.ts",
+				"packages/cockpit/src/**/*.tsx",
+				"packages/cockpit/src/**/use-*.ts",
+				"packages/cockpit/src/app-hooks.ts",
+				"packages/cockpit/src/auth.ts",
+				"packages/cockpit/src/api/**",
+				"packages/cockpit/src/data.ts",
+				"packages/cockpit/src/types.ts",
+				"packages/cockpit/src/llm-call-types.ts",
+			],
 			// Per-package floors (issue #44), maintained by hand: set to a few tenths
 			// under what CI last measured, because coverage differs slightly between a
 			// developer machine and the runner (tests that skip without pool users or
@@ -23,6 +36,11 @@ export default defineConfig({
 			// lowering one is the visible escape hatch (e.g. deleting well-covered
 			// code), never a `?? default`.
 			thresholds: {
+				"packages/cockpit/src/**": {
+					statements: 97.6,
+					branches: 90.9,
+					functions: 89,
+				},
 				"packages/agent-config/src/**": {
 					statements: 93,
 					branches: 92,
