@@ -16,17 +16,10 @@ import type { WorkspaceGit } from "../workspace-git.js";
 import type { WorkspaceManager } from "../workspace-manager.js";
 
 /**
- * Progressively-widened boot state, threaded by value through daemon.ts's
- * main(). Each extracted phase is typed via Pick<BootContext, ...> on its
- * input and output — an at-a-glance, enforced list of exactly what it reads
- * and produces — and main() merges each phase's return into this object via
- * Object.assign. Grows one field group per phase as main() is decomposed
- * (Sprint 28c, issue #33).
- *
- * A field appearing here does not imply its producing phase has been
- * extracted yet — during the transition, some fields (e.g. db, missionId)
- * are still assigned directly by still-inline code in main() rather than by
- * a Pick<>-typed phase function. The type only declares the eventual shape.
+ * The daemon's boot state. Each phase is typed via Pick<BootContext, ...> on
+ * its input and output — an at-a-glance, enforced list of exactly what it
+ * reads and produces. daemon.ts composes the phases in two stages
+ * (bootDataLayer, then startServices) whose results run the mission.
  */
 export interface BootContext {
 	repoRoot: string;

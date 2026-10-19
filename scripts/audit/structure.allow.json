@@ -23,12 +23,6 @@
 			"createRemainingOrchestrationCallbacks@282": 124
 		}
 	},
-	"packages/agent-runtime-worker/src/daemon.ts": {
-		"lines": 440,
-		"fns": {
-			"main@240": 214
-		}
-	},
 	"packages/agent-runtime-worker/src/mailbox.ts": {
 		"lines": 320,
 		"fns": {

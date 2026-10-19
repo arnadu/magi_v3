@@ -237,24 +237,44 @@ function startJobRunner(
 // Entry point
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
-	// Widens to a full BootContext by the end of main() as more phases are
-	// extracted (Sprint 28c, issue #33); Partial<> during the transition since
-	// not every field's producing phase has been pulled out yet.
-	const ctx: Partial<BootContext> = { repoRoot: REPO_ROOT };
-	Object.assign(ctx, setupLogTee());
+/** Everything the orchestration run and shutdown need (the env-only fields stay in bootDataLayer). */
+type RunningMission = Omit<BootContext, "repoRoot" | "mongoUri">;
 
+type DataLayer = Pick<
+	BootContext,
+	| "client"
+	| "db"
+	| "missionId"
+	| "teamDir"
+	| "teamConfig"
+	| "mailboxRepo"
+	| "conversationRepo"
+	| "llmCallLog"
+	| "statsCollector"
+	| "missionConfigRepo"
+	| "objectivesRepo"
+	| "anomalyRecorder"
+	| "modelId"
+	| "model"
+	| "visionModel"
+	| "workdir"
+	| "workspaceManager"
+>;
+
+/**
+ * Env, Mongo, team config, agent identities, team files, repositories, the
+ * anomaly recorder, models and the workspace manager. Null (with exitCode
+ * set) when the env or the team config is unusable.
+ */
+async function bootDataLayer(): Promise<DataLayer | null> {
 	const envResult = parseDaemonEnv(DATA_KEY_NAMES);
 	if (!envResult.ok) {
 		process.stderr.write(`${envResult.exitMessage}\n`);
 		process.exitCode = 1;
-		return;
+		return null;
 	}
 	const { teamConfigPath, missionIdEnv, mongoUri, agentWorkdir } = envResult;
-
-	Object.assign(ctx, { mongoUri });
 	const { client, db } = await connectToMongo({ mongoUri });
-	Object.assign(ctx, { client, db });
 
 	const teamConfigResult = await loadDaemonTeamConfig({
 		db,
@@ -265,88 +285,75 @@ async function main(): Promise<void> {
 	if (!teamConfigResult.ok) {
 		process.stderr.write(`${teamConfigResult.exitMessage}\n`);
 		process.exitCode = 1;
-		return;
+		return null;
 	}
 	const { teamConfig, missionId, teamDir } = teamConfigResult;
-	Object.assign(ctx, { missionId, teamDir, teamConfig });
 
 	provisionAgentIdentities({ teamConfig, missionId }, missionCopilotEnabled);
-
 	await syncTeamFiles({ db, missionId, teamDir });
 
 	const repos = constructRepositories({ db, missionId });
-	Object.assign(ctx, repos);
-	const {
-		mailboxRepo,
-		conversationRepo,
-		llmCallLog,
-		statsCollector,
-		missionConfigRepo,
-		objectivesRepo,
-	} = repos;
-
 	const { anomalyRecorder } = await constructAnomalyRecorder(
-		{ db, missionId, teamConfig, mailboxRepo },
+		{ db, missionId, teamConfig, mailboxRepo: repos.mailboxRepo },
 		missionCopilotEnabled,
 	);
-	Object.assign(ctx, { anomalyRecorder });
-
-	const { modelId, model, visionModel } = await resolveModelsAndPricing({
-		teamConfig,
-	});
-	Object.assign(ctx, { modelId, model, visionModel });
-
+	const models = await resolveModelsAndPricing({ teamConfig });
 	const workdir = agentWorkdir;
-	Object.assign(ctx, { workdir });
 	const { workspaceManager } = constructWorkspaceManager({
 		workdir,
 		teamDir,
 		repoRoot: REPO_ROOT,
 	});
-	Object.assign(ctx, { workspaceManager });
+	return {
+		client,
+		db,
+		missionId,
+		teamDir,
+		teamConfig,
+		...repos,
+		anomalyRecorder,
+		...models,
+		workdir,
+		workspaceManager,
+	};
+}
 
+/**
+ * The abort signal, pid lock, usage cap, monitor and tool servers,
+ * background job runner, mail waiter and the mission copilot's tools.
+ */
+async function startServices(data: DataLayer): Promise<RunningMission> {
+	const { db, missionId, teamConfig, mailboxRepo, anomalyRecorder, workdir } =
+		data;
 	// Abort controller — fired by SIGTERM / SIGINT / cost cap / monitor stop.
 	const { ac, signal } = wireAbortSignal();
-	Object.assign(ctx, { ac, signal });
-
 	const { pidFile } = lockPidFile({ workdir, missionId, anomalyRecorder });
-	Object.assign(ctx, { pidFile });
-
 	const { usageAccumulator, maxCostUsd } = resolveUsageAndCap({ teamConfig });
-	Object.assign(ctx, { usageAccumulator, maxCostUsd });
 
 	const { monitorPort, toolPort, sharedDir, workspaceGit, monitor } =
 		await startMonitorServer({
 			db,
 			missionId,
-			llmCallLog,
+			llmCallLog: data.llmCallLog,
 			teamConfig,
-			modelId,
+			modelId: data.modelId,
 			usageAccumulator,
-			statsCollector,
-			missionConfigRepo,
+			statsCollector: data.statsCollector,
+			missionConfigRepo: data.missionConfigRepo,
 			mailboxRepo,
 			ac,
 			workdir,
-			visionModel,
+			visionModel: data.visionModel,
 		});
-	Object.assign(ctx, {
-		monitorPort,
-		toolPort,
-		sharedDir,
-		workspaceGit,
-		monitor,
-	});
 
 	const { toolApiServer } = startToolApiServer({
-		model,
-		visionModel,
+		model: data.model,
+		visionModel: data.visionModel,
 		sharedDir,
 		mailboxRepo,
 		teamConfig,
 		toolPort,
 	});
-	Object.assign(ctx, { toolApiServer });
 
 	// Scheduled message delivery has moved to the control plane (Sprint 14).
 	// The daemon only runs background job files written to jobs/pending/.
@@ -364,42 +371,69 @@ async function main(): Promise<void> {
 		},
 		startJobRunner,
 	);
-	Object.assign(ctx, { stopJobRunner });
 
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.
-	const mailboxCol = storedCollection(db, "mailbox");
-	const waitForMail = createMailWaiter(mailboxCol, missionId, signal);
-	Object.assign(ctx, { waitForMail });
+	const waitForMail = createMailWaiter(
+		storedCollection(db, "mailbox"),
+		missionId,
+		signal,
+	);
 
 	console.log(`[daemon] Mission: ${teamConfig.mission.name} (${missionId})`);
 	console.log(`[daemon] Dashboard: http://localhost:${monitorPort}`);
-
 	console.log("[daemon] Entering orchestration loop");
 
 	const { missionCopilotTools } = buildMissionCopilotTools(
-		{ db, missionId, sharedDir, objectivesRepo, mailboxRepo, monitorPort },
+		{
+			db,
+			missionId,
+			sharedDir,
+			objectivesRepo: data.objectivesRepo,
+			mailboxRepo,
+			monitorPort,
+		},
 		missionCopilotEnabled,
 		cancelBackgroundJob,
 	);
-	Object.assign(ctx, { missionCopilotTools });
+	return {
+		...data,
+		ac,
+		signal,
+		pidFile,
+		usageAccumulator,
+		maxCostUsd,
+		monitorPort,
+		toolPort,
+		sharedDir,
+		workspaceGit,
+		monitor,
+		toolApiServer,
+		stopJobRunner,
+		waitForMail,
+		missionCopilotTools,
+	};
+}
 
+/** The orchestration loop, then shutdown and the process exit (non-zero when the loop ended unasked). */
+async function runAndShutdown(ctx: RunningMission): Promise<void> {
+	const { monitor, signal, missionId, anomalyRecorder, mailboxRepo } = ctx;
 	try {
 		await runOrchestrationLoop(
 			{
-				teamConfig,
+				teamConfig: ctx.teamConfig,
 				mailboxRepo,
-				conversationRepo,
-				llmCallLog,
-				statsCollector,
-				missionConfig: missionConfigRepo,
-				objectivesRepo,
-				model,
-				visionModel,
-				workdir,
-				workspaceManager,
-				workspaceGit,
+				conversationRepo: ctx.conversationRepo,
+				llmCallLog: ctx.llmCallLog,
+				statsCollector: ctx.statsCollector,
+				missionConfig: ctx.missionConfigRepo,
+				objectivesRepo: ctx.objectivesRepo,
+				model: ctx.model,
+				visionModel: ctx.visionModel,
+				workdir: ctx.workdir,
+				workspaceManager: ctx.workspaceManager,
+				workspaceGit: ctx.workspaceGit,
 				anomalyRecorder,
-				waitForMail,
+				waitForMail: ctx.waitForMail,
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
 				isAgentPaused: (agentId) => monitor.isAgentPaused(agentId),
@@ -407,7 +441,7 @@ async function main(): Promise<void> {
 				// see buildMissionCopilotTools' doc comment (daemon-boot/copilot-tools.ts).
 				getAdditionalTools: (agentId) =>
 					agentId === MISSION_COPILOT_AGENT_ID
-						? missionCopilotTools
+						? ctx.missionCopilotTools
 						: undefined,
 				...createRemainingOrchestrationCallbacks(
 					{
@@ -415,18 +449,18 @@ async function main(): Promise<void> {
 						anomalyRecorder,
 						missionId,
 						mailboxRepo,
-						sharedDir,
-						objectivesRepo,
+						sharedDir: ctx.sharedDir,
+						objectivesRepo: ctx.objectivesRepo,
 					},
 					missionCopilotEnabled,
 				),
 				onAgentMessage: createOnAgentMessage({
-					usageAccumulator,
+					usageAccumulator: ctx.usageAccumulator,
 					monitor,
-					statsCollector,
+					statsCollector: ctx.statsCollector,
 					missionId,
-					missionConfigRepo,
-					maxCostUsd,
+					missionConfigRepo: ctx.missionConfigRepo,
+					maxCostUsd: ctx.maxCostUsd,
 					anomalyRecorder,
 					mailboxRepo,
 				}),
@@ -436,15 +470,15 @@ async function main(): Promise<void> {
 	} finally {
 		monitor.push("shutdown", { reason: signal.aborted ? "abort" : "normal" });
 		monitor.stop();
-		toolApiServer.stop();
-		stopJobRunner();
-		await client.close();
+		ctx.toolApiServer.stop();
+		ctx.stopJobRunner();
+		await ctx.client.close();
 		removeIfExists(
-			pidFile,
+			ctx.pidFile,
 			"the next start sees a stale pid file and checks whether that process is alive",
 		);
 		// Print final usage roll-up.
-		console.log(usageAccumulator.fullSummary());
+		console.log(ctx.usageAccumulator.fullSummary());
 		console.log("[daemon] Shutdown complete");
 	}
 	// Force-exit after cleanup. The MongoDB driver and other async handles can
@@ -460,6 +494,13 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 	process.exit(0);
+}
+
+async function main(): Promise<void> {
+	setupLogTee();
+	const data = await bootDataLayer();
+	if (!data) return;
+	await runAndShutdown(await startServices(data));
 }
 
 main().catch((e) => {
