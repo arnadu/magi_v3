@@ -13,6 +13,7 @@
  *     hovers around a line does not flap.
  */
 
+import { COLLECTION_NAMES } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import {
 	ALERT_CLEAR_HYSTERESIS,
@@ -117,7 +118,7 @@ export function createMongoAlertStateStore(db: Db): AlertStateStore {
 		_id: string;
 		level: AlertLevel;
 		lastAlertAt: Date;
-	}>("resourceAlertState");
+	}>(COLLECTION_NAMES.resourceAlertState);
 
 	return {
 		async get(key) {

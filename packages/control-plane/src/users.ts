@@ -1,3 +1,4 @@
+import { COLLECTION_NAMES } from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 export interface UserDoc {
@@ -15,8 +16,8 @@ export interface UserDoc {
 	copilotModel?: string;
 	/**
 	 * Lifetime spend cap for the user's own control-plane copilot, in USD.
-	 * Unset means unbounded. Enforced in copilot-router.ts's POST /message —
-	 * a synchronous gate on the next dispatch, not a mid-turn abort.
+	 * Unset means unbounded. Checked before every copilot turn
+	 * (copilot-spend.ts), not as a mid-turn abort.
 	 */
 	copilotSpendCapUsd?: number;
 }
@@ -32,7 +33,7 @@ export async function syncFirebaseUser(
 	displayName?: string,
 ): Promise<void> {
 	const now = new Date();
-	await db.collection<UserDoc>("users").updateOne(
+	await db.collection<UserDoc>(COLLECTION_NAMES.users).updateOne(
 		{ uid },
 		{
 			$set: { email, displayName, lastLoginAt: now },
@@ -48,7 +49,7 @@ export async function getCopilotModel(
 	uid: string,
 ): Promise<string | undefined> {
 	const doc = await db
-		.collection<UserDoc>("users")
+		.collection<UserDoc>(COLLECTION_NAMES.users)
 		.findOne({ uid }, { projection: { copilotModel: 1 } });
 	return doc?.copilotModel;
 }
@@ -66,7 +67,7 @@ export async function setCopilotModel(
 	model: string | undefined,
 ): Promise<void> {
 	await db
-		.collection<UserDoc>("users")
+		.collection<UserDoc>(COLLECTION_NAMES.users)
 		.updateOne(
 			{ uid },
 			model
@@ -82,7 +83,7 @@ export async function getCopilotSpendCap(
 	uid: string,
 ): Promise<number | undefined> {
 	const doc = await db
-		.collection<UserDoc>("users")
+		.collection<UserDoc>(COLLECTION_NAMES.users)
 		.findOne({ uid }, { projection: { copilotSpendCapUsd: 1 } });
 	return doc?.copilotSpendCapUsd;
 }
@@ -94,7 +95,7 @@ export async function setCopilotSpendCap(
 	capUsd: number | undefined,
 ): Promise<void> {
 	await db
-		.collection<UserDoc>("users")
+		.collection<UserDoc>(COLLECTION_NAMES.users)
 		.updateOne(
 			{ uid },
 			capUsd !== undefined

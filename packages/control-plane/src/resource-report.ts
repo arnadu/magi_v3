@@ -28,7 +28,13 @@
  * Approach: prompt/report wording is judged manually, not asserted on.
  */
 
-import { type MissionDoc, storedCollection } from "@magi/agent-config";
+import {
+	type AtlasUsageDoc,
+	COLLECTION_NAMES,
+	type MissionDoc,
+	platformResourceCollection,
+	storedCollection,
+} from "@magi/agent-config";
 import {
 	ATLAS_STORAGE,
 	createMongoAgentStatsRepository,
@@ -206,14 +212,9 @@ async function readAtlasBlock(
 	yesterday: ResourceSnapshotDoc | null,
 ): Promise<AtlasReportBlock | undefined> {
 	if (!isAdmin) return undefined;
-	const doc = await db
-		.collection<{
-			usedBytes: number;
-			limitBytes: number;
-			databases: Array<{ name: string; bytes: number }>;
-			collections: Array<{ name: string; bytes: number }>;
-		}>("platformResources")
-		.findOne({ _id: "atlas" as unknown as never });
+	const doc = await platformResourceCollection<AtlasUsageDoc>(db).findOne({
+		_id: "atlas",
+	});
 	if (!doc) return undefined;
 
 	const block: AtlasReportBlock = {
@@ -360,7 +361,7 @@ async function computeFlags(
 	}
 
 	const recentSnapshots = await db
-		.collection<ResourceSnapshotDoc>("resourceSnapshots")
+		.collection<ResourceSnapshotDoc>(COLLECTION_NAMES.resourceSnapshots)
 		.find({ userId })
 		.sort({ date: -1 })
 		.limit(REPORT_FLAGS.chronicUpgradeWindowDays)
@@ -379,8 +380,7 @@ async function computeFlags(
 	}
 
 	if (missions.length > 0) {
-		const rejected = await db
-			.collection<{ missionId: string; message: string }>("missionAnomalies")
+		const rejected = await storedCollection(db, "missionAnomalies")
 			.find({
 				missionId: { $in: missions.map((m) => m.missionId) },
 				category: "upgrade-cap-reached",
@@ -417,7 +417,7 @@ export async function buildDailyReport(
 
 	const yesterdayKey = dateKey(new Date(now.getTime() - DAY));
 	const yesterday = await db
-		.collection<ResourceSnapshotDoc>("resourceSnapshots")
+		.collection<ResourceSnapshotDoc>(COLLECTION_NAMES.resourceSnapshots)
 		.findOne({ userId, date: yesterdayKey });
 
 	const atlas = await readAtlasBlock(db, opts.isAdmin, yesterday);
@@ -521,7 +521,7 @@ const indexed = new WeakSet<Db>();
 
 function snapshotCollection(db: Db) {
 	const col = db.collection<ResourceSnapshotDoc & { _id?: unknown }>(
-		"resourceSnapshots",
+		COLLECTION_NAMES.resourceSnapshots,
 	);
 	if (!indexed.has(db)) {
 		indexed.add(db);

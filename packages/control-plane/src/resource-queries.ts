@@ -4,7 +4,10 @@
  * `missionResources`/`missionStats`/`agentTurnStats` the same way.
  */
 
-import { storedCollection } from "@magi/agent-config";
+import {
+	type MissionResourceSample,
+	storedCollection,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 /** Sum of `agentTurnStats.costUsd` for turns starting in `[from, to)`, across every agent. */
@@ -38,19 +41,14 @@ export async function lastActivityAt(
 	);
 }
 
-export interface MissionResourceSample {
-	diskUsedBytes?: number;
-	diskTotalBytes?: number;
-	runningJobs?: number;
-	updatedAt?: Date;
-}
+export type { MissionResourceSample };
 
 /** The disk sampler's latest reading for the mission, or null if none exists yet. */
 export async function latestResourceSample(
 	db: Db,
 	missionId: string,
 ): Promise<MissionResourceSample | null> {
-	return db.collection<MissionResourceSample>("missionResources").findOne(
+	return storedCollection(db, "missionResources").findOne(
 		{ missionId },
 		{
 			projection: {

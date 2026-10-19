@@ -11,7 +11,7 @@
  * on its own does not keep accruing runtime.
  */
 
-import { storedCollection } from "@magi/agent-config";
+import { COLLECTION_NAMES, storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import {
 	DEFAULT_MACHINE,
@@ -32,7 +32,7 @@ export interface MachineSegment {
 	requestedByAgentId?: string;
 }
 
-const COLLECTION = "machineSegments";
+const COLLECTION = COLLECTION_NAMES.machineSegments;
 const indexed = new WeakSet<Db>();
 
 function collection(db: Db) {

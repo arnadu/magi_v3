@@ -3,15 +3,22 @@
  * `storedCollection(db, key)` returns the collection typed with its canonical
  * document shape, so a wrong field name fails `tsc` at the call site.
  *
- * A collection whose document type is still `Document` has not been migrated
- * to a canonical type yet (code-quality plan, step 1d).
+ * A collection typed `Document` here is owned by one module, which declares
+ * its document type next to the only code that reads and writes it and takes
+ * the name from COLLECTION_NAMES (`db.collection<T>(COLLECTION_NAMES.x)`).
+ * A collection read by more than one module gets its canonical type here.
  */
 
 import type { Collection, Db, Document } from "mongodb";
+import type { MissionAnomaly } from "./anomalies.js";
 import type { ConversationDoc } from "./conversation.js";
 import type { LlmCallLogEntry } from "./llm-calls.js";
 import type { MailboxMessage } from "./mailbox.js";
 import type { MissionDoc } from "./missions.js";
+import type {
+	MissionResourceSample,
+	PlatformResourcesDoc,
+} from "./resources.js";
 import type { ScheduledMessageDoc } from "./scheduling.js";
 import type { AgentTurnStats, MissionStats } from "./stats.js";
 
@@ -48,11 +55,11 @@ export interface StoredDocs {
 	llmCallLog: LlmCallLogEntry;
 	agentTurnStats: AgentTurnStats;
 	missionStats: MissionStats;
-	missionAnomalies: Document;
+	missionAnomalies: MissionAnomaly;
 	objectivesGoals: Document;
 	objectivesEvents: Document;
-	missionResources: Document;
-	platformResources: Document;
+	missionResources: MissionResourceSample;
+	platformResources: PlatformResourcesDoc;
 	resourceAlertState: Document;
 	resourceSnapshots: Document;
 	machineSegments: Document;
@@ -86,4 +93,15 @@ export function storedCollection<K extends CollectionKey>(
 	key: K,
 ): Collection<StoredDocs[K]> {
 	return db.collection<StoredDocs[K]>(COLLECTION_NAMES[key]);
+}
+
+/**
+ * `platformResources` holds one document per kind, keyed by `_id`. The
+ * driver's `WithId` erases a union discriminated on `_id`, so each kind is
+ * read and written through its own typed view.
+ */
+export function platformResourceCollection<D extends PlatformResourcesDoc>(
+	db: Db,
+): Collection<D> {
+	return db.collection<D>(COLLECTION_NAMES.platformResources);
 }

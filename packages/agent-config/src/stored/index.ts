@@ -1,8 +1,14 @@
+export type {
+	AnomalyCategory,
+	AnomalySeverity,
+	MissionAnomaly,
+} from "./anomalies.js";
 export {
 	COLLECTION_NAMES,
 	type CollectionKey,
 	type CollectionName,
 	PER_MISSION_COLLECTIONS,
+	platformResourceCollection,
 	type StoredDocs,
 	storedCollection,
 } from "./collections.js";
@@ -21,6 +27,13 @@ export type {
 	MissionUpgradeState,
 } from "./missions.js";
 export { field, type Path, ref } from "./paths.js";
+export type {
+	AtlasUsageDoc,
+	FlyMachinesSampleDoc,
+	MissionResourceSample,
+	OrphanMachine,
+	PlatformResourcesDoc,
+} from "./resources.js";
 export {
 	SCHEDULE_ORIGIN,
 	type ScheduledJobDoc,

@@ -19,7 +19,12 @@
  * handle, so a brand-new machine is briefly unreferenced by design.
  */
 
-import { storedCollection } from "@magi/agent-config";
+import {
+	type FlyMachinesSampleDoc,
+	type OrphanMachine,
+	platformResourceCollection,
+	storedCollection,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 import { type FlyMachineSummary, listMachines } from "./fly-machines.js";
 import { relayToPlatformAdmins } from "./platform-relay.js";
@@ -29,14 +34,7 @@ export const ORPHAN_GRACE_MS = 10 * 60_000;
 /** `platformResources` document id for the machine-count sample. */
 export const FLY_MACHINES_SAMPLE_ID = "fly-machines";
 
-export interface OrphanMachine {
-	id: string;
-	name?: string;
-	state?: string;
-	/** `MISSION_ID` from the machine's env, when `provisionMission` set one — tells which mission leaked it. */
-	missionIdEnv?: string;
-	createdAt?: string;
-}
+export type { OrphanMachine };
 
 export interface FlyMachinesSample {
 	total: number;
@@ -130,10 +128,7 @@ export async function checkOrphanMachines(
 		orphans,
 	};
 
-	const platform = deps.db.collection<{
-		_id: string;
-		alertedOrphanIds?: string[];
-	}>("platformResources");
+	const platform = platformResourceCollection<FlyMachinesSampleDoc>(deps.db);
 	let alertedOrphanIds: string[] = [];
 	try {
 		const prev = await platform.findOne({ _id: FLY_MACHINES_SAMPLE_ID });

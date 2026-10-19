@@ -5,6 +5,7 @@
  * so a double click cannot execute an action twice.
  */
 
+import { COLLECTION_NAMES } from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 export interface PendingAction {
@@ -28,7 +29,8 @@ export interface PendingActionsStore {
 	listForUser(userId: string): Promise<PendingAction[]>;
 }
 
-export const PENDING_ACTIONS_COLLECTION = "copilotPendingActions";
+export const PENDING_ACTIONS_COLLECTION =
+	COLLECTION_NAMES.copilotPendingActions;
 /** A card nobody confirmed in a week is stale: the mission state it was computed against has moved on. */
 export const PENDING_ACTION_TTL_SECONDS = 7 * 24 * 3600;
 

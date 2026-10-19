@@ -20,6 +20,12 @@
  *      mission. See ADR-0020.
  */
 
+import {
+	type AnomalyCategory,
+	type AnomalySeverity,
+	type MissionAnomaly,
+	storedCollection,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 import {
 	createMongoMailboxRepository,
@@ -31,43 +37,7 @@ import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 // Types
 // ---------------------------------------------------------------------------
 
-export type AnomalyCategory =
-	| "limit-breach"
-	| "agent-crash"
-	| "agent-timeout"
-	| "llm-error"
-	| "job-failure"
-	| "scheduling-failure"
-	| "unclean-restart"
-	| "reflection-failed"
-	// Resource oversight (ADR-0031/0032). The platform-level Atlas storage alert
-	// has no mission and is posted straight to the admin copilots' mailboxes
-	// instead of going through this recorder.
-	| "disk-usage-high"
-	| "spend-cap-near"
-	| "uncapped-spend"
-	| "spend-spike"
-	| "upgrade-cap-near"
-	| "upgrade-cap-reached"
-	| "upgrade-idle"
-	| "resize-failure"
-	| "oom-suspected"
-	// Control-plane mission lifecycle. Distinct from resize-failure (ADR-0031's
-	// upgrade/revert path): this covers a plain operator/copilot-initiated
-	// resume failing, for any reason (e.g. a drifted `volumeId` — see issue #62).
-	| "resume-failure";
-
-export type AnomalySeverity = "hard" | "soft";
-
-export interface MissionAnomaly {
-	missionId: string;
-	category: AnomalyCategory;
-	severity: AnomalySeverity;
-	agentId?: string;
-	turnNumber?: number;
-	message: string;
-	createdAt: Date;
-}
+export type { AnomalyCategory, AnomalySeverity, MissionAnomaly };
 
 export interface AnomalyRecorder {
 	/**
@@ -118,9 +88,7 @@ export function createMongoAnomalyRecorder(
 	},
 	options: AnomalyRecorderOptions = {},
 ): AnomalyRecorder {
-	const col = db.collection<MissionAnomaly & { _id?: unknown }>(
-		"missionAnomalies",
-	);
+	const col = storedCollection(db, "missionAnomalies");
 	const windowMs = options.dedupeWindowMs ?? ANOMALY_DEDUPE_WINDOW_MS;
 	const now = options.now ?? Date.now;
 	// Every anomaly is persisted; only the copilot *notifications* are

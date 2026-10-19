@@ -16,6 +16,7 @@
 
 import { execFile } from "node:child_process";
 import { statfs } from "node:fs/promises";
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { AnomalyRecorder } from "./anomaly.js";
 import {
@@ -130,7 +131,7 @@ export async function sampleDiskUsage(
 	if (!sample) return;
 
 	try {
-		await db.collection("missionResources").updateOne(
+		await storedCollection(db, "missionResources").updateOne(
 			{ missionId },
 			{
 				$set: {

@@ -120,6 +120,9 @@ check T11-comment-history "sprint/finding history in comments (state the constra
 # T12 MBX1: mailbox documents are written through one helper.
 check T12-raw-mailbox-insert "raw mailbox insertOne (use the shared mailbox writer)" \
 	'collection\("mailbox"\)[[:space:]]*\.insertOne|collection<[^>]*>\("mailbox"\)[[:space:]]*\.insertOne' $W $CP
+# T13 R-15: a collection is reached through storedCollection()/COLLECTION_NAMES, never a name literal.
+check T13-collection-literal "MongoDB collection named by a string literal (use storedCollection or COLLECTION_NAMES)" \
+	'\.collection(<[^>]*>)?\([[:space:]]*["'"'"']' $W $CP packages/agent-config/src
 # LLM-facing text naming tools/scripts: handled by contract tests (llm-text.*.test), not here.
 
 if [ "$selftest" = 1 ]; then

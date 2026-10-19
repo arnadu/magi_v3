@@ -29,3 +29,4 @@ T11-comment-history maxcount=107 # INV-9: shrinks as comments are touched; no bu
 # T12: no entries — the control plane writes mail through mailbox-writer.ts (postMailbox) and the
 # daemon through MailboxRepository.post(); the repository's own insert is the one sanctioned site.
 T12-raw-mailbox-insert ^packages/agent-runtime-worker/src/mailbox\.ts: # MailboxRepository.post, the writer itself (remyh, 2026-10-17)
+# T13: no entries — every collection is reached through agent-config/src/stored (R-15).

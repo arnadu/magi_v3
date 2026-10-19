@@ -13,6 +13,10 @@
  */
 
 import {
+	type AtlasUsageDoc,
+	platformResourceCollection,
+} from "@magi/agent-config";
+import {
 	type AlertStateStore,
 	ATLAS_STORAGE,
 	ATLAS_STORAGE_LIMIT_MB_DEFAULT,
@@ -155,8 +159,8 @@ export async function checkAtlasStorage(deps: AtlasUsageDeps): Promise<void> {
 	const usage = await readAtlasUsage(deps);
 
 	try {
-		await deps.db.collection("platformResources").updateOne(
-			{ _id: "atlas" as unknown as never },
+		await platformResourceCollection<AtlasUsageDoc>(deps.db).updateOne(
+			{ _id: "atlas" },
 			{
 				$set: {
 					usedBytes: usage.usedBytes,

@@ -18,6 +18,7 @@
  * about the fold logic changed, only where the events come from.
  */
 
+import { COLLECTION_NAMES } from "@magi/agent-config";
 import type { Collection, Db } from "mongodb";
 import type { FoldOptions } from "./store.js";
 import { foldStore } from "./store.js";
@@ -118,13 +119,13 @@ async function readGoals(
 }
 
 export function createMongoObjectivesRepository(db: Db): ObjectivesRepository {
-	const goalsCol = db.collection<GoalsDoc>("objectivesGoals");
+	const goalsCol = db.collection<GoalsDoc>(COLLECTION_NAMES.objectivesGoals);
 	const eventsCol = db.collection<
 		| EventDoc<"task", TaskEvent>
 		| EventDoc<"kpi", KpiEvent>
 		| EventDoc<"cost", CostEvent>
 		| EventDoc<"alloc", AllocEvent>
-	>("objectivesEvents");
+	>(COLLECTION_NAMES.objectivesEvents);
 
 	ensureObjectivesIndexes(eventsCol, goalsCol);
 

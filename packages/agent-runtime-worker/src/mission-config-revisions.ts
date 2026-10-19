@@ -23,6 +23,7 @@
 
 import {
 	type AgentConfig,
+	COLLECTION_NAMES,
 	type Limits,
 	storedCollection,
 	type TeamConfig,
@@ -61,7 +62,7 @@ export interface MissionConfigWriter {
 export function createMongoMissionConfigWriter(db: Db): MissionConfigWriter {
 	const missions = storedCollection(db, "missions");
 	const revisions = db.collection<MissionConfigRevisionDoc>(
-		"missionConfigRevisions",
+		COLLECTION_NAMES.missionConfigRevisions,
 	);
 
 	// Primary access pattern: a mission's revision history in time order.
