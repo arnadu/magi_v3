@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { storedCollection } from "@magi/agent-config";
 import {
 	CLAUDE_HAIKU,
+	CLAUDE_OPUS,
 	CLAUDE_SONNET,
 	exitOnFatal,
 	fetchOpenRouterCatalog,
@@ -238,11 +239,16 @@ async function main(): Promise<void> {
 	// fetchOpenRouterCatalog itself, so this route is cheap after the first call).
 	const ANTHROPIC_MODELS: OpenRouterModelInfo[] = [
 		{
-			id: "claude-opus-4-8",
+			id: CLAUDE_OPUS.id,
 			name: "Claude Opus 4.8",
-			contextLength: 1_000_000,
+			contextLength: CLAUDE_OPUS.contextWindow,
 			supportsVision: true,
-			pricing: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+			pricing: {
+				input: CLAUDE_OPUS.cost.input,
+				output: CLAUDE_OPUS.cost.output,
+				cacheRead: CLAUDE_OPUS.cost.cacheRead,
+				cacheWrite: CLAUDE_OPUS.cost.cacheWrite,
+			},
 		},
 		{
 			id: CLAUDE_SONNET.id,

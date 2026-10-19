@@ -78,6 +78,15 @@ export const CLAUDE_SONNET = anthropicModel("claude-sonnet-4-6", {
 	reasoning: true,
 });
 
+/** Claude Opus 4.8 — offered in the model picker; 1M-token context. */
+export const CLAUDE_OPUS = anthropicModel("claude-opus-4-8", {
+	inputCostPerMillion: 5,
+	outputCostPerMillion: 25,
+	contextWindow: 1_000_000,
+	maxTokens: 32_000,
+	reasoning: true,
+});
+
 /** Claude Haiku 4.5 — secondary model for vision tasks (image captioning, BrowseWeb). */
 export const CLAUDE_HAIKU = anthropicModel("claude-haiku-4-5-20251001", {
 	inputCostPerMillion: 0.8,
@@ -101,8 +110,9 @@ export const MINISTRAL_14B = withOpenRouterAffinity(
  * Use this instead of a cascade of if/else in callers.
  */
 export function resolveModel(id: string): Model<string> {
-	if (id === "claude-sonnet-4-6") return CLAUDE_SONNET;
-	if (id === "claude-haiku-4-5-20251001") return CLAUDE_HAIKU;
+	for (const m of [CLAUDE_SONNET, CLAUDE_OPUS, CLAUDE_HAIKU]) {
+		if (id === m.id) return m;
+	}
 	return parseModel(id);
 }
 
@@ -170,7 +180,7 @@ export function parseModel(id: string): Model<string> {
 
 /** First-party Anthropic ids the platform prices and offers; anything else without a "/" is unknown. */
 export const KNOWN_ANTHROPIC_MODEL_IDS: readonly string[] = [
-	"claude-opus-4-8",
+	CLAUDE_OPUS.id,
 	CLAUDE_SONNET.id,
 	CLAUDE_HAIKU.id,
 ];

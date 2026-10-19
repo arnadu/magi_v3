@@ -74,6 +74,7 @@ export {
 	anthropicModel,
 	assertKnownModels,
 	CLAUDE_HAIKU,
+	CLAUDE_OPUS,
 	CLAUDE_SONNET,
 	isKnownModelId,
 	KNOWN_ANTHROPIC_MODEL_IDS,
