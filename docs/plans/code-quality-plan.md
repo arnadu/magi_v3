@@ -448,4 +448,16 @@ independent once step 1 is done.
   `Dispatcher` class). Characterization tests first (10 + 3), unchanged across the refactor.
   Both files off the structure allowlist and the complexity exemptions (32 → 29). Worker and
   control-plane coverage floors still to be raised from CI's numbers (local runs measure higher).
+- 2026-10-19 — **Step 2 gate passed** (10 loop integration files, 11/11). Pushed.
+- 2026-10-19 — **Step 3 done**: T8/T8b at zero (`removeIfExists` for file removals, ESRCH-only
+  kill, every meaningful swallowed rejection logged; stream/browser teardown closes under one
+  reasoned entry), T9 at zero (3 casts removed by typing, 6 kept with stated constraints;
+  comment prose no longer counted), T14 (`exitOnFatal` at the 7 entry points), one
+  `DEFAULT_MODEL_ID`/`DEFAULT_VISION_MODEL_ID` and T15. Found and fixed: **F-072** — Claude
+  Opus 4.8 was priced at Sonnet rates (no `resolveModel` entry; ~40% low cost and cap checks).
+- 2026-10-19 — **Step 4 code done**: mission-copilot tools (1008-line factory) → seven family
+  modules with one factory per tool; control-plane copilot tools → four family modules;
+  `executeAction` → handler registry; copilot router → route registrars; shared
+  `applyTeamConfigPatch` replaces two restated merge-and-validate copies. Structure allowlist
+  39 → 31 files, complexity exemptions 32 → 27.
 
