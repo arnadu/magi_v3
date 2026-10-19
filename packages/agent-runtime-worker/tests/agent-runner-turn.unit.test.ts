@@ -272,6 +272,50 @@ describe("runAgent conversation recovery", () => {
 		expect(h.appended.at(-1)).toMatchObject({ callSeq: 0 });
 	});
 
+	it("finalizes from the retry's outcome, not the failed first attempt", async () => {
+		const h = harness({
+			history: [
+				{
+					turnNumber: 2,
+					message: { role: "user", content: "x", timestamp: 0 } as Message,
+				},
+			],
+		});
+		loopImpl = async () => {
+			if (loopCalls.length === 1)
+				return { messages: [structureError], turnCount: 1 };
+			return {
+				messages: [assistant("", { stopReason: "aborted" })],
+				turnCount: 1,
+			};
+		};
+		await runAgent("a1", [], h.ctx as never);
+		expect(h.endTurns).toEqual(["aborted"]);
+	});
+
+	it("the supervisor fallback reports the retry's error, not the first attempt's", async () => {
+		const h = harness({
+			history: [
+				{
+					turnNumber: 2,
+					message: { role: "user", content: "x", timestamp: 0 } as Message,
+				},
+			],
+		});
+		loopImpl = async () => {
+			if (loopCalls.length === 1)
+				return { messages: [structureError], turnCount: 1 };
+			return {
+				messages: [
+					assistant("", { stopReason: "error", errorMessage: "overloaded" }),
+				],
+				turnCount: 1,
+			};
+		};
+		await runAgent("a1", fromSupervisor, h.ctx as never);
+		expect(h.posts[0].body).toContain("overloaded");
+	});
+
 	it("does not retry on the agent's very first turn", async () => {
 		const h = harness();
 		loopImpl = async () => ({ messages: [structureError], turnCount: 1 });

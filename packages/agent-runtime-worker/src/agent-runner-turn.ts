@@ -332,17 +332,26 @@ export function buildTurnTools(
 }
 
 export interface LoopRun {
-	/** The first attempt's messages (the supervisor fallback reads them). */
+	/** The messages of the attempt that counts: the retry when one ran (the supervisor fallback reads them). */
 	messages: Message[];
-	/** The first attempt's last call was cut short by the loop's own per-call deadline. */
+	/** That attempt's last call was cut short by the loop's own per-call deadline. */
 	lastCallAborted: boolean;
+}
+
+/**
+ * The loop's own per-call deadline aborts through a signal derived from (not
+ * identical to) the turn's, so `signal.aborted` alone would miss it.
+ */
+function endedByDeadline(messages: Message[]): boolean {
+	const last = messages.at(-1);
+	return last?.role === "assistant" && last.stopReason === "aborted";
 }
 
 /**
  * Run the inner loop. When the very first LLM call fails on the stored
  * history's structure (a tool_use/tool_result mismatch, same-role messages),
  * no tool has run, so the history itself is at fault: force-compact it and
- * retry once with a clean slate.
+ * retry once with a clean slate. The retry's outcome is the turn's outcome.
  */
 export async function runWithRecovery(
 	ctx: AgentRunContext,
@@ -358,42 +367,46 @@ export async function runWithRecovery(
 		previousMessages,
 		onLlmCall: onLlmCallFor(state.turnNumber),
 	});
-	// The loop's own per-call deadline aborts through a signal derived from
-	// (not identical to) the turn's, so `signal.aborted` alone would miss it.
-	const lastMsg = result.messages.at(-1);
-	const lastCallAborted =
-		lastMsg?.role === "assistant" && lastMsg.stopReason === "aborted";
-
 	// The LAST message, not the first assistant one: with real prior history
 	// the first is an old success, and the check would never fire.
 	// turnCount === 1 guarantees nothing follows the erroring message.
+	const lastMsg = result.messages.at(-1);
 	const latestAssistant = lastMsg?.role === "assistant" ? lastMsg : undefined;
 	if (
-		result.turnCount === 1 &&
-		latestAssistant &&
-		isConversationStructureError(latestAssistant) &&
-		state.turnNumber > 0
+		!(
+			result.turnCount === 1 &&
+			latestAssistant &&
+			isConversationStructureError(latestAssistant) &&
+			state.turnNumber > 0
+		)
 	) {
-		console.error(
-			`[runAgent] ${agentId}: conversation structure error on first LLM call — ` +
-				`force-compacting history and retrying`,
-		);
-		await forceCompactSession(
-			agentId,
-			missionId,
-			state.turnNumber,
-			ctx.conversationRepo,
-		);
-		const cleanHistory = await ctx.conversationRepo.load(agentId, missionId);
-		state.turnNumber =
-			cleanHistory.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
-		state.callSeq = -1;
-		// Same tool set as the first attempt (audit R1).
-		await runInnerLoop({
-			...loop,
-			previousMessages: convertToLlm(cleanHistory),
-			onLlmCall: onLlmCallFor(state.turnNumber),
-		});
+		return {
+			messages: result.messages,
+			lastCallAborted: endedByDeadline(result.messages),
+		};
 	}
-	return { messages: result.messages, lastCallAborted };
+	console.error(
+		`[runAgent] ${agentId}: conversation structure error on first LLM call — ` +
+			`force-compacting history and retrying`,
+	);
+	await forceCompactSession(
+		agentId,
+		missionId,
+		state.turnNumber,
+		ctx.conversationRepo,
+	);
+	const cleanHistory = await ctx.conversationRepo.load(agentId, missionId);
+	state.turnNumber =
+		cleanHistory.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
+	state.callSeq = -1;
+	// Same tool set as the first attempt (audit R1).
+	const retry = await runInnerLoop({
+		...loop,
+		previousMessages: convertToLlm(cleanHistory),
+		onLlmCall: onLlmCallFor(state.turnNumber),
+	});
+	return {
+		messages: retry.messages,
+		lastCallAborted: endedByDeadline(retry.messages),
+	};
 }
