@@ -139,11 +139,5 @@
 		"fns": {
 			"readLimits@109": 171
 		}
-	},
-	"packages/control-plane/src/resource-upgrade.ts": {
-		"lines": 764,
-		"fns": {
-			"requestUpgrade@299": 143
-		}
 	}
 }

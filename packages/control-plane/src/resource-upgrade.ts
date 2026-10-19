@@ -18,19 +18,9 @@
  * requesting daemon is stopped by the resize itself.
  */
 
-import {
-	type MissionDoc,
-	type MissionUpgradeState,
-	storedCollection,
-} from "@magi/agent-config";
-import {
-	createMongoAlertStateStore,
-	createMongoAnomalyRecorderForMission,
-	evaluateAlert,
-	MISSION_COPILOT_AGENT_ID,
-	UPGRADE_LIMITS,
-} from "@magi/agent-runtime-worker";
-import { type Db, ObjectId } from "mongodb";
+import type { MissionDoc, MissionUpgradeState } from "@magi/agent-config";
+import { UPGRADE_LIMITS } from "@magi/agent-runtime-worker";
+import type { Db } from "mongodb";
 import { isLocalExecution } from "./fly-machines.js";
 import {
 	ResizeError,
@@ -48,282 +38,68 @@ import {
 	sameShape,
 	validateUpgradeRequest,
 } from "./machine-shapes.js";
-import { postMailbox } from "./mailbox-writer.js";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 export type { MissionUpgradeState };
 
-export interface UpgradeResult {
-	status: number;
-	body: Record<string, unknown>;
-}
+import {
+	claim,
+	fail,
+	failResize,
+	missionsOf,
+	type UpgradeResult,
+} from "./resource-upgrade-claim.js";
+import {
+	cancelReminder,
+	describeShape,
+	notify,
+	recordCapReached,
+	sanitizeReason,
+	scheduleReminder,
+	utc,
+} from "./resource-upgrade-notify.js";
 
-const fail = (status: number, error: string): UpgradeResult => ({
-	status,
-	body: { error },
-});
-
-// ---------------------------------------------------------------------------
-// Text helpers
-// ---------------------------------------------------------------------------
-
-/** Agent-authored text is cut and stripped before it reaches an operator or a copilot. */
-export function sanitizeReason(raw: unknown): string {
-	if (typeof raw !== "string") return "";
-	const cleaned = Array.from(raw, (ch) => {
-		const code = ch.charCodeAt(0);
-		return code < 0x20 || code === 0x7f ? " " : ch;
-	})
-		.join("")
-		.replace(/\s+/g, " ")
-		.trim();
-	const max = UPGRADE_LIMITS.reasonMaxChars;
-	return cleaned.length > max ? `${cleaned.slice(0, max)}…` : cleaned;
-}
-
-function describeShape(s: MachineShape): string {
-	const gb = s.memoryMb / 1024;
-	return `${s.cpuKind}, ${s.cpus} CPU${s.cpus === 1 ? "" : "s"}, ${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB RAM`;
-}
-
-const utc = (d: Date) => `${d.toISOString().slice(11, 16)} UTC`;
-
-// ---------------------------------------------------------------------------
-// Notifications and reminders
-// ---------------------------------------------------------------------------
-
-async function post(
-	db: Db,
-	missionId: string,
-	to: string[],
-	subject: string,
-	body: string,
-): Promise<void> {
-	await postMailbox(db, { missionId, from: "system", to, subject, body });
-}
-
-/** Tell the operator, the mission-copilot and (if any) the requesting agent; best-effort. */
-async function notify(
-	db: Db,
-	mission: MissionDoc,
-	requester: string | undefined,
-	subject: string,
-	body: string,
-): Promise<void> {
-	try {
-		await post(
-			db,
-			mission.missionId,
-			["user", MISSION_COPILOT_AGENT_ID, ...(requester ? [requester] : [])],
-			subject,
-			body,
-		);
-	} catch (e) {
-		console.error(
-			`[resource-upgrade] Failed to post notification { missionId: "${mission.missionId}", error: "${(e as Error).message}" }`,
-		);
-	}
-}
-
-async function recordAnomaly(
-	db: Db,
-	mission: MissionDoc,
-	category: "upgrade-cap-reached" | "resize-failure",
-	message: string,
-): Promise<void> {
-	await createMongoAnomalyRecorderForMission(
-		db,
-		mission.missionId,
-		mission.userId,
-	).record({
-		missionId: mission.missionId,
-		category,
-		severity: "hard",
-		message,
-	});
-}
-
-/**
- * `upgrade-cap-reached` is raised at most once per 24 h per mission, so an
- * agent that keeps retrying a rejected request cannot flood the control-plane
- * copilot. (The operator's reset clears this state.)
- */
-async function recordCapReached(
-	db: Db,
-	mission: MissionDoc,
-	message: string,
-): Promise<void> {
-	const level = await evaluateAlert(
-		createMongoAlertStateStore(db),
-		`${mission.missionId}:upgrade-cap-reached`,
-		1,
-		{ soft: 1, hard: 1 },
-	);
-	if (level === null) return;
-	await recordAnomaly(db, mission, "upgrade-cap-reached", message).catch(
-		() => {},
-	);
-}
-
-/** Deliver the renewal reminder to the mission-copilot and the requester, before the window ends. */
-async function scheduleReminder(
-	db: Db,
-	mission: MissionDoc,
-	upgrade: MissionUpgradeState,
-	now: Date,
-): Promise<string | undefined> {
-	const windowMs = upgrade.expiresAt.getTime() - now.getTime();
-	const beforeExpiry =
-		upgrade.expiresAt.getTime() - UPGRADE_LIMITS.reminderBufferMinutes * MINUTE;
-	// A window shorter than the buffer would put the reminder in the past.
-	const deliverAt = new Date(
-		Math.max(beforeExpiry, now.getTime() + windowMs / 2),
-	);
-	const to = [
-		MISSION_COPILOT_AGENT_ID,
-		...(upgrade.requestedByAgentId ? [upgrade.requestedByAgentId] : []),
-	];
-	try {
-		const r = await storedCollection(db, "scheduledMessages").insertOne({
-			missionId: mission.missionId,
-			to,
-			subject: "Machine upgrade expires soon",
-			body: `The temporary machine upgrade (${describeShape(upgrade)}) expires at ${utc(upgrade.expiresAt)}. When it does the machine reverts to the default: running agent turns are interrupted and background jobs re-run from scratch. If the work still needs it, the mission-copilot decides whether to renew (after asking ${upgrade.requestedByAgentId ?? "the agent that needed it"} if the job is done) by calling RequestResourceUpgrade again with the same shape; otherwise no action is needed.`,
-			deliverAt,
-			label: "machine-upgrade-reminder",
-			status: "pending",
-		});
-		return String(r.insertedId);
-	} catch (e) {
-		console.error(
-			`[resource-upgrade] Failed to schedule reminder { missionId: "${mission.missionId}", error: "${(e as Error).message}" }`,
-		);
-		return undefined;
-	}
-}
-
-async function cancelReminder(
-	db: Db,
-	missionId: string,
-	reminderId: string | undefined,
-): Promise<void> {
-	if (!reminderId || !ObjectId.isValid(reminderId)) return;
-	await storedCollection(db, "scheduledMessages")
-		.deleteOne({ _id: new ObjectId(reminderId), missionId })
-		.catch((e: unknown) =>
-			console.error(
-				`[resource-upgrade] Failed to cancel reminder { missionId: "${missionId}", error: "${(e as Error).message}" }`,
-			),
-		);
-}
-
-// ---------------------------------------------------------------------------
-// Claim
-// ---------------------------------------------------------------------------
-
-const missionsOf = (db: Db) => storedCollection(db, "missions");
-
-/** Take the one-resize-at-a-time claim; null if the mission is not running or already claimed. */
-async function claim(
-	db: Db,
-	missionId: string,
-	now: Date,
-): Promise<MissionDoc | null> {
-	return missionsOf(db).findOneAndUpdate(
-		{
-			missionId,
-			status: "running",
-			"resize.claimedAt": { $exists: false },
-		},
-		{ $set: { "resize.claimedAt": now } },
-		{ returnDocument: "after" },
-	);
-}
-
-async function failResize(
-	db: Db,
-	mission: MissionDoc,
-	err: unknown,
-	verb: string,
-): Promise<UpgradeResult> {
-	const message = (err as Error).message;
-	const stage = err instanceof ResizeError ? err.stage : "provision";
-	if (stage === "stop") {
-		// The old machine is still running: nothing changed, just let go of the claim.
-		await missionsOf(db).updateOne(
-			{ missionId: mission.missionId },
-			{ $unset: { "resize.claimedAt": "" } },
-		);
-		return fail(
-			502,
-			`Could not ${verb}: the machine did not stop (${message}). Nothing changed.`,
-		);
-	}
-	const errorMessage = `Machine resize failed at the ${stage} step (${message}). The workspace volume is intact; Resume the mission to start it on the default machine.`;
-	await missionsOf(db).updateOne(
-		{ missionId: mission.missionId },
-		{
-			$set: { status: "error", errorMessage, updatedAt: new Date() },
-			$unset: { upgrade: "", "resize.claimedAt": "" },
-		},
-	);
-	await closeOpenSegments(db, mission.missionId).catch((e: unknown) =>
-		console.error(
-			`[resource-upgrade] could not close the runtime segment { missionId: "${mission.missionId}", error: "${(e as Error).message}" } — the next segment reconcile closes it`,
-		),
-	);
-	await cancelReminder(db, mission.missionId, mission.upgrade?.reminderId);
-	await recordAnomaly(db, mission, "resize-failure", errorMessage).catch(
-		() => {},
-	);
-	await notify(
-		db,
-		mission,
-		mission.upgrade?.requestedByAgentId,
-		"Machine resize failed",
-		errorMessage,
-	);
-	console.error(
-		`[resource-upgrade] Resize failed { missionId: "${mission.missionId}", stage: "${stage}", error: "${message}" }`,
-	);
-	return fail(500, errorMessage);
-}
+export { sanitizeReason };
+export type { UpgradeResult };
 
 // ---------------------------------------------------------------------------
 // Request / renew
 // ---------------------------------------------------------------------------
 
 /** Request a temporary upgrade, or renew the current one when the shape is unchanged. */
-export async function requestUpgrade(
+interface AdmittedRequest {
+	mission: MissionDoc;
+	shape: MachineShape;
+	durationMinutes: number;
+	reason: string;
+	requester: string | undefined;
+}
+
+/** Everything that can refuse a request before any accounting: input, reason, requester, deployment, state, shape. */
+async function admitRequest(
 	db: Db,
 	missionId: string,
 	input: unknown,
-	now: Date = new Date(),
-): Promise<UpgradeResult> {
+): Promise<AdmittedRequest | UpgradeResult> {
 	const validated = validateUpgradeRequest(input);
 	if (!validated.ok) return fail(400, validated.error);
 	const { durationMinutes, ...shape } = validated.request;
-
 	const body = (input ?? {}) as Record<string, unknown>;
 	const reason = sanitizeReason(body.reason);
 	if (!reason)
 		return fail(400, "reason is required: say what needs the bigger machine.");
-
 	const mission = await missionsOf(db).findOne({ missionId });
 	if (!mission) return fail(404, "Mission not found.");
-
 	const requester = body.requestedByAgentId;
-	if (requester !== undefined) {
-		if (
-			typeof requester !== "string" ||
-			!(mission.agents ?? []).some((a) => a.id === requester)
-		) {
-			return fail(400, "requestedByAgentId is not an agent of this mission.");
-		}
+	if (
+		requester !== undefined &&
+		(typeof requester !== "string" ||
+			!(mission.agents ?? []).some((a) => a.id === requester))
+	) {
+		return fail(400, "requestedByAgentId is not an agent of this mission.");
 	}
-
 	if (mission.machineId?.startsWith("local-") || isLocalExecution()) {
 		return fail(
 			501,
@@ -339,58 +115,42 @@ export async function requestUpgrade(
 			"That is the mission's default machine; no upgrade is needed.",
 		);
 	}
-
-	const since = mission.upgradedRuntimeResetAt ?? new Date(0);
-	const capMs = UPGRADE_LIMITS.cumulativeCapHours * HOUR;
-	const newExpiry = new Date(now.getTime() + durationMinutes * MINUTE);
-
-	if (mission.upgrade && sameShape(shape, mission.upgrade)) {
-		return renew(db, mission, mission.upgrade, {
-			since,
-			capMs,
-			newExpiry,
-			reason,
-			requester: typeof requester === "string" ? requester : undefined,
-			now,
-		});
-	}
-
-	// A shape change: the current window (if any) ends now, so it counts as elapsed.
-	const used = await upgradedMsSince(db, missionId, since, now, "elapsed");
-	if (used + durationMinutes * MINUTE > capMs) {
-		const message = `The cumulative upgraded-runtime cap of ${UPGRADE_LIMITS.cumulativeCapHours} h is reached (${(used / HOUR).toFixed(1)} h used; this request needs ${(durationMinutes / 60).toFixed(2)} h more). Only the operator can reset it, in the cockpit Limits panel.`;
-		await recordCapReached(db, mission, message);
-		return fail(403, message);
-	}
-
-	const lastAt = mission.resize?.lastAt;
-	if (
-		lastAt &&
-		now.getTime() - lastAt.getTime() <
-			UPGRADE_LIMITS.resizeCooldownMinutes * MINUTE
-	) {
-		const wait = Math.ceil(
-			(UPGRADE_LIMITS.resizeCooldownMinutes * MINUTE -
-				(now.getTime() - lastAt.getTime())) /
-				1000,
-		);
-		return fail(
-			429,
-			`The machine was resized less than ${UPGRADE_LIMITS.resizeCooldownMinutes} minutes ago; retry in about ${wait} s.`,
-		);
-	}
-
-	const claimed = await claim(db, missionId, now);
-	if (!claimed?.machineId || !claimed.volumeId) {
-		return fail(409, "Another resize is already in progress for this mission.");
-	}
-
-	const upgrade: MissionUpgradeState = {
-		...shape,
-		expiresAt: newExpiry,
-		...(typeof requester === "string" && { requestedByAgentId: requester }),
+	return {
+		mission,
+		shape,
+		durationMinutes,
+		reason,
+		requester: typeof requester === "string" ? requester : undefined,
 	};
-	const previous = claimed.upgrade;
+}
+
+/** A refusal while the last resize is within the cooldown, or null. */
+function cooldownRefusal(mission: MissionDoc, now: Date): UpgradeResult | null {
+	const lastAt = mission.resize?.lastAt;
+	const cooldownMs = UPGRADE_LIMITS.resizeCooldownMinutes * MINUTE;
+	if (!lastAt || now.getTime() - lastAt.getTime() >= cooldownMs) return null;
+	const wait = Math.ceil(
+		(cooldownMs - (now.getTime() - lastAt.getTime())) / 1000,
+	);
+	return fail(
+		429,
+		`The machine was resized less than ${UPGRADE_LIMITS.resizeCooldownMinutes} minutes ago; retry in about ${wait} s.`,
+	);
+}
+
+/** Replace the claimed machine with the bigger shape and record the upgrade; a failure releases the claim. */
+async function applyUpgrade(
+	db: Db,
+	claimed: MissionDoc & { machineId: string; volumeId: string },
+	upgrade: MissionUpgradeState,
+	now: Date,
+): Promise<UpgradeResult | null> {
+	const { missionId } = claimed;
+	const shape = {
+		cpuKind: upgrade.cpuKind,
+		cpus: upgrade.cpus,
+		memoryMb: upgrade.memoryMb,
+	};
 	try {
 		const handle = await resizeTracked(
 			db,
@@ -398,11 +158,11 @@ export async function requestUpgrade(
 			shape,
 			{
 				upgraded: true,
-				plannedEndAt: newExpiry,
+				plannedEndAt: upgrade.expiresAt,
 				requestedByAgentId: upgrade.requestedByAgentId,
 			},
 		);
-		await cancelReminder(db, missionId, previous?.reminderId);
+		await cancelReminder(db, missionId, claimed.upgrade?.reminderId);
 		upgrade.reminderId = await scheduleReminder(db, claimed, upgrade, now);
 		await missionsOf(db).updateOne(
 			{ missionId },
@@ -417,9 +177,62 @@ export async function requestUpgrade(
 				$unset: { "resize.claimedAt": "" },
 			},
 		);
+		return null;
 	} catch (e) {
 		return failResize(db, claimed, e, "upgrade the machine");
 	}
+}
+
+export async function requestUpgrade(
+	db: Db,
+	missionId: string,
+	input: unknown,
+	now: Date = new Date(),
+): Promise<UpgradeResult> {
+	const admitted = await admitRequest(db, missionId, input);
+	if ("status" in admitted) return admitted;
+	const { mission, shape, durationMinutes, reason, requester } = admitted;
+	const since = mission.upgradedRuntimeResetAt ?? new Date(0);
+	const capMs = UPGRADE_LIMITS.cumulativeCapHours * HOUR;
+	const newExpiry = new Date(now.getTime() + durationMinutes * MINUTE);
+
+	if (mission.upgrade && sameShape(shape, mission.upgrade)) {
+		return renew(db, mission, mission.upgrade, {
+			since,
+			capMs,
+			newExpiry,
+			reason,
+			requester,
+			now,
+		});
+	}
+
+	// A shape change: the current window (if any) ends now, so it counts as elapsed.
+	const used = await upgradedMsSince(db, missionId, since, now, "elapsed");
+	if (used + durationMinutes * MINUTE > capMs) {
+		const message = `The cumulative upgraded-runtime cap of ${UPGRADE_LIMITS.cumulativeCapHours} h is reached (${(used / HOUR).toFixed(1)} h used; this request needs ${(durationMinutes / 60).toFixed(2)} h more). Only the operator can reset it, in the cockpit Limits panel.`;
+		await recordCapReached(db, mission, message);
+		return fail(403, message);
+	}
+	const cooling = cooldownRefusal(mission, now);
+	if (cooling) return cooling;
+
+	const claimed = await claim(db, missionId, now);
+	if (!claimed?.machineId || !claimed.volumeId) {
+		return fail(409, "Another resize is already in progress for this mission.");
+	}
+	const upgrade: MissionUpgradeState = {
+		...shape,
+		expiresAt: newExpiry,
+		...(requester && { requestedByAgentId: requester }),
+	};
+	const failed = await applyUpgrade(
+		db,
+		{ ...claimed, machineId: claimed.machineId, volumeId: claimed.volumeId },
+		upgrade,
+		now,
+	);
+	if (failed) return failed;
 
 	await notify(
 		db,
