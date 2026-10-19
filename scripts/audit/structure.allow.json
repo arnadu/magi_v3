@@ -179,12 +179,6 @@
 			"TranscriptsPanel@205": 202
 		}
 	},
-	"packages/cockpit/src/trace/CostTimeline.tsx": {
-		"lines": 589,
-		"fns": {
-			"CostTimeline@72": 518
-		}
-	},
 	"packages/control-plane/src/copilot-daemon.ts": {
 		"lines": 455,
 		"fns": {
