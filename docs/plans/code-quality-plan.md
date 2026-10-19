@@ -469,12 +469,19 @@ independent once step 1 is done.
 
 | Criterion | Status |
 |---|---|
-| Structure allowlist ≤ 30 files | ✅ 30 (from 39) |
-| No allowlisted function over 300 lines | ❌ five remain: `DraftEditor` 420, `createBrowseWebHandle` 426, `CopilotPanel` 405, `ConfigPanel` 360, `ConversationsPanel` 344 |
-| Complexity exemptions ≤ 24 | ✅ 24 (from 32) |
+| Structure allowlist ≤ 30 files | ✅ 25 (from 39) |
+| No allowlisted function over 300 lines | ✅ (largest is 261); `DraftEditor`, `CopilotPanel`, `ConfigPanel`, `ConversationsPanel` and BrowseWeb decomposed |
+| Complexity exemptions ≤ 24 | ✅ 22 (from 32) |
 | T8, T9, T13, T14, T15 at 0 apart from reasoned entries | ✅ |
 | Contract test for multi-reader collections; CLAUDE.md list tested | ✅ |
-| Coverage floors raised; cockpit floors | ◐ cockpit and per-file risk floors added; worker/control-plane package floors not raised — they must come from CI's numbers (local runs measure ~10 points higher), which CI does not print per package yet |
+| Coverage floors raised; cockpit floors | ✅ package floors from CI's printed totals (worker 61.7, control plane 57.6, agent-config 95.4, cockpit 97.8 statements), per-file 90% floors on the risk modules |
 | `docs/code-structure.md` current | ✅ for every file changed |
-| Issues closed | pending: #34, #36, #60, #73 are done in code; #44 partly; #43's core (typed monitor routes) is done |
+| Issues closed | ✅ #34, #36, #60, #73 closed; #43, #44, #84 commented with what remains |
+- 2026-10-19 — **Remaining exit criteria met**: the five 300+-line functions decomposed
+  (DraftEditor → useDraftState/useDraftSaveLaunch/DraftAgentForm; CopilotPanel →
+  copilot-entries (tested)/use-copilot-stream/views; ConfigPanel → component set +
+  useMissionConfigEditor; ConversationsPanel → threads (tested)/useConversations/views;
+  BrowseWeb → browse-web-session.ts + six named execute steps, real-browser tests green).
+  CI now prints per-package coverage totals; floors raised to them (they were stale, not
+  environment-skewed — an earlier note here was wrong).
 

@@ -59,3 +59,16 @@ maintainability concern as a large source file).
 ## Recently fixed
 
 *(none yet — this document was created 2026-08-12)*
+
+### Cockpit and BrowseWeb decompositions (2026-10-19, #73)
+
+`DraftEditor.tsx` (hooks `use-draft-state.ts`, `use-draft-save-launch.ts`; `DraftAgentForm.tsx`),
+`CopilotPanel.tsx` (`copilot/`: `copilot-entries.ts`, `use-copilot-stream.ts`, `CopilotEntryView`,
+`CopilotModelPicker`), `ConfigPanel.tsx` (`ConfigMissionFields`, `ConfigAgentForm`,
+`CopilotConfigView`, `MentalMapSection`, `MentalMapEditor`, `use-mission-config-editor.ts`),
+`ConversationsPanel.tsx` (`conversations/`: `threads.ts`, `use-conversations.ts`,
+`use-rail-width.ts`, `ThreadList`, `ConversationView`, `ComposeBar`) and
+`tools/browse-web.ts` (`browse-web-session.ts`: model mapping, session log, `BrowserSession`)
+no longer have a function over 120 lines, except the panels' allowlisted remainders. Pure logic
+pulled out of components is unit-tested and counts toward the cockpit coverage floor.
+
