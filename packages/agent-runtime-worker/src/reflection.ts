@@ -438,7 +438,11 @@ export async function reflectGuarded(
 				severity: "soft",
 				message: `Reflection for "${agentId}" failed: ${message}. The turn ran on uncompacted history; it is retried at the next wakeup.`,
 			})
-			.catch(() => {});
+			.catch((e: unknown) =>
+				console.error(
+					`[reflection] could not record the reflection-failed anomaly { missionId: ${missionId}, agentId: ${agentId}, error: ${(e as Error).message} }`,
+				),
+			);
 	}
 }
 

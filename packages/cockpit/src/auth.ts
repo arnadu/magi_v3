@@ -75,7 +75,10 @@ async function endSession(): Promise<void> {
 	await fetch("/api/auth/logout", {
 		method: "POST",
 		credentials: "include",
-	}).catch(() => {});
+	}).catch((e: unknown) =>
+		// The cookie then lives until it expires (1 h); the UI still signs out.
+		console.warn("Sign-out request failed:", (e as Error).message),
+	);
 }
 
 let firebaseAuth: Auth | null | undefined;
@@ -173,5 +176,9 @@ export async function signOut(): Promise<void> {
 	await endSession();
 	window.dispatchEvent(new Event(SESSION_EVENT));
 	const auth = getFirebaseAuth();
-	if (auth) await firebaseSignOut(auth).catch(() => {});
+	if (auth) {
+		await firebaseSignOut(auth).catch((e: unknown) =>
+			console.warn("Firebase sign-out failed:", (e as Error).message),
+		);
+	}
 }

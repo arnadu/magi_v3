@@ -172,7 +172,11 @@ export async function enforceMissionCap(
 			// otherwise — the same pause the cap itself triggers.
 			await ctx.monitor
 				.notifyCostPause(Number.NaN, ctx.maxCostUsd ?? Number.NaN)
-				.catch(() => {});
+				.catch((err: unknown) =>
+					console.error(
+						`[daemon] cost-pause notification failed { missionId: ${ctx.missionId}, error: ${(err as Error).message} } — the dashboard may not show the pause`,
+					),
+				);
 			ctx.mailboxRepo
 				.post({
 					missionId: ctx.missionId,
@@ -181,7 +185,11 @@ export async function enforceMissionCap(
 					subject: "Mission paused: spend cannot be verified",
 					body: `The spend-cap check failed ${state.consecutiveFailures} times in a row (${(e as Error).message}). All agents are paused until the cap check succeeds again or you resume the mission.`,
 				})
-				.catch(() => {});
+				.catch((err: unknown) =>
+					console.error(
+						`[daemon] could not tell the operator about the spend-check pause { missionId: ${ctx.missionId}, error: ${(err as Error).message} }`,
+					),
+				);
 			state.consecutiveFailures = 0;
 		}
 	}

@@ -269,7 +269,11 @@ async function failResize(
 			$unset: { upgrade: "", "resize.claimedAt": "" },
 		},
 	);
-	await closeOpenSegments(db, mission.missionId).catch(() => {});
+	await closeOpenSegments(db, mission.missionId).catch((e: unknown) =>
+		console.error(
+			`[resource-upgrade] could not close the runtime segment { missionId: "${mission.missionId}", error: "${(e as Error).message}" } — the next segment reconcile closes it`,
+		),
+	);
 	await cancelReminder(db, mission.missionId, mission.upgrade?.reminderId);
 	await recordAnomaly(db, mission, "resize-failure", errorMessage).catch(
 		() => {},
@@ -494,7 +498,11 @@ async function renew(
 			"The upgrade changed while renewing (it may just have expired). Check the machine's state and retry.",
 		);
 	}
-	await setPlannedEnd(db, mission.missionId, o.newExpiry).catch(() => {});
+	await setPlannedEnd(db, mission.missionId, o.newExpiry).catch((e: unknown) =>
+		console.error(
+			`[resource-upgrade] could not extend the segment's planned end { missionId: "${mission.missionId}", error: "${(e as Error).message}" } — the upgrade cap counts the renewal only as it is used`,
+		),
+	);
 	await cancelReminder(db, mission.missionId, current.reminderId);
 	renewed.reminderId = await scheduleReminder(db, mission, renewed, o.now);
 	await missionsOf(db).updateOne(

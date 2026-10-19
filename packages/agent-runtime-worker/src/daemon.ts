@@ -39,12 +39,11 @@
  *                                 set by the control plane at machine creation; empty in local dev
  */
 
-import { unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { storedCollection, type TeamConfig } from "@magi/agent-config";
-
 import { config as dotenvConfig } from "dotenv";
+import { removeIfExists } from "./remove-if-exists.js";
 
 const REPO_ROOT = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -440,10 +439,10 @@ async function main(): Promise<void> {
 		toolApiServer.stop();
 		stopJobRunner();
 		await client.close();
-		// Clean up PID file.
-		try {
-			unlinkSync(pidFile);
-		} catch {}
+		removeIfExists(
+			pidFile,
+			"the next start sees a stale pid file and checks whether that process is alive",
+		);
 		// Print final usage roll-up.
 		console.log(usageAccumulator.fullSummary());
 		console.log("[daemon] Shutdown complete");

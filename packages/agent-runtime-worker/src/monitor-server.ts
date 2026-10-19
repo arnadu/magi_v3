@@ -461,7 +461,9 @@ export class MonitorServer {
 		for (const client of this.clients) {
 			try {
 				client.socket?.destroy();
-			} catch {}
+			} catch {
+				// Already closed by the client; shutdown carries on with the rest.
+			}
 		}
 		this.clients.clear();
 

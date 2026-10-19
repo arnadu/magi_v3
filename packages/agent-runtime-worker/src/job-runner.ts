@@ -39,6 +39,7 @@ import { JOB_ID_RE, type JobSpec } from "./job-recovery.js";
 import { resolveLinuxUsers } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
+import { removeIfExists } from "./remove-if-exists.js";
 import { readInside, writeFileInside } from "./safe-path.js";
 import type { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
@@ -209,9 +210,10 @@ function claimPending(
 			deps.onRejected ??
 			((f, r) => console.error(`[daemon:jobs] Refused ${f}: ${r}`))
 		)(file, reason);
-		try {
-			unlinkSync(join(dirs.pending, file));
-		} catch {}
+		removeIfExists(
+			join(dirs.pending, file),
+			"the refused spec stays in pending and is refused again next tick",
+		);
 		return null;
 	};
 	const stem = file.replace(/\.json$/, "");
@@ -373,9 +375,10 @@ function startJob(
 	const { spec, runningPath } = claimed;
 	const drop = (reason: string): undefined => {
 		console.error(`[daemon:jobs] Not starting job ${spec.id}: ${reason}`);
-		try {
-			unlinkSync(runningPath);
-		} catch {}
+		removeIfExists(
+			runningPath,
+			"the job stays marked running and recovery will treat it as orphaned",
+		);
 		return undefined;
 	};
 	const who = resolveJobIdentity(spec, deps);
@@ -452,7 +455,14 @@ function startJob(
 		if (child.pid !== undefined) {
 			try {
 				process.kill(-child.pid, "SIGKILL");
-			} catch {}
+			} catch (e) {
+				// ESRCH: the group already exited between the timeout and the kill.
+				if ((e as NodeJS.ErrnoException).code !== "ESRCH") {
+					console.error(
+						`[daemon:jobs] Could not kill job ${spec.id}'s process group: ${(e as Error).message} — it may keep running past its timeout`,
+					);
+				}
+			}
 		} else {
 			child.kill("SIGKILL");
 		}
@@ -464,9 +474,10 @@ function startJob(
 		runningJobProcesses.delete(spec.id);
 		deps.toolApiServer.revokeToken(token);
 		logStream.end();
-		try {
-			unlinkSync(runningPath);
-		} catch {}
+		removeIfExists(
+			runningPath,
+			"the finished job stays marked running until recovery clears it",
+		);
 		recordJobExit(spec, exitCode, logPath, deps, dirs);
 	});
 }
