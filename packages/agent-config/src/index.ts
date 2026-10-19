@@ -1,3 +1,9 @@
+export type {
+	CallUsage,
+	LlmCallDetail,
+	LlmCallSummary,
+	TranscriptEntry,
+} from "./api/transcripts.js";
 export {
 	ENV_CATALOG,
 	type EnvPlane,

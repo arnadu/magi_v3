@@ -10,7 +10,16 @@
  * named above — no dependency on a `missions` document exists or is assumed.
  */
 
-import { type LlmCallLogEntry, storedCollection } from "@magi/agent-config";
+import {
+	type CallUsage,
+	type LlmCallDetail,
+	type LlmCallLogEntry,
+	type LlmCallSummary,
+	type LoggedMessage,
+	type SummaryMessage,
+	storedCollection,
+	type TranscriptEntry,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 export interface TurnSummary {
@@ -47,20 +56,12 @@ export async function queryTurns(
 	}));
 }
 
-export interface TranscriptEntry {
-	callSeq: number;
-	/** Joins an assistant message to its `LlmCallSummary.callId`; null for older data and non-assistant messages. */
-	callId: string | null;
-	parentToolUseId: string | null;
-	message: unknown;
-}
-
 export async function queryTranscript(
 	db: Db,
 	missionId: string,
 	agentId: string,
 	turn: number,
-): Promise<TranscriptEntry[]> {
+): Promise<TranscriptEntry<LoggedMessage | SummaryMessage>[]> {
 	const docs = await storedCollection(db, "conversationMessages")
 		.find({ missionId, agentId, turnNumber: turn })
 		.sort({ callSeq: 1, _id: 1 })
@@ -71,14 +72,6 @@ export async function queryTranscript(
 		parentToolUseId: d.parentToolUseId ?? null,
 		message: d.message,
 	}));
-}
-
-/** Token counts as the UI shows them. */
-export interface CallUsage {
-	inputTokens: number;
-	outputTokens: number;
-	cacheReadTokens: number;
-	cacheWriteTokens: number;
 }
 
 /**
@@ -102,27 +95,12 @@ export function callUsageOf(c: Partial<Pick<LlmCallLogEntry, "usage">>): {
 	};
 }
 
-export interface LlmCallSummary {
-	index: number;
-	callId: string | null;
-	savedAt: unknown;
-	model: string;
-	isReflection: boolean;
-	costEstimated: boolean;
-	stopReason: string | null;
-	usage: CallUsage | null;
-	costUsd: number | null;
-	toolNames: string[];
-	messageCount: number;
-	hasBody: boolean;
-}
-
 export async function queryLlmCalls(
 	db: Db,
 	missionId: string,
 	agentId: string,
 	turn: number,
-): Promise<LlmCallSummary[]> {
+): Promise<LlmCallSummary<Date>[]> {
 	const calls = await storedCollection(db, "llmCallLog")
 		.find({ missionId, agentId, turnNumber: turn })
 		.sort({ savedAt: 1 })
@@ -144,20 +122,6 @@ export async function queryLlmCalls(
 	}));
 }
 
-export interface LlmCallDetail {
-	index: number;
-	callId: string | null;
-	savedAt: unknown;
-	model: string;
-	isReflection: boolean;
-	costEstimated: boolean;
-	usage: CallUsage | null;
-	costUsd: number | null;
-	input: unknown;
-	/** `{ message, stopReason }` as stored; absent once pruned. */
-	output: unknown;
-}
-
 /** Returns null if no call exists at that index (caller should 404). */
 export async function queryLlmCall(
 	db: Db,
@@ -165,7 +129,7 @@ export async function queryLlmCall(
 	agentId: string,
 	turn: number,
 	i: number,
-): Promise<LlmCallDetail | null> {
+): Promise<LlmCallDetail<Date, LoggedMessage> | null> {
 	const c = (
 		await storedCollection(db, "llmCallLog")
 			.find({ missionId, agentId, turnNumber: turn })
