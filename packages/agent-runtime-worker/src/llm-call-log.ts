@@ -33,11 +33,7 @@ import type {
 	LoggedMessage,
 } from "@magi/agent-config";
 import { storedCollection } from "@magi/agent-config";
-import type {
-	AssistantMessage,
-	Message,
-	ToolResultMessage,
-} from "@mariozechner/pi-ai";
+import type { Message, ToolResultMessage } from "@mariozechner/pi-ai";
 import type { Db } from "mongodb";
 
 // ---------------------------------------------------------------------------
