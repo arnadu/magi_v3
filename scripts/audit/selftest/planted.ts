@@ -15,3 +15,4 @@
 // T11: Sprint 99 bookkeeping comment that should be an ADR link
 /* T12 */ await db.collection("mailbox").insertOne(doc);
 /* T13 */ db.collection("missions");
+/* T14 */ console.error(e);

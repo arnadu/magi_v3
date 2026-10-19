@@ -33,6 +33,7 @@ dotenvConfig({
 	quiet: true,
 });
 
+import { exitOnFatal } from "./exit-on-fatal.js";
 import { resolveLinuxUsers } from "./linux-user.js";
 import { injectMissionCopilot } from "./mission-copilot.js";
 import { connectMongo } from "./mongo.js";
@@ -147,7 +148,4 @@ async function main(): Promise<void> {
 	console.log("\nReset complete. Start the daemon to begin a fresh mission.");
 }
 
-main().catch((e) => {
-	console.error(e);
-	process.exit(1);
-});
+main().catch(exitOnFatal("cli:reset"));

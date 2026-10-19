@@ -29,6 +29,7 @@ dotenvConfig({
 	quiet: true,
 });
 
+import { exitOnFatal } from "./exit-on-fatal.js";
 import type { LlmCallLogEntry } from "./llm-call-log.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import { connectMongo } from "./mongo.js";
@@ -358,7 +359,4 @@ function printAggregateSummary(
 	console.log(`  TOTAL:       ${fmtCost(grand.totalCostUsd)}\n`);
 }
 
-main().catch((e) => {
-	console.error(e);
-	process.exit(1);
-});
+main().catch(exitOnFatal("cli:usage"));

@@ -42,6 +42,7 @@ import {
 } from "./agent-stats.js";
 import { resolveCliSpendCap, stopWhenCapReached } from "./cli-cap.js";
 import { createMongoConversationRepository } from "./conversation-repository.js";
+import { exitOnFatal } from "./exit-on-fatal.js";
 import { createMongoLlmCallLogRepository } from "./llm-call-log.js";
 import { createMongoMailboxRepository } from "./mailbox.js";
 import { resolveModel } from "./models.js";
@@ -236,7 +237,4 @@ async function main(): Promise<void> {
 	}
 }
 
-main().catch((e) => {
-	console.error(e);
-	process.exit(1);
-});
+main().catch(exitOnFatal("cli"));

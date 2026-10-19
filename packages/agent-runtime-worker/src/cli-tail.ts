@@ -28,6 +28,7 @@ dotenvConfig({
 	quiet: true,
 });
 
+import { exitOnFatal } from "./exit-on-fatal.js";
 import { connectMongo } from "./mongo.js";
 
 async function main(): Promise<void> {
@@ -97,7 +98,4 @@ async function main(): Promise<void> {
 	});
 }
 
-main().catch((e) => {
-	console.error(e);
-	process.exit(1);
-});
+main().catch(exitOnFatal("cli:tail"));

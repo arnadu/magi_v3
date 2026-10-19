@@ -20,6 +20,7 @@ import { storedCollection } from "@magi/agent-config";
 import {
 	CLAUDE_HAIKU,
 	CLAUDE_SONNET,
+	exitOnFatal,
 	fetchOpenRouterCatalog,
 	type OpenRouterModelInfo,
 } from "@magi/agent-runtime-worker";
@@ -326,7 +327,4 @@ async function main(): Promise<void> {
 	process.on("SIGINT", shutdown);
 }
 
-main().catch((e) => {
-	console.error(e);
-	process.exit(1);
-});
+main().catch(exitOnFatal("control-plane"));

@@ -123,6 +123,9 @@ check T12-raw-mailbox-insert "raw mailbox insertOne (use the shared mailbox writ
 # T13 R-15: a collection is reached through storedCollection()/COLLECTION_NAMES, never a name literal.
 check T13-collection-literal "MongoDB collection named by a string literal (use storedCollection or COLLECTION_NAMES)" \
 	'\.collection(<[^>]*>)?\([[:space:]]*["'"'"']' $W $CP packages/agent-config/src
+# T14: a bare console.error(e) says nothing about the operation, input or consequence.
+check T14-bare-error-log "console.error of a bare error (say what failed, on what input, and the consequence)" \
+	'console\.error\((e|err|error)\)' packages/*/src
 # LLM-facing text naming tools/scripts: handled by contract tests (llm-text.*.test), not here.
 
 if [ "$selftest" = 1 ]; then

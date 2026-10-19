@@ -40,6 +40,7 @@
 
 import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { exitOnFatal } from "./exit-on-fatal.js";
 
 // ---------------------------------------------------------------------------
 // Minimal HTTP client (stdlib — no npm deps at runtime)
@@ -264,7 +265,4 @@ async function main(): Promise<void> {
 	}
 }
 
-main().catch((e: unknown) => {
-	console.error(e);
-	process.exit(1);
-});
+main().catch(exitOnFatal("cli:tool"));

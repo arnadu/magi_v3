@@ -25,6 +25,7 @@ export type {
 	StoredMessage,
 } from "./conversation-repository.js";
 export { createMongoConversationRepository } from "./conversation-repository.js";
+export { exitOnFatal } from "./exit-on-fatal.js";
 export type {
 	LimitAlert,
 	LimitBreach,
