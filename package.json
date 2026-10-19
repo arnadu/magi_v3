@@ -14,7 +14,7 @@
 		"test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
 		"lint": "biome check packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
 		"lint:fix": "biome check --write --unsafe packages/ vitest.setup.ts vitest.config.ts vitest.integration.config.ts",
-		"typecheck": "tsc -p packages/agent-config/tsconfig.json --noEmit && tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit && tsc -p packages/control-plane/tsconfig.json --noEmit && tsc -p packages/cockpit/tsconfig.json --noEmit",
+		"typecheck": "tsc -p packages/agent-config/tsconfig.json --noEmit && tsc -p packages/agent-config/tsconfig.type-tests.json && tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit && tsc -p packages/control-plane/tsconfig.json --noEmit && tsc -p packages/cockpit/tsconfig.json --noEmit",
 		"audit:tripwires": "bash scripts/audit/tripwires.sh --selftest && bash scripts/audit/tripwires.sh",
 		"audit:structure": "node scripts/audit/structure-check.mjs",
 		"verify:quick": "npm run lint && npm run audit:tripwires && npm run audit:structure && npm run typecheck",

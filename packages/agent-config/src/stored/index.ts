@@ -6,6 +6,7 @@ export {
 	type StoredDocs,
 	storedCollection,
 } from "./collections.js";
+export { field, type Path, ref } from "./paths.js";
 export {
 	SCHEDULE_ORIGIN,
 	type ScheduledJobDoc,
