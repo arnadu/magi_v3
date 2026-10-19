@@ -53,7 +53,6 @@
 				"packages/agent-runtime-worker/src/loop.ts",
 				"packages/agent-runtime-worker/src/objectives/store.ts",
 				"packages/agent-runtime-worker/src/reflection.ts",
-				"packages/agent-runtime-worker/src/tools/browse-web.ts",
 				"packages/agent-runtime-worker/src/tools/fetch-url.ts",
 				"packages/agent-runtime-worker/src/tools/research.ts",
 				"packages/agent-runtime-worker/src/workspace-manager.ts",

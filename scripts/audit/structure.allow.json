@@ -77,13 +77,6 @@
 			"createObjectivesTools@133": 217
 		}
 	},
-	"packages/agent-runtime-worker/src/tools/browse-web.ts": {
-		"lines": 504,
-		"fns": {
-			"createBrowseWebHandle@128": 426,
-			"execute@313": 206
-		}
-	},
 	"packages/agent-runtime-worker/src/tools/fetch-url.ts": {
 		"lines": 428,
 		"fns": {
