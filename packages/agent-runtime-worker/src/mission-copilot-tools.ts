@@ -444,12 +444,10 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const agentId = args.agentId as string;
-			const doc = await db
-				.collection("conversationMessages")
-				.findOne(
-					{ agentId, missionId, mentalMapHtml: { $exists: true } },
-					{ sort: { turnNumber: -1, seqInTurn: -1 } },
-				);
+			const doc = await storedCollection(db, "conversationMessages").findOne(
+				{ agentId, missionId, mentalMapHtml: { $exists: true } },
+				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+			);
 			const html = (doc?.mentalMapHtml as string | undefined) ?? "";
 			return ok(wrapTrustBoundary(`${agentId}'s mental map`, html));
 		},
@@ -598,8 +596,7 @@ export function createMissionCopilotTools(
 		}),
 		async execute(_id, args) {
 			const limit = Math.min((args.limit as number | undefined) ?? 20, 100);
-			const docs = await db
-				.collection("mailbox")
+			const docs = await storedCollection(db, "mailbox")
 				.find({ missionId })
 				.sort({ timestamp: -1 })
 				.limit(limit)
@@ -626,8 +623,7 @@ export function createMissionCopilotTools(
 			"Message-count matrix between every pair of agents in the mission — a shape-of-coordination overview before drilling into ReadMissionMailboxAll. Structured counts only — no marking needed.",
 		parameters: Type.Object({}),
 		async execute() {
-			const docs = await db
-				.collection("mailbox")
+			const docs = await storedCollection(db, "mailbox")
 				.aggregate([
 					{ $match: { missionId } },
 					{ $unwind: "$to" },
@@ -658,8 +654,7 @@ export function createMissionCopilotTools(
 			const query = args.query as string;
 			const limit = Math.min((args.limit as number | undefined) ?? 20, 100);
 			const escaped = escapeRegex(query);
-			const docs = await db
-				.collection("conversationMessages")
+			const docs = await storedCollection(db, "conversationMessages")
 				.find({
 					missionId,
 					$or: [

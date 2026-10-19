@@ -5,9 +5,9 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { extname, relative } from "node:path";
-import { storedCollection } from "@magi/agent-config";
+import { type MailboxMessage, storedCollection } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
-import type { Db } from "mongodb";
+import type { Db, WithId } from "mongodb";
 import type { StatsCollector } from "./agent-stats.js";
 import {
 	createDescribeImage,
@@ -962,7 +962,9 @@ export class MonitorServer {
 		while (true) {
 			try {
 				await new Promise<void>((resolve, reject) => {
-					const stream = this.db.collection("mailbox").watch(
+					const stream = storedCollection(this.db, "mailbox").watch<
+						WithId<MailboxMessage>
+					>(
 						[
 							{
 								$match: {
@@ -975,14 +977,7 @@ export class MonitorServer {
 					);
 					stream.on("change", (change) => {
 						if (change.operationType !== "insert") return;
-						const doc = change.fullDocument as {
-							_id: unknown;
-							from: string;
-							to: string[];
-							subject: string;
-							body: string;
-							timestamp?: Date;
-						};
+						const doc = change.fullDocument;
 						this.push("mailbox-msg", {
 							id: String(doc._id),
 							from: doc.from,
@@ -1026,7 +1021,10 @@ export class MonitorServer {
 		while (true) {
 			try {
 				await new Promise<void>((resolve, reject) => {
-					const stream = this.db.collection("conversationMessages").watch(
+					const stream = storedCollection(
+						this.db,
+						"conversationMessages",
+					).watch(
 						[
 							{
 								$match: {
@@ -1039,9 +1037,7 @@ export class MonitorServer {
 					);
 					stream.on("change", (change) => {
 						if (change.operationType !== "insert") return;
-						const doc = change.fullDocument as {
-							agentId: string;
-						} & Record<string, unknown>;
+						const doc = change.fullDocument;
 						this.push("conversation-update", {
 							agentId: doc.agentId,
 							message: doc,

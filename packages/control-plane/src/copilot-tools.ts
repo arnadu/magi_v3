@@ -263,8 +263,7 @@ export function createCopilotTools(
 				userId,
 			});
 			if (!mission) return err(`Mission "${missionId}" not found`);
-			const msgs = await db
-				.collection("mailbox")
+			const msgs = await storedCollection(db, "mailbox")
 				.find({ missionId }, { sort: { timestamp: -1 }, limit })
 				.toArray();
 			if (msgs.length === 0) return ok("(mailbox empty)");

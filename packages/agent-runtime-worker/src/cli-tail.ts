@@ -15,7 +15,7 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTeamConfig } from "@magi/agent-config";
+import { loadTeamConfig, storedCollection } from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
 
 dotenvConfig({
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
 	const showAll = process.argv.includes("--all");
 
 	const { client, db } = await connectMongo(mongoUri);
-	const col = db.collection("mailbox");
+	const col = storedCollection(db, "mailbox");
 
 	const pipeline = showAll
 		? [

@@ -1,3 +1,4 @@
+import { type SummaryMessage, storedCollection } from "@magi/agent-config";
 import type { Message } from "@mariozechner/pi-ai";
 import type { Db } from "mongodb";
 
@@ -10,10 +11,7 @@ import type { Db } from "mongodb";
  * Stored alongside pi-ai messages in conversationMessages but never sent to
  * the LLM verbatim — convertToLlm converts them to user messages.
  */
-export interface SummaryMessage {
-	role: "summary";
-	content: string;
-}
+export type { SummaryMessage };
 
 export interface StoredMessage {
 	/**
@@ -102,38 +100,10 @@ export interface ConversationRepository {
 // MongoDB implementation
 // ---------------------------------------------------------------------------
 
-interface ConversationDoc {
-	agentId: string;
-	missionId: string;
-	turnNumber: number;
-	seqInTurn: number;
-	message: Message | SummaryMessage;
-	savedAt: Date;
-	/**
-	 * Set to true by compact() when reflection has summarised this turn.
-	 * Compacted documents are excluded from load() (prompt preparation) but
-	 * retained in MongoDB for auditability and future RAG-based retrieval.
-	 */
-	compacted?: boolean;
-	/**
-	 * Set to true for messages produced by the reflection inner loop.
-	 * Excluded from load() so they never appear in the agent's prompt context,
-	 * but retained in MongoDB for debugging and future UI display.
-	 */
-	isReflection?: boolean;
-	/** Which LLM call (0-based) within the session this message belongs to. */
-	callSeq?: number;
-	callId?: string;
-	/** Mental map HTML snapshot at the time of this LLM call (AssistantMessages only). */
-	mentalMapHtml?: string;
-	/** Parent tool_use block id for sub-loop messages. */
-	parentToolUseId?: string;
-}
-
 export function createMongoConversationRepository(
 	db: Db,
 ): ConversationRepository {
-	const col = db.collection<ConversationDoc>("conversationMessages");
+	const col = storedCollection(db, "conversationMessages");
 
 	// Unique compound index — enforces exactly one message per position.
 	// On first run after the Sprint 9→11 upgrade the index exists without

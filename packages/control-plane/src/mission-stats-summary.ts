@@ -12,6 +12,7 @@
 
 import {
 	type AgentTurnStats,
+	type MailboxMessage,
 	type MissionStats,
 	storedCollection,
 } from "@magi/agent-config";
@@ -24,12 +25,6 @@ export interface MissionStatsEntry {
 	spendLastHour: number;
 	lastActivity: Date | null;
 	snippet: string | null;
-}
-
-interface MailDoc {
-	missionId: string;
-	from?: string;
-	subject?: string;
 }
 
 /** UTC day boundary: the control plane runs in UTC and so do the agents' crons. */
@@ -75,15 +70,13 @@ export async function summarizeMissions(
 			)
 			.toArray(),
 		// Unread for the operator = addressed to "user" and not yet read by "user".
-		db
-			.collection<MailDoc>("mailbox")
+		storedCollection(db, "mailbox")
 			.find(
 				{ missionId: { $in: missionIds }, to: "user", readBy: { $ne: "user" } },
 				{ projection: { missionId: 1 } },
 			)
 			.toArray(),
-		db
-			.collection<MailDoc>("mailbox")
+		storedCollection(db, "mailbox")
 			.find(
 				{ missionId: { $in: missionIds }, to: "user" },
 				{ projection: { missionId: 1, from: 1, subject: 1, timestamp: 1 } },
@@ -138,7 +131,8 @@ function foldTurns(
 /** First (newest) message per mission wins; the query is sorted newest first. */
 function foldSnippets(
 	stats: Record<string, MissionStatsEntry>,
-	docs: MailDoc[],
+	docs: (Pick<MailboxMessage, "missionId"> &
+		Partial<Pick<MailboxMessage, "from" | "subject">>)[],
 ): void {
 	for (const m of docs) {
 		const s = stats[m.missionId];

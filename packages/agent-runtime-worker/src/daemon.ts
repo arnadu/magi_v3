@@ -42,7 +42,7 @@
 import { unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { TeamConfig } from "@magi/agent-config";
+import { storedCollection, type TeamConfig } from "@magi/agent-config";
 
 import { config as dotenvConfig } from "dotenv";
 
@@ -368,7 +368,7 @@ async function main(): Promise<void> {
 	Object.assign(ctx, { stopJobRunner });
 
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.
-	const mailboxCol = db.collection("mailbox");
+	const mailboxCol = storedCollection(db, "mailbox");
 	const waitForMail = createMailWaiter(mailboxCol, missionId, signal);
 	Object.assign(ctx, { waitForMail });
 

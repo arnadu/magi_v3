@@ -3,6 +3,7 @@
  * Registered by `createMissionsRouter` (missions.ts) in the original order.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import type { RequestHandler } from "express";
 import type { AsyncRoutes } from "./async-handler.js";
 import { getMachineState } from "./fly-machines.js";
@@ -108,8 +109,7 @@ function getConversations({ db, col }: MissionRouteDeps): RequestHandler {
 		// was still in MongoDB (found live on meteo-textbook-20260730, whose
 		// resume-recovery traffic tipped it just over the cap).
 		const msgs = (
-			await db
-				.collection("mailbox")
+			await storedCollection(db, "mailbox")
 				.find({
 					missionId: req.params.id,
 					$or: [{ from: "user" }, { to: "user" }],
@@ -201,12 +201,10 @@ function postMessagesRead({ db, col }: MissionRouteDeps): RequestHandler {
 		}
 		const ids = (req.body?.ids as string[] | undefined) ?? [];
 		if (ids.length > 0) {
-			await db
-				.collection("mailbox")
-				.updateMany(
-					{ missionId: req.params.id, to: "user", id: { $in: ids } },
-					{ $addToSet: { readBy: "user" } },
-				);
+			await storedCollection(db, "mailbox").updateMany(
+				{ missionId: req.params.id, to: "user", id: { $in: ids } },
+				{ $addToSet: { readBy: "user" } },
+			);
 		}
 		res.json({ ok: true });
 	};

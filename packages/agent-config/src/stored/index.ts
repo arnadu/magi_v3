@@ -6,12 +6,14 @@ export {
 	type StoredDocs,
 	storedCollection,
 } from "./collections.js";
+export type { ConversationDoc, SummaryMessage } from "./conversation.js";
 export type {
 	LlmCallCost,
 	LlmCallLogEntry,
 	LlmCallUsage,
 	LoggedMessage,
 } from "./llm-calls.js";
+export type { MailboxMessage } from "./mailbox.js";
 export type {
 	CpuKind,
 	MissionDoc,

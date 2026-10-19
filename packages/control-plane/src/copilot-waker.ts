@@ -14,6 +14,7 @@
  * after every stream reconnect) for anything the stream missed.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import type { ChangeStream, Db } from "mongodb";
 
 const COPILOT_MAILBOX_PREFIX = "copilot-";
@@ -36,8 +37,7 @@ export async function wakeStrandedCopilots(
 	db: Db,
 	ensureCopilotRunning: EnsureCopilotRunning,
 ): Promise<number> {
-	const rows = await db
-		.collection("mailbox")
+	const rows = await storedCollection(db, "mailbox")
 		.aggregate<{ _id: unknown }>([
 			{
 				$match: {
@@ -111,7 +111,7 @@ export function startCopilotWaker(
 		if (stopped) return;
 		let opened: ChangeStream;
 		try {
-			opened = db.collection("mailbox").watch([
+			opened = storedCollection(db, "mailbox").watch([
 				{
 					$match: {
 						operationType: "insert",

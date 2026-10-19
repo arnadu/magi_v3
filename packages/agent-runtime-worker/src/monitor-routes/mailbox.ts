@@ -1,3 +1,4 @@
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { MailboxRepository } from "../mailbox.js";
 import { readBody } from "../monitor-server.js";
@@ -21,22 +22,13 @@ export function createMailboxRoutes(deps: MailboxRoutesDeps): RouteEntry[] {
 				// once a mission passed that count (MR1; same bug as #63 had in
 				// /conversations).
 				const msgs = (
-					await deps.db
-						.collection("mailbox")
+					await storedCollection(deps.db, "mailbox")
 						.find({ missionId: deps.missionId })
 						.sort({ timestamp: -1 })
 						.limit(500)
 						.toArray()
 				).reverse();
-				const payload = msgs.map((doc) => {
-					const d = doc as {
-						_id: unknown;
-						from: string;
-						to: string[];
-						subject: string;
-						body: string;
-						timestamp?: Date;
-					};
+				const payload = msgs.map((d) => {
 					return {
 						id: String(d._id),
 						from: d.from,

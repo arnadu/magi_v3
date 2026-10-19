@@ -192,8 +192,7 @@ export function createCopilotRouter(
 
 	routes.get("/history", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
-		const raw = await db
-			.collection("mailbox")
+		const raw = await storedCollection(db, "mailbox")
 			.find({
 				missionId,
 				$or: [{ from: "user" }, { to: "user" }],
@@ -621,7 +620,7 @@ export async function executeAction(
 				);
 			}
 			if (scMentalMaps) {
-				const convCol = db.collection("conversationMessages");
+				const convCol = storedCollection(db, "conversationMessages");
 				for (const [agentId, html] of Object.entries(scMentalMaps)) {
 					const latest = await convCol.findOne(
 						{

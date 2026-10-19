@@ -12,7 +12,6 @@
  *      storage manageable on the M0/M2 Atlas tier.
  */
 
-import { randomUUID } from "node:crypto";
 import {
 	type MissionDoc,
 	type ScheduledMessageDoc,
@@ -28,6 +27,7 @@ import type { Collection, Db, WithId } from "mongodb";
 import { schedule } from "node-cron";
 import { getMachineState } from "./fly-machines.js";
 import { wakeTracked } from "./machine-lifecycle.js";
+import { postMailbox } from "./mailbox-writer.js";
 import { createUpgradeSweeper } from "./resource-upgrade.js";
 
 const { parseExpression } = cronParser;
@@ -146,30 +146,17 @@ async function reopenStaleLeases(
 	);
 }
 
-/**
- * Insert the message. Fields must match MailboxMessage
- * (agent-runtime-worker/src/mailbox.ts) exactly — this insert bypasses the
- * shared repository, so nothing enforces that at the type level. A prior
- * version used createdAt/read instead of timestamp/readBy: prompt.ts's
- * formatMessages() calls m.timestamp.toISOString() unconditionally, so a
- * message missing timestamp crashes the receiving agent's very next dispatch
- * with "Cannot read properties of undefined (reading 'toISOString')" — found
- * live when a mission copilot's CreateScheduledMessage first exercised this
- * delivery path for a real mission.
- */
+/** Deliver a due scheduled message to the mailbox through the shared writer. */
 async function deliverToMailbox(
-	mailboxCol: Collection<Record<string, unknown>>,
+	db: Db,
 	doc: WithId<ScheduledMessageDoc>,
 ): Promise<void> {
-	await mailboxCol.insertOne({
-		id: randomUUID(),
+	await postMailbox(db, {
 		missionId: doc.missionId,
 		from: "scheduler",
 		to: doc.to,
 		subject: doc.subject,
 		body: doc.body,
-		timestamp: new Date(),
-		readBy: [],
 	});
 	console.log(
 		`[scheduler] Delivered "${doc.subject}" to ${doc.to.join(", ")} (mission ${doc.missionId})`,
@@ -178,7 +165,6 @@ async function deliverToMailbox(
 
 async function deliverAll(db: Db): Promise<void> {
 	const scheduledCol = storedCollection(db, "scheduledMessages");
-	const mailboxCol = db.collection<Record<string, unknown>>("mailbox");
 	const missionsCol = storedCollection(db, "missions");
 
 	const now = new Date();
@@ -210,7 +196,7 @@ async function deliverAll(db: Db): Promise<void> {
 					`[scheduler] Job schedule "${doc.label ?? doc.subject}" due — flagged for the mission daemon (mission ${doc.missionId})`,
 				);
 			} else {
-				await deliverToMailbox(mailboxCol, doc);
+				await deliverToMailbox(db, doc);
 			}
 			if (!doc.cron) {
 				await scheduledCol.updateOne(

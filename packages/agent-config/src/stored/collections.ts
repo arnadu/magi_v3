@@ -8,7 +8,9 @@
  */
 
 import type { Collection, Db, Document } from "mongodb";
+import type { ConversationDoc } from "./conversation.js";
 import type { LlmCallLogEntry } from "./llm-calls.js";
+import type { MailboxMessage } from "./mailbox.js";
 import type { MissionDoc } from "./missions.js";
 import type { ScheduledMessageDoc } from "./scheduling.js";
 import type { AgentTurnStats, MissionStats } from "./stats.js";
@@ -41,8 +43,8 @@ export interface StoredDocs {
 	missions: MissionDoc;
 	missionConfigRevisions: Document;
 	scheduledMessages: ScheduledMessageDoc;
-	mailbox: Document;
-	conversationMessages: Document;
+	mailbox: MailboxMessage;
+	conversationMessages: ConversationDoc;
 	llmCallLog: LlmCallLogEntry;
 	agentTurnStats: AgentTurnStats;
 	missionStats: MissionStats;

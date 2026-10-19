@@ -7,6 +7,7 @@ import {
 	type AgentConfig,
 	type Limits,
 	parseTeamConfig,
+	storedCollection,
 	type TeamConfig,
 	validateTeamFiles,
 } from "@magi/agent-config";
@@ -46,7 +47,7 @@ function getConfig({ db, col }: MissionRouteDeps): RequestHandler {
 		// in-memory at daemon startup, ADR-0016) — include it here too so the
 		// cockpit's Config panel can show it like any other agent's.
 		const mentalMaps: Record<string, string> = {};
-		const convCol = db.collection("conversationMessages");
+		const convCol = storedCollection(db, "conversationMessages");
 		const agentIds = [
 			...mission.agents.map((a) => a.id),
 			MISSION_COPILOT_AGENT_ID,
@@ -106,7 +107,7 @@ async function checkMentalMapEdits(
 	| { latestByAgent: Map<string, { _id: ObjectId; mentalMapHtml: string }> }
 	| { error: string }
 > {
-	const convCol = db.collection("conversationMessages");
+	const convCol = storedCollection(db, "conversationMessages");
 	const latestByAgent = new Map<
 		string,
 		{ _id: ObjectId; mentalMapHtml: string }
@@ -208,7 +209,7 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 			return;
 		}
 		const latestByAgent = checked.latestByAgent;
-		const convCol = db.collection("conversationMessages");
+		const convCol = storedCollection(db, "conversationMessages");
 
 		await createMongoMissionConfigWriter(db).write(
 			req.params.id,

@@ -1,4 +1,5 @@
-import type { Collection, Document } from "mongodb";
+import type { MailboxMessage } from "@magi/agent-config";
+import type { Collection } from "mongodb";
 
 /**
  * Build the daemon's sleep-until-mail hook: a single-shot Change Stream
@@ -22,7 +23,7 @@ import type { Collection, Document } from "mongodb";
 export const MAIL_POLL_FALLBACK_MS = 15_000;
 
 export function createMailWaiter(
-	mailboxCol: Collection<Document>,
+	mailboxCol: Collection<MailboxMessage>,
 	missionId: string,
 	signal: AbortSignal,
 	pollFallbackMs: number = MAIL_POLL_FALLBACK_MS,

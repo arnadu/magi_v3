@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { TeamConfig } from "@magi/agent-config";
+import {
+	type MailboxMessage,
+	storedCollection,
+	type TeamConfig,
+} from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import type { Db } from "mongodb";
 import type { MagiTool, ToolResult } from "./tools.js";
@@ -12,16 +16,7 @@ export const MAILBOX_MAX_BODY_BYTES = 100_000;
 // Domain types
 // ---------------------------------------------------------------------------
 
-export interface MailboxMessage {
-	id: string;
-	missionId: string;
-	from: string; // agent id or "user"
-	to: string[]; // agent ids and/or "user"
-	subject: string;
-	body: string;
-	timestamp: Date;
-	readBy: string[]; // agent ids that have called ReadMessage on this
-}
+export type { MailboxMessage };
 
 /**
  * ISO string for a message's timestamp, or "unknown" if it's missing/invalid.
@@ -78,7 +73,7 @@ export function createMongoMailboxRepository(
 	db: Db,
 	missionId: string,
 ): MailboxRepository {
-	const col = db.collection<MailboxMessage & { _id?: unknown }>("mailbox");
+	const col = storedCollection(db, "mailbox");
 
 	return {
 		async post(msg) {

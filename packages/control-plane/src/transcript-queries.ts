@@ -61,8 +61,7 @@ export async function queryTranscript(
 	agentId: string,
 	turn: number,
 ): Promise<TranscriptEntry[]> {
-	const docs = await db
-		.collection("conversationMessages")
+	const docs = await storedCollection(db, "conversationMessages")
 		.find({ missionId, agentId, turnNumber: turn })
 		.sort({ callSeq: 1, _id: 1 })
 		.toArray();

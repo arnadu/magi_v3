@@ -20,7 +20,10 @@ export function createAgentSessionsRoutes(
 			method: "GET",
 			path: /^\/agents\/([^/]+)\/mental-map$/,
 			async handler({ res }, agentId) {
-				const doc = await deps.db.collection("conversationMessages").findOne(
+				const doc = await storedCollection(
+					deps.db,
+					"conversationMessages",
+				).findOne(
 					{
 						agentId,
 						missionId: deps.missionId,
@@ -54,8 +57,10 @@ export function createAgentSessionsRoutes(
 					byTurn.set(d.turnNumber, turnDocs);
 				}
 
-				const toolCounts = await deps.db
-					.collection("conversationMessages")
+				const toolCounts = await storedCollection(
+					deps.db,
+					"conversationMessages",
+				)
 					.aggregate([
 						{
 							$match: {
@@ -110,8 +115,7 @@ export function createAgentSessionsRoutes(
 			async handler({ res }, agentId, turnParam) {
 				const turnNumber = Number.parseInt(turnParam, 10);
 
-				const msgs = await deps.db
-					.collection("conversationMessages")
+				const msgs = await storedCollection(deps.db, "conversationMessages")
 					.find({ agentId, missionId: deps.missionId, turnNumber })
 					.sort({ seqInTurn: 1 })
 					.toArray();

@@ -11,8 +11,12 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { TeamConfig } from "@magi/agent-config";
-import { loadTeamConfig } from "@magi/agent-config";
+import {
+	loadTeamConfig,
+	type MailboxMessage,
+	storedCollection,
+	type TeamConfig,
+} from "@magi/agent-config";
 import {
 	type AgentIdentity,
 	type AgentRunContext,
@@ -234,7 +238,7 @@ async function runWatchLoop(
 	onReady: () => void,
 	busyRef: { current: boolean },
 ): Promise<void> {
-	const mailboxCol = db.collection("mailbox");
+	const mailboxCol = storedCollection(db, "mailbox");
 	const mailboxRepo = createMongoMailboxRepository(db, missionId);
 	const conversationRepo = createMongoConversationRepository(db);
 	const llmCallLog: LlmCallLogRepository = createMongoLlmCallLogRepository(db);
@@ -406,7 +410,7 @@ async function runWatchLoop(
 // ---------------------------------------------------------------------------
 
 function waitForMailboxInsert(
-	mailboxCol: Collection,
+	mailboxCol: Collection<MailboxMessage>,
 	missionId: string,
 	signal: AbortSignal,
 	onStreamOpen?: () => void,

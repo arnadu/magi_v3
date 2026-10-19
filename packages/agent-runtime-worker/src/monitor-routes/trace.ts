@@ -72,8 +72,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 			path: "/interactions",
 			// Message counts between agent pairs.
 			async handler({ res }) {
-				const docs = await deps.db
-					.collection("mailbox")
+				const docs = await storedCollection(deps.db, "mailbox")
 					.aggregate([
 						{ $match: { missionId: deps.missionId } },
 						{ $unwind: "$to" },
@@ -107,8 +106,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 			// the read-status semantics of the existing mailbox/scheduler code
 			// for an unrelated visualization.
 			async handler({ res }) {
-				const docs = await deps.db
-					.collection("mailbox")
+				const docs = await storedCollection(deps.db, "mailbox")
 					.aggregate([
 						{ $match: { missionId: deps.missionId } },
 						{
