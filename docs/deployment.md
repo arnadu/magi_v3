@@ -389,6 +389,45 @@ In **Firebase console → Authentication → Settings → Authorized domains**, 
 | `magi-prod-b9403` | Each `magi-control-prod-*.fly.dev` suffix you deploy |
 
 `localhost` is already in the default list. Fly.io deploy domains must be added manually.
+Remove any domain you no longer deploy to.
+
+### Step 2b — Restrict the web API key
+
+The Firebase web API key (`FIREBASE_CLIENT_API_KEY`) is public by design: the cockpit serves it
+to every browser, and an older copy of it is in this public repository's history. That is safe
+only while the key is restricted, so that it works only from your own pages and only for sign-in.
+Do this once per Firebase project.
+
+1. Open **Google Cloud console → APIs & Services → Credentials** with the Firebase project
+   selected (`magi-68bb2`, then `magi-prod-b9403`). Open the key named **Browser key (auto created
+   by Firebase)**. Check that its value matches `FIREBASE_CLIENT_API_KEY` in `secrets.env`, or in
+   `secrets.env.prod-beta` for the production project.
+2. **Application restrictions → Websites**, and add one referrer per line:
+
+   | Project | Referrers |
+   |---------|-----------|
+   | `magi-68bb2` | `https://magi-control-dev.fly.dev/*`, `https://magi-68bb2.firebaseapp.com/*`, `http://localhost:3001/*`, `http://localhost:5173/*` |
+   | `magi-prod-b9403` | `https://magi-control-prod-beta.fly.dev/*` (and every other `magi-control-prod-*.fly.dev` you deploy), `https://magi-prod-b9403.firebaseapp.com/*` |
+
+   The `*.firebaseapp.com` entry is required. Google sign-in opens a popup on
+   `https://<project>.firebaseapp.com/__/auth/handler`, and that popup calls the API with the same
+   key. Without the entry, the popup fails with `auth/requests-from-referer-…-are-blocked`.
+3. **API restrictions → Restrict key**, and select only **Identity Toolkit API** and **Token
+   Service API**. The cockpit uses only `firebase/auth`, which needs no other Google API.
+4. **Save.** The change can take up to 5 minutes to apply.
+
+Check the result:
+
+```bash
+# Sign out of the cockpit, sign back in with Google: this must still work.
+# A request from a foreign origin must be refused (expect API_KEY_HTTP_REFERRER_BLOCKED):
+KEY=$(grep '^FIREBASE_CLIENT_API_KEY=' secrets.env | cut -d= -f2- | tr -d '"'"'"'\r')
+curl -s -X POST -H 'Referer: https://example.com/' -H 'Content-Type: application/json' \
+  -d '{}' "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=$KEY" | grep -o '"reason": *"[A-Z_]*"'
+```
+
+When you deploy the control plane under a new domain, add that domain both here and in Step 2;
+until you do, sign-in on the new domain fails.
 
 ### Step 3 — Set Fly secrets
 
