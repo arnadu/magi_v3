@@ -858,3 +858,76 @@ describe("LLM-error cooldown (issue #55)", () => {
 		expect(startedAt[1] - startedAt[0]).toBeGreaterThanOrEqual(140);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Characterization tests written before decomposing runOrchestrationLoop
+// (code-quality plan, step 2).
+// ---------------------------------------------------------------------------
+
+describe("waitForBudget holds dispatch until the budget gate opens", () => {
+	it("starts the agent only after waitForBudget resolves", async () => {
+		const tc = makeTeamConfig(["agent-a"]);
+		const { repo } = makeMockMailbox({ "agent-a": ["task"] });
+		let gateOpenedAt = 0;
+		let startedAt = 0;
+		mockRunAgent.mockImplementation(
+			makeMockRunner({
+				durationMs: 5,
+				onStart: () => {
+					startedAt = Date.now();
+				},
+			}),
+		);
+		await runOrchestrationLoop(
+			buildConfig(tc, repo, {
+				waitForBudget: () =>
+					new Promise<void>((resolve) =>
+						setTimeout(() => {
+							gateOpenedAt = Date.now();
+							resolve();
+						}, 40),
+					),
+			}),
+		);
+		expect(gateOpenedAt).toBeGreaterThan(0);
+		expect(startedAt).toBeGreaterThanOrEqual(gateOpenedAt);
+	});
+});
+
+describe("CLI mode with nothing to dispatch", () => {
+	it("returns without running any agent", async () => {
+		const tc = makeTeamConfig(["agent-a", "agent-b"]);
+		const { repo } = makeMockMailbox({});
+		await runOrchestrationLoop(buildConfig(tc, repo));
+		expect(mockRunAgent).not.toHaveBeenCalled();
+	});
+});
+
+describe("teardownOnExit", () => {
+	it("tears the workspace down when set, and leaves it when not", async () => {
+		const tc = makeTeamConfig(["agent-a"]);
+		mockRunAgent.mockImplementation(makeMockRunner({ durationMs: 1 }));
+
+		const kept = buildConfig(tc, makeMockMailbox({ "agent-a": ["t"] }).repo);
+		await runOrchestrationLoop(kept);
+		expect(
+			(
+				kept.workspaceManager as unknown as {
+					teardown: ReturnType<typeof vi.fn>;
+				}
+			).teardown,
+		).not.toHaveBeenCalled();
+
+		const torn = buildConfig(tc, makeMockMailbox({ "agent-a": ["t"] }).repo, {
+			teardownOnExit: true,
+		});
+		await runOrchestrationLoop(torn);
+		expect(
+			(
+				torn.workspaceManager as unknown as {
+					teardown: ReturnType<typeof vi.fn>;
+				}
+			).teardown,
+		).toHaveBeenCalledTimes(1);
+	});
+});
