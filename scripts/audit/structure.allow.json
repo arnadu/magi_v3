@@ -1,10 +1,4 @@
 {
-	"packages/agent-runtime-worker/src/agent-runner.ts": {
-		"lines": 701,
-		"fns": {
-			"runAgent@252": 449
-		}
-	},
 	"packages/agent-runtime-worker/src/agent-stats.ts": {
 		"lines": 549,
 		"fns": {

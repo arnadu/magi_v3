@@ -47,7 +47,6 @@
 		{
 			"includes": [
 				"packages/agent-runtime-worker/public/app.js",
-				"packages/agent-runtime-worker/src/agent-runner.ts",
 				"packages/agent-runtime-worker/src/cli-tool.ts",
 				"packages/agent-runtime-worker/src/conversation-repository.ts",
 				"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts",
