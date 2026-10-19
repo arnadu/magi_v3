@@ -123,12 +123,6 @@
 			"<anonymous>@181": 135
 		}
 	},
-	"packages/cockpit/src/DraftEditor.tsx": {
-		"lines": 200,
-		"fns": {
-			"DraftEditor@27": 173
-		}
-	},
 	"packages/cockpit/src/FilesPanel.tsx": {
 		"lines": 504,
 		"fns": {

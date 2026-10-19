@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { availableSkills } from "./ConfigPanel";
 import { DraftAgentForm } from "./DraftAgentForm";
-import { DraftMissionFields, validateDraft } from "./DraftMissionFields";
-import { launchDraft, saveDraftConfig } from "./data";
+import { DraftMissionFields } from "./DraftMissionFields";
 import { useCatalog } from "./use-catalog";
+import { useDraftSaveLaunch } from "./use-draft-save-launch";
 import { useDraftState } from "./use-draft-state";
 
 /**
@@ -35,12 +35,9 @@ export function DraftEditor({
 	onBack: () => void;
 }) {
 	const { catalog } = useCatalog();
-	const [saving, setSaving] = useState(false);
-	const [saveError, setSaveError] = useState<string | null>(null);
-	const [saved, setSaved] = useState(false);
-	const [launching, setLaunching] = useState(false);
-	const [launchError, setLaunchError] = useState<string | null>(null);
-	const draft = useDraftState(missionId, saving || launching);
+	const [busy, setBusy] = useState(0);
+	const draft = useDraftState(missionId, busy > 0);
+	const flow = useDraftSaveLaunch(missionId, draft, setBusy, onLaunched);
 	const { config, missionDraft, agentsDraft, selectedAgentId, edit } = draft;
 
 	if (config === null) return <p className="mut">Loading…</p>;
@@ -53,63 +50,6 @@ export function DraftEditor({
 	const duplicateIds = agentsDraft
 		.map((a) => a.id)
 		.filter((id, i, all) => all.indexOf(id) !== i);
-
-	/** Resolves true only when the server accepted the save — the launch depends on it. */
-	async function handleSave(): Promise<boolean> {
-		if (config === null || config === "error") return false;
-		const checked = validateDraft(agentsDraft, missionDraft);
-		if ("error" in checked) {
-			setSaveError(checked.error);
-			return false;
-		}
-		setSaving(true);
-		setSaveError(null);
-		setSaved(false);
-		const nextMission = {
-			...config.mission,
-			name: missionDraft.name.trim() ? missionDraft.name : config.mission.name,
-			model: missionDraft.model.trim() || undefined,
-			visionModel: missionDraft.visionModel.trim() || undefined,
-			timezone: missionDraft.timezone.trim() || undefined,
-			maxCostUsd: checked.maxCostUsd,
-		};
-		try {
-			await saveDraftConfig(missionId, {
-				mission: nextMission,
-				agents: agentsDraft,
-				missionCopilotLimits: config.missionCopilotLimits,
-				teamFiles: config.teamFiles,
-			});
-			draft.markSaved({ ...config, mission: nextMission, agents: agentsDraft });
-			setSaved(true);
-			setTimeout(() => setSaved(false), 3000);
-			return true;
-		} catch (e) {
-			setSaveError((e as Error).message);
-			return false;
-		} finally {
-			setSaving(false);
-		}
-	}
-
-	async function handleLaunch() {
-		setLaunching(true);
-		setLaunchError(null);
-		try {
-			// A failed save used to be swallowed here and the paid mission started
-			// from the previous server config, dropping the edits on screen.
-			if (!(await handleSave())) {
-				setLaunchError("Not launched — fix the save error above first.");
-				return;
-			}
-			await launchDraft(missionId);
-			onLaunched(missionId);
-		} catch (e) {
-			setLaunchError((e as Error).message);
-		} finally {
-			setLaunching(false);
-		}
-	}
 
 	return (
 		<div className="config-panel">
@@ -130,7 +70,9 @@ export function DraftEditor({
 						type="button"
 						className="rail-btn"
 						onClick={() =>
-							draft.reload().catch((e) => setSaveError((e as Error).message))
+							draft
+								.reload()
+								.catch((e) => flow.setSaveError((e as Error).message))
 						}
 					>
 						Reload
@@ -177,22 +119,24 @@ export function DraftEditor({
 				<button
 					type="button"
 					className="btn-primary"
-					disabled={saving || launching}
-					onClick={handleSave}
+					disabled={busy > 0}
+					onClick={flow.save}
 				>
-					{saving ? "Saving…" : "Save"}
+					{flow.saving ? "Saving…" : "Save"}
 				</button>
 				<button
 					type="button"
 					className="btn-primary"
-					disabled={saving || launching}
-					onClick={handleLaunch}
+					disabled={busy > 0}
+					onClick={flow.launch}
 				>
-					{launching ? "Launching…" : "Launch"}
+					{flow.launching ? "Launching…" : "Launch"}
 				</button>
-				{saved && <span className="config-save-ok">Saved</span>}
-				{saveError && <span className="error-msg">{saveError}</span>}
-				{launchError && <span className="error-msg">{launchError}</span>}
+				{flow.saved && <span className="config-save-ok">Saved</span>}
+				{flow.saveError && <span className="error-msg">{flow.saveError}</span>}
+				{flow.launchError && (
+					<span className="error-msg">{flow.launchError}</span>
+				)}
 			</div>
 		</div>
 	);
