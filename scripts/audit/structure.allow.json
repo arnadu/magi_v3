@@ -71,13 +71,6 @@
 			"createObjectivesTools@133": 217
 		}
 	},
-	"packages/agent-runtime-worker/src/tools/fetch-url.ts": {
-		"lines": 428,
-		"fns": {
-			"createFetchUrlTool@181": 261,
-			"execute@222": 220
-		}
-	},
 	"packages/agent-runtime-worker/src/tools/inspect-image.ts": {
 		"lines": 177,
 		"fns": {

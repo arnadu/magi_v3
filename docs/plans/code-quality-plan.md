@@ -489,4 +489,9 @@ independent once step 1 is done.
   notify/claim/request-revert with `requestUpgrade` in named steps. Structure allowlist 23,
   complexity exemptions 20. BrowseWeb's browser-free steps unit-tested (worker function
   coverage held above its raised floor).
-
+- 2026-10-19 — **document-processor and FetchUrl**: document-processor.ts split by concern
+  (types, vision calls, format/policy, PDF, Office; the entry point keeps text/CSV/image and
+  re-exports), `processPdf` in named steps (#79's split half; off-thread extraction still open).
+  FetchUrl's 220-line `execute` → validate, fetch, document routing, article (images, content
+  with provenance banner, save, summary); fetch-inspect and fetch-share integration tests green.
+  Structure allowlist 21, complexity exemptions 18.
