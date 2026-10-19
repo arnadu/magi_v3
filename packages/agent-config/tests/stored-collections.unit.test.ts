@@ -11,7 +11,7 @@ import {
 	COLLECTION_NAMES,
 	PER_MISSION_COLLECTIONS,
 	storedCollection,
-} from "../src/stored/collections.js";
+} from "../src/index.js";
 
 const ROOT = join(__dirname, "..", "..", "..");
 
