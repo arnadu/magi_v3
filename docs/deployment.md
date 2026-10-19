@@ -427,7 +427,8 @@ Do this once per Firebase project.
 Check the result:
 
 ```bash
-# Sign out of the cockpit, sign back in with Google: this must still work.
+# Open the cockpit in a private/incognito window and sign in with Google: this must still work
+# (the cockpit has no sign-out button; a private window starts without a session).
 # A request from a foreign origin must be refused (expect API_KEY_HTTP_REFERRER_BLOCKED):
 KEY=$(grep '^FIREBASE_CLIENT_API_KEY=' secrets.env | cut -d= -f2- | tr -d '"'"'"'\r')
 curl -s -X POST -H 'Referer: https://example.com/' -H 'Content-Type: application/json' \
