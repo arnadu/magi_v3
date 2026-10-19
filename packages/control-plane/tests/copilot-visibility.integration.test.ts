@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import type { Db, MongoClient } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connectMongo } from "../../agent-runtime-worker/src/mongo.js";
-import { checkCopilotSpendCap } from "../src/copilot-router.js";
+import { checkCopilotSpendCap } from "../src/copilot-spend.js";
 import {
 	queryLlmCall,
 	queryLlmCalls,

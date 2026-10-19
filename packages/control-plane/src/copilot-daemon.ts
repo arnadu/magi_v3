@@ -29,9 +29,10 @@ import {
 	StatsCollector,
 } from "@magi/agent-runtime-worker";
 import type { Collection, Db } from "mongodb";
+import { checkCopilotSpendCap } from "./copilot-spend.js";
 import type { PendingActionsStore } from "./copilot-tools.js";
 import { createCopilotTools } from "./copilot-tools.js";
-import { getCopilotSpendCap } from "./users.js";
+import { lifetimeUsage } from "./usage-queries.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -389,24 +390,13 @@ async function runWatchLoop(
 		} finally {
 			busyRef.current = false;
 			// Push updated usage totals so the UI cost indicator stays current.
-			const [agg] = await db
-				.collection("llmCallLog")
-				.aggregate([
-					{ $match: { missionId } },
-					{
-						$group: {
-							_id: null,
-							calls: { $sum: 1 },
-							inputTokens: { $sum: "$usage.inputTokens" },
-							outputTokens: { $sum: "$usage.outputTokens" },
-							cacheReadTokens: { $sum: "$usage.cacheReadTokens" },
-							costUsd: { $sum: "$usage.cost.totalCostUsd" },
-						},
-					},
-				])
-				.toArray()
-				.catch(() => []);
-			if (agg) pushEvent("copilot-usage", agg);
+			const usage = await lifetimeUsage(db, missionId).catch((e: unknown) => {
+				console.error(
+					`[copilot-daemon] usage totals failed { missionId: "${missionId}", error: "${(e as Error).message}" } — the cockpit cost indicator is not refreshed`,
+				);
+				return null;
+			});
+			if (usage) pushEvent("copilot-usage", usage);
 		}
 	}
 }
@@ -467,20 +457,13 @@ async function copilotCapReached(
 	const uid = missionId.startsWith("copilot-")
 		? missionId.slice("copilot-".length)
 		: missionId;
-	const cap = await getCopilotSpendCap(db, uid).catch(() => undefined);
-	if (cap === undefined) return null;
-	const [agg] = await db
-		.collection("llmCallLog")
-		.aggregate<{ costUsd: number }>([
-			{ $match: { missionId } },
-			{ $group: { _id: null, costUsd: { $sum: "$usage.cost.totalCostUsd" } } },
-		])
-		.toArray()
-		.catch(() => []);
-	const spent = agg?.costUsd ?? 0;
-	return spent >= cap
-		? `Copilot spend cap reached ($${spent.toFixed(2)} of $${cap.toFixed(2)}) — raise it in the copilot settings to continue`
-		: null;
+	// Fails open, as before: a lookup failure must not silence the copilot.
+	return checkCopilotSpendCap(db, uid).catch((e: unknown) => {
+		console.error(
+			`[copilot-daemon] spend-cap check failed { missionId: "${missionId}", error: "${(e as Error).message}" } — the turn runs unchecked`,
+		);
+		return null;
+	});
 }
 
 /** Log, tell the UI and back off (turnFailureBackoffMs) before the next attempt. */

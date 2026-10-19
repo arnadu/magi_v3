@@ -49,6 +49,7 @@ import {
 	platformAdminUserIds,
 } from "./spend-policy.js";
 import { createTemplatesRouter, loadTemplates } from "./templates.js";
+import { lifetimeCostByMission } from "./usage-queries.js";
 
 const REPO_ROOT = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -218,24 +219,11 @@ async function main(): Promise<void> {
 			})
 			.toArray();
 		const missionIds = missions.map((m) => m.missionId as string);
-		const costs = await db
-			.collection("llmCallLog")
-			.aggregate([
-				{ $match: { missionId: { $in: missionIds } } },
-				{
-					$group: {
-						_id: "$missionId",
-						totalCostUsd: { $sum: "$usage.cost.totalCostUsd" },
-						calls: { $sum: 1 },
-					},
-				},
-			])
-			.toArray();
-		const costMap = Object.fromEntries(costs.map((c) => [c._id as string, c]));
+		const costs = await lifetimeCostByMission(db, missionIds);
 		res.json(
 			missions.map((m) => ({
 				...m,
-				usage: costMap[m.missionId as string] ?? {
+				usage: costs.get(m.missionId as string) ?? {
 					totalCostUsd: 0,
 					calls: 0,
 				},

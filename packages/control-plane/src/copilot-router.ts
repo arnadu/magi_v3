@@ -20,10 +20,8 @@ import {
 } from "@magi/agent-config";
 import {
 	assertKnownModels,
-	createMongoAgentStatsRepository,
 	createMongoMailboxRepository,
 	createMongoMissionConfigWriter,
-	StatsCollector,
 } from "@magi/agent-runtime-worker";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
@@ -39,6 +37,11 @@ import {
 	executeCancelSchedule,
 	executeCreateSchedule,
 } from "./copilot-schedule-actions.js";
+import {
+	COPILOT_AGENT_ID,
+	checkCopilotSpendCap,
+	readCopilotSpend,
+} from "./copilot-spend.js";
 import {
 	flyVolumeName,
 	isLocalExecution,
@@ -60,15 +63,13 @@ import {
 	queryTranscript,
 	queryTurns,
 } from "./transcript-queries.js";
+import { lifetimeUsage } from "./usage-queries.js";
 import {
 	getCopilotModel,
 	getCopilotSpendCap,
 	setCopilotModel,
 	setCopilotSpendCap,
 } from "./users.js";
-
-/** The copilot's own agent id, as defined in config/teams/copilot.yaml. */
-const COPILOT_AGENT_ID = "copilot";
 
 // ---------------------------------------------------------------------------
 // Router factory
@@ -178,31 +179,7 @@ export function createCopilotRouter(
 
 	routes.get("/usage", async (req: Request, res: Response) => {
 		const missionId = `copilot-${req.userId}`;
-		const [agg] = await db
-			.collection("llmCallLog")
-			.aggregate([
-				{ $match: { missionId } },
-				{
-					$group: {
-						_id: null,
-						calls: { $sum: 1 },
-						inputTokens: { $sum: "$usage.inputTokens" },
-						outputTokens: { $sum: "$usage.outputTokens" },
-						cacheReadTokens: { $sum: "$usage.cacheReadTokens" },
-						costUsd: { $sum: "$usage.cost.totalCostUsd" },
-					},
-				},
-			])
-			.toArray();
-		res.json(
-			agg ?? {
-				calls: 0,
-				inputTokens: 0,
-				outputTokens: 0,
-				cacheReadTokens: 0,
-				costUsd: 0,
-			},
-		);
+		res.json(await lifetimeUsage(db, missionId));
 	});
 
 	// ── GET /api/copilot/history ──────────────────────────────────────────────
@@ -762,39 +739,4 @@ async function postToMissionMonitor(
 	if (!res.ok) {
 		throw new Error(`Monitor ${endpoint} failed: HTTP ${res.status}`);
 	}
-}
-
-/**
- * Lifetime spend for the copilot, read fresh from missionStats every call —
- * same "no cache for verification-critical data" discipline as the mission
- * spend cap (see agent-stats.ts's module header). Cheap to construct a
- * StatsCollector per call: it does no I/O beyond the read itself.
- */
-export async function readCopilotSpend(
-	db: Db,
-	missionId: string,
-): Promise<number> {
-	const stats = await new StatsCollector(
-		createMongoAgentStatsRepository(db),
-	).readLifetime(missionId, COPILOT_AGENT_ID);
-	return stats?.lifetimeCostUsd ?? 0;
-}
-
-/**
- * Returns an error message if the user's copilot spend cap is reached (the
- * caller should reject the request with it), or null if the request may
- * proceed. Exported separately from the POST /message handler so tests can
- * exercise it directly against real Mongo, matching this file's existing
- * plain-function-under-the-route pattern (see readLimits/writeMissionCap in
- * missions.ts).
- */
-export async function checkCopilotSpendCap(
-	db: Db,
-	userId: string,
-): Promise<string | null> {
-	const capUsd = await getCopilotSpendCap(db, userId);
-	if (capUsd === undefined) return null;
-	const spentUsd = await readCopilotSpend(db, `copilot-${userId}`);
-	if (spentUsd < capUsd) return null;
-	return `Copilot spend cap reached ($${spentUsd.toFixed(2)} / $${capUsd.toFixed(2)}). Raise the cap in Limits to continue.`;
 }
