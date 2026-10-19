@@ -1,8 +1,8 @@
 import {
 	type AgentConfig,
+	applyTeamConfigPatch,
 	type Limits,
 	type MissionDoc,
-	parseTeamConfig,
 	storedCollection,
 	type TeamConfig,
 	validateTeamFiles,
@@ -82,13 +82,7 @@ const SAVE_MISSION_CONFIG_PARAMS = Type.Object({
 	),
 });
 
-/**
- * Apply SaveMissionConfig's patch to the stored config: `mission` is
- * shallow-merged (its id always stays this mission's), `agents` is upserted
- * by id, `missionCopilotLimits` replaced. The result is validated as a whole;
- * the schema rejects the reserved id "mission-copilot", so a compromised
- * copilot cannot write itself into the authored roster a second time.
- */
+/** The patched config, validated, with only known models — or the refusal. */
 function mergeConfigPatch(
 	current: MissionDoc & Required<Pick<MissionDoc, "mission" | "agents">>,
 	missionId: string,
@@ -98,21 +92,11 @@ function mergeConfigPatch(
 		missionCopilotLimitsPatch?: Limits;
 	},
 ): { config: TeamConfig } | { error: string } {
-	const { missionPatch, agentsPatch, missionCopilotLimitsPatch } = patch;
-	const nextAgents = agentsPatch
-		? [
-				...current.agents.filter(
-					(a) => !agentsPatch.some((p) => p.id === a.id),
-				),
-				...agentsPatch,
-			]
-		: current.agents;
 	try {
-		const config = parseTeamConfig({
-			mission: { ...current.mission, ...missionPatch, id: missionId },
-			agents: nextAgents,
-			missionCopilotLimits:
-				missionCopilotLimitsPatch ?? current.missionCopilotLimits,
+		const config = applyTeamConfigPatch(current, missionId, {
+			mission: patch.missionPatch,
+			agents: patch.agentsPatch,
+			missionCopilotLimits: patch.missionCopilotLimitsPatch,
 		});
 		assertKnownModels(config.mission);
 		return { config };

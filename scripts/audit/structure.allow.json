@@ -167,10 +167,9 @@
 		}
 	},
 	"packages/control-plane/src/copilot-router.ts": {
-		"lines": 726,
+		"lines": 315,
 		"fns": {
-			"createCopilotRouter@80": 260,
-			"executeAction@345": 341
+			"createCopilotRouter@49": 260
 		}
 	},
 	"packages/control-plane/src/index.ts": {
