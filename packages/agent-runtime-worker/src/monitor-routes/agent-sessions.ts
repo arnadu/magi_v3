@@ -60,7 +60,7 @@ export function createAgentSessionsRoutes(
 					deps.db,
 					"conversationMessages",
 				)
-					.aggregate([
+					.aggregate<{ _id: number; count: number }>([
 						{
 							$match: {
 								agentId,
@@ -72,10 +72,7 @@ export function createAgentSessionsRoutes(
 						{ $group: { _id: "$turnNumber", count: { $sum: 1 } } },
 					])
 					.toArray();
-				const toolCountMap = new Map(
-					// biome-ignore lint/suspicious/noExplicitAny: raw MongoDB aggregate result
-					toolCounts.map((t: any) => [t._id, t.count]),
-				);
+				const toolCountMap = new Map(toolCounts.map((t) => [t._id, t.count]));
 
 				const sessions = Array.from(byTurn.entries()).map(([turn, docs]) => {
 					// Every group holds at least one call: it was created from one.
