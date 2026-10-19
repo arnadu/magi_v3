@@ -36,6 +36,12 @@ export default defineConfig({
 			// lowering one is the visible escape hatch (e.g. deleting well-covered
 			// code), never a `?? default`.
 			thresholds: {
+				// Risk-weighted floors (#44): the modules that enforce path containment,
+				// SSRF, spend limits and authentication stay near-fully covered.
+				"packages/agent-runtime-worker/src/{safe-path,ssrf,safe-http,limits}.ts":
+					{ statements: 90 },
+				"packages/control-plane/src/{spend-policy,auth-limiter,copilot-spend,usage-queries}.ts":
+					{ statements: 90 },
 				"packages/cockpit/src/**": {
 					statements: 97.6,
 					branches: 90.9,
