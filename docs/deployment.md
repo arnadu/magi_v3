@@ -399,8 +399,11 @@ only while the key is restricted, so that it works only from your own pages and 
 Do this once per Firebase project.
 
 1. Open **Google Cloud console → APIs & Services → Credentials** with the Firebase project
-   selected (`magi-68bb2`, then `magi-prod-b9403`). Open the key named **Browser key (auto created
-   by Firebase)**. Check that its value matches `FIREBASE_CLIENT_API_KEY` in `secrets.env`, or in
+   selected (`magi-68bb2`, then `magi-prod-b9403`) — directly:
+   `https://console.cloud.google.com/apis/credentials?project=<project-id>`. This is the Google
+   Cloud console, not the Firebase console; every Firebase project is a Cloud project with the
+   same id. Under **API Keys**, click the *name* **Browser key (auto created by Firebase)** (not
+   the copy icon) to open its edit page; the restriction sections below are on that page. Check that its value matches `FIREBASE_CLIENT_API_KEY` in `secrets.env`, or in
    `secrets.env.prod-beta` for the production project.
 2. **Application restrictions → Websites**, and add one referrer per line:
 
