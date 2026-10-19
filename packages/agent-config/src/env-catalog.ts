@@ -194,6 +194,13 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 			"Held by the daemon for the data-newsapi tool; never forwarded to jobs.",
 	},
 	{
+		name: "PLAYWRIGHT_BROWSERS_PATH",
+		planes: ["execution", "cli"],
+		default: "~/.cache/ms-playwright",
+		description:
+			"Where Playwright's Chromium is installed (BrowseWeb). The mission image sets /opt/ms-playwright so the daemon user can read it; BrowseWeb is not offered when no Chromium is found there.",
+	},
+	{
 		name: "DEBUG_SESSIONS",
 		planes: ["execution", "cli"],
 		description:

@@ -1,4 +1,10 @@
-import { appendFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { LogLine, V3 as Stagehand } from "@browserbasehq/stagehand";
 import type { Model } from "@mariozechner/pi-ai";
@@ -66,6 +72,14 @@ export function tryCreateBrowseWebTool(
 	try {
 		chromiumPath = chromium.executablePath();
 	} catch {
+		return undefined;
+	}
+	// executablePath() names where Chromium *should* be; offer the tool only
+	// if it is there, so agents are not handed a tool that fails every call.
+	if (!existsSync(chromiumPath)) {
+		console.error(
+			`[browse-web] BrowseWeb disabled: no Chromium at ${chromiumPath} (PLAYWRIGHT_BROWSERS_PATH=${process.env.PLAYWRIGHT_BROWSERS_PATH ?? "unset"})`,
+		);
 		return undefined;
 	}
 	// On a mission machine the browser must not be able to open local files

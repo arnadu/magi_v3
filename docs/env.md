@@ -50,6 +50,7 @@ Secrets are never logged and never reach agent tool or job subprocesses (those g
 | `PATH` | mission daemon | — | — | Passed through, alone with HOME, to agent tool and job subprocesses. |
 | `PLATFORM_ADMIN_USER_IDS` | control plane | — | — | Comma-separated Firebase UIDs that receive the Atlas storage alert and report section. Empty is valid but logged on every tick. |
 | `PLATFORM_MAX_COST_CEILING_USD` | control plane | `100` | — | Spend-cap ceiling written on every new mission and back-filled at start; only an admin may set a mission's ceiling above it (ADR-0034). New missions get a $25 cap. |
+| `PLAYWRIGHT_BROWSERS_PATH` | mission daemon, CLI | `~/.cache/ms-playwright` | — | Where Playwright's Chromium is installed (BrowseWeb). The mission image sets /opt/ms-playwright so the daemon user can read it; BrowseWeb is not offered when no Chromium is found there. |
 | `PORT` | control plane | `3000` | — | HTTP port. |
 | `REFLECTION_THRESHOLD` | mission daemon, CLI | — | — | Override, in tokens, for the context size that triggers reflection; default is a fraction of the model's window. |
 | `RESOURCE_REPORT_HOUR_UTC` | control plane | `12` | — | UTC hour at or after which the daily resource report is sent; a control plane down through that hour sends once it is back. |

@@ -46,7 +46,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Use npx playwright@<version> matching the resolved playwright-core version so
 # Chromium's revision hash aligns. The full 'playwright' package is only needed
 # here for the install CLI — runtime uses playwright-core.
-RUN npx --yes playwright@1.58.2 install chromium --with-deps
+#
+# Installed to a shared, world-readable path: the daemon runs as
+# magi-operator, and a default install lands in /root/.cache (mode 700),
+# where magi-operator's Playwright never looked — BrowseWeb could not
+# launch on any mission machine until this was fixed (found 2026-10-18).
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN npx --yes playwright@1.58.2 install chromium --with-deps && \
+    chmod -R a+rX /opt/ms-playwright
 
 # Managed Chromium policy: the browser may not open file://, chrome:// and
 # other non-web schemes. Stagehand's agent can navigate to any URL the model
