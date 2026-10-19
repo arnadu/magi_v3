@@ -1,3 +1,4 @@
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { RouteEntry } from "./types.js";
 
@@ -17,8 +18,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 			method: "GET",
 			path: "/mission-stats",
 			async handler({ res }) {
-				const docs = await deps.db
-					.collection("missionStats")
+				const docs = await storedCollection(deps.db, "missionStats")
 					.find(
 						{ missionId: deps.missionId },
 						{
@@ -43,8 +43,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 			// turn/file/anomaly markers — only finalized turns have a settled
 			// cost and duration.
 			async handler({ res }) {
-				const docs = await deps.db
-					.collection("agentTurnStats")
+				const docs = await storedCollection(deps.db, "agentTurnStats")
 					.find(
 						{ missionId: deps.missionId, completedAt: { $exists: true } },
 						{

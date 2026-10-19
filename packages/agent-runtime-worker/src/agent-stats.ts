@@ -38,89 +38,20 @@
  * Collections: `agentTurnStats`, `missionStats`.
  */
 
+import {
+	type AgentTurnStats,
+	type MissionStats,
+	type SentMessage,
+	storedCollection,
+	type TouchedFile,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** A file touched by a write/edit tool during a turn. */
-export interface TouchedFile {
-	path: string;
-	tool: string;
-}
-
-/** A message posted to other agents or the user during a turn. */
-export interface SentMessage {
-	to: string[];
-	subject: string;
-}
-
-/**
- * Per-turn statistics. Persisted to `agentTurnStats`, keyed by
- * (missionId, agentId, turnNumber). Upserted incrementally; finalized at turn end.
- */
-export interface AgentTurnStats {
-	missionId: string;
-	agentId: string;
-	turnNumber: number;
-	startedAt: Date;
-	/** Set at turn end. Absent while the turn is running. */
-	completedAt?: Date;
-	/** Wall-clock duration in seconds. Set at turn end. */
-	durationSeconds?: number;
-	status: "running" | "complete" | "aborted";
-
-	// LLM aggregates
-	llmCallCount: number;
-	inputTokens: number;
-	outputTokens: number;
-	cacheReadTokens: number;
-	cacheWriteTokens: number;
-	costUsd: number;
-	/** Max per-call context size (input + cacheRead + cacheWrite) across the turn. */
-	peakContextTokens: number;
-
-	// Tool aggregates
-	toolCalls: Record<string, number>;
-	toolErrors: Record<string, number>;
-
-	// Output signals
-	filesWritten: TouchedFile[];
-	messagesSent: SentMessage[];
-	urlsVisited: string[];
-	/** True when reflection ran at the start of this wakeup. */
-	reflectionTriggered: boolean;
-
-	// Git checkpoint (Sprint 25) — set at turn end when the workspace changed.
-	/** Commit SHA of the workspace checkpoint taken at this turn's end. */
-	gitCommit?: string;
-	/**
-	 * Files changed in `gitCommit` (status letter + path). Captures Bash-/skill-
-	 * written files that `filesWritten` (WriteFile/EditFile only) cannot see.
-	 * This is the workspace delta since the previous commit, so it may include
-	 * changes from other agents whose turns overlapped.
-	 */
-	gitChangedFiles?: { path: string; status: string }[];
-}
-
-/**
- * Lifetime totals per (missionId, agentId). Persisted to `missionStats`.
- * Updated with `$inc` at turn end only.
- */
-export interface MissionStats {
-	missionId: string;
-	agentId: string;
-	lifetimeCostUsd: number;
-	lifetimeLlmCallCount: number;
-	lifetimeTurnCount: number;
-	/**
-	 * Consecutive turns that produced no files and sent no messages. Reset to 0
-	 * when a turn produces output. A stuck-agent signal for the copilot.
-	 */
-	consecutiveZeroOutputTurns: number;
-	lastTurnAt: Date;
-}
+export type { AgentTurnStats, MissionStats, SentMessage, TouchedFile };
 
 /** Token/cost figures for a single LLM call, fed to the collector. */
 export interface LlmCallStats {
@@ -200,12 +131,8 @@ export interface AgentStatsRepository {
 }
 
 export function createMongoAgentStatsRepository(db: Db): AgentStatsRepository {
-	const turns = db.collection<AgentTurnStats & { _id?: unknown }>(
-		"agentTurnStats",
-	);
-	const missions = db.collection<MissionStats & { _id?: unknown }>(
-		"missionStats",
-	);
+	const turns = storedCollection(db, "agentTurnStats");
+	const missions = storedCollection(db, "missionStats");
 
 	turns
 		.createIndex({ missionId: 1, agentId: 1, turnNumber: 1 }, { unique: true })

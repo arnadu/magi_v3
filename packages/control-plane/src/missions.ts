@@ -18,6 +18,7 @@ import {
 	type AgentConfig,
 	type Limits,
 	parseTeamConfig,
+	storedCollection,
 	type TeamConfig,
 } from "@magi/agent-config";
 import {
@@ -190,8 +191,7 @@ export async function readLimits(
 	// and the zero-output streak have no live/in-flight equivalent worth
 	// tracking (they're inherently "as of the last completed turn"), so those
 	// two still come straight from missionStats.
-	const statsDocs = await db
-		.collection("missionStats")
+	const statsDocs = await storedCollection(db, "missionStats")
 		.find(
 			{ missionId },
 			{
@@ -235,8 +235,7 @@ export async function readLimits(
 
 	const agents: AgentLimitsRow[] = [];
 	for (const { agentId, limits } of roster) {
-		const mostRecentDocs = await db
-			.collection("agentTurnStats")
+		const mostRecentDocs = await storedCollection(db, "agentTurnStats")
 			.find({ missionId, agentId, completedAt: { $exists: true } })
 			.sort({ turnNumber: -1 })
 			.limit(1)

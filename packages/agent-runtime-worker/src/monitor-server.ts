@@ -5,6 +5,7 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { extname, relative } from "node:path";
+import { storedCollection } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
 import type { Db } from "mongodb";
 import type { StatsCollector } from "./agent-stats.js";
@@ -749,8 +750,7 @@ export class MonitorServer {
 
 		if (commits.length === 0) return [];
 
-		const turns = await this.db
-			.collection("agentTurnStats")
+		const turns = await storedCollection(this.db, "agentTurnStats")
 			.find(
 				{
 					missionId: this.missionId,

@@ -30,8 +30,7 @@ export async function queryTurns(
 	missionId: string,
 	agentId: string,
 ): Promise<TurnSummary[]> {
-	const turns = await db
-		.collection("agentTurnStats")
+	const turns = await storedCollection(db, "agentTurnStats")
 		.find({ missionId, agentId })
 		.sort({ turnNumber: 1 })
 		.toArray();

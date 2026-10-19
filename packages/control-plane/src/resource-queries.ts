@@ -4,6 +4,7 @@
  * `missionResources`/`missionStats`/`agentTurnStats` the same way.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 /** Sum of `agentTurnStats.costUsd` for turns starting in `[from, to)`, across every agent. */
@@ -13,8 +14,7 @@ export async function sumTurnCostUsd(
 	from: Date,
 	to: Date,
 ): Promise<number> {
-	const [row] = await db
-		.collection("agentTurnStats")
+	const [row] = await storedCollection(db, "agentTurnStats")
 		.aggregate<{ total: number }>([
 			{ $match: { missionId, startedAt: { $gte: from, $lt: to } } },
 			{ $group: { _id: null, total: { $sum: "$costUsd" } } },
@@ -28,8 +28,7 @@ export async function lastActivityAt(
 	db: Db,
 	missionId: string,
 ): Promise<Date | null> {
-	const rows = await db
-		.collection<{ lastTurnAt: Date }>("missionStats")
+	const rows = await storedCollection(db, "missionStats")
 		.find({ missionId }, { projection: { lastTurnAt: 1 } })
 		.toArray();
 	if (rows.length === 0) return null;

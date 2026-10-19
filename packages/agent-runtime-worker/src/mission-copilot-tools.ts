@@ -702,8 +702,7 @@ export function createMissionCopilotTools(
 				completedAt: { $exists: true },
 			};
 			if (agentId) filter.agentId = agentId;
-			const docs = await db
-				.collection("agentTurnStats")
+			const docs = await storedCollection(db, "agentTurnStats")
 				.find(filter, {
 					projection: {
 						agentId: 1,
@@ -725,8 +724,7 @@ export function createMissionCopilotTools(
 		description: "Lifetime cost/call/turn totals per agent.",
 		parameters: Type.Object({}),
 		async execute() {
-			const docs = await db
-				.collection("missionStats")
+			const docs = await storedCollection(db, "missionStats")
 				.find(
 					{ missionId },
 					{

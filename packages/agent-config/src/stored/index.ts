@@ -21,3 +21,9 @@ export {
 	type ScheduledMessageDoc,
 	type ScheduledMessageStatus,
 } from "./scheduling.js";
+export type {
+	AgentTurnStats,
+	MissionStats,
+	SentMessage,
+	TouchedFile,
+} from "./stats.js";

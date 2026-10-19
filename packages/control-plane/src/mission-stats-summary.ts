@@ -10,6 +10,11 @@
  * and a collection that is pruned daily anyway, so every figure was zero.
  */
 
+import {
+	type AgentTurnStats,
+	type MissionStats,
+	storedCollection,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 export interface MissionStatsEntry {
@@ -21,16 +26,6 @@ export interface MissionStatsEntry {
 	snippet: string | null;
 }
 
-interface MissionStatsDoc {
-	missionId: string;
-	lifetimeCostUsd?: number;
-	lastTurnAt?: Date;
-}
-interface TurnStatsDoc {
-	missionId: string;
-	startedAt: Date;
-	costUsd?: number;
-}
 interface MailDoc {
 	missionId: string;
 	from?: string;
@@ -67,15 +62,13 @@ export async function summarizeMissions(
 	const windowStart = todayStart < oneHourAgo ? todayStart : oneHourAgo;
 
 	const [lifetime, turns, unreadMail, latestMail] = await Promise.all([
-		db
-			.collection<MissionStatsDoc>("missionStats")
+		storedCollection(db, "missionStats")
 			.find(
 				{ missionId: { $in: missionIds } },
 				{ projection: { missionId: 1, lifetimeCostUsd: 1, lastTurnAt: 1 } },
 			)
 			.toArray(),
-		db
-			.collection<TurnStatsDoc>("agentTurnStats")
+		storedCollection(db, "agentTurnStats")
 			.find(
 				{ missionId: { $in: missionIds }, startedAt: { $gte: windowStart } },
 				{ projection: { missionId: 1, startedAt: 1, costUsd: 1 } },
@@ -112,7 +105,9 @@ export async function summarizeMissions(
 
 function foldLifetime(
 	stats: Record<string, MissionStatsEntry>,
-	docs: MissionStatsDoc[],
+	// Sparse documents are tolerated: rows written before a field existed.
+	docs: (Pick<MissionStats, "missionId"> &
+		Partial<Pick<MissionStats, "lifetimeCostUsd" | "lastTurnAt">>)[],
 ): void {
 	for (const m of docs) {
 		const s = stats[m.missionId];
@@ -126,7 +121,8 @@ function foldLifetime(
 
 function foldTurns(
 	stats: Record<string, MissionStatsEntry>,
-	docs: TurnStatsDoc[],
+	docs: (Pick<AgentTurnStats, "missionId" | "startedAt"> &
+		Partial<Pick<AgentTurnStats, "costUsd">>)[],
 	todayStart: Date,
 	oneHourAgo: Date,
 ): void {
