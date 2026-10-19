@@ -1,27 +1,25 @@
-import * as readline from "node:readline";
 import type { TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
-import { runAgent } from "./agent-runner.js";
 import type { StatsCollector } from "./agent-stats.js";
 import type { AnomalyRecorder } from "./anomaly.js";
 import type { ConversationRepository } from "./conversation-repository.js";
 import type { LimitAlert } from "./limits.js";
-import { resolveLinuxUsers } from "./linux-user.js";
 import type { LlmCallLogRepository } from "./llm-call-log.js";
 import type { MailboxMessage, MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
 import type { ObjectivesRepository } from "./objectives/repository.js";
-import { createErrorCooldown } from "./retry-backoff.js";
+import { Dispatcher } from "./orchestrator-dispatch.js";
+import {
+	buildAgentContext,
+	openUserInput,
+	postUserLine,
+	promptUser,
+	provisionTeam,
+	type UserInput,
+} from "./orchestrator-setup.js";
 import type { MagiTool } from "./tools.js";
-import { verifyIsolation } from "./tools.js";
-import { processUserInput } from "./user-input.js";
-import { WorkspaceGit } from "./workspace-git.js";
+import type { WorkspaceGit } from "./workspace-git.js";
 import type { WorkspaceManager } from "./workspace-manager.js";
-
-// Per-dispatch wall-clock timeout: abort a hung agent run after this many
-// seconds. Override with MAX_AGENT_RUN_SECONDS env var. Default 4 hours.
-const MAX_AGENT_RUN_SECONDS =
-	Number(process.env.MAX_AGENT_RUN_SECONDS) || 4 * 3600;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -218,437 +216,113 @@ export async function runOrchestrationLoop(
 	config: OrchestratorConfig,
 	signal?: AbortSignal,
 ): Promise<void> {
-	const {
-		teamConfig,
-		mailboxRepo,
-		conversationRepo,
-		llmCallLog,
-		model,
-		visionModel = model,
-		workdir,
-		step = false,
-		onUserMessage,
-		workspaceManager,
-	} = config;
+	const { teamConfig, workspaceManager } = config;
 	// The default cap exists for the CLI, where "drain and stop" is the point.
 	// A daemon (waitForMail set) runs until told to stop: with the CLI default
 	// it exited 0 after 50 dispatches, and Fly's on-failure policy never
 	// restarted it (audit D1).
 	const maxRuns =
 		config.maxRuns ?? (config.waitForMail ? Number.POSITIVE_INFINITY : 50);
-	const missionId = teamConfig.mission.id;
-
 	const leadAgent = teamConfig.agents[0];
 	if (!leadAgent) throw new Error("Team config must have at least one agent");
 
-	// Provision workspace for all agents. See linux-user.ts's resolveLinuxUsers
-	// for the derivation: agent.id in production Docker (ensureAgentUsers
-	// creates the OS user at daemon startup), a fail-loud pool-slot mapping in
-	// local dev.
-	const resolvedLinuxUsers = resolveLinuxUsers(teamConfig.agents);
-	const agentDefs = teamConfig.agents.map((a) => {
-		const linuxUser = resolvedLinuxUsers.get(a.id);
-		if (!linuxUser) {
-			throw new Error(`No Linux user resolved for agent "${a.id}"`);
-		}
-		return { id: a.id, linuxUser };
+	const { identities, workspaceGit } = await provisionTeam(config);
+	const input = openUserInput();
+	const dispatcher = new Dispatcher({
+		config,
+		signal,
+		maxRuns,
+		identities,
+		agentCtx: buildAgentContext(config, workspaceGit),
+		input,
+		leadAgentId: leadAgent.id,
 	});
-	const identities = workspaceManager.provision(missionId, agentDefs);
-	console.log(
-		`[orchestrator] Workspace provisioned for ${identities.size} agent(s)`,
-	);
-	if (config.onWorkspaceReady) {
-		const workdirMap = new Map(
-			[...identities.entries()].map(([id, ws]) => [id, ws.workdir]),
-		);
-		config.onWorkspaceReady(workdirMap);
-	}
-
-	// Verify isolation invariant: ANTHROPIC_API_KEY must not be visible in
-	// child processes. Fails fast if sudo is misconfigured or secrets leak.
-	const firstIdentity = identities.get(agentDefs[0].id);
-	if (!firstIdentity)
-		throw new Error("No identity for first agent after provision");
-	await verifyIsolation(firstIdentity.linuxUser, firstIdentity.workdir);
-	console.log(
-		"[orchestrator] Isolation verified — child env does not contain secrets",
-	);
-
-	// git-commit-on-sleep: one WorkspaceGit per mission (serializes commits across
-	// concurrent agents). All agents share the same sharedDir / git repo, which
-	// WorkspaceManager.provision() has already initialised. Use the caller-supplied
-	// instance when given (daemon.ts, so MonitorServer's file-edit route shares the
-	// same serialized commit queue) — construct our own otherwise.
-	const workspaceGit =
-		config.workspaceGit ?? new WorkspaceGit(firstIdentity.sharedDir);
-
-	// Buffer for user input typed during agent runs.
-	const inputBuffer: string[] = [];
-	let rl: readline.Interface | null = null;
-
-	// Only wire up readline if we're running interactively (TTY).
-	if (process.stdin.isTTY) {
-		rl = readline.createInterface({
-			input: process.stdin,
-			output: process.stdout,
-			terminal: false,
-		});
-		rl.on("line", (line) => {
-			if (line.trim()) inputBuffer.push(line.trim());
-		});
-		// readline intercepts Ctrl+C on stdin; re-raise as a process SIGINT.
-		rl.on("SIGINT", () => process.emit("SIGINT"));
-	}
-
-	const agentCtx = {
-		model,
-		visionModel,
-		teamConfig,
-		mailboxRepo,
-		conversationRepo,
-		llmCallLog,
-		statsCollector: config.statsCollector,
-		missionConfig: config.missionConfig,
-		objectivesRepo: config.objectivesRepo,
-		onLimitAlert: config.onLimitAlert,
-		commitWorkspace: (message: string) => workspaceGit.commit(message),
-		allowedHosts: config.allowedHosts,
-		onMentalMapUpdate: config.onMentalMapUpdate,
-		onUserMessage: (msg: MailboxMessage) => {
-			const timestamp = msg.timestamp.toISOString();
-			console.log(`\n[→ USER from ${msg.from}] ${msg.subject} (${timestamp})`);
-			console.log(msg.body);
-			console.log();
-			onUserMessage?.(msg);
-		},
-	};
-
-	// Concurrent dispatcher state.
-	const active = new Map<string, AbortController>(); // agentId → AbortController
-	// Per-agent LLM-error cooldown (#55); a timer re-dispatches when it ends.
-	const cooldown = createErrorCooldown(config, () => void dispatchReady());
-	const activePromises = new Map<string, Promise<void>>(); // agentId → completion promise
-	let totalRuns = 0;
-
-	// Drain buffered user input → post to lead's inbox.
-	async function flushInputBuffer(): Promise<void> {
-		while (inputBuffer.length > 0) {
-			const line = inputBuffer.shift() as string;
-			const body = await processUserInput(line, workdir);
-			if (!body) continue;
-			await mailboxRepo.post({
-				missionId,
-				from: "user",
-				to: [leadAgent.id],
-				subject: "User message",
-				body,
-			});
-		}
-	}
-
-	async function anyAgentHasUnreadMail(): Promise<boolean> {
-		for (const agent of teamConfig.agents) {
-			if (await mailboxRepo.hasUnread(agent.id)) return true;
-		}
-		return false;
-	}
-
-	/**
-	 * Called from each agent's own .finally() block when its turn ends. In
-	 * daemon mode, the main loop only re-dispatches when waitForMail()'s
-	 * Change Stream fires on a *new* insert — a message that arrived while
-	 * this agent was active and is still unread now that it's finished would
-	 * otherwise sit unprocessed until an unrelated later insert happens to
-	 * wake the loop (#48, observed live losing a message for ~16
-	 * hours). dispatchReady() is safe to call repeatedly — it skips agents
-	 * with no unread mail or already active — so re-dispatching here whenever
-	 * unread mail exists is the correct general fix, not daemon-mode-only.
-	 */
-	async function checkIdle(): Promise<void> {
-		if (active.size > 0 || signal?.aborted) return;
-		if (await anyAgentHasUnreadMail()) {
-			await dispatchReady();
-		} else {
-			config.onIdle?.();
-		}
-	}
-
-	// dispatchReady() itself already tolerates being called while a previous
-	// call is still mid-flight *for the same agent* (the active.has() re-check
-	// after the step/budget gate, see the comment below) — but #48's
-	// checkIdle() fix adds a new call site that can fire while an existing
-	// dispatchReady() call is still parked inside a step/budget gate for a
-	// *later* agent in its own for-loop. Without this guard, both calls would
-	// independently reach that later agent's own gate and call
-	// waitForStep()/waitForBudget() twice for one real dispatch opportunity —
-	// found live via TC-4's existing "exactly 2 step calls" assertion failing
-	// once checkIdle() started calling dispatchReady(). A concurrent call
-	// while one is in flight is coalesced into one more pass after the
-	// in-flight call finishes its current pass, rather than starting a second,
-	// independent pass through the agent list.
-	let dispatchInFlight = false;
-	let dispatchAgainRequested = false;
-
-	async function dispatchReady(): Promise<void> {
-		if (dispatchInFlight) {
-			dispatchAgainRequested = true;
-			return;
-		}
-		dispatchInFlight = true;
-		try {
-			do {
-				dispatchAgainRequested = false;
-				await dispatchOnePass();
-			} while (dispatchAgainRequested);
-		} finally {
-			dispatchInFlight = false;
-		}
-	}
-
-	/**
-	 * Dispatch all agents that have unread mail and are not already running or
-	 * paused. Agents run concurrently — no await on runAgent.
-	 */
-	async function dispatchOnePass(): Promise<void> {
-		if (signal?.aborted) return;
-
-		await flushInputBuffer();
-
-		for (const agent of teamConfig.agents) {
-			const agentId = agent.id;
-			if (active.has(agentId)) continue;
-			if (config.isAgentPaused?.(agentId)) continue;
-			if (agent.active === false) continue;
-			if (cooldown.active(agentId)) continue;
-			if (totalRuns >= maxRuns) break;
-
-			// Skip agents with no pending mail before acquiring step/budget permits.
-			if (!(await mailboxRepo.hasUnread(agentId))) continue;
-
-			// Step mode: serialise dispatch — one agent starts per permit.
-			if (config.waitForStep) {
-				await config.waitForStep();
-				if (signal?.aborted) return;
-			} else if (step && rl) {
-				// TTY step mode — readline prompt before dispatching.
-				const input = await promptUser(
-					rl,
-					`[step] About to run ${agent.name ?? agentId}. Press Enter or type a message: `,
-				);
-				if (input) {
-					const body = await processUserInput(input, workdir);
-					if (body) {
-						await mailboxRepo.post({
-							missionId,
-							from: "user",
-							to: [leadAgent.id],
-							subject: "User message",
-							body,
-						});
-					}
-				}
-				if (signal?.aborted) return;
-			}
-
-			// Budget gate — blocks when the spending cap is reached.
-			if (config.waitForBudget) {
-				await config.waitForBudget();
-				if (signal?.aborted) return;
-			}
-
-			// Re-check after yielding for step/budget: mail might have been consumed
-			// or the agent might have been dispatched by a concurrent dispatchReady call.
-			if (active.has(agentId)) continue;
-			if (!(await mailboxRepo.hasUnread(agentId))) continue;
-
-			const messages = await mailboxRepo.listUnread(agentId);
-			if (messages.length === 0) continue;
-
-			await mailboxRepo.markRead(
-				messages.map((m) => m.id),
-				agentId,
-			);
-
-			const identity = identities.get(agentId);
-			if (!identity)
-				throw new Error(`No workspace identity for agent "${agentId}"`);
-
-			totalRuns++;
-			const ctrl = new AbortController();
-			const onParentAbort = () => ctrl.abort();
-			signal?.addEventListener("abort", onParentAbort, { once: true });
-
-			// Per-dispatch wall-clock timeout. Guards against hung LLM calls or
-			// pathological tool loops that would otherwise freeze the orchestrator
-			// indefinitely. Abort propagates into runAgent via the existing signal.
-			const maxRunMs =
-				(config.maxAgentRunSeconds ?? MAX_AGENT_RUN_SECONDS) * 1000;
-			const runTimeoutId = setTimeout(() => {
-				if (!ctrl.signal.aborted) {
-					console.warn(
-						`[orchestrator] ${agentId} exceeded ${maxRunMs / 1000}s wall-clock limit — aborting`,
-					);
-					ctrl.abort();
-					config.anomalyRecorder
-						?.record({
-							missionId,
-							category: "agent-timeout",
-							severity: "hard",
-							agentId,
-							message:
-								`Agent "${agentId}" exceeded the ${maxRunMs / 1000}s wall-clock ` +
-								`limit and was aborted. Investigate with ReadAgentSessionDetail ` +
-								`before concluding what happened.`,
-						})
-						.catch((e: Error) =>
-							console.error(
-								`[orchestrator] failed to record agent-timeout anomaly: ${e.message}`,
-							),
-						);
-				}
-			}, maxRunMs);
-
-			active.set(agentId, ctrl);
-			config.onAgentStart?.(
-				agentId,
-				[...active.keys()].filter((id) => id !== agentId),
-			);
-
-			console.log(
-				`\n[orchestrator] Running ${agent.name ?? agentId}` +
-					` (${identity.linuxUser}) (${messages.length} message(s))`,
-			);
-
-			const promise = runAgent(
-				agentId,
-				messages,
-				{
-					...agentCtx,
-					identity,
-					anomalyRecorder: config.anomalyRecorder,
-					additionalTools: config.getAdditionalTools?.(agentId),
-					onMessage: async (msg: Message) => {
-						cooldown.note(agentId, msg);
-						await config.onAgentMessage?.(agentId, msg);
-					},
-				},
-				ctrl.signal,
-			)
-				.catch((err) => {
-					if (!ctrl.signal.aborted) {
-						const errMsg = (err as Error).message;
-						console.error(`[orchestrator] ${agentId} error: ${errMsg}`);
-						config.onAgentError?.(agentId, errMsg);
-						config.anomalyRecorder
-							?.record({
-								missionId,
-								category: "agent-crash",
-								severity: "hard",
-								agentId,
-								message: `Agent "${agentId}" encountered an error: ${errMsg}`,
-							})
-							.catch((e: Error) =>
-								console.error(
-									`[orchestrator] failed to record agent-crash anomaly: ${e.message}`,
-								),
-							);
-					}
-				})
-				.finally(() => {
-					clearTimeout(runTimeoutId);
-					signal?.removeEventListener("abort", onParentAbort);
-					active.delete(agentId);
-					activePromises.delete(agentId);
-					config.onAgentDone?.(agentId);
-					void checkIdle();
-				});
-
-			activePromises.set(agentId, promise);
-			// No await — concurrent fire-and-forget dispatch.
-		}
-	}
 
 	try {
-		// Initial dispatch — run all agents with pending mail.
-		await dispatchReady();
-
+		await dispatcher.dispatchReady();
 		if (config.waitForMail) {
-			// Daemon mode: the Change Stream drives re-dispatch.
-			// waitForMail() blocks until a mailbox insert fires (user→agent or agent→agent).
-			while (!signal?.aborted && totalRuns < maxRuns) {
-				try {
-					await config.waitForMail();
-				} catch {
-					break; // Change Stream error or abort
-				}
-				if (signal?.aborted) break;
-				await dispatchReady();
-			}
+			await runDaemonMode(config.waitForMail, dispatcher, maxRuns, signal);
 		} else {
-			// CLI mode: drain all work, then exit or offer TTY prompt.
-			while (!signal?.aborted) {
-				// Wait for all currently running agents to complete.
-				const snapshot = [...activePromises.values()];
-				if (snapshot.length > 0) {
-					await Promise.allSettled(snapshot);
-					// Re-dispatch: agents may have posted mail to each other during their run.
-					await dispatchReady();
-					continue;
-				}
-
-				// No active agents — check for remaining unread mail.
-				if (await anyAgentHasUnreadMail()) {
-					await dispatchReady();
-					// If nothing was dispatched (maxRuns cap or all agents paused), stop.
-					if (active.size === 0) break;
-					continue;
-				}
-
-				// Truly idle — offer TTY prompt or exit.
-				if (rl) {
-					const input = await promptUser(
-						rl,
-						"Mission paused. Type a message to continue, or press Enter to end: ",
-					);
-					if (input) {
-						const body = await processUserInput(input, workdir);
-						if (body) {
-							await mailboxRepo.post({
-								missionId,
-								from: "user",
-								to: [leadAgent.id],
-								subject: "User message",
-								body,
-							});
-							await dispatchReady();
-							continue;
-						}
-					}
-				}
-				break; // Natural termination.
-			}
+			await runCliMode(config, dispatcher, input, leadAgent.id, signal);
 		}
-
 		// Shutdown: abort all running agents and wait for clean exit.
-		for (const ctrl of active.values()) ctrl.abort();
-		await Promise.allSettled([...activePromises.values()]);
-
-		console.log(`\n[orchestrator] Mission complete (${totalRuns} run(s))`);
+		for (const ctrl of dispatcher.active.values()) ctrl.abort();
+		await Promise.allSettled([...dispatcher.activePromises.values()]);
+		console.log(
+			`\n[orchestrator] Mission complete (${dispatcher.totalRuns()} run(s))`,
+		);
 	} finally {
-		cooldown.dispose();
-		rl?.close();
+		dispatcher.dispose();
+		input.rl?.close();
 		if (config.teardownOnExit) {
 			workspaceManager.teardown(teamConfig.mission.id, identities);
 		}
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+/**
+ * Daemon mode: the mailbox Change Stream drives re-dispatch — waitForMail()
+ * blocks until any mailbox insert (operator or agent). Ends on abort, at
+ * maxRuns, or when the stream fails.
+ */
+async function runDaemonMode(
+	waitForMail: () => Promise<void>,
+	dispatcher: Dispatcher,
+	maxRuns: number,
+	signal?: AbortSignal,
+): Promise<void> {
+	while (!signal?.aborted && dispatcher.totalRuns() < maxRuns) {
+		try {
+			await waitForMail();
+		} catch {
+			break; // Change Stream error or abort
+		}
+		if (signal?.aborted) break;
+		await dispatcher.dispatchReady();
+	}
+}
 
-function promptUser(rl: readline.Interface, prompt: string): Promise<string> {
-	return new Promise((resolve) => {
-		rl.question(prompt, (answer) => resolve(answer.trim()));
-	});
+/**
+ * CLI mode: drain all work — wait for running agents, re-dispatch the mail
+ * they sent each other — then offer a TTY prompt or end.
+ */
+async function runCliMode(
+	config: OrchestratorConfig,
+	dispatcher: Dispatcher,
+	input: UserInput,
+	leadAgentId: string,
+	signal?: AbortSignal,
+): Promise<void> {
+	while (!signal?.aborted) {
+		const snapshot = [...dispatcher.activePromises.values()];
+		if (snapshot.length > 0) {
+			await Promise.allSettled(snapshot);
+			await dispatcher.dispatchReady();
+			continue;
+		}
+		if (await dispatcher.anyAgentHasUnreadMail()) {
+			await dispatcher.dispatchReady();
+			// Nothing started (maxRuns reached or every agent paused): stop.
+			if (dispatcher.active.size === 0) break;
+			continue;
+		}
+		if (!input.rl) break;
+		const line = await promptUser(
+			input.rl,
+			"Mission paused. Type a message to continue, or press Enter to end: ",
+		);
+		if (
+			!line ||
+			!(await postUserLine(
+				config.mailboxRepo,
+				config.teamConfig.mission.id,
+				leadAgentId,
+				line,
+				config.workdir,
+			))
+		) {
+			break;
+		}
+		await dispatcher.dispatchReady();
+	}
 }

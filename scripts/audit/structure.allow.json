@@ -83,13 +83,6 @@
 			"createObjectivesTools@133": 217
 		}
 	},
-	"packages/agent-runtime-worker/src/orchestrator.ts": {
-		"lines": 643,
-		"fns": {
-			"runOrchestrationLoop@217": 419,
-			"dispatchOnePass@412": 157
-		}
-	},
 	"packages/agent-runtime-worker/src/tools/browse-web.ts": {
 		"lines": 504,
 		"fns": {
