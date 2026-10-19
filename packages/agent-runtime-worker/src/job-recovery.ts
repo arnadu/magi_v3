@@ -173,13 +173,7 @@ export async function recoverOrphanedJobs(
 					`[daemon:jobs] Failed to fail-out ${file}: ${(e as Error).message}`,
 				);
 			}
-			try {
-				writeFileInside(dirs.statusMirror, `${spec.id}.json`, status);
-			} catch (e) {
-				console.warn(
-					`[daemon:jobs] Status mirror write failed for ${spec.id}: ${(e as Error).message} — agents will not see its final status in shared/jobs/status`,
-				);
-			}
+			mirrorStatus(dirs.statusMirror, spec.id, status);
 			const failureMessage =
 				`Job "${spec.scriptPath}" (${spec.id}) has crashed the mission process ` +
 				`${attempts - 1} time(s) in a row and will NOT be retried again. ` +
@@ -233,5 +227,16 @@ export async function recoverOrphanedJobs(
 				`[daemon:jobs] Failed to recover ${file}: ${(e as Error).message}`,
 			);
 		}
+	}
+}
+
+/** The agent-readable copy of a job's status in shared/jobs/status; a failure only costs agents that view. */
+function mirrorStatus(dir: string, jobId: string, status: string): void {
+	try {
+		writeFileInside(dir, `${jobId}.json`, status);
+	} catch (e) {
+		console.warn(
+			`[daemon:jobs] Status mirror write failed for ${jobId}: ${(e as Error).message} — agents will not see its final status in shared/jobs/status`,
+		);
 	}
 }
