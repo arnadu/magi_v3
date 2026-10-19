@@ -33,3 +33,5 @@ T11-comment-history maxcount=107 # INV-9: shrinks as comments are touched; no bu
 # daemon through MailboxRepository.post(); the repository's own insert is the one sanctioned site.
 T12-raw-mailbox-insert ^packages/agent-runtime-worker/src/mailbox\.ts: # MailboxRepository.post, the writer itself (remyh, 2026-10-17)
 # T13: no entries — every collection is reached through agent-config/src/stored (R-15).
+T15-model-id-literal ^packages/(agent-config|agent-runtime-worker)/src/models\.ts: # the default ids and the price table are the model tables (remyh, 2026-10-19)
+T15-model-id-literal ^[^:]+:[0-9]+:[[:space:]]*(/?\*|//) # an id named in a comment, not used (remyh, 2026-10-19)

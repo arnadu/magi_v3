@@ -126,6 +126,9 @@ check T13-collection-literal "MongoDB collection named by a string literal (use 
 # T14: a bare console.error(e) says nothing about the operation, input or consequence.
 check T14-bare-error-log "console.error of a bare error (say what failed, on what input, and the consequence)" \
 	'console\.error\((e|err|error)\)' packages/*/src
+# T15: model ids live in agent-config/src/models.ts (defaults) and the worker's price table.
+check T15-model-id-literal "model id literal outside the model tables (use DEFAULT_MODEL_ID or a models.ts entry)" \
+	'"claude-(sonnet|haiku|opus)-[0-9]' packages/*/src
 # LLM-facing text naming tools/scripts: handled by contract tests (llm-text.*.test), not here.
 
 if [ "$selftest" = 1 ]; then
