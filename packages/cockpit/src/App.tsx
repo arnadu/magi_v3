@@ -27,6 +27,7 @@ import { MissionsPanel } from "./MissionsPanel";
 import { ObjectivesPanel } from "./ObjectivesPanel";
 import { RuntimePanel } from "./RuntimePanel";
 import { SchedulePanel } from "./SchedulePanel";
+import { SignOutButton } from "./SignOutButton";
 import { TemplatesPanel } from "./TemplatesPanel";
 import { TracePanel } from "./TracePanel";
 import { TranscriptsPanel } from "./TranscriptsPanel";
@@ -441,6 +442,7 @@ function Header({
 			<span className="mut" style={{ fontSize: 11 }}>
 				{subtitle}
 			</span>
+			<SignOutButton />
 		</header>
 	);
 }
