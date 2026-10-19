@@ -499,4 +499,5 @@ independent once step 1 is done.
   failed on the FetchUrl commit (worker function coverage 78.12 vs floor 78.2; the split-out
   helpers were integration-only) — offline FetchUrl article tests added. **Research tool** in
   named steps (cache read, task/prompt, sub-loop, cache write); news-digest integration green.
-  Structure allowlist 20, complexity exemptions 17.
+  Structure allowlist 20, complexity exemptions 17. `createObjectivesTools` → one factory per
+  tool over `ObjectivesToolDeps` (allowlist 19).

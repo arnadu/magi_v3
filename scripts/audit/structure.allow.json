@@ -65,12 +65,6 @@
 			"handleUpload@541": 142
 		}
 	},
-	"packages/agent-runtime-worker/src/objectives/tools.ts": {
-		"lines": 251,
-		"fns": {
-			"createObjectivesTools@133": 217
-		}
-	},
 	"packages/agent-runtime-worker/src/tools/inspect-image.ts": {
 		"lines": 177,
 		"fns": {

@@ -130,12 +130,19 @@ function parseAllocationKey(
 	return { key };
 }
 
-export function createObjectivesTools(
-	repo: ObjectivesRepository,
-	missionId: string,
-	agentId: string,
-): MagiTool[] {
-	const addTask: MagiTool = {
+/** What every objectives tool acts for: one agent in one mission. */
+interface ObjectivesToolDeps {
+	repo: ObjectivesRepository;
+	missionId: string;
+	agentId: string;
+}
+
+function addTaskTool({
+	repo,
+	missionId,
+	agentId,
+}: ObjectivesToolDeps): MagiTool {
+	return {
 		name: "AddTask",
 		description:
 			"Add a new task to the objectives store. Defaults: assignee = you, status = open, id auto-generated. Prints the new task id.",
@@ -204,8 +211,14 @@ export function createObjectivesTools(
 			}
 		},
 	};
+}
 
-	const updateTask: MagiTool = {
+function updateTaskTool({
+	repo,
+	missionId,
+	agentId,
+}: ObjectivesToolDeps): MagiTool {
+	return {
 		name: "UpdateTask",
 		description:
 			"Update a task in the objectives store. Only the fields you pass are changed (last-write-wins); note is appended to the task's notes. effort is a relative per-turn weight used by cost attribution.",
@@ -277,8 +290,14 @@ export function createObjectivesTools(
 			}
 		},
 	};
+}
 
-	const recordKpi: MagiTool = {
+function recordKpiTool({
+	repo,
+	missionId,
+	agentId,
+}: ObjectivesToolDeps): MagiTool {
+	return {
 		name: "RecordKpi",
 		description:
 			"Record a value for a KPI you own (the latest value wins on read). A numeric value is stored as a number; otherwise as text (e.g. met/partial/unmet).",
@@ -321,8 +340,14 @@ export function createObjectivesTools(
 			}
 		},
 	};
+}
 
-	const allocate: MagiTool = {
+function allocateTool({
+	repo,
+	missionId,
+	agentId,
+}: ObjectivesToolDeps): MagiTool {
+	return {
 		name: "Allocate",
 		description:
 			'Explicit cost-allocation timesheet (fallback) — use ONLY when your mental map flags unattributed cost; normally cost is attributed automatically from your UpdateTask calls. Split your unattributed spend across targets by relative weight, e.g. "TASK-1:60,overhead:40". A target is a task id, an objective id, or the literal "overhead".',
@@ -349,6 +374,18 @@ export function createObjectivesTools(
 			}
 		},
 	};
+}
 
-	return [addTask, updateTask, recordKpi, allocate];
+export function createObjectivesTools(
+	repo: ObjectivesRepository,
+	missionId: string,
+	agentId: string,
+): MagiTool[] {
+	const deps = { repo, missionId, agentId };
+	return [
+		addTaskTool(deps),
+		updateTaskTool(deps),
+		recordKpiTool(deps),
+		allocateTool(deps),
+	];
 }
