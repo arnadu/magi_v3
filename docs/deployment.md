@@ -417,6 +417,11 @@ Do this once per Firebase project.
    key. Without the entry, the popup fails with `auth/requests-from-referer-…-are-blocked`.
 3. **API restrictions → Restrict key**, and select only **Identity Toolkit API** and **Token
    Service API**. The cockpit uses only `firebase/auth`, which needs no other Google API.
+   This step is secondary hardening; the referrer restriction in step 2 is what stops other sites
+   using the key. Some projects show only a help link here, with no radio buttons. If yours does,
+   first check **APIs & Services → Enabled APIs & services** for those two APIs: sign-in only
+   works if they are on. Recent Firebase projects may also already limit this key to Firebase
+   APIs. If the section still offers no choice, save step 2 on its own and skip this one.
 4. **Save.** The change can take up to 5 minutes to apply.
 
 Check the result:
