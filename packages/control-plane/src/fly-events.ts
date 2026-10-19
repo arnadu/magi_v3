@@ -16,6 +16,7 @@
  * twice across ticks.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import {
 	type AlertStateStore,
 	createMongoAlertStateStore,
@@ -49,20 +50,13 @@ export function classifyExit(
 	return "other";
 }
 
-interface MissionDocLike {
-	missionId: string;
-	userId: string;
-}
-
 /** Raises `oom-suspected` against the mission that owns `machineId`, if any is still on record. */
 async function recordOomSuspected(
 	db: Db,
 	machineId: string,
 	exitedAt: string,
 ): Promise<void> {
-	const mission = await db
-		.collection<MissionDocLike>("missions")
-		.findOne({ machineId });
+	const mission = await storedCollection(db, "missions").findOne({ machineId });
 	if (!mission) {
 		console.warn(
 			`[fly-events] Suspected OOM on machine with no owning mission on record { machineId: "${machineId}" } — likely already destroyed/re-provisioned`,

@@ -19,6 +19,7 @@
  * handle, so a brand-new machine is briefly unreferenced by design.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import { type FlyMachineSummary, listMachines } from "./fly-machines.js";
 import { relayToPlatformAdmins } from "./platform-relay.js";
@@ -116,10 +117,7 @@ export async function checkOrphanMachines(
 		return null;
 	}
 
-	const liveMissions = await deps.db
-		.collection<{ missionId: string; status: string; machineId?: string }>(
-			"missions",
-		)
+	const liveMissions = await storedCollection(deps.db, "missions")
 		.find({ status: { $ne: "destroyed" } })
 		.toArray();
 	const referencedIds = new Set(

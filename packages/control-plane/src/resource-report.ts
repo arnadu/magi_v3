@@ -28,6 +28,7 @@
  * Approach: prompt/report wording is judged manually, not asserted on.
  */
 
+import { type MissionDoc, storedCollection } from "@magi/agent-config";
 import {
 	ATLAS_STORAGE,
 	createMongoAgentStatsRepository,
@@ -104,13 +105,10 @@ export interface DailyReport {
 	flags: ReportFlag[];
 }
 
-interface MissionDocForReport {
-	missionId: string;
-	status: string;
-	mission?: { maxCostUsd?: number; memoryMb?: number; cpus?: number };
-	upgrade?: { expiresAt: Date };
-	upgradedRuntimeResetAt?: Date;
-}
+type MissionDocForReport = Pick<
+	MissionDoc,
+	"missionId" | "status" | "mission" | "upgrade" | "upgradedRuntimeResetAt"
+>;
 
 interface SnapshotMissionEntry {
 	diskUsedBytes?: number;
@@ -409,8 +407,7 @@ export async function buildDailyReport(
 	opts: { isAdmin: boolean } = { isAdmin: false },
 ): Promise<DailyReport> {
 	const date = dateKey(now);
-	const missionDocs = await db
-		.collection<MissionDocForReport>("missions")
+	const missionDocs = await storedCollection(db, "missions")
 		.find({ userId, status: { $nin: ["destroyed", "draft"] } })
 		.toArray();
 	const statsRepo = createMongoAgentStatsRepository(db);
@@ -640,9 +637,10 @@ export async function runDailyReportsIfDue(
 	);
 	if (now < reportTimeToday) return;
 
-	const userIds: string[] = await db
-		.collection("missions")
-		.distinct("userId", { status: { $nin: ["destroyed", "draft"] } });
+	const userIds: string[] = await storedCollection(db, "missions").distinct(
+		"userId",
+		{ status: { $nin: ["destroyed", "draft"] } },
+	);
 
 	for (const userId of userIds) {
 		await sendDailyReportIfNeeded(

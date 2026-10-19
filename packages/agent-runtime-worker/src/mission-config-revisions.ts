@@ -21,7 +21,12 @@
  * ambiguity about which value is current.
  */
 
-import type { AgentConfig, Limits, TeamConfig } from "@magi/agent-config";
+import {
+	type AgentConfig,
+	type Limits,
+	storedCollection,
+	type TeamConfig,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 export interface MissionConfigSnapshot {
@@ -54,7 +59,7 @@ export interface MissionConfigWriter {
 }
 
 export function createMongoMissionConfigWriter(db: Db): MissionConfigWriter {
-	const missions = db.collection("missions");
+	const missions = storedCollection(db, "missions");
 	const revisions = db.collection<MissionConfigRevisionDoc>(
 		"missionConfigRevisions",
 	);

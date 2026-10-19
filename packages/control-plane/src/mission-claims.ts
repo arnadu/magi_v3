@@ -6,6 +6,7 @@
  * invariant is one short file.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import type { Response } from "express";
 import type { Collection, Db } from "mongodb";
 import type { MissionDoc } from "./missions.js";
@@ -70,8 +71,7 @@ export async function insertMissionOrConflict(
  * failure is logged loudly and startup continues.
  */
 export async function ensureMissionIdIndex(db: Db): Promise<void> {
-	await db
-		.collection("missions")
+	await storedCollection(db, "missions")
 		.createIndex({ missionId: 1 }, { unique: true })
 		.catch((e: Error) =>
 			console.error(

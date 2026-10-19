@@ -10,6 +10,7 @@
  * the periodic `reconcileSegments` corrects it.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import {
 	deleteMachine,
@@ -141,7 +142,7 @@ export async function wakeTracked(
 	},
 ): Promise<WakeResult> {
 	const { missionId, machineId } = mission;
-	const missions = db.collection("missions");
+	const missions = storedCollection(db, "missions");
 	if (machineId.startsWith("local-")) {
 		return { reprovisioned: false, machineId };
 	}

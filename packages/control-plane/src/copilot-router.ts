@@ -14,7 +14,9 @@
 import {
 	type AgentConfig,
 	type Limits,
+	type MissionDoc,
 	parseTeamConfig,
+	storedCollection,
 	type TeamConfig,
 	validateTeamFiles,
 } from "@magi/agent-config";
@@ -341,24 +343,6 @@ export function createCopilotRouter(
 // Action executor
 // ---------------------------------------------------------------------------
 
-interface MissionDoc {
-	missionId: string;
-	userId: string;
-	name: string;
-	teamConfig: string;
-	mission?: TeamConfig["mission"];
-	agents?: AgentConfig[];
-	missionCopilotLimits?: Limits;
-	teamFiles?: Array<{ path: string; content: string }>;
-	machineId?: string;
-	privateIp?: string;
-	volumeId?: string;
-	status: string;
-	errorMessage?: string;
-	createdAt: Date;
-	updatedAt: Date;
-}
-
 export async function executeAction(
 	db: Db,
 	action: PendingAction,
@@ -370,7 +354,7 @@ export async function executeAction(
 	// fail loudly rather than run with missing fields.
 	const parsed = parseActionPayload(action.type, action.payload);
 	const payload = parsed.payload as Record<string, unknown>;
-	const missions = db.collection<MissionDoc>("missions");
+	const missions = storedCollection(db, "missions");
 	const now = new Date();
 
 	switch (parsed.type) {

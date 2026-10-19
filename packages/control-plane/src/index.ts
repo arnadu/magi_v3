@@ -16,6 +16,7 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { storedCollection } from "@magi/agent-config";
 import {
 	CLAUDE_HAIKU,
 	CLAUDE_SONNET,
@@ -212,8 +213,7 @@ async function main(): Promise<void> {
 	// Per-user LLM usage summary (admin sees all missions).
 	appRoutes.get("/api/usage", async (req, res) => {
 		const filter = req.isAdmin ? {} : { userId: req.userId };
-		const missions = await db
-			.collection("missions")
+		const missions = await storedCollection(db, "missions")
 			.find(filter, {
 				projection: { missionId: 1, name: 1, userId: 1, _id: 0 },
 			})

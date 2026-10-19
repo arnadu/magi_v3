@@ -13,18 +13,12 @@ import type { ActionPayload } from "./copilot-actions.js";
 
 const { parseExpression } = cronParser;
 
-interface MissionOwnerDoc {
-	missionId: string;
-	userId: string;
-	agents?: Array<{ id: string }>;
-}
-
 export async function executeCancelSchedule(
 	db: Db,
 	payload: ActionPayload<"cancel_schedule">,
 	userId: string,
 ): Promise<string> {
-	const missions = db.collection<MissionOwnerDoc>("missions");
+	const missions = storedCollection(db, "missions");
 	const scheduled = storedCollection(db, "scheduledMessages");
 	const oid = new ObjectId(payload.id);
 	const doc = await scheduled.findOne({ _id: oid });
@@ -51,7 +45,7 @@ export async function executeCreateSchedule(
 	userId: string,
 	now: Date,
 ): Promise<string> {
-	const missions = db.collection<MissionOwnerDoc>("missions");
+	const missions = storedCollection(db, "missions");
 	const mission = await missions.findOne({ missionId: p.missionId, userId });
 	if (!mission) throw new Error(`Mission "${p.missionId}" not found`);
 	const roster = mission.agents?.map((a) => a.id);

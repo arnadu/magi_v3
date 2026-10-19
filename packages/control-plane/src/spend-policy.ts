@@ -6,7 +6,7 @@
  * edit both the cap and its ceiling (audit LM1/LIM1/CFG2/TPL5).
  */
 
-import type { TeamConfig } from "@magi/agent-config";
+import { storedCollection, type TeamConfig } from "@magi/agent-config";
 import type { Db } from "mongodb";
 
 /** Cap applied at creation when the config sets none. */
@@ -107,11 +107,7 @@ export async function backfillMissionCeilings(
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<number> {
 	const platform = platformMaxCostCeilingUsd(env);
-	const col = db.collection<{
-		missionId: string;
-		maxCostCeilingUsd?: number;
-		mission?: { maxCostUsd?: number };
-	}>("missions");
+	const col = storedCollection(db, "missions");
 	const candidates = await col
 		.find({
 			$or: [

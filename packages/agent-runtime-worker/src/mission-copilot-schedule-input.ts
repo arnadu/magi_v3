@@ -5,6 +5,7 @@
  * fire more often than every few minutes — each fire is a paid LLM turn.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import cronParser from "cron-parser";
 import type { Db } from "mongodb";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
@@ -34,9 +35,10 @@ export async function scheduleInputProblem(
 	if (p.label !== undefined && p.label.length > 80) {
 		return "label must be at most 80 characters";
 	}
-	const mission = await db
-		.collection<{ agents?: Array<{ id: string }> }>("missions")
-		.findOne({ missionId }, { projection: { agents: 1 } });
+	const mission = await storedCollection(db, "missions").findOne(
+		{ missionId },
+		{ projection: { agents: 1 } },
+	);
 	const roster = mission?.agents?.map((a) => a.id);
 	if (roster) {
 		const allowed = new Set([...roster, "user", MISSION_COPILOT_AGENT_ID]);

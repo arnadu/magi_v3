@@ -13,7 +13,11 @@
  * next check, with no suspend/resume cycle required.
  */
 
-import { parseTeamConfig, type TeamConfig } from "@magi/agent-config";
+import {
+	parseTeamConfig,
+	storedCollection,
+	type TeamConfig,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 import {
 	createMongoMissionConfigWriter,
@@ -67,13 +71,7 @@ export interface MissionConfigRepository {
 export function createMongoMissionConfigRepository(
 	db: Db,
 ): MissionConfigRepository {
-	const missions = db.collection<{
-		missionId: string;
-		mission?: TeamConfig["mission"];
-		agents?: TeamConfig["agents"];
-		missionCopilotLimits?: TeamConfig["missionCopilotLimits"];
-		maxCostCeilingUsd?: number;
-	}>("missions");
+	const missions = storedCollection(db, "missions");
 	const writer: MissionConfigWriter = createMongoMissionConfigWriter(db);
 
 	return {

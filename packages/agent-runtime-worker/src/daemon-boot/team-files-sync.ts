@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { validateTeamFilePath } from "@magi/agent-config";
+import { storedCollection, validateTeamFilePath } from "@magi/agent-config";
 import { writeFileInside } from "../safe-path.js";
 import type { BootContext } from "./context.js";
 
@@ -24,9 +24,10 @@ export async function syncTeamFiles(
 	ctx: Pick<BootContext, "db" | "missionId" | "teamDir">,
 ): Promise<Pick<BootContext, never>> {
 	try {
-		const missionDoc = await ctx.db
-			.collection("missions")
-			.findOne({ missionId: ctx.missionId }, { projection: { teamFiles: 1 } });
+		const missionDoc = await storedCollection(ctx.db, "missions").findOne(
+			{ missionId: ctx.missionId },
+			{ projection: { teamFiles: 1 } },
+		);
 		const dbFiles = missionDoc?.teamFiles as
 			| Array<{ path: string; content: string }>
 			| undefined;

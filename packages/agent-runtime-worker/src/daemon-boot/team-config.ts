@@ -1,5 +1,9 @@
 import { basename, dirname, join } from "node:path";
-import { loadTeamConfig, parseTeamConfig } from "@magi/agent-config";
+import {
+	loadTeamConfig,
+	parseTeamConfig,
+	storedCollection,
+} from "@magi/agent-config";
 import type { BootContext } from "./context.js";
 
 export type LoadTeamConfigResult =
@@ -26,9 +30,9 @@ export async function loadDaemonTeamConfig(
 	if (ctx.missionIdEnv) {
 		process.stdout.write("[daemon] Loading team config from MongoDB…\n");
 		const missionId = ctx.missionIdEnv;
-		const missionDoc = await ctx.db
-			.collection("missions")
-			.findOne({ missionId });
+		const missionDoc = await storedCollection(ctx.db, "missions").findOne({
+			missionId,
+		});
 		if (!missionDoc?.mission || !missionDoc.agents) {
 			return {
 				ok: false,

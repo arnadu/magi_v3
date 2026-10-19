@@ -14,7 +14,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
-	type AgentConfig,
+	type MissionDoc,
 	type ScheduledMessageDoc,
 	storedCollection,
 } from "@magi/agent-config";
@@ -43,19 +43,6 @@ const { parseExpression } = cronParser;
  * again on the next minute's tick.
  */
 const MAX_DELIVERY_ATTEMPTS = 5;
-
-interface MissionDoc {
-	_id: unknown;
-	missionId: string;
-	machineId?: string;
-	volumeId?: string;
-	status: string;
-	userId?: string;
-	agents?: AgentConfig[];
-	mission?: { memoryMb?: number; cpus?: number };
-	/** Set while a machine resize (ADR-0031) is in flight. */
-	resize?: { claimedAt?: Date };
-}
 
 /**
  * Record a permanently-failed scheduled delivery as a mission anomaly.
@@ -192,7 +179,7 @@ async function deliverToMailbox(
 async function deliverAll(db: Db): Promise<void> {
 	const scheduledCol = storedCollection(db, "scheduledMessages");
 	const mailboxCol = db.collection<Record<string, unknown>>("mailbox");
-	const missionsCol = db.collection<MissionDoc>("missions");
+	const missionsCol = storedCollection(db, "missions");
 
 	const now = new Date();
 

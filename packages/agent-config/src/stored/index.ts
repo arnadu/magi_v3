@@ -12,6 +12,12 @@ export type {
 	LlmCallUsage,
 	LoggedMessage,
 } from "./llm-calls.js";
+export type {
+	CpuKind,
+	MissionDoc,
+	MissionStatus,
+	MissionUpgradeState,
+} from "./missions.js";
 export { field, type Path, ref } from "./paths.js";
 export {
 	SCHEDULE_ORIGIN,

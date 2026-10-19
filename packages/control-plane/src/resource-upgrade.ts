@@ -18,7 +18,11 @@
  * requesting daemon is stopped by the resize itself.
  */
 
-import { storedCollection } from "@magi/agent-config";
+import {
+	type MissionDoc,
+	type MissionUpgradeState,
+	storedCollection,
+} from "@magi/agent-config";
 import {
 	createMongoAlertStateStore,
 	createMongoAnomalyRecorderForMission,
@@ -49,27 +53,7 @@ import { postMailbox } from "./mailbox-writer.js";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
-export interface MissionUpgradeState extends MachineShape {
-	expiresAt: Date;
-	requestedByAgentId?: string;
-	/** `scheduled_messages` _id (hex) of the renewal reminder. */
-	reminderId?: string;
-}
-
-interface MissionDocLike {
-	missionId: string;
-	userId: string;
-	status: string;
-	machineId?: string;
-	privateIp?: string;
-	volumeId?: string;
-	mission?: { memoryMb?: number; cpus?: number };
-	agents?: Array<{ id: string }>;
-	upgrade?: MissionUpgradeState;
-	resize?: { claimedAt?: Date; lastAt?: Date };
-	/** Set by the operator-only reset route; upgraded time before it no longer counts. */
-	upgradedRuntimeResetAt?: Date;
-}
+export type { MissionUpgradeState };
 
 export interface UpgradeResult {
 	status: number;
@@ -123,7 +107,7 @@ async function post(
 /** Tell the operator, the mission-copilot and (if any) the requesting agent; best-effort. */
 async function notify(
 	db: Db,
-	mission: MissionDocLike,
+	mission: MissionDoc,
 	requester: string | undefined,
 	subject: string,
 	body: string,
@@ -145,7 +129,7 @@ async function notify(
 
 async function recordAnomaly(
 	db: Db,
-	mission: MissionDocLike,
+	mission: MissionDoc,
 	category: "upgrade-cap-reached" | "resize-failure",
 	message: string,
 ): Promise<void> {
@@ -168,7 +152,7 @@ async function recordAnomaly(
  */
 async function recordCapReached(
 	db: Db,
-	mission: MissionDocLike,
+	mission: MissionDoc,
 	message: string,
 ): Promise<void> {
 	const level = await evaluateAlert(
@@ -186,7 +170,7 @@ async function recordCapReached(
 /** Deliver the renewal reminder to the mission-copilot and the requester, before the window ends. */
 async function scheduleReminder(
 	db: Db,
-	mission: MissionDocLike,
+	mission: MissionDoc,
 	upgrade: MissionUpgradeState,
 	now: Date,
 ): Promise<string | undefined> {
@@ -239,14 +223,14 @@ async function cancelReminder(
 // Claim
 // ---------------------------------------------------------------------------
 
-const missionsOf = (db: Db) => db.collection<MissionDocLike>("missions");
+const missionsOf = (db: Db) => storedCollection(db, "missions");
 
 /** Take the one-resize-at-a-time claim; null if the mission is not running or already claimed. */
 async function claim(
 	db: Db,
 	missionId: string,
 	now: Date,
-): Promise<MissionDocLike | null> {
+): Promise<MissionDoc | null> {
 	return missionsOf(db).findOneAndUpdate(
 		{
 			missionId,
@@ -260,7 +244,7 @@ async function claim(
 
 async function failResize(
 	db: Db,
-	mission: MissionDocLike,
+	mission: MissionDoc,
 	err: unknown,
 	verb: string,
 ): Promise<UpgradeResult> {
@@ -454,7 +438,7 @@ export async function requestUpgrade(
 
 async function renew(
 	db: Db,
-	mission: MissionDocLike,
+	mission: MissionDoc,
 	current: MissionUpgradeState,
 	o: {
 		since: Date;

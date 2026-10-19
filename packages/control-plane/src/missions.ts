@@ -15,8 +15,8 @@
  */
 
 import {
-	type AgentConfig,
 	type Limits,
+	type MissionDoc,
 	parseTeamConfig,
 	storedCollection,
 	type TeamConfig,
@@ -44,55 +44,7 @@ import { registerMissionReadRoutes } from "./mission-routes-read.js";
 import { registerMissionTranscriptRoutes } from "./mission-routes-transcript.js";
 import { monitorAuthHeaders } from "./monitor-token.js";
 
-export interface MissionDoc {
-	missionId: string;
-	/** Firebase UID of the owner, or "admin" for CONTROL_API_KEY-created missions. */
-	userId: string;
-	name: string;
-	teamConfig: string;
-	/** Structured config (ADR-0021) — the live source of truth. */
-	mission?: TeamConfig["mission"];
-	agents?: AgentConfig[];
-	missionCopilotLimits?: Limits;
-	/**
-	 * Operator-only spend-cap ceiling (issue #49 / F-025) — deliberately a
-	 * top-level field, never part of `mission`/`agents`/`missionCopilotLimits`,
-	 * so no execution-plane tool (SaveMissionConfig, SetMissionSpendCap) can
-	 * ever read or write it; only writeMissionCostCeiling() below touches it,
-	 * gated by this router's own requireAuth. undefined means no ceiling is
-	 * configured (legacy/opt-in) — writeMissionCap imposes no upper bound.
-	 */
-	maxCostCeilingUsd?: number;
-	/** Team files (skills, etc.) stored at provision time; updated on config edit. */
-	teamFiles?: Array<{ path: string; content: string }>;
-	machineId?: string;
-	privateIp?: string;
-	volumeId?: string;
-	status:
-		| "draft"
-		| "provisioning"
-		| "running"
-		| "suspended"
-		| "destroyed"
-		| "error";
-	/** Set when status === "error"; cleared on successful resume. */
-	errorMessage?: string;
-	/** Set while a machine resize (ADR-0031) is in flight; see resource-upgrade.ts. */
-	resize?: { claimedAt?: Date; lastAt?: Date };
-	/** Present while the mission is on an upgraded machine (ADR-0031). */
-	upgrade?: {
-		cpuKind: string;
-		cpus: number;
-		memoryMb: number;
-		expiresAt: Date;
-		requestedByAgentId?: string;
-	};
-	/** Operator-only reset point for the cumulative upgraded-runtime cap (ADR-0031 Decision 7);
-	 *  written only by writeUpgradedRuntimeReset() below, never by any execution-plane path. */
-	upgradedRuntimeResetAt?: Date;
-	createdAt: Date;
-	updatedAt: Date;
-}
+export type { MissionDoc };
 
 // ---------------------------------------------------------------------------
 // Limits (cockpit Limits panel) — GET/PATCH read+write current & configured
@@ -386,7 +338,7 @@ export {
 export function createMissionsRouter(db: Db): Router {
 	const router = createRouter();
 	const routes = asyncRoutes(router);
-	const col = db.collection<MissionDoc>("missions");
+	const col = storedCollection(db, "missions");
 
 	// Create userId index on first router mount (idempotent).
 	void col.createIndex({ userId: 1, createdAt: -1 });

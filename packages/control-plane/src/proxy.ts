@@ -6,6 +6,7 @@
  * non-existent or non-running missions return 404.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import type {
 	NextFunction,
 	Request,
@@ -18,14 +19,6 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import type { Db } from "mongodb";
 import { asyncRoutes } from "./async-handler.js";
 import { deriveMonitorToken } from "./monitor-token.js";
-
-interface MissionDoc {
-	missionId: string;
-	userId: string;
-	privateIp?: string;
-	machineId?: string;
-	status: string;
-}
 
 export function createProxyRouter(db: Db): Router {
 	const router = createRouter();
@@ -88,9 +81,10 @@ export function createProxyRouter(db: Db): Router {
 			// S9 (F-019): scope lookup to the requesting user so a user cannot proxy
 			// into another user's mission. Admins bypass the filter.
 			const ownerFilter = req.isAdmin ? {} : { userId: req.userId };
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, ...ownerFilter });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				...ownerFilter,
+			});
 
 			if (!mission || !mission.privateIp) {
 				res.status(404).json({ error: "Mission not found" });

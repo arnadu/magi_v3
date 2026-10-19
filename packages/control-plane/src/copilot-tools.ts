@@ -81,32 +81,6 @@ export type { PendingAction, PendingActionsStore } from "./pending-actions.js";
 // Internal types
 // ---------------------------------------------------------------------------
 
-interface MissionDoc {
-	missionId: string;
-	userId: string;
-	name: string;
-	teamConfig: string;
-	mission?: TeamConfig["mission"];
-	agents?: AgentConfig[];
-	missionCopilotLimits?: Limits;
-	teamFiles?: Array<{ path: string; content: string }>;
-	machineId?: string;
-	privateIp?: string;
-	volumeId?: string;
-	status: string;
-	createdAt: Date;
-	updatedAt: Date;
-	/** Present while the mission is on an upgraded machine (ADR-0031). */
-	upgrade?: {
-		cpuKind: string;
-		cpus: number;
-		memoryMb: number;
-		expiresAt: Date;
-	};
-	/** Set by the operator-only reset route; upgraded time before it no longer counts against the cap. */
-	upgradedRuntimeResetAt?: Date;
-}
-
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -174,8 +148,7 @@ export function createCopilotTools(
 		description: "List all missions with their current status.",
 		parameters: Type.Object({}),
 		async execute() {
-			const missions = await db
-				.collection<MissionDoc>("missions")
+			const missions = await storedCollection(db, "missions")
 				.find({ userId }, { sort: { createdAt: -1 } })
 				.toArray();
 			if (missions.length === 0) return ok("(no missions)");
@@ -195,9 +168,10 @@ export function createCopilotTools(
 		}),
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, userId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
 			if (!mission) return err(`Mission "${missionId}" not found`);
 
 			let machineState = "(no machine)";
@@ -284,9 +258,10 @@ export function createCopilotTools(
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
 			const limit = (args.limit as number | undefined) ?? 20;
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, userId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
 			if (!mission) return err(`Mission "${missionId}" not found`);
 			const msgs = await db
 				.collection("mailbox")
@@ -319,9 +294,10 @@ export function createCopilotTools(
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
 			const lines = (args.lines as number | undefined) ?? 100;
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, userId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
 			if (!mission?.privateIp)
 				return err(`Mission "${missionId}" has no private IP — is it running?`);
 			try {
@@ -359,9 +335,10 @@ export function createCopilotTools(
 			const userPath = args.path as string;
 			const agentId = args.agentId as string | undefined;
 
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, userId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
 			if (!mission?.privateIp)
 				return err(`Mission "${missionId}" has no private IP — is it running?`);
 
@@ -400,15 +377,15 @@ export function createCopilotTools(
 			// directly.
 			let filter: Filter<ScheduledMessageDoc>;
 			if (missionId) {
-				const mission = await db
-					.collection<MissionDoc>("missions")
-					.findOne({ missionId, userId });
+				const mission = await storedCollection(db, "missions").findOne({
+					missionId,
+					userId,
+				});
 				if (!mission) return err(`Mission "${missionId}" not found`);
 				filter = { missionId };
 			} else {
 				const ownedMissionIds = (
-					await db
-						.collection<MissionDoc>("missions")
+					await storedCollection(db, "missions")
 						.find({ userId }, { projection: { missionId: 1 } })
 						.toArray()
 				).map((m) => m.missionId);
@@ -663,9 +640,10 @@ export function createCopilotTools(
 		}),
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, userId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
 			if (!mission) return err(`Mission "${missionId}" not found.`);
 			try {
 				const tree = await objectivesRepo.readTree(missionId);
@@ -697,9 +675,10 @@ export function createCopilotTools(
 		}),
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, userId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
 			if (!mission) return err(`Mission "${missionId}" not found.`);
 			try {
 				await objectivesRepo.appendKpiEvent(missionId, {
@@ -741,9 +720,10 @@ export function createCopilotTools(
 		}),
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, userId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
 			if (!mission) return err(`Mission "${missionId}" not found.`);
 			let parsed: ObjectiveDef[];
 			try {
@@ -809,9 +789,10 @@ export function createCopilotTools(
 		}),
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
-			const mission = await db
-				.collection<MissionDoc>("missions")
-				.findOne({ missionId, userId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
 			if (!mission) return err(`Mission "${missionId}" not found.`);
 			if (mission.status !== "draft") {
 				return err(
@@ -860,12 +841,10 @@ export function createCopilotTools(
 				"copilot",
 			);
 			if (teamFiles !== undefined) {
-				await db
-					.collection<MissionDoc>("missions")
-					.updateOne(
-						{ missionId },
-						{ $set: { teamFiles, updatedAt: new Date() } },
-					);
+				await storedCollection(db, "missions").updateOne(
+					{ missionId },
+					{ $set: { teamFiles, updatedAt: new Date() } },
+				);
 			}
 			return ok(
 				`Draft "${missionId}" updated — ${nextAgents.length} agent(s) in roster.`,

@@ -9,6 +9,7 @@
 
 import type { Collection, Db, Document } from "mongodb";
 import type { LlmCallLogEntry } from "./llm-calls.js";
+import type { MissionDoc } from "./missions.js";
 import type { ScheduledMessageDoc } from "./scheduling.js";
 import type { AgentTurnStats, MissionStats } from "./stats.js";
 
@@ -37,7 +38,7 @@ export type CollectionKey = keyof typeof COLLECTION_NAMES;
 export type CollectionName = (typeof COLLECTION_NAMES)[CollectionKey];
 
 export interface StoredDocs {
-	missions: Document;
+	missions: MissionDoc;
 	missionConfigRevisions: Document;
 	scheduledMessages: ScheduledMessageDoc;
 	mailbox: Document;

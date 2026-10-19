@@ -6,7 +6,7 @@
  * and a crash during provisioning leaves a visible document, not an orphan.
  */
 
-import { validateNewMissionId } from "@magi/agent-config";
+import { storedCollection, validateNewMissionId } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { ActionPayload } from "./copilot-actions.js";
 import { provisionTracked } from "./machine-lifecycle.js";
@@ -22,7 +22,7 @@ export async function executeLaunchMission(
 	userId: string,
 	now: Date,
 ): Promise<string> {
-	const missions = db.collection("missions");
+	const missions = storedCollection(db, "missions");
 	const missionId = payload.missionId;
 	// MID1: the id here is LLM-authored; same namespace rule as POST /.
 	validateNewMissionId(missionId);

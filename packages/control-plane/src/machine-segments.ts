@@ -11,6 +11,7 @@
  * on its own does not keep accruing runtime.
  */
 
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import {
 	DEFAULT_MACHINE,
@@ -269,16 +270,12 @@ export async function reconcileSegments(
 
 	const running = machines.filter((m) => RUNNING_STATES.has(m.state));
 	if (running.length === 0) return { closed, opened };
-	const missions = await db
-		.collection<{
-			missionId: string;
-			machineId: string;
-			mission?: { memoryMb?: number; cpus?: number };
-		}>("missions")
+	const missions = await storedCollection(db, "missions")
 		.find({ machineId: { $in: running.map((m) => m.id) } })
 		.toArray();
 	for (const mission of missions) {
-		if (openMissionIds.has(mission.missionId)) continue;
+		// The query matched on machineId, so it is set; the check narrows the type.
+		if (!mission.machineId || openMissionIds.has(mission.missionId)) continue;
 		const machine = live.get(mission.machineId);
 		const fallback = defaultShapeOf(mission);
 		const shape: MachineShape = {

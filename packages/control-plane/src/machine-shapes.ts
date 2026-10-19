@@ -9,9 +9,10 @@
  * ever rejected. Prices are only ever shown as an estimate, never enforced.
  */
 
+import type { CpuKind } from "@magi/agent-config";
 import { UPGRADE_LIMITS } from "@magi/agent-runtime-worker";
 
-export type CpuKind = "shared" | "performance";
+export type { CpuKind };
 
 export interface MachineShape {
 	cpuKind: CpuKind;

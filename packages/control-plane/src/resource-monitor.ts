@@ -16,6 +16,7 @@
  * and copilot waker.
  */
 
+import { type MissionDoc, storedCollection } from "@magi/agent-config";
 import {
 	type AlertStateStore,
 	createMongoAgentStatsRepository,
@@ -54,17 +55,13 @@ import { runDailyReportsIfDue } from "./resource-report.js";
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-export interface MissionRow {
-	missionId: string;
-	userId: string;
-	mission?: { maxCostUsd?: number };
-	upgrade?: unknown;
-	upgradedRuntimeResetAt?: Date;
-}
+export type MissionRow = Pick<
+	MissionDoc,
+	"missionId" | "userId" | "mission" | "upgrade" | "upgradedRuntimeResetAt"
+>;
 
 async function runningMissions(db: Db): Promise<MissionRow[]> {
-	return db
-		.collection<MissionRow>("missions")
+	return storedCollection(db, "missions")
 		.find(
 			{ status: "running" },
 			{

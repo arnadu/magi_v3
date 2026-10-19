@@ -207,7 +207,9 @@ export function createMissionCopilotTools(
 			"Read this mission's current team configuration — mission name/model, every agent's role/system prompt/skills — and its attached team files. Use before proposing any change.",
 		parameters: Type.Object({}),
 		async execute() {
-			const mission = await db.collection("missions").findOne({ missionId });
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+			});
 			if (!mission) return err(`Mission "${missionId}" not found`);
 			const teamFiles = (
 				(mission.teamFiles as Array<{ path: string; content: string }>) ?? []
@@ -278,7 +280,9 @@ export function createMissionCopilotTools(
 				| Array<{ path: string; content: string }>
 				| undefined;
 
-			const current = await db.collection("missions").findOne({ missionId });
+			const current = await storedCollection(db, "missions").findOne({
+				missionId,
+			});
 			if (!current?.mission || !current.agents) {
 				return err(`Mission "${missionId}" has no structured config stored`);
 			}
@@ -363,9 +367,10 @@ export function createMissionCopilotTools(
 			// simple system-prompt tweak. Matches save_template's former (now
 			// removed, ADR-0021) "omit to preserve" contract.
 			if (teamFilesProvided) {
-				await db
-					.collection("missions")
-					.updateOne({ missionId }, { $set: { teamFiles } });
+				await storedCollection(db, "missions").updateOne(
+					{ missionId },
+					{ $set: { teamFiles } },
+				);
 			}
 			await auditPost(
 				"Mission config updated",

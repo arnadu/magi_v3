@@ -1,3 +1,4 @@
+import { storedCollection } from "@magi/agent-config";
 import { createMongoAnomalyRecorder } from "../anomaly.js";
 import { createMongoMailboxRepository } from "../mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "../mission-copilot.js";
@@ -17,9 +18,10 @@ export async function constructAnomalyRecorder(
 	missionCopilotEnabled: boolean,
 ): Promise<Pick<BootContext, "anomalyRecorder">> {
 	const missionUserId = (
-		await ctx.db
-			.collection("missions")
-			.findOne({ missionId: ctx.missionId }, { projection: { userId: 1 } })
+		await storedCollection(ctx.db, "missions").findOne(
+			{ missionId: ctx.missionId },
+			{ projection: { userId: 1 } },
+		)
 	)?.userId as string | undefined;
 	if (!missionUserId) {
 		console.warn(

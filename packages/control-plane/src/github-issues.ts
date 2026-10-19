@@ -14,6 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import { GITHUB_REPO, ghFetch } from "./github.js";
 import type { PendingAction, PendingActionsStore } from "./pending-actions.js";
@@ -260,9 +261,10 @@ export async function proposeIssueForMissionOwner(
 	missionId: string,
 	raw: { title?: unknown; body?: unknown; labels?: unknown },
 ): Promise<{ pendingActionId: string; ownerUserId: string; message: string }> {
-	const mission = await deps.db
-		.collection<{ missionId: string; userId: string }>("missions")
-		.findOne({ missionId }, { projection: { userId: 1 } });
+	const mission = await storedCollection(deps.db, "missions").findOne(
+		{ missionId },
+		{ projection: { userId: 1 } },
+	);
 	if (!mission) throw new Error(`Mission "${missionId}" not found`);
 	const payload = parseGithubIssuePayload({
 		op: "create",
