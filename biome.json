@@ -52,7 +52,6 @@
 				"packages/agent-runtime-worker/src/loop.ts",
 				"packages/agent-runtime-worker/src/objectives/store.ts",
 				"packages/agent-runtime-worker/src/reflection.ts",
-				"packages/agent-runtime-worker/src/tools/research.ts",
 				"packages/agent-runtime-worker/src/workspace-manager.ts",
 				"packages/agent-runtime-worker/tests/browse-web.integration.test.ts",
 				"packages/agent-runtime-worker/tests/data-factory.integration.test.ts",

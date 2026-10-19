@@ -13,7 +13,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
+import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { LlmCallMeter } from "../llm-meter.js";
 import { runInnerLoop } from "../loop.js";
@@ -302,6 +302,174 @@ function statelessResearchTools(
 	].filter((t) => !disabled.has(t.name));
 }
 
+const RESEARCH_PARAMS = Type.Object({
+	question: Type.String({
+		description:
+			"The specific research question to answer. Be precise — exact values, " +
+			"dates, and entities produce better results than vague topics.",
+	}),
+	max_age_hours: Type.Optional(
+		Type.Number({
+			description:
+				"Maximum age in hours of a cached finding to accept. " +
+				"Default: 12 (suitable for market data). " +
+				"Use 168 (1 week) for stable facts. Use 1 for breaking news.",
+		}),
+	),
+	context_files: Type.Optional(
+		Type.Array(Type.String(), {
+			description:
+				"Paths to files to inject as context into the research sub-loop. " +
+				"When provided, the sub-loop is instructed to fetch URLs from these " +
+				"files rather than calling SearchWeb (SearchWeb is disabled). " +
+				"All paths must be within the agent's permitted paths.",
+		}),
+	),
+	output_path: Type.Optional(
+		Type.String({
+			description:
+				"If provided, the finding text is written to this file path in " +
+				"addition to the research cache. Must be within permitted paths.",
+		}),
+	),
+});
+
+/** A cached finding young enough to reuse: its header line and full text (from the .md file when present). */
+function readCachedFinding(
+	sharedDir: string,
+	question: string,
+	maxAge: number,
+): { header: string; answer: string } | null {
+	const cached = findCached(loadIndex(sharedDir), question, maxAge);
+	if (!cached) return null;
+	const mdFile = join(researchDir(sharedDir), `${cached.slug}.md`);
+	let answer = cached.answer;
+	if (existsSync(mdFile)) {
+		try {
+			const raw = readFileSync(mdFile, "utf-8");
+			const sep = raw.indexOf("\n---\n");
+			answer = sep !== -1 ? raw.slice(sep + 5).trim() : raw.trim();
+		} catch {
+			// Fall back to truncated answer in index.
+		}
+	}
+	return {
+		header: `[Cached finding — ${cached.agentId}, ${new Date(cached.savedAt).toISOString().slice(0, 16)}]`,
+		answer,
+	};
+}
+
+/**
+ * The sub-loop's task and system prompt. With context files, their contents
+ * precede the question and the sub-loop is told to fetch the URLs in them
+ * rather than call SearchWeb (URL discovery is already done).
+ */
+function researchTaskAndPrompt(
+	question: string,
+	contextSections: string[],
+	systemPrompt: string,
+	contextMode: boolean,
+): { task: string; systemPrompt: string } {
+	const task =
+		contextSections.length > 0
+			? `${contextSections.join("\n\n---\n\n")}\n\n---\n\n## Question\n\n${question}`
+			: question;
+	if (!contextMode) return { task, systemPrompt };
+	return {
+		task,
+		systemPrompt:
+			systemPrompt +
+			"\n\n## Context-only mode\n" +
+			"Context files have been provided above. " +
+			"Fetch URLs found in those files using FetchUrl. " +
+			"Do NOT call SearchWeb — all URL discovery is already done. " +
+			"SearchWeb is effectively disabled for this request.",
+	};
+}
+
+/** Save the finding to the research cache; a failure is logged, not fatal — the finding is still returned. */
+function cacheFinding(
+	sharedDir: string,
+	question: string,
+	finding: string,
+	agentId: string,
+): void {
+	const entry: ResearchEntry = {
+		slug: slugify(question),
+		question,
+		answer: finding.slice(0, 500),
+		sources: extractSources(finding),
+		savedAt: new Date().toISOString(),
+		agentId,
+	};
+	try {
+		saveEntry(sharedDir, entry, finding);
+	} catch (e) {
+		console.warn(`[research] Failed to save finding: ${(e as Error).message}`);
+	}
+}
+
+function researchDescription(sharedDir: string): string {
+	return (
+		"Delegate a research question to a specialist sub-agent that searches the web, " +
+		"fetches sources (including JS-rendered pages via BrowseWeb), and returns a " +
+		"concise finding (200–500 words + source URLs). " +
+		"All intermediate web calls are isolated — they do not appear in your context. " +
+		"Findings are cached in the shared workspace; check the index before calling: " +
+		"`cat " +
+		sharedDir +
+		"/research/index.json 2>/dev/null | head -100`\n\n" +
+		"Use this tool instead of calling SearchWeb, FetchUrl, or BrowseWeb directly. " +
+		"It is far more token-efficient: only the synthesised finding enters your context."
+	);
+}
+
+interface ResearchLoopDeps {
+	model: Model<string>;
+	visionModel: Model<string>;
+	sharedDir: string;
+	statelessTools: MagiTool[];
+	disabled: ReadonlySet<string>;
+	onSubLoopMessage?: (toolUseId: string, msg: Message) => Promise<void>;
+	onSubLoopLlmCall?: LlmCallMeter;
+}
+
+/**
+ * One research sub-loop. BrowseWeb is stateful (a browser session): a fresh
+ * handle per call, closed whether the sub-loop succeeds or fails.
+ */
+async function runResearchLoop(
+	deps: ResearchLoopDeps,
+	run: { task: string; systemPrompt: string },
+	signal: AbortSignal | undefined,
+	toolUseId: string,
+): Promise<Awaited<ReturnType<typeof runInnerLoop>>> {
+	const { onSubLoopMessage } = deps;
+	const browseHandle = deps.disabled.has("BrowseWeb")
+		? undefined
+		: tryCreateBrowseWebTool(deps.visionModel, deps.sharedDir);
+	try {
+		return await runInnerLoop({
+			model: deps.model,
+			getSystemPrompt: () => run.systemPrompt,
+			task: run.task,
+			tools: browseHandle
+				? [...deps.statelessTools, browseHandle.tool]
+				: deps.statelessTools,
+			signal,
+			maxTurns: RESEARCH_MAX_TURNS,
+			onMessage: onSubLoopMessage
+				? async (msg) => {
+						await onSubLoopMessage(toolUseId, msg);
+					}
+				: undefined,
+			onLlmCall: deps.onSubLoopLlmCall,
+		});
+	} finally {
+		await browseHandle?.close();
+	}
+}
+
 /**
  * Create the Research agentic tool.
  *
@@ -318,10 +486,7 @@ export function createResearchTool(
 	opts?: {
 		/** Vision model for BrowseWeb and FetchUrl image captioning. Defaults to model. */
 		visionModel?: Model<string>;
-		onSubLoopMessage?: (
-			toolUseId: string,
-			msg: import("@mariozechner/pi-ai").Message,
-		) => Promise<void>;
+		onSubLoopMessage?: (toolUseId: string, msg: Message) => Promise<void>;
 		/** Meters every sub-loop LLM call against the calling agent's turn (COST-1). */
 		onSubLoopLlmCall?: LlmCallMeter;
 		/**
@@ -348,50 +513,20 @@ export function createResearchTool(
 		sharedDir,
 	);
 
+	const loop: ResearchLoopDeps = {
+		model,
+		visionModel,
+		sharedDir,
+		statelessTools,
+		disabled,
+		onSubLoopMessage: opts?.onSubLoopMessage,
+		onSubLoopLlmCall: opts?.onSubLoopLlmCall,
+	};
+
 	return {
 		name: "Research",
-		description:
-			"Delegate a research question to a specialist sub-agent that searches the web, " +
-			"fetches sources (including JS-rendered pages via BrowseWeb), and returns a " +
-			"concise finding (200–500 words + source URLs). " +
-			"All intermediate web calls are isolated — they do not appear in your context. " +
-			"Findings are cached in the shared workspace; check the index before calling: " +
-			"`cat " +
-			sharedDir +
-			"/research/index.json 2>/dev/null | head -100`\n\n" +
-			"Use this tool instead of calling SearchWeb, FetchUrl, or BrowseWeb directly. " +
-			"It is far more token-efficient: only the synthesised finding enters your context.",
-		parameters: Type.Object({
-			question: Type.String({
-				description:
-					"The specific research question to answer. Be precise — exact values, " +
-					"dates, and entities produce better results than vague topics.",
-			}),
-			max_age_hours: Type.Optional(
-				Type.Number({
-					description:
-						"Maximum age in hours of a cached finding to accept. " +
-						"Default: 12 (suitable for market data). " +
-						"Use 168 (1 week) for stable facts. Use 1 for breaking news.",
-				}),
-			),
-			context_files: Type.Optional(
-				Type.Array(Type.String(), {
-					description:
-						"Paths to files to inject as context into the research sub-loop. " +
-						"When provided, the sub-loop is instructed to fetch URLs from these " +
-						"files rather than calling SearchWeb (SearchWeb is disabled). " +
-						"All paths must be within the agent's permitted paths.",
-				}),
-			),
-			output_path: Type.Optional(
-				Type.String({
-					description:
-						"If provided, the finding text is written to this file path in " +
-						"addition to the research cache. Must be within permitted paths.",
-				}),
-			),
-		}),
+		description: researchDescription(sharedDir),
+		parameters: RESEARCH_PARAMS,
 
 		async execute(id, rawArgs, signal) {
 			const args = rawArgs as {
@@ -420,120 +555,43 @@ export function createResearchTool(
 				if (outputPath) writeFinding(rootOf, outputPath, text);
 			};
 
-			// When context files are provided, always treat as fresh (maxAge = 0).
-			const maxAge =
-				contextFiles.length > 0
-					? 0
-					: (args.max_age_hours ?? DEFAULT_MAX_AGE_HOURS);
-
-			// 1. Check cache (skipped when contextFiles are present — always fresh).
-			if (contextFiles.length === 0) {
-				const index = loadIndex(sharedDir);
-				const cached = findCached(index, question, maxAge);
+			// Context files mean a fresh answer: the cache is skipped.
+			const contextMode = contextFiles.length > 0;
+			if (!contextMode) {
+				const cached = readCachedFinding(
+					sharedDir,
+					question,
+					args.max_age_hours ?? DEFAULT_MAX_AGE_HOURS,
+				);
 				if (cached) {
-					const mdFile = join(researchDir(sharedDir), `${cached.slug}.md`);
-					let fullAnswer = cached.answer;
-					if (existsSync(mdFile)) {
-						try {
-							const raw = readFileSync(mdFile, "utf-8");
-							const sep = raw.indexOf("\n---\n");
-							fullAnswer = sep !== -1 ? raw.slice(sep + 5).trim() : raw.trim();
-						} catch {
-							// Fall back to truncated answer in index.
-						}
-					}
-					const result = `[Cached finding — ${cached.agentId}, ${new Date(cached.savedAt).toISOString().slice(0, 16)}]\n\n${fullAnswer}`;
-					writeOutput(fullAnswer);
-					return ok(result);
+					writeOutput(cached.answer);
+					return ok(`${cached.header}\n\n${cached.answer}`);
 				}
 			}
 
-			// 2. Build task string, injecting context file contents when provided.
-			let task = question;
-			if (contextFiles.length > 0) {
-				const sections = readContextSections(rootOf, contextFiles);
-				if (sections.length > 0) {
-					task = `${sections.join("\n\n---\n\n")}\n\n---\n\n## Question\n\n${question}`;
-				}
-			}
-
-			// 3. Choose the effective system prompt.
-			// When context files are provided, instruct the sub-loop to use provided
-			// URLs rather than calling SearchWeb (which is unnecessary and wastes tokens).
-			const effectiveSystemPrompt =
-				contextFiles.length > 0
-					? systemPrompt +
-						"\n\n## Context-only mode\n" +
-						"Context files have been provided above. " +
-						"Fetch URLs found in those files using FetchUrl. " +
-						"Do NOT call SearchWeb — all URL discovery is already done. " +
-						"SearchWeb is effectively disabled for this request."
-					: systemPrompt;
-
-			// 4. Run research sub-loop.
-			// BrowseWeb is stateful (browser session), so create a fresh handle per call
-			// and close it in a finally block regardless of success or failure.
-			const browseHandle = disabled.has("BrowseWeb")
-				? undefined
-				: tryCreateBrowseWebTool(visionModel, sharedDir);
-			const subLoopTools = browseHandle
-				? [...statelessTools, browseHandle.tool]
-				: statelessTools;
-
+			const run = researchTaskAndPrompt(
+				question,
+				contextMode ? readContextSections(rootOf, contextFiles) : [],
+				systemPrompt,
+				contextMode,
+			);
 			let loopResult: Awaited<ReturnType<typeof runInnerLoop>>;
 			try {
-				loopResult = await runInnerLoop({
-					model,
-					getSystemPrompt: () => effectiveSystemPrompt,
-					task,
-					tools: subLoopTools,
-					signal,
-					maxTurns: RESEARCH_MAX_TURNS,
-					onMessage: opts?.onSubLoopMessage
-						? async (msg) => {
-								await opts.onSubLoopMessage?.(id as string, msg);
-							}
-						: undefined,
-					onLlmCall: opts?.onSubLoopLlmCall,
-				});
+				loopResult = await runResearchLoop(loop, run, signal, id as string);
 			} catch (e) {
 				return toolErr(
 					`Research sub-loop failed: ${e instanceof Error ? e.message : String(e)}`,
 				);
-			} finally {
-				await browseHandle?.close();
 			}
 
-			// 5. Extract finding.
 			const finding = extractFinding(loopResult.messages);
 			if (!finding) {
 				return toolErr(
 					"Research produced no response. Check SearchWeb API key.",
 				);
 			}
-
-			// 6. Write to output_path if provided.
 			writeOutput(finding);
-
-			// 7. Persist finding to research cache.
-			const slug = slugify(question);
-			const entry: ResearchEntry = {
-				slug,
-				question,
-				answer: finding.slice(0, 500),
-				sources: extractSources(finding),
-				savedAt: new Date().toISOString(),
-				agentId: acl.agentId,
-			};
-			try {
-				saveEntry(sharedDir, entry, finding);
-			} catch (e) {
-				// Persistence failure is non-fatal — still return the finding.
-				console.warn(
-					`[research] Failed to save finding: ${(e as Error).message}`,
-				);
-			}
-
+			cacheFinding(sharedDir, question, finding, acl.agentId);
 			return ok(finding);
 		},
 	};

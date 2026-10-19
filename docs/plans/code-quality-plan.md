@@ -495,3 +495,8 @@ independent once step 1 is done.
   FetchUrl's 220-line `execute` → validate, fetch, document routing, article (images, content
   with provenance banner, save, summary); fetch-inspect and fetch-share integration tests green.
   Structure allowlist 21, complexity exemptions 18.
+- 2026-10-19 — **#86 fixed** (config edits re-check only the model ids they change). CI had
+  failed on the FetchUrl commit (worker function coverage 78.12 vs floor 78.2; the split-out
+  helpers were integration-only) — offline FetchUrl article tests added. **Research tool** in
+  named steps (cache read, task/prompt, sub-loop, cache write); news-digest integration green.
+  Structure allowlist 20, complexity exemptions 17.
