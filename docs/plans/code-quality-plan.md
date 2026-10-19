@@ -460,4 +460,21 @@ independent once step 1 is done.
   `executeAction` → handler registry; copilot router → route registrars; shared
   `applyTeamConfigPatch` replaces two restated merge-and-validate copies. Structure allowlist
   39 → 31 files, complexity exemptions 32 → 27.
+- 2026-10-19 — **Step 4 gate passed** (full integration 219/219); pushed, CI green including
+  both deploys. **Step 6**: cockpit floors; per-file 90% floors for safe-path, ssrf, safe-http,
+  limits, spend-policy, auth-limiter, copilot-spend, usage-queries (verified enforced in CI).
+  Stale complexity exemptions removed (24); TemplatesPanel off the allowlist (30).
+
+### Exit criteria — status 2026-10-19
+
+| Criterion | Status |
+|---|---|
+| Structure allowlist ≤ 30 files | ✅ 30 (from 39) |
+| No allowlisted function over 300 lines | ❌ five remain: `DraftEditor` 420, `createBrowseWebHandle` 426, `CopilotPanel` 405, `ConfigPanel` 360, `ConversationsPanel` 344 |
+| Complexity exemptions ≤ 24 | ✅ 24 (from 32) |
+| T8, T9, T13, T14, T15 at 0 apart from reasoned entries | ✅ |
+| Contract test for multi-reader collections; CLAUDE.md list tested | ✅ |
+| Coverage floors raised; cockpit floors | ◐ cockpit and per-file risk floors added; worker/control-plane package floors not raised — they must come from CI's numbers (local runs measure ~10 points higher), which CI does not print per package yet |
+| `docs/code-structure.md` current | ✅ for every file changed |
+| Issues closed | pending: #34, #36, #60, #73 are done in code; #44 partly; #43's core (typed monitor routes) is done |
 
