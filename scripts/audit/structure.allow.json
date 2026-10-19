@@ -6,9 +6,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/agent-stats.ts": {
-		"lines": 616,
+		"lines": 549,
 		"fns": {
-			"createMongoAgentStatsRepository@202": 163
+			"createMongoAgentStatsRepository@133": 159
 		}
 	},
 	"packages/agent-runtime-worker/src/cli-usage.ts": {
@@ -18,9 +18,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/conversation-repository.ts": {
-		"lines": 316,
+		"lines": 290,
 		"fns": {
-			"createMongoConversationRepository@133": 186
+			"createMongoConversationRepository@103": 186
 		}
 	},
 	"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts": {
@@ -48,9 +48,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/mailbox.ts": {
-		"lines": 325,
+		"lines": 320,
 		"fns": {
-			"createMailboxTools@160": 165
+			"createMailboxTools@155": 165
 		}
 	},
 	"packages/agent-runtime-worker/src/mental-map.ts": {
@@ -60,9 +60,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot-tools.ts": {
-		"lines": 1140,
+		"lines": 1138,
 		"fns": {
-			"createMissionCopilotTools@132": 1008
+			"createMissionCopilotTools@133": 1005
 		}
 	},
 	"packages/agent-runtime-worker/src/mission-copilot.ts": {
@@ -72,15 +72,15 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts": {
-		"lines": 169,
+		"lines": 159,
 		"fns": {
-			"createAgentSessionsRoutes@14": 155
+			"createAgentSessionsRoutes@15": 144
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
-		"lines": 1141,
+		"lines": 1137,
 		"fns": {
-			"handleUpload@538": 142
+			"handleUpload@539": 142
 		}
 	},
 	"packages/agent-runtime-worker/src/objectives/tools.ts": {
@@ -99,8 +99,8 @@
 	"packages/agent-runtime-worker/src/tools/browse-web.ts": {
 		"lines": 504,
 		"fns": {
-			"createBrowseWebHandle@78": 426,
-			"execute@263": 206
+			"createBrowseWebHandle@128": 426,
+			"execute@313": 206
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/fetch-url.ts": {
@@ -119,14 +119,14 @@
 	"packages/agent-runtime-worker/src/tools/research.ts": {
 		"lines": 455,
 		"fns": {
-			"createResearchTool@293": 220,
-			"execute@373": 140
+			"createResearchTool@314": 220,
+			"execute@396": 140
 		}
 	},
 	"packages/cockpit/src/App.tsx": {
 		"lines": 813,
 		"fns": {
-			"App@518": 295
+			"App@520": 295
 		}
 	},
 	"packages/cockpit/src/ConfigPanel.tsx": {
@@ -163,7 +163,7 @@
 	"packages/cockpit/src/LimitsPanel.tsx": {
 		"lines": 457,
 		"fns": {
-			"AgentCard@107": 134
+			"AgentCard@108": 134
 		}
 	},
 	"packages/cockpit/src/MissionsPanel.tsx": {
@@ -191,51 +191,47 @@
 			"TranscriptsPanel@205": 202
 		}
 	},
-	"packages/cockpit/src/data.ts": {
-		"lines": 1023,
-		"fns": {}
-	},
 	"packages/control-plane/src/copilot-daemon.ts": {
 		"lines": 455,
 		"fns": {
-			"runWatchLoop@225": 186
+			"runWatchLoop@230": 177
 		}
 	},
 	"packages/control-plane/src/copilot-router.ts": {
-		"lines": 798,
+		"lines": 726,
 		"fns": {
-			"createCopilotRouter@77": 284,
-			"executeAction@385": 341
+			"createCopilotRouter@80": 260,
+			"executeAction@345": 341
 		}
 	},
 	"packages/control-plane/src/copilot-tools.ts": {
-		"lines": 903,
+		"lines": 874,
 		"fns": {
-			"createCopilotTools@127": 776
+			"createCopilotTools@95": 776
 		}
 	},
 	"packages/control-plane/src/index.ts": {
 		"lines": 314,
 		"fns": {
-			"main@78": 256
+			"main@80": 248
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
-		"lines": 408,
+		"lines": 359,
 		"fns": {
-			"readLimits@156": 172
+			"readLimits@109": 171
 		}
 	},
 	"packages/control-plane/src/resource-report.ts": {
-		"lines": 660,
+		"lines": 658,
 		"fns": {
-			"computeFlags@237": 166
+			"computeFlags@236": 165
 		}
 	},
 	"packages/control-plane/src/resource-upgrade.ts": {
-		"lines": 780,
+		"lines": 764,
 		"fns": {
-			"requestUpgrade@311": 143
+			"requestUpgrade@295": 143
 		}
 	}
 }
