@@ -1,6 +1,7 @@
 import type { AgentConfig } from "@magi/agent-config";
 import { type MailboxMessage, safeTimestamp } from "./mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
+import { loadPrompt } from "./prompts.js";
 import { discoverSkills, formatSkillsBlock } from "./skills.js";
 
 /**
@@ -8,22 +9,7 @@ import { discoverSkills, formatSkillsBlock } from "./skills.js";
  * systemPrompt content — the operator's cockpit renders this; an agent that
  * doesn't know it will just write plain, unstructured text forever.
  */
-const RENDERING_NOTE = [
-	"## Rich Text Rendering",
-	"Mailbox messages (PostMessage) and .md files you write to the shared workspace" +
-		" are rendered as formatted text in the operator's cockpit — not shown as raw" +
-		" markup. This does NOT apply to your mental map, which is raw HTML.",
-	"",
-	"Supported:",
-	"- Markdown: # headings, **bold**, *italic*, [links](https://...), bullet lists," +
-		" `inline code`, fenced code blocks, and GFM tables" +
-		" (`| a | b |` / `|---|---|` / `| 1 | 2 |`)",
-	"- Mermaid diagrams: a fenced code block tagged `mermaid`" +
-		" (e.g. ```mermaid / graph TD; A-->B; / ```)",
-	"- KaTeX math, BLOCK ONLY, wrapped in $$...$$ (e.g. $$x^2 + y^2 = z^2$$)." +
-		" Do NOT use single-$ inline math — dollar amounts in normal text" +
-		' (e.g. "$5.00 per share") would be misread as math.',
-].join("\n");
+const RENDERING_NOTE = loadPrompt("rendering-note.md");
 
 /**
  * Rounding granularity for the current-time block. Agents have no need for
@@ -43,8 +29,7 @@ const TIME_ROUND_MS = 5 * 60 * 1000;
  * mid-turn mental-map edit instead of invalidating on every single one — see
  * the OpenRouter caching investigation, issue #24.
  */
-const MENTAL_MAP_POINTER =
-	"(Your current mental map is provided as a separate message below — always up to date.)";
+const MENTAL_MAP_POINTER = loadPrompt("mental-map-pointer.md");
 
 function isoMinute(d: Date): string {
 	return `${d.toISOString().slice(0, 16)}Z`;

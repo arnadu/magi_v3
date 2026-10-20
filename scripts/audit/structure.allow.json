@@ -35,12 +35,6 @@
 			"createMentalMapTools@213": 122
 		}
 	},
-	"packages/agent-runtime-worker/src/mission-copilot.ts": {
-		"lines": 570,
-		"fns": {
-			"buildSystemPromptTemplate@39": 222
-		}
-	},
 	"packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts": {
 		"lines": 155,
 		"fns": {

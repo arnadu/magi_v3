@@ -191,6 +191,7 @@ RUN rm -rf /app/packages/agent-config/src /app/packages/agent-config/tests \
 # to consult.
 RUN mkdir -p /opt/magi-src
 COPY --from=builder --chown=root:mission-copilot /app/packages/agent-runtime-worker/src/ /opt/magi-src/packages/agent-runtime-worker/src/
+COPY --from=builder --chown=root:mission-copilot /app/packages/agent-runtime-worker/prompts/ /opt/magi-src/packages/agent-runtime-worker/prompts/
 COPY --from=builder --chown=root:mission-copilot /app/packages/agent-config/src/ /opt/magi-src/packages/agent-config/src/
 COPY --chown=root:mission-copilot MAGI_V3_SPEC.md /opt/magi-src/MAGI_V3_SPEC.md
 RUN chown root:mission-copilot /opt/magi-src && chmod -R 750 /opt/magi-src

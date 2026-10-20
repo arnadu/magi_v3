@@ -509,3 +509,10 @@ independent once step 1 is done.
   to `platform-routes.ts` with a unit test; allowlist 16. TranscriptsPanel → useTranscriptData +
   TurnTranscript; allowlist 15. Left allowlisted on purpose: `buildSystemPromptTemplate` (prompt
   prose, not logic).
+- 2026-10-19 — **Platform prompts out of code**: the ten prompts the platform writes to a model
+  (mission copilot prompt and starting mental map, Research and its context-only addendum,
+  reflection, BrowseWeb agent, three image prompts, rendering note, mental-map pointer) are files
+  in `packages/agent-runtime-worker/prompts/`, loaded by `loadPrompt` (one-pass `{{name}}`
+  substitution, unknown placeholders left for later stages, unused vars refused). Every render was
+  diffed byte-for-byte against the previous code, including adversarial roster/name values. Both
+  Docker images ship the folder. Tool descriptions stay beside their parameter schemas.

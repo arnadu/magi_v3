@@ -17,7 +17,10 @@ vi.mock("node:child_process", () => ({
 }));
 
 const mockExistsSync = vi.fn();
-vi.mock("node:fs", () => ({
+// Only existsSync is stubbed; the rest stays real (the mission copilot's
+// prompt is read from disk when it is injected).
+vi.mock("node:fs", async (importOriginal) => ({
+	...(await importOriginal<typeof import("node:fs")>()),
 	existsSync: (...args: unknown[]) => mockExistsSync(...args),
 }));
 

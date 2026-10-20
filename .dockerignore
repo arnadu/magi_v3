@@ -14,6 +14,8 @@ secrets.env.*
 docs
 *.md
 !packages/skills/**/*.md
+# Platform prompts (src/prompts.ts) are runtime files, not docs.
+!packages/agent-runtime-worker/prompts/**
 !config/**/*.md
 !packages/agent-runtime-worker/Dockerfile
 !MAGI_V3_SPEC.md

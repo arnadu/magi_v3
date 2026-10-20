@@ -84,6 +84,9 @@ COPY --from=builder /app/packages/agent-config/dist ./packages/agent-config/dist
 COPY --from=builder /app/packages/agent-config/package.json ./packages/agent-config/package.json
 COPY --from=builder /app/packages/agent-runtime-worker/dist ./packages/agent-runtime-worker/dist
 COPY --from=builder /app/packages/agent-runtime-worker/package.json ./packages/agent-runtime-worker/package.json
+# Platform prompts (src/prompts.ts) — read at module load, so the control plane
+# cannot start without them: it imports the worker package.
+COPY --from=builder /app/packages/agent-runtime-worker/prompts ./packages/agent-runtime-worker/prompts
 COPY --from=builder /app/packages/control-plane/dist ./packages/control-plane/dist
 COPY --from=builder /app/packages/control-plane/package.json ./packages/control-plane/package.json
 

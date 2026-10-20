@@ -256,6 +256,17 @@ LLM call sequence handles planning, tool execution, and message sending in one u
 5. **Skills block.** Appended to the system prompt by `formatSkillsBlock()`. Contains the content of each `SKILL.md` discovered in `sharedDir/skills/` (platform, team, and mission tiers).
 6. **Current-time block.** Built by `buildTimeBlock()` (prompt.ts) and appended to every system prompt: UTC time (ISO-8601, minute precision) + day of week, Unix epoch, and — if `mission.timezone` is set in team YAML (an IANA name, e.g. `America/New_York`) — a local-time line. Rounded to the nearest 5 minutes, deliberately: the whole system prompt is sent as one cache_control block (pi-ai's Anthropic provider), and `buildSystemPrompt()` is rebuilt fresh before every LLM call in the inner loop (turn start *and* after every tool-call round), so a to-the-second timestamp would invalidate the cache on every call. 5-minute buckets keep the block genuinely current while typically staying stable across a turn's own tool-call iterations. Deliberately minimal — no derived signals like mission elapsed-time or market-hours status; a team whose domain needs that (e.g. equity research reasoning about NYSE hours) computes it from local time within its own `systemPrompt`, not the platform.
 
+### Platform prompts
+
+A team's agent prompts come from its config YAML. The text the platform itself sends to a model —
+the mission copilot's system prompt and starting mental map, the Research sub-agent, reflection,
+BrowseWeb's browser agent, the image description/OCR prompts, and the rendering note and
+mental-map pointer appended to every agent's system prompt — lives as files in
+`packages/agent-runtime-worker/prompts/`, loaded by `loadPrompt()` (`src/prompts.ts`). `{{name}}`
+placeholders are filled in one pass by the caller; ones it does not pass (`{{mentalMap}}`,
+`{{sharedDir}}`, `{{workdir}}`) are left for `buildSystemPrompt` to fill per session. Both Docker
+images ship the folder, and the mission copilot can read it under `/opt/magi-src/`.
+
 ### Extended thinking
 
 `CLAUDE_SONNET` runs with extended thinking enabled (`reasoning: "medium"`). Thinking blocks are visible in the LLM response but stripped from all but the most recent assistant message by `pruneEphemeralResults` before the next LLM call. `CLAUDE_HAIKU` (vision model) has thinking disabled — it is used for fast, cheap captioning where extended reasoning would be wasteful. OpenRouter models are silently skipped if `model.reasoning === false`.
