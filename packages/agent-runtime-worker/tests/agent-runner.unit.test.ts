@@ -234,6 +234,38 @@ describe("forceCompactSession", () => {
 	});
 });
 
+describe("reflection thresholds on a large window", () => {
+	it("caps both thresholds in absolute tokens, so a 1M window still compacts", async () => {
+		const { shouldReflect, shouldForceReflection } = await import(
+			"../src/reflection.js"
+		);
+		const oneM = 1_048_576;
+		expect(
+			await shouldReflect({
+				peakInputTokens: 300_000,
+				contextWindow: oneM,
+				zeroOutputStreak: 0,
+			}),
+		).toBe(true);
+		expect(
+			await shouldReflect({
+				peakInputTokens: 100_000,
+				contextWindow: oneM,
+				zeroOutputStreak: 0,
+			}),
+		).toBe(false);
+		expect(shouldForceReflection(90_000, oneM, 3)).toBe(true);
+		// A 200k window is unchanged: 60% of it is the cap.
+		expect(
+			await shouldReflect({
+				peakInputTokens: 119_000,
+				contextWindow: 200_000,
+				zeroOutputStreak: 0,
+			}),
+		).toBe(false);
+	});
+});
+
 describe("shouldForceReflection (issue #64)", () => {
 	it("fires only after a run of zero-output turns with a large context", async () => {
 		const { shouldForceReflection } = await import("../src/reflection.js");

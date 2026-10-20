@@ -413,11 +413,19 @@ export async function reflectGuarded(
 	}
 }
 
-/** Reflect when the previous session used at least this fraction of the model's window. */
+/** Reflect when the previous session used at least this fraction of the model's window… */
 export const REFLECTION_CTX_FRACTION = 0.6;
-/** After this many zero-output turns with a context above FORCE_REFLECTION_FRACTION of the window, reflect regardless (#64). */
+/**
+ * …or this many tokens, whichever is lower. The fraction exists so a small
+ * window ever reaches the threshold; the cap keeps a large one from never
+ * compacting — at 60% of a 1M window (z-ai/glm-5.2) a mission copilot ran
+ * every call on ~300k tokens of uncompacted history, $0.10–0.25 each.
+ */
+export const REFLECTION_MAX_TOKENS = 120_000;
+/** After this many zero-output turns with a context above the forced threshold, reflect regardless (#64). */
 export const FORCE_REFLECTION_AFTER_ZERO_OUTPUT_TURNS = 3;
 export const FORCE_REFLECTION_FRACTION = 0.4;
+export const FORCE_REFLECTION_MAX_TOKENS = 80_000;
 
 export function shouldForceReflection(
 	peakInputTokens: number,
@@ -426,13 +434,18 @@ export function shouldForceReflection(
 ): boolean {
 	return (
 		zeroOutputStreak >= FORCE_REFLECTION_AFTER_ZERO_OUTPUT_TURNS &&
-		peakInputTokens >= FORCE_REFLECTION_FRACTION * contextWindow
+		peakInputTokens >=
+			Math.min(
+				FORCE_REFLECTION_FRACTION * contextWindow,
+				FORCE_REFLECTION_MAX_TOKENS,
+			)
 	);
 }
 
 /**
  * The reflection decision. Threshold relative to the model's own window
- * (a 32k-window model never reached one computed for 200k) and overridable
+ * (a 32k-window model never reached one computed for 200k), capped in
+ * absolute tokens (a 1M window otherwise never compacts), and overridable
  * via REFLECTION_THRESHOLD (tokens) for tests; plus the circuit breaker:
  * ephemeral pruning can hold the context just under the threshold while the
  * agent produces nothing turn after turn — a dead zone where it can neither
@@ -445,7 +458,10 @@ export async function shouldReflect(input: {
 }): Promise<boolean> {
 	const threshold = process.env.REFLECTION_THRESHOLD
 		? Number.parseInt(process.env.REFLECTION_THRESHOLD, 10)
-		: REFLECTION_CTX_FRACTION * input.contextWindow;
+		: Math.min(
+				REFLECTION_CTX_FRACTION * input.contextWindow,
+				REFLECTION_MAX_TOKENS,
+			);
 	return (
 		input.peakInputTokens >= threshold ||
 		shouldForceReflection(
