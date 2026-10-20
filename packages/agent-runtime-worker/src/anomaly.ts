@@ -7,7 +7,9 @@
  * resource-oversight categories of ADR-0032) into one sink that:
  *   1. Persists the event (`missionAnomalies` — for the cockpit Trace panel
  *      and post-hoc review).
- *   2. Wakes the mission's own copilot via its mailbox, if one is present.
+ *   2. Wakes the mission's own copilot via its mailbox, if one is present —
+ *      except for an anomaly about the copilot itself, which goes to the
+ *      operator instead (waking the copilot about its own breach loops).
  *   3. For hard-severity anomalies only, relays to the owning user's
  *      control-plane copilot (`copilot-{userId}`). This replaces two prior,
  *      independent direct-post call sites in orchestrator.ts (agent timeout,
@@ -100,18 +102,25 @@ export function createMongoAnomalyRecorder(
 		anomaly: Omit<MissionAnomaly, "createdAt">,
 		suffix = "",
 	): Promise<void> {
+		// An anomaly about the mission copilot itself goes to the operator, never
+		// to the copilot: the turn it would wake breaches the same limits again
+		// (a 300k-token context, no output) or fails the same way (a 402), and
+		// each breach raised the next wake-up — two missions burned $47 of
+		// OpenRouter credit overnight in that loop. The operator's mailbox wakes
+		// no agent.
 		if (missionCopilotAgentId) {
+			const aboutCopilot = anomaly.agentId === missionCopilotAgentId;
 			try {
 				await mailboxRepo.post({
 					missionId: anomaly.missionId,
 					from: "system",
-					to: [missionCopilotAgentId],
-					subject: `Anomaly (${anomaly.severity}): ${anomaly.category}`,
+					to: [aboutCopilot ? "user" : missionCopilotAgentId],
+					subject: `Anomaly (${anomaly.severity}): ${anomaly.category}${aboutCopilot ? " — mission copilot" : ""}`,
 					body: anomaly.message + suffix,
 				});
 			} catch (e) {
 				console.error(
-					`[anomaly] Failed to notify mission copilot { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
+					`[anomaly] Failed to notify ${aboutCopilot ? "the operator" : "mission copilot"} { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
 				);
 			}
 		}

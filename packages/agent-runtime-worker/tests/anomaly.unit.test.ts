@@ -91,6 +91,42 @@ describe("createMongoAnomalyRecorder", () => {
 		expect(missionMailbox.posted[0].body).toBe("boom");
 	});
 
+	it("sends an anomaly about the mission copilot itself to the operator, never to the copilot", async () => {
+		const { db, inserted } = fakeDb();
+		const missionMailbox = fakeMailbox();
+		const copilotMailbox = fakeMailbox();
+		const recorder = createMongoAnomalyRecorder(
+			db,
+			missionMailbox,
+			"mission-copilot",
+			{ mailboxRepo: copilotMailbox, missionId: "copilot-user1" },
+		);
+
+		await recorder.record({
+			missionId: "m1",
+			category: "limit-breach",
+			severity: "soft",
+			agentId: "mission-copilot",
+			message: "consecutiveZeroOutputTurns=64 exceeded threshold 3",
+		});
+		await recorder.record({
+			missionId: "m1",
+			category: "llm-error",
+			severity: "hard",
+			agentId: "mission-copilot",
+			message: "402: Insufficient credits",
+		});
+
+		expect(inserted).toHaveLength(2);
+		expect(missionMailbox.posted.map((m) => m.to)).toEqual([
+			["user"],
+			["user"],
+		]);
+		expect(missionMailbox.posted[0].subject).toContain("mission copilot");
+		// A hard one still reaches the control-plane copilot, as for any agent.
+		expect(copilotMailbox.posted).toHaveLength(1);
+	});
+
 	it("does not notify the mission copilot when none is present", async () => {
 		const { db } = fakeDb();
 		const missionMailbox = fakeMailbox();
