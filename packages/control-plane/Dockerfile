@@ -17,7 +17,7 @@ COPY packages/agent-runtime-worker/package.json ./packages/agent-runtime-worker/
 # Cockpit is a workspace member: npm ci needs its package.json to resolve the
 # lockfile. Its Vite build output is NOT built in this image (avoids pulling
 # Vite/esbuild into the build, which also conflicts with --ignore-scripts) —
-# instead packages/control-plane/public/cockpit/ is built by CI (see
+# instead packages/control-plane/public/ is built by CI (see
 # deploy-control-plane.yml "Build cockpit" step) BEFORE `docker build` runs, and
 # copied in below via the public/ copy. It is gitignored, not committed — the
 # committed source of truth is packages/cockpit/src.

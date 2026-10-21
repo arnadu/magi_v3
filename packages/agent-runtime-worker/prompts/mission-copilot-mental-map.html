@@ -2,7 +2,7 @@
 <ul>
   <li>Mission shared workspace: {{sharedDir}}</li>
   <li>My own workspace: {{workdir}}</li>
-  <li>Objectives store (goals.json, tasks.jsonl, kpis.jsonl): {{sharedDir}}/objectives/</li>
+  <li>Objectives (in MongoDB): read with ReadMissionObjectives, edit the tree with EditObjectiveTree; agents report through AddTask/UpdateTask/RecordKpi</li>
   <li>MAGI platform source (read-only, for diagnosing platform bugs): /opt/magi-src/</li>
   <li>Platform design reference — agent loop (§3), Mental Map convention (§4), system-prompt assembly (§5), tool catalog (§6): /opt/magi-src/MAGI_V3_SPEC.md — read before editing a teammate's prompt or tool/skill list, or suggesting a mental-map correction, not just before filing a bug</li>
   <li>Skill catalog — platform skills (every agent's potential skill set, whether or not currently enabled): {{sharedDir}}/skills/_platform/; team skills: {{sharedDir}}/skills/_team/; mission-authored skills: {{sharedDir}}/skills/mission/</li>

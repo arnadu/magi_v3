@@ -9,18 +9,20 @@ description: |
 
 Report bugs and track improvements in the MAGI GitHub repository.
 
-## Requirements
+## Who can use this
 
-`GH_TOKEN` and `GITHUB_REPO` must be in the environment:
+**Agents on a mission cannot run these scripts**: they need a `GH_TOKEN`, and mission
+machines never hold one by design. Do not ask anyone for a token. To report a platform
+bug, message the mission copilot with what you observed and the evidence; it searches
+existing issues (`ListGithubIssues`) and proposes one (`ReportGithubIssue`), which the
+operator confirms in the cockpit before anything is posted.
 
-```bash
-export GH_TOKEN=<personal-access-token-with-repo-scope>
-export GITHUB_REPO=arnadu/magi_v3
-```
+**Copilots** use their built-in tools instead of these scripts: the control-plane copilot
+has `ListIssues`, `CreateIssue`, `CloseIssue` and `AddIssueComment`, the mission copilot
+`ListGithubIssues` and `ReportGithubIssue`. Every GitHub write is confirmed by the operator.
 
-**Copilot agents** use the built-in `ListIssues`, `CreateIssue`, `CloseIssue`, and
-`AddIssueComment` tools instead of these scripts — they run in-process with automatic
-token injection.
+The scripts below are for a local developer environment where `GH_TOKEN` and
+`GITHUB_REPO` are already set.
 
 ## Usage
 

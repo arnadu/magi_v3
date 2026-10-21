@@ -1,5 +1,5 @@
 /**
- * Objectives tools — replaces the four Bash skill scripts (ADR-0019).
+ * Objectives tools — replaced the four Bash skill scripts (ADR-0019).
  *
  * Agent Bash subprocesses deliberately receive no MONGODB_URI (existing
  * isolation model: a forked shell child gets only PATH and HOME) — so a Bash

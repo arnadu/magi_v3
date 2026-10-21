@@ -85,7 +85,7 @@ provisioned missions — the daemon reads its structured config directly from Mo
 - `ATLAS_STORAGE_LIMIT_MB` (control plane only; shared MongoDB Atlas cluster storage quota in MB, used by the resource-monitor tick's `atlas-storage-high` check; default 10240, the M10 tier's included storage — the cluster moved from M0 to M10 on 2026-10-17)
 - `RESOURCE_REPORT_HOUR_UTC` (control plane only; UTC hour, 0-23, at or after which the daily resource report is built and sent for each user owning a non-destroyed, non-draft mission; default 12. Checked on every 5-min resource-monitor tick — a control plane down through the whole report hour still sends as soon as it's back up, later the same day)
 
-**Data API keys** (forwarded to background jobs only — never to agent tool subprocesses):
+**Data API keys** (held by the daemon only — never forwarded to any subprocess, background jobs included; jobs reach the providers through the `data-fred`/`data-fmp`/`data-newsapi` Tool API proxies, CR-04/F-030):
 Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
 
 ## Architecture
@@ -165,7 +165,7 @@ Full guide (app naming, GitHub Actions, integration test environments, operation
 
 Full history and per-sprint detail: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) (status table) and
 [docs/implementation-history.md](docs/implementation-history.md) (full build log). Sprints 1–28e
-are done — this section tracks only what's active now, not a running log of what shipped.
+and 28g are done — this section tracks only what's active now, not a running log of what shipped.
 
 **Done, most recent first:** 28g (resource management — ADR-0031 temporary mission-machine
 upgrades, mediated through the mission-copilot: ≤ 60 min windows, 24 h cumulative cap with
@@ -378,7 +378,7 @@ const { parseExpression } = cronParser;
 |-----------|-----------|
 | Language | TypeScript throughout |
 | Linter/formatter | Biome |
-| Process supervision | pm2 (local dev); node-cron (scheduling) |
+| Process supervision | Fly machine restart policy (production); none locally — the daemon runs in the foreground; node-cron (scheduling) |
 | Browser automation | Playwright + Stagehand |
 | State store | MongoDB |
 | Cloud | Fly.io (control plane always-on; execution plane on-demand machines) |

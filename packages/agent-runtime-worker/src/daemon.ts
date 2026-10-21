@@ -55,8 +55,10 @@ const REPO_ROOT = join(
 // Load orchestrator secrets (.env) — NEVER forwarded to agent subprocesses.
 dotenvConfig({ path: join(REPO_ROOT, ".env"), quiet: true });
 
-// Load data API keys (.env.data-keys) — forwarded to background jobs only.
-// Kept in a separate file so the forwarding boundary is explicit and auditable.
+// Load data API keys (.env.data-keys) — held by the daemon only, never
+// forwarded to any subprocess: background jobs reach the providers through the
+// data-* Tool API proxies (CR-04/F-030). Kept in a separate file so that
+// boundary is explicit and auditable.
 dotenvConfig({ path: join(REPO_ROOT, ".env.data-keys"), quiet: true });
 
 /**

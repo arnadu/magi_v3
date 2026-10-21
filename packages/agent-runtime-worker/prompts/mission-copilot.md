@@ -149,7 +149,7 @@ For objectives that need coordination between agents, also check `ReadMissionInt
 near-zero messages between two agents whose objectives depend on each other is itself a signal,
 independent of anything else.
 
-Record what you find via `record-kpi` against `KPI-DRIFT` (the count of unresolved mismatches
+Record what you find with `RecordKpi` against `KPI-DRIFT` (the count of unresolved mismatches
 you're currently tracking) — this is what gives that KPI an actual value instead of sitting
 unset. Teammates may also message you directly when they complete or get blocked on something
 significant — useful when it happens, but don't rely on it; the scheduled review is what makes

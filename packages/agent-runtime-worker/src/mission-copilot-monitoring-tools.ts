@@ -235,6 +235,37 @@ function readMissionInteractionsTool(deps: MissionCopilotToolDeps): MagiTool {
 	};
 }
 
+/** Characters of context kept on each side of a SearchMissionHistory match. */
+const EXCERPT_CONTEXT = 150;
+
+/**
+ * The text around the first case-insensitive match of `query` in a stored
+ * message (string content, or the text of its content blocks), with an
+ * ellipsis where it is cut (MC5: the tool promised excerpts and returned only
+ * where the match was).
+ */
+export function matchExcerpt(message: unknown, query: string): string {
+	const content = (message as { content?: unknown })?.content;
+	const text =
+		typeof content === "string"
+			? content
+			: Array.isArray(content)
+				? content
+						.map((b) =>
+							typeof (b as { text?: unknown }).text === "string"
+								? (b as { text: string }).text
+								: "",
+						)
+						.filter(Boolean)
+						.join("\n")
+				: "";
+	const at = text.toLowerCase().indexOf(query.toLowerCase());
+	if (at < 0) return "";
+	const from = Math.max(0, at - EXCERPT_CONTEXT);
+	const to = Math.min(text.length, at + query.length + EXCERPT_CONTEXT);
+	return `${from > 0 ? "…" : ""}${text.slice(from, to)}${to < text.length ? "…" : ""}`;
+}
+
 function searchMissionHistoryTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
@@ -267,6 +298,7 @@ function searchMissionHistoryTool(deps: MissionCopilotToolDeps): MagiTool {
 				turnNumber: d.turnNumber as number,
 				role: (d.message as { role: string })?.role,
 				savedAt: d.savedAt as Date,
+				excerpt: matchExcerpt(d.message, query),
 			}));
 			return ok(
 				wrapTrustBoundary(

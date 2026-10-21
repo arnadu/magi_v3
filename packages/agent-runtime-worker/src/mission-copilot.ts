@@ -224,7 +224,7 @@ const SEED_OBJECTIVES: ObjectiveDef[] = [
 		owner: MISSION_COPILOT_AGENT_ID,
 		status: "active",
 		// budgetUsd intentionally omitted — not every mission needs a tracked
-		// sub-budget; the copilot can set it later via a goals.json edit, at
+		// sub-budget; the copilot can set it later with EditObjectiveTree, at
 		// which point the existing per-turn cost-attribution mechanism
 		// (Sprint 26a) rolls real spend into it automatically.
 		kpis: [

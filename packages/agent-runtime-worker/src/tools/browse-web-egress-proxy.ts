@@ -19,12 +19,13 @@
  * address — never re-resolved by the socket, and never resolved by the
  * browser itself (Chromium delegates DNS resolution to the configured proxy).
  *
- * No auth: this proxy is reachable only by the Chromium process this
- * handle's own BrowseWeb tool launches (bound to 127.0.0.1, an ephemeral
- * port never shared outside this process tree). It is a network-egress
- * control point, not a privilege boundary another process needs to be kept
- * out of — unlike ToolApiServer/MonitorServer, which are reachable by other
- * agent-controlled processes and therefore do need bearer-token auth.
+ * No auth: it is bound to 127.0.0.1 on an ephemeral port and meant for the
+ * Chromium process this handle's BrowseWeb tool launches. Another local
+ * process that found the port could use it too, which is harmless: the
+ * proxy only ever forwards to public addresses, so it grants nothing that
+ * process could not do directly. It is a network-egress control point, not a
+ * privilege boundary — unlike ToolApiServer/MonitorServer, which do need
+ * bearer-token auth.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";

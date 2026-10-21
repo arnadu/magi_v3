@@ -1,7 +1,6 @@
 ---
 name: data-factory
 description: Pre-fetched structured data store. Operator skill — set up data sources, run refreshes, schedule daily jobs. Covers time-series (price, macro, economic indicators), news digests, and document indexes.
-scope: platform
 ---
 
 # Data Factory
@@ -32,8 +31,9 @@ mkdir -p "$FACTORY"
 
 # 3. Submit the first refresh as a background job.
 #    IMPORTANT: run via background job, NOT direct magi-python3 call.
-#    Direct calls run in the tool subprocess which has no data API keys (FRED, NewsAPI, FMP).
-#    Background jobs receive data keys automatically from the daemon.
+#    The adapters fetch through the daemon's data-fred/data-fmp/data-newsapi proxies
+#    (no agent process ever holds the API keys), which need the job's MAGI_TOOL_TOKEN —
+#    a background job gets one automatically; a direct call in the tool subprocess has none.
 bash "$SHARED_DIR/skills/_platform/run-background/scripts/submit-job.sh" \
   --script "$SKILL_SCRIPTS/refresh.py" \
   --args "$SHARED_DIR" \

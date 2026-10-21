@@ -190,7 +190,7 @@ function saveMissionConfigTool(deps: MissionCopilotToolDeps): MagiTool {
 			);
 			// Omitting teamFiles must preserve whatever the mission already has —
 			// defaulting to [] here silently wiped every attached team file
-			// (goals.json, tasks.jsonl, skills) on any config-only edit, e.g. a
+			// (skills, scripts, data) on any config-only edit, e.g. a
 			// simple system-prompt tweak. Matches save_template's former (now
 			// removed, ADR-0021) "omit to preserve" contract.
 			if (teamFilesProvided) {

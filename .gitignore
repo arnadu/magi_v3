@@ -39,6 +39,7 @@ packages/agent-runtime-worker/tests/browse-web-last-run.ndjson
 audit-oct26/
 docs/review/*
 !docs/review/2026-10-audit.md
+!docs/review/2026-10-consistency-matrix.md
 fly.control-*.toml
 !fly.control-dev.toml
 !fly.control-test-hello-world.toml

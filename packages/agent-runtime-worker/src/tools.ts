@@ -203,7 +203,7 @@ export async function execBash(
 	ctx?: { agentId?: string; sharedDir?: string },
 ): Promise<ToolResult> {
 	// sudo's env_reset strips the env passed to the sudo process, so skill scripts
-	// (e.g. the objectives task-update / record-kpi) cannot see AGENT_ID/SHARED_DIR
+	// (e.g. submit-job.sh, schedule.sh) cannot see AGENT_ID/SHARED_DIR
 	// unless we re-inject them here from the authoritative request fields. The
 	// inherited process.env is already secret-free (the sudo child only has PATH/
 	// HOME/USER), so spreading it is safe.

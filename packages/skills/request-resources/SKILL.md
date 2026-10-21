@@ -6,7 +6,6 @@ description: |
   anything that risks running out of RAM on the default 1 GB machine. Read
   this before submitting known-heavy work, and before deciding whether to
   grant or renew someone else's request.
-scope: platform
 ---
 
 # Request Resources

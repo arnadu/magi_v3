@@ -1,7 +1,6 @@
 ---
 name: data-factory-client
 description: Read pre-fetched structured data from the data factory. Always check the catalog before using Research or SearchWeb — the data may already be available locally.
-scope: platform
 ---
 
 ## Step 1: check what's available

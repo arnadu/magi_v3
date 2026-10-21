@@ -76,7 +76,7 @@ function setMissionSpendCapTool(deps: MissionCopilotToolDeps): MagiTool {
 	return {
 		name: "SetMissionSpendCap",
 		description:
-			"Set the mission-wide hard spending cap — pauses the entire mission if exceeded (distinct from an objective's own budgetUsd, which is soft/informational and edited directly in goals.json). Raise only when justified by the mission's objectives. Posts an audit message to the user's mailbox — this is self-referential: raising it also funds the copilot's own further calls.",
+			"Set the mission-wide hard spending cap — pauses the entire mission if exceeded (distinct from an objective's own budgetUsd, which is soft/informational and set with EditObjectiveTree). Raise only when justified by the mission's objectives. Posts an audit message to the user's mailbox — this is self-referential: raising it also funds the copilot's own further calls.",
 		parameters: Type.Object({
 			capUsd: Type.Number({ description: "New absolute spending cap in USD" }),
 		}),

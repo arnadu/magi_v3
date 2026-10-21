@@ -356,7 +356,7 @@ docs/
   deployment.md           — cloud deployment guide
   security/               — threat model, findings, security practice
   operational-resilience.md, implementation-history.md
-scripts/                  — dev setup, bootstrap, deploy, template seeding
+scripts/                  — dev setup, bootstrap, deploy, promote, mission-state reconcile, audit gates
 ```
 
 ---

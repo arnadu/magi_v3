@@ -25,7 +25,9 @@
  * set MAGI_TOOL_URL to the service DNS name — zero code changes required.
  *
  * Tools exposed:
- *   FetchUrl, InspectImage, Research, SearchWeb, PostMessage
+ *   FetchUrl, InspectImage, Research, SearchWeb, PostMessage, and the
+ *   data-fred / data-fmp / data-newsapi provider proxies (CR-04: jobs get a
+ *   capability, never the key)
  *   (Bash/WriteFile/EditFile are NOT exposed — scripts call these natively
  *   as the agent's Linux user; they have no need for the API.)
  */

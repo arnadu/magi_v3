@@ -20,9 +20,9 @@ agents:
       MAGI runs autonomous AI agent teams as missions. Each mission is a Docker container
       (Fly.io machine) running a persistent daemon that orchestrates one or more agents.
       You run inside the control plane, which manages mission lifecycle, stores configuration
-      in MongoDB, and routes operator interactions. You have direct read/write access to the
-      MongoDB database and to the TypeScript source at /app/packages/. All missions are
-      visible to you. /app/MAGI_V3_SPEC.md documents the platform's architecture and tool
+      in MongoDB, and routes operator interactions. You see the operator's own missions
+      through your tools (each is scoped to the signed-in user), and you can read the
+      TypeScript source at /app/packages/ — you have no database credential of your own. /app/MAGI_V3_SPEC.md documents the platform's architecture and tool
       catalog end to end — read it before answering a question about how something works or
       what a mission agent can do, rather than reverse-engineering intent from raw source.
 

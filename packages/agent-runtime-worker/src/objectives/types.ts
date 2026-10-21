@@ -1,27 +1,26 @@
 /**
- * Objectives store — schema (Sprint 26a, deliverable A1).
+ * Objectives store — schema (ADR-0019). Stored in MongoDB: `objectivesGoals`
+ * holds the authored objective tree and KPI *definitions* (one doc per
+ * mission), `objectivesEvents` the append-only task, KPI-value, cost and
+ * allocation events. (Before ADR-0019 these were files under
+ * `sharedDir/objectives/` — goals.json, tasks/kpis/cost.jsonl — which
+ * migrate-legacy-store.ts still imports once.)
  *
- * The store is plain files under `sharedDir/objectives/`:
- *   - `goals.json`   — the authored objective tree + KPI *definitions* (low-churn)
- *   - `tasks.jsonl`  — append-only task events (one JSON object per line)
- *   - `kpis.jsonl`   — append-only KPI *value* events (reported sources only)
- *   - `cost.jsonl`   — append-only cost-attribution events (written by the daemon)
- *
- * Agent skill scripts only ever **append** an event (cannot clobber concurrent
- * writers); the daemon/UI **fold** the logs to current state on read. This file
- * defines both the on-disk shapes (Zod-validated) and the folded output shape.
+ * Writers only ever **append** an event (they cannot clobber concurrent
+ * writers); readers **fold** the events to current state. This file defines
+ * the event shapes (Zod-validated) and the folded output shape.
  */
 
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
-// KPI definitions (live in goals.json)
+// KPI definitions (in the goals document)
 // ---------------------------------------------------------------------------
 
 export const KpiSourceSchema = z.enum([
 	"auto-stat", // computed at fold time from agentTurnStats (e.g. cost, files)
 	"task-rollup", // computed at fold time from linked task completion
-	"agent-reported", // owner agent publishes a value via `record-kpi`
+	"agent-reported", // owner agent publishes a value with RecordKpi
 	"copilot-assessment", // copilot KPI skill writes a value
 	"manual", // operator sets it
 ]);

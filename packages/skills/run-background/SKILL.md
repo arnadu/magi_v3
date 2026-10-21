@@ -1,7 +1,6 @@
 ---
 name: run-background
 description: Submit and schedule long-running background scripts. Scripts execute as your Linux user with full access to your workdir and sharedDir, plus the Tool API for LLM-requiring tools (FetchUrl, Research, SearchWeb, PostMessage).
-scope: platform
 ---
 
 # Run Background

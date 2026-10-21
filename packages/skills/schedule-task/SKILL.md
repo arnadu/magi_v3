@@ -1,7 +1,6 @@
 ---
 name: schedule-task
 description: Register a recurring scheduled message to trigger timed agent wakeups. Use to set up the daily 06:00 cycle or any recurring task.
-scope: platform
 ---
 
 # Schedule Task
