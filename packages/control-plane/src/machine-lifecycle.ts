@@ -204,12 +204,14 @@ export async function destroyTracked(
 	);
 }
 
-export type ResizeStage = "stop" | "delete" | "provision";
+export type ResizeStage = "stop" | "delete" | "provision" | "record";
 
 /**
  * A resize failed at `stage`. At "stop" nothing changed (the old machine is
  * still running); at "delete" or "provision" the old machine is gone, only
- * the volume remains, and the mission needs an operator Resume.
+ * the volume remains, and the mission needs an operator Resume; at "record"
+ * the new machine runs but the mission document could not be pointed at it
+ * (the message names it).
  */
 export class ResizeError extends Error {
 	constructor(
@@ -219,6 +221,42 @@ export class ResizeError extends Error {
 		super(message);
 		this.name = "ResizeError";
 	}
+}
+
+/**
+ * Point the mission document at a freshly provisioned machine, right away
+ * (RU5): until this lands the document names the deleted machine, so the
+ * proxy, the monitor and every later resize act on a ghost. Retried, since
+ * the machine is already running; on final failure the error names the
+ * machine so it can be recorded by hand (or by reconcile --fix-status).
+ */
+async function recordMachine(
+	db: Db,
+	missionId: string,
+	handle: MachineHandle,
+): Promise<void> {
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			await storedCollection(db, "missions").updateOne(
+				{ missionId },
+				{
+					$set: {
+						machineId: handle.machineId,
+						privateIp: handle.privateIp,
+						updatedAt: new Date(),
+					},
+				},
+			);
+			return;
+		} catch (e) {
+			lastError = e;
+			await new Promise((r) => setTimeout(r, 1_000 * 2 ** attempt));
+		}
+	}
+	throw new Error(
+		`new machine ${handle.machineId} (${handle.privateIp}) is running but could not be recorded on the mission: ${(lastError as Error).message}`,
+	);
 }
 
 /**
@@ -259,6 +297,7 @@ export async function resizeTracked(
 			memoryMb: shape.memoryMb,
 		}),
 	);
+	await stage("record", () => recordMachine(db, missionId, handle));
 	await bestEffort("resize provision", missionId, () =>
 		openSegment(db, {
 			missionId,

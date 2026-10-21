@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
 	closeOpenSegments,
 	defaultShapeOf,
+	enforceOneOpenSegment,
 	listSegments,
 	type MachineSegment,
 	openSegment,
@@ -208,6 +209,36 @@ describe("persistence", () => {
 	});
 });
 
+describe("one open segment per mission (SEG1)", () => {
+	it("marks the open segment, closes older duplicates, and leaves closed ones alone", async () => {
+		const { db, segments } = fakeSegmentsDb();
+		segments.push(
+			{ _id: "s1", ...seg(0, undefined), machineId: "old" },
+			{ _id: "s2", ...seg(2, undefined), machineId: "new" },
+			{ _id: "s3", ...seg(0, undefined), missionId: "m2" },
+			{ _id: "s4", ...seg(0, 1), missionId: "m3" },
+		);
+		await enforceOneOpenSegment(db);
+		const m1 = segments.filter((s) => s.missionId === "m1");
+		expect(m1.find((s) => s.machineId === "new")).toMatchObject({ open: true });
+		expect(m1.find((s) => s.machineId === "old")).toMatchObject({
+			endedAt: at(0),
+		});
+		expect(m1.find((s) => s.machineId === "old")?.open).toBeUndefined();
+		expect(segments.find((s) => s.missionId === "m2")?.open).toBe(true);
+		expect(segments.find((s) => s.missionId === "m3")?.open).toBeUndefined();
+	});
+
+	it("drops the open marker when a segment is closed", async () => {
+		const { db, segments } = fakeSegmentsDb();
+		await openSegment(db, seg(0, undefined));
+		expect(segments[0].open).toBe(true);
+		await closeOpenSegments(db, "m1", at(3));
+		expect(segments[0].open).toBeUndefined();
+		expect(segments[0].endedAt).toEqual(at(3));
+	});
+});
+
 describe("reconcileSegments", () => {
 	const missionDoc = (id: string, machineId: string, mission = {}) => ({
 		missionId: id,
@@ -272,6 +303,33 @@ describe("reconcileSegments", () => {
 			shape: BIG,
 			upgraded: true,
 			startedAt: at(5),
+		});
+	});
+
+	it("keeps the upgrade's planned end and requester on a reopened upgraded segment (SEG2)", async () => {
+		const { db, segments } = fakeSegmentsDb({
+			missions: [
+				{
+					...missionDoc("m1", "mx"),
+					upgrade: { expiresAt: at(6), requestedByAgentId: "analyst" },
+				},
+			],
+		});
+		await reconcileSegments(
+			db,
+			[
+				{
+					id: "mx",
+					state: "started",
+					guest: { cpu_kind: "performance", cpus: 2, memory_mb: 8192 },
+				},
+			],
+			at(5),
+		);
+		expect(segments[0]).toMatchObject({
+			upgraded: true,
+			plannedEndAt: at(6),
+			requestedByAgentId: "analyst",
 		});
 	});
 

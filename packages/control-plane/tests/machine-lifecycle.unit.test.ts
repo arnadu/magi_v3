@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	deleteMachine,
 	destroyMission,
 	machineExists,
 	provisionMission,
@@ -16,6 +17,8 @@ import {
 import {
 	destroyTracked,
 	provisionTracked,
+	ResizeError,
+	resizeTracked,
 	resumeTracked,
 	suspendTracked,
 	wakeTracked,
@@ -27,6 +30,7 @@ vi.mock("../src/fly-machines.js", () => ({
 	suspendMission: vi.fn(),
 	resumeMission: vi.fn(),
 	destroyMission: vi.fn(),
+	deleteMachine: vi.fn(),
 	machineExists: vi.fn(),
 	volumeExists: vi.fn(),
 }));
@@ -281,5 +285,50 @@ describe("wakeTracked", () => {
 		expect(result).toEqual({ reprovisioned: false, machineId: "local-m1" });
 		expect(exists).not.toHaveBeenCalled();
 		expect(segments).toHaveLength(0);
+	});
+});
+
+describe("resizeTracked", () => {
+	const shape = { cpuKind: "performance" as const, cpus: 2, memoryMb: 8192 };
+	const mission = { missionId: "m1", machineId: "old", volumeId: "vol-1" };
+
+	it("points the mission at the new machine as soon as it is provisioned (RU5)", async () => {
+		vi.mocked(deleteMachine).mockResolvedValue(undefined);
+		const { db, missions } = fakeSegmentsDb({
+			missions: [{ missionId: "m1", machineId: "old", privateIp: "::9" }],
+		});
+		const result = await resizeTracked(db, mission, shape, { upgraded: true });
+		expect(result).toEqual(handle);
+		expect(missions[0]).toMatchObject({
+			machineId: "mach-1",
+			privateIp: "::1",
+		});
+	});
+
+	it("fails at the record stage, naming the running machine, when the mission cannot be updated", async () => {
+		vi.mocked(deleteMachine).mockResolvedValue(undefined);
+		const { db } = fakeSegmentsDb();
+		const broken = {
+			collection: (name: string) =>
+				name === "missions"
+					? {
+							updateOne: async () => {
+								throw new Error("write blocked");
+							},
+						}
+					: db.collection(name),
+		} as typeof db;
+		vi.useFakeTimers();
+		try {
+			const pending = resizeTracked(broken, mission, shape, { upgraded: true });
+			const settled = pending.catch((e: unknown) => e);
+			await vi.runAllTimersAsync();
+			const err = (await settled) as ResizeError;
+			expect(err).toBeInstanceOf(ResizeError);
+			expect(err.stage).toBe("record");
+			expect(err.message).toContain("mach-1");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

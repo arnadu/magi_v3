@@ -30,6 +30,12 @@ export interface MachineSegment {
 	/** Planned end of an upgrade window; while the segment is open it counts toward the cap up to here. */
 	plannedEndAt?: Date;
 	requestedByAgentId?: string;
+	/**
+	 * Present (true) exactly while the segment is open. `endedAt` absent is the
+	 * meaning; this marker exists because a partial unique index cannot match
+	 * on a missing field (SEG1).
+	 */
+	open?: true;
 }
 
 const COLLECTION = COLLECTION_NAMES.machineSegments;
@@ -47,8 +53,44 @@ function collection(db: Db) {
 					(e as Error).message,
 				),
 			);
+		enforceOneOpenSegment(db).catch((e: unknown) =>
+			console.warn(
+				`[machine-segments] Could not enforce one open segment per mission: ${(e as Error).message} — the convention still holds, unenforced`,
+			),
+		);
 	}
 	return col;
+}
+
+/**
+ * SEG1: "at most one open segment per mission" was a convention two
+ * concurrent openers could break. Marks open segments, closes any duplicates
+ * (keeping the newest), then adds a partial unique index on the marker.
+ */
+export async function enforceOneOpenSegment(db: Db): Promise<void> {
+	const col = db.collection<MachineSegment>(COLLECTION);
+	const open = await col
+		.find({ endedAt: { $exists: false } })
+		.sort({ startedAt: -1 })
+		.toArray();
+	const kept = new Set<string>();
+	for (const seg of open) {
+		// Filtered on still-open: a segment closed since the read keeps its end.
+		const stillOpen = { _id: seg._id, endedAt: { $exists: false } };
+		if (kept.has(seg.missionId)) {
+			await col.updateOne(stillOpen, {
+				$set: { endedAt: seg.startedAt },
+				$unset: { open: "" },
+			});
+			continue;
+		}
+		kept.add(seg.missionId);
+		if (!seg.open) await col.updateOne(stillOpen, { $set: { open: true } });
+	}
+	await col.createIndex(
+		{ missionId: 1 },
+		{ unique: true, partialFilterExpression: { open: true } },
+	);
 }
 
 /** The machine a mission runs on when not upgraded: shared CPU, sized by `mission.memoryMb`/`cpus`. */
@@ -148,16 +190,19 @@ export async function openSegment(
 	segment: Omit<MachineSegment, "endedAt">,
 ): Promise<void> {
 	const col = collection(db);
-	await col.updateMany(
-		{ missionId: segment.missionId, endedAt: { $exists: false } },
-		{ $set: { endedAt: segment.startedAt } },
-	);
+	const closePrevious = () =>
+		col.updateMany(
+			{ missionId: segment.missionId, endedAt: { $exists: false } },
+			{ $set: { endedAt: segment.startedAt }, $unset: { open: "" } },
+		);
+	await closePrevious();
 	// The driver would store `undefined` fields as null; keep the document clean.
 	const doc: MachineSegment = {
 		missionId: segment.missionId,
 		shape: segment.shape,
 		upgraded: segment.upgraded,
 		startedAt: segment.startedAt,
+		open: true,
 		...(segment.machineId !== undefined && { machineId: segment.machineId }),
 		...(segment.plannedEndAt !== undefined && {
 			plannedEndAt: segment.plannedEndAt,
@@ -166,7 +211,15 @@ export async function openSegment(
 			requestedByAgentId: segment.requestedByAgentId,
 		}),
 	};
-	await col.insertOne(doc);
+	try {
+		await col.insertOne(doc);
+	} catch (e) {
+		// A concurrent opener inserted between the close and the insert: the
+		// unique index refused the second open segment. Close it, then insert.
+		if ((e as { code?: number }).code !== 11000) throw e;
+		await closePrevious();
+		await col.insertOne(doc);
+	}
 }
 
 /** Close the mission's open segment, if any. Returns how many were closed. */
@@ -177,7 +230,7 @@ export async function closeOpenSegments(
 ): Promise<number> {
 	const r = await collection(db).updateMany(
 		{ missionId, endedAt: { $exists: false } },
-		{ $set: { endedAt: at } },
+		{ $set: { endedAt: at }, $unset: { open: "" } },
 	);
 	return r.modifiedCount;
 }
@@ -284,12 +337,20 @@ export async function reconcileSegments(
 			cpus: machine?.guest?.cpus ?? fallback.cpus,
 			memoryMb: machine?.guest?.memory_mb ?? fallback.memoryMb,
 		};
+		const upgraded = !sameShape(shape, fallback);
+		// SEG2: keep the upgrade's window on the reopened segment — the cap
+		// counts an open upgraded segment up to its planned end.
+		const upgrade = upgraded ? mission.upgrade : undefined;
 		await openSegment(db, {
 			missionId: mission.missionId,
 			machineId: mission.machineId,
 			shape,
-			upgraded: !sameShape(shape, fallback),
+			upgraded,
 			startedAt: now,
+			...(upgrade?.expiresAt && { plannedEndAt: upgrade.expiresAt }),
+			...(upgrade?.requestedByAgentId && {
+				requestedByAgentId: upgrade.requestedByAgentId,
+			}),
 		});
 		opened++;
 	}
