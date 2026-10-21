@@ -2,6 +2,8 @@
  * TIER_A_TOOL_NAMES must equal what the agent runner's factories build —
  * the cockpit's "disable tool" list is generated from it (SKILLS-DRIFT).
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { TeamConfig } from "@magi/agent-config";
 import { describe, expect, it } from "vitest";
 import { createMailboxTools } from "../src/mailbox.js";
@@ -47,5 +49,32 @@ describe("TIER_A_TOOL_NAMES", () => {
 		for (const name of built) expect(listed.has(name), name).toBe(true);
 		const unbuilt = TIER_A_TOOL_NAMES.filter((n) => !built.includes(n));
 		expect(unbuilt.every((n) => CONDITIONAL_TOOL_NAMES.has(n))).toBe(true);
+	});
+});
+
+describe("MAGI_V3_SPEC.md §6 Tier A table", () => {
+	it("lists exactly the registry's tools, with the conditional ones marked", () => {
+		const spec = readFileSync(
+			join(__dirname, "..", "..", "..", "MAGI_V3_SPEC.md"),
+			"utf8",
+		);
+		const section = spec.slice(
+			spec.indexOf("### Tier A tool inventory"),
+			spec.indexOf("### Per-agent tool configuration"),
+		);
+		const rows = section
+			.split("\n")
+			.filter((l) => l.startsWith("| `"))
+			.map((l) => l.split("|").map((c) => c.trim()));
+		const documented = rows.flatMap((cells) =>
+			[...cells[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]),
+		);
+		expect([...documented].sort()).toEqual([...TIER_A_TOOL_NAMES].sort());
+		const conditional = rows
+			.filter((cells) => cells[4] !== "—")
+			.flatMap((cells) =>
+				[...cells[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]),
+			);
+		expect(new Set(conditional)).toEqual(CONDITIONAL_TOOL_NAMES);
 	});
 });

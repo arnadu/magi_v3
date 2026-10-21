@@ -24,12 +24,11 @@ function* files(dir: string, ext: RegExp): Generator<string> {
 	}
 }
 
-/** What agents and the copilots read: skills, templates, and the prompt sources. */
+/** What agents and the copilots read: skills, templates, and the platform prompts. */
 const LLM_TEXT = [
 	...files(join(ROOT, "packages", "skills"), /\.(md|sh|py|json)$/),
 	...files(join(ROOT, "config", "teams"), /\.(md|ya?ml|json)$/),
-	join(ROOT, "packages", "agent-runtime-worker", "src", "mission-copilot.ts"),
-	join(ROOT, "packages", "agent-runtime-worker", "src", "prompt.ts"),
+	...files(join(ROOT, "packages", "agent-runtime-worker", "prompts"), /./),
 	join(ROOT, "MAGI_V3_SPEC.md"),
 ];
 

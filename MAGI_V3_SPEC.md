@@ -351,6 +351,9 @@ Every tool name is case-sensitive and can appear in `disabledTools` in the agent
 | `BrowseWeb` | Web/data | Stagehand/Playwright JS-rendered browsing; SSRF blocked | Chromium present |
 | `Research` | Agentic | Nested `runInnerLoop` in isolated context; writes results to `sharedDir/research/` | — |
 | `AnalyzeMemories` | Memory | Searches full conversation history (incl. compacted/pruned turns) in MongoDB; recovers stubbed tool outputs | — |
+| `AddTask` / `UpdateTask` | Objectives | Create or update a task in the mission's objectives store (ADR-0019); updates are limited to the task's assignee, creator, objective owner, or the operator/mission copilot | — |
+| `RecordKpi` | Objectives | Record a value for a KPI the agent owns | — |
+| `Allocate` | Objectives | Explicit cost-allocation timesheet across tasks/objectives, used only when the mental map flags unattributed cost | — |
 
 ### Per-agent tool configuration
 
@@ -418,15 +421,23 @@ execution plane — see below.)
 
 | Tool name | Purpose |
 |-----------|---------|
-| `ListMissions` | List all missions with status |
-| `GetMissionStatus` | Full status including live Fly machine state and a live `volumeId` verification against Fly (issue #62) |
-| `ReadMissionMailbox` | Read recent messages from any mission's mailbox |
-| `ReadMissionLog` | Read daemon log from a running mission's monitor server |
-| `ReadMissionFile` | Browse/read files in a mission's sharedDir or agent workdir |
-| `ListSchedule` | List scheduled messages |
-| `ListTemplates` | List available team config templates |
-| `GetTemplate` | Read full YAML + files for a template |
-| `ProposeAction` | Propose a mutating action; operator must confirm before execution |
+| `ListMissions` | List all missions with their current status. |
+| `GetMissionStatus` | Get full status of a mission including live Fly machine state. |
+| `ReadMissionMailbox` | Read recent messages from any mission's mailbox. |
+| `ReadMissionLog` | Read the daemon log for a running mission from its monitor server. |
+| `ReadMissionFile` | Browse or read files in a mission's sharedDir or an agent's workdir. |
+| `ReviewObjectives` | Read a mission's objective tree with current task status, KPI values, and budget-vs-spend. |
+| `AssessKpi` | Record a value for a KPI you assess (a copilot-assessment KPI). |
+| `SaveObjectiveTree` | Replace a mission's objective tree (definitions + KPI definitions — not task/KPI status, which agents update themselves during the mission). |
+| `EditDraftConfig` | Directly edit a draft mission's config — mission-level fields and agents (add, update, or remove). |
+| `ListSchedule` | List scheduled messages, optionally filtered by mission. |
+| `ListTemplates` | List available mission team config templates. |
+| `GetTemplate` | Get the full config and associated files for a team config template. |
+| `ProposeAction` | Propose a mutating action for operator confirmation. |
+| `ListIssues` | List or search open GitHub Issues in the MAGI repository. |
+| `CreateIssue` | Propose a new GitHub Issue in the MAGI repository for operator confirmation. |
+| `CloseIssue` | Propose closing a GitHub Issue (optionally with a closing comment) for operator confirmation. |
+| `AddIssueComment` | Propose a comment on an existing GitHub Issue for operator confirmation. |
 
 **Mission-copilot Tier B tools.** On the execution plane the mission-copilot alone (matched on the
 literal agent id `mission-copilot`, never on config data) is given extra tools from
@@ -436,6 +447,43 @@ transcripts, budget, scheduling, background-job control and the GitHub proxy (AD
 temporary bigger machine (CPU kind, CPUs, RAM, mandatory duration ≤ 60 min) or return to the default.
 The control plane performs the resize; worker agents cannot call these tools and instead ask the
 mission-copilot by mailbox message (the `request-resources` skill).
+
+The mission-copilot's full set, in the order `createMissionCopilotTools` builds it (a contract test
+keeps this table and the code in step):
+
+| Tool name | Purpose |
+|-----------|---------|
+| `ReadMissionConfig` | Read this mission's current team configuration — mission name/model, every agent's role/system prompt/skills — and its attached team files. |
+| `SaveMissionConfig` | Patch this mission's structured team configuration. |
+| `ReadMissionObjectives` | Read the mission's full objective tree — every objective, owner, status, KPIs with current values, budget vs. spend. |
+| `EditObjectiveTree` | Replace the mission's objective tree (definitions + KPI definitions — not task/KPI status, which agents update themselves via AddTask/UpdateTask/RecordKpi). |
+| `ReadAgentMentalMap` | Read a teammate's current mental map — what it believes it's doing right now. |
+| `ListAgentSessions` | List a teammate's session/turn history with summary stats (cost, call count, duration) per turn. |
+| `ReadAgentUsage` | Lightweight per-call summary for one agent — model, token counts and cost for 90 days; tool names for the last day. |
+| `ReadAgentSessionDetail` | Full transcript for one turn — every message, tool call, and timing. |
+| `ReadAgentLlmCall` | Full detail for one specific LLM call — system prompt, complete input messages, complete response. |
+| `ReadMissionMailboxAll` | Read the mission's mailbox across every agent — and every message to/from the user — not just messages addressed to you. |
+| `ReadMissionInteractions` | Message-count matrix between every pair of agents in the mission — a shape-of-coordination overview before drilling into ReadMissionMailboxAll. |
+| `SearchMissionHistory` | Keyword search across every agent's conversation history in this mission (not just one agent's, unlike the standard AnalyzeMemories tool) — returns matching excerpts, not full messages. |
+| `ReadMissionCostSeries` | Per-turn cost series for the mission, optionally filtered to one agent — the same data backing the cockpit's Trace chart. |
+| `ReadMissionLifetimeStats` | Lifetime cost/call/turn totals per agent. |
+| `SetMissionSpendCap` | Set the mission-wide hard spending cap — pauses the entire mission if exceeded (distinct from an objective's own budgetUsd, which is soft/informational and edited directly in goals.json). |
+| `PauseAgent` | Halt a teammate at its next dispatch boundary. |
+| `ResumeAgent` | Lift a previous pause. |
+| `CreateScheduledMessage` | Schedule a one-off or recurring wakeup message to one or more teammates. |
+| `CancelScheduledMessage` | Cancel a pending scheduled message. |
+| `CancelBackgroundJob` | Kill a running background job (a run-background-skill job, distinct from the scheduled messages above). |
+| `RestartBackgroundJob` | Re-submit a failed or cancelled job's original spec as a new job. |
+| `ReadMissionLog` | Tail the daemon's own log output. |
+| `ReadFileHistory` | Git provenance for a sharedDir file — which agent/turn/commit last touched it. |
+| `ReadSharedFile` | Read any file (or list a directory) under the mission's shared workspace. |
+| `ReadAgentWorkdirFile` | Read any file (or list a directory) under one teammate's private workspace. |
+| `ListBackgroundJobs` | Structured status of async background jobs (jobs/pending\|running\|status) — a convenience over browsing sharedDir/jobs/ by hand. |
+| `ListScheduledMessages` | List this mission's pending scheduled wakeups. |
+| `ListGithubIssues` | Search open issues in the MAGI_V3 repo — call before filing, to avoid duplicates. |
+| `ReportGithubIssue` | Propose a new GitHub issue for a genuine platform bug (not a mission-content problem). |
+| `RequestResourceUpgrade` | Request a temporary upgrade to a bigger machine (CPU kind, CPUs, RAM) for a genuine compute burst. |
+| `EndResourceUpgrade` | Return the mission to its default machine now, before the upgrade window ends. |
 
 **Resource oversight (ADR-0032).** `AnomalyCategory` (`anomaly.ts`) has ten values: the six
 original ones (`limit-breach`, `agent-crash`, `agent-timeout`, `llm-error`, `job-failure`,

@@ -9,6 +9,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -178,6 +179,21 @@ describe("mission-copilot-tools", () => {
 		});
 		return { tools, fake };
 	}
+
+	// ── Spec table (MAGI_V3_SPEC.md §6) ──────────────────────────────────────
+
+	it("matches the mission-copilot tool table in MAGI_V3_SPEC.md, in build order", () => {
+		const spec = readFileSync(
+			join(__dirname, "..", "..", "..", "MAGI_V3_SPEC.md"),
+			"utf8",
+		);
+		const from = spec.indexOf("The mission-copilot's full set");
+		const table = spec.slice(from, spec.indexOf("**Resource oversight", from));
+		const documented = [...table.matchAll(/^\| `([^`]+)` \|/gm)].map(
+			(m) => m[1],
+		);
+		expect(documented).toEqual(buildTools().tools.map((t) => t.name));
+	});
 
 	// ── Zero-mission-id-param invariant ─────────────────────────────────────
 

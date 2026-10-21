@@ -61,7 +61,7 @@ function readAgentUsageTool(deps: MissionCopilotToolDeps): MagiTool {
 	return {
 		name: "ReadAgentUsage",
 		description:
-			'Lightweight per-call summary for one agent — model, token counts, and cost always available; which tool names were called only within the last 7 days (older calls show "toolNames" absent, not empty — the underlying log entry has aged out of retention). Not the tool call bodies or message content. Use this before reaching for ReadAgentSessionDetail/ReadAgentLlmCall, not instead of them. Optionally scoped to one turn.',
+			'Lightweight per-call summary for one agent — model, token counts, and cost for the last 90 days; which tool names were offered only for the last day (older calls show "toolNames" absent, not empty — the call body has aged out of retention). Not the tool call bodies or message content. Use this before reaching for ReadAgentSessionDetail/ReadAgentLlmCall, not instead of them. Optionally scoped to one turn.',
 		parameters: Type.Object({
 			agentId: Type.String({ description: "Teammate's agent id" }),
 			turn: Type.Optional(
