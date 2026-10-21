@@ -391,10 +391,26 @@ export function startResourceMonitor(
 	client: MongoClient,
 	deps: ResourceMonitorDeps,
 ): () => void {
-	const tick = () =>
-		runResourceMonitorTick(db, client, deps).catch((e) =>
-			console.error(`[resource-monitor] Tick failed: ${(e as Error).message}`),
-		);
+	// RM3: a tick slower than 5 minutes (Fly or Atlas timeouts) must not
+	// overlap the next — two would evaluate and claim the same alerts and
+	// daily reports concurrently. An overlapping tick is skipped, not queued.
+	let running = false;
+	const tick = async () => {
+		if (running) {
+			console.warn(
+				"[resource-monitor] Previous tick still running — skipping this one",
+			);
+			return;
+		}
+		running = true;
+		try {
+			await runResourceMonitorTick(db, client, deps);
+		} catch (e) {
+			console.error(`[resource-monitor] Tick failed: ${(e as Error).message}`);
+		} finally {
+			running = false;
+		}
+	};
 
 	void tick();
 	const task = schedule("*/5 * * * *", tick);

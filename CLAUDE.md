@@ -334,7 +334,7 @@ Three tiers:
 - **Integration tests** — real LLM calls with deterministic-outcome prompts. Full stack including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` and `MONGODB_URI`. Each test uses a unique `missionId`; `afterEach` cleans up with `deleteMany({ missionId })`.
 - **Evaluation tests** (`eval/`, **planned — not yet implemented**, see [issue #45](https://github.com/arnadu/magi_v3/issues/45)) — golden scenarios for structural/policy outcomes, run on demand, not in CI. Until this exists, do not claim eval coverage for research quality, citations, agent collaboration, or operator workload.
 
-Test runner: **vitest** — native ESM, no build step. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env` and polyfills `File` for Node 18.
+Test runner: **vitest** — native ESM, no build step. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env`.
 
 Do not write tests for prompt wording, LLM tool selection choices, or report content quality — until the evaluation harness above exists, judge those manually.
 
@@ -365,9 +365,6 @@ into the upcoming sprint's scope.
 ---
 
 ## Known Pitfalls
-
-**`File is not defined` on Node 18**
-The daemon entry point uses `--import ./dist/node-polyfill.js`. If you see this from a different entry point, add the same `--import` flag.
 
 **`cron-parser` named export error on Node 18/22**
 ```typescript

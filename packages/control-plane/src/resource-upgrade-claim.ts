@@ -43,11 +43,18 @@ export async function claim(
 	);
 }
 
+/**
+ * Release a failed resize. `expectClaimedAt` (the stale-claim sweeper) makes
+ * it a compare-and-set: if the claim it saw has since completed or been
+ * replaced, nothing is changed (RU4 — a slow resize was otherwise failed
+ * underneath itself).
+ */
 export async function failResize(
 	db: Db,
 	mission: MissionDoc,
 	err: unknown,
 	verb: string,
+	expectClaimedAt?: Date,
 ): Promise<UpgradeResult> {
 	const message = (err as Error).message;
 	const stage = err instanceof ResizeError ? err.stage : "provision";
@@ -63,13 +70,22 @@ export async function failResize(
 		);
 	}
 	const errorMessage = `Machine resize failed at the ${stage} step (${message}). The workspace volume is intact; Resume the mission to start it on the default machine.`;
-	await missionsOf(db).updateOne(
-		{ missionId: mission.missionId },
+	const released = await missionsOf(db).updateOne(
+		{
+			missionId: mission.missionId,
+			...(expectClaimedAt ? { "resize.claimedAt": expectClaimedAt } : {}),
+		},
 		{
 			$set: { status: "error", errorMessage, updatedAt: new Date() },
 			$unset: { upgrade: "", "resize.claimedAt": "" },
 		},
 	);
+	if (expectClaimedAt && released.matchedCount === 0) {
+		console.warn(
+			`[resource-upgrade] stale resize claim changed before it could be released — left alone { missionId: "${mission.missionId}" }`,
+		);
+		return fail(409, "The resize claim changed before it could be released.");
+	}
 	await closeOpenSegments(db, mission.missionId).catch((e: unknown) =>
 		console.error(
 			`[resource-upgrade] could not close the runtime segment { missionId: "${mission.missionId}", error: "${(e as Error).message}" } — the next segment reconcile closes it`,

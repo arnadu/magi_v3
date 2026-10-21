@@ -489,19 +489,20 @@ function interruptedToolResults(
 
 /**
  * Race a promise against a timeout. Rejects with a descriptive Error if the
- * timeout fires first. The original promise is not cancelled — this only
- * controls how long the caller waits.
+ * timeout fires first, and calls `onTimeout` so the work itself can be
+ * cancelled — waiting less is not the same as stopping it (T3).
  */
 function withTimeout<T>(
 	promise: Promise<T>,
 	ms: number,
 	label: string,
+	onTimeout: () => void,
 ): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
-		const timer = setTimeout(
-			() => reject(new Error(`Tool "${label}" timed out after ${ms}ms`)),
-			ms,
-		);
+		const timer = setTimeout(() => {
+			onTimeout();
+			reject(new Error(`Tool "${label}" timed out after ${ms}ms`));
+		}, ms);
 		promise.then(
 			(v) => {
 				clearTimeout(timer);
@@ -535,11 +536,21 @@ async function executeToolCall(
 	}
 	const checked = checkToolArguments(tool, block);
 	if (!checked.ok) return makeError(block, checked.message);
+	// The call's own signal: aborted by the run's (wall clock, shutdown) or by
+	// its timeout, so a timed-out Bash command is killed, not abandoned.
+	const call = new AbortController();
+	const onRunAbort = () => call.abort();
+	signal?.addEventListener("abort", onRunAbort, { once: true });
+	const timeoutMs = Math.max(
+		toolTimeoutMs,
+		tool.maxRuntimeMs?.(checked.args) ?? 0,
+	);
 	try {
 		const result = await withTimeout(
-			tool.execute(block.id, checked.args, signal),
-			toolTimeoutMs,
+			tool.execute(block.id, checked.args, call.signal),
+			timeoutMs,
 			block.name,
+			() => call.abort(),
 		);
 		return {
 			role: "toolResult",
@@ -551,6 +562,8 @@ async function executeToolCall(
 		};
 	} catch (e) {
 		return makeError(block, e instanceof Error ? e.message : String(e));
+	} finally {
+		signal?.removeEventListener("abort", onRunAbort);
 	}
 }
 

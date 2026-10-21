@@ -18,7 +18,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatsCollector } from "../src/agent-stats.js";
-import { wireAbortSignal } from "../src/daemon-boot/abort-signal.js";
+import {
+	SHUTDOWN_DEADLINE_MS,
+	wireAbortSignal,
+} from "../src/daemon-boot/abort-signal.js";
 import { buildMissionCopilotTools } from "../src/daemon-boot/copilot-tools.js";
 import { parseDaemonEnv } from "../src/daemon-boot/env.js";
 import { startBackgroundJobs } from "../src/daemon-boot/job-runner-start.js";
@@ -35,7 +38,7 @@ import {
 	createOnAgentMessage,
 	createRemainingOrchestrationCallbacks,
 } from "../src/daemon-boot/orchestration-callbacks.js";
-import { lockPidFile } from "../src/daemon-boot/pid-lock.js";
+import { lockPidFile, pidHoldsDaemon } from "../src/daemon-boot/pid-lock.js";
 import { constructRepositories } from "../src/daemon-boot/repositories.js";
 import { loadDaemonTeamConfig } from "../src/daemon-boot/team-config.js";
 import { syncTeamFiles } from "../src/daemon-boot/team-files-sync.js";
@@ -559,24 +562,42 @@ describe("lockPidFile", () => {
 		// exception as if it were process.kill's own ESRCH — a real
 		// process.exit(1) never returns, so that ambiguity can't arise outside
 		// a test; the meaningful assertion is just that exit(1) was reached.
-		const killSpy = vi
-			.spyOn(process, "kill")
-			.mockImplementation(() => true as never);
 		const exitSpy = vi
 			.spyOn(process, "exit")
 			.mockImplementation(() => undefined as never);
 		try {
-			lockPidFile({
-				workdir: dir as string,
+			lockPidFile(
+				{
+					workdir: dir as string,
+					missionId: "m1",
+					// biome-ignore lint/suspicious/noExplicitAny: minimal fake
+					anomalyRecorder: fakeAnomalyRecorder as any,
+				},
+				() => true,
+			);
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
+		}
+	});
+
+	it("treats a PID file holding this process's own PID as an unclean restart (PID1)", () => {
+		dir = mkdtempSync(join(tmpdir(), "magi-pid-lock-"));
+		const missionDir = join(dir, "missions", "m1");
+		mkdirSync(missionDir, { recursive: true });
+		writeFileSync(join(missionDir, "daemon.pid"), String(process.pid));
+		lockPidFile(
+			{
+				workdir: dir,
 				missionId: "m1",
 				// biome-ignore lint/suspicious/noExplicitAny: minimal fake
 				anomalyRecorder: fakeAnomalyRecorder as any,
-			});
-			expect(exitSpy).toHaveBeenCalledWith(1);
-		} finally {
-			killSpy.mockRestore();
-			exitSpy.mockRestore();
-		}
+			},
+			() => true,
+		);
+		expect(fakeAnomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({ category: "unclean-restart" }),
+		);
 	});
 
 	it("records a soft anomaly and starts fresh when the PID file is stale", () => {
@@ -585,16 +606,16 @@ describe("lockPidFile", () => {
 		mkdirSync(missionDir, { recursive: true });
 		writeFileSync(join(missionDir, "daemon.pid"), "999999");
 
-		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => {
-			throw new Error("ESRCH");
-		});
-		try {
-			const { pidFile } = lockPidFile({
-				workdir: dir,
-				missionId: "m1",
-				// biome-ignore lint/suspicious/noExplicitAny: minimal fake
-				anomalyRecorder: fakeAnomalyRecorder as any,
-			});
+		{
+			const { pidFile } = lockPidFile(
+				{
+					workdir: dir,
+					missionId: "m1",
+					// biome-ignore lint/suspicious/noExplicitAny: minimal fake
+					anomalyRecorder: fakeAnomalyRecorder as any,
+				},
+				() => false,
+			);
 			expect(readFileSync(pidFile, "utf8")).toBe(String(process.pid));
 			expect(fakeAnomalyRecorder.record).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -603,10 +624,32 @@ describe("lockPidFile", () => {
 					severity: "soft",
 				}),
 			);
-		} finally {
-			killSpy.mockRestore();
 		}
 	});
+});
+
+describe("pidHoldsDaemon (PID1)", () => {
+	it("is false for a dead PID", () => {
+		expect(pidHoldsDaemon(2 ** 22 + 12_345)).toBe(false);
+	});
+
+	it.runIf(existsSync("/proc/self/cmdline"))(
+		"on Linux, needs a live PID whose command line is the daemon's",
+		() => {
+			expect(pidHoldsDaemon(process.pid, () => "node\0vitest")).toBe(false);
+			expect(
+				pidHoldsDaemon(
+					process.pid,
+					() => "node\0--import\0./dist/node-polyfill.js\0dist/daemon.js",
+				),
+			).toBe(true);
+			expect(
+				pidHoldsDaemon(process.pid, () => {
+					throw new Error("ENOENT");
+				}),
+			).toBe(false);
+		},
+	);
 });
 
 describe("startMonitorServer", () => {
@@ -1197,9 +1240,13 @@ describe("wireAbortSignal", () => {
 	beforeEach(() => {
 		baseline = {};
 		for (const event of EVENTS) baseline[event] = [...process.listeners(event)];
+		// initiateShutdown arms a real process.exit deadline; fake timers keep
+		// it from ever firing inside the test runner.
+		vi.useFakeTimers();
 	});
 
 	afterEach(() => {
+		vi.useRealTimers();
 		for (const event of EVENTS) {
 			for (const listener of process.listeners(event)) {
 				if (!baseline[event]?.includes(listener)) {
@@ -1268,6 +1315,24 @@ describe("wireAbortSignal", () => {
 		expect(signal.aborted).toBe(false);
 		initiateShutdown("test");
 		expect(signal.aborted).toBe(true);
+	});
+
+	it("force-exits with code 1 when a graceful shutdown outlives its deadline (AB1)", () => {
+		const exitSpy = vi
+			.spyOn(process, "exit")
+			.mockImplementation((() => undefined) as never);
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const { initiateShutdown } = wireAbortSignal();
+			initiateShutdown("test");
+			vi.advanceTimersByTime(SHUTDOWN_DEADLINE_MS - 1);
+			expect(exitSpy).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(1);
+			expect(exitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			exitSpy.mockRestore();
+			errorSpy.mockRestore();
+		}
 	});
 
 	it("force-exits with code 1 on a second shutdown request", () => {

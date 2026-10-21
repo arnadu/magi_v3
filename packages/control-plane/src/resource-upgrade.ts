@@ -548,7 +548,7 @@ export async function sweepUpgrades(
 		.toArray();
 	for (const m of stale) {
 		await guarded("recover-stale-claim", m.missionId, async () => {
-			await failResize(
+			const r = await failResize(
 				db,
 				m,
 				new ResizeError(
@@ -556,8 +556,9 @@ export async function sweepUpgrades(
 					"the resize did not complete (control plane restarted?)",
 				),
 				"resize the machine",
+				m.resize?.claimedAt,
 			);
-			result.recovered++;
+			if (r.status !== 409) result.recovered++;
 		});
 	}
 

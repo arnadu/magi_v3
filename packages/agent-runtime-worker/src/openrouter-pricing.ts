@@ -164,16 +164,27 @@ export function applyPricingToModel(
 // one cached raw response, so a process that uses both (e.g. the control
 // plane serving the model picker while a daemon prices calls) only fetches
 // OpenRouter's model list once.
-let rawCache: OpenRouterModelsResponse | null = null;
+let rawCache: { json: OpenRouterModelsResponse; fetchedAt: number } | null =
+	null;
 let rawInFlight: Promise<OpenRouterModelsResponse> | null = null;
 
 /**
- * Fetch (and cache for the process lifetime) OpenRouter's raw `/api/v1/models`
- * response. Concurrent callers share one in-flight request. On any failure
- * returns an empty response and leaves the cache unset so a later call retries.
+ * How long the model list is reused before a refetch (OP1). The control
+ * plane serves the model picker from it for its whole lifetime, so without
+ * one a retired model stayed offered — and a new one missing — until restart.
+ */
+export const OPENROUTER_CACHE_TTL_MS = 6 * 60 * 60_000;
+
+/**
+ * OpenRouter's raw `/api/v1/models` response, cached for
+ * OPENROUTER_CACHE_TTL_MS. Concurrent callers share one in-flight request.
+ * A failed refetch keeps serving the previous list; with none, it returns an
+ * empty response and a later call retries.
  */
 async function fetchRaw(): Promise<OpenRouterModelsResponse> {
-	if (rawCache) return rawCache;
+	if (rawCache && Date.now() - rawCache.fetchedAt < OPENROUTER_CACHE_TTL_MS) {
+		return rawCache.json;
+	}
 	if (rawInFlight) return rawInFlight;
 
 	rawInFlight = (async () => {
@@ -185,13 +196,13 @@ async function fetchRaw(): Promise<OpenRouterModelsResponse> {
 				throw new Error(`HTTP ${res.status} ${res.statusText}`);
 			}
 			const json = (await res.json()) as OpenRouterModelsResponse;
-			rawCache = json;
+			rawCache = { json, fetchedAt: Date.now() };
 			return json;
 		} catch (e) {
 			console.warn(
-				`[openrouter-pricing] failed to fetch OpenRouter's model list: ${(e as Error).message}`,
+				`[openrouter-pricing] failed to fetch OpenRouter's model list: ${(e as Error).message}${rawCache ? " — serving the previous list" : ""}`,
 			);
-			return {};
+			return rawCache?.json ?? {};
 		} finally {
 			rawInFlight = null;
 		}
@@ -200,7 +211,7 @@ async function fetchRaw(): Promise<OpenRouterModelsResponse> {
 }
 
 /**
- * Fetch (and cache for the process lifetime) OpenRouter's published pricing.
+ * OpenRouter's published pricing (cached, see fetchRaw).
  * On fetch failure returns an empty map, keeping pi-ai's static estimate.
  */
 export async function fetchOpenRouterPricing(): Promise<
@@ -210,7 +221,7 @@ export async function fetchOpenRouterPricing(): Promise<
 }
 
 /**
- * Fetch (and cache for the process lifetime) OpenRouter's full model catalog
+ * OpenRouter's full model catalog (cached, see fetchRaw)
  * — for a model picker UI, not cost math (see `fetchOpenRouterPricing`).
  * On fetch failure returns an empty array.
  */

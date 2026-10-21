@@ -29,6 +29,13 @@ export interface MagiTool {
 		args: Record<string, unknown>,
 		signal?: AbortSignal,
 	): Promise<ToolResult>;
+	/**
+	 * How long this call may run, when it can need more than the loop's
+	 * default tool timeout (Bash takes its own `timeout` argument, up to 10
+	 * minutes). The loop waits for the larger of the two, then aborts the
+	 * call's signal.
+	 */
+	maxRuntimeMs?(args: Record<string, unknown>): number;
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +326,14 @@ export function execEditFile(
 /** Maximum Bash timeout the LLM may request (10 minutes). */
 const MAX_BASH_TIMEOUT_MS = 600_000;
 
+/** The Bash call's own timeout: its `timeout` argument in seconds (default 30), capped. */
+function bashTimeoutMs(args: Record<string, unknown>): number {
+	const raw = args.timeout as number | undefined;
+	const seconds =
+		Number.isFinite(raw) && (raw as number) > 0 ? (raw as number) : 30;
+	return Math.min(seconds * 1_000, MAX_BASH_TIMEOUT_MS);
+}
+
 /**
  * Run a tool in a clean child process as `linuxUser` via sudo.
  * The child receives no secrets: only PATH and HOME are passed in env.
@@ -483,13 +498,11 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 				}),
 			),
 		}),
+		// The executor's own timeout plus the 5 s flush and 3 s force-kill
+		// margins runIsolatedToolCall gives the child.
+		maxRuntimeMs: (args) => bashTimeoutMs(args) + 10_000,
 		async execute(_id, args, signal) {
-			const rawTimeout = args.timeout as number | undefined;
-			const timeoutSec =
-				Number.isFinite(rawTimeout) && (rawTimeout as number) > 0
-					? (rawTimeout as number)
-					: 30;
-			const timeoutMs = Math.min(timeoutSec * 1_000, MAX_BASH_TIMEOUT_MS);
+			const timeoutMs = bashTimeoutMs(args);
 			return runIsolatedToolCall(
 				linuxUser,
 				{

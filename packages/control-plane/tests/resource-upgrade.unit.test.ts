@@ -21,6 +21,7 @@ import {
 	suspendMissionMachine,
 	sweepUpgrades,
 } from "../src/resource-upgrade.js";
+import { failResize } from "../src/resource-upgrade-claim.js";
 import { type Doc, fakeDb } from "./support/fake-db.js";
 
 vi.mock("../src/fly-machines.js", () => ({
@@ -700,6 +701,28 @@ describe("sweepUpgrades", () => {
 			t.data.missionAnomalies.some((a) => a.category === "resize-failure"),
 		).toBe(true);
 		expect(m2.status).toBe("running");
+	});
+
+	it("leaves a stale claim alone when it changed before the release (RU4)", async () => {
+		const t = setup(null, {
+			missions: [missionDoc({ resize: { claimedAt: at(-6 * MIN) } })],
+		});
+		const mission = t.data.missions[0] as unknown as Parameters<
+			typeof failResize
+		>[1];
+		// The resize finished and a new one claimed the mission meanwhile.
+		(t.data.missions[0].resize as Doc).claimedAt = at(0);
+		const r = await failResize(
+			t.db,
+			mission,
+			new ResizeError("provision", "stale"),
+			"resize the machine",
+			at(-6 * MIN),
+		);
+		expect(r.status).toBe(409);
+		expect(t.data.missions[0].status).toBe("running");
+		expect((t.data.missions[0].resize as Doc).claimedAt).toEqual(at(0));
+		expect(t.data.missionAnomalies ?? []).toHaveLength(0);
 	});
 
 	it("clears upgrade state left on a mission that is no longer running", async () => {

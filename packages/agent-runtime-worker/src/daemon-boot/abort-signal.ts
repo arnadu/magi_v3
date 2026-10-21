@@ -1,5 +1,8 @@
 import type { BootContext } from "./context.js";
 
+/** How long a graceful shutdown may take before the process force-exits. */
+export const SHUTDOWN_DEADLINE_MS = 30_000;
+
 /**
  * Wire SIGTERM/SIGINT, and — issue #46 — uncaughtException/unhandledRejection,
  * to abort a fresh AbortController: the first trigger requests graceful
@@ -35,6 +38,15 @@ export function wireAbortSignal(): Pick<BootContext, "ac" | "signal"> & {
 			`\n[daemon] ${reason} — shutting down… (Ctrl-C again to force)`,
 		);
 		ac.abort();
+		// AB1: a cleanup that hangs (a stuck Mongo close, a tool that ignores
+		// its signal) must not leave a zombie — after a crash there is no second
+		// signal coming. Exit non-zero so the restart policy brings it back.
+		setTimeout(() => {
+			console.error(
+				`[daemon] Shutdown did not finish within ${SHUTDOWN_DEADLINE_MS / 1000}s — forcing exit`,
+			);
+			process.exit(1);
+		}, SHUTDOWN_DEADLINE_MS).unref();
 	}
 	process.on("SIGTERM", () => initiateShutdown("SIGTERM"));
 	process.on("SIGINT", () => initiateShutdown("Interrupted"));

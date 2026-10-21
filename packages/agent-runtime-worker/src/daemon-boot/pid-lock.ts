@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BootContext } from "./context.js";
 
@@ -10,8 +10,34 @@ import type { BootContext } from "./context.js";
  * prior run didn't reach graceful shutdown; that's recorded as a soft
  * anomaly, not just a console.warn, since it's a real signal worth keeping.
  */
+/**
+ * True when `pid` is a live daemon process. On Linux the command line must
+ * name the daemon: after a container restart PIDs start over, and the old
+ * daemon's PID may now belong to sudo, a tool executor or Chromium — which
+ * used to read as "already running" and crash-loop the restart (PID1).
+ * Without /proc (macOS dev) liveness is all there is to go on.
+ */
+export function pidHoldsDaemon(
+	pid: number,
+	readCmdline = (p: number) => readFileSync(`/proc/${p}/cmdline`, "utf8"),
+): boolean {
+	try {
+		// Signal 0 tests liveness without sending a real signal.
+		process.kill(pid, 0);
+	} catch {
+		return false;
+	}
+	if (!existsSync("/proc/self/cmdline")) return true;
+	try {
+		return readCmdline(pid).includes("daemon.js");
+	} catch {
+		return false;
+	}
+}
+
 export function lockPidFile(
 	ctx: Pick<BootContext, "workdir" | "missionId" | "anomalyRecorder">,
+	holdsDaemon: (pid: number) => boolean = pidHoldsDaemon,
 ): Pick<BootContext, "pidFile"> {
 	const missionDir = join(ctx.workdir, "missions", ctx.missionId);
 	mkdirSync(missionDir, { recursive: true });
@@ -23,42 +49,40 @@ export function lockPidFile(
 			readFileSync(pidFile, "utf8").trim(),
 			10,
 		);
-		if (!Number.isNaN(existingPid) && existingPid !== process.pid) {
-			try {
-				// Signal 0 tests liveness without sending a real signal.
-				process.kill(existingPid, 0);
-				// If we reach here the process is alive — refuse to start.
-				console.error(
-					`[daemon] Already running as PID ${existingPid} (mission: ${ctx.missionId}).`,
+		// Our own PID in the file means the previous daemon died and this one
+		// was given the same number — still an unclean restart (PID1).
+		if (
+			!Number.isNaN(existingPid) &&
+			existingPid !== process.pid &&
+			holdsDaemon(existingPid)
+		) {
+			console.error(
+				`[daemon] Already running as PID ${existingPid} (mission: ${ctx.missionId}).`,
+			);
+			console.error(
+				`[daemon] Run: MISSION_ID=${ctx.missionId} npm run cli:stop`,
+			);
+			process.exit(1);
+		} else if (!Number.isNaN(existingPid)) {
+			console.warn(
+				`[daemon] Stale PID file (PID ${existingPid} is not a running daemon) — starting fresh.`,
+			);
+			// The prior run never reached graceful shutdown (SIGKILL, OOM kill,
+			// machine crash). This can't identify the cause (that would need
+			// the Fly Machines API — deliberately out of scope here), but "the
+			// process died abnormally" is a real, cheap signal worth recording.
+			ctx.anomalyRecorder
+				.record({
+					missionId: ctx.missionId,
+					category: "unclean-restart",
+					severity: "soft",
+					message: `Daemon restarted after an unclean shutdown (stale PID ${existingPid}, not a running daemon) — the prior run did not exit gracefully.`,
+				})
+				.catch((e: Error) =>
+					console.error(
+						`[daemon] Failed to record unclean-restart anomaly: ${e.message}`,
+					),
 				);
-				console.error(
-					`[daemon] Run: MISSION_ID=${ctx.missionId} npm run cli:stop`,
-				);
-				process.exit(1);
-			} catch {
-				// ESRCH — process is gone; stale PID file, safe to continue.
-				console.warn(
-					`[daemon] Stale PID file (PID ${existingPid} not found) — starting fresh.`,
-				);
-				// A live PID with no matching process means the prior run never
-				// reached graceful shutdown (SIGKILL, OOM kill, machine crash).
-				// This can't identify the cause (that would need polling the Fly
-				// Machines API — deliberately out of scope here), but "the process
-				// died abnormally" is a real, cheap signal worth recording rather
-				// than silently swallowing into a console.warn no one reads.
-				ctx.anomalyRecorder
-					.record({
-						missionId: ctx.missionId,
-						category: "unclean-restart",
-						severity: "soft",
-						message: `Daemon restarted after an unclean shutdown (stale PID ${existingPid} with no matching live process) — the prior run did not exit gracefully.`,
-					})
-					.catch((e: Error) =>
-						console.error(
-							`[daemon] Failed to record unclean-restart anomaly: ${e.message}`,
-						),
-					);
-			}
 		}
 	} catch {
 		// PID file missing or unreadable — first start, proceed normally.

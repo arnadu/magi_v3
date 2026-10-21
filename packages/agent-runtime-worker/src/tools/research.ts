@@ -32,6 +32,9 @@ import { tryCreateSearchWebTool } from "./search-web.js";
 /** Maximum LLM calls in the Research sub-loop before forcing synthesis. */
 const RESEARCH_MAX_TURNS = 10;
 
+/** How long one Research call may run before the loop cancels it. */
+const RESEARCH_MAX_RUNTIME_MS = 10 * 60_000;
+
 /** Default cache freshness for time-sensitive data (market prices, news). */
 const DEFAULT_MAX_AGE_HOURS = 12;
 /** Cap per context file read into the prompt — larger inputs are truncated and flagged. */
@@ -483,6 +486,10 @@ export function createResearchTool(
 		name: "Research",
 		description: researchDescription(sharedDir),
 		parameters: RESEARCH_PARAMS,
+		// A sub-agent of up to RESEARCH_MAX_TURNS calls needs more than the
+		// loop's 2-minute default; past it, the call is now cancelled (T3)
+		// rather than left running unobserved.
+		maxRuntimeMs: () => RESEARCH_MAX_RUNTIME_MS,
 
 		async execute(id, rawArgs, signal) {
 			const args = rawArgs as {

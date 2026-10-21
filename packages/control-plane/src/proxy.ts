@@ -24,12 +24,14 @@ export function createProxyRouter(db: Db): Router {
 	const router = createRouter();
 	const routes = asyncRoutes(router);
 
-	// Cache proxy instances by target URL — createProxyMiddleware registers
-	// listeners on the HTTP server so it must NOT be called per-request.
+	// Cache proxy instances — createProxyMiddleware registers listeners on the
+	// HTTP server so it must NOT be called per-request. Keyed by mission and
+	// target, not target alone: each instance's pathRewrite holds its mission
+	// id, and Fly can hand a released private address to another mission (PX1).
 	const proxyCache = new Map<string, RequestHandler>();
 
 	function getProxy(target: string, missionId: string): RequestHandler {
-		const key = target;
+		const key = `${missionId} ${target}`;
 		let proxy = proxyCache.get(key);
 		if (!proxy) {
 			proxy = createProxyMiddleware({
