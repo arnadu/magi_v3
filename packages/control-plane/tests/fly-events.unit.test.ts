@@ -216,7 +216,7 @@ describe("checkOomExits", () => {
 		expect(data.missionAnomalies).toHaveLength(0);
 	});
 
-	it("fails open on a broken dedup store — still raises the anomaly", async () => {
+	it("fails open on a broken dedup store — raises the anomaly once, not on every tick", async () => {
 		const { db, data, listMachinesFn } = setup(
 			[{ id: "mach-1", events: [exitEvent({ exit_code: 137 })] }],
 			[missionDoc()],
@@ -230,6 +230,8 @@ describe("checkOomExits", () => {
 			},
 			clear: async () => {},
 		};
+		await checkOomExits(db, { listMachinesFn, dedupeStore: brokenStore });
+		expect(data.missionAnomalies).toHaveLength(1);
 		await checkOomExits(db, { listMachinesFn, dedupeStore: brokenStore });
 		expect(data.missionAnomalies).toHaveLength(1);
 	});

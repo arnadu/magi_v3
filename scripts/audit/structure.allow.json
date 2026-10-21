@@ -2,7 +2,7 @@
 	"packages/agent-runtime-worker/src/agent-stats.ts": {
 		"lines": 549,
 		"fns": {
-			"createMongoAgentStatsRepository@133": 159
+			"createMongoAgentStatsRepository@176": 154
 		}
 	},
 	"packages/agent-runtime-worker/src/cli-usage.ts": {

@@ -226,10 +226,11 @@ describe("evaluateAlert when the state store is down", () => {
 		[0.95, "hard"],
 	])("fails open: ratio %s still yields %s, never a missed alert", async (ratio, expected) => {
 		const err = vi.spyOn(console, "error").mockImplementation(() => {});
-		expect(await evaluateAlert(failingStore, "k", ratio, DISK_USAGE)).toBe(
+		const key = `first-${ratio}`;
+		expect(await evaluateAlert(failingStore, key, ratio, DISK_USAGE)).toBe(
 			expected,
 		);
-		expect(err).toHaveBeenCalledWith(expect.stringContaining('key: "k"'));
+		expect(err).toHaveBeenCalledWith(expect.stringContaining(`key: "${key}"`));
 		err.mockRestore();
 	});
 
@@ -241,7 +242,29 @@ describe("evaluateAlert when the state store is down", () => {
 				throw new Error("write blocked");
 			},
 		};
-		expect(await evaluateAlert(store, "k", 0.95, DISK_USAGE)).toBe("hard");
+		expect(await evaluateAlert(store, "write-only", 0.95, DISK_USAGE)).toBe(
+			"hard",
+		);
+		err.mockRestore();
+	});
+
+	it("de-duplicates in memory while the store is down, instead of re-alerting every tick (RAS1)", async () => {
+		const err = vi.spyOn(console, "error").mockImplementation(() => {});
+		const t0 = new Date("2026-10-21T00:00:00Z");
+		const at = (min: number) => new Date(t0.getTime() + min * 60_000);
+		const levels = [];
+		for (let tick = 0; tick < 6; tick++) {
+			levels.push(
+				await evaluateAlert(
+					failingStore,
+					"outage",
+					0.95,
+					DISK_USAGE,
+					at(tick * 5),
+				),
+			);
+		}
+		expect(levels).toEqual(["hard", null, null, null, null, null]);
 		err.mockRestore();
 	});
 });

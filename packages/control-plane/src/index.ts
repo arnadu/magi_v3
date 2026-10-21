@@ -216,6 +216,17 @@ function startBackgroundServices(
 		client,
 		resourceMonitorOptionsFromEnv(process.env),
 	);
+	// Idle copilot daemons are stopped so memory does not grow with every
+	// user who ever wrote to the copilot (CW3).
+	const idleSweep = setInterval(() => {
+		const evicted = copilotRuntime.evictIdle();
+		if (evicted.length > 0) {
+			console.log(
+				`[control-plane] stopped ${evicted.length} idle copilot daemon(s)`,
+			);
+		}
+	}, 5 * 60_000);
+	idleSweep.unref();
 
 	// Graceful shutdown.
 	async function shutdown(): Promise<void> {
@@ -223,6 +234,7 @@ function startBackgroundServices(
 		stopScheduler();
 		stopCopilotWaker();
 		stopResourceMonitor();
+		clearInterval(idleSweep);
 		server.close(() => {
 			client
 				.close()

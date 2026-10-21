@@ -45,7 +45,7 @@ import {
 	storedCollection,
 	type TouchedFile,
 } from "@magi/agent-config";
-import type { Db } from "mongodb";
+import type { Collection, Db } from "mongodb";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -121,13 +121,56 @@ export interface AgentStatsRepository {
 	 * map guarantees only one turn per agent is ever genuinely in flight, so a
 	 * new turn starting is proof any earlier 'running' doc is stale (its process
 	 * died, crashed, or hung past every timeout without the normal endTurn
-	 * finalize path ever running). Returns the count reconciled.
+	 * finalize path ever running). Its cost and call count so far are added
+	 * to the lifetime totals, which only endTurn otherwise does. Returns the
+	 * count reconciled.
 	 */
 	reconcileStaleRunning(
 		missionId: string,
 		agentId: string,
 		currentTurnNumber: number,
 	): Promise<number>;
+}
+
+/**
+ * Mark an agent's other "running" turns aborted, adding each one's cost to
+ * the lifetime totals (AS1: a turn that never reached endTurn never added its
+ * spend to missionStats, so it vanished from the lifetime total and the cap).
+ * Each turn is claimed running → aborted on its own, so whoever flips it adds
+ * the cost: exactly once, even if two reconciles race.
+ */
+async function reconcileStaleTurns(
+	turns: Collection<AgentTurnStats>,
+	addLifetimeCost: AgentStatsRepository["incrementLifetimeCostOnly"],
+	q: { missionId: string; agentId: string; currentTurnNumber: number },
+): Promise<number> {
+	const { missionId, agentId } = q;
+	const stale = await turns
+		.find({
+			missionId,
+			agentId,
+			status: "running",
+			turnNumber: { $ne: q.currentTurnNumber },
+		})
+		.toArray();
+	let reconciled = 0;
+	for (const turn of stale) {
+		const claimed = await turns.findOneAndUpdate(
+			{ _id: turn._id, status: "running" },
+			{ $set: { status: "aborted", completedAt: new Date() } },
+		);
+		if (!claimed) continue;
+		reconciled++;
+		if (claimed.costUsd > 0 || claimed.llmCallCount > 0) {
+			await addLifetimeCost({
+				missionId,
+				agentId,
+				costUsd: claimed.costUsd,
+				llmCallCount: claimed.llmCallCount,
+			});
+		}
+	}
+	return reconciled;
 }
 
 export function createMongoAgentStatsRepository(db: Db): AgentStatsRepository {
@@ -275,17 +318,12 @@ export function createMongoAgentStatsRepository(db: Db): AgentStatsRepository {
 			return docs.map(({ _id: _discarded, ...rest }) => rest as AgentTurnStats);
 		},
 
-		async reconcileStaleRunning(missionId, agentId, currentTurnNumber) {
-			const result = await turns.updateMany(
-				{
-					missionId,
-					agentId,
-					status: "running",
-					turnNumber: { $ne: currentTurnNumber },
-				},
-				{ $set: { status: "aborted", completedAt: new Date() } },
+		reconcileStaleRunning(missionId, agentId, currentTurnNumber) {
+			return reconcileStaleTurns(
+				turns,
+				(delta) => this.incrementLifetimeCostOnly(delta),
+				{ missionId, agentId, currentTurnNumber },
 			);
-			return result.modifiedCount;
 		},
 	};
 }

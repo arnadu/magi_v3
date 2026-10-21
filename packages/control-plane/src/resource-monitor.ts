@@ -57,7 +57,12 @@ const DAY = 24 * HOUR;
 
 export type MissionRow = Pick<
 	MissionDoc,
-	"missionId" | "userId" | "mission" | "upgrade" | "upgradedRuntimeResetAt"
+	| "missionId"
+	| "userId"
+	| "mission"
+	| "upgrade"
+	| "upgradedRuntimeResetAt"
+	| "createdAt"
 >;
 
 async function runningMissions(db: Db): Promise<MissionRow[]> {
@@ -71,6 +76,7 @@ async function runningMissions(db: Db): Promise<MissionRow[]> {
 					mission: 1,
 					upgrade: 1,
 					upgradedRuntimeResetAt: 1,
+					createdAt: 1,
 				},
 			},
 		)
@@ -164,13 +170,21 @@ async function checkSpendSpike(
 	const baselineFrom = new Date(
 		baselineTo.getTime() - SPEND_SPIKE.baselineDays * DAY,
 	);
+	// RM1: average over the days the mission existed in the baseline window,
+	// not always 7 — a 2-day-old mission's average was understated 3.5×, and
+	// every busy day looked like a spike. Under a day of history: no baseline.
+	const baselineDays =
+		(baselineTo.getTime() -
+			Math.max(baselineFrom.getTime(), mission.createdAt.getTime())) /
+		DAY;
+	if (baselineDays < 1) return;
 	const baselineTotal = await sumTurnCostUsd(
 		db,
 		mission.missionId,
-		baselineFrom,
+		new Date(baselineTo.getTime() - baselineDays * DAY),
 		baselineTo,
 	);
-	const trailingDailyAvg = baselineTotal / SPEND_SPIKE.baselineDays;
+	const trailingDailyAvg = baselineTotal / baselineDays;
 	const ratio = spendSpikeRatio(last24h, trailingDailyAvg);
 	if (ratio <= 0) return;
 
@@ -191,7 +205,7 @@ async function checkSpendSpike(
 		missionId: mission.missionId,
 		category: "spend-spike",
 		severity: level,
-		message: `24h spend is $${last24h.toFixed(2)}, ${(last24h / Math.max(trailingDailyAvg, 0.01)).toFixed(1)}x the trailing 7-day daily average ($${trailingDailyAvg.toFixed(2)}/day).`,
+		message: `24h spend is $${last24h.toFixed(2)}, ${(last24h / Math.max(trailingDailyAvg, 0.01)).toFixed(1)}x the trailing ${baselineDays >= SPEND_SPIKE.baselineDays ? "7-day" : `${baselineDays.toFixed(1)}-day`} daily average ($${trailingDailyAvg.toFixed(2)}/day).`,
 	});
 }
 

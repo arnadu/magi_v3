@@ -39,6 +39,7 @@ function setup(over: Record<string, Doc[]> = {}) {
 const missionRow = (over: Partial<MissionRow> = {}): MissionRow => ({
 	missionId: "m1",
 	userId: "u1",
+	createdAt: new Date(NOW.getTime() - 30 * 86_400_000),
 	...over,
 });
 
@@ -168,6 +169,37 @@ describe("checkMission > spend-spike", () => {
 		const hit = data.missionAnomalies.find((a) => a.category === "spend-spike");
 		expect(hit).toBeDefined();
 		expect(hit?.severity).toBe("soft");
+	});
+
+	it("averages a young mission's baseline over the days it existed, not 7 (RM1)", async () => {
+		// Two days old: one baseline day at $7, then $10 in the last 24h. Over
+		// 7 days the average would be $1/day and $10 a 10x spike; over the one
+		// day it existed, $10 is under 3x.
+		const { db, data, alertStore } = setup({
+			agentTurnStats: [turnDoc(1.5, 7), turnDoc(0.1, 10)],
+		});
+		await checkMission(
+			db,
+			missionRow({ createdAt: new Date(NOW.getTime() - 2 * DAY) }),
+			alertStore,
+			NOW,
+		);
+		expect(data.missionAnomalies).toHaveLength(0);
+	});
+
+	it("judges no spike for a mission with under a day of baseline", async () => {
+		const { db, data, alertStore } = setup({
+			agentTurnStats: [turnDoc(0.1, 30)],
+		});
+		await checkMission(
+			db,
+			missionRow({ createdAt: new Date(NOW.getTime() - 30 * HOUR) }),
+			alertStore,
+			NOW,
+		);
+		expect(
+			data.missionAnomalies.filter((a) => a.category === "spend-spike"),
+		).toHaveLength(0);
 	});
 
 	it("does not fire when 24h spend stays within 3x the baseline", async () => {

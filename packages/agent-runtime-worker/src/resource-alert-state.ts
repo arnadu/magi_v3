@@ -51,9 +51,10 @@ export function levelFor(
  * Decide whether the reading `ratio` should alert now, recording the outcome.
  * Returns the level to emit, or null for "stay quiet".
  *
- * Fails open: if the state store is unreachable the reading's own level is
- * returned, so an outage in de-duplication can cause a repeated alert but
- * never a missed one.
+ * Fails open, but bounded (RAS1): if the state store is unreachable, the same
+ * rules run against this process's in-memory copy instead, so a first
+ * occurrence still alerts but a store outage no longer re-alerts on every
+ * tick for as long as it lasts.
  */
 export async function evaluateAlert(
 	store: AlertStateStore,
@@ -66,11 +67,29 @@ export async function evaluateAlert(
 		return await decide(store, key, ratio, thresholds, now);
 	} catch (e) {
 		console.error(
-			`[resource-alert-state] State store failed, alerting without de-duplication { key: "${key}", ratio: ${ratio}, error: "${(e as Error).message}" }`,
+			`[resource-alert-state] State store failed, de-duplicating in memory until it recovers { key: "${key}", ratio: ${ratio}, error: "${(e as Error).message}" }`,
 		);
-		return levelFor(ratio, thresholds);
+		return decide(fallbackStore, key, ratio, thresholds, now);
 	}
 }
+
+/** The in-memory store evaluateAlert falls back on; process-local, so a restart forgets it. */
+export function createMemoryAlertStateStore(): AlertStateStore {
+	const states = new Map<string, AlertState>();
+	return {
+		async get(key) {
+			return states.get(key) ?? null;
+		},
+		async put(state) {
+			states.set(state.key, state);
+		},
+		async clear(key) {
+			states.delete(key);
+		},
+	};
+}
+
+const fallbackStore = createMemoryAlertStateStore();
 
 async function decide(
 	store: AlertStateStore,

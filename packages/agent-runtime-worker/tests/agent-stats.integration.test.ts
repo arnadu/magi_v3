@@ -280,4 +280,38 @@ describe("readMissionSnapshot + incrementLifetimeCostOnly against real MongoDB",
 
 		await collector.endTurn("alpha");
 	}, 30_000);
+
+	it("adds a crashed turn's spend to the lifetime total when the next turn reconciles it, exactly once (AS1)", async () => {
+		const conn = await connectMongo(MONGODB_URI);
+		client ??= conn.client;
+		const statsRepo = createMongoAgentStatsRepository(conn.db);
+
+		// A turn that records spend and never reaches endTurn (the process died).
+		const crashed = new StatsCollector(statsRepo);
+		await crashed.startTurn(missionId, "gamma", 0, false);
+		await crashed.recordLlmCall("gamma", {
+			inputTokens: 10,
+			outputTokens: 5,
+			cacheReadTokens: 0,
+			cacheWriteTokens: 0,
+			costUsd: 0.7,
+		});
+
+		// A fresh daemon starts the next turn; a late duplicate reconcile follows.
+		const fresh = new StatsCollector(statsRepo);
+		await fresh.startTurn(missionId, "gamma", 1, false);
+		expect(await statsRepo.reconcileStaleRunning(missionId, "gamma", 1)).toBe(
+			0,
+		);
+
+		const lifetime = await fresh.readLifetime(missionId, "gamma");
+		expect(lifetime?.lifetimeCostUsd).toBeCloseTo(0.7, 8);
+		expect(lifetime?.lifetimeLlmCallCount).toBe(1);
+		const [turn0] = (
+			await statsRepo.queryTurns({ missionId, agentId: "gamma" })
+		).filter((t) => t.turnNumber === 0);
+		expect(turn0.status).toBe("aborted");
+		await fresh.endTurn("gamma");
+		if (conn.client !== client) await conn.client.close();
+	}, 30_000);
 });

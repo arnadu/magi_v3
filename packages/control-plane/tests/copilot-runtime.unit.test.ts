@@ -9,7 +9,10 @@ import type { Db } from "mongodb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CopilotDaemonHandle } from "../src/copilot-daemon.js";
 import { startCopilotDaemon } from "../src/copilot-daemon.js";
-import { createCopilotRuntime } from "../src/copilot-runtime.js";
+import {
+	COPILOT_IDLE_MS,
+	createCopilotRuntime,
+} from "../src/copilot-runtime.js";
 import type { PendingActionsStore } from "../src/copilot-tools.js";
 import { getCopilotModel } from "../src/users.js";
 
@@ -19,11 +22,11 @@ vi.mock("../src/users.js", () => ({ getCopilotModel: vi.fn() }));
 const startDaemon = vi.mocked(startCopilotDaemon);
 const modelFor = vi.mocked(getCopilotModel);
 
-function fakeHandle(dead = false): CopilotDaemonHandle {
+function fakeHandle(dead = false, busy = false): CopilotDaemonHandle {
 	return {
 		stop: vi.fn(),
 		ready: Promise.resolve(),
-		isBusy: () => false,
+		isBusy: () => busy,
 		isDead: () => dead,
 	};
 }
@@ -130,5 +133,27 @@ describe("createCopilotRuntime", () => {
 		await runtime.ensureCopilotRunning("u1");
 		expect(startDaemon).toHaveBeenCalledTimes(2);
 		expect(runtime.getDaemon("u1")?.isDead()).toBe(false);
+	});
+
+	it("stops a daemon idle for the idle window, and starts a fresh one on the next message (CW3)", async () => {
+		const runtime = makeRuntime();
+		await runtime.ensureCopilotRunning("u1");
+		const first = runtime.getDaemon("u1");
+		expect(runtime.evictIdle(Date.now() + COPILOT_IDLE_MS - 1000)).toEqual([]);
+		expect(runtime.evictIdle(Date.now() + COPILOT_IDLE_MS + 1000)).toEqual([
+			"u1",
+		]);
+		expect(first?.stop).toHaveBeenCalled();
+		expect(runtime.getDaemon("u1")).toBeUndefined();
+		await runtime.ensureCopilotRunning("u1");
+		expect(startDaemon).toHaveBeenCalledTimes(2);
+	});
+
+	it("never stops a daemon in the middle of a turn", async () => {
+		startDaemon.mockImplementation(() => fakeHandle(false, true));
+		const runtime = makeRuntime();
+		await runtime.ensureCopilotRunning("u1");
+		expect(runtime.evictIdle(Date.now() + 10 * COPILOT_IDLE_MS)).toEqual([]);
+		expect(runtime.getDaemon("u1")).toBeDefined();
 	});
 });

@@ -58,7 +58,16 @@ export interface CopilotRuntime {
 	getDaemon(userId: string): CopilotDaemonHandle | undefined;
 	/** Stop this user's daemon and forget it; the next ensureCopilotRunning starts a fresh one. */
 	stopDaemon(userId: string): void;
+	/**
+	 * Stop every daemon idle for COPILOT_IDLE_MS and not mid-turn (CW3: one
+	 * daemon per user who ever wrote, held forever). Returns the users
+	 * stopped. A message or the waker restarts a user's daemon on demand.
+	 */
+	evictIdle(nowMs?: number): string[];
 }
+
+/** A copilot daemon with no message or wake-up for this long is stopped. */
+export const COPILOT_IDLE_MS = 30 * 60_000;
 
 export function createCopilotRuntime(
 	db: Db,
@@ -72,6 +81,9 @@ export function createCopilotRuntime(
 	// operator message racing a waker wake-up) could each start a daemon for
 	// the same user.
 	const starting = new Map<string, Promise<void>>();
+	// Last ensureCopilotRunning per user: the operator's messages and the
+	// waker's mail wake-ups both pass through it.
+	const lastActive = new Map<string, number>();
 
 	// Resolution order: user's own copilotModel setting -> MODEL env var ->
 	// hardcoded fallback. Only read at daemon start; a model change takes
@@ -93,6 +105,7 @@ export function createCopilotRuntime(
 		eventBus,
 		defaultModelId,
 		async ensureCopilotRunning(userId) {
+			lastActive.set(userId, Date.now());
 			const existing = daemons.get(userId);
 			if (existing && !existing.isDead()) return;
 			if (existing) {
@@ -115,6 +128,18 @@ export function createCopilotRuntime(
 		stopDaemon(userId) {
 			daemons.get(userId)?.stop();
 			daemons.delete(userId);
+		},
+		evictIdle(nowMs = Date.now()) {
+			const evicted: string[] = [];
+			for (const [userId, handle] of daemons) {
+				if (handle.isBusy()) continue;
+				if (nowMs - (lastActive.get(userId) ?? 0) < COPILOT_IDLE_MS) continue;
+				handle.stop();
+				daemons.delete(userId);
+				lastActive.delete(userId);
+				evicted.push(userId);
+			}
+			return evicted;
 		},
 	};
 }

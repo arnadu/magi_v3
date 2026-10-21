@@ -89,6 +89,9 @@ export interface CheckOomExitsDeps {
  * new one against its owning mission. Never throws — a failure here must not
  * break the resource-monitor tick.
  */
+/** Exits reported while the dedupe store was failing; process-local (a restart may report one again). */
+const reportedWhileStoreDown = new Set<string>();
+
 export async function checkOomExits(
 	db: Db,
 	deps: CheckOomExitsDeps = {},
@@ -120,8 +123,12 @@ export async function checkOomExits(
 				if (await dedupeStore.get(key)) continue;
 				await dedupeStore.put({ key, level: "hard", lastAlertAt: new Date() });
 			} catch (e) {
+				// FE1: still report a new exit, but not the same one on every tick
+				// for as long as the store is down.
+				if (reportedWhileStoreDown.has(key)) continue;
+				reportedWhileStoreDown.add(key);
 				console.error(
-					`[fly-events] Dedup store failed { key: "${key}", error: "${(e as Error).message}" } — proceeding without de-duplication`,
+					`[fly-events] Dedup store failed { key: "${key}", error: "${(e as Error).message}" } — de-duplicating in memory until it recovers`,
 				);
 			}
 			await recordOomSuspected(db, machine.id, exitedAt).catch((e) => {
