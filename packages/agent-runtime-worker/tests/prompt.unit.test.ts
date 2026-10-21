@@ -68,6 +68,51 @@ describe("formatMessages", () => {
 		expect(text).toContain("Test body");
 	});
 
+	it("collapses a flood of one machine alert to its most recent few, keeping every other message", () => {
+		const alert = (i: number) =>
+			baseMessage({
+				id: `a${i}`,
+				from: "system",
+				subject: "Anomaly (soft): limit-breach",
+				body: `breach on turn ${i}`,
+				timestamp: new Date(Date.UTC(2026, 9, 20, 0, i)),
+			});
+		const flood = Array.from({ length: 50 }, (_, i) => alert(i));
+		const fromLead = baseMessage({
+			id: "lead",
+			from: "lead",
+			subject: "Chapter 3 draft",
+			body: "please review",
+		});
+		const text = formatMessages([
+			...flood.slice(0, 25),
+			fromLead,
+			...flood.slice(25),
+		]);
+		expect(text).toContain("You have 51 new messages; 4 are shown");
+		expect(text).toContain("please review");
+		expect(text).toContain("breach on turn 49");
+		expect(text).toContain("breach on turn 47");
+		expect(text).not.toContain("breach on turn 46");
+		expect(text).toContain(
+			'(47 older messages from system with the subject "Anomaly (soft): limit-breach", 2026-10-20T00:00:00.000Z to 2026-10-20T00:46:00.000Z, are not shown',
+		);
+	});
+
+	it("never collapses messages from people or agents, however many repeat", () => {
+		const same = Array.from({ length: 6 }, (_, i) =>
+			baseMessage({
+				id: `m${i}`,
+				from: "user",
+				subject: "Same",
+				body: `note ${i}`,
+			}),
+		);
+		const text = formatMessages(same);
+		expect(text).toContain("You have 6 new messages:");
+		for (let i = 0; i < 6; i++) expect(text).toContain(`note ${i}`);
+	});
+
 	it("includes every recipient, not just the reading agent, so a co-addressed agent knows who else got the message", () => {
 		// Regression test: found live — an operator message addressed to both
 		// the mission copilot and an agent produced two uncoordinated replies,

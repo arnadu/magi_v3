@@ -240,7 +240,9 @@ Each agent session (`runInnerLoop`) is built from a single system message follow
   Sessions 1..N-1: {cumulative narrative summary written by reflection}
 
 [User message: inbox]
-  {one section per new mailbox message, with sender and body}
+  {one section per new mailbox message, with sender and body — machine alerts from
+   system/scheduler repeated under one subject show only the 3 most recent, the rest
+   summarised in one line}
 ```
 
 The agent then runs `runInnerLoop`, making LLM calls and tool calls until the LLM response

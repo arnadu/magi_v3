@@ -127,6 +127,53 @@ export function buildDynamicContextMessage(
 	return `${buildTimeBlock(timezone)}\n\n## Your Mental Map\n${mentalMapHtml}`;
 }
 
+/** Senders whose messages are machine-generated alerts and notices, collapsed when they repeat. */
+const MACHINE_SENDERS = new Set(["system", "scheduler"]);
+/** How many messages of one machine sender + subject are shown in full; the rest become one line. */
+export const MAX_REPEATED_ALERTS_SHOWN = 3;
+
+/**
+ * Machine messages repeat: a wake after an outage can carry hundreds of
+ * identical anomaly alerts (1,158 once — a 1.4M-character turn that sat in a
+ * copilot's context). Per sender + subject, only the most recent few are
+ * kept; the rest are counted. People's and agents' messages are never
+ * dropped. Order is preserved.
+ */
+export function collapseRepeatedAlerts(messages: MailboxMessage[]): {
+	shown: MailboxMessage[];
+	omitted: {
+		from: string;
+		subject: string;
+		count: number;
+		first: string;
+		last: string;
+	}[];
+} {
+	const groups = new Map<string, MailboxMessage[]>();
+	for (const m of messages) {
+		if (!MACHINE_SENDERS.has(m.from)) continue;
+		const key = `${m.from}\u0000${m.subject}`;
+		const g = groups.get(key) ?? [];
+		g.push(m);
+		groups.set(key, g);
+	}
+	const dropped = new Set<MailboxMessage>();
+	const omitted = [];
+	for (const g of groups.values()) {
+		if (g.length <= MAX_REPEATED_ALERTS_SHOWN) continue;
+		const hidden = g.slice(0, g.length - MAX_REPEATED_ALERTS_SHOWN);
+		for (const m of hidden) dropped.add(m);
+		omitted.push({
+			from: g[0].from,
+			subject: g[0].subject,
+			count: hidden.length,
+			first: safeTimestamp(hidden[0]),
+			last: safeTimestamp(hidden[hidden.length - 1]),
+		});
+	}
+	return { shown: messages.filter((m) => !dropped.has(m)), omitted };
+}
+
 /**
  * Format a list of mailbox messages as the opening user turn.
  * The orchestrator passes pre-fetched unread messages this way,
@@ -137,7 +184,8 @@ export function formatMessages(messages: MailboxMessage[]): string {
 		return "You have no new messages. Review your mental map and decide what to do next.";
 	}
 
-	const parts = messages.map((m, i) => {
+	const { shown, omitted } = collapseRepeatedAlerts(messages);
+	const parts = shown.map((m, i) => {
 		const header = [
 			`--- Message ${i + 1} ---`,
 			`From: ${m.from}`,
@@ -160,5 +208,13 @@ export function formatMessages(messages: MailboxMessage[]): string {
 
 	const count = messages.length;
 	const noun = count === 1 ? "message" : "messages";
-	return `You have ${count} new ${noun}:\n\n${parts.join("\n\n")}`;
+	const notes = omitted.map(
+		(o) =>
+			`(${o.count} older message${o.count === 1 ? "" : "s"} from ${o.from} with the subject "${o.subject}", ${o.first} to ${o.last}, are not shown — the ${MAX_REPEATED_ALERTS_SHOWN} most recent are above. ListMessages with that subject as search lists them all.)`,
+	);
+	const intro =
+		omitted.length > 0
+			? `You have ${count} new ${noun}; ${shown.length} are shown and repeated alerts are summarised:`
+			: `You have ${count} new ${noun}:`;
+	return `${intro}\n\n${[...parts, ...notes].join("\n\n")}`;
 }
