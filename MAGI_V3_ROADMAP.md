@@ -17,11 +17,13 @@ architectural decisions.
 
 ## Status
 
-**MVP milestone hit at Sprint 27** (cockpit UI consolidation). Sprints 0–28e are done — 28e was
-re-scoped 2026-09-17 to isolate the two closable **High**-severity security findings from the
-2026-08-09 audit (CR-03, CR-04's job-env half) from the rest of the original 28e bucket, which is
-genuinely lower-urgency and deferred to **28f** (not started), to be weighed against feature work
-rather than treated as a security blocker. Sprint 29 (sensitive-data encryption + the harder,
+**MVP milestone hit at Sprint 27** (cockpit UI consolidation). Sprints 0–28e and 28g are done —
+28e was re-scoped 2026-09-17 to isolate the two closable **High**-severity security findings from
+the 2026-08-09 audit (CR-03, CR-04's job-env half). **28f** was re-scoped 2026-10-16 to remediate a
+~150-finding third-party audit (`docs/review/2026-10-audit.md`, plan
+`docs/plans/audit-oct26-remediation-plan.md`); its code is essentially done, with the close-out
+remaining. The operational-hardening backlog that used to be 28f is now **28h**, to be weighed
+against feature work rather than treated as a security blocker. Sprint 29 (sensitive-data encryption + the harder,
 per-tenant-credential half of CR-04) is planned but not started, and needs its own research pass
 before implementation.
 
@@ -66,7 +68,8 @@ before implementation.
 | 28c | ✅ (except CR-05) | CR-01/CR-02 security fixes; structural decomposition of `monitor-server.ts`/`daemon.ts` ([#32](https://github.com/arnadu/magi_v3/issues/32)/[#33](https://github.com/arnadu/magi_v3/issues/33), ADR-0029/ADR-0030) |
 | 28d | ✅ | Live-bug fixes from mission-copilot reports — [#49](https://github.com/arnadu/magi_v3/issues/49) spend-cap ceiling (F-025 fixed), [#46](https://github.com/arnadu/magi_v3/issues/46) crash handlers, [#48](https://github.com/arnadu/magi_v3/issues/48) mid-turn dispatch gap, [#52](https://github.com/arnadu/magi_v3/issues/52) |
 | 28e | ✅ | **Critical security fixes — the two pieces closable without a multi-tenant credential redesign.** **CR-03/F-002** (BrowseWeb SSRF, reopened a second time after Stagehand V3 removed the interceptor the threat model assumed still existed) fixed via a loopback egress-filtering proxy in front of Chromium, checking every request the browser makes, not just top-level navigation — caught and fixed two real bugs empirically along the way (Chromium's implicit loopback proxy-bypass; a CONNECT-tunnel socket leak that hung teardown indefinitely). **CR-04/F-030, job-env half** (background jobs got the raw `FRED_API_KEY`/`FMP_API_KEY`/`NEWSAPIORG_API_KEY` in their env, no privilege escalation needed) fixed via the same scoped-proxy pattern — job code now gets a capability through the existing ToolApiServer, never the reusable key. Both were High severity and live today, not preventive hardening. |
-| **28f** | ⬜ **Next** | **Remaining operational hardening — nice-to-have, arbitrate against feature work.** G-5 out-of-band alerting ([#3](https://github.com/arnadu/magi_v3/issues/3)/[#4](https://github.com/arnadu/magi_v3/issues/4)) — G-4 disk monitoring itself closed in 28g; onboarding flow; usage dashboard; CR-06 (CI/CD supply chain), CR-07 remainder (confirmation gates for pause/resume/schedule-cancel — the acute spend-cap case is already fixed, 28d), CR-08 (sensitive-data posture, blocked on Sprint 29 anyway); [#7](https://github.com/arnadu/magi_v3/issues/7)/[#21](https://github.com/arnadu/magi_v3/issues/21); revisit [#31](https://github.com/arnadu/magi_v3/issues/31) (OOM) now that 28g's `oom-suspected` detection exists (not yet live-verified against a genuine Fly-level OOM kill); unblocks F-021/F-023/F-026 |
+| **28f** | 🔶 **Close-out** | **Third-party audit remediation** (re-scoped 2026-10-16; plan [audit-oct26-remediation-plan.md](docs/plans/audit-oct26-remediation-plan.md), per-finding record in [findings.md](docs/security/findings.md) F-032…F-072). M0 gates (verify, tripwires, structure/coverage ratchets, one Quality pipeline gating deploys); M1 every High fixed (path containment, monitor auth on every route, SSRF redo, job identity, workdir isolation, GitHub writes behind confirmation, XSS/CSP/HttpOnly session, legacy dashboard deleted); M2–M3 reliability and supply-chain fixes; M4 scheduler ingestion (ADR-0033) live-verified, stats/transcripts, cockpit and skill fixes; M5 decomposition (R-1, R-2), typed stored documents (R-15), env catalog; M6 contract tests (prompt references, doc links/commands, SPEC tool tables) and the [consistency-matrix re-check](docs/review/2026-10-consistency-matrix.md). Follow-ups shipped: [#80](https://github.com/arnadu/magi_v3/issues/80) (12 of 15 reliability items), [#82](https://github.com/arnadu/magi_v3/issues/82) (indexes, lean log reads, two-tier log retention). **Remaining:** RU5/SEG1/SEG2 (#80), #83 low-severity cleanup, #79 PDF extraction off-thread, CLAUDE.md restructure (operator's call), first whole-repo `/sprint-audit`, then `/sprint-close` |
+| **28h** | ⬜ Backlog | **Remaining operational hardening — nice-to-have, arbitrate against feature work.** G-5 out-of-band alerting ([#3](https://github.com/arnadu/magi_v3/issues/3)/[#4](https://github.com/arnadu/magi_v3/issues/4)); onboarding flow; usage dashboard; CR-06 remainder ([#78](https://github.com/arnadu/magi_v3/issues/78): image pruning, image scan, narrower CI token); CR-07 remainder (confirmation gates for pause/resume/schedule-cancel, F-026); CR-08 (sensitive-data posture, blocked on Sprint 29); [#21](https://github.com/arnadu/magi_v3/issues/21); revisit [#31](https://github.com/arnadu/magi_v3/issues/31) (OOM) with 28g's `oom-suspected` detection |
 | **28g** | ✅ | **Resource management** — temporary mission-machine upgrades ([ADR-0031](docs/adr/0031-temporary-resource-upgrades-vm-cost.md): any agent asks, the mission-copilot decides; ≤ 60 min windows, 24 h cumulative cap with operator reset in the Limits panel, runtime-by-config cockpit tab) and proactive resource oversight ([ADR-0032](docs/adr/0032-proactive-resource-oversight.md): daily report + nine anomaly categories, Change-Stream copilot waker). Closes **G-4** and the Atlas-storage gap. Live-verified end to end on dev: full upgrade/revert cycle, a real disk-fill test (soft + hard thresholds), an independently-recomputed Atlas storage figure, and a real daily-report send with an organically-occurring flag. `oom-suspected` detection shipped but not live-verified (no genuine Fly-level OOM kill occurred during testing) — [#31](https://github.com/arnadu/magi_v3/issues/31) stays open pending that. Full build log and step-by-step live-verification detail: [docs/plans/resource-management-implementation-plan.md](docs/plans/resource-management-implementation-plan.md). |
 | 29 | ⬜ Planned | **Sensitive-data encryption + tenant credential isolation** — direction recorded in [ADR-0026](docs/adr/0026-sensitive-data-encryption-direction.md); needs a dedicated research pass (KMS choice, key custody, migration path) before implementation. Now also scoped to absorb **CR-04's harder half**: every mission machine currently gets the same cluster-wide `MONGODB_URI`/LLM API keys, so any full machine compromise (not just the CR-01 privilege-escalation path, already closed) exposes every other tenant's data — the real fix is per-tenant database isolation or a scoped Mongo/LLM gateway, not something to bolt on superficially alongside 28e's contained fixes. Also revisit the control-plane copilot's own component separation: `magi-copilot` is one OS identity shared across every user's copilot session (TB-15, TB-21), and its Mongo/Fly-API "Category B" tools run in-process with no sudo isolation (TB-16) — both already accepted, documented risks, deferred pending genuine multi-tenancy, which this sprint addresses directly. |
 
@@ -75,9 +78,10 @@ before implementation.
 ## Operational resilience gaps
 
 Tracked in [docs/operational-resilience.md](docs/operational-resilience.md), not duplicated here.
-Currently open: **G-5** (out-of-band alerting, 🟠, candidate 28f), **G-2** (inbox two-phase ack, 🟠,
-live-hit 2026-09-22 during 28g's own testing — see `docs/operational-resilience.md`), **G-8** (no
-MongoDB backup/PITR on the free Atlas tier, 🔴, accepted for now pre-revenue), **G-9**
+Currently open: **G-5** (out-of-band alerting, 🟠, candidate 28h), **G-2** (inbox two-phase ack, 🟠,
+live-hit 2026-09-22 during 28g's own testing — see `docs/operational-resilience.md`), **G-8** (the
+cluster moved to M10 on 2026-10-17 and has backups; the restore runbook and RTO are still owed,
+issue #70), **G-9**
 (`conversationMessages` unbounded growth, 🔴, tracked as issue #54), **G-11**/**G-12** (small
 copilot-daemon/resize-recovery gaps from 28g, both 🟠). **G-4** (disk monitoring) closed in 28g.
 
@@ -85,7 +89,7 @@ copilot-daemon/resize-recovery gaps from 28g, both 🟠). **G-4** (disk monitori
 
 ## Near-term candidates (not yet sequenced)
 
-Sized up but not yet assigned a sprint number — candidates for right after 28f, ahead of the
+Sized up but not yet assigned a sprint number — candidates for right after 28f/28h, ahead of the
 general Post-MVP backlog below.
 
 | Item | Notes |

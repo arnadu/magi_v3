@@ -181,15 +181,16 @@ spend-cap ceiling/F-025, #46 crash handlers, #48 mid-turn dispatch gap, #52), 28
 fixes + `monitor-server.ts`/`daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 +
 beta deployment), 28a (live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
 
-**Sprint 28f — Remaining operational hardening (backlog, not started).** G-5 out-of-band alerting
-(issues #3, #4) — G-4 disk monitoring itself closed in 28g, but 28f's onboarding flow, usage
-dashboard, CR-06 (CI/CD supply-chain gates), CR-07 remainder (confirmation gates for
-pause/resume/schedule-cancel — the acute spend-cap case is already fixed, 28d), CR-08
-(sensitive-data posture, blocked on Sprint 29 anyway), issues #7, #21, and unblocking
-F-021/F-023/F-026 in `docs/security/findings.md` are all still open. Also revisit #31 (suspected
-OOM-driven daemon crash-loop) now that 28d's #46 crash handlers have shipped, more
-`logMemoryUsage()` data has accumulated, and 28g's `oom-suspected` detection exists (though not
-yet live-verified against a genuine Fly-level OOM kill).
+**Sprint 28f — Third-party audit remediation (close-out).** Re-scoped 2026-10-16; plan
+`docs/plans/audit-oct26-remediation-plan.md`, findings F-032…F-072 in `docs/security/findings.md`.
+Code is essentially done (every High fixed, gates and ratchets in CI, decomposition, typed stored
+documents, contract tests, consistency matrix re-checked). Remaining: #80's RU5/SEG1/SEG2, #83,
+#79's off-thread PDF extraction, the first whole-repo `/sprint-audit`, then `/sprint-close`.
+
+**Sprint 28h — Remaining operational hardening (backlog, not started).** G-5 out-of-band alerting
+(issues #3, #4), onboarding flow, usage dashboard, CR-06 remainder (#78), CR-07 remainder
+(confirmation gates for pause/resume/schedule-cancel, F-026), CR-08 (blocked on Sprint 29), #21,
+and revisit #31 (suspected OOM crash-loop) with 28g's `oom-suspected` detection.
 
 **Sprint 29 — Sensitive-data encryption + tenant credential isolation (not started, direction
 recorded in ADR-0026).** Application-level encryption so Fly and MongoDB cannot read mission data
