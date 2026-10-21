@@ -6,6 +6,7 @@ describe("postMailbox (MBX1)", () => {
 		const inserted: Array<Record<string, unknown>> = [];
 		const db = {
 			collection: () => ({
+				createIndex: async () => "idx",
 				insertOne: async (doc: Record<string, unknown>) => {
 					inserted.push(doc);
 					return { acknowledged: true };

@@ -122,6 +122,54 @@ describe("copilot visibility backend", () => {
 				input: { toolNames: [], messages: [] },
 				output: { response: { stopReason: "end_turn" } },
 			});
+			// A second call with a body, and one whose body the pruner stripped:
+			// the list is built from a projection, so its derived fields are
+			// checked against real Mongo here (the unit fake ignores projections).
+			await db.collection("llmCallLog").insertMany([
+				{
+					missionId,
+					agentId,
+					turnNumber: 1,
+					savedAt: new Date(Date.now() + 1000),
+					model: "claude-sonnet-4-6",
+					usage: { inputTokens: 300, outputTokens: 30 },
+					input: {
+						systemPrompt: "x".repeat(10_000),
+						toolNames: ["Bash", "PostMessage"],
+						messages: [
+							{ role: "user", content: "big ".repeat(5_000) },
+							{ role: "assistant", content: [] },
+							{ role: "toolResult", content: [] },
+						],
+					},
+					output: { stopReason: "toolUse", message: { role: "assistant" } },
+				},
+				{
+					missionId,
+					agentId,
+					turnNumber: 1,
+					savedAt: new Date(Date.now() + 2000),
+					model: "claude-sonnet-4-6",
+					usage: { inputTokens: 10, outputTokens: 1 },
+				},
+			]);
+		});
+
+		it("lists a turn's calls with counts and names from the projection, and knows which bodies are gone", async () => {
+			const calls = await queryLlmCalls(db, missionId, agentId, 1);
+			expect(calls).toHaveLength(3);
+			expect(calls[1]).toMatchObject({
+				messageCount: 3,
+				toolNames: ["Bash", "PostMessage"],
+				stopReason: "toolUse",
+				hasBody: true,
+			});
+			expect(calls[2]).toMatchObject({
+				messageCount: 0,
+				toolNames: [],
+				stopReason: null,
+				hasBody: false,
+			});
 		});
 
 		it("queryTurns/queryTranscript/queryLlmCalls/queryLlmCall need no `missions` document to work", async () => {
@@ -133,7 +181,7 @@ describe("copilot visibility backend", () => {
 			expect(transcript).toHaveLength(1);
 
 			const calls = await queryLlmCalls(db, missionId, agentId, 1);
-			expect(calls).toHaveLength(1);
+			expect(calls).toHaveLength(3);
 
 			const detail = await queryLlmCall(db, missionId, agentId, 1, 0);
 			expect(detail?.model).toBe("claude-sonnet-4-6");

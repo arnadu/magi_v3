@@ -16,12 +16,10 @@
  *     call (O(n²) growth). Older messages are still fully recoverable from
  *     `conversationMessages`; they were also captured in full themselves, at the
  *     point they were newest, in some earlier logged call.
- *   - Retention policy: full entries (input + output + usage) are kept for
- *     LOG_RETENTION_DAYS (`scheduler.ts`). After that the control-plane pruner
- *     runs $unset on `input` and `output`, keeping usage/cost metadata
- *     indefinitely for billing reconciliation. Pruned entries still carry
- *     missionId, agentId, turnNumber, model, savedAt, isReflection, and usage —
- *     enough for cost accounting and audit.
+ *   - Retention policy (`scheduler.ts`): `input` and `output` are removed
+ *     after LOG_BODY_RETENTION_DAYS (1); the entry, with missionId, agentId,
+ *     turnNumber, model, savedAt, isReflection and usage, is deleted after
+ *     LOG_ROW_RETENTION_DAYS (90).
  *
  * Collection: `llmCallLog`
  */

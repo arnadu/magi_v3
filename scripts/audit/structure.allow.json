@@ -26,19 +26,13 @@
 	"packages/agent-runtime-worker/src/mailbox.ts": {
 		"lines": 320,
 		"fns": {
-			"createMailboxTools@155": 165
+			"createMailboxTools@188": 165
 		}
 	},
 	"packages/agent-runtime-worker/src/mental-map.ts": {
 		"lines": 335,
 		"fns": {
 			"createMentalMapTools@213": 122
-		}
-	},
-	"packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts": {
-		"lines": 155,
-		"fns": {
-			"createAgentSessionsRoutes@15": 140
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-server.ts": {

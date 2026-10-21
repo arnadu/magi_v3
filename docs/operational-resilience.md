@@ -242,9 +242,13 @@ missed the way there would be if this lived in a per-mission, on-demand process.
 ## Layer 9 — Log retention (control-plane pruner)
 
 The control-plane scheduler (`scheduler.ts`) runs every 30 minutes (was daily at 02:00 UTC until
-2026-08-10) and deletes `llmCallLog` entries older than `LOG_RETENTION_DAYS` (1, lowered from 2
-on 2026-08-10, from 7 originally) outright — a full `deleteMany`, not a field-strip. The pruner
-also runs once on control-plane startup to catch anything missed during downtime.
+2026-08-10) and once on control-plane startup. Since 2026-10-21 (LL1) it is two-tier: call bodies
+(`input`/`output`, ~135 KB a call) are stripped after `LOG_BODY_RETENTION_DAYS` (1), and the rest
+of the row (model, tokens, cost, timing — a few hundred bytes) is deleted after
+`LOG_ROW_RETENTION_DAYS` (90), so a spend question can be answered after the fact. The strip is an
+update, which Atlas refuses at a hard storage quota; if it fails, rows past the body window are
+deleted instead (the pre-LL1 behaviour), so the pruner can still free space. Before LL1 every
+entry was deleted after 1 day.
 
 **Root cause of two repeat incidents (2026-08-09, 2026-08-10), fixed 2026-08-10, not just
 mitigated:** `llmCallLog.input.messages` logs exactly what's sent to the LLM on each call — which

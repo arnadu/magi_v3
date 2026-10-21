@@ -136,19 +136,22 @@ function readAgentLlmCallTool(deps: MissionCopilotToolDeps): MagiTool {
 			const agentId = args.agentId as string;
 			const turn = args.turn as number;
 			const callIndex = args.callIndex as number;
-			const docs = await storedCollection(db, "llmCallLog")
-				.find({ missionId, agentId, turnNumber: turn })
+			const col = storedCollection(db, "llmCallLog");
+			const filter = { missionId, agentId, turnNumber: turn };
+			const [doc] = await col
+				.find(filter)
 				.sort({ savedAt: 1 })
+				.skip(callIndex)
+				.limit(1)
 				.toArray();
-			const doc = docs[callIndex];
 			if (!doc) {
 				return err(
-					`No call at index ${callIndex} for ${agentId} turn ${turn} (${docs.length} call(s) found)`,
+					`No call at index ${callIndex} for ${agentId} turn ${turn} (${await col.countDocuments(filter)} call(s) found)`,
 				);
 			}
 			if (!doc.input || !doc.output) {
 				return err(
-					`Call ${agentId} turn ${turn}#${callIndex} is older than the 7-day retention window — model/usage/cost still available via ReadAgentUsage, but full call content (input/output) has been pruned.`,
+					`Call ${agentId} turn ${turn}#${callIndex} is older than the 1-day retention window for call content — model/usage/cost are still available via ReadAgentUsage for 90 days, but the input/output have been pruned.`,
 				);
 			}
 			return ok(

@@ -105,6 +105,16 @@ export function createMongoConversationRepository(
 ): ConversationRepository {
 	const col = storedCollection(db, "conversationMessages");
 
+	// CR2: mission-wide reads (SearchMissionHistory, newest first) have no
+	// agentId, so the unique index below cannot serve them.
+	col
+		.createIndex({ missionId: 1, savedAt: -1 })
+		.catch((e: unknown) =>
+			console.warn(
+				`[conversation-repository] Failed to create missionId/savedAt index: ${(e as Error).message} — mission-wide history search falls back to a collection scan`,
+			),
+		);
+
 	// Unique compound index — enforces exactly one message per position.
 	// On first run after the Sprint 9→11 upgrade the index exists without
 	// unique:true (error code 85 IndexOptionsConflict). Drop it and recreate.

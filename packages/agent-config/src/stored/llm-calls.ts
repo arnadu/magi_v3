@@ -2,8 +2,8 @@
  * `llmCallLog`: one entry per LLM call (agent turns, reflection, tool-side
  * vision/OCR calls), written by the worker's llm-call-log repository. Read by
  * the cockpit transcript routes, copilot usage/spend checks and the
- * retention pruner. `input`/`output` are removed after the retention window;
- * `usage` and the metadata fields stay.
+ * retention pruner. `input`/`output` are removed after a day, the entry after
+ * 90 days.
  */
 
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
@@ -46,9 +46,10 @@ export interface LlmCallUsage {
  * result bodies truncated). Combined with `input.systemPrompt` this
  * reconstructs exactly what the model was shown at this call.
  *
- * Entries older than the control-plane pruner's window (`LOG_RETENTION_DAYS` in
- * scheduler.ts) are deleted outright; `usage` and all metadata fields are always
- * present on the ones that remain.
+ * The control-plane pruner (scheduler.ts) removes `input`/`output` after
+ * LOG_BODY_RETENTION_DAYS (1) and deletes the entry after
+ * LOG_ROW_RETENTION_DAYS (90); `usage` and the metadata fields are present on
+ * every entry that remains.
  */
 export interface LlmCallLogEntry {
 	missionId: string;

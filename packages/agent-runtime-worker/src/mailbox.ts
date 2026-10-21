@@ -64,6 +64,38 @@ export interface MailboxRepository {
 // MongoDB implementation
 // ---------------------------------------------------------------------------
 
+// Repositories are created per call on the control plane (every copilot
+// message), so indexes are ensured once per Db, not per repository.
+const indexedDbs = new WeakSet<Db>();
+
+/**
+ * CR1: the collection had no index beyond _id, so every unread check — run
+ * per agent on every dispatch pass — scanned every mission's mail.
+ * {missionId, to, timestamp} serves unread checks, inbox listing (both sort
+ * directions), the cockpit's unread counts and the copilot waker's prefix
+ * scan; {missionId, id} serves mark-read and lookup by id; {missionId,
+ * timestamp} serves mission-wide listings.
+ */
+function ensureMailboxIndexes(db: Db): void {
+	if (indexedDbs.has(db)) return;
+	indexedDbs.add(db);
+	const col = storedCollection(db, "mailbox");
+	const specs: Record<string, 1>[] = [
+		{ missionId: 1, to: 1, timestamp: 1 },
+		{ missionId: 1, id: 1 },
+		{ missionId: 1, timestamp: 1 },
+	];
+	for (const spec of specs) {
+		col
+			.createIndex(spec)
+			.catch((e: unknown) =>
+				console.warn(
+					`[mailbox] Failed to create index ${JSON.stringify(spec)}: ${(e as Error).message} — queries fall back to a collection scan`,
+				),
+			);
+	}
+}
+
 /**
  * Create a mailbox repository scoped to a single mission.
  * All reads and writes are automatically filtered by missionId, preventing
@@ -74,6 +106,7 @@ export function createMongoMailboxRepository(
 	missionId: string,
 ): MailboxRepository {
 	const col = storedCollection(db, "mailbox");
+	ensureMailboxIndexes(db);
 
 	return {
 		async post(msg) {

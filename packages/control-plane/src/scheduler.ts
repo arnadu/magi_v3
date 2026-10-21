@@ -7,9 +7,9 @@
  *      insert the message into mailbox, mark delivered, re-arm cron entries.
  *
  * 2. Log retention pruning — every 30 minutes:
- *      Delete llmCallLog entries older than LOG_RETENTION_DAYS outright (not a
- *      field-strip — see pruneOldLogEntries's doc comment for why). Keeps
- *      storage manageable on the M0/M2 Atlas tier.
+ *      Strip llmCallLog call bodies after LOG_BODY_RETENTION_DAYS and delete rows
+ *      after LOG_ROW_RETENTION_DAYS, falling back to deleting when a strip is
+ *      refused — see pruneOldLogEntries.
  */
 
 import {
@@ -281,39 +281,51 @@ async function deliverAll(db: Db): Promise<void> {
 // Log retention pruning
 // ---------------------------------------------------------------------------
 
-// Lowered from 7 to 2 (2026-08-09), then to 1 (2026-08-10): the Atlas M0 quota
-// was hit a second time even at 2 days, driven by a separate bug (llmCallLog's
-// `input.messages` stored the *entire accumulated conversation* on every call —
-// O(n²) growth over a mission's life — fixed in llm-call-log.ts's
-// truncateOldMessages, which is the real fix; this shorter window is
-// defense-in-depth on top of it, not a substitute for it.
-const LOG_RETENTION_DAYS = 1;
+// Call bodies (input/output) are kept 1 day: they are ~135 KB a call, and on
+// the M0 tier they twice filled the cluster (2026-08-09/10, with an
+// O(n²) input.messages bug fixed separately in llm-call-log.ts). The rest of
+// a row — model, tokens, cost, timing, a few hundred bytes — is kept 90 days,
+// so a spend question ("where did last night's credits go?") can still be
+// answered after the fact (LL1).
+const LOG_BODY_RETENTION_DAYS = 1;
+const LOG_ROW_RETENTION_DAYS = 90;
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000);
 
 /**
- * Delete llmCallLog entries older than LOG_RETENTION_DAYS outright, rather than
- * $unset-stripping input/output and keeping the rest. Two reasons this is safer,
- * not just more aggressive: (1) $unset is an update, and Atlas blocks *all*
- * writes once truly at quota — including shrink-only ones — so the old
- * strip-only pruner could never dig itself out of the exact situation it exists
- * to prevent, while deleteMany is confirmed (live, twice) to still work when
- * Atlas is blocking other writes; (2) missionStats/agentTurnStats already hold
- * the cumulative lifetime cost/call totals independent of llmCallLog (a
- * separate write path — see agent-stats.ts), so full deletion here only costs
- * per-call granularity beyond the retention window, not the ability to account
- * for spend. Runs on startup (to catch anything missed while the control plane
- * was down) and then every 30 minutes — daily was too slow to catch fast
- * accumulation on a busy mission before it reached quota.
+ * Strip call bodies past their window, delete rows past theirs. Stripping is
+ * an update, and Atlas blocks *all* writes at a hard storage quota, shrinking
+ * ones included, while deleteMany still works (seen live, twice, on M0) — so
+ * if the strip fails, rows past the body window are deleted instead, and the
+ * pruner can always dig out. Spend totals do not depend on this collection:
+ * missionStats/agentTurnStats hold them (agent-stats.ts). Runs on startup and
+ * every 30 minutes.
  */
-async function pruneOldLogEntries(db: Db): Promise<void> {
-	const cutoff = new Date(
-		Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000,
-	);
-	const result = await storedCollection(db, "llmCallLog").deleteMany({
-		savedAt: { $lt: cutoff },
+export async function pruneOldLogEntries(db: Db): Promise<void> {
+	const col = storedCollection(db, "llmCallLog");
+	const bodyCutoff = daysAgo(LOG_BODY_RETENTION_DAYS);
+	try {
+		const stripped = await col.updateMany(
+			{ savedAt: { $lt: bodyCutoff }, input: { $exists: true } },
+			{ $unset: { input: "", output: "" } },
+		);
+		if (stripped.modifiedCount > 0) {
+			console.log(
+				`[scheduler] Log pruning: stripped bodies from ${stripped.modifiedCount} entries older than ${LOG_BODY_RETENTION_DAYS} day(s)`,
+			);
+		}
+	} catch (e) {
+		const deleted = await col.deleteMany({ savedAt: { $lt: bodyCutoff } });
+		console.error(
+			`[scheduler] Log pruning: stripping bodies failed (${(e as Error).message}) — deleted ${deleted.deletedCount} entries older than ${LOG_BODY_RETENTION_DAYS} day(s) instead; their usage rows are lost, spend totals are not`,
+		);
+	}
+	const deleted = await col.deleteMany({
+		savedAt: { $lt: daysAgo(LOG_ROW_RETENTION_DAYS) },
 	});
-	if (result.deletedCount > 0) {
+	if (deleted.deletedCount > 0) {
 		console.log(
-			`[scheduler] Log pruning: deleted ${result.deletedCount} entries older than ${LOG_RETENTION_DAYS} day(s)`,
+			`[scheduler] Log pruning: deleted ${deleted.deletedCount} entries older than ${LOG_ROW_RETENTION_DAYS} days`,
 		);
 	}
 }

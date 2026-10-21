@@ -1,7 +1,7 @@
 /**
  * Lifetime usage figures. They come from the stats collections, never from
- * `llmCallLog`: the call log is deleted after its retention window
- * (scheduler.ts), so a sum over it is only the last day's spend.
+ * `llmCallLog`: the call log is deleted after its 90-day retention window
+ * (scheduler.ts), so a sum over it is not a lifetime figure.
  */
 
 import { type AgentTurnStats, ref, storedCollection } from "@magi/agent-config";

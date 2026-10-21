@@ -81,6 +81,9 @@ function fakeDb(opts: {
 			}
 			if (name === "mailbox") {
 				return {
+					async createIndex() {
+						return "idx";
+					},
 					async insertOne(doc: Record<string, unknown>) {
 						if (opts.failSubject && doc.subject === opts.failSubject) {
 							throw new Error("simulated delivery failure");

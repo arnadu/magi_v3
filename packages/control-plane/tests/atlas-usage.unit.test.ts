@@ -87,6 +87,9 @@ function fakeCluster(opts: {
 		}
 		if (name === "mailbox") {
 			return {
+				async createIndex() {
+					return "idx";
+				},
 				async insertOne(doc: Record<string, unknown>) {
 					mailboxDocs.push(doc);
 				},
@@ -334,6 +337,9 @@ describe("checkAtlasStorage", () => {
 		bigCluster.db.collection = ((name: string) => {
 			if (name === "mailbox") {
 				return {
+					async createIndex() {
+						return "idx";
+					},
 					async insertOne() {
 						throw new Error("mailbox insert failed");
 					},

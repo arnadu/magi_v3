@@ -101,8 +101,25 @@ export async function queryLlmCalls(
 	agentId: string,
 	turn: number,
 ): Promise<LlmCallSummary<Date>[]> {
+	// TQ1: the list needs counts and names, not the call bodies — message
+	// roles give the count, output.stopReason marks a retained body.
 	const calls = await storedCollection(db, "llmCallLog")
-		.find({ missionId, agentId, turnNumber: turn })
+		.find(
+			{ missionId, agentId, turnNumber: turn },
+			{
+				projection: {
+					callId: 1,
+					savedAt: 1,
+					model: 1,
+					isReflection: 1,
+					costEstimated: 1,
+					usage: 1,
+					"input.toolNames": 1,
+					"input.messages.role": 1,
+					"output.stopReason": 1,
+				},
+			},
+		)
 		.sort({ savedAt: 1 })
 		.toArray();
 	return calls.map((c, i) => ({
