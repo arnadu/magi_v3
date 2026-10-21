@@ -1,15 +1,15 @@
 /** PDF handling: text extraction with table reconstruction, scanned-page OCR, visual-page description. */
 
-import * as mupdf from "mupdf";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
 import type { FileEntry } from "./artifacts.js";
 import {
 	inspectImageHint,
-	PDF_SCALE,
-	pageHasVisualContent,
-	SCANNED_TEXT_THRESHOLD,
 	selectImages,
 	statusLine,
 } from "./document-format.js";
+import type { ExtractedPage, PdfExtraction } from "./document-pdf-extract.js";
 import type {
 	Handled,
 	ProcessingStatus,
@@ -21,92 +21,94 @@ import {
 	type OcrPageFn,
 	UNTRUSTED_NOTE,
 } from "./document-vision.js";
-import { reconstructPageText, type StextLine } from "./pdf-tables.js";
 
-export interface StextJson {
-	blocks: Array<{
-		type: string;
-		lines?: Array<{
-			text: string;
-			bbox: { x: number; y: number; w: number; h: number };
-		}>;
-	}>;
-}
+/** How long the worker may spend opening, extracting and rendering one PDF. */
+export const PDF_EXTRACT_TIMEOUT_MS = 120_000;
 
-/** Extracts a page's text via mupdf's structured JSON rather than `.asText()`,
- * upgrading tabular regions into real Markdown tables (see pdf-tables.ts).
- * `rawLength` — the sum of trimmed line lengths before Markdown formatting —
- * is what the scanned-page check (SCANNED_TEXT_THRESHOLD) should measure, not
- * `text.length`: the formatted/joined output's length depends on incidental
- * choices (blank-line collapsing, `| --- |` table overhead) that have nothing
- * to do with how much real text mupdf actually found on the page. */
-export function extractPageText(page: mupdf.Page): {
-	text: string;
-	rawLength: number;
-} {
-	const json = JSON.parse(page.toStructuredText().asJSON()) as StextJson;
-	const lines: StextLine[] = [];
-	let rawLength = 0;
-	for (const block of json.blocks) {
-		if (block.type !== "text") continue;
-		for (const l of block.lines ?? []) {
-			lines.push({
-				text: l.text,
-				x: l.bbox.x,
-				y: l.bbox.y,
-				w: l.bbox.w,
-				h: l.bbox.h,
-			});
-			rawLength += l.text.trim().length;
-		}
-	}
-	return { text: reconstructPageText(lines), rawLength };
+/**
+ * The compiled worker: next to this module in dist/, or dist/ itself when
+ * running from src/ under vitest (the tool-executor pattern in tools.ts).
+ */
+function pdfWorkerPath(): string {
+	const here = fileURLToPath(import.meta.url);
+	return here.endsWith(".ts")
+		? join(dirname(here), "..", "dist", "pdf-worker.js")
+		: join(dirname(here), "pdf-worker.js");
 }
 
 /**
- * Pre-pass: load each page once (up to the text limit), extract its text,
- * and decide whether it needs a vision call at all — scanned (needs OCR) or
- * provably has some non-text visual content (pageHasVisualContent). A page
- * that is neither (the common case: a page of plain typed text) never
- * competes for the describe-now/defer budget, and never gets a vision call —
- * there is nothing on it a caption could add. This also stops a scanned page
- * from occupying a budget slot that a real logo/chart elsewhere in the
- * document could have used instead — a scanned page's own fate is decided by
- * the OCR branch regardless of describeSet membership.
+ * Run the synchronous mupdf work in a worker thread (#79): a 300-page
+ * document used to block every agent's tool calls and the monitor for its
+ * whole extraction. The worker is terminated on timeout or abort; either
+ * comes back as `timedOut`, never a hang.
  */
-export function prescanPdfPages(
-	doc: mupdf.Document,
-	textCount: number,
-	renderCount: number,
-): {
-	pages: mupdf.Page[];
-	pageInfo: { text: string; isScanned: boolean }[];
-	needsVisionCall: boolean[];
-} {
-	const pages: mupdf.Page[] = [];
-	const pageInfo: { text: string; isScanned: boolean }[] = [];
-	const needsVisionCall: boolean[] = [];
-	for (let i = 0; i < textCount; i++) {
-		const page = doc.loadPage(i);
-		pages.push(page);
-		const { text, rawLength } = extractPageText(page);
-		const isScanned = rawLength < SCANNED_TEXT_THRESHOLD;
-		pageInfo.push({ text: text.trim(), isScanned });
-		needsVisionCall.push(
-			i < renderCount && (isScanned || pageHasVisualContent(page)),
+function extractInWorker(
+	bytes: Buffer,
+	limits: ProcessLimits,
+	signal?: AbortSignal,
+): Promise<PdfExtraction | { ok: false; timedOut: string }> {
+	return new Promise((resolve) => {
+		const worker = new Worker(pdfWorkerPath(), {
+			workerData: {
+				bytes: new Uint8Array(bytes),
+				limits: {
+					maxTextPages: limits.maxTextPages,
+					maxRenderPages: limits.maxRenderPages,
+				},
+			},
+		});
+		let settled = false;
+		const finish = (r: PdfExtraction | { ok: false; timedOut: string }) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			signal?.removeEventListener("abort", onAbort);
+			void worker.terminate();
+			resolve(r);
+		};
+		const timer = setTimeout(
+			() =>
+				finish({
+					ok: false,
+					timedOut: `extraction did not finish within ${PDF_EXTRACT_TIMEOUT_MS / 1000}s`,
+				}),
+			PDF_EXTRACT_TIMEOUT_MS,
 		);
-	}
-	return { pages, pageInfo, needsVisionCall };
+		const onAbort = () =>
+			finish({ ok: false, timedOut: "the run was aborted" });
+		signal?.addEventListener("abort", onAbort, { once: true });
+		worker.once("message", (r: PdfExtraction) => finish(r));
+		worker.once("error", (e) =>
+			finish({ ok: false, unreadable: `PDF worker failed: ${e.message}` }),
+		);
+		worker.once("exit", (code) => {
+			if (code !== 0)
+				finish({
+					ok: false,
+					unreadable: `PDF worker exited with code ${code}`,
+				});
+		});
+	});
 }
 
-const MATRIX: [number, number, number, number, number, number] = [
-	PDF_SCALE,
-	0,
-	0,
-	PDF_SCALE,
-	0,
-	0,
-];
+function timedOutPdf(bytes: Buffer, filename: string, why: string): Handled {
+	return {
+		format: "pdf",
+		status: "partial",
+		files: [
+			{
+				name: "content.md",
+				content: statusLine(
+					"partial",
+					`PDF text extraction stopped — ${why}. Raw file saved as ${filename}; split it or read pages with InspectImage.`,
+				),
+			},
+			{ name: filename, content: bytes },
+		],
+		unprocessed: [{ item: filename, reason: "extraction-timeout" }],
+		summary: "PDF (extraction timed out)",
+	};
+}
 
 type Unprocessed = { item: string; reason: string };
 
@@ -116,14 +118,18 @@ interface PageVision {
 	artifactsDir: string;
 }
 
-function unreadablePdf(bytes: Buffer, filename: string, e: unknown): Handled {
+function unreadablePdf(
+	bytes: Buffer,
+	filename: string,
+	message: string,
+): Handled {
 	return {
 		format: "pdf",
 		status: "unsupported",
 		files: [
 			{
 				name: "content.md",
-				content: `${statusLine("unsupported", `Could not open PDF — ${(e as Error).message}. Raw file saved as ${filename}.`)}`,
+				content: `${statusLine("unsupported", `Could not open PDF — ${message}. Raw file saved as ${filename}.`)}`,
 			},
 			{ name: filename, content: bytes },
 		],
@@ -173,25 +179,29 @@ async function pageVisualNote(
 	};
 }
 
-/** Render a page to PNG and add its visual note; a failed render keeps the text and marks the page partial (DOC10). */
-async function renderPage(
-	page: mupdf.Page,
+/** A rendered page's file and visual note; a failed render keeps the text and marks the page partial (DOC10). */
+async function renderedPage(
+	page: ExtractedPage,
 	pageNo: number,
-	p: { isScanned: boolean; needsVision: boolean; describeNow: boolean },
+	describeNow: boolean,
 	v: PageVision,
 ): Promise<{ file?: FileEntry; note: string; unprocessed?: Unprocessed }> {
 	const fileName = `page-${pageNo}.png`;
-	try {
-		const pixmap = page.toPixmap(MATRIX, mupdf.ColorSpace.DeviceRGB, false);
-		const png = Buffer.from(pixmap.asPNG());
-		const visual = await pageVisualNote(png, pageNo, fileName, p, v);
-		return { file: { name: fileName, content: png }, ...visual };
-	} catch (e) {
+	if (!page.png) {
 		return {
-			note: `\n\n*(Page ${pageNo} render failed (${(e as Error).message}) — text only.)*`,
+			note: `\n\n*(Page ${pageNo} render failed (${page.renderError ?? "unknown error"}) — text only.)*`,
 			unprocessed: { item: fileName, reason: "render-failed" },
 		};
 	}
+	const png = Buffer.from(page.png);
+	const visual = await pageVisualNote(
+		png,
+		pageNo,
+		fileName,
+		{ isScanned: page.isScanned, needsVision: page.needsVision, describeNow },
+		v,
+	);
+	return { file: { name: fileName, content: png }, ...visual };
 }
 
 export async function processPdf(
@@ -203,25 +213,20 @@ export async function processPdf(
 	artifactsDir: string,
 	signal?: AbortSignal,
 ): Promise<Handled> {
-	let doc: mupdf.Document;
-	try {
-		doc = mupdf.Document.openDocument(bytes, "application/pdf");
-	} catch (e) {
-		return unreadablePdf(bytes, filename, e);
+	const extraction = await extractInWorker(bytes, limits, signal);
+	if (!extraction.ok) {
+		return "timedOut" in extraction
+			? timedOutPdf(bytes, filename, extraction.timedOut)
+			: unreadablePdf(bytes, filename, extraction.unreadable);
 	}
-	const pageCount = doc.countPages();
-	const textCount = Math.min(pageCount, limits.maxTextPages);
+	const { pageCount, pages } = extraction;
+	const textCount = pages.length;
 	const renderCount = Math.min(textCount, limits.maxRenderPages);
-	const { pages, pageInfo, needsVisionCall } = prescanPdfPages(
-		doc,
-		textCount,
-		renderCount,
-	);
 	// Page renders are full-page → all substantive; the budget caps how many we
 	// describe (dimensionless items keep document order via selectImages).
 	const renderItems: RankableImage[] = [];
 	for (let i = 0; i < renderCount; i++) {
-		if (needsVisionCall[i]) renderItems.push({ index: i });
+		if (pages[i].needsVision) renderItems.push({ index: i });
 	}
 	const selection = selectImages(renderItems, limits);
 	const describeSet = new Set(selection.describe);
@@ -239,20 +244,11 @@ export async function processPdf(
 			unprocessed.push({ item: `page-${i + 1}`, reason: "beyond-text-limit" });
 			continue;
 		}
-		const { text, isScanned } = pageInfo[i];
+		const page = pages[i];
 		let section = `## Page ${i + 1}`;
-		if (text) section += `\n\n${text}`;
+		if (page.text) section += `\n\n${page.text}`;
 		if (i < renderCount) {
-			const r = await renderPage(
-				pages[i],
-				i + 1,
-				{
-					isScanned,
-					needsVision: needsVisionCall[i],
-					describeNow: describeSet.has(i),
-				},
-				vision,
-			);
+			const r = await renderedPage(page, i + 1, describeSet.has(i), vision);
 			if (r.file) files.push(r.file);
 			if (r.unprocessed) unprocessed.push(r.unprocessed);
 			section += r.note;
