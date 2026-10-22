@@ -1,18 +1,19 @@
 /**
  * Spend cap for a local CLI run — the same rule the daemon applies: the
- * mission's own `maxCostUsd`, else `MAX_COST_USD`. The CLI used to wire
- * neither, so a local run could spend without bound.
+ * mission's own `maxCostUsd`, else `MAX_COST_USD`, else the platform default.
+ * Nothing runs without a cap (SCH-4).
  */
 
+import { DEFAULT_MISSION_MAX_COST_USD } from "@magi/agent-config";
 import type { StatsCollector } from "./agent-stats.js";
 import { missionLifetimeCostUsd } from "./limits.js";
 
 export function resolveCliSpendCap(
 	missionCap: number | undefined,
 	env: NodeJS.ProcessEnv = process.env,
-): number | null {
+): number {
 	if (missionCap !== undefined) return missionCap;
-	if (!env.MAX_COST_USD) return null;
+	if (!env.MAX_COST_USD) return DEFAULT_MISSION_MAX_COST_USD;
 	const v = Number.parseFloat(env.MAX_COST_USD);
 	if (!Number.isFinite(v) || v <= 0) {
 		throw new Error(

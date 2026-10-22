@@ -16,7 +16,7 @@ import {
 } from "./mission-claims.js";
 import type { MissionRouteDeps } from "./mission-scope.js";
 import { userFilter } from "./mission-scope.js";
-import { DEFAULT_MISSION_MAX_COST_USD } from "./spend-policy.js";
+import { ensureMissionSpendCap } from "./spend-policy.js";
 
 // Validate and launch a draft — the only point at which a draft's config must be fully
 // valid (parseTeamConfig). Provisions a real machine on success, mirroring POST /'s
@@ -56,6 +56,8 @@ function postLaunch({ db, col }: MissionRouteDeps): RequestHandler {
 			return;
 		}
 		try {
+			// Also covers a local launch, which skips provisionTracked.
+			await ensureMissionSpendCap(db, req.params.id);
 			const handle = isLocalExecution()
 				? provisionLocal(req.params.id, { teamFiles: mission.teamFiles ?? [] })
 				: await provisionTracked(db, req.params.id, {
@@ -66,12 +68,7 @@ function postLaunch({ db, col }: MissionRouteDeps): RequestHandler {
 			await col.updateOne(
 				{ missionId: req.params.id },
 				{
-					$set: runningPatch(
-						handle,
-						validated.mission.maxCostUsd === undefined
-							? { "mission.maxCostUsd": DEFAULT_MISSION_MAX_COST_USD }
-							: {},
-					),
+					$set: runningPatch(handle),
 				},
 			);
 			res.status(200).json({ ...mission, ...handle, status: "running" });

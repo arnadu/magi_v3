@@ -45,6 +45,7 @@ import { provisionTracked, wakeTracked } from "./machine-lifecycle.js";
 import { deriveMonitorToken, monitorUrl } from "./monitor-token.js";
 import type { PendingAction } from "./pending-actions.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
+import { ensureMissionSpendCap } from "./spend-policy.js";
 
 interface ActionContext {
 	db: Db;
@@ -134,6 +135,8 @@ async function launchDraft(ctx: ActionContext): Promise<string> {
 	}
 
 	try {
+		// Before any machine starts, local or Fly: nothing runs uncapped (SCH-4).
+		await ensureMissionSpendCap(db, missionId);
 		const handle = isLocalExecution()
 			? provisionLocal(missionId, { teamFiles: draft.teamFiles ?? [] })
 			: await provisionTracked(db, missionId, {

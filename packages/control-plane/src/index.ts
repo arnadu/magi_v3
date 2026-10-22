@@ -45,6 +45,7 @@ import { startResourceMonitor } from "./resource-monitor.js";
 import { startScheduler } from "./scheduler.js";
 import { createSessionRouter } from "./session-routes.js";
 import {
+	backfillMissionCaps,
 	backfillMissionCeilings,
 	platformAdminUserIds,
 } from "./spend-policy.js";
@@ -280,6 +281,7 @@ async function main(): Promise<void> {
 	const pendingActions = new MongoPendingActionsStore(db);
 	await pendingActions.ensureIndexes();
 	await ensureMissionIdIndex(db);
+	await backfillMissionCaps(db);
 	await backfillMissionCeilings(db);
 	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);
 

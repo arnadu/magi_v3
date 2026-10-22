@@ -6,11 +6,14 @@
  * edit both the cap and its ceiling (audit LM1/LIM1/CFG2/TPL5).
  */
 
-import { storedCollection, type TeamConfig } from "@magi/agent-config";
+import {
+	DEFAULT_MISSION_MAX_COST_USD,
+	storedCollection,
+	type TeamConfig,
+} from "@magi/agent-config";
 import type { Db } from "mongodb";
 
-/** Cap applied at creation when the config sets none. */
-export const DEFAULT_MISSION_MAX_COST_USD = 25;
+export { DEFAULT_MISSION_MAX_COST_USD };
 /** Platform ceiling when PLATFORM_MAX_COST_CEILING_USD is unset. */
 export const DEFAULT_PLATFORM_MAX_COST_CEILING_USD = 100;
 
@@ -33,6 +36,41 @@ export function withDefaultSpendCap<T extends { maxCostUsd?: number }>(
 		...mission,
 		maxCostUsd: mission.maxCostUsd ?? DEFAULT_MISSION_MAX_COST_USD,
 	};
+}
+
+/**
+ * Give a mission that has no cap the default, before a machine for it starts
+ * (machine-lifecycle.ts calls this on every provision and resume), so nothing
+ * runs uncapped (SCH-4). A failed write throws: better not to start the
+ * machine than to start it without a cap.
+ */
+export async function ensureMissionSpendCap(
+	db: Db,
+	missionId: string,
+): Promise<void> {
+	await storedCollection(db, "missions").updateOne(
+		// null matches a missing field as well as an explicit null.
+		{ missionId, "mission.maxCostUsd": null },
+		{ $set: { "mission.maxCostUsd": DEFAULT_MISSION_MAX_COST_USD } },
+	);
+}
+
+/**
+ * Start-up pass: every mission that is not destroyed and has no cap gets the
+ * default. Before SCH-4 was fixed, a draft launched by the copilot or re-saved
+ * without a cap could carry none.
+ */
+export async function backfillMissionCaps(db: Db): Promise<number> {
+	const r = await storedCollection(db, "missions").updateMany(
+		{ status: { $ne: "destroyed" }, "mission.maxCostUsd": null },
+		{ $set: { "mission.maxCostUsd": DEFAULT_MISSION_MAX_COST_USD } },
+	);
+	if (r.modifiedCount > 0) {
+		console.log(
+			`[control-plane] spend caps: set the default $${DEFAULT_MISSION_MAX_COST_USD} on ${r.modifiedCount} mission(s) that had none`,
+		);
+	}
+	return r.modifiedCount;
 }
 
 /** The ceiling that binds a mission: its own, or the platform's when it has none. */

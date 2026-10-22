@@ -7,6 +7,7 @@ import {
 	type AgentConfig,
 	type Limits,
 	parseTeamConfig,
+	SpendCapCeilingExceededError,
 	storedCollection,
 	type TeamConfig,
 	validateTeamFiles,
@@ -18,7 +19,7 @@ import {
 	MISSION_COPILOT_AGENT_ID,
 	managedRegionKeys,
 } from "@magi/agent-runtime-worker";
-import type { RequestHandler } from "express";
+import type { RequestHandler, Response } from "express";
 import type { Db, ObjectId } from "mongodb";
 import type { AsyncRoutes } from "./async-handler.js";
 import { configChangedSince } from "./config-version.js";
@@ -211,15 +212,18 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 		const latestByAgent = checked.latestByAgent;
 		const convCol = storedCollection(db, "conversationMessages");
 
-		await createMongoMissionConfigWriter(db).write(
-			req.params.id,
-			{
-				mission: validated.mission,
-				agents: validated.agents,
-				missionCopilotLimits: validated.missionCopilotLimits,
-			},
-			"user",
+		const written = await writeConfigOrRefuse(res, () =>
+			createMongoMissionConfigWriter(db).write(
+				req.params.id,
+				{
+					mission: validated.mission,
+					agents: validated.agents,
+					missionCopilotLimits: validated.missionCopilotLimits,
+				},
+				"user",
+			),
 		);
+		if (!written) return;
 		await col.updateOne(
 			{ missionId: req.params.id },
 			{ $set: { teamFiles: teamFiles ?? [] } },
@@ -294,15 +298,18 @@ function putDraft({ db, col }: MissionRouteDeps): RequestHandler {
 			return;
 		}
 
-		await createMongoMissionConfigWriter(db).write(
-			req.params.id,
-			{
-				mission: { ...nextMission, id: req.params.id },
-				agents,
-				missionCopilotLimits,
-			},
-			"user",
+		const written = await writeConfigOrRefuse(res, () =>
+			createMongoMissionConfigWriter(db).write(
+				req.params.id,
+				{
+					mission: { ...nextMission, id: req.params.id },
+					agents,
+					missionCopilotLimits,
+				},
+				"user",
+			),
 		);
+		if (!written) return;
 		await col.updateOne(
 			{ missionId: req.params.id },
 			{ $set: { teamFiles: teamFiles ?? [] } },
@@ -319,4 +326,24 @@ export function registerMissionConfigRoutes(
 	routes.get("/:id/config", getConfig(deps));
 	routes.put("/:id/config", putConfig(deps));
 	routes.put("/:id/draft", putDraft(deps));
+}
+
+/**
+ * Run a config write; a cap above the mission's ceiling (the writer refuses
+ * it, ADR-0034) becomes a 403 with the reason instead of a 500.
+ */
+async function writeConfigOrRefuse(
+	res: Response,
+	write: () => Promise<void>,
+): Promise<boolean> {
+	try {
+		await write();
+		return true;
+	} catch (e) {
+		if (e instanceof SpendCapCeilingExceededError) {
+			res.status(403).json({ error: e.message });
+			return false;
+		}
+		throw e;
+	}
 }

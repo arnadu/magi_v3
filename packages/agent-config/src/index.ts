@@ -26,6 +26,11 @@ export {
 	validateNewMissionId,
 } from "./mission-id.js";
 export { DEFAULT_MODEL_ID, DEFAULT_VISION_MODEL_ID } from "./models.js";
+export {
+	capForConfigWrite,
+	DEFAULT_MISSION_MAX_COST_USD,
+	SpendCapCeilingExceededError,
+} from "./spend.js";
 export * from "./stored/index.js";
 export type { TeamFileInput } from "./team-files.js";
 export {

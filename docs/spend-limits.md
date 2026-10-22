@@ -12,6 +12,11 @@ protects against whoever can change the layer inside it.
 | **Mission cap** | The mission's total spend: when reached, every agent pauses | The owner, and the mission copilot's own tools — never above the ceiling | Cockpit → Limits → "Mission spend cap" (new missions start at $25) |
 | **Per-agent limits** | One agent's spend or calls per turn and lifetime; soft limits alert, hard limits stop the turn | The owner, the mission copilot | Cockpit → Limits → per agent |
 
+Every mission always has a cap. A config save that leaves the cap out keeps the one already
+stored, a mission that never had one gets the $25 default before any machine of it starts, and a
+daemon that somehow finds no cap enforces the default anyway. No config save can set the cap
+above the mission's ceiling.
+
 ## Why the outer layers are restricted
 
 - **The mission ceiling exists because of the mission copilot.** The copilot is an LLM that reads

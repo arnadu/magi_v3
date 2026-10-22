@@ -106,14 +106,28 @@ describe("provisionTracked", () => {
 	it("still returns the machine when the segment write fails, logging the failure", async () => {
 		const err = vi.spyOn(console, "error").mockImplementation(() => {});
 		const { db } = fakeSegmentsDb();
-		vi.spyOn(db, "collection").mockImplementation(() => {
-			throw new Error("mongo down");
-		});
+		const realCollection = db.collection.bind(db);
+		vi.spyOn(db, "collection").mockImplementation(((name: string) => {
+			if (name === "machineSegments") throw new Error("mongo down");
+			return realCollection(name);
+		}) as typeof db.collection);
 		await expect(provisionTracked(db, "m1", {})).resolves.toEqual(handle);
 		expect(err).toHaveBeenCalledWith(
 			expect.stringContaining('missionId: "m1"'),
 		);
 		err.mockRestore();
+	});
+
+	it("never starts a machine when the mission's spend cap cannot be ensured (SCH-4)", async () => {
+		const { db } = fakeSegmentsDb();
+		const realCollection = db.collection.bind(db);
+		vi.spyOn(db, "collection").mockImplementation(((name: string) => {
+			if (name === "missions") throw new Error("mongo down");
+			return realCollection(name);
+		}) as typeof db.collection);
+		provision.mockClear();
+		await expect(provisionTracked(db, "m1", {})).rejects.toThrow("mongo down");
+		expect(provision).not.toHaveBeenCalled();
 	});
 
 	it("replaces a stale open segment instead of leaving two open", async () => {

@@ -240,7 +240,7 @@ async function main(): Promise<void> {
 				step: flags.has("--step"),
 				onAgentMessage: (agentId, msg) => {
 					logMessage(msg, agentId);
-					if (maxCostUsd !== null && msg.role === "assistant") {
+					if (msg.role === "assistant") {
 						void stopWhenCapReached(
 							statsCollector,
 							teamConfig.mission.id,

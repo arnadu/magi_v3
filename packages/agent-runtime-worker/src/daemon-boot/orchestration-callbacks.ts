@@ -121,44 +121,42 @@ export async function enforceMissionCap(
 			ctx.missionConfigRepo.readTeamConfig(ctx.missionId),
 		]);
 		const effectiveCap = liveConfig?.mission.maxCostUsd ?? ctx.maxCostUsd;
-		if (effectiveCap !== null) {
-			const missionTotal = missionLifetimeCostUsd(snapshot);
-			if (missionTotal >= effectiveCap) {
-				await ctx.monitor.notifyCostPause(missionTotal, effectiveCap);
-				const now = Date.now();
-				if (now - state.alertedAt < CAP_ALERT_DEDUPE_MS) return;
-				state.alertedAt = now;
-				// This path previously never woke the copilot or the
-				// operator (issue #41) — only a dashboard-only SSE event,
-				// unlike the per-agent path above. A silent mission-wide
-				// pause cost 5 days of unattended operation in production.
-				const pauseBody = `Mission-wide spend cap reached: $${missionTotal.toFixed(2)} of $${effectiveCap.toFixed(2)}. All agents are paused until the cap is raised or cleared.`;
-				ctx.anomalyRecorder
-					.record({
-						missionId: ctx.missionId,
-						category: "limit-breach",
-						severity: "hard",
-						message: pauseBody,
-					})
-					.catch((e: Error) =>
-						console.error(
-							`[daemon] failed to record mission-cap anomaly { missionId: "${ctx.missionId}" }: ${e.message}`,
-						),
-					);
-				ctx.mailboxRepo
-					.post({
-						missionId: ctx.missionId,
-						from: "system",
-						to: ["user"],
-						subject: "Mission spend cap reached",
-						body: pauseBody,
-					})
-					.catch((e: Error) =>
-						console.error(
-							`[daemon] failed to notify operator of mission-cap pause { missionId: "${ctx.missionId}" }: ${e.message}`,
-						),
-					);
-			}
+		const missionTotal = missionLifetimeCostUsd(snapshot);
+		if (missionTotal >= effectiveCap) {
+			await ctx.monitor.notifyCostPause(missionTotal, effectiveCap);
+			const now = Date.now();
+			if (now - state.alertedAt < CAP_ALERT_DEDUPE_MS) return;
+			state.alertedAt = now;
+			// This path previously never woke the copilot or the
+			// operator (issue #41) — only a dashboard-only SSE event,
+			// unlike the per-agent path above. A silent mission-wide
+			// pause cost 5 days of unattended operation in production.
+			const pauseBody = `Mission-wide spend cap reached: $${missionTotal.toFixed(2)} of $${effectiveCap.toFixed(2)}. All agents are paused until the cap is raised or cleared.`;
+			ctx.anomalyRecorder
+				.record({
+					missionId: ctx.missionId,
+					category: "limit-breach",
+					severity: "hard",
+					message: pauseBody,
+				})
+				.catch((e: Error) =>
+					console.error(
+						`[daemon] failed to record mission-cap anomaly { missionId: "${ctx.missionId}" }: ${e.message}`,
+					),
+				);
+			ctx.mailboxRepo
+				.post({
+					missionId: ctx.missionId,
+					from: "system",
+					to: ["user"],
+					subject: "Mission spend cap reached",
+					body: pauseBody,
+				})
+				.catch((e: Error) =>
+					console.error(
+						`[daemon] failed to notify operator of mission-cap pause { missionId: "${ctx.missionId}" }: ${e.message}`,
+					),
+				);
 		}
 		state.consecutiveFailures = 0;
 	} catch (e) {
@@ -171,7 +169,7 @@ export async function enforceMissionCap(
 			// spending until an operator (or a recovered Mongo) says
 			// otherwise — the same pause the cap itself triggers.
 			await ctx.monitor
-				.notifyCostPause(Number.NaN, ctx.maxCostUsd ?? Number.NaN)
+				.notifyCostPause(Number.NaN, ctx.maxCostUsd)
 				.catch((err: unknown) =>
 					console.error(
 						`[daemon] cost-pause notification failed { missionId: ${ctx.missionId}, error: ${(err as Error).message} } — the dashboard may not show the pause`,

@@ -4,6 +4,10 @@
  * (machine-segments.ts, ADR-0031 Decision 1). A unit test guards that no
  * other module imports the raw fly-machines lifecycle functions.
  *
+ * Before any machine starts, the mission is given the default spend cap if it
+ * has none (`ensureMissionSpendCap`, SCH-4) — not best-effort: a machine is
+ * never started uncapped.
+ *
  * Segment bookkeeping is best-effort: once the machine operation has
  * succeeded, failing the caller because a bookkeeping write failed would
  * orphan a machine that is really running, so a write failure is logged and
@@ -29,6 +33,7 @@ import {
 	openSegment,
 } from "./machine-segments.js";
 import { DEFAULT_MACHINE, type MachineShape } from "./machine-shapes.js";
+import { ensureMissionSpendCap } from "./spend-policy.js";
 
 async function bestEffort(
 	what: string,
@@ -59,6 +64,7 @@ export async function provisionTracked(
 	opts: ProvisionOptions,
 	tracking: ProvisionTracking = {},
 ): Promise<MachineHandle> {
+	await ensureMissionSpendCap(db, missionId);
 	const handle = await provisionMission(missionId, opts);
 	const shape: MachineShape = {
 		cpuKind: opts.cpuKind ?? DEFAULT_MACHINE.cpuKind,
@@ -100,6 +106,7 @@ export async function resumeTracked(
 		mission?: { memoryMb?: number; cpus?: number };
 	},
 ): Promise<void> {
+	await ensureMissionSpendCap(db, mission.missionId);
 	await resumeMission(mission.machineId);
 	await bestEffort("resume", mission.missionId, () =>
 		openSegment(db, {

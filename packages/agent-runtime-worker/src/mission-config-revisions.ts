@@ -24,6 +24,7 @@
 import {
 	type AgentConfig,
 	COLLECTION_NAMES,
+	capForConfigWrite,
 	type Limits,
 	storedCollection,
 	type TeamConfig,
@@ -78,6 +79,20 @@ export function createMongoMissionConfigWriter(db: Db): MissionConfigWriter {
 	return {
 		async write(missionId, snapshot, by) {
 			const now = new Date();
+			// Every config save funnels through here, so here is where a mission
+			// can never lose its cap or exceed its ceiling (SCH-4): a snapshot
+			// without a cap keeps the stored one.
+			const stored = await missions.findOne(
+				{ missionId },
+				{ projection: { "mission.maxCostUsd": 1, maxCostCeilingUsd: 1 } },
+			);
+			const mission = {
+				...snapshot.mission,
+				maxCostUsd: capForConfigWrite(snapshot.mission.maxCostUsd, {
+					capUsd: stored?.mission?.maxCostUsd,
+					ceilingUsd: stored?.maxCostCeilingUsd,
+				}),
+			};
 			// write() always receives the complete desired state (every caller
 			// re-validates a full TeamConfig before calling this), so an
 			// undefined missionCopilotLimits means "no limits configured," not
@@ -89,7 +104,7 @@ export function createMongoMissionConfigWriter(db: Db): MissionConfigWriter {
 				{ missionId },
 				{
 					$set: {
-						mission: snapshot.mission,
+						mission,
 						agents: snapshot.agents,
 						updatedAt: now,
 						...(snapshot.missionCopilotLimits !== undefined
@@ -105,7 +120,7 @@ export function createMongoMissionConfigWriter(db: Db): MissionConfigWriter {
 				missionId,
 				at: now,
 				by,
-				mission: snapshot.mission,
+				mission,
 				agents: snapshot.agents,
 				missionCopilotLimits: snapshot.missionCopilotLimits,
 			});

@@ -27,7 +27,7 @@ T9-escape-hatches ^packages/agent-runtime-worker/src/models\.ts:[0-9]+:.*getBuil
 T9-escape-hatches ^packages/agent-runtime-worker/src/daemon-boot/log-tee\.ts: # replacing process.stdout/stderr.write, whose overloads a wrapper cannot restate (remyh, 2026-10-19)
 T9-escape-hatches ^packages/agent-runtime-worker/src/document-office\.ts:[0-9]+:.*(ArrayBuffer|mammoth) # library typings: exceljs takes a Buffer at runtime, mammoth omits convertToMarkdown (remyh, 2026-10-19)
 T9-escape-hatches ^packages/agent-runtime-worker/src/objectives/repository\.ts:[0-9]+:.*as[[:space:]]unknown[[:space:]]as[[:space:]]E # one events collection, typed per kind by the caller (remyh, 2026-10-19)
-T10-optional-cap ^packages/agent-config/src/loader\.ts:[0-9]+:[[:space:]]*maxCostUsd: # the ADR-0034 default is applied at every creation site; optional so stored/legacy configs still parse (remyh, 2026-10-19)
+T10-optional-cap ^packages/agent-config/src/loader\.ts:[0-9]+:[[:space:]]*maxCostUsd: # optional only in the input schema: every config write keeps or sets a cap (capForConfigWrite), every machine start ensures one (ensureMissionSpendCap), and the daemon falls back to the default — SCH-4 (remyh, 2026-10-22)
 T11-comment-history maxcount=107 # INV-9: shrinks as comments are touched; no bulk rewrite (remyh, 2026-10-16)
 # T12: no entries — the control plane writes mail through mailbox-writer.ts (postMailbox) and the
 # daemon through MailboxRepository.post(); the repository's own insert is the one sanctioned site.

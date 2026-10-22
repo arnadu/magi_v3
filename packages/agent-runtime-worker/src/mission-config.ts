@@ -15,6 +15,7 @@
 
 import {
 	parseTeamConfig,
+	SpendCapCeilingExceededError,
 	storedCollection,
 	type TeamConfig,
 } from "@magi/agent-config";
@@ -30,17 +31,7 @@ import {
  * generic write failure so callers (monitor-routes/budget.ts) can return a
  * 403 with a clear reason instead of a bare 500.
  */
-export class SpendCapCeilingExceededError extends Error {
-	constructor(
-		public readonly requestedUsd: number,
-		public readonly ceilingUsd: number,
-	) {
-		super(
-			`Requested cap $${requestedUsd.toFixed(2)} exceeds this mission's spend-cap ceiling of $${ceilingUsd.toFixed(2)} — raise the ceiling first via the cockpit Limits panel (an operator-only action no mission tool can perform).`,
-		);
-		this.name = "SpendCapCeilingExceededError";
-	}
-}
+export { SpendCapCeilingExceededError };
 
 export interface MissionConfigRepository {
 	/**

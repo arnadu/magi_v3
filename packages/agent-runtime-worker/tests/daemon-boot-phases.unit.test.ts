@@ -1,3 +1,4 @@
+import { DEFAULT_MISSION_MAX_COST_USD } from "@magi/agent-config";
 /**
  * daemon.ts::main() bootstrap phases, extracted one at a time as part of the
  * Sprint 28c decomposition (issue #33). One describe block per phase, added
@@ -1390,10 +1391,11 @@ describe("resolveUsageAndCap", () => {
 		expect(maxCostUsd).toBe(17.5);
 	});
 
-	it("returns null when neither is configured", () => {
+	it("falls back to the platform default when neither is configured — never uncapped (SCH-4)", () => {
 		delete process.env.MAX_COST_USD;
+		vi.spyOn(console, "warn").mockImplementation(() => {});
 		const { maxCostUsd } = resolveUsageAndCap({ teamConfig: teamConfigWith() });
-		expect(maxCostUsd).toBeNull();
+		expect(maxCostUsd).toBe(DEFAULT_MISSION_MAX_COST_USD);
 	});
 
 	it("exits with code 1 on a non-positive MAX_COST_USD", () => {

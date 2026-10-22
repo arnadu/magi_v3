@@ -4,7 +4,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AgentConfig, TeamConfig } from "@magi/agent-config";
+import {
+	type AgentConfig,
+	DEFAULT_MISSION_MAX_COST_USD,
+	SpendCapCeilingExceededError,
+	type TeamConfig,
+} from "@magi/agent-config";
 import type { Db, MongoClient } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMongoMissionConfigWriter } from "../src/mission-config-revisions.js";
@@ -62,8 +67,60 @@ describe("createMongoMissionConfigWriter against real MongoDB", () => {
 		);
 
 		const doc = await db.collection("missions").findOne({ missionId });
-		expect(doc?.mission).toEqual(nextMission);
+		// The seeded mission has no cap, so the write gives it the default (SCH-4).
+		expect(doc?.mission).toEqual({
+			...nextMission,
+			maxCostUsd: DEFAULT_MISSION_MAX_COST_USD,
+		});
 		expect(doc?.updatedAt).toBeInstanceOf(Date);
+	});
+
+	it("never removes a cap: a snapshot without one keeps the stored cap (SCH-4)", async () => {
+		const writer = createMongoMissionConfigWriter(db);
+		await db
+			.collection("missions")
+			.updateOne({ missionId }, { $set: { "mission.maxCostUsd": 12 } });
+		await writer.write(
+			missionId,
+			{
+				mission: { id: missionId, name: "No cap in this save" },
+				agents: baseAgents(),
+			},
+			"user",
+		);
+		const doc = await db.collection("missions").findOne({ missionId });
+		expect(doc?.mission.maxCostUsd).toBe(12);
+		const rev = await db
+			.collection("missionConfigRevisions")
+			.findOne({ missionId }, { sort: { at: -1 } });
+		expect(rev?.mission.maxCostUsd).toBe(12);
+	});
+
+	it("refuses to raise the cap above the mission's ceiling, writing nothing", async () => {
+		const writer = createMongoMissionConfigWriter(db);
+		await db
+			.collection("missions")
+			.updateOne(
+				{ missionId },
+				{ $set: { "mission.maxCostUsd": 20, maxCostCeilingUsd: 100 } },
+			);
+		await expect(
+			writer.write(
+				missionId,
+				{
+					mission: { id: missionId, name: "x", maxCostUsd: 500 },
+					agents: baseAgents(),
+				},
+				"user",
+			),
+		).rejects.toThrow(SpendCapCeilingExceededError);
+		const doc = await db.collection("missions").findOne({ missionId });
+		expect(doc?.mission.maxCostUsd).toBe(20);
+		expect(
+			await db
+				.collection("missionConfigRevisions")
+				.countDocuments({ missionId }),
+		).toBe(0);
 	});
 
 	it("appends exactly one missionConfigRevisions doc per write, in order", async () => {

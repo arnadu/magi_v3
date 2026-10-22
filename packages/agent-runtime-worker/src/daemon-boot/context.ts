@@ -45,7 +45,8 @@ export interface BootContext {
 	signal: AbortSignal;
 	pidFile: string;
 	usageAccumulator: UsageAccumulator;
-	maxCostUsd: number | null;
+	/** Boot-time cap fallback; always set (mission config, MAX_COST_USD, or the default). */
+	maxCostUsd: number;
 	monitorPort: number;
 	toolPort: number;
 	sharedDir: string;

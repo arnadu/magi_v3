@@ -1,11 +1,14 @@
+import { DEFAULT_MISSION_MAX_COST_USD } from "@magi/agent-config";
 import { describe, expect, it } from "vitest";
 import { resolveCliSpendCap, stopWhenCapReached } from "../src/cli-cap.js";
 
 describe("resolveCliSpendCap", () => {
-	it("prefers the mission's cap, then MAX_COST_USD, else none", () => {
+	it("prefers the mission's cap, then MAX_COST_USD, else the default — never none (SCH-4)", () => {
 		expect(resolveCliSpendCap(12, { MAX_COST_USD: "5" })).toBe(12);
 		expect(resolveCliSpendCap(undefined, { MAX_COST_USD: "5" })).toBe(5);
-		expect(resolveCliSpendCap(undefined, {})).toBeNull();
+		expect(resolveCliSpendCap(undefined, {})).toBe(
+			DEFAULT_MISSION_MAX_COST_USD,
+		);
 	});
 	it("refuses a malformed MAX_COST_USD instead of running uncapped", () => {
 		expect(() => resolveCliSpendCap(undefined, { MAX_COST_USD: "-3" })).toThrow(
