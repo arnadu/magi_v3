@@ -658,12 +658,13 @@ fly logs -a magi-missions-dev -i <id>    # specific machine
 
 ```bash
 # Point MONGODB_URI at the cloud database, then:
-MISSION_ID=hw-001 TEAM_CONFIG=$PWD/config/teams/test/hello-world.yaml \
+TEAM_CONFIG=$PWD/config/teams/test/hello-world.yaml \
   npm run cli:tail -w packages/agent-runtime-worker
 # Shows messages to user as they arrive
 
 # --all flag shows full inter-agent traffic:
-MISSION_ID=hw-001 ... npm run cli:tail -- --all
+TEAM_CONFIG=$PWD/config/teams/test/hello-world.yaml \
+  npm run cli:tail -w packages/agent-runtime-worker -- --all
 ```
 
 ### LLM call audit

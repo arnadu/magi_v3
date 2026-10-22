@@ -44,7 +44,7 @@ try {
 		`[cli:stop] Sent SIGTERM to daemon PID ${pid} (mission: ${missionId})`,
 	);
 	console.log(
-		`[cli:stop] Watch shutdown: MISSION_ID=${missionId} npm run cli:tail`,
+		"[cli:stop] Watch shutdown: TEAM_CONFIG=<this mission's team yaml> npm run cli:tail",
 	);
 } catch (e) {
 	console.error(`[cli:stop] Could not stop daemon: ${(e as Error).message}`);

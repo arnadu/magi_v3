@@ -90,13 +90,13 @@ Runs a task to completion and exits. All agent activity is logged to stdout.
 
 ```bash
 cd packages/agent-runtime-worker
-TEAM_CONFIG=../../config/teams/word-count.yaml npm run cli -- "count the words in greeting.txt"
+TEAM_CONFIG=../../config/teams/test/word-count.yaml npm run cli -- "count the words in greeting.txt"
 ```
 
 Pause after each agent turn to inspect state:
 
 ```bash
-TEAM_CONFIG=../../config/teams/word-count.yaml npm run cli -- "count the words in greeting.txt" --step
+TEAM_CONFIG=../../config/teams/test/word-count.yaml npm run cli -- "count the words in greeting.txt" --step
 ```
 
 ---
@@ -109,13 +109,13 @@ TEAM_CONFIG=../../config/teams/word-count.yaml npm run cli -- "count the words i
 
 ```bash
 cd packages/agent-runtime-worker
-TEAM_CONFIG=../../config/teams/word-count.yaml npm run cli:tail
+TEAM_CONFIG=../../config/teams/test/word-count.yaml npm run cli:tail
 ```
 
 **All inter-agent traffic (Lead ↔ Worker, tool calls, etc.):**
 
 ```bash
-TEAM_CONFIG=../../config/teams/word-count.yaml npm run cli:tail -- --all
+TEAM_CONFIG=../../config/teams/test/word-count.yaml npm run cli:tail -- --all
 ```
 
 Press `Ctrl+C` to stop tailing.
@@ -167,10 +167,10 @@ TEAM_CONFIG=../../config/teams/equity-research.yaml npm run cli:tail -- --all # 
 
 ```bash
 # From any terminal (daemon keeps running in Terminal 1):
-TEAM_CONFIG=../../config/teams/equity-research.yaml npm run cli:stop
+MISSION_ID=<mission id> npm run cli:stop
 ```
 
-This sends SIGTERM to the daemon process, which finishes any in-progress agent turn, closes the MongoDB connection, writes a final usage summary, and removes the PID file cleanly.
+This sends SIGTERM to the daemon process. It aborts any in-progress agent turn (the turn is recorded as aborted; its unread mail is not replayed), closes the MongoDB connection and removes the PID file; if shutdown takes longer than 30 s the daemon exits anyway.
 
 **Dashboard Kill button** also works — the ■ Kill button in the monitor UI (http://localhost:4000) shows a confirmation dialog and then sends the same shutdown signal.
 
@@ -196,8 +196,8 @@ in Sprint 28f, F-052). The cockpit, served by the control plane, is the only UI;
 development without a control plane, use the CLI and the monitor routes directly:
 
 ```bash
-MISSION_ID=... npm run cli:tail -w packages/agent-runtime-worker      # follow the mailbox
-MISSION_ID=... npm run cli:post -w packages/agent-runtime-worker -- --to lead "message"
+TEAM_CONFIG=$PWD/config/teams/<team>.yaml npm run cli:tail -w packages/agent-runtime-worker   # follow the mailbox
+TEAM_CONFIG=$PWD/config/teams/<team>.yaml npm run cli:post -w packages/agent-runtime-worker -- --to lead "message"
 curl -s localhost:4000/status | jq .                                   # agents, cost, context usage
 curl -s localhost:4000/team | jq .
 curl -sN localhost:4000/events                                         # live SSE stream
@@ -214,9 +214,9 @@ per-mission `x-monitor-token`, which the proxy injects.
 
 | Config | Agents | Purpose |
 |--------|--------|---------|
-| `config/teams/word-count.yaml` | lead, worker | Dev smoke-test: count words in a file |
-| `config/teams/fetch-share.yaml` | lead, analyst | Fetch a PDF and inspect page images |
-| `config/teams/skills-test.yaml` | lead, worker | Skill creation and git-provenance workflow |
+| `config/teams/test/word-count.yaml` | lead, worker | Dev smoke-test: count words in a file |
+| `config/teams/test/fetch-share.yaml` | lead, analyst | Fetch a PDF and inspect page images |
+| `config/teams/test/skills-test.yaml` | lead, worker | Skill creation and git-provenance workflow |
 
 ---
 

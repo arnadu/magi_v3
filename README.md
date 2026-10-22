@@ -313,22 +313,22 @@ Worker commands live in the `agent-runtime-worker` package — run them with
 
 ```bash
 # Single-turn CLI:
-TEAM_CONFIG=config/teams/test/word-count.yaml \
+TEAM_CONFIG=$PWD/config/teams/test/word-count.yaml \
   npm run cli -w packages/agent-runtime-worker -- "count the words"
 
 # Persistent daemon (waits for messages, runs indefinitely):
-TEAM_CONFIG=config/teams/equity-research.yaml npm run daemon -w packages/agent-runtime-worker
+TEAM_CONFIG=$PWD/config/teams/equity-research.yaml npm run daemon -w packages/agent-runtime-worker
 # Dashboard: http://localhost:4000 — click ▶ Start
 
 # Post a message to a running daemon:
-TEAM_CONFIG=config/teams/equity-research.yaml \
+TEAM_CONFIG=$PWD/config/teams/equity-research.yaml \
   npm run cli:post -w packages/agent-runtime-worker -- --to lead-analyst "What is NVDA's current recommendation?"
 
 # Watch replies:
-TEAM_CONFIG=config/teams/equity-research.yaml npm run cli:tail -w packages/agent-runtime-worker
+TEAM_CONFIG=$PWD/config/teams/equity-research.yaml npm run cli:tail -w packages/agent-runtime-worker
 
 # LLM usage / cost report:
-TEAM_CONFIG=config/teams/equity-research.yaml npm run cli:usage -w packages/agent-runtime-worker
+TEAM_CONFIG=$PWD/config/teams/equity-research.yaml npm run cli:usage -w packages/agent-runtime-worker
 ```
 
 **Tests:**

@@ -10,18 +10,22 @@ Loaded on top of the root `CLAUDE.md` when working in this package.
 npm run build -w packages/agent-runtime-worker          # build first — the daemon, tool executor and PDF worker run from dist/
 
 # Orchestration loop from the CLI with a team config
-TEAM_CONFIG=config/teams/test/word-count.yaml npm run cli -w packages/agent-runtime-worker -- "count the words" [--step]
+TEAM_CONFIG=$PWD/config/teams/test/word-count.yaml npm run cli -w packages/agent-runtime-worker -- "count the words" [--step]
 
 # Daemon lifecycle
 TEAM_CONFIG=$PWD/config/teams/... npm run daemon -w packages/agent-runtime-worker
 TEAM_CONFIG=$PWD/config/teams/... npm run cli:reset -w packages/agent-runtime-worker -- --yes
-MISSION_ID=... npm run cli:post -w packages/agent-runtime-worker -- --to lead "message"
-MISSION_ID=... npm run cli:tail -w packages/agent-runtime-worker
+TEAM_CONFIG=$PWD/config/teams/... npm run cli:post -w packages/agent-runtime-worker -- --to lead "message"
+TEAM_CONFIG=$PWD/config/teams/... npm run cli:tail -w packages/agent-runtime-worker
 MISSION_ID=... npm run cli:stop -w packages/agent-runtime-worker
 TEAM_CONFIG=<yaml> MONGODB_URI=<uri> npm run cli:usage -w packages/agent-runtime-worker
 
 npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit   # typecheck without building
 ```
+
+`npm run -w` runs in the package directory, so a relative `TEAM_CONFIG` resolves from there:
+use `$PWD/…` from the repo root. `cli:post`/`cli:tail` take the mission id from the team
+config; `cli:stop` takes `MISSION_ID`.
 
 The daemon reads its config from MongoDB when `MISSION_ID` is set (control-plane missions,
 ADR-0021) or from `TEAM_CONFIG` (local).

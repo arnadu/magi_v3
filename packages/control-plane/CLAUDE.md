@@ -8,7 +8,8 @@ root `CLAUDE.md` when working in this package.
 ## Commands
 
 ```bash
-flyctl deploy --config fly.control-dev.toml      # control plane only
+# Dev deploys only through CI (push to main): the cockpit bundle in public/ is built there,
+# so a local `flyctl deploy` of the control plane ships a stale or missing cockpit.
 bash scripts/deploy-missions.sh                  # execution plane: builds the image and pins
                                                  # FLY_MISSIONS_IMAGE so new missions use it —
                                                  # never a bare `flyctl deploy` of the missions app

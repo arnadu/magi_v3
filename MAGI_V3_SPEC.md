@@ -650,9 +650,11 @@ $AGENT_WORKDIR/
       _team/                                   team-specific skills
       mission/                                 mission-created skills (agent-authored)
     jobs/
-      pending/   running/   status/            background job state
+      pending/   status/                       job submissions; a mirror of finished jobs' status
     data-factory/                              data factory outputs (catalog, prices, news)
-    (git repo)                                 entire sharedDir is a git repository
+  missions/{missionId}/shared.git/             ← the shared folder's git history: beside shared/,
+                                               daemon-owned, agents may read it (F-034)
+  missions/{missionId}/jobs-private/           ← daemon-private job state (queue, running, failed)
 ```
 
 ### Provisioning
@@ -660,7 +662,9 @@ $AGENT_WORKDIR/
 `WorkspaceManager.provision(agents, missionId)` is called once at daemon startup:
 1. Creates `sharedDir` and each agent's private `workdir`.
 2. Copies platform and team skill files from `packages/skills/` into `sharedDir/skills/`.
-3. Runs `git init` in `sharedDir` (the `git-provenance` skill teaches agents the commit convention).
+3. Creates `shared.git` beside `sharedDir` (`ensureSharedGitDir`); every git call goes through
+   `safe-git.ts` with explicit `--git-dir`/`--work-tree`, and the daemon commits the shared folder
+   at the end of every turn (agents never commit; see the `git-provenance` skill).
 4. Runs `setfacl` to grant each agent's `linuxUser` read/write access to `sharedDir` and read/write
    access to their own `workdir` only.
 
@@ -706,16 +710,13 @@ agents:
       ...
     initialMentalMap: |
       ...
-
-schedules:
-  - agent: lead-analyst
-    cron: "30 5 * * 1-5"     # 5:30 AM weekdays UTC
-    subject: "Daily Session"
-    body: "Run the daily gold market brief."
 ```
 
 The Zod schema validates required fields (`id`, `supervisor`, `systemPrompt`, `initialMentalMap`)
-and rejects configs with duplicate agent IDs or unknown supervisor references.
+and rejects configs with duplicate agent IDs or unknown supervisor references. Unknown top-level
+keys are dropped, not rejected — in particular there is no `schedules:` block: recurring wakeups
+are files the agents write in `shared/schedules/` (the `schedule-task` skill, ADR-0033 §3), or
+schedules the copilots create.
 
 ---
 
