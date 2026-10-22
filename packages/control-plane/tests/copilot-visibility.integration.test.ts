@@ -54,7 +54,7 @@ describe("copilot visibility backend", () => {
 	});
 
 	describe("checkCopilotSpendCap", () => {
-		it("allows the request when no cap is set", async () => {
+		it("allows the request under the default cap when the user set none", async () => {
 			expect(await checkCopilotSpendCap(db, uid)).toBeNull();
 		});
 

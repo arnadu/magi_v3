@@ -267,7 +267,11 @@ describe("every shipped template sets a spend cap (TPL5)", () => {
 		const { readdirSync, readFileSync } = await import("node:fs");
 		const { join } = await import("node:path");
 		const dir = join(import.meta.dirname, "..", "..", "..", "config", "teams");
-		const files = readdirSync(dir).filter((f) => f.endsWith(".yaml"));
+		// copilot.yaml is not a mission template (templates.ts skips it); the
+		// copilot's cap is per user, in copilot-spend.ts.
+		const files = readdirSync(dir).filter(
+			(f) => f.endsWith(".yaml") && f !== "copilot.yaml",
+		);
 		expect(files.length).toBeGreaterThan(0);
 		for (const f of files) {
 			expect(readFileSync(join(dir, f), "utf8"), f).toMatch(

@@ -19,23 +19,20 @@ import {
 } from "@magi/agent-config";
 import {
 	type AgentIdentity,
-	type AgentRunContext,
-	type AssistantMessage,
 	createMongoAgentStatsRepository,
 	createMongoConversationRepository,
 	createMongoLlmCallLogRepository,
 	createMongoMailboxRepository,
 	failureBackoffMs,
 	type LlmCallLogRepository,
-	type Message,
 	resolveModel,
-	runAgent,
 	StatsCollector,
 } from "@magi/agent-runtime-worker";
 import type { Collection, Db } from "mongodb";
 import { checkCopilotSpendCap } from "./copilot-spend.js";
 import type { PendingActionsStore } from "./copilot-tools.js";
 import { createCopilotTools } from "./copilot-tools.js";
+import { type CopilotTurnDeps, runCopilotTurn } from "./copilot-turn.js";
 import { lifetimeUsage } from "./usage-queries.js";
 
 // ---------------------------------------------------------------------------
@@ -283,6 +280,30 @@ async function runWatchLoop(
 
 	console.log("[copilot-daemon] Ready — watching for operator messages");
 
+	const userId = missionId.startsWith("copilot-")
+		? missionId.slice("copilot-".length)
+		: missionId;
+	const turnDeps: CopilotTurnDeps = {
+		db,
+		missionId,
+		userId,
+		agentId,
+		pushEvent,
+		ctx: {
+			model,
+			teamConfig: effectiveTeamConfig,
+			mailboxRepo,
+			conversationRepo,
+			llmCallLog,
+			statsCollector,
+			identity,
+			onUserMessage: (msg) => pushEvent("copilot-msg", msg),
+			onMentalMapUpdate: (_agentId, html) =>
+				pushEvent("copilot-mental-map", html),
+			additionalTools: createCopilotTools(db, pushEvent, pending, userId),
+		},
+	};
+
 	let readySignaled = false;
 	let failedTurns = 0;
 
@@ -344,52 +365,27 @@ async function runWatchLoop(
 			await markTurnRead(mailboxRepo, agentId, messages);
 			continue;
 		}
-		console.log(
-			`[copilot-daemon] Starting turn (${messages.length} message(s))`,
-		);
+		busyRef.current = true;
 		try {
-			const ctx: AgentRunContext = {
-				model,
-				teamConfig: effectiveTeamConfig,
-				mailboxRepo,
-				conversationRepo,
-				llmCallLog,
-				statsCollector,
-				identity,
-				onUserMessage: (msg) => pushEvent("copilot-msg", msg),
-				onMessage: async (msg: Message) => {
-					pushEvent("copilot-loop-msg", msg);
-					// Surface LLM errors (budget exhausted, overloaded, etc.) to the
-					// Fly log and the copilot chat UI — these would otherwise be silent.
-					if (msg.role === "assistant") {
-						const am = msg as AssistantMessage;
-						if (am.stopReason === "error") {
-							const errorMessage = am.errorMessage ?? "LLM error (no details)";
-							console.error(`[copilot-daemon] LLM error: ${errorMessage}`);
-							pushEvent("copilot-error", { errorMessage });
-						}
-					}
-				},
-				onMentalMapUpdate: (_agentId, html) =>
-					pushEvent("copilot-mental-map", html),
-				additionalTools: createCopilotTools(
-					db,
-					pushEvent,
-					pending,
-					missionId.startsWith("copilot-")
-						? missionId.slice("copilot-".length)
-						: missionId,
-				),
-			};
-			busyRef.current = true;
-			await runAgent(agentId, messages, ctx, signal);
+			await runCopilotTurn(turnDeps, messages, signal);
 			await markTurnRead(mailboxRepo, agentId, messages);
 			failedTurns = 0;
-			console.log("[copilot-daemon] Turn complete");
 		} catch (e) {
 			if (!signal.aborted) {
 				failedTurns++;
-				await afterFailedTurn(failedTurns, e, pushEvent, signal);
+				if (failedTurns >= MAX_ATTEMPTS_PER_BATCH) {
+					// A batch that keeps failing is set aside, not retried forever (CST-3).
+					await markTurnRead(mailboxRepo, agentId, messages);
+					pushEvent("copilot-error", {
+						errorMessage: `The copilot could not process ${messages.length} message(s) after ${failedTurns} attempts and set them aside: ${(e as Error).message}`,
+					});
+					console.error(
+						`[copilot-daemon] Gave up on a batch after ${failedTurns} failed turns { missionId: "${missionId}", messages: ${messages.length}, error: "${(e as Error).message}" } — marked read`,
+					);
+					failedTurns = 0;
+				} else {
+					await afterFailedTurn(failedTurns, e, pushEvent, signal);
+				}
 			}
 		} finally {
 			busyRef.current = false;
@@ -404,6 +400,9 @@ async function runWatchLoop(
 		}
 	}
 }
+
+/** Consecutive failed turns on one batch before it is marked read and reported. */
+const MAX_ATTEMPTS_PER_BATCH = 3;
 
 // ---------------------------------------------------------------------------
 // Helpers

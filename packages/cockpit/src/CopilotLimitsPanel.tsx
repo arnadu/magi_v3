@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { fetchCopilotLimits, saveCopilotLimits } from "./data";
+import {
+	type CopilotLimits,
+	fetchCopilotLimits,
+	saveCopilotLimits,
+} from "./data";
 
 const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
 
@@ -22,8 +26,7 @@ function Minibar({ pct, color }: { pct: number; color: string }) {
 }
 
 export function CopilotLimitsPanel() {
-	const [capUsd, setCapUsd] = useState<number | null>(null);
-	const [spentUsd, setSpentUsd] = useState<number | null>(null);
+	const [limits, setLimits] = useState<CopilotLimits | null>(null);
 	const [draft, setDraft] = useState<number | undefined>(undefined);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -32,29 +35,26 @@ export function CopilotLimitsPanel() {
 	function load() {
 		fetchCopilotLimits().then(
 			(d) => {
-				setCapUsd(d.capUsd);
-				setSpentUsd(d.spentUsd);
-				setDraft(d.capUsd ?? undefined);
+				setLimits(d);
+				setDraft(d.capUsd);
 			},
-			() => {
-				setCapUsd(null);
-				setSpentUsd(null);
+			(e: Error) => {
+				setLimits(null);
+				setError(`Could not load the copilot's limits: ${e.message}`);
 			},
 		);
 	}
 
 	useEffect(load, []);
 
-	async function save(override?: number | null) {
-		const value = override === undefined ? (draft ?? null) : override;
+	/** A number sets the cap; null resets it to the default — the copilot always has a cap. */
+	async function save(value: number | null) {
 		setSaving(true);
 		setError(null);
 		setNote(null);
 		try {
 			await saveCopilotLimits(value);
-			setNote(
-				value ? "Saved." : "Cap cleared — the copilot can spend unbounded.",
-			);
+			setNote(value === null ? "Reset to the default cap." : "Saved.");
 			load();
 		} catch (e) {
 			setError((e as Error).message);
@@ -63,25 +63,31 @@ export function CopilotLimitsPanel() {
 		}
 	}
 
-	const bar =
-		spentUsd != null && capUsd != null ? pctColor(spentUsd, capUsd) : null;
+	const bar = limits ? pctColor(limits.spentUsd, limits.capUsd) : null;
+	const draftValid = draft !== undefined && Number.isFinite(draft) && draft > 0;
 
 	return (
 		<div className="trace-card limits-card">
 			<div className="trace-card-head">
 				<h3 className="trace-card-title">Copilot spend cap</h3>
 			</div>
-			{spentUsd != null && capUsd != null ? (
+			{limits ? (
 				<p>
-					{fmtUsd(spentUsd)} / {fmtUsd(capUsd)}
+					{fmtUsd(limits.spentUsd)} / {fmtUsd(limits.capUsd)}
+					{limits.isDefault && <span className="mut"> (default)</span>}
 					{bar && <Minibar pct={bar.pct} color={bar.color} />}
 				</p>
-			) : spentUsd != null ? (
-				<p>
-					{fmtUsd(spentUsd)} spent · <span className="mut">no cap set</span>
-				</p>
 			) : (
-				<p className="mut">Loading…</p>
+				!error && <p className="mut">Loading…</p>
+			)}
+			{limits && (
+				<p className="mut">
+					When the cap is reached the copilot stops — mid-turn if need be —
+					until you raise it. A single turn is also stopped after{" "}
+					{limits.maxTurnMinutes} minutes.
+					{limits.ceilingUsd !== null &&
+						` You can set a cap up to ${fmtUsd(limits.ceilingUsd)}; a platform admin can go higher.`}
+				</p>
 			)}
 			<div className="limits-section">
 				<div className="limit-field">
@@ -90,8 +96,8 @@ export function CopilotLimitsPanel() {
 						type="number"
 						className="limit-field-input"
 						value={draft ?? ""}
-						placeholder="no cap set"
 						min={0}
+						max={limits?.ceilingUsd ?? undefined}
 						onChange={(e) => {
 							const raw = e.target.value;
 							setDraft(raw === "" ? undefined : Number(raw));
@@ -105,21 +111,19 @@ export function CopilotLimitsPanel() {
 				<button
 					type="button"
 					className="rail-btn"
-					disabled={saving}
-					onClick={() => save()}
+					disabled={saving || !draftValid}
+					onClick={() => draftValid && save(draft)}
 				>
 					{saving ? "Saving…" : "Save cap"}
 				</button>
 				<button
 					type="button"
 					className="rail-btn"
-					disabled={saving}
-					onClick={() => {
-						setDraft(undefined);
-						save(null);
-					}}
+					disabled={saving || limits?.isDefault}
+					onClick={() => save(null)}
 				>
-					Clear cap
+					Reset to default
+					{limits ? ` (${fmtUsd(limits.defaultCapUsd)})` : ""}
 				</button>
 			</div>
 		</div>

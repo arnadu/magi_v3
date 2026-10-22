@@ -145,8 +145,15 @@ export function fetchCopilotFileNode(path: string): Promise<FileNode> {
 }
 
 export interface CopilotLimits {
-	capUsd: number | null;
+	/** The cap in force — the user's own, or the default. There is always one. */
+	capUsd: number;
+	isDefault: boolean;
+	defaultCapUsd: number;
+	/** The highest cap this user may set; null for a platform admin. */
+	ceilingUsd: number | null;
 	spentUsd: number;
+	/** A copilot turn is stopped after this long. */
+	maxTurnMinutes: number;
 }
 
 export function fetchCopilotLimits(): Promise<CopilotLimits> {

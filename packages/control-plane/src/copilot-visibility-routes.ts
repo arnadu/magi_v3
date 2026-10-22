@@ -10,14 +10,14 @@ import type { Db } from "mongodb";
 import type { asyncRoutes } from "./async-handler.js";
 import { COPILOT_WORKDIR, copilotWorkdirFor } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
-import { COPILOT_AGENT_ID, readCopilotSpend } from "./copilot-spend.js";
+import { registerCopilotLimitsRoutes } from "./copilot-limits-routes.js";
+import { COPILOT_AGENT_ID } from "./copilot-spend.js";
 import {
 	queryLlmCall,
 	queryLlmCalls,
 	queryTranscript,
 	queryTurns,
 } from "./transcript-queries.js";
-import { getCopilotSpendCap, setCopilotSpendCap } from "./users.js";
 
 export function registerCopilotVisibilityRoutes(
 	router: Router,
@@ -92,28 +92,5 @@ export function registerCopilotVisibilityRoutes(
 		res.json(node);
 	});
 
-	// ── GET/PATCH /api/copilot/limits ───────────────────────────────────────
-
-	routes.get("/limits", async (req: Request, res: Response) => {
-		const missionId = `copilot-${req.userId}`;
-		const [capUsd, spentUsd] = await Promise.all([
-			getCopilotSpendCap(db, req.userId),
-			readCopilotSpend(db, missionId),
-		]);
-		res.json({ capUsd: capUsd ?? null, spentUsd });
-	});
-
-	routes.patch("/limits", async (req: Request, res: Response) => {
-		const { capUsd } = req.body as { capUsd?: number | null };
-		if (capUsd !== null && capUsd !== undefined && typeof capUsd !== "number") {
-			res.status(400).json({ error: "capUsd must be a number or null" });
-			return;
-		}
-		if (typeof capUsd === "number" && capUsd <= 0) {
-			res.status(400).json({ error: "capUsd must be positive" });
-			return;
-		}
-		await setCopilotSpendCap(db, req.userId, capUsd ?? undefined);
-		res.json({ ok: true, capUsd: capUsd ?? null });
-	});
+	registerCopilotLimitsRoutes(routes, db);
 }

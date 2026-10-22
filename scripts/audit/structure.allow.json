@@ -8,7 +8,7 @@
 	"packages/agent-runtime-worker/src/cli-usage.ts": {
 		"lines": 363,
 		"fns": {
-			"printAggregateSummary@209": 152
+			"printAggregateSummary@220": 152
 		}
 	},
 	"packages/agent-runtime-worker/src/conversation-repository.ts": {
@@ -20,7 +20,7 @@
 	"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts": {
 		"lines": 343,
 		"fns": {
-			"createRemainingOrchestrationCallbacks@282": 124
+			"createRemainingOrchestrationCallbacks@280": 124
 		}
 	},
 	"packages/agent-runtime-worker/src/mailbox.ts": {
@@ -38,7 +38,7 @@
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
 		"lines": 1137,
 		"fns": {
-			"handleUpload@541": 142
+			"handleUpload@545": 142
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/inspect-image.ts": {
@@ -69,7 +69,7 @@
 	"packages/control-plane/src/copilot-daemon.ts": {
 		"lines": 455,
 		"fns": {
-			"runWatchLoop@230": 177
+			"runWatchLoop@227": 176
 		}
 	},
 	"packages/control-plane/src/missions.ts": {

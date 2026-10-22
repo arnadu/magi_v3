@@ -63,9 +63,23 @@ flyctl secrets set -a magi-control-<env> PLATFORM_ADMIN_USER_IDS=<your-firebase-
 
 Your UID is the `userId` field of `/api/auth/me` while signed in to the cockpit.
 
+## The control-plane copilot
+
+Each user's control-plane copilot spends on the platform's provider keys too, so it has a hard cap
+of its own: $25 by default (`DEFAULT_COPILOT_SPEND_CAP_USD`), counted over the copilot's lifetime.
+The user manages it from the cockpit: home → Copilot → **Limits**, which shows the spend against
+the cap. There they can save a new cap, or reset it to the default. There is no "no cap", and only
+a platform admin may set it above the platform ceiling.
+
+The cap is checked before every copilot turn and again after every LLM call inside one, counting
+the turn in progress. When it is reached the copilot stops, mid-turn if need be, and says so in
+the chat, until the cap is raised. Every turn is also stopped after 20 minutes
+(`COPILOT_MAX_TURN_MS`). A batch of messages whose turn fails three times in a row is set aside
+with an error in the chat instead of being retried forever.
+
 ## Related
 
 - Decision record: [ADR-0034](adr/0034-spend-containment-defaults.md) (defaults, ceilings, the
   2026-10-18 back-fill amendment)
 - All environment variables: [env.md](env.md)
-- The control-plane copilot has its own separate spend cap, set in its Limits panel.
+- The control-plane copilot's cap: see above (`packages/control-plane/src/copilot-spend.ts`).

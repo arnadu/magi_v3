@@ -1,7 +1,10 @@
+# The copilot's spend cap is per user (users.copilotSpendCapUsd, default $25,
+# managed in the cockpit's Copilot → Limits tab — copilot-spend.ts), not this
+# file: the copilot is not a mission daemon, so mission.maxCostUsd would never
+# be enforced here.
 mission:
   id: copilot
   name: "MAGI Copilot"
-  maxCostUsd: 25
 
 agents:
   - id: copilot
