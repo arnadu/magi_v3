@@ -66,14 +66,12 @@ See [MAGI_V3_SPEC.md](MAGI_V3_SPEC.md) for the full design.
 ## Sprint Roadmap
 
 Full history: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) and
-[docs/implementation-history.md](docs/implementation-history.md). Sprints 1–28e and 28g are
-done; this section tracks only what's active.
+[docs/implementation-history.md](docs/implementation-history.md). Sprints 1–28g are done; this
+section tracks only what's active.
 
-**Sprint 28f — Third-party audit remediation (close-out).** Re-scoped 2026-10-16; plan
-`docs/plans/audit-oct26-remediation-plan.md`, findings F-032…F-072 in
-`docs/security/findings.md`. Code done (every High fixed, gates and ratchets in CI,
-decomposition, typed stored documents, contract tests, consistency matrix, #80/#82/#83/#79).
-Remaining: the first whole-repo `/sprint-audit`, then `/sprint-close`.
+**Done most recently: 28f — third-party audit remediation** (closed 2026-10-22; findings
+F-032…F-078, plan `docs/plans/audit-oct26-remediation-plan.md`). Closed with the first
+whole-repo `/sprint-audit`; open follow-ups are [#88](https://github.com/arnadu/magi_v3/issues/88)–[#96](https://github.com/arnadu/magi_v3/issues/96).
 
 **Sprint 28h — Remaining operational hardening (backlog).** G-5 out-of-band alerting (#3, #4),
 onboarding flow, usage dashboard, CR-06 remainder (#78), CR-07 remainder (confirmation gates for

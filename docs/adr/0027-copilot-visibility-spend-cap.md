@@ -153,3 +153,20 @@ a different shape of data.
 - `packages/control-plane/src/copilot-files.ts` — path-boundary-checked file reads
 - `packages/control-plane/src/copilot-router.ts` — new routes, `checkCopilotSpendCap`
 - `packages/control-plane/src/users.ts` — `copilotSpendCapUsd` field and accessors
+
+## Amendment (2026-10-22) — the copilot cap is mandatory and checked mid-turn (CST-3, F-078)
+
+This supersedes two parts of the Decision above: the cap being optional (`getCopilotSpendCap`
+undefined meant unbounded), and "an in-flight turn always finishes".
+
+- Every user's copilot has a cap: their own, or `DEFAULT_COPILOT_SPEND_CAP_USD` ($25). The cockpit
+  (Copilot → Limits) can set it or reset it to the default, but not clear it.
+- A non-admin cannot set it above the platform ceiling. This applies ADR-0034's rule, because
+  copilots spend on the same platform keys.
+- The cap is checked before each turn and after every LLM call inside one. Spend includes the turn
+  in flight, since `missionStats` only updates at turn end.
+- `createCopilotTurnGuard` stops a turn at the cap or after 20 minutes, and the chat says why. A
+  copilot turn ends instead of pausing, unlike a mission turn: there is no orchestration loop to
+  park it in, and the user resumes simply by sending another message.
+- A batch whose turn fails three times in a row is marked read and reported, instead of being
+  retried forever.

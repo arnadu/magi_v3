@@ -99,3 +99,19 @@ from the schedule file's owner uid — the same attribution as §1), `jobSpec`, 
   agent-writable tree is simpler and also fixes the rename problem.
 - *A daemon-only `scheduledJobs` collection.* Rejected (see fact 1): it cannot fire while the
   machine is stopped.
+
+## Amendment (2026-10-22) — killing a job; operator cancels (sprint-28f audit)
+
+- **A job is killed as the agent, through the existing `magi-job` rule.** Group SIGKILL never
+  worked (RES-1). The job was not its own process group, and the daemon may not signal processes
+  owned by the agent's user, so a group kill reached only `sudo`, which cannot relay SIGKILL.
+  Jobs now spawn detached, and `killJobGroup` runs `kill -s KILL -- -<pgid>` with
+  `sudo -u <agent> magi-job /bin/sh -c …`. That rule already lets the daemon run any command as
+  the agent, so no new privilege is added. The pgid is the daemon's own number.
+  - *Rejected:* a root-capable kill rule (a new privilege), and `setsid` in the wrapper (the job's
+    group is still owned by the agent, so the daemon still cannot signal it).
+- **An operator's cancel of a file-backed schedule sticks** (SCH-1). The cockpit and the
+  control-plane copilot mark the document `cancelledBy: "operator"`. Ingest does not re-arm it
+  while its file remains, even if the file is edited, and clears the mark once the file is removed.
+  - *Rejected:* deleting the file from the control plane, which has no access to the mission's
+    filesystem.

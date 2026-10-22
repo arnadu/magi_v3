@@ -82,3 +82,29 @@ ceiling, so the operator could not unblock missions that had reached their budge
   from the cockpit, like the admin key (`mayExceedPlatformCeiling`).
 
 The two affected dev missions were unblocked immediately by an admin-key ceiling change to $1,000.
+
+## Amendment (2026-10-22) — the cap binds everything, everywhere (sprint-28f audit)
+
+The whole-repo audit found three ways spend escaped the cap (F-076, F-077, CST-2). Decisions:
+
+- **A reached cap pauses running turns in place, rather than aborting them.** Before this, reaching
+  the cap only blocked new dispatches, and a running turn kept calling the LLM for up to
+  `MAX_AGENT_RUN_SECONDS`. Every turn and Research sub-loop now waits in `runInnerLoop`'s
+  `beforeLlmCall` gate while the monitor's budget pause holds. It resumes when `/set-budget` or
+  `/extend-budget` lifts the pause, and every waiter is released.
+  - *Rejected:* aborting the turn at the cap. That loses the turn's in-progress work, since its
+    mail was already marked read, so an operator raising the cap gets an agent that forgot what
+    it was doing.
+  - *Accepted cost:* the run's wall-clock limit keeps counting during a pause.
+- **Background jobs' LLM calls count against the cap and stop with it.** Tool API calls are
+  charged to the submitting agent's lifetime cost, then checked like an agent's own call. While
+  the mission is paused, the LLM-backed tools answer 503 (F-076).
+- **A mission is never uncapped.** Four layers:
+  - the config writer keeps the stored cap or applies the default, and refuses a raise above the
+    ceiling, so the operator's own config saves are now bounded too;
+  - every machine start first ensures a cap, and fails closed if it cannot;
+  - the control plane back-fills a cap onto every live mission at start;
+  - the daemon and the CLI fall back to the default.
+
+  *Rejected:* refusing to start a daemon with no cap. The default already enforces the invariant,
+  and refusing would turn a config defect into an outage (F-077).
