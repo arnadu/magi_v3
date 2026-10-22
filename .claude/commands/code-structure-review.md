@@ -4,12 +4,12 @@ description: Periodic code-structure review — measure file/function size drift
 ---
 
 You are a senior engineer reviewing code structure health for MAGI V3 — file and function size,
-and separation of concerns — following the triggers in CLAUDE.md's "Code Structure" section.
+and separation of concerns — following the triggers in CLAUDE.md's "Code structure" rules and `docs/practices/code-structure.md`.
 
 PROJECT CONTEXT:
 
 ```
-!`cat CLAUDE.md`
+!`cat CLAUDE.md docs/practices/code-structure.md`
 ```
 
 CURRENT INVENTORY:

@@ -1,6 +1,6 @@
 /**
  * The collection-name map is the single source of names: storedCollection
- * resolves through it, and CLAUDE.md's storage list must name exactly the
+ * resolves through it, and packages/agent-config/CLAUDE.md's storage list must name exactly the
  * same collections (a documented claim, so it is tested).
  */
 import { readFileSync } from "node:fs";
@@ -16,10 +16,13 @@ import {
 const ROOT = join(__dirname, "..", "..", "..");
 
 function documentedCollections(): string[] {
-	const md = readFileSync(join(ROOT, "CLAUDE.md"), "utf8");
+	const md = readFileSync(
+		join(ROOT, "packages", "agent-config", "CLAUDE.md"),
+		"utf8",
+	);
 	const section = md
-		.split("### Storage (MongoDB collections)")[1]
-		.split("\n### ")[0];
+		.split("## Storage (MongoDB collections)")[1]
+		.split("\n## ")[0];
 	return [...section.matchAll(/^- `([A-Za-z_]+)` —/gm)].map((m) => m[1]);
 }
 
@@ -41,7 +44,7 @@ describe("stored collections", () => {
 		expect(new Set(names).size).toBe(names.length);
 	});
 
-	it("CLAUDE.md lists exactly the collections in COLLECTION_NAMES", () => {
+	it("packages/agent-config/CLAUDE.md lists exactly the collections in COLLECTION_NAMES", () => {
 		expect(documentedCollections().sort()).toEqual(
 			Object.values(COLLECTION_NAMES).sort(),
 		);

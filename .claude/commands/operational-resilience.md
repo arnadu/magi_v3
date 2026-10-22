@@ -8,7 +8,7 @@ You are a senior engineer reviewing the operational resilience posture of MAGI V
 PROJECT CONTEXT:
 
 ```
-!`cat CLAUDE.md`
+!`cat CLAUDE.md docs/practices/operational-resilience.md`
 ```
 
 CURRENT OPERATIONAL RESILIENCE DOCUMENT:

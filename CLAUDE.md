@@ -11,7 +11,17 @@ MAGI V3 is an autonomous multi-agent system where teams of AI agents run long-ho
 - [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) — sprint roadmap and history
 - [USER_GUIDE.md](USER_GUIDE.md) — developer quick-start (setup, build, run)
 - [docs/implementation-history.md](docs/implementation-history.md) — sprint-by-sprint build log and key file descriptions
+- [docs/env.md](docs/env.md) — every environment variable (generated, test-checked)
+- [docs/practices/](docs/practices/) — the full working practices behind the rules below
 - [docs/references.md](docs/references.md) — MAGI v2 and pi-mono reference material
+
+**Where the rest of the guidance lives.** Each package has its own `CLAUDE.md`, loaded when you
+work in it: [agent-runtime-worker](packages/agent-runtime-worker/CLAUDE.md) (daemon, CLI, agent
+identity and sudo boundary, tools, prompts), [control-plane](packages/control-plane/CLAUDE.md)
+(deployment, control-plane env, copilot), [agent-config](packages/agent-config/CLAUDE.md)
+(schemas, MongoDB collections), [cockpit](packages/cockpit/CLAUDE.md),
+[skills](packages/skills/CLAUDE.md), and [docs/security](docs/security/CLAUDE.md) (security
+practice).
 
 ## Commands
 
@@ -19,359 +29,120 @@ MAGI V3 is an autonomous multi-agent system where teams of AI agents run long-ho
 npm run build             # compile all packages (tsc)
 npm test                  # unit tests (no LLM calls, no network)
 npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY and MONGODB_URI in .env
-npm run lint              # Biome check (lint + format)
-npm run lint:fix          # Biome auto-fix
+npm run lint              # Biome check (lint + format); npm run lint:fix to auto-fix
+npm run verify            # what pre-push and CI run: build, lint, tripwires, structure, typecheck, coverage
 
-# Cloud deployment
-bash scripts/bootstrap.sh             # full initial setup (creates apps, sets secrets, builds + deploys)
-bash scripts/deploy-missions.sh       # ALWAYS use this to deploy the execution plane — builds image,
-                                      # then pins FLY_MISSIONS_IMAGE on the control plane so new
-                                      # missions use the fresh image (not a stale :latest tag).
-                                      # Never use bare `flyctl deploy` for the missions app alone.
-flyctl deploy --config fly.control-dev.toml  # deploy control plane only
-bash scripts/promote.sh --suffix <name>      # tag HEAD + deploy both planes to a named non-dev
-                                      # environment (e.g. a beta tester's prod-beta) — refuses a
-                                      # dirty tree; not wired into CI, only -dev auto-deploys
-
-# Reconcile MongoDB mission state against real Fly.io machines/volumes — report-only by default;
-# --fix-status corrects Mongo drift (compare-and-set), --purge-orphans destroys untracked Fly
-# resources (destructive: prints a plan, acts only with --yes, never touches attached volumes,
-# machines with a mount, or anything younger than --min-age-hours, default 24).
-# Requires MONGODB_URI, FLY_API_TOKEN_MACHINES, FLY_MISSIONS_APP_NAME.
-node scripts/reconcile-mission-state.mjs [--fix-status] [--purge-orphans [--yes] [--min-age-hours N]]
-
-# CLI — run the orchestration loop with a team config
-cd packages/agent-runtime-worker && npm run build   # build first
-TEAM_CONFIG=config/teams/test/word-count.yaml npm run cli -- "count the words"
-TEAM_CONFIG=config/teams/test/word-count.yaml npm run cli -- "count the words" --step
-
-# Daemon lifecycle
-TEAM_CONFIG=... npm run daemon -w packages/agent-runtime-worker
-TEAM_CONFIG=$PWD/config/teams/... npm run cli:reset -w packages/agent-runtime-worker -- --yes
-MISSION_ID=... npm run cli:post -w packages/agent-runtime-worker -- --to lead "message"
-MISSION_ID=... npm run cli:tail -w packages/agent-runtime-worker
-TEAM_CONFIG=<yaml> MONGODB_URI=<uri> npm run cli:usage -w packages/agent-runtime-worker
-
-# Type-check without building
-npx tsc -p packages/agent-runtime-worker/tsconfig.json --noEmit
+bash scripts/bootstrap.sh # full initial cloud setup; see docs/deployment.md
 ```
 
-**Required env vars:** `ANTHROPIC_API_KEY`, `MONGODB_URI`, and one of `TEAM_CONFIG` (path to a
-team config YAML — local/dev, used by the CLI examples above) or `MISSION_ID` (control-plane-
-provisioned missions — the daemon reads its structured config directly from MongoDB, ADR-0021)
+Push to `main` deploys dev through CI. Deployment, the daemon and CLI commands, and mission
+reconciliation are in the package `CLAUDE.md` files above.
 
-**Optional env vars** (the complete, generated and test-checked list is [docs/env.md](docs/env.md); the notes below are the operationally important ones):
-- `MODEL` (default: `claude-sonnet-4-6`)
-- `VISION_MODEL` (default: `claude-haiku-4-5-20251001`; used by FetchUrl, InspectImage, BrowseWeb; accepts Anthropic or OpenRouter model IDs)
-- `AGENT_WORKDIR` (default: cwd)
-- `MONITOR_PORT` (default: 4000; must be 1–65535)
-- `TOOL_PORT` (default: 4001; must be 1–65535)
-- `MAX_COST_USD` (spending cap; triggers budget-pause when reached)
-- `MAX_AGENT_RUN_SECONDS` (per-dispatch wall-clock timeout; default 14400 = 4 h; aborts hung agent runs)
-- `BRAVE_SEARCH_API_KEY` (enables SearchWeb; free tier: 2000 req/month)
-- `FIREBASE_SERVICE_ACCOUNT_KEY` (control plane only; Firebase Admin SDK service account JSON, minified to one line — required for Google Sign-In)
-- `FIREBASE_CLIENT_API_KEY`, `FIREBASE_CLIENT_AUTH_DOMAIN`, `FIREBASE_CLIENT_PROJECT_ID` (control plane only; served to the browser via `/firebase-config.js`; public client-side values)
-- `PLATFORM_MAX_COST_CEILING_USD` (control plane only; the spend-cap ceiling written on every new mission and back-filled onto existing ones at start, default 100. A mission's cap can never exceed its ceiling, and only an admin — `CONTROL_API_KEY` — can set a mission's ceiling above this value; the default per-mission cap at creation is $25. Users in `PLATFORM_ADMIN_USER_IDS` may also exceed it from the cockpit. Operator guide: `docs/spend-limits.md`; ADR-0034)
-- `MONITOR_SIGNING_KEY` (control plane only; HMAC key for per-mission MonitorServer tokens — generate with `openssl rand -hex 32`; never forwarded to execution plane machines)
-- `CSP_ENFORCE` (control plane only; `"true"` switches the cockpit's Content Security Policy from `Content-Security-Policy-Report-Only` to enforcing. Default report-only: violations are logged from the browser's `POST /api/csp-report` reports as `[csp] violation …` — flip it once a few days of dev logs show none for normal cockpit use)
-- `GH_TOKEN` (control plane only; GitHub personal access token with `repo` scope — used by copilot's `ListIssues`/`CreateIssue`/`CloseIssue`/`AddIssueComment` tools; optional but required for issue tracking)
-- `GITHUB_REPO` (control plane only; GitHub repo in `owner/repo` format; default `arnadu/magi_v3`)
-- `FLY_MISSIONS_IMAGE` (control plane only; overrides the default `registry.fly.io/<missions-app>:latest` image used when provisioning execution plane machines — set to a specific deployment tag when `:latest` hasn't been updated yet)
-- `TEMPLATE_ALLOWLIST` (control plane only; comma-separated template ids — restricts which `config/teams/*.yaml` templates this deployment loads/offers, e.g. a single-tenant beta environment that should only ever offer one starting point. Unset = every template on disk, unchanged from before this existed)
-- `MISSION_COPILOT_ENABLED` (execution plane; `"false"` opts a mission out of the mission copilot agent, ADR-0016 — default on since Sprint 26)
-- `MONITOR_TOKEN` (execution plane; per-mission auth token required on **every** MonitorServer route, GETs and SSE included — derived from `MONITOR_SIGNING_KEY` and injected by the control plane at machine creation; mandatory whenever `FLY_APP_NAME` is set (the daemon refuses to start without it), empty = no auth for a local developer daemon only)
-- `CONTROL_PLANE_URL` (execution plane; base URL the mission copilot's GitHub-proxy tools call — injected by the control plane at machine creation from its own `FLY_APP_NAME`; empty in local dev, where the proxy isn't reachable)
-- `PLATFORM_ADMIN_USER_IDS` (control plane only; comma-separated Firebase UIDs — recipients of the `atlas-storage-high` relay from the 5-min resource-monitor tick, and (once the Sprint 28g daily report lands) its Atlas section. Empty is valid but logged on every tick: no one receives the Atlas alert)
-- `ATLAS_STORAGE_LIMIT_MB` (control plane only; shared MongoDB Atlas cluster storage quota in MB, used by the resource-monitor tick's `atlas-storage-high` check; default 10240, the M10 tier's included storage — the cluster moved from M0 to M10 on 2026-10-17)
-- `RESOURCE_REPORT_HOUR_UTC` (control plane only; UTC hour, 0-23, at or after which the daily resource report is built and sent for each user owning a non-destroyed, non-draft mission; default 12. Checked on every 5-min resource-monitor tick — a control plane down through the whole report hour still sends as soon as it's back up, later the same day)
-
-**Data API keys** (held by the daemon only — never forwarded to any subprocess, background jobs included; jobs reach the providers through the `data-fred`/`data-fmp`/`data-newsapi` Tool API proxies, CR-04/F-030):
-Defined in `.env.data-keys`: `FRED_API_KEY`, `FMP_API_KEY`, `NEWSAPIORG_API_KEY`
+**Required env vars:** `ANTHROPIC_API_KEY`, `MONGODB_URI`, and one of `TEAM_CONFIG` (a team
+config YAML — local/dev) or `MISSION_ID` (control-plane-provisioned missions; the daemon reads
+its structured config from MongoDB, ADR-0021). Everything else: [docs/env.md](docs/env.md).
 
 ## Architecture
 
 ### Packages
 
-- `packages/control-plane/` — Express API (missions CRUD + lifecycle), Fly Machines client, cron scheduler, HTTP reverse proxy, single-page UI
-- `packages/agent-runtime-worker/` — daemon (persistent process), orchestration loop, agent runner, monitor server (port 4000), tool API server (port 4001)
-- `packages/agent-config/` — Zod schema for team YAML; `loadTeamConfig()`, `parseTeamConfig()`
-- `packages/skills/` — platform skills: every directory with a `SKILL.md` ships to every mission; the cockpit's skill/tool toggles come from `GET /api/catalog` (this directory + the worker's `TIER_A_TOOL_NAMES`)
-
-### Agent identity and workspace
-
-- `agent_id` — semantic identity (e.g. `lead-analyst`), stable across missions; also the default
-  source of `linux_user` (see below) — constrained by Zod to a Linux-username-safe slug
-- `linux_user` — OS user, resolved by `resolveLinuxUsers()` (`agent-runtime-worker/src/linux-user.ts`):
-  derived directly from `agent_id` in production Docker (`ensureAgentUsers()` creates a dedicated
-  per-agent user); in local dev (no `magi-create-user` helper — `setup-dev.sh` never installs it,
-  to avoid permanently growing real OS users on a developer's own machine) deterministically mapped
-  onto the small fixed pool `magi-w1..magi-wN` instead, sorted and assigned in order so the same
-  team config always lands on the same users — fails loudly rather than reusing a slot if a team
-  has more agents needing one than the pool has room for. No shipped template sets `linuxUser`
-  explicitly anymore (it's a legacy override field, kept for flexibility).
-- Private workdir: `$AGENT_WORKDIR/home/{linux_user}/missions/{id}/`
-- Shared mission folder: `$AGENT_WORKDIR/missions/{id}/shared/`
-- ACL enforcement: `setfacl` + `sudo -u <linuxUser>` subprocess isolation (no secrets in child env)
-- Shell tools fork `sudo -u <linuxUser> node tool-executor.js`; child process receives only `PATH` and `HOME`
-- Sudo boundary (CR-01, fixed 2026-09-13): only the daemon identity (`magi-operator`) can invoke
-  `sudo`, scoped to `(%magi-shared)` — any current agent identity, never root or an unrelated user.
-  No agent/pool user holds a sudo grant of its own; none has ever needed one, since sudo is only
-  ever invoked by the trusted daemon on an agent's behalf. See `docs/security/threat-model.md`'s
-  TB-3 for the incident this replaced and how it was live-verified.
-
-### Storage (MongoDB collections)
-
-Every collection's name and canonical document type live in `packages/agent-config/src/stored/`;
-code reaches a collection through `storedCollection(db, key)`, and a test keeps this list in step
-with `COLLECTION_NAMES`.
-
-- `missions` — one doc per mission: owner, structured config (ADR-0021), status, Fly machine/volume ids, spend cap and ceiling
-- `missionConfigRevisions` — history of a mission's structured config, one doc per saved revision
-- `users` — Firebase users seen by the control plane (uid, email, last login)
-- `objectivesGoals` — one doc per mission: the authored objective tree and KPI definitions (ADR-0019)
-- `objectivesEvents` — append-only task, KPI, cost and allocation events the objectives tree is folded from (ADR-0019)
-- `missionAnomalies` — anomalies recorded by the daemon and the control plane (crash, timeout, scheduling failure, resource alerts)
-- `conversationMessages` — full agent conversation history with compaction and reflection
-- `mailbox` — inter-agent and operator messages
-- `llmCallLog` — audit log of every LLM call with cost breakdown
-- `scheduled_messages` — cron-based agent wakeups; documents with `origin: shared-schedules` are imported by the daemon from agents' `shared/schedules/*.json` files, and `kind: job` ones fire a background job instead of a message (ADR-0033 §3)
-- `agentTurnStats` — per-turn (per-wakeup) statistics, upserted incrementally during a turn (LLM call count, tokens, cost, peak context, tool counts/errors, files written, messages sent, URLs visited); one doc per `(missionId, agentId, turnNumber)`
-- `machineSegments` — runtime segments per machine shape (ADR-0031): one doc per stretch a mission's machine ran with one shape; drives the runtime cockpit tab and the cumulative upgrade cap
-- `resourceAlertState` — per-alert de-duplication/hysteresis state for resource alerts (ADR-0032); one doc per `<missionId|platform>:<category>` key
-- `missionResources` — latest per-mission resource sample (ADR-0032): disk usage, daemon RSS, in-flight background job count; upserted every 60 s by the daemon's job-runner tick; one doc per `missionId`
-- `platformResources` — cluster-wide (not per-mission) resource samples (ADR-0032); today just `_id: "atlas"`: shared MongoDB Atlas storage usage and its per-database/per-collection breakdown, upserted by the control plane's 5-min resource-monitor tick
-- `resourceSnapshots` — one doc per `(userId, date)` (unique index), written by the daily resource report (ADR-0032): per-mission `{diskUsedBytes, llmTotalUsd, upgradedMs}` plus `atlasBytes` for admins; its existence is the idempotency/send-claim for that user's report that day, and the last 7 days back the "chronic upgrade" flag and disk/Atlas growth-rate projections
-- `copilotPendingActions` — control-plane copilot actions proposed via `ProposeAction` and not yet confirmed/dismissed (F-055); one doc per action, `_id` = action id, 7-day TTL on `createdAt`; claimed atomically by `POST /api/copilot/confirm`
-- `missionStats` — lifetime per-agent totals (cost, LLM calls, turn count, consecutive zero-output turns), `$inc`-updated once at turn end; one doc per `(missionId, agentId)`
+- `packages/control-plane/` — Express API (missions CRUD + lifecycle), Fly Machines client, scheduler and resource-monitor ticks, reverse proxy, control-plane copilot
+- `packages/agent-runtime-worker/` — daemon (persistent process), orchestration loop, agent runner, monitor server (port 4000), Tool API server (port 4001)
+- `packages/agent-config/` — Zod schema for team YAML (`loadTeamConfig()`, `parseTeamConfig()`), stored-document types and collection names, model defaults, env catalog
+- `packages/cockpit/` — the operator UI (Vite + React), served by the control plane
+- `packages/skills/` — platform skills: every directory with a `SKILL.md` ships to every mission (not an npm workspace)
 
 ### Data flow
 
-Daemon runs orchestration loop (Change Stream wake-up) → agent runner → inner loop (LLM↔tools) → isolated tool subprocess. Control plane provisions Fly machines → proxy forwards browser traffic to execution plane port 4000.
+Daemon runs orchestration loop (Change Stream wake-up) → agent runner → inner loop (LLM↔tools)
+→ isolated tool subprocess (`sudo -u <agent user>`, only `PATH`/`HOME`). Control plane provisions
+Fly machines → proxy forwards cockpit traffic to the mission machine's port 4000. State lives in
+MongoDB — the collection list is in [packages/agent-config/CLAUDE.md](packages/agent-config/CLAUDE.md).
 
-See [MAGI_V3_SPEC.md](MAGI_V3_SPEC.md) for the full technical design and [docs/implementation-history.md](docs/implementation-history.md) for per-file implementation notes.
-
-## Cloud Deployment (Fly.io)
-
-```bash
-cp secrets.env.template secrets.env   # fill in ANTHROPIC_API_KEY, MONGODB_URI, CONTROL_API_KEY
-bash scripts/bootstrap.sh             # creates apps, sets secrets, builds + deploys
-```
-
-Full guide (app naming, GitHub Actions, integration test environments, operations, cost, troubleshooting): [docs/deployment.md](docs/deployment.md)
+See [MAGI_V3_SPEC.md](MAGI_V3_SPEC.md) for the full design.
 
 ---
 
 ## Sprint Roadmap
 
-Full history and per-sprint detail: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) (status table) and
-[docs/implementation-history.md](docs/implementation-history.md) (full build log). Sprints 1–28e
-and 28g are done — this section tracks only what's active now, not a running log of what shipped.
-
-**Done, most recent first:** 28g (resource management — ADR-0031 temporary mission-machine
-upgrades, mediated through the mission-copilot: ≤ 60 min windows, 24 h cumulative cap with
-operator reset in the Limits panel, runtime-by-config cockpit tab; ADR-0032 proactive oversight:
-5-min resource-monitor tick, daily resource report, nine anomaly categories, Change-Stream copilot
-waker; closes **G-4** and the Atlas-storage gap; live-verified end to end on dev, including a real
-disk-fill test and an independently-recomputed Atlas figure; full build log:
-`docs/plans/resource-management-implementation-plan.md`), 28e (critical security fixes —
-CR-03/F-002 BrowseWeb SSRF re-fix via a Chromium egress-filtering proxy; CR-04/F-030 job-env half,
-removing raw data-provider keys from background-job env in favor of scoped ToolApiServer tools;
-CR-04's harder cluster-wide-credential half deferred to Sprint 29), 28d (live-bug fixes — #49
-spend-cap ceiling/F-025, #46 crash handlers, #48 mid-turn dispatch gap, #52), 28c (CR-01/CR-02
-fixes + `monitor-server.ts`/`daemon.ts` decomposition, CR-05 still open), 28b (mission-prep v1 +
-beta deployment), 28a (live-usage reliability fixes), 27 (UI consolidation — **MVP milestone**).
+Full history: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) and
+[docs/implementation-history.md](docs/implementation-history.md). Sprints 1–28e and 28g are
+done; this section tracks only what's active.
 
 **Sprint 28f — Third-party audit remediation (close-out).** Re-scoped 2026-10-16; plan
-`docs/plans/audit-oct26-remediation-plan.md`, findings F-032…F-072 in `docs/security/findings.md`.
-Code is essentially done (every High fixed, gates and ratchets in CI, decomposition, typed stored
-documents, contract tests, consistency matrix re-checked). Remaining: #80's RU5/SEG1/SEG2, #83,
-#79's off-thread PDF extraction, the first whole-repo `/sprint-audit`, then `/sprint-close`.
+`docs/plans/audit-oct26-remediation-plan.md`, findings F-032…F-072 in
+`docs/security/findings.md`. Code done (every High fixed, gates and ratchets in CI,
+decomposition, typed stored documents, contract tests, consistency matrix, #80/#82/#83/#79).
+Remaining: the first whole-repo `/sprint-audit`, then `/sprint-close`.
 
-**Sprint 28h — Remaining operational hardening (backlog, not started).** G-5 out-of-band alerting
-(issues #3, #4), onboarding flow, usage dashboard, CR-06 remainder (#78), CR-07 remainder
-(confirmation gates for pause/resume/schedule-cancel, F-026), CR-08 (blocked on Sprint 29), #21,
-and revisit #31 (suspected OOM crash-loop) with 28g's `oom-suspected` detection.
+**Sprint 28h — Remaining operational hardening (backlog).** G-5 out-of-band alerting (#3, #4),
+onboarding flow, usage dashboard, CR-06 remainder (#78), CR-07 remainder (confirmation gates for
+pause/resume/schedule-cancel, F-026), CR-08 (blocked on Sprint 29), #21, revisit #31 (OOM).
 
-**Sprint 29 — Sensitive-data encryption + tenant credential isolation (not started, direction
-recorded in ADR-0026).** Application-level encryption so Fly and MongoDB cannot read mission data
-at rest, plus OpenRouter ZDR routing to reduce LLM-provider retention. Needs a dedicated research
-pass first (KMS provider choice, key custody model, migration path, hot-path latency, ZDR
-fail-open/fail-closed behavior) before implementation — see ADR-0026 for open questions. Now also
-scoped to absorb CR-04's harder half (see 28e above) — per-tenant database isolation or a scoped
-Mongo/LLM gateway shares the same "who can read what at rest / in transit" research, not a
-separate design track.
+**Sprint 29 — Sensitive-data encryption + tenant credential isolation (not started, ADR-0026).**
+Application-level encryption at rest, OpenRouter ZDR routing, and per-tenant credentials
+(CR-04's harder half). Needs a research pass first.
 
-**Post-MVP, after Sprint 29:** a generic operator-managed secret registry, generalizing 28e's
-CR-04 job-env proxy fix from three hardcoded data-provider keys to any operator-editable named
-secret a future skill needs — so a skill calling a new key-protected API never needs the raw key
-in agent-authored code. Sequenced after 29 because storing arbitrary operator secrets raises the
-same at-rest-encryption question. See `MAGI_V3_ROADMAP.md`'s Post-MVP table.
-
-## Code Quality
-
-Quality is applied **continuously during development**, not recovered at sprint close. These are the standards to meet as code is written.
-
-**Types model the domain.** Before implementing a function, get the types right. Where `string` could be more specific — a discriminated union, a named interface, a Zod-validated shape — use it. Reach for `any` or `!` only when genuinely unavoidable; document why with a `biome-ignore` comment. TypeScript strict mode is always on; work with it, not around it.
-
-**Interfaces before implementation.** When adding a module, sketch the interface first. If the API is awkward to use, the abstraction is wrong — fix the design, not the callers.
-
-**Logging survives incidents.** Every `console.error` must answer: what operation failed, what input triggered it, what the downstream consequence is. `console.error(e)` is a placeholder. Prefer structured context: `[daemon] orchestration failed { missionId, agentId, error: e.message }`.
-
-**No deferred debt.** A type cast, a `TODO`, or a hardcoded value is a deliberate trade-off that must be visible. Either fix it in the same commit, or leave a comment explaining the constraint. Invisible debt is worse than acknowledged debt.
-
-**No fallbacks to accommodate tests.** When a hard requirement lands, fix the test. Code that silently degrades — optional fields, `?? default` catch-alls added specifically to keep old tests green — is debt with compounding interest.
-
-**Comments on the non-obvious only.** Well-named identifiers explain the what. Add a comment only for: a hidden constraint, a subtle invariant, a non-obvious workaround, behaviour that would surprise a reader. Never reference the current task or caller — those belong in commit messages.
-
-**Lint after every change session.** Run `npm run lint` before committing. The pre-commit hook enforces this, but earlier is better. Use `npm run lint:fix` for auto-fixable issues, then fix remaining errors manually.
+**Post-MVP, after Sprint 29:** a generic operator-managed secret registry (see the roadmap).
 
 ---
 
-## Code Structure
+## Working rules
 
-Code structure is maintained **continuously during development**, the same as security and operational resilience below. These are the triggers — moments where you pause and reason about file and function boundaries regardless of what feature you're building.
+These apply continuously, not at sprint close. Each has a full write-up in
+[docs/practices/](docs/practices/); the triggers below are the part to keep in mind while coding.
 
-**A file crossing roughly 500 lines** — Does everything in this file share one responsibility (a flat list of independent route handlers, or one genuinely cohesive class), or does it now mix concerns that could be reasoned about separately — routing, persistence, policy, orchestration? If the concerns are separable, extract before adding more to the file.
+**Code quality** ([detail](docs/practices/code-quality.md))
+- Types model the domain — a union, interface or Zod shape over `string`; `any`/`!` only with a
+  `biome-ignore` reason. Strict mode always.
+- Interfaces before implementation: an awkward API means the abstraction is wrong.
+- Every `console.error` says what failed, on what input, and the consequence — never `console.error(e)`.
+- No invisible debt (a cast, TODO or hardcoded value is fixed or explained in place) and no
+  fallbacks added to keep old tests green.
+- Comments only for the non-obvious; never reference the current task or caller.
+- `npm run lint` before committing (the pre-commit hook enforces it).
 
-**A function crossing roughly 80–100 lines** — Can it be read start to finish and verified in one pass, or does it have several sequential phases (parse → connect → wire → launch; or route match → auth → query → respond) that could each be named and tested on their own? Long is not automatically wrong — a flat dispatch with short bodies is fine — but a function with internal phases and shared mutable state threaded across those phases is a decomposition candidate.
+**Code structure** ([detail](docs/practices/code-structure.md), inventory in [docs/code-structure.md](docs/code-structure.md))
+- Pause at a file near 500 lines or a function near 80–100 lines: one responsibility, or
+  separable phases? Extract before adding more. The ratchet fails at 600 / 120.
+- A new module born large, or a file grown by addition sprint after sprint, is a signal on its own.
 
-**A new module being created already large** — Before writing one undivided file for a family of related things (tools, routes, handlers), look for the closest existing precedent in the repo (e.g. `packages/agent-runtime-worker/src/tools/` — one file per tool). A file born large from day one is harder to justify than one that grew large under deadline pressure.
+**Security** ([detail](docs/security/CLAUDE.md)) — pause at each of these:
+- New external HTTP call: user-influenced URL? `ssrf.ts`/`safe-http.ts` used? Secrets sent? Response parsed safely?
+- New subprocess or `sudo` rule: minimum env? Exact command path? Agent-influenced arguments?
+- New env var: which processes get it? Excluded from images? Never forwarded to tool or job children?
+- New MongoDB query on external input: value only, never an operator or field name; scoped to `missionId`?
+- New path from input: contained (`safe-path.ts`) after resolving symlinks?
+- New port or public endpoint: authenticated? Loopback or network? Threat model updated in the same commit?
+- Identity, ACL and OS isolation are never optional: a field needed for secure operation is required in the type and the schema.
 
-**A file accreting features sprint after sprint with no refactor checkpoint** — If a file has been touched in most of the last five sprints purely by addition, that is itself a signal, independent of current size. Ask whether the next feature is another such addition or a forcing function to extract a module.
+**Operational resilience** ([detail](docs/practices/operational-resilience.md), FMEA in [docs/operational-resilience.md](docs/operational-resilience.md)) — ask:
+- New background loop: what if it crashes, hangs or overlaps itself? Watchdog, timeout, lock?
+- New persistence write: what does a crash mid-write leave? Is it atomic or compare-and-set?
+- New scheduled action: what if the process is down when it fires — is there catch-up?
+- New external dependency: failure mode when it's down, briefly or for long? Retry, degrade or freeze?
+- New volume write: can it fill the disk, and is that monitored?
+- New computation or tool call: can it hang? Timeout and AbortSignal, surfaced to the operator?
+- A component's failure modes are in `docs/operational-resilience.md` before its sprint closes.
 
-Code structure is a judgment call, not a hard gate — a long file made of many small, independent pieces does not need splitting; a short file that already tangles unrelated concerns does. When in doubt, extract.
+**Documentation** ([detail](docs/practices/documentation.md)) — in the same commit as the code:
+ADRs for decisions between alternatives, the threat model for new boundaries/ports/`sudo` rules,
+the resilience doc for new failure modes, `docs/env.md` (via `npm run docs:env`) for env vars,
+the SPEC for agent capabilities and tools, `docs/code-structure.md` for structure decisions.
 
-See `docs/code-structure.md` for the current inventory of oversized files/functions and their decomposition status, and `/code-structure-review` for the periodic audit.
+**Testing** ([detail](docs/practices/testing.md)) — unit tests are deterministic and offline;
+integration tests make real LLM calls with deterministic outcomes and clean up by `missionId`.
+Never test prompt wording or LLM choices; until the eval harness exists ([#45](https://github.com/arnadu/magi_v3/issues/45)),
+don't claim coverage of research quality.
 
----
-
-## Security
-
-Security is applied **continuously during development**. These are the triggers — moments where you pause and reason about security regardless of what feature you're building.
-
-**New external HTTP call** — Is the URL user-influenced? Does `ssrf.ts` need updating (especially for new IPv6 ranges such as Fly WireGuard `fdaa:`)? Does the call transmit secrets? Is the response parsed safely?
-
-**New subprocess or `sudo` rule** — What is the minimum env the child receives? Does the sudoers rule scope by exact command path? Can an agent influence the arguments?
-
-**New env var introduced or forwarded** — Which processes receive it? Is it excluded from the Docker image (`.dockerignore`)? Is it scoped correctly (daemon-only; never forwarded to tool-executor children)?
-
-**New MongoDB query using external input** — Is the input used only as a value, never as an operator or field name? Is the query scoped to `missionId`?
-
-**New file path derived from input** — Is it validated by `checkPath` before use? Are symlinks resolved before the ACL check?
-
-**New IPC port or public endpoint** — Is it authenticated? Loopback-only or network-accessible? Is the threat model updated in the same commit?
-
-**Security properties are never optional.** Identity, ACL, and OS isolation are always enforced. If a field is required for correct secure operation, it is `required` in the TypeScript type and in the Zod schema — never made optional to ease testing.
-
-See `docs/security/CLAUDE.md` for the full security practice, and `/security-review`, `/security-audit`, `/threat-model` commands.
-
----
-
-## Operational Resilience
-
-Operational resilience is applied **continuously during development**. These are the triggers — moments where you pause and reason about failure modes regardless of what feature you're building.
-
-**New long-running process or background loop** — What happens if it crashes or hangs? Is there a watchdog or timeout? Does a stale PID or lock file block the next startup?
-
-**New persistence write** — Is there an atomicity window where a crash leaves state inconsistent? What is lost vs. preserved if the process is killed mid-write? Is the write in a `.finally()` block?
-
-**New scheduled or time-driven action** — What happens if the process is down when the trigger fires? Is there a catch-up scan on restart, or is the action silently skipped?
-
-**New external dependency** — What is the failure mode when the dependency is unavailable (transient vs. extended)? Does the calling code retry? Does it degrade gracefully or freeze?
-
-**New file or volume write** — Can the volume fill up? Is there any monitoring or alerting? What happens to the mission if writes start failing?
-
-**New in-process computation or tool call** — Can it hang indefinitely? Is it guarded by a timeout and AbortSignal? Is the timeout surfaced to the operator?
-
-**Operational resilience is never optional.** When a new component reaches production, its failure mode must be documented in `docs/operational-resilience.md` before the sprint closes.
-
-See `docs/operational-resilience.md` for the full FMEA analysis and gap backlog. Use `/operational-resilience` to review and update the document after a sprint.
-
----
-
-## Documentation
-
-Documentation updates go in the **same commit as the code change**. Documentation written a week later is written from memory.
-
-**What belongs where:**
-
-| What changed | Where to document |
-|---|---|
-| New architectural decision (technology, schema, design pattern) | New ADR in `docs/adr/`; link from sprint table |
-| New trust boundary, external service, `sudo` rule, or IPC port | `docs/security/threat-model.md` |
-| New component with failure modes, new external dependency, new scheduled action | `docs/operational-resilience.md` |
-| New or changed env var, CLI flag, or build command | `CLAUDE.md` Commands section |
-| New cloud deployment step or Fly.io operational quirk | `docs/deployment.md` |
-| New agent capability, tool, or inter-agent protocol | `MAGI_V3_SPEC.md` (relevant section) |
-| Subtle code invariant that would surprise a reader | Inline comment in the source |
-| Superseded design or technology | Mark the ADR `SUPERSEDED`; update `CLAUDE.md` if the section is stale |
-| New file/function crossing a Code Structure threshold, or a decomposition decision | `docs/code-structure.md` |
-
-Aim for: **top-down architecture** (mental model before implementation detail), **subtleties surfaced** (non-obvious constraints and invariants), **operations covered** (install, run, debug, scale). A new person should understand _why_ first, then _what_, then _how_.
-
----
-
-## Sprint Closure Checklist
-
-Sprint close is a **confirmation pass** — this work should already be done. If a check fails here, that is a process gap to address going forward, not just a box to check now.
-
-1. **Lint and tests pass** — `npm run lint && npm test`
-2. **Security review confirmed** — `/security-review` was run for any new external surface during the sprint; CRITICAL/HIGH findings are fixed; others are logged in `docs/security/findings.md`
-3. **Threat model current** — any new external HTTP call, `sudo` rule, process user, or IPC port was documented in `docs/security/threat-model.md` in the same commit as the code
-4. **Operational resilience current** — run `/operational-resilience`; any new component's failure modes are documented in `docs/operational-resilience.md`; any closed gaps are removed from the gap table
-5. **Code structure current** — run `/code-structure-review`; new files/functions crossing the thresholds in the Code Structure section are logged in `docs/code-structure.md`
-6. **ADRs written** — any decision between concrete alternatives has an ADR in `docs/adr/`; superseded ADRs are marked
-7. **CLAUDE.md sprint table** — mark `✅ Done` with a one-line summary
-
-Use `/sprint-close` to run checks 1–2 automatically.
-
----
-
-## Testing Approach
-
-Three tiers:
-
-- **Unit tests** — pure, deterministic logic only (config validation, ACL policy, HTML patching). `npm test`, no LLM calls, no network.
-- **Integration tests** — real LLM calls with deterministic-outcome prompts. Full stack including tool execution and persistence. `npm run test:integration` — requires `ANTHROPIC_API_KEY` and `MONGODB_URI`. Each test uses a unique `missionId`; `afterEach` cleans up with `deleteMany({ missionId })`.
-- **Evaluation tests** (`eval/`, **planned — not yet implemented**, see [issue #45](https://github.com/arnadu/magi_v3/issues/45)) — golden scenarios for structural/policy outcomes, run on demand, not in CI. Until this exists, do not claim eval coverage for research quality, citations, agent collaboration, or operator workload.
-
-Test runner: **vitest** — native ESM, no build step. Config: `vitest.config.ts` (unit), `vitest.integration.config.ts` (integration). Setup file: `vitest.setup.ts` loads `.env`.
-
-Do not write tests for prompt wording, LLM tool selection choices, or report content quality — until the evaluation harness above exists, judge those manually.
+**Sprint close** is a confirmation pass ([checklist](docs/practices/sprint-closure.md); `/sprint-close`).
 
 ## Bug and Issue Tracking
 
-Bugs and deferred improvements are tracked as **GitHub Issues** at
-[github.com/arnadu/magi_v3/issues](https://github.com/arnadu/magi_v3/issues).
-
-Label conventions:
-
-| Label | Use for |
-|-------|---------|
-| `bug` | Broken behaviour |
-| `enhancement` | Improvement to existing functionality |
-| `deferred` | Known gap, accepted for now, queued for a future sprint |
-| `ux` | Presentation or interaction issue |
-| `security` | Security finding (link to `docs/security/findings.md`) |
-
-The **copilot** has built-in `ListIssues`, `CreateIssue`, `CloseIssue`, and `AddIssueComment`
-tools and will proactively propose issues when it encounters bugs during troubleshooting — every
-GitHub write (create, comment, close) is a `file_github_issue` pending action that you confirm in
-the cockpit, with the exact payload on the card; nothing reaches the public tracker unconfirmed.
-Execution-plane agents can use the `github-issues` platform skill (`packages/skills/github-issues/`).
-
-When closing a sprint, check open `deferred` issues to decide if any should be promoted
-into the upcoming sprint's scope.
-
----
-
-## Known Pitfalls
-
-**`cron-parser` named export error on Node 18/22**
-```typescript
-import cronParser from "cron-parser";
-const { parseExpression } = cronParser;
-```
+GitHub Issues at [github.com/arnadu/magi_v3/issues](https://github.com/arnadu/magi_v3/issues),
+labelled `bug`, `enhancement`, `deferred`, `ux` or `security` (security findings also go in
+`docs/security/findings.md`). Both copilots can propose issues; every GitHub write is a pending
+action the operator confirms in the cockpit. At sprint close, review open `deferred` issues.
 
 ## Technology Stack
 
@@ -383,5 +154,4 @@ const { parseExpression } = cronParser;
 | Browser automation | Playwright + Stagehand |
 | State store | MongoDB |
 | Cloud | Fly.io (control plane always-on; execution plane on-demand machines) |
-| Container isolation | Docker + Linux ACLs (`setfacl`) + sudo subprocess isolation |
-| Filesystem permissions | Linux ACLs (`setfacl`) |
+| Isolation | Docker + Linux ACLs (`setfacl`) + `sudo` subprocess isolation |

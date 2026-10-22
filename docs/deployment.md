@@ -957,7 +957,7 @@ rules). For local dev:
 sudo env NODE_BIN=$(which node) scripts/setup-dev.sh
 ```
 
-See the Known Pitfalls section in [CLAUDE.md](../CLAUDE.md) for the full list of local dev
+See the Known Pitfalls section in [packages/agent-runtime-worker/CLAUDE.md](../packages/agent-runtime-worker/CLAUDE.md) for the local dev
 setup issues.
 
 ### Control plane / cockpit shows stale content despite a successful-looking deploy

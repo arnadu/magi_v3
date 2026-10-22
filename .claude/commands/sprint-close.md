@@ -13,7 +13,7 @@ the sprint; present it as catch-up work.
 PROJECT CONTEXT:
 
 ```
-!`cat CLAUDE.md`
+!`cat CLAUDE.md docs/practices/sprint-closure.md`
 ```
 
 CURRENT THREAT MODEL:
@@ -80,7 +80,7 @@ If current: "✅ Threat model is current"
 ## Check 5 — Code structure currency
 
 Scan the sprint diff for:
-- Files that grew past the thresholds in CLAUDE.md's "Code Structure" section (~500 lines) or
+- Files that grew past the thresholds in CLAUDE.md's "Code structure" rules (~500 lines) or
   newly created already large
 - Functions that grew past ~80–100 lines
 
@@ -100,9 +100,9 @@ Scan the sprint diff for significant architectural decisions:
 For each candidate: check whether an ADR exists in `docs/adr/`. If not, suggest a title and the key decision/alternatives.
 If a superseded design was removed: check whether the relevant ADR is marked SUPERSEDED.
 
-## Check 7 — CLAUDE.md sprint table
+## Check 7 — Sprint status (roadmap and CLAUDE.md)
 
-Read the Sprint Roadmap table in CLAUDE.md. Identify the highest-numbered sprint not yet marked `✅ Done`. Confirm whether it should now be marked done based on the diff, and give the one-line summary to use.
+Read the sprint table in MAGI_V3_ROADMAP.md (and the Sprint Roadmap section of CLAUDE.md). Identify the highest-numbered sprint not yet marked `✅ Done`. Confirm whether it should now be marked done based on the diff, and give the one-line summary to use.
 
 ## Summary
 

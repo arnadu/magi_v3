@@ -71,7 +71,7 @@ reviews only the files changed since `main`, then filters false positives. Typic
 - When semgrep flags something and you want to assess blast radius
 - When a new bearer token or env var forwarding pattern is introduced
 
-The sprint row in `CLAUDE.md` should record `security-review: run` or `security-review: skipped`.
+The sprint row in `MAGI_V3_ROADMAP.md` should record `security-review: run` or `security-review: skipped`.
 
 ---
 
