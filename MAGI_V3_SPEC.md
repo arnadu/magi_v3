@@ -573,35 +573,57 @@ production, dedicated OS users are created per-agent at machine startup.
 
 ### Message schema
 
+The canonical type is `MailboxMessage` in `packages/agent-config/src/stored/mailbox.ts`:
+
 ```typescript
 interface MailboxMessage {
-  message_id: string
-  mission_id: string
-  sender_agent_id: string
-  recipient: { agent_id?: string; role?: string }  // one or the other
-  intent: "task_request" | "data_request" | "result_submit" | "risk_alert" | "status_update"
-  priority: "normal" | "high" | "critical"
+  id: string
+  missionId: string
+  from: string        // agent id, "user" (the operator), or a system sender such as "scheduler"
+  to: string[]        // every recipient: agent ids and/or "user"
   subject: string
-  body: string                          // prose; may reference artifacts
-  artifact_refs: string[]               // artifact IDs attached
-  deadline?: string                     // ISO timestamp
-  in_reply_to?: string                  // message_id this is a response to
-  status: "unread" | "claimed" | "acked" | "closed"
-  created_at: string
+  body: string        // markdown; may reference files in the shared folder
+  timestamp: Date
+  readBy: string[]    // recipients that have read it
 }
 ```
 
-Priority (`normal` / `high`) is advisory — the orchestration loop does not interrupt a running agent turn but processes high-priority messages first in the next cycle.
+**One document per message, not per recipient.** A message sent to several recipients is a
+single document whose `to` lists all of them, and each recipient tracks its own read state
+through `readBy`. Every recipient therefore sees the full recipient list:
+
+- the new messages that open an agent's turn (`formatMessages()`, `prompt.ts`) carry a
+  `To:` line with every recipient, even when there is only one;
+- `ListMessages` shows `to=a,b,c` on each header, and `ReadMessage` shows `To: a, b, c`.
+
+This is what lets agents copied on the same message recognise a shared thread and coordinate
+one reply instead of answering as if privately. There is no separate `cc` field: `to` is the
+whole audience. There are no message priorities, intents, statuses or role-based addressing.
+Recipients are explicit ids, validated against the team roster.
+
+### Write paths
+
+All writes go through `MailboxRepository.post()` (`packages/agent-runtime-worker/src/mailbox.ts`),
+which assigns `id`, `timestamp` and an empty `readBy`. The control plane reaches it through
+`postMailbox()` (`mailbox-writer.ts`), which also de-duplicates `to`. Tripwire T12 fails any raw
+insert into the collection. The writers are the agents' `PostMessage` tool, the operator's
+compose bar in the cockpit, the monitor server's send route, the scheduler, and platform relays.
 
 ### MongoDB implementation
 
-Messages are stored as documents in the `mailbox` collection, scoped by `mission_id`. The daemon watches for new documents via a **Change Stream** (`collection.watch()` with `operationType: "insert"` filter); when a new message arrives the Change Stream cursor fires and the orchestration loop wakes immediately.
+Messages are stored in the `mailbox` collection, and every repository query is scoped to its
+`missionId`. The daemon sleeps on a **Change Stream** (`daemon-boot/mail-waiter.ts`) filtered to
+inserts for its mission, and the orchestration loop wakes as soon as one fires. Mail that lands
+between the last unread check and opening the stream is not seen by that stream, so the waiter
+also wakes every 15 s as a fallback and re-checks every agent's unread mail. On a stream error
+it reconnects with exponential backoff.
 
-For role-based delivery (`recipient.role`), the sender looks up all agents in the team config with the matching role and inserts one document per agent.
-
-**Scheduled messages** are stored separately in `scheduled_messages` with a `deliverAt` timestamp. The control plane's `node-cron` heartbeat (runs every minute) queries for `deliverAt ≤ now` documents, inserts them into `mailbox`, and marks them `status: "delivered"`. This fires the Change Stream and wakes the daemon.
-
-Message durability relies on MongoDB write concern; the Change Stream cursor reconnects with exponential backoff on network errors.
+**Scheduled messages** are stored separately in `scheduled_messages` with a `deliverAt`
+timestamp. The control plane's once-a-minute heartbeat claims each due document under a lease,
+wakes the mission's machine if it is suspended, and delivers the message through `postMailbox()`
+with `from: "scheduler"`. A one-shot entry is then marked `delivered`; a cron entry is
+re-armed for its next occurrence. A failed delivery is retried on later ticks and, after
+repeated failures, marked `failed` and recorded as an anomaly. That insert fires the Change Stream and wakes the daemon.
 
 ---
 
