@@ -69,6 +69,30 @@ describe("copilot B1 tools — userId scoping", () => {
 			},
 		]);
 
+		await db.collection("conversationMessages").insertMany([
+			{
+				missionId: missionA,
+				agentId: "lead",
+				turnNumber: 0,
+				seqInTurn: 0,
+				mentalMapHtml: "<section id='old'>stale A</section>",
+			},
+			{
+				missionId: missionA,
+				agentId: "lead",
+				turnNumber: 1,
+				seqInTurn: 2,
+				mentalMapHtml: "<section id='status'>map A</section>",
+			},
+			{
+				missionId: missionB,
+				agentId: "lead",
+				turnNumber: 0,
+				seqInTurn: 0,
+				mentalMapHtml: "<section id='status'>map B</section>",
+			},
+		]);
+
 		await db.collection("scheduled_messages").insertMany([
 			{
 				missionId: missionA,
@@ -94,6 +118,9 @@ describe("copilot B1 tools — userId scoping", () => {
 			.deleteMany({ missionId: { $in: [missionA, missionB] } });
 		await db
 			.collection("scheduled_messages")
+			.deleteMany({ missionId: { $in: [missionA, missionB] } });
+		await db
+			.collection("conversationMessages")
 			.deleteMany({ missionId: { $in: [missionA, missionB] } });
 		await client.close();
 	});
@@ -148,6 +175,23 @@ describe("copilot B1 tools — userId scoping", () => {
 		});
 		expect(cross.isError).toBe(true);
 		expect(cross.content[0].text).not.toContain("hello B");
+	});
+
+	it("ReadMentalMap returns the agent's latest map, and rejects a cross-user missionId", async () => {
+		const toolsA = toolsFor(userA);
+		const own = await get(toolsA, "ReadMentalMap").execute("t1", {
+			missionId: missionA,
+			agentId: "lead",
+		});
+		expect(own.isError).toBeFalsy();
+		expect(own.content[0].text).toBe("<section id='status'>map A</section>");
+
+		const cross = await get(toolsA, "ReadMentalMap").execute("t2", {
+			missionId: missionB,
+			agentId: "lead",
+		});
+		expect(cross.isError).toBe(true);
+		expect(cross.content[0].text).not.toContain("map B");
 	});
 
 	// ReadMissionLog/ReadMissionFile both gate on `mission?.privateIp`, so a

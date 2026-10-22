@@ -36,8 +36,9 @@ Every launched mission automatically receives these five skills, injected from
 ## Adding a custom skill to a template
 
 Include it in `teamFiles` at path `skills/{name}/SKILL.md` (no tier prefix — no
-`_platform/` or other prefix). At provision time this is written to
-`sharedDir/skills/{name}/SKILL.md` and discovered under the mission tier.
+`_platform/` or other prefix). At provision time it is copied to
+`sharedDir/skills/_team/{name}/SKILL.md` and discovered under the team tier (read-only for
+agents).
 
 There is no copilot action that writes a template: templates are files under
 `config/teams/` in the repository, loaded at control-plane start. To add or change one, describe
@@ -53,12 +54,14 @@ Use ProposeAction `write_mission_file`:
   "type": "write_mission_file",
   "payload": {
     "missionId": "my-mission",
-    "path": "skills/my-skill/SKILL.md",
+    "path": "skills/mission/my-skill/SKILL.md",
     "content": "---\nname: my-skill\n..."
   }
 }
 ```
-The agent discovers the skill on its next wakeup.
+The path is relative to the shared folder, so it lands in the mission tier
+(`sharedDir/skills/mission/`); a skill anywhere else under `skills/` is never discovered. Agents
+discover it on their next wakeup.
 
 ## SKILL.md format
 

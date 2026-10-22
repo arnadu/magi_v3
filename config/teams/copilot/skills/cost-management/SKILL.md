@@ -2,7 +2,7 @@
 name: cost-management
 description: |
   Interpreting mission spend stats, recognising alarming burn rates, reducing costs
-  on running sessions, and handling the budget-pause state.
+  on running sessions, and handling a mission paused at its spend cap.
 ---
 
 # Cost Management
@@ -38,7 +38,8 @@ or data API costs.
 
 ## Diagnosing a cost spike
 
-1. `ReadMissionLog` — look for rapid successive `Starting turn` / `Turn complete` pairs
+1. `ReadMissionLog` — look for the same agent dispatched again and again
+   (`[orchestrator] Running <agent> … (N message(s))`)
 2. `ReadMissionMailbox` — is the inbox filling faster than the agent can drain it?
 3. Check which agent is active via log — is it the expected one?
 4. `ReadMissionFile({ missionId, path: "shared/" })` — is output being produced?
@@ -62,44 +63,37 @@ In order of disruption (least to most):
 
 4. **Suspend the mission entirely** — stops all compute; resume when needed.
 
-## Budget-pause state
+## Paused at the spend cap
 
-When a mission's cumulative spend exceeds `MAX_COST_USD` (set as an env var on the
-Fly machine), the orchestrator enters budget-pause mode:
-- All agent dispatches are halted
-- The log shows `budget-pause` entries
-- The machine stays running (daemon is alive) but no agents fire
+When a mission's lifetime spend reaches its cap (`mission.maxCostUsd`; new missions start at
+$25), the whole mission pauses:
+- No agent is dispatched, and every running turn waits before its next LLM call
+- Background jobs' Research/FetchUrl/InspectImage calls are refused (their scripts see a 503)
+- The log shows `[monitor] Budget cap $X reached ($Y spent) — pausing`; a hard `limit-breach`
+  anomaly and a "Mission spend cap reached" mail to the user are sent
+- The machine stays running (the daemon is alive)
 
-**The operator must act** — the copilot cannot autonomously un-pause:
-1. Inform the operator of the current spend and which mission is paused
-2. Options for the operator:
-   - Increase `MAX_COST_USD` — requires `fly machine update <id> --env MAX_COST_USD=<new>` on the execution plane
-   - Suspend the mission and review config before resuming
-   - Destroy the mission if no longer needed
+Raising the cap resumes the paused turns where they stopped:
+1. Tell the operator the spend, the cap and which mission is paused
+2. If the spend is justified, propose `set_mission_budget` with the new cap — it cannot exceed
+   the mission's ceiling (`maxCostCeilingUsd`), which only the operator can raise from the
+   cockpit's Limits tab
+3. Otherwise suggest suspending the mission and reviewing its config before resuming
 
 ## Cost attribution
 
 `missionStats` has one document per `(missionId, agentId)` with its own
-`lifetimeCostUsd` — already per-agent, no aggregation needed for the lifetime
-view. For a time-windowed per-agent breakdown (e.g. "who drove the last 24h"),
-run a query via Bash:
-```bash
-# Per-agent cost for a mission in the last 24h (adjust MONGODB_URI and DB as needed)
-mongosh "$MONGODB_URI" --eval '
-  db.agentTurnStats.aggregate([
-    { $match: { missionId: "gold-digest-001", startedAt: { $gte: new Date(Date.now() - 86400000) } } },
-    { $group: { _id: "$agentId", total: { $sum: "$costUsd" } } },
-    { $sort: { total: -1 } }
-  ]).forEach(printjson)
-'
-```
+`lifetimeCostUsd` — already per-agent; the cockpit's Limits tab shows that lifetime view. You have no database access (and should never ask for a connection
+string): for a time-windowed per-agent breakdown ("who drove the last 24 h"), point the
+operator at the cockpit's Trace tab, or send the mission copilot a message (a one-off
+`create_schedule` to `mission-copilot`) — its `ReadMissionCostSeries` tool has that view.
 
 ## `spend-cap-near` (ADR-0032)
 
 Relayed as an anomaly at 90% (soft) and 98% (hard) of a mission's own spend
 cap (`mission.maxCostUsd`), or as a "Spend" flag in the daily report. This is
-proactive — it fires well before the mission's own hard `MAX_COST_USD`
-budget-pause (see below) would kick in, so you have room to act deliberately
+proactive — it fires before the mission pauses at its cap (see above), so you have room to
+act deliberately
 instead of reacting to an already-paused mission.
 
 1. Check the burn rate (above) to see whether this is a sustained climb or a

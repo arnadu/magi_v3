@@ -92,9 +92,9 @@ describe("renderMyObjectives", () => {
 		// owns OBJ-1
 		expect(s).toContain("OBJ-1");
 		expect(s).toContain("Compliance");
-		// owns K1 (records-officer) — never reported → stale, record-kpi hint
+		// owns K1 (records-officer) — never reported → stale, RecordKpi hint
 		expect(s).toContain("K1");
-		expect(s).toContain("record-kpi --kpi K1");
+		expect(s).toContain('<code>RecordKpi</code> with kpi "K1"');
 		// does NOT own K2 (lead owns it)
 		expect(s).not.toContain("K2");
 		// open assigned task shown; completed + other-agent tasks not
@@ -132,7 +132,7 @@ describe("renderMyObjectives", () => {
 		const tree = foldStore({ goals, taskEvents, kpiEvents, costEvents: [] });
 		const s = renderMyObjectives(tree, "records-officer") as string;
 		expect(s).toContain("K1");
-		expect(s).not.toContain("record-kpi --kpi K1");
+		expect(s).not.toContain('<code>RecordKpi</code> with kpi "K1"');
 	});
 
 	it("shows the unattributed-cost nudge when attribution is stale (B2b)", () => {
@@ -147,7 +147,7 @@ describe("renderMyObjectives", () => {
 			staleThreshold: 3,
 		}) as string;
 		expect(stale).toContain("unattributed cost");
-		expect(stale).toContain("allocate");
+		expect(stale).toContain("Allocate");
 		// Fresh (below threshold) → no nudge.
 		const fresh = renderMyObjectives(tree, "records-officer", {
 			staleAttributionTurns: 1,

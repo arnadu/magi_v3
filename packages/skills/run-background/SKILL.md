@@ -21,7 +21,7 @@ might not fit on this mission's current machine, see the `request-resources` ski
 ## Submit a one-shot job
 
 ```bash
-bash $SKILL_DIR/../run-background/scripts/submit-job.sh \
+bash $SHARED_DIR/skills/_platform/run-background/scripts/submit-job.sh \
   --script "$WORKDIR/scripts/refresh.py" \
   --args "$SHARED_DIR" \
   --agent "$AGENT_ID" \
@@ -44,7 +44,7 @@ The daemon picks it up within 1 minute.
 ## Schedule a recurring job
 
 ```bash
-bash $SKILL_DIR/../run-background/scripts/schedule-job.sh \
+bash $SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh \
   --label "daily-refresh" \
   --cron "30 5 * * *" \
   --script "$WORKDIR/scripts/refresh.py" \
@@ -66,7 +66,7 @@ skipped and reported to the copilot rather than run late. Crons firing more ofte
 ## Check job status
 
 ```bash
-bash $SKILL_DIR/../run-background/scripts/job-status.sh <jobId>
+bash $SHARED_DIR/skills/_platform/run-background/scripts/job-status.sh <jobId>
 # → prints status JSON + last 20 lines of log
 ```
 
@@ -77,7 +77,7 @@ Job ids are printed by `submit-job.sh` and included in completion notifications.
 Copy `magi_tool.py` into your script directory:
 
 ```bash
-cp $SKILL_DIR/../run-background/scripts/magi_tool.py $WORKDIR/scripts/
+cp $SHARED_DIR/skills/_platform/run-background/scripts/magi_tool.py $WORKDIR/scripts/
 ```
 
 Then import it in your Python script:

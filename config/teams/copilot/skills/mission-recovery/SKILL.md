@@ -24,8 +24,9 @@ Only after completing the diagnosis, propose a remediation.
 
 **Signature in log:**
 ```
-[orchestrator] agent error { agentId, error: "Agent run timed out" }
+[orchestrator] <agentId> exceeded 14400s wall-clock limit — aborting
 ```
+(an `agent-timeout` anomaly is also recorded)
 **What happened:** The agent's inner loop ran for longer than `MAX_AGENT_RUN_SECONDS`
 (default 4 hours) without completing. The run was aborted.
 
@@ -33,14 +34,14 @@ Only after completing the diagnosis, propose a remediation.
 - The agent's incomplete turn was discarded; no partial state was saved
 - Usually safe to resume — the daemon will wake the agent again on next inbox message
 - Propose `resume_mission` if the machine is stopped
-- Consider posting a message to the agent with context about the interrupted task
+- Consider sending the agent a message with context about the interrupted task (a one-off
+  `create_schedule`, see the agent-coaching skill)
 
 ### 2. Hard LLM error (transient: false)
 
-**Signature in log:**
-```
-[orchestrator] agent error { transient: false, error: "..." }
-```
+**Signature:** an `llm-error` anomaly of severity hard — a system message
+`Agent "<agentId>" had an LLM call fail: <provider error>` in the mailbox. A crash of the run
+itself logs `[orchestrator] <agentId> error: <message>`.
 **What happened:** A non-retryable error from the LLM provider — bad API key, credits
 exhausted, model not found, or a 4xx from OpenRouter.
 
@@ -72,24 +73,25 @@ created but never started.
 
 ### 5. Agent in a reasoning loop
 
-**Signature:** Log shows many consecutive turns with `Turn complete` but no useful output
-in mailbox; spend climbing rapidly.
+**Signature:** the log shows the same agent dispatched again and again
+(`[orchestrator] Running <agent> (<user>) (N message(s))`) with no useful output in the
+mailbox; spend climbing rapidly.
 
 **Recovery:**
 1. Read mailbox to confirm agent is not producing useful output
 2. Propose `suspend_mission` to stop the burn immediately
-3. Read conversation history via `ReadMissionFile` to understand what the agent is doing
-4. Craft a recovery message explaining what went wrong and what to do instead
-5. Propose `resume_mission` after the operator confirms the message looks right
+3. Read the agent's mental map (`ReadMentalMap`) and recent mail to understand what it is
+   doing; the operator can read the full transcript in the cockpit's Transcripts tab
+4. Craft a recovery message explaining what went wrong and what to do instead, and propose it
+   as a one-off `create_schedule` to the agent
+5. Propose `resume_mission` once the operator has confirmed both
 
 ### 6. Tool subprocess crash
 
-**Signature in log:**
-```
-[tools] bash error: spawn sudo ENOENT
-[tools] tool-executor exited with code 1
-```
-**What happened:** The tool executor (sandboxed subprocess) crashed. Common causes:
+**Signature:** every Bash, ReadFile or WriteFile call returns an error such as
+`spawn sudo ENOENT` or a sudo refusal — seen in the agents' messages and the cockpit
+transcript, not in the daemon log.
+**What happened:** The tool executor (sandboxed subprocess) could not start. Common causes:
 pool user doesn't exist, `magi-node` wrapper missing, sudoers rule stale.
 
 **Recovery:** This is an environment problem, not a mission problem. Alert the operator —
@@ -158,9 +160,9 @@ but the mission stays down until the record is corrected.
 | `resume_mission` | Machine stopped; daemon crashed; after fixing config; also recovers a destroyed machine by reprovisioning fresh against the mission's volume |
 | `fix_mission_volume` | `GetMissionStatus` shows `volumeId: NOT FOUND on Fly` — corrects the drifted record before `resume_mission` can succeed |
 | `suspend_mission` | Stop burn; before config edit; runaway agent |
-| `save_session_config` | Fix team YAML or mental map; mission must be suspended first |
+| `save_session_config` | Fix the mission config or an agent's mental map (read it first with `ReadMentalMap`); mission must be suspended first |
 | `write_mission_file` | Inject a new skill or data file into a running mission's workspace |
-| Post message to agent | Guide agent past a stuck point; provide missing context |
+| `create_schedule` (one-off `deliverAt`) | Send an agent a message: guide it past a stuck point, provide missing context |
 
 ## Escalation criteria
 

@@ -70,7 +70,7 @@ export function renderMyObjectives(
 
 	const parts: string[] = [
 		"<h3>Your objectives</h3>",
-		"<p><em>Synced from the objectives store — read-only. Update via the objectives skill scripts.</em></p>",
+		"<p><em>Synced from the objectives store — read-only. Update it with the AddTask, UpdateTask, RecordKpi and Allocate tools.</em></p>",
 	];
 
 	for (const o of ownedObjs) {
@@ -91,7 +91,7 @@ export function renderMyObjectives(
 						? ` / ${k.target}${k.unit ? ` ${esc(k.unit)}` : ""}`
 						: "";
 				const flag = k.stale
-					? ` — ⚠ needs update, run <code>record-kpi --kpi ${k.id} --value …</code>`
+					? ` — ⚠ needs update, call <code>RecordKpi</code> with kpi "${k.id}"`
 					: "";
 				return `<li>KPI <strong>${k.id}</strong> "${esc(k.label)}" [${objId}] = ${val}${tgt}${flag}</li>`;
 			})
@@ -107,7 +107,7 @@ export function renderMyObjectives(
 			})
 			.join("");
 		parts.push(
-			`<p>Your open tasks (update with <code>task-update</code>):</p><ul>${items}</ul>`,
+			`<p>Your open tasks (update with <code>UpdateTask</code>):</p><ul>${items}</ul>`,
 		);
 	} else {
 		parts.push("<p>No open tasks are assigned to you.</p>");
@@ -116,7 +116,7 @@ export function renderMyObjectives(
 	const threshold = opts.staleThreshold ?? 3;
 	if ((opts.staleAttributionTurns ?? 0) >= threshold) {
 		parts.push(
-			`<p>⚠ You have unattributed cost over ${opts.staleAttributionTurns} turns. Attribute it by updating a task with <code>task-update --effort N</code>, or run <code>allocate --key "TASK-x:60,overhead:40"</code>.</p>`,
+			`<p>⚠ You have unattributed cost over ${opts.staleAttributionTurns} turns. Attribute it by calling <code>UpdateTask</code> with an <code>effort</code>, or <code>Allocate</code> with a key such as "TASK-x:60,overhead:40".</p>`,
 		);
 	}
 

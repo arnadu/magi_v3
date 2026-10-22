@@ -109,7 +109,7 @@ TEAM_CONFIG=$PWD/config/teams/equity-research.yaml npm run cli:post -w packages/
   "Please set up the data factory now. Follow the instructions in your data-factory skill:
 1. mkdir -p \$SHARED_DIR/data-factory
 2. (no install step — the data-factory Python dependencies are baked into the image)
-3. Copy sources.json and schedule.json from \$SKILL_DIR into \$SHARED_DIR/data-factory/
+3. Copy sources.json and schedule.json from \$SHARED_DIR/skills/_platform/data-factory/ into \$SHARED_DIR/data-factory/
 4. Run a first full refresh as a background job (run-background skill, submit-job.sh)
 5. Register the daily 05:30 refresh with the run-background skill's schedule-job.sh
 6. PostMessage me (lead-analyst) with the catalog summary and any errors."

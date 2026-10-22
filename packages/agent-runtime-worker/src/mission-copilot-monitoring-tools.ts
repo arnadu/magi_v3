@@ -123,7 +123,7 @@ function readAgentLlmCallTool(deps: MissionCopilotToolDeps): MagiTool {
 	return {
 		name: "ReadAgentLlmCall",
 		description:
-			"Full detail for one specific LLM call — system prompt, complete input messages, complete response. The finest-grained read tool here; use when ReadAgentUsage flags one call in a turn as the one worth seeing in full, instead of pulling the whole turn via ReadAgentSessionDetail. Unavailable for calls older than 7 days (retention window) — returns a clear message, not empty/malformed data. Output wrapped in trust-boundary markers.",
+			"Full detail for one specific LLM call — system prompt, complete input messages, complete response. The finest-grained read tool here; use when ReadAgentUsage flags one call in a turn as the one worth seeing in full, instead of pulling the whole turn via ReadAgentSessionDetail. Unavailable for calls older than 1 day (retention window) — returns a clear message, not empty/malformed data. Output wrapped in trust-boundary markers.",
 		parameters: Type.Object({
 			agentId: Type.String({ description: "Teammate's agent id" }),
 			turn: Type.Number({ description: "Turn number" }),

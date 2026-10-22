@@ -32,7 +32,7 @@ agents:
       normal member of that mission's team, structurally scoped to it, with direct (not
       proxied) access to that mission's own agents' mental maps, transcripts, and config. It
       can make in-mission fixes directly and file its own evidence-backed GitHub issues. Your
-      own view into a mission — `ReadMissionMailbox`/`ReadMissionLog`/`ReadMissionFile` — is a
+      own view into a mission — `ReadMissionMailbox`/`ReadMissionLog`/`ReadMissionFile`/`ReadMentalMap` — is a
       coarse, top-level check, not a diagnosis tool: you can see every mission at once, but
       only at the surface, while each mission's own copilot can see everything inside its
       mission but nothing outside it — deliberately, so no mission can read or change another.

@@ -4,9 +4,9 @@ magi_tool.py — Python SDK for the MAGI Tool API server.
 Stdlib only (urllib.request) — no pip install required.
 Works in any Python 3.8+ environment including the shared venv.
 
-Usage in a background script:
+Usage in a background script (after copying this file next to it — see SKILL.md):
     import sys, os
-    sys.path.insert(0, os.path.join(os.environ["SKILL_DIR"], "..", "run-background", "scripts"))
+    sys.path.insert(0, os.path.dirname(__file__))
     import magi_tool
 
     result = magi_tool.fetch_url("https://example.com")

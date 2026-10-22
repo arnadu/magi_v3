@@ -37,13 +37,13 @@ Read with `ReadMissionLog({ missionId, lines: 100 })`. Key signals:
 
 | Pattern | Meaning |
 |---------|---------|
-| `Turn complete` | Agent finished normally |
-| `Starting turn (N message(s))` | Agent woke up, processing inbox |
-| `[orchestrator] agent error` with `transient: true` | Retry in progress — usually fine |
-| `[orchestrator] agent error` with `transient: false` | Hard failure — copilot alert fired |
-| `[daemon] orchestration failed` | Loop-level crash — mission likely stalled |
-| `budget-pause` | Spending cap hit — operator action required |
-| No entries in >24 h (scheduled mission) | Possible missed cron — check G-3 gap |
+| `[orchestrator] Running <agent> (<user>) (N message(s))` | Agent woke up to process its inbox |
+| `[loop] 429 rate-limit …` / `[loop] transient error (…) — retrying` | Provider hiccup, retried automatically — usually fine |
+| `[orchestrator] <agent>: LLM error #N — next dispatch no sooner than …` | The agent's LLM calls are failing; it is cooling down. An `llm-error` anomaly says why |
+| `[orchestrator] <agent> exceeded Ns wall-clock limit — aborting` | A turn ran past `MAX_AGENT_RUN_SECONDS` and was stopped |
+| `[orchestrator] <agent> error: …` | The agent's run crashed |
+| `[monitor] Budget cap $X reached ($Y spent) — pausing` | Mission spend cap hit — every agent is paused until the cap is raised |
+| No entries in >24 h (scheduled mission) | Possible missed cron — check the schedule (`ListSchedule`) |
 
 ## Spend thresholds (rough guidance)
 
@@ -59,26 +59,27 @@ These are heuristics — actual limits depend on the mission type:
 ## Healthy vs degraded signals
 
 **Healthy mission:**
-- Log shows regular `Turn complete` entries at expected cadence
+- Log shows `[orchestrator] Running …` entries at the expected cadence
 - Unread count is 0 or low (agent keeping up with inbox)
 - Spend within expected range
-- No `transient: false` errors in recent log
+- No `LLM error #N` cooldowns or hard `llm-error` anomalies recently
 
 **Degraded mission:**
 - Unread count growing (agent not waking up or crashing per turn)
-- Log shows repeated `agent error` entries for the same agent
+- Log shows repeated `LLM error #N` or `error:` lines for the same agent
 - Long gap in log with no activity (daemon may be hung)
 - Spend spiking without corresponding output
 
 ## When to alert the operator vs handle autonomously
 
 **Handle autonomously (propose remediation, report outcome):**
-- Single `transient: false` error followed by silence — propose resume
+- A single hard LLM error followed by silence — propose resume
 - Agent stuck with known diagnosis (see mission-recovery skill) — propose fix + resume
 
 **Always alert the operator:**
 - Repeated failures (>3 errors on the same agent in one session)
-- `budget-pause` state — operator must decide whether to increase cap or kill mission
+- The mission is paused at its spend cap — the operator decides whether to raise the cap
+  (`set_mission_budget`, up to the ceiling) or suspend the mission
 - Disk / volume issues (writes failing)
 - Mission stuck in `provisioning` > 5 minutes
 - Any Fly machine state that doesn't match DB status

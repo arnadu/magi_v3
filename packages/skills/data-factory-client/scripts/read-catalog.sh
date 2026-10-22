@@ -6,7 +6,6 @@
 #
 # Env:
 #   SHARED_DIR  — mission shared directory (set by agent runtime)
-#   SKILL_DIR   — this skill's directory (set by agent runtime)
 
 set -euo pipefail
 

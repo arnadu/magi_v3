@@ -371,11 +371,45 @@ function getTemplateTool(_deps: CopilotToolDeps): MagiTool {
 	};
 }
 
+function readMentalMapTool(deps: CopilotToolDeps): MagiTool {
+	const { db, userId } = deps;
+	return {
+		name: "ReadMentalMap",
+		description:
+			"Read an agent's current mental map (its durable HTML memory) — the map save_session_config's mentalMaps would replace. Read it before proposing an edit, and send back the whole map with only your section changed.",
+		parameters: Type.Object({
+			missionId: Type.String({ description: "Mission ID" }),
+			agentId: Type.String({ description: "Agent ID" }),
+		}),
+		async execute(_id, args) {
+			const missionId = args.missionId as string;
+			const agentId = args.agentId as string;
+			const mission = await storedCollection(db, "missions").findOne({
+				missionId,
+				userId,
+			});
+			if (!mission) return err(`Mission "${missionId}" not found`);
+			// The same document the daemon loads and save_session_config writes.
+			const latest = await storedCollection(db, "conversationMessages").findOne(
+				{ agentId, missionId, mentalMapHtml: { $exists: true } },
+				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+			);
+			if (!latest?.mentalMapHtml) {
+				return err(
+					`No mental map recorded for "${agentId}" in mission "${missionId}" (the agent has not run yet, or the id is wrong)`,
+				);
+			}
+			return ok(latest.mentalMapHtml);
+		},
+	};
+}
+
 export function createReadTools(deps: CopilotToolDeps) {
 	return {
 		listMissions: listMissionsTool(deps),
 		getMissionStatus: getMissionStatusTool(deps),
 		readMissionMailbox: readMissionMailboxTool(deps),
+		readMentalMap: readMentalMapTool(deps),
 		readMissionLog: readMissionLogTool(deps),
 		readMissionFile: readMissionFileTool(deps),
 		listSchedule: listScheduleTool(deps),

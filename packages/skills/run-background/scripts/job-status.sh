@@ -21,25 +21,25 @@ if [[ -z "${SHARED_DIR:-}" ]]; then
 fi
 
 PENDING_FILE="${SHARED_DIR}/jobs/pending/${JOB_ID}.json"
-RUNNING_FILE="${SHARED_DIR}/jobs/running/${JOB_ID}.json"
 STATUS_FILE="${SHARED_DIR}/jobs/status/${JOB_ID}.json"
 LOG_FILE="${SHARED_DIR}/logs/bg-${JOB_ID}.log"
 
-# Determine current state
+# The daemon moves a claimed job into its private state (not readable here)
+# and writes jobs/status/ only when the job ends, so a running job shows up
+# as: no pending file, no status yet, and a log file the daemon opened.
 if [[ -f "${STATUS_FILE}" ]]; then
     echo "=== Job status ==="
     cat "${STATUS_FILE}"
-elif [[ -f "${RUNNING_FILE}" ]]; then
-    echo "=== Job is RUNNING ==="
-    cat "${RUNNING_FILE}"
 elif [[ -f "${PENDING_FILE}" ]]; then
-    echo "=== Job is PENDING (waiting for daemon heartbeat) ==="
+    echo "=== Job is PENDING (the daemon claims pending jobs every minute) ==="
     cat "${PENDING_FILE}"
+elif [[ -f "${LOG_FILE}" ]]; then
+    echo "=== Job is RUNNING ==="
 else
-    echo "Job ${JOB_ID} not found in pending/, running/, or status/"
-    echo "  Pending: ${PENDING_FILE}"
-    echo "  Running: ${RUNNING_FILE}"
-    echo "  Status:  ${STATUS_FILE}"
+    echo "Job ${JOB_ID} not found: no pending spec, no log and no status."
+    echo "If you submitted it more than a minute ago, the daemon refused it (for"
+    echo "example, a spec whose agentId is not yours); the mission copilot can read"
+    echo "the reason in the daemon log."
     exit 1
 fi
 

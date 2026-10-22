@@ -78,7 +78,8 @@ function getLlmCalls({ db, col }: MissionRouteDeps): RequestHandler {
 }
 
 // One full LLM call (the drill-down detail: exact input + output). `output`
-// is absent after the 7-day retention window (usage/cost still present).
+// is absent after the 1-day body retention window (usage/cost are kept 90
+// days — see pruneOldLogEntries).
 function getLlmCall({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({

@@ -324,7 +324,7 @@ Tier A — Standard tools (agent-runtime-worker)     selectable per-agent via di
 └── Conditional: SearchWeb (needs BRAVE_SEARCH_API_KEY), BrowseWeb (needs Chromium)
 
 Tier B — Elevated tools (control-plane, copilot only)   injected via additionalTools
-└── ListMissions, GetMissionStatus, ReadMissionMailbox, ReadMissionLog, ReadMissionFile,
+└── ListMissions, GetMissionStatus, ReadMissionMailbox, ReadMentalMap, ReadMissionLog, ReadMissionFile,
     ListSchedule, ListTemplates, GetTemplate, ProposeAction
 ```
 
@@ -427,6 +427,7 @@ execution plane — see below.)
 | `ListMissions` | List all missions with their current status. |
 | `GetMissionStatus` | Get full status of a mission including live Fly machine state. |
 | `ReadMissionMailbox` | Read recent messages from any mission's mailbox. |
+| `ReadMentalMap` | Read an agent's current mental map (its durable HTML memory) — the map save_session_config's mentalMaps would replace. Read it before proposing an edit, and send back the whole map with only your section changed. |
 | `ReadMissionLog` | Read the daemon log for a running mission from its monitor server. |
 | `ReadMissionFile` | Browse or read files in a mission's sharedDir or an agent's workdir. |
 | `ReviewObjectives` | Read a mission's objective tree with current task status, KPI values, and budget-vs-spend. |
@@ -756,9 +757,10 @@ Do not write tests for prompt wording, LLM tool selection choices, or report con
 counts (input, output, cache read, cache write), cost, agentId, missionId, turnNumber, and whether
 it was a reflection call. Query with `npm run cli:usage`.
 
-Retention policy: full entries (system prompt, message array, model response) are kept for 7 days.
-After 7 days the control-plane daily cron at 02:00 UTC runs `$unset` on `input` and `output`,
-preserving usage/cost metadata indefinitely for billing reconciliation. The `input` and `output`
+Retention policy (`pruneOldLogEntries`, control plane, at start and every 30 minutes): full
+entries (system prompt, message array, model response) are kept for 1 day, then `input` and
+`output` are `$unset`; the remaining usage/cost row is kept 90 days, then deleted. Spend totals
+never depend on this collection (`missionStats`/`agentTurnStats` hold them). The `input` and `output`
 fields on `LlmCallLogEntry` are typed `optional` in TypeScript to reflect this post-pruning state.
 
 **SSE dashboard** (monitor server, port 4000): real-time mission state streamed to the browser.

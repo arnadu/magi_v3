@@ -60,6 +60,7 @@ export function createCopilotTools(
 		read.listMissions,
 		read.getMissionStatus,
 		read.readMissionMailbox,
+		read.readMentalMap,
 		read.readMissionLog,
 		read.readMissionFile,
 		objectives.reviewObjectives,

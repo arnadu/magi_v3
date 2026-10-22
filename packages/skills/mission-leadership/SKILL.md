@@ -34,8 +34,8 @@ burn through your own context window doing routine work. Escalate in this order,
    capping by default.
 
 **Retention**: `ReadAgentUsage`'s `toolNames` and all of `ReadAgentLlmCall`'s content are only
-available for calls within the last 7 days — older calls still show model/tokens/cost (kept
-indefinitely for billing), just not what tools ran or what was said. This is expected, not a
+available for calls within the last day — older calls still show model/tokens/cost (kept 90
+days), just not what tools ran or what was said. This is expected, not a
 bug — don't burn a turn trying to work around it for old calls.
 
 ## Writing objectives that are concrete without being over-prescriptive

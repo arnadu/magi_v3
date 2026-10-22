@@ -20,16 +20,16 @@ if ! printf '%s' "$SKILL_NAME" | grep -qE '^[a-z][a-z0-9-]{0,63}$'; then
   exit 1
 fi
 
-SKILL_DIR="$DEST_PATH/$SKILL_NAME"
+NEW_SKILL_DIR="$DEST_PATH/$SKILL_NAME"
 
-if [ -d "$SKILL_DIR" ]; then
-  echo "Error: skill directory already exists: $SKILL_DIR" >&2
+if [ -d "$NEW_SKILL_DIR" ]; then
+  echo "Error: skill directory already exists: $NEW_SKILL_DIR" >&2
   exit 1
 fi
 
-mkdir -p "$SKILL_DIR/scripts"
+mkdir -p "$NEW_SKILL_DIR/scripts"
 
-cat > "$SKILL_DIR/SKILL.md" << TEMPLATE
+cat > "$NEW_SKILL_DIR/SKILL.md" << TEMPLATE
 ---
 name: $SKILL_NAME
 description: |
@@ -54,5 +54,5 @@ Describe the trigger condition: when should an agent read and follow this skill?
 Show a concrete example of the skill in action.
 TEMPLATE
 
-echo "Skill scaffolded at: $SKILL_DIR"
-echo "Next: edit $SKILL_DIR/SKILL.md to complete the skill definition."
+echo "Skill scaffolded at: $NEW_SKILL_DIR"
+echo "Next: edit $NEW_SKILL_DIR/SKILL.md to complete the skill definition."

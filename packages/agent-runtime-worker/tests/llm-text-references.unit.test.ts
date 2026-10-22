@@ -56,10 +56,6 @@ describe("LLM-facing text references", () => {
 				"team",
 			],
 			[
-				/\$SKILL_DIR\/\.\.\/([a-z0-9-]+)\/scripts\/([A-Za-z0-9_.-]+\.(?:sh|py))/g,
-				"platform",
-			],
-			[
 				/<platform-skills-path>\/([a-z0-9-]+)\/scripts\/([A-Za-z0-9_.-]+\.(?:sh|py))/g,
 				"platform",
 			],
@@ -84,8 +80,32 @@ describe("LLM-facing text references", () => {
 			[/\bUpdateMentalMap\b/, "renamed to mental_map_update/add/remove"],
 			[/\bPublishArtifact\b/, "never existed; deliverables are shared files"],
 			[
-				/\btask-update\.sh\b|\brecord-kpi\.sh\b/,
-				"deleted in ADR-0019; use UpdateTask/RecordKpi",
+				/\btask-update\b|\brecord-kpi\b|\ballocate --key\b/,
+				"deleted in ADR-0019; use UpdateTask/RecordKpi/Allocate",
+			],
+			[
+				/\$SKILL_DIR/,
+				"never set in an agent's environment; use $SHARED_DIR/skills/_platform/<skill>/…",
+			],
+			[
+				/\bmongosh\b|\$MONGODB_URI/,
+				"no agent or copilot holds a database credential, and none should ask for one",
+			],
+			[
+				/\bTurn complete\b|Starting turn \(|orchestration failed|Agent run timed out|\bbudget-pause\b/,
+				"not printed by the mission daemon; see mission-monitoring's log table",
+			],
+			[
+				/fly machine update[^\n]*MAX_COST_USD/,
+				"the cap is mission.maxCostUsd, changed with set_mission_budget",
+			],
+			[
+				/(?:kept|retained|available)[^.\n]*\b7 days\b|\b7-day retention/i,
+				"llmCallLog bodies are kept 1 day, rows 90 days (pruneOldLogEntries)",
+			],
+			[
+				/git -C \{\{sharedDir\}\}|\{\{sharedDir\}\}\/\.git/,
+				"the repo is the daemon-owned shared.git beside shared/; {{sharedDir}} is not substituted in skills",
 			],
 			[/\brefresh\.sh\b/, "never existed; refresh.py runs as a background job"],
 			[

@@ -11,13 +11,19 @@ description: |
 
 | Situation | Recommended action |
 |-----------|-------------------|
-| Agent is confused about current task | Post a message with clear instructions |
+| Agent is confused about current task | Send a message with clear instructions (see below) |
 | Agent has wrong beliefs about its state (tracked data, commitments) | Patch the mental map section |
-| Both message and state are wrong | Patch mental map, then post message |
-| Agent is in a loop and ignoring inbox | Suspend, patch mental map, resume, then post |
+| Both message and state are wrong | Patch mental map, then send a message |
+| Agent is in a loop and ignoring inbox | Suspend, patch mental map, resume, then send a message |
 | System prompt or tools are wrong | Suspend, edit config (save_session_config), resume |
 
 ## Writing effective messages to agents
+
+You cannot post to a mission agent directly: your `PostMessage` reaches only the user. To
+deliver a message, propose a one-off `create_schedule` (`ProposeAction`) with `to: [agentId]`,
+your `subject` and `body`, and `deliverAt` about a minute from now. Once the operator confirms
+it, the control plane delivers it to the agent's inbox (waking the machine if needed). For
+anything urgent, you can also ask the operator to send it from the cockpit.
 
 Messages arrive in the agent's inbox and are read at the next wakeup. The agent sees
 them as `user` messages formatted with sender, timestamp, and content.
@@ -55,20 +61,22 @@ with a `mentalMaps` payload to correct specific sections without a full restart.
 
 ### How to build the patched HTML
 
-The mental map is an HTML string. To patch a single section:
-1. Read the current map: it is returned by `GetMissionStatus` or in the dashboard
+The mental map is an HTML string, and `mentalMaps` **replaces the agent's whole map** — there
+is no per-section merge. To patch a single section:
+1. Read the current map with `ReadMentalMap({ missionId, agentId })`
 2. Identify the `<section id="...">` element to replace
-3. Build the new section HTML
+3. Build the new section HTML and splice it into the map you read, leaving every other
+   section exactly as it was (in particular `#my-objectives`, which the daemon maintains)
 4. Pass the full updated HTML string in `mentalMaps: { [agentId]: fullHtml }`
 
-**Example payload:**
+**Example payload** (the `…` stands for the rest of the map you read, unchanged):
 ```json
 {
   "type": "save_session_config",
   "payload": {
     "missionId": "gold-digest-001",
     "mentalMaps": {
-      "lead-analyst": "<section id=\"status\"><p>Ready. Awaiting daily brief task.</p></section><section id=\"active-missions\"><p>No active subtasks.</p></section>"
+      "lead-analyst": "…<section id=\"status\"><p>Ready. Awaiting daily brief task.</p></section>…"
     }
   }
 }
@@ -88,7 +96,7 @@ If an agent needs a skill or reference document it doesn't have:
   "type": "write_mission_file",
   "payload": {
     "missionId": "gold-digest-001",
-    "path": "skills/my-skill/SKILL.md",
+    "path": "skills/mission/my-skill/SKILL.md",
     "content": "---\nname: my-skill\ndescription: ...\n---\n# ..."
   }
 }

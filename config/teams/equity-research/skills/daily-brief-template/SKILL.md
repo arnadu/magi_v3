@@ -14,11 +14,12 @@ Every section must be present. Omit data only if genuinely unavailable — note 
 ## Usage
 
 As Lead Analyst, after receiving research from all three team members:
-1. Create the file: `{{sharedDir}}/briefs/YYYY-MM-DD.md`
+1. Create the file `briefs/YYYY-MM-DD.md` in the shared folder (`$SHARED_DIR` in Bash).
 2. Fill each section using the Economist's and Junior Analyst's committed research notes.
-   To cite the exact commit each source came from, run (read-only, no write access to `.git`
-   needed): `git -C {{sharedDir}} log -1 --format=%h -- economist/YYYY-MM-DD.md` (and similarly
-   for the Junior Analyst's file).
+   To cite the exact commit each source came from, run (read-only; the repository lives beside
+   the shared folder, not inside it):
+   `git --git-dir="$SHARED_DIR/../shared.git" --work-tree="$SHARED_DIR" log -1 --format=%h -- economist/YYYY-MM-DD.md`
+   (and similarly for the Junior Analyst's file).
 3. That's it — see the git-provenance skill. The file is committed automatically at the end of
    this turn; do not run `git commit` yourself. Leave this brief's own "Rationale commit" field
    as `(see Files panel)` — the exact hash isn't known until after the turn ends, and the
