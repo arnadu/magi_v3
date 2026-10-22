@@ -5,10 +5,11 @@
  * browser makes goes through the egress-filtering proxy (CR-03 / F-002).
  */
 
-import { appendFileSync, mkdirSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { LogLine, V3 as Stagehand } from "@browserbasehq/stagehand";
 import type { Model } from "@mariozechner/pi-ai";
+import { appendFileInside, mkdirInside } from "../safe-path.js";
 import {
 	createEgressFilterProxy,
 	type EgressProxyHandle,
@@ -51,14 +52,20 @@ export class SessionLog {
 	readonly logsDir: string;
 	readonly file: string;
 
-	constructor(sharedDir: string) {
+	// shared/logs is agent-writable: every daemon write there is contained and
+	// never follows a planted link (BND-5).
+	constructor(readonly sharedDir: string) {
 		this.logsDir = join(sharedDir, "logs");
 		this.file = join(this.logsDir, `browse-web-${this.sessionId}.ndjson`);
 	}
 
 	write(entry: Record<string, unknown>): void {
 		try {
-			appendFileSync(this.file, `${JSON.stringify(entry)}\n`);
+			appendFileInside(
+				this.sharedDir,
+				`logs/browse-web-${this.sessionId}.ndjson`,
+				`${JSON.stringify(entry)}\n`,
+			);
 		} catch (e) {
 			// Non-fatal: browser automation continues, but surface the failure so
 			// operators know the session log is incomplete.
@@ -108,11 +115,13 @@ export class BrowserSession {
 		const { V3: StagehandClass } = await import("@browserbasehq/stagehand");
 		// The logs dir is created on first use, so agents that never browse do
 		// not need write access to sharedDir.
-		mkdirSync(this.log.logsDir, { recursive: true });
 		// An absolute Linux path: on WSL2 chrome-launcher would otherwise turn it
 		// into a UNC path that Playwright creates as a literal directory name.
-		const dir = join(this.log.logsDir, `profile-${this.log.sessionId}`);
-		mkdirSync(dir, { recursive: true });
+		// Exclusive: a directory or link already at this name was planted.
+		const dir = mkdirInside(
+			this.log.sharedDir,
+			`logs/profile-${this.log.sessionId}`,
+		);
 		this.profileDir = dir;
 		// Stagehand V3's Page has no route(), so the checks in execute() cover
 		// only page.goto(); once agent() clicks, redirects or opens popups,

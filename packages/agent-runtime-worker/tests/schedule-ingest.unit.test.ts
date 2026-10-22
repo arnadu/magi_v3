@@ -274,6 +274,26 @@ describe("ingest — message schedules", () => {
 		expect(docs).toHaveLength(1);
 	});
 
+	it("keeps an operator's cancel while the file remains, even through edits, and frees the label once the file is removed", async () => {
+		const { db, docs } = fakeDb();
+		const ing = createScheduleIngestor(makeDeps(db));
+		const path = writeSchedule("daily-brief", dailyBrief, UID_A1);
+		await ing.ingest();
+		Object.assign(docs[0], { status: "cancelled", cancelledBy: "operator" });
+
+		expect((await ing.ingest()).updated).toEqual([]);
+		writeFileSync(path, JSON.stringify({ ...dailyBrief, cron: "0 7 * * *" }));
+		expect((await ing.ingest()).updated).toEqual([]);
+		expect(docs[0].status).toBe("cancelled");
+
+		unlinkSync(path);
+		await ing.ingest();
+		expect(docs[0].cancelledBy).toBeUndefined();
+		writeSchedule("daily-brief", dailyBrief, UID_A1);
+		expect((await ing.ingest()).updated).toEqual(["daily-brief"]);
+		expect(docs[0].status).toBe("pending");
+	});
+
 	it("never touches a document the copilot created (no origin)", async () => {
 		const { db, docs } = fakeDb();
 		(docs as unknown as Doc[]).push({

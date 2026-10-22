@@ -29,7 +29,16 @@ export async function executeCancelSchedule(
 	}
 	const r = await scheduled.updateOne(
 		{ _id: oid, status: "pending" },
-		{ $set: { status: "cancelled" } },
+		{
+			// cancelledBy keeps ingest from re-importing a file-backed schedule
+			// from shared/schedules/ on the mission's next tick (SCH-1).
+			$set: {
+				status: "cancelled",
+				cancelledAt: new Date(),
+				cancelledBy: "operator",
+			},
+			$unset: { pendingFire: "", claimedAt: "" },
+		},
 	);
 	if (r.matchedCount === 0) {
 		throw new Error(

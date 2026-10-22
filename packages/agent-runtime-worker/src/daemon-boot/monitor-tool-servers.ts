@@ -87,10 +87,19 @@ export async function startMonitorServer(
 			// leaked from another mission) could cancel a different mission's
 			// scheduled message — the same missing-scope bug class Track 1
 			// fixed for the control-plane copilot's B1 tools, found here too.
-			await storedCollection(ctx.db, "scheduledMessages").deleteOne({
-				_id: new ObjectId(id),
-				missionId: ctx.missionId,
-			});
+			// A cancel, not a delete: a file-backed schedule's document is what
+			// stops ingest re-importing it from shared/schedules/ (SCH-1).
+			await storedCollection(ctx.db, "scheduledMessages").updateOne(
+				{ _id: new ObjectId(id), missionId: ctx.missionId },
+				{
+					$set: {
+						status: "cancelled",
+						cancelledAt: new Date(),
+						cancelledBy: "operator",
+					},
+					$unset: { pendingFire: "", claimedAt: "" },
+				},
+			);
 		},
 		workspaceGit,
 	);

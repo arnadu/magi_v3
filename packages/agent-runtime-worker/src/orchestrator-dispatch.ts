@@ -34,6 +34,8 @@ export interface DispatcherDeps {
 	leadAgentId: string;
 }
 
+const DISPATCH_RETRY_MS = 30_000;
+
 export class Dispatcher {
 	/** Running agents and their completion promises. */
 	readonly active = new Map<string, AbortController>();
@@ -47,11 +49,11 @@ export class Dispatcher {
 	// calls"). A call that arrives mid-pass is coalesced into one more pass.
 	private dispatchInFlight = false;
 	private dispatchAgainRequested = false;
+	private retryTimer: NodeJS.Timeout | undefined;
 
 	constructor(private readonly deps: DispatcherDeps) {
-		this.cooldown = createErrorCooldown(
-			deps.config,
-			() => void this.dispatchReady(),
+		this.cooldown = createErrorCooldown(deps.config, () =>
+			this.kick("cooldown end", () => this.dispatchReady()),
 		);
 	}
 
@@ -61,6 +63,28 @@ export class Dispatcher {
 
 	dispose(): void {
 		this.cooldown.dispose();
+		clearTimeout(this.retryTimer);
+	}
+
+	/**
+	 * Run a dispatch pass nobody awaits (a timer, a run's completion). A
+	 * failure — typically a Mongo blip reading the mailbox — is logged and
+	 * retried later; left unhandled it would become an unhandledRejection,
+	 * which shuts the whole daemon down with a clean exit that Fly's
+	 * on-failure restart policy never restarts (RES-3).
+	 */
+	private kick(origin: string, pass: () => Promise<void>): void {
+		pass().catch((e) => {
+			if (this.deps.signal?.aborted) return;
+			console.error(
+				`[orchestrator] dispatch pass after ${origin} failed: ${(e as Error).message} — retrying in ${DISPATCH_RETRY_MS / 1000}s; unread mail waits until then`,
+			);
+			this.retryTimer ??= setTimeout(() => {
+				this.retryTimer = undefined;
+				this.kick("a failed pass", () => this.checkIdle());
+			}, DISPATCH_RETRY_MS);
+			this.retryTimer.unref();
+		});
 	}
 
 	async dispatchReady(): Promise<void> {
@@ -229,7 +253,7 @@ export class Dispatcher {
 				this.active.delete(agentId);
 				this.activePromises.delete(agentId);
 				config.onAgentDone?.(agentId);
-				void this.checkIdle();
+				this.kick(`${agentId}'s run`, () => this.checkIdle());
 			});
 		this.activePromises.set(agentId, promise);
 	}

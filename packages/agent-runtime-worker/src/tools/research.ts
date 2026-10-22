@@ -11,14 +11,7 @@
  * See ADR-0010 for design rationale.
  */
 
-import {
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	renameSync,
-	writeFileSync,
-} from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { LlmCallMeter } from "../llm-meter.js";
@@ -29,6 +22,12 @@ import type { AclPolicy, MagiTool, ToolResult } from "../tools.js";
 import { createBashTool, truncate } from "../tools.js";
 import { tryCreateBrowseWebTool } from "./browse-web.js";
 import { createFetchUrlTool } from "./fetch-url.js";
+import {
+	type ResearchEntry,
+	readCachedFinding,
+	saveEntry,
+	slugify,
+} from "./research-cache.js";
 import { tryCreateSearchWebTool } from "./search-web.js";
 
 // ---------------------------------------------------------------------------
@@ -116,118 +115,6 @@ export function writeFinding(
 			`[research] Failed to write output_path ${outputPath}: ${(e as Error).message}`,
 		);
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Research index types
-// ---------------------------------------------------------------------------
-
-export interface ResearchEntry {
-	slug: string;
-	question: string;
-	/** First 500 chars of the finding — full text in the .md file. */
-	answer: string;
-	sources: string[];
-	savedAt: string;
-	agentId: string;
-}
-
-// ---------------------------------------------------------------------------
-// Index helpers
-// ---------------------------------------------------------------------------
-
-function researchDir(sharedDir: string): string {
-	return join(sharedDir, "research");
-}
-
-function indexPath(sharedDir: string): string {
-	return join(researchDir(sharedDir), "index.json");
-}
-
-function ensureResearchDir(sharedDir: string): void {
-	const dir = researchDir(sharedDir);
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-}
-
-function loadIndex(sharedDir: string): ResearchEntry[] {
-	const p = indexPath(sharedDir);
-	if (!existsSync(p)) return [];
-	try {
-		return JSON.parse(readFileSync(p, "utf-8")) as ResearchEntry[];
-	} catch (e) {
-		// RS3: the next save would overwrite a corrupt index with one entry,
-		// losing every cached finding's index row; keep the bad file aside.
-		const aside = `${p}.corrupt-${Date.now()}`;
-		try {
-			renameSync(p, aside);
-		} catch {
-			// Already moved by a concurrent reader; nothing left to keep.
-		}
-		console.warn(
-			`[research] index.json was unreadable (${(e as Error).message}) — moved to ${aside}, starting a new index`,
-		);
-		return [];
-	}
-}
-
-function normalise(q: string): string {
-	return q.toLowerCase().trim().replace(/\s+/g, " ");
-}
-
-function findCached(
-	index: ResearchEntry[],
-	question: string,
-	maxAgeHours: number,
-): ResearchEntry | undefined {
-	const key = normalise(question);
-	const cutoff = Date.now() - maxAgeHours * 3_600_000;
-	return index.find(
-		(e) =>
-			normalise(e.question) === key && new Date(e.savedAt).getTime() >= cutoff,
-	);
-}
-
-function slugify(question: string): string {
-	return (
-		question
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-|-$/g, "")
-			.slice(0, 60) +
-		"-" +
-		Date.now().toString(36)
-	);
-}
-
-function saveEntry(
-	sharedDir: string,
-	entry: ResearchEntry,
-	fullAnswer: string,
-): void {
-	ensureResearchDir(sharedDir);
-
-	// Write full finding to its own .md file.
-	const mdPath = join(researchDir(sharedDir), `${entry.slug}.md`);
-	const header = [
-		`# Research: ${entry.question}`,
-		``,
-		`**Agent:** ${entry.agentId}  **Date:** ${entry.savedAt}`,
-		`**Sources:** ${entry.sources.join(", ") || "(none recorded)"}`,
-		``,
-		`---`,
-		``,
-	].join("\n");
-	writeFileSync(mdPath, header + fullAnswer, "utf-8");
-
-	// Append to index: read-modify-write, written to a temp file and renamed
-	// so a reader never sees a half-written index. Two Research calls saving
-	// at the same moment (agent + Tool API) can still lose one row; the .md
-	// finding itself is never lost (RS3).
-	const index = loadIndex(sharedDir);
-	index.push(entry);
-	const tmp = `${indexPath(sharedDir)}.${process.pid}.tmp`;
-	writeFileSync(tmp, JSON.stringify(index, null, 2), "utf-8");
-	renameSync(tmp, indexPath(sharedDir));
 }
 
 // ---------------------------------------------------------------------------
@@ -341,31 +228,6 @@ const RESEARCH_PARAMS = Type.Object({
 		}),
 	),
 });
-
-/** A cached finding young enough to reuse: its header line and full text (from the .md file when present). */
-function readCachedFinding(
-	sharedDir: string,
-	question: string,
-	maxAge: number,
-): { header: string; answer: string } | null {
-	const cached = findCached(loadIndex(sharedDir), question, maxAge);
-	if (!cached) return null;
-	const mdFile = join(researchDir(sharedDir), `${cached.slug}.md`);
-	let answer = cached.answer;
-	if (existsSync(mdFile)) {
-		try {
-			const raw = readFileSync(mdFile, "utf-8");
-			const sep = raw.indexOf("\n---\n");
-			answer = sep !== -1 ? raw.slice(sep + 5).trim() : raw.trim();
-		} catch {
-			// Fall back to truncated answer in index.
-		}
-	}
-	return {
-		header: `[Cached finding — ${cached.agentId}, ${new Date(cached.savedAt).toISOString().slice(0, 16)}]`,
-		answer,
-	};
-}
 
 /** The sub-loop's task: the question, preceded by any context files' contents. */
 function researchTask(question: string, contextSections: string[]): string {

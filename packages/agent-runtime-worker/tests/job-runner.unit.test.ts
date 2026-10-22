@@ -22,6 +22,7 @@ import type { TeamConfig } from "@magi/agent-config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JobSpec } from "../src/job-recovery.js";
 import {
+	cancelBackgroundJob,
 	enqueuePrivateJob,
 	type JobRunnerDeps,
 	jobDirs,
@@ -277,5 +278,46 @@ describe("runPendingJobs — daemon-authored queue", () => {
 		expect(() => enqueuePrivateJob(dirs, spec({ id: "dup" }))).toThrow(
 			/EEXIST/,
 		);
+	});
+});
+
+describe("runPendingJobs — killing and logging", () => {
+	it("spawns the job detached and kills its group as the agent on timeout and on cancel", async () => {
+		const kills: [number, string][] = [];
+		let opts: { detached?: boolean } | undefined;
+		const inner = deps();
+		const d = deps({
+			killGroupFn: (pgid, user) => {
+				kills.push([pgid, user]);
+				return true;
+			},
+			spawnFn: ((cmd: string, args: string[], o: { detached?: boolean }) => {
+				opts = o;
+				// biome-ignore lint/suspicious/noExplicitAny: forwarding to the default fake
+				return (inner.spawnFn as any)(cmd, args);
+			}) as unknown as JobRunnerDeps["spawnFn"],
+		});
+		pending(d, spec({ scriptPath: script(), timeoutMs: 20 }), UID_A1);
+		await runPendingJobs(d);
+		expect(opts?.detached).toBe(true);
+		await new Promise((r) => setTimeout(r, 40));
+		expect(kills).toEqual([[4242, "magi-w1"]]);
+		expect(cancelBackgroundJob("job-1")).toBe(true);
+		expect(kills).toHaveLength(2);
+		inner.children[0].emit("close", null);
+		expect(cancelBackgroundJob("job-1")).toBe(false);
+	});
+
+	it("refuses to start a job whose log name is a planted symlink, leaving the target untouched", async () => {
+		const d = deps();
+		const target = join(base, "daemon-owned.conf");
+		writeFileSync(target, "original\n");
+		mkdirSync(join(sharedDir, "logs"), { recursive: true });
+		symlinkSync(target, join(sharedDir, "logs", "bg-job-1.log"));
+		pending(d, spec({ scriptPath: script() }), UID_A1);
+		await runPendingJobs(d);
+		expect(d.spawned).toEqual([]);
+		expect(d.tokens.issued).toBe(0);
+		expect(readFileSync(target, "utf8")).toBe("original\n");
 	});
 });

@@ -192,8 +192,8 @@ describe("executeAction: cancel_schedule", () => {
 		).rejects.toThrow(/already delivered/);
 	});
 
-	it("cancels an owned, pending schedule", async () => {
-		const { db } = fakeDb({
+	it("cancels an owned, pending schedule as an operator cancel, so ingest does not re-import its file", async () => {
+		const { db, updates } = fakeDb({
 			missions: [{ missionId: "m1", userId: "owner" }],
 			schedules: [{ _id: sid, missionId: "m1", status: "pending" }],
 		});
@@ -204,5 +204,9 @@ describe("executeAction: cancel_schedule", () => {
 				"owner",
 			),
 		).resolves.toMatch(/cancelled/);
+		expect(updates[0].set).toMatchObject({
+			status: "cancelled",
+			cancelledBy: "operator",
+		});
 	});
 });

@@ -31,19 +31,27 @@ import {
 	readFileSync,
 	realpathSync,
 	unlinkSync,
+	type WriteStream,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import type { TeamConfig } from "@magi/agent-config";
+import {
+	killJobGroup,
+	registerRunningJob,
+	unregisterRunningJob,
+} from "./job-processes.js";
 import { JOB_ID_RE, type JobSpec } from "./job-recovery.js";
 import { resolveLinuxUsers } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { removeIfExists } from "./remove-if-exists.js";
-import { readInside, writeFileInside } from "./safe-path.js";
+import { openAppendInside, readInside, writeFileInside } from "./safe-path.js";
 import type { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
 import type { AgentIdentity } from "./workspace-manager.js";
+
+export { cancelBackgroundJob, killJobGroup } from "./job-processes.js";
 
 export const DEFAULT_JOB_TIMEOUT_MS = 30 * 60_000;
 export const MAX_CONCURRENT_JOBS = 3;
@@ -122,34 +130,12 @@ export function enqueuePrivateJob(dirs: JobDirs, spec: JobSpec): string {
 	);
 }
 
-/** jobId → live ChildProcess, so CancelBackgroundJob can reach a running job's process group. */
-const runningJobProcesses = new Map<string, ChildProcess>();
 let runningJobs = 0;
 
 /** How many jobs are running right now (the resource sampler reports it). */
 export function runningJobCount(): number {
 	return runningJobs;
 }
-
-/**
- * Kill a running background job's entire process group (the same
- * SIGKILL-the-group the wall-clock timeout uses). False when the job isn't
- * running — already exited, or unknown id.
- */
-export function cancelBackgroundJob(jobId: string): boolean {
-	const child = runningJobProcesses.get(jobId);
-	if (!child || child.pid === undefined) return false;
-	try {
-		process.kill(-child.pid, "SIGKILL");
-	} catch {
-		return false;
-	}
-	cancelledJobs.add(jobId);
-	return true;
-}
-
-/** Jobs killed by CancelBackgroundJob, so their exit is recorded as cancelled, not failed (MC9). */
-const cancelledJobs = new Set<string>();
 
 /**
  * Interpreter argv prefix from the script's shebang: `#!/usr/bin/env <cmd>`
@@ -189,6 +175,8 @@ export interface JobRunnerDeps {
 	daemonUid: number;
 	/** Injected by tests. */
 	spawnFn?: typeof spawn;
+	/** Test seam for killJobGroup. */
+	killGroupFn?: (pgid: number, linuxUser: string) => boolean;
 	/** Injected by tests to simulate file ownership. */
 	ownerUidOf?: (path: string) => number;
 	/** Records a refused spec (defaults to console.error). */
@@ -399,18 +387,12 @@ function startJob(
 		linuxUser,
 	};
 
+	const logPath = join(dirs.logs, `bg-${spec.id}.log`);
+	const logStream = openJobLog(deps.sharedDir, logPath, spec.id);
+	if (typeof logStream === "string") return drop(logStream);
 	// Issue the token right before the spawn and revoke it the moment the spawn
 	// fails, so the window in which it exists unused is as short as possible.
 	const token = deps.toolApiServer.issueToken(acl, identity);
-	const logPath = join(dirs.logs, `bg-${spec.id}.log`);
-	const logStream = createWriteStream(logPath, { flags: "a" });
-	// A failed log open (disk full, directory removed) must not take the daemon
-	// down with an unhandled "error" event; the job still runs, unlogged.
-	logStream.on("error", (e) =>
-		console.error(
-			`[daemon:jobs] Log stream for ${spec.id} failed: ${(e as Error).message}`,
-		),
-	);
 
 	runningJobs++;
 	const interpreter = readShebangInterpreter(resolvedScript);
@@ -440,6 +422,9 @@ function startJob(
 					MAGI_TOOL_TOKEN: token,
 				},
 				stdio: ["ignore", "pipe", "pipe"],
+				// Its own process group, so the timeout and CancelBackgroundJob can
+				// SIGKILL the job and everything it started via kill(-pid).
+				detached: true,
 			},
 		);
 	} catch (e) {
@@ -449,9 +434,19 @@ function startJob(
 		return drop(`spawn failed: ${(e as Error).message}`);
 	}
 
+	// An asynchronous spawn failure (EAGAIN/ENOMEM) arrives as "error"; without
+	// a listener it would crash the daemon. "close" still follows and cleans up.
+	child.on("error", (e) =>
+		console.error(
+			`[daemon:jobs] Job ${spec.id} process error: ${e.message} — it is recorded as failed`,
+		),
+	);
 	child.stdout?.pipe(logStream);
 	child.stderr?.pipe(logStream);
-	runningJobProcesses.set(spec.id, child);
+	const killGroup = () =>
+		child.pid !== undefined &&
+		(deps.killGroupFn ?? killJobGroup)(child.pid, linuxUser);
+	registerRunningJob(spec.id, killGroup);
 
 	// Wall-clock timeout — kill the entire process group.
 	const jobTimeoutMs = spec.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS;
@@ -459,34 +454,49 @@ function startJob(
 		console.error(
 			`[daemon:jobs] Job ${spec.id} timed out after ${jobTimeoutMs}ms — killing`,
 		);
-		if (child.pid !== undefined) {
-			try {
-				process.kill(-child.pid, "SIGKILL");
-			} catch (e) {
-				// ESRCH: the group already exited between the timeout and the kill.
-				if ((e as NodeJS.ErrnoException).code !== "ESRCH") {
-					console.error(
-						`[daemon:jobs] Could not kill job ${spec.id}'s process group: ${(e as Error).message} — it may keep running past its timeout`,
-					);
-				}
-			}
-		} else {
-			child.kill("SIGKILL");
-		}
+		killGroup();
 	}, jobTimeoutMs);
 
 	child.on("close", (exitCode) => {
 		clearTimeout(timeoutHandle);
 		runningJobs--;
-		runningJobProcesses.delete(spec.id);
+		const cancelled = unregisterRunningJob(spec.id);
 		deps.toolApiServer.revokeToken(token);
 		logStream.end();
 		removeIfExists(
 			runningPath,
 			"the finished job stays marked running until recovery clears it",
 		);
-		recordJobExit(spec, exitCode, logPath, deps, dirs);
+		recordJobExit(spec, exitCode, cancelled, logPath, deps, dirs);
 	});
+}
+
+/**
+ * The job's append-only log. shared/logs is agent-writable and the agent picks
+ * the id, so a link planted at this name must not redirect the job's
+ * (agent-controlled) output into a daemon-owned file such as
+ * shared.git/config (F-074). A string is the reason it could not be opened.
+ */
+function openJobLog(
+	sharedDir: string,
+	logPath: string,
+	jobId: string,
+): WriteStream | string {
+	let fd: number;
+	try {
+		fd = openAppendInside(sharedDir, relative(sharedDir, logPath));
+	} catch (e) {
+		return `cannot open its log ${logPath}: ${(e as Error).message}`;
+	}
+	const stream = createWriteStream("", { fd });
+	// A failed write (disk full) must not take the daemon down with an
+	// unhandled "error" event; the job still runs, unlogged.
+	stream.on("error", (e) =>
+		console.error(
+			`[daemon:jobs] Log stream for ${jobId} failed: ${(e as Error).message}`,
+		),
+	);
+	return stream;
 }
 
 /**
@@ -498,12 +508,12 @@ function startJob(
 function recordJobExit(
 	spec: JobSpec,
 	exitCode: number | null,
+	cancelled: boolean,
 	logPath: string,
 	deps: JobRunnerDeps,
 	dirs: JobDirs,
 ): void {
 	const { missionId, mailboxRepo, teamConfig, sharedDir } = deps;
-	const cancelled = cancelledJobs.delete(spec.id);
 	const status = {
 		id: spec.id,
 		agentId: spec.agentId,

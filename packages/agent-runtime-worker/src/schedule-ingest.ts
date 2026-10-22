@@ -10,8 +10,10 @@
  *   1. `ingest()` — upserts one `scheduled_messages` document per file,
  *      keyed `{missionId, origin, label}`. The first sight inserts it, armed
  *      at the cron's next occurrence; a later tick re-arms only when the
- *      spec's hash changed or the document had been cancelled; a label with
- *      no file is cancelled. Edits re-arm, `rm` cancels — within a minute.
+ *      spec's hash changed or the document had been cancelled — unless an
+ *      operator cancelled it (`cancelledBy`), which holds until the file is
+ *      removed; a label with no file is cancelled. Edits re-arm, `rm`
+ *      cancels — within a minute.
  *   2. `claimJobFires()` — for `kind: "job"` schedules the control plane does
  *      not post mail; it stamps `pendingFire` (and wakes the machine). This
  *      turns each stamp into one job in the daemon-private queue, named
@@ -428,6 +430,9 @@ async function upsertSchedule(
 		);
 		return r.upsertedCount === 1 ? "imported" : "unchanged";
 	}
+	// An operator's cancel outlasts edits to the file (SCH-1): only removing
+	// the file, which clears the mark below, lets the label be scheduled again.
+	if (existing.cancelledBy === "operator") return "unchanged";
 	const rearm =
 		existing.specHash !== fields.specHash ||
 		existing.status === "cancelled" ||
@@ -483,6 +488,12 @@ async function ingestSchedules(ctx: IngestContext): Promise<IngestSummary> {
 					updatedAt: ctx.now(),
 				},
 			},
+		);
+		// The file behind an operator-cancelled schedule is gone: the label is
+		// free again, and a file added later is a new schedule.
+		await ctx.col.updateMany(
+			{ ...ctx.base, cancelledBy: "operator", label: { $nin: seen } },
+			{ $unset: { cancelledBy: "" } },
 		);
 		summary.cancelled = gone.modifiedCount ?? 0;
 		if (summary.cancelled > 0) {

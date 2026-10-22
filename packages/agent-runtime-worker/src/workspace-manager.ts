@@ -1,20 +1,23 @@
 import { execFileSync } from "node:child_process";
 import {
 	chmodSync,
+	closeSync,
 	cpSync,
 	existsSync,
+	constants as fsc,
 	lstatSync,
 	mkdirSync,
+	openSync,
 	readdirSync,
 	readFileSync,
 	rmSync,
 	statSync,
-	writeFileSync,
 } from "node:fs";
 import { userInfo } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ensureSharedGitDir } from "./safe-git.js";
+import { mkdirInside, resolveInside, writeFileInside } from "./safe-path.js";
 
 /**
  * Default platform skills path: packages/skills/ resolved from the compiled
@@ -347,6 +350,22 @@ export function copyTeamFilesToSharedDir(
 ): void {
 	if (!existsSync(teamDir)) return;
 
+	// shared/ is agent-writable, so every destination is contained and opened
+	// without following a link (a planted shared/<teamfile> or directory link
+	// must not redirect a daemon write or ACL grant — BND-2).
+	function grant(rel: string, perms: "r-x" | "r--"): void {
+		const dir = perms === "r-x";
+		const fd = openSync(
+			resolveInside(sharedDir, rel),
+			fsc.O_RDONLY | fsc.O_NOFOLLOW | (dir ? fsc.O_DIRECTORY : 0),
+		);
+		try {
+			for (const user of linuxUsers) setAclOnFd(fd, `u:${user}:${perms}`);
+		} finally {
+			closeSync(fd);
+		}
+	}
+
 	function walk(dir: string): void {
 		let entries: string[];
 		try {
@@ -370,38 +389,32 @@ export function copyTeamFilesToSharedDir(
 			} catch {
 				continue;
 			}
-			const dest = join(sharedDir, rel);
-			if (st.isDirectory()) {
-				mkdirSync(dest, { recursive: true });
-				walk(src);
-				// Grant all agent users rwx on new subdirs.
-				for (const user of linuxUsers) {
-					try {
-						execFileSync("setfacl", ["-m", `u:${user}:r-x`, dest], {
-							stdio: "ignore",
-						});
-					} catch {
-						/* best-effort */
-					}
+			try {
+				if (st.isDirectory()) {
+					mkdirInside(sharedDir, rel, { exclusive: false });
+					grant(rel, "r-x");
+					walk(src);
+				} else {
+					writeFileInside(sharedDir, rel, readFileSync(src));
+					grant(rel, "r--");
 				}
-			} else {
-				mkdirSync(dirname(dest), { recursive: true });
-				try {
-					writeFileSync(dest, readFileSync(src));
-					for (const user of linuxUsers) {
-						try {
-							execFileSync("setfacl", ["-m", `u:${user}:r--`, dest], {
-								stdio: "ignore",
-							});
-						} catch {
-							/* best-effort */
-						}
-					}
-				} catch {
-					/* skip unreadable files */
-				}
+			} catch (e) {
+				console.warn(
+					`[workspace] team file ${rel} not copied to shared/: ${(e as Error).message}`,
+				);
 			}
 		}
 	}
 	walk(teamDir);
+}
+
+/**
+ * setfacl on an inode the daemon already holds open, via its /proc fd link.
+ * setfacl follows a symlink at its path argument; through the fd, a link an
+ * agent swaps in after the O_NOFOLLOW open cannot redirect the grant.
+ */
+function setAclOnFd(fd: number, entry: string): void {
+	execFileSync("setfacl", ["-m", entry, `/proc/${process.pid}/fd/${fd}`], {
+		stdio: "ignore",
+	});
 }

@@ -45,6 +45,12 @@ interface ScheduledDocBase {
 	createdAt?: Date;
 	updatedAt?: Date;
 	cancelledAt?: Date;
+	/**
+	 * An operator cancel (cockpit or control-plane copilot). Ingest never
+	 * re-arms a file-backed schedule carrying it while its file remains;
+	 * removing the file clears it, so a file added later is a new schedule.
+	 */
+	cancelledBy?: "operator";
 	/** Present only on documents imported from `shared/schedules/`. */
 	origin?: typeof SCHEDULE_ORIGIN;
 	specHash?: string;

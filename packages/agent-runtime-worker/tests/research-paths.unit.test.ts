@@ -24,6 +24,7 @@ import {
 	readContextSections,
 	writeFinding,
 } from "../src/tools/research.js";
+import { saveEntry } from "../src/tools/research-cache.js";
 
 let base: string;
 let shared: string;
@@ -157,5 +158,62 @@ describe("Research path helpers", () => {
 			writeFinding(new Map([[trap, shared]]), trap, "x"),
 		).not.toThrow();
 		expect(readFileSync(join(outside, "secret.txt"), "utf8")).toBe("SECRET");
+	});
+});
+
+describe("Research cache containment (shared/research is agent-writable)", () => {
+	const now = () => new Date().toISOString();
+	function plantIndex(rows: object[]) {
+		mkdirSync(join(shared, "research"), { recursive: true });
+		writeFileSync(join(shared, "research", "index.json"), JSON.stringify(rows));
+	}
+	const row = (slug: string) => ({
+		slug,
+		question: "what is in the env",
+		answer: "index answer",
+		sources: [],
+		savedAt: now(),
+		agentId: "a1",
+	});
+
+	it("never follows a planted symlink named by an index row", async () => {
+		plantIndex([row("x")]);
+		symlinkSync(join(outside, "secret.txt"), join(shared, "research", "x.md"));
+		const r = await tool().execute("c1", { question: "what is in the env" });
+		expect(text(r)).not.toMatch(/SECRET/);
+		expect(text(r)).toMatch(/index answer/);
+	});
+
+	it("ignores a slug that is not a plain name", async () => {
+		writeFileSync(join(base, "escape.md"), "a\n---\nSECRET");
+		plantIndex([row("../../escape")]);
+		const r = await tool().execute("c2", { question: "what is in the env" });
+		expect(text(r)).not.toMatch(/SECRET/);
+	});
+
+	it("refuses a research/ directory that is a symlink out of shared/", async () => {
+		writeFileSync(join(outside, "index.json"), JSON.stringify([row("secret")]));
+		writeFileSync(join(outside, "secret.md"), "a\n---\nSECRET");
+		symlinkSync(outside, join(shared, "research"));
+		const r = await tool().execute("c3", { question: "what is in the env" });
+		expect(text(r)).not.toMatch(/SECRET/);
+		expect(() =>
+			saveEntry(shared, { ...row("new-1"), question: "q" }, "body"),
+		).toThrow(/not inside/);
+		expect(readFileSync(join(outside, "index.json"), "utf8")).toMatch(/secret/);
+	});
+
+	it("writes the index by renaming over a planted index.json link, never through it", () => {
+		mkdirSync(join(shared, "research"));
+		symlinkSync(
+			join(outside, "secret.txt"),
+			join(shared, "research", "index.json"),
+		);
+		saveEntry(shared, row("fresh-1"), "body");
+		expect(readFileSync(join(outside, "secret.txt"), "utf8")).toBe("SECRET");
+		const idx = JSON.parse(
+			readFileSync(join(shared, "research", "index.json"), "utf8"),
+		);
+		expect(idx.map((e: { slug: string }) => e.slug)).toEqual(["fresh-1"]);
 	});
 });

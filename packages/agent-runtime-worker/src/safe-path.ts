@@ -273,6 +273,54 @@ export function writeFileInside(
 }
 
 /**
+ * Open a file under `root` for appending (creating it, and its parent
+ * directories), never through a symlink at the final component. Returns the
+ * fd; the caller owns it (e.g. `createWriteStream(null, { fd })`).
+ */
+export function openAppendInside(
+	root: string,
+	requested: string,
+	mode = 0o644,
+): number {
+	const path = resolveInside(root, requested);
+	mkdirSync(dirname(path), { recursive: true });
+	try {
+		return openSync(
+			path,
+			fsc.O_WRONLY | fsc.O_APPEND | fsc.O_CREAT | fsc.O_NOFOLLOW,
+			mode,
+		);
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ELOOP") {
+			throw new PathOutsideRootError(
+				root,
+				requested,
+				"is a symlink (not followed)",
+			);
+		}
+		throw e;
+	}
+}
+
+/** Append to a file under `root`, never through a symlink at the final component. */
+export function appendFileInside(
+	root: string,
+	requested: string,
+	data: string,
+): void {
+	const fd = openAppendInside(root, requested);
+	try {
+		const buf = Buffer.from(data, "utf8");
+		let off = 0;
+		while (off < buf.length) {
+			off += writeSync(fd, buf, off, buf.length - off);
+		}
+	} finally {
+		closeSync(fd);
+	}
+}
+
+/**
  * Create a directory under `root`. With `exclusive` (the default) the leaf
  * must not exist — a pre-planted symlink or directory fails with EEXIST
  * rather than being reused, which is what an artifact id directory needs.

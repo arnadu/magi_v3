@@ -755,6 +755,60 @@ describe("TC-10: daemon mode processes mid-turn mail without an unrelated waitFo
 	});
 });
 
+describe("a failed fire-and-forget dispatch pass (RES-3)", () => {
+	it("is logged and retried, not left as an unhandled rejection that would stop the daemon", async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const unhandled: unknown[] = [];
+		const onUnhandled = (e: unknown) => unhandled.push(e);
+		process.on("unhandledRejection", onUnhandled);
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const tc = makeTeamConfig(["agent-a"]);
+			const { repo, addMail } = makeMockMailbox({ "agent-a": ["first"] });
+			let runs = 0;
+			let failNext = false;
+			const realHasUnread = repo.hasUnread.getMockImplementation();
+			repo.hasUnread.mockImplementation(async (id: string) => {
+				if (failNext) {
+					failNext = false;
+					throw new Error("Mongo blip");
+				}
+				// biome-ignore lint/style/noNonNullAssertion: set by makeMockMailbox
+				return realHasUnread!(id);
+			});
+			mockRunAgent.mockImplementation(async () => {
+				runs++;
+				if (runs === 1) {
+					addMail("agent-a", "second");
+					failNext = true; // the post-run checkIdle() hits the blip
+				}
+			});
+			const ac = new AbortController();
+			const done = runOrchestrationLoop(
+				buildConfig(tc, repo, {
+					maxRuns: 2,
+					waitForMail: () =>
+						new Promise<void>((r) =>
+							ac.signal.addEventListener("abort", () => r(), { once: true }),
+						),
+				}),
+				ac.signal,
+			);
+			await vi.advanceTimersByTimeAsync(100);
+			expect(runs).toBe(1);
+			expect(errSpy.mock.calls.flat().join(" ")).toMatch(/Mongo blip/);
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(runs).toBe(2);
+			ac.abort();
+			await done;
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+			vi.useRealTimers();
+		}
+	});
+});
+
 // ---------------------------------------------------------------------------
 // D1 (F-059): a daemon has no dispatch cap
 // ---------------------------------------------------------------------------
