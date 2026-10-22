@@ -426,15 +426,15 @@ describe("StatsCollector", () => {
 		});
 	});
 
-	it("recordReflectionCost persists lifetime cost without touching lifetimeTurnCount", async () => {
-		await collector.recordReflectionCost(MISSION, AGENT, 0.75);
+	it("recordOutOfTurnCost persists lifetime cost without touching lifetimeTurnCount", async () => {
+		await collector.recordOutOfTurnCost(MISSION, AGENT, 0.75, "reflection");
 		const mission = await repo.loadMission(MISSION, AGENT);
 		expect(mission?.lifetimeCostUsd).toBeCloseTo(0.75, 10);
 		expect(mission?.lifetimeLlmCallCount).toBe(1);
 		expect(mission?.lifetimeTurnCount).toBe(0);
 
 		// A second reflection call accumulates rather than overwriting.
-		await collector.recordReflectionCost(MISSION, AGENT, 0.25);
+		await collector.recordOutOfTurnCost(MISSION, AGENT, 0.25, "reflection");
 		const updated = await repo.loadMission(MISSION, AGENT);
 		expect(updated?.lifetimeCostUsd).toBeCloseTo(1.0, 10);
 		expect(updated?.lifetimeLlmCallCount).toBe(2);

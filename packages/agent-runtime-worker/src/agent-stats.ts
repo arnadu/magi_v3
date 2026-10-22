@@ -549,14 +549,16 @@ export class StatsCollector {
 	}
 
 	/**
-	 * Record a reflection call's cost against lifetime totals. Reflection runs
-	 * outside the normal turn lifecycle (it happens before `startTurn`), so this
-	 * bypasses the turn-based increment entirely rather than waiting for endTurn.
+	 * Record an LLM call made outside any turn — reflection (before
+	 * `startTurn`) or a background job's call through the Tool API — against
+	 * the agent's lifetime totals, which the mission cap reads. It bypasses the
+	 * turn-based increment entirely rather than waiting for endTurn.
 	 */
-	async recordReflectionCost(
+	async recordOutOfTurnCost(
 		missionId: string,
 		agentId: string,
 		costUsd: number,
+		source: "reflection" | "background job",
 	): Promise<void> {
 		try {
 			await this.repo.incrementLifetimeCostOnly({
@@ -567,7 +569,7 @@ export class StatsCollector {
 			});
 		} catch (e) {
 			console.error(
-				`[agent-stats] failed to record reflection cost { missionId: ${missionId}, agentId: ${agentId} }: ${(e as Error).message}`,
+				`[agent-stats] failed to record ${source} cost { missionId: ${missionId}, agentId: ${agentId}, costUsd: ${costUsd} }: ${(e as Error).message} — it is missing from the spend cap`,
 			);
 		}
 	}

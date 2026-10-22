@@ -171,6 +171,8 @@ export interface TurnHooks {
 	onLlmCallFor: (turnNumber: number) => OnLlmCall | undefined;
 	/** Tool-side LLM calls (vision, OCR, Research) count against the active turn. */
 	meter: LlmCallMeter;
+	/** The spend-cap pause, checked before each LLM call of the turn and its sub-loops. */
+	beforeLlmCall?: () => Promise<void>;
 }
 
 /**
@@ -185,6 +187,7 @@ export function createTurnHooks(
 	missionId: string,
 	state: TurnState,
 	makeOnLlmCall: MakeOnLlmCall,
+	signal?: AbortSignal,
 ): TurnHooks {
 	const agentId = agent.id;
 	const onMessage: TurnHooks["onMessage"] = async (msg, allMessages, meta) => {
@@ -236,7 +239,39 @@ export function createTurnHooks(
 	const meter: LlmCallMeter = async (event) => {
 		await onLlmCallFor(state.turnNumber)?.(event);
 	};
-	return { onMessage, onToolResult, onLlmCallFor, meter };
+	const beforeLlmCall = ctx.budget
+		? budgetGate(ctx.budget, agentId, signal)
+		: undefined;
+	return { onMessage, onToolResult, onLlmCallFor, meter, beforeLlmCall };
+}
+
+/**
+ * Park the turn while the mission's spend cap is reached (CST-2): before this
+ * gate, the cap only stopped new dispatches and a running turn kept spending
+ * until it ended, up to MAX_AGENT_RUN_SECONDS. Waiting here — between LLM
+ * calls, never inside a tool call — the turn carries on when the cap is
+ * raised. An abort (shutdown, the run's wall-clock limit) ends the wait; the
+ * loop then sees the aborted signal and stops.
+ */
+function budgetGate(
+	budget: NonNullable<AgentRunContext["budget"]>,
+	agentId: string,
+	signal: AbortSignal | undefined,
+): () => Promise<void> {
+	return async () => {
+		if (!budget.isPaused() || signal?.aborted) return;
+		console.warn(
+			`[runAgent] ${agentId} paused before its next LLM call — mission spend cap reached; resumes when the cap is raised`,
+		);
+		await new Promise<void>((resolve) => {
+			const onAbort = () => resolve();
+			signal?.addEventListener("abort", onAbort, { once: true });
+			void budget.wait().then(() => {
+				signal?.removeEventListener("abort", onAbort);
+				resolve();
+			});
+		});
+	};
 }
 
 /**
@@ -251,7 +286,7 @@ export function buildTurnTools(
 	acl: AclPolicy,
 	missionId: string,
 	state: TurnState,
-	hooks: Pick<TurnHooks, "meter">,
+	hooks: Pick<TurnHooks, "meter" | "beforeLlmCall">,
 ): { tools: MagiTool[]; closeBrowser: () => Promise<void> } {
 	const agentId = agent.id;
 	const { workdir, sharedDir, linuxUser } = ctx.identity;
@@ -306,6 +341,7 @@ export function buildTurnTools(
 			visionModel,
 			onSubLoopMessage: appendSubLoop,
 			onSubLoopLlmCall: hooks.meter,
+			beforeSubLoopLlmCall: hooks.beforeLlmCall,
 			disabledTools: agent.disabledTools,
 		}),
 		createAnalyzeMemoriesTool({

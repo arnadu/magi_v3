@@ -260,7 +260,7 @@ describe("readMissionSnapshot + incrementLifetimeCostOnly against real MongoDB",
 		});
 
 		// Agent "beta": a reflection call, recorded outside the turn lifecycle.
-		await collector.recordReflectionCost(missionId, "beta", 0.4);
+		await collector.recordOutOfTurnCost(missionId, "beta", 0.4, "reflection");
 
 		// A second, independent collector instance (simulating a fresh daemon
 		// process reading the same mission) must see exactly the same totals —

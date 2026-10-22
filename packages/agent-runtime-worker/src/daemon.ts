@@ -355,6 +355,13 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		mailboxRepo,
 		teamConfig,
 		toolPort,
+		llmCallLog: data.llmCallLog,
+		monitor,
+		statsCollector: data.statsCollector,
+		missionId,
+		missionConfigRepo: data.missionConfigRepo,
+		maxCostUsd,
+		anomalyRecorder,
 	});
 
 	// Scheduled message delivery has moved to the control plane (Sprint 14).
@@ -438,6 +445,7 @@ async function runAndShutdown(ctx: RunningMission): Promise<void> {
 				waitForMail: ctx.waitForMail,
 				waitForStep: () => monitor.waitForStep(),
 				waitForBudget: () => monitor.waitForBudget(),
+				isBudgetPaused: () => monitor.isBudgetPaused(),
 				isAgentPaused: (agentId) => monitor.isAgentPaused(agentId),
 				// Keyed on the literal agent id, never on anything from teamConfig —
 				// see buildMissionCopilotTools' doc comment (daemon-boot/copilot-tools.ts).

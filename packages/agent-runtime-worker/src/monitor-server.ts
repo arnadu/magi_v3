@@ -191,7 +191,9 @@ export class MonitorServer {
 
 	// Budget pause gate
 	private budgetPaused = false;
-	private budgetResolve: (() => void) | null = null;
+	// Every caller waiting out the pause: the dispatcher's gate and each
+	// running turn parked before its next LLM call.
+	private budgetWaiters: Array<() => void> = [];
 
 	/**
 	 * Vision model for the upload pipeline's image captioning. Set by the daemon
@@ -311,13 +313,7 @@ export class MonitorServer {
 				missionConfig: this.missionConfig,
 				statsCollector: this.statsCollector,
 				getBudgetPaused: () => this.budgetPaused,
-				setBudgetPaused: (paused) => {
-					this.budgetPaused = paused;
-				},
-				getBudgetResolve: () => this.budgetResolve,
-				setBudgetResolve: (fn) => {
-					this.budgetResolve = fn;
-				},
+				resumeBudget: () => this.resumeBudget(),
 				push: (type, payload) => this.push(type, payload),
 				statusPayload: () => this.statusPayload(),
 			}),
@@ -395,8 +391,21 @@ export class MonitorServer {
 	waitForBudget(): Promise<void> {
 		if (!this.budgetPaused) return Promise.resolve();
 		return new Promise((resolve) => {
-			this.budgetResolve = resolve;
+			this.budgetWaiters.push(resolve);
 		});
+	}
+
+	/** Whether the spend cap has paused the mission (gates job-side LLM tools too). */
+	isBudgetPaused(): boolean {
+		return this.budgetPaused;
+	}
+
+	/** Lift the pause and release everything waiting on it. */
+	resumeBudget(): void {
+		this.budgetPaused = false;
+		const waiters = this.budgetWaiters;
+		this.budgetWaiters = [];
+		for (const resolve of waiters) resolve();
 	}
 
 	/** Blocks until the operator clicks Start in the dashboard. */
@@ -448,7 +457,7 @@ export class MonitorServer {
 		// Resolve all blocked waitFor* promises so the orchestration loop can
 		// reach its finally block before the process exits.
 		this.startResolve?.();
-		this.budgetResolve?.();
+		for (const resolve of this.budgetWaiters.splice(0)) resolve();
 		this.stepResolve?.();
 
 		if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);

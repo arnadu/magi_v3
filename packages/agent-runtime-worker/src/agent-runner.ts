@@ -111,6 +111,12 @@ export interface AgentRunContext {
 	 * server). Never set by the daemon/CLI → SSRF stays fully enforced in prod.
 	 */
 	allowedHosts?: string[];
+	/**
+	 * The mission's spend-cap pause. A running turn (and its Research
+	 * sub-loops) waits here before each LLM call while the cap is reached, and
+	 * carries on when it is raised.
+	 */
+	budget?: { isPaused: () => boolean; wait: () => Promise<void> };
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +251,14 @@ export async function runAgent(
 		missionId,
 		makeOnLlmCall,
 	);
-	const hooks = createTurnHooks(ctx, agent, missionId, state, makeOnLlmCall);
+	const hooks = createTurnHooks(
+		ctx,
+		agent,
+		missionId,
+		state,
+		makeOnLlmCall,
+		signal,
+	);
 	const { tools, closeBrowser } = buildTurnTools(
 		ctx,
 		agent,
@@ -303,6 +316,7 @@ export async function runAgent(
 				signal,
 				onMessage: hooks.onMessage,
 				onToolResult: hooks.onToolResult,
+				beforeLlmCall: hooks.beforeLlmCall,
 				reasoning: "medium",
 				sessionId: `${missionId}:${agentId}`,
 			},

@@ -94,15 +94,19 @@ export function stripImageData<T extends Message>(messages: T[]): T[] {
 }
 
 /**
- * A meter for calls made outside any agent turn (the monitor's upload
- * pipeline): the call is logged with its cost, under a synthetic agent id,
- * but there is no turn to attribute it to, so it does not count toward the
- * mission's per-turn statistics — only the audit log sees it.
+ * A meter for calls made outside any agent turn: the monitor's upload
+ * pipeline (under a synthetic agent id) and background jobs' calls through
+ * the Tool API (under the job's agent). There is no turn to attribute them
+ * to, so they never reach the per-turn statistics; the audit log always sees
+ * them, and `onCost` lets a caller charge them elsewhere (the Tool API charges
+ * the agent's lifetime cost, which the mission cap reads).
  */
 export function createLogOnlyMeter(
 	llmCallLog: Pick<LlmCallLogRepository, "append">,
 	missionId: string,
 	agentId: string,
+	/** Runs after the log entry with the call's cost — e.g. to charge it to the agent and check the cap. */
+	onCost?: (costUsd: number) => Promise<void>,
 ): LlmCallMeter {
 	return async (event) => {
 		const model = event.model;
@@ -147,5 +151,6 @@ export function createLogOnlyMeter(
 				cost,
 			},
 		});
+		await onCost?.(cost.totalCostUsd);
 	};
 }

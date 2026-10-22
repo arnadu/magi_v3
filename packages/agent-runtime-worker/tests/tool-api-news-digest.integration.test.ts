@@ -88,6 +88,8 @@ function callToolApi(
 // Test suite
 // ---------------------------------------------------------------------------
 
+const meteredAgents: string[] = [];
+
 describe("Tool API: research with news digest (Sprint 12)", () => {
 	let server: ToolApiServer;
 	let port: number;
@@ -187,6 +189,12 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 			sharedDir,
 			mailboxRepoStub as never,
 			teamConfigStub as never,
+			{
+				meterFor: (agentId) => async () => {
+					meteredAgents.push(agentId);
+				},
+				isBudgetPaused: () => false,
+			},
 		);
 		server.listen(port);
 
@@ -250,6 +258,9 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 
 			// 2. Response is substantive.
 			expect(text.length).toBeGreaterThan(200);
+			// Every sub-loop call is charged to the job's agent (CST-1).
+			expect(meteredAgents.length).toBeGreaterThan(0);
+			expect(new Set(meteredAgents)).toEqual(new Set(["test-agent"]));
 
 			// 3. brief.md was written.
 			const brief = readFileSync(briefPath, "utf-8");

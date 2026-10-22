@@ -142,6 +142,12 @@ export interface OrchestratorConfig {
 	 */
 	waitForBudget?: () => Promise<void>;
 	/**
+	 * Whether the spend cap has paused the mission. With waitForBudget, it
+	 * also parks every running turn before its next LLM call (CST-2), not just
+	 * the next dispatch.
+	 */
+	isBudgetPaused?: () => boolean;
+	/**
 	 * If true, call workspaceManager.teardown() on exit (removing workdirs and
 	 * the shared mission dir). Default: false.
 	 *

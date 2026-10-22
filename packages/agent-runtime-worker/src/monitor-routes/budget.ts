@@ -21,7 +21,7 @@ function writeMissionCapErrorStatus(e: unknown): number {
 }
 
 /**
- * Accessor functions, not plain values: budgetPaused/budgetResolve are
+ * Accessor functions, not plain values: budgetPaused and its waiters are
  * mutated in place elsewhere on the MonitorServer instance (the budget-cap-
  * breach path, waitForBudget()) — a deps object built once at construction
  * time can't hold them by value without going stale.
@@ -31,9 +31,8 @@ export interface BudgetDeps {
 	missionConfig: MissionConfigRepository;
 	statsCollector: StatsCollector;
 	getBudgetPaused: () => boolean;
-	setBudgetPaused: (paused: boolean) => void;
-	getBudgetResolve: () => (() => void) | null;
-	setBudgetResolve: (fn: (() => void) | null) => void;
+	/** Lift the pause and release every dispatch and turn waiting on it. */
+	resumeBudget: () => void;
 	push: (type: MonitorEventType, payload: unknown) => void;
 	statusPayload: () => Promise<unknown>;
 }
@@ -90,15 +89,10 @@ export function createBudgetRoutes(deps: BudgetDeps): RouteEntry[] {
 					res.end(JSON.stringify({ ok: false, error: (e as Error).message }));
 					return;
 				}
-				deps.setBudgetPaused(false);
+				deps.resumeBudget();
 				console.log(
 					`[monitor] Budget extended by $${addUsd.toFixed(2)} — new cap: $${newCapUsd.toFixed(2)}`,
 				);
-				const budgetResolve = deps.getBudgetResolve();
-				if (budgetResolve) {
-					budgetResolve();
-					deps.setBudgetResolve(null);
-				}
 				deps.push("cost-resumed", { addUsd, newCapUsd, budgetPaused: false });
 				deps.push("status", await deps.statusPayload());
 				res.writeHead(200, { "Content-Type": "application/json" });
@@ -144,12 +138,7 @@ export function createBudgetRoutes(deps: BudgetDeps): RouteEntry[] {
 						deps.missionId,
 					);
 					if (capUsd > missionLifetimeCostUsd(snapshot)) {
-						deps.setBudgetPaused(false);
-						const budgetResolve = deps.getBudgetResolve();
-						if (budgetResolve) {
-							budgetResolve();
-							deps.setBudgetResolve(null);
-						}
+						deps.resumeBudget();
 						deps.push("cost-resumed", {
 							newCapUsd: capUsd,
 							budgetPaused: false,

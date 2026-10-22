@@ -140,6 +140,10 @@ export function buildAgentContext(
 		commitWorkspace: (message: string) => workspaceGit.commit(message),
 		allowedHosts: config.allowedHosts,
 		onMentalMapUpdate: config.onMentalMapUpdate,
+		budget:
+			config.waitForBudget && config.isBudgetPaused
+				? { wait: config.waitForBudget, isPaused: config.isBudgetPaused }
+				: undefined,
 		onUserMessage: (msg: MailboxMessage) => {
 			const timestamp = msg.timestamp.toISOString();
 			console.log(`\n[→ USER from ${msg.from}] ${msg.subject} (${timestamp})`);

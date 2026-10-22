@@ -721,6 +721,16 @@ describe("startToolApiServer", () => {
 			mailboxRepo,
 			teamConfig,
 			toolPort: 0, // OS assigns a free port
+			// Charging and gating are covered in tool-api-spend.unit.test.ts.
+			...({} as Omit<
+				Parameters<typeof startToolApiServer>[0],
+				| "model"
+				| "visionModel"
+				| "sharedDir"
+				| "mailboxRepo"
+				| "teamConfig"
+				| "toolPort"
+			>),
 		});
 		expect(toolApiServer).toBeDefined();
 		toolApiServer.stop();

@@ -32,7 +32,21 @@ ceiling from the cockpit.
 2. If the new cap you want is above the ceiling, raise the ceiling first ("Save ceiling"), then
    the cap ("Save cap"). The panel says how high the ceiling can go for you.
 3. A suspended mission keeps the new cap and applies it at its next resume; a running one applies
-   it at its next spend check.
+   it at once (the cockpit, the control-plane copilot and the mission copilot all push it to the
+   mission machine).
+
+### What "paused" means
+
+When the cap is reached, nothing new is dispatched, and every turn already running stops before
+its next LLM call (including the calls of a Research sub-agent inside it). The tool call in
+progress finishes; nothing is cut off. When the cap is raised the paused turns carry on where they
+stopped. A turn's wall-clock limit (`MAX_AGENT_RUN_SECONDS`, 4 h) keeps counting during the pause,
+so a turn paused longer than that is ended as timed out; its next mail starts a new turn.
+
+Background jobs count too: every LLM call a job makes through the Tool API (Research, FetchUrl,
+InspectImage) is charged to the agent that submitted it and checked against the cap, and while the
+mission is paused those tools answer 503. The job itself keeps running; its other tools (data
+providers, PostMessage) still work.
 
 If the ceiling you need is above the platform ceiling and you are not a platform admin, ask one —
 or, if you own the platform, add your UID to `PLATFORM_ADMIN_USER_IDS`, or raise

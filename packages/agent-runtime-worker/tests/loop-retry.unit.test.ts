@@ -1,6 +1,6 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
-import { is429, isTransientError } from "../src/loop.js";
+import { is429, isTransientError } from "../src/loop-llm-call.js";
 
 function errorMsg(errorMessage: string): AssistantMessage {
 	return {

@@ -40,6 +40,7 @@ import {
 } from "node:http";
 import type { TeamConfig } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
+import type { LlmCallMeter } from "./llm-meter.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
 import { checkToolArguments } from "./tool-args.js";
@@ -75,6 +76,23 @@ const TOOL_TIMEOUT_MS = 120_000;
  * HTTP server that dispatches tool calls from background job scripts.
  * One instance is created per daemon; tokens are issued per job spawn.
  */
+/** Charging and gating for the LLM-backed tools jobs may call (CST-1). */
+export interface ToolApiSpend {
+	/** Meter for LLM calls a job makes as `agentId`: log, charge the agent's lifetime cost, check the cap. */
+	meterFor: (agentId: string) => LlmCallMeter;
+	/** True while the spend cap has paused the mission. */
+	isBudgetPaused: () => boolean;
+}
+
+/** Tool names (normalised) whose calls reach an LLM. */
+const LLM_TOOLS = new Set([
+	"fetch-url",
+	"fetchurl",
+	"inspect-image",
+	"inspectimage",
+	"research",
+]);
+
 export class ToolApiServer {
 	private readonly tokens = new Map<string, TokenContext>();
 	private server: ReturnType<typeof createServer> | null = null;
@@ -90,6 +108,8 @@ export class ToolApiServer {
 		private readonly mailboxRepo: MailboxRepository,
 		/** Team config — needed for PostMessage recipient validation. */
 		private readonly teamConfig: TeamConfig,
+		/** How LLM-backed tools are charged and gated (CST-1). */
+		private readonly spend: ToolApiSpend,
 	) {}
 
 	// ---------------------------------------------------------------------------
@@ -181,6 +201,17 @@ export class ToolApiServer {
 			return;
 		}
 
+		// The cap's pause stops jobs' LLM spend as it stops the agents'.
+		if (LLM_TOOLS.has(toolName.toLowerCase()) && this.spend.isBudgetPaused()) {
+			res.writeHead(503, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					error: `tool ${toolName} refused: the mission's spend cap is reached and the mission is paused; retry after the cap is raised`,
+				}),
+			);
+			return;
+		}
+
 		// Build the requested tool for this token's context.
 		const tool = this.buildTool(toolName, ctx);
 		if (!tool) {
@@ -252,17 +283,29 @@ export class ToolApiServer {
 
 	private buildTool(name: string, ctx: TokenContext): MagiTool | null {
 		const normalised = name.toLowerCase();
+		// Every LLM call a job makes is logged and charged to its agent.
+		const meter = () => this.spend.meterFor(ctx.acl.agentId);
 
 		if (normalised === "fetch-url" || normalised === "fetchurl") {
-			return createFetchUrlTool(this.visionModel, this.sharedDir);
+			return createFetchUrlTool(this.visionModel, this.sharedDir, [], {
+				meter: meter(),
+			});
 		}
 
 		if (normalised === "inspect-image" || normalised === "inspectimage") {
-			return createInspectImageTool(ctx.identity.workdir, this.visionModel);
+			return createInspectImageTool(
+				ctx.identity.workdir,
+				this.visionModel,
+				[],
+				meter(),
+			);
 		}
 
 		if (normalised === "research") {
-			return createResearchTool(this.model, this.sharedDir, ctx.acl);
+			return createResearchTool(this.model, this.sharedDir, ctx.acl, {
+				visionModel: this.visionModel,
+				onSubLoopLlmCall: meter(),
+			});
 		}
 
 		if (normalised === "search-web" || normalised === "searchweb") {

@@ -288,6 +288,7 @@ interface ResearchLoopDeps {
 	disabled: ReadonlySet<string>;
 	onSubLoopMessage?: (toolUseId: string, msg: Message) => Promise<void>;
 	onSubLoopLlmCall?: LlmCallMeter;
+	beforeSubLoopLlmCall?: () => Promise<void>;
 }
 
 /**
@@ -320,6 +321,7 @@ async function runResearchLoop(
 					}
 				: undefined,
 			onLlmCall: deps.onSubLoopLlmCall,
+			beforeLlmCall: deps.beforeSubLoopLlmCall,
 		});
 	} finally {
 		await browseHandle?.close();
@@ -345,6 +347,8 @@ export function createResearchTool(
 		onSubLoopMessage?: (toolUseId: string, msg: Message) => Promise<void>;
 		/** Meters every sub-loop LLM call against the calling agent's turn (COST-1). */
 		onSubLoopLlmCall?: LlmCallMeter;
+		/** Awaited before each sub-loop LLM call: the mission's spend-cap pause. */
+		beforeSubLoopLlmCall?: () => Promise<void>;
 		/**
 		 * The calling agent's disabledTools. The sub-loop must not hand back a
 		 * tool the operator switched off for this agent (RS1) — Research would
@@ -371,6 +375,7 @@ export function createResearchTool(
 		disabled,
 		onSubLoopMessage: opts?.onSubLoopMessage,
 		onSubLoopLlmCall: opts?.onSubLoopLlmCall,
+		beforeSubLoopLlmCall: opts?.beforeSubLoopLlmCall,
 	};
 
 	return {

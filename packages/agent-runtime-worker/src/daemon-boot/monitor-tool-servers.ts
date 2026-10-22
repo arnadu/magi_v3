@@ -3,9 +3,13 @@ import { storedCollection } from "@magi/agent-config";
 import { ObjectId } from "mongodb";
 import { createLogOnlyMeter } from "../llm-meter.js";
 import { MonitorServer } from "../monitor-server.js";
-import { ToolApiServer } from "../tool-api-server.js";
+import { ToolApiServer, type ToolApiSpend } from "../tool-api-server.js";
 import { WorkspaceGit } from "../workspace-git.js";
 import type { BootContext } from "./context.js";
+import {
+	type CapCheckState,
+	enforceMissionCap,
+} from "./orchestration-callbacks.js";
 
 /**
  * Validate MONITOR_PORT/TOOL_PORT (bare process.exit(1) on an invalid value
@@ -122,6 +126,11 @@ export async function startMonitorServer(
  * Tool API server — exposes LLM tools to background job scripts. Split from
  * startMonitorServer() above per the plan, given this area's size/fan-in;
  * independent of it at runtime (toolPort is already validated there).
+ *
+ * A job's LLM calls are logged under its agent, charged to that agent's
+ * lifetime cost and followed by the same mission-cap check an agent's call
+ * gets; while the cap has the mission paused, LLM-backed tools are refused
+ * (CST-1).
  */
 export function startToolApiServer(
 	ctx: Pick<
@@ -132,6 +141,13 @@ export function startToolApiServer(
 		| "mailboxRepo"
 		| "teamConfig"
 		| "toolPort"
+		| "llmCallLog"
+		| "monitor"
+		| "statsCollector"
+		| "missionId"
+		| "missionConfigRepo"
+		| "maxCostUsd"
+		| "anomalyRecorder"
 	>,
 ): Pick<BootContext, "toolApiServer"> {
 	const toolApiServer = new ToolApiServer(
@@ -140,7 +156,47 @@ export function startToolApiServer(
 		ctx.sharedDir,
 		ctx.mailboxRepo,
 		ctx.teamConfig,
+		createJobSpend(ctx),
 	);
 	toolApiServer.listen(ctx.toolPort);
 	return { toolApiServer };
+}
+
+/**
+ * How a background job's LLM calls are charged and gated: logged under the
+ * job's agent, added to that agent's lifetime cost, then the mission-cap
+ * check every agent call gets — so jobs alone can trip the pause.
+ */
+export function createJobSpend(
+	ctx: Pick<
+		BootContext,
+		| "llmCallLog"
+		| "monitor"
+		| "statsCollector"
+		| "missionId"
+		| "missionConfigRepo"
+		| "maxCostUsd"
+		| "anomalyRecorder"
+		| "mailboxRepo"
+	>,
+): ToolApiSpend {
+	const capState: CapCheckState = { alertedAt: 0, consecutiveFailures: 0 };
+	return {
+		meterFor: (agentId) =>
+			createLogOnlyMeter(
+				ctx.llmCallLog,
+				ctx.missionId,
+				agentId,
+				async (costUsd) => {
+					await ctx.statsCollector.recordOutOfTurnCost(
+						ctx.missionId,
+						agentId,
+						costUsd,
+						"background job",
+					);
+					await enforceMissionCap(ctx, capState);
+				},
+			),
+		isBudgetPaused: () => ctx.monitor.isBudgetPaused(),
+	};
 }

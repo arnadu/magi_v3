@@ -197,6 +197,25 @@ describe("budget pause / resume", () => {
 		expect(resumed.budgetPaused).toBe(false);
 	});
 
+	it("releases every waiter on resume — the dispatcher and each parked turn (CST-2)", async () => {
+		await monitor.notifyCostPause(60, 100);
+		let released = 0;
+		const waiters = [monitor.waitForBudget(), monitor.waitForBudget()].map(
+			(p) => p.then(() => released++),
+		);
+		await new Promise((r) => setTimeout(r, 20));
+		expect(released).toBe(0);
+		const res = await fetch(`${base}/extend-budget`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ addUsd: 1 }),
+		});
+		expect(res.ok).toBe(true);
+		await Promise.all(waiters);
+		expect(released).toBe(2);
+		expect(monitor.isBudgetPaused()).toBe(false);
+	});
+
 	it("/extend-budget unconditionally clears the pause, unlike /set-budget's spend-check gate", async () => {
 		await monitor.notifyCostPause(60, 100);
 		const paused = (await (await fetch(`${base}/status`)).json()) as {

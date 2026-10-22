@@ -84,10 +84,11 @@ export function createLlmCallHook(
 					// Reflection has no active turn to attribute to (it runs before
 					// startTurn) — record its cost against lifetime totals directly so
 					// missionStats/the mission-wide cap don't under-count real spend.
-					await ctx.statsCollector.recordReflectionCost(
+					await ctx.statsCollector.recordOutOfTurnCost(
 						missionId,
 						agentId,
 						cost.totalCostUsd,
+						"reflection",
 					);
 				} else {
 					await ctx.statsCollector.recordLlmCall(agentId, {

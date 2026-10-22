@@ -396,9 +396,12 @@ agents:
       warnLlmCallsPerTurn: 25      # soft: override the default (40) warning threshold
 ```
 
-Hard limits complement the existing between-turn mission cost cap (`MAX_COST_USD` →
-`waitForBudget`): the per-turn caps catch a single runaway *during* the turn, the mission cap
-gates the next dispatch. The copilot assesses soft alerts and decides whether to intervene.
+Hard limits complement the mission cost cap: the per-agent caps end a single runaway turn, while
+the mission cap pauses the whole mission. Reaching it blocks the next dispatch (`waitForBudget`),
+and every running turn and Research sub-loop waits before its next LLM call (`beforeLlmCall`)
+until the cap is raised. Background jobs' LLM calls through the Tool API are charged to their
+agent and refused while paused (see `docs/spend-limits.md`). The copilot assesses soft alerts and
+decides whether to intervene.
 
 The mission-wide cap can also be set as `mission.maxCostUsd` in team config, which takes
 precedence over the `MAX_COST_USD` env var and — unlike the env var, re-derived fresh from the
