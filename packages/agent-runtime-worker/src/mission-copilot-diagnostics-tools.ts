@@ -121,6 +121,15 @@ function readAgentWorkdirFileTool(deps: MissionCopilotToolDeps): MagiTool {
 	};
 }
 
+/** A finished job's status: cancelled by CancelBackgroundJob (MC9), completed, or failed. */
+export function finishedJobStatus(spec: {
+	cancelled?: boolean;
+	exitCode?: number;
+}) {
+	if (spec.cancelled) return "cancelled";
+	return spec.exitCode === 0 ? "completed" : "failed";
+}
+
 function listBackgroundJobsTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { sharedDir } = deps;
 	return {
@@ -167,7 +176,7 @@ function listBackgroundJobsTool(deps: MissionCopilotToolDeps): MagiTool {
 				if (spec) {
 					jobs.push({
 						...spec,
-						status: spec.exitCode === 0 ? "completed" : "failed",
+						status: finishedJobStatus(spec),
 					});
 				}
 			}

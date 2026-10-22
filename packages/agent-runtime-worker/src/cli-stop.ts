@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as dotenvConfig } from "dotenv";
+import { pidHoldsDaemon } from "./daemon-boot/pid-lock.js";
 
 dotenvConfig({
 	path: join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".env"),
@@ -32,6 +33,12 @@ const pidFile = join(workdir, "missions", missionId, "daemon.pid");
 try {
 	const pid = Number.parseInt(readFileSync(pidFile, "utf8").trim(), 10);
 	if (Number.isNaN(pid)) throw new Error("PID file contains invalid value");
+	// CLI4: a stale file's PID may now belong to an unrelated process.
+	if (!pidHoldsDaemon(pid)) {
+		throw new Error(
+			`PID ${pid} is not a running daemon (stale PID file) — nothing to stop`,
+		);
+	}
 	process.kill(pid, "SIGTERM");
 	console.log(
 		`[cli:stop] Sent SIGTERM to daemon PID ${pid} (mission: ${missionId})`,

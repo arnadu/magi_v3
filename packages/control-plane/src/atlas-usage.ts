@@ -155,7 +155,29 @@ export async function readAtlasUsage(
  * There is no mission to attach this to, so it bypasses `AnomalyRecorder`
  * (which is always mission-scoped) and posts directly.
  */
+/**
+ * How often the cluster-wide stats are re-read (ATL1): `dbStats` per database
+ * plus `$collStats` per collection every 5-minute tick was needless load for
+ * a figure that moves over days.
+ */
+export const ATLAS_SAMPLE_INTERVAL_MS = 30 * 60_000;
+
+/** When the stored sample was taken; undefined when there is none or it cannot be read (then sample now). */
+async function lastSampledAt(db: Db): Promise<Date | undefined> {
+	try {
+		const doc = await platformResourceCollection<AtlasUsageDoc>(db).findOne(
+			{ _id: "atlas" },
+			{ projection: { updatedAt: 1 } },
+		);
+		return doc?.updatedAt;
+	} catch {
+		return undefined;
+	}
+}
+
 export async function checkAtlasStorage(deps: AtlasUsageDeps): Promise<void> {
+	const last = await lastSampledAt(deps.db);
+	if (last && Date.now() - last.getTime() < ATLAS_SAMPLE_INTERVAL_MS) return;
 	const usage = await readAtlasUsage(deps);
 
 	try {

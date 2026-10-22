@@ -42,7 +42,7 @@ import {
 	parseGithubIssuePayload,
 } from "./github-issues.js";
 import { provisionTracked, wakeTracked } from "./machine-lifecycle.js";
-import { deriveMonitorToken } from "./monitor-token.js";
+import { deriveMonitorToken, monitorUrl } from "./monitor-token.js";
 import type { PendingAction } from "./pending-actions.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
 
@@ -271,7 +271,7 @@ async function writeMissionFile(ctx: ActionContext): Promise<string> {
 		: "/files/shared/write";
 
 	const monitorToken = deriveMonitorToken(missionId);
-	const res = await fetch(`http://[${mission.privateIp}]:4000${endpoint}`, {
+	const res = await fetch(monitorUrl(mission.privateIp, endpoint), {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
@@ -424,7 +424,7 @@ async function postToMissionMonitor(
 		);
 	}
 	const token = deriveMonitorToken(missionId);
-	const res = await fetch(`http://[${mission.privateIp}]:4000${endpoint}`, {
+	const res = await fetch(monitorUrl(mission.privateIp, endpoint), {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",

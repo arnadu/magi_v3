@@ -25,3 +25,13 @@ export function monitorAuthHeaders(missionId: string): Record<string, string> {
 	const token = deriveMonitorToken(missionId);
 	return token ? { "x-monitor-token": token } : {};
 }
+
+/**
+ * A mission machine's monitor URL. IPv6 (Fly 6PN) needs brackets; an IPv4
+ * address (a local developer daemon) must not have them — `http://[127.0.0.1]`
+ * is an invalid URL, which a best-effort catch used to hide (MIS1).
+ */
+export function monitorUrl(privateIp: string, path: string): string {
+	const host = privateIp.includes(":") ? `[${privateIp}]` : privateIp;
+	return `http://${host}:4000${path}`;
+}

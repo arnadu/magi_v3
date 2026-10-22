@@ -76,6 +76,9 @@ function fakeCluster(opts: {
 	) => {
 		if (name === "platformResources") {
 			return {
+				async findOne() {
+					return null; // no previous sample: always fresh
+				},
 				async updateOne(
 					filter: { _id: string },
 					update: { $set: Record<string, unknown> },
@@ -347,6 +350,9 @@ describe("checkAtlasStorage", () => {
 			}
 			if (name === "platformResources") {
 				return {
+					async findOne() {
+						return null; // no previous sample: always fresh
+					},
 					async updateOne(
 						filter: { _id: string },
 						update: { $set: Record<string, unknown> },
@@ -368,6 +374,22 @@ describe("checkAtlasStorage", () => {
 			}),
 		).resolves.toBeUndefined();
 		expect(bigCluster.platformResourcesDocs).toHaveLength(1);
+	});
+
+	it("does not re-read cluster stats within the sampling interval (ATL1)", async () => {
+		const { deps, cluster } = baseDeps();
+		const original = cluster.db.collection.bind(cluster.db);
+		cluster.db.collection = ((name: string) =>
+			name === "platformResources"
+				? {
+						findOne: async () => ({ updatedAt: new Date(Date.now() - 60_000) }),
+						updateOne: async () => {
+							throw new Error("should not sample");
+						},
+					}
+				: original(name)) as unknown as Db["collection"];
+		await expect(checkAtlasStorage(deps)).resolves.toBeUndefined();
+		expect(cluster.platformResourcesDocs).toHaveLength(0);
 	});
 
 	it("never throws when the Mongo write itself fails", async () => {

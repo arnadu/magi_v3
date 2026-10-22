@@ -11,7 +11,13 @@
  * See ADR-0010 for design rationale.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
@@ -148,7 +154,18 @@ function loadIndex(sharedDir: string): ResearchEntry[] {
 	if (!existsSync(p)) return [];
 	try {
 		return JSON.parse(readFileSync(p, "utf-8")) as ResearchEntry[];
-	} catch {
+	} catch (e) {
+		// RS3: the next save would overwrite a corrupt index with one entry,
+		// losing every cached finding's index row; keep the bad file aside.
+		const aside = `${p}.corrupt-${Date.now()}`;
+		try {
+			renameSync(p, aside);
+		} catch {
+			// Already moved by a concurrent reader; nothing left to keep.
+		}
+		console.warn(
+			`[research] index.json was unreadable (${(e as Error).message}) — moved to ${aside}, starting a new index`,
+		);
 		return [];
 	}
 }
@@ -202,10 +219,15 @@ function saveEntry(
 	].join("\n");
 	writeFileSync(mdPath, header + fullAnswer, "utf-8");
 
-	// Append to index (read-modify-write — safe because agents run sequentially).
+	// Append to index: read-modify-write, written to a temp file and renamed
+	// so a reader never sees a half-written index. Two Research calls saving
+	// at the same moment (agent + Tool API) can still lose one row; the .md
+	// finding itself is never lost (RS3).
 	const index = loadIndex(sharedDir);
 	index.push(entry);
-	writeFileSync(indexPath(sharedDir), JSON.stringify(index, null, 2), "utf-8");
+	const tmp = `${indexPath(sharedDir)}.${process.pid}.tmp`;
+	writeFileSync(tmp, JSON.stringify(index, null, 2), "utf-8");
+	renameSync(tmp, indexPath(sharedDir));
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +372,13 @@ function researchTask(question: string, contextSections: string[]): string {
 	return contextSections.length > 0
 		? `${contextSections.join("\n\n---\n\n")}\n\n---\n\n## Question\n\n${question}`
 		: question;
+}
+
+/** Why Research came back empty — usually the call limit, not a missing key (RS5). */
+function noFindingMessage(turnCount: number): string {
+	return turnCount >= RESEARCH_MAX_TURNS
+		? `Research used all ${RESEARCH_MAX_TURNS} of its calls without writing a finding — narrow the question, or pass context_files with the sources to read.`
+		: "Research ended without writing a finding (the model stopped without an answer, or the run was aborted).";
 }
 
 /** Save the finding to the research cache; a failure is logged, not fatal — the finding is still returned. */
@@ -550,9 +579,7 @@ export function createResearchTool(
 
 			const finding = extractFinding(loopResult.messages);
 			if (!finding) {
-				return toolErr(
-					"Research produced no response. Check SearchWeb API key.",
-				);
+				return toolErr(noFindingMessage(loopResult.turnCount));
 			}
 			writeOutput(finding);
 			cacheFinding(sharedDir, question, finding, acl.agentId);

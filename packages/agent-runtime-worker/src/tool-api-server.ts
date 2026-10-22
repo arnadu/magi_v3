@@ -275,7 +275,9 @@ export class ToolApiServer {
 			const tools = createMailboxTools(
 				this.mailboxRepo,
 				this.teamConfig,
-				ctx.identity.linuxUser, // background jobs send as the agent's linux user
+				// As the agent, like its own PostMessage — not as its OS user,
+				// which differs under the legacy linuxUser override (TA3).
+				ctx.acl.agentId,
 			);
 			return tools[0]; // PostMessage
 		}
@@ -295,10 +297,22 @@ export class ToolApiServer {
 // Helper
 // ---------------------------------------------------------------------------
 
+/** Largest request body accepted (TA1); tool arguments are small. */
+const MAX_BODY_BYTES = 1_000_000;
+
 function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
 	return new Promise((resolve, reject) => {
 		const chunks: Buffer[] = [];
-		req.on("data", (chunk: Buffer) => chunks.push(chunk));
+		let size = 0;
+		req.on("data", (chunk: Buffer) => {
+			size += chunk.length;
+			if (size > MAX_BODY_BYTES) {
+				req.destroy();
+				reject(new Error(`request body over ${MAX_BODY_BYTES} bytes`));
+				return;
+			}
+			chunks.push(chunk);
+		});
 		req.on("end", () => {
 			try {
 				resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));

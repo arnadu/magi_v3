@@ -17,6 +17,9 @@ export async function ghFetch(
 			"GH_TOKEN is not set — cannot access GitHub API. Set it in bootstrap.sh.",
 		);
 	return fetch(`https://api.github.com${path}`, {
+		// GH1: a stalled GitHub call must not hold a copilot tool or a proxy
+		// request open indefinitely.
+		signal: AbortSignal.timeout(15_000),
 		...options,
 		headers: {
 			Authorization: `Bearer ${GH_TOKEN}`,

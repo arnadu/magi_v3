@@ -3,6 +3,9 @@ import { getBuiltinModel } from "@mariozechner/pi-ai/providers/all";
 import { anthropicProvider } from "@mariozechner/pi-ai/providers/anthropic";
 import { openrouterProvider } from "@mariozechner/pi-ai/providers/openrouter";
 
+/** Output cap for a model descriptor that names none (8K; it read 8_096, a typo — LP6). */
+const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
+
 /**
  * Shared Models collection for the two providers MAGI_V3 calls (Anthropic
  * direct, OpenRouter — see VISION_MODEL's accepted providers in CLAUDE.md).
@@ -66,7 +69,7 @@ export function anthropicModel(
 				opts.cacheWriteCostPerMillion ?? (opts.inputCostPerMillion ?? 3) * 1.25,
 		},
 		contextWindow: opts.contextWindow ?? 200_000,
-		maxTokens: opts.maxTokens ?? 8_096,
+		maxTokens: opts.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
 	};
 }
 
@@ -91,7 +94,7 @@ export const CLAUDE_OPUS = anthropicModel("claude-opus-4-8", {
 export const CLAUDE_HAIKU = anthropicModel("claude-haiku-4-5-20251001", {
 	inputCostPerMillion: 0.8,
 	outputCostPerMillion: 4,
-	maxTokens: 8_096,
+	maxTokens: DEFAULT_MAX_OUTPUT_TOKENS,
 });
 
 /** DeepSeek V3.2 via OpenRouter — text-only, strong reasoning, cheap ($0.25/$0.38 per MTok). */
@@ -172,7 +175,7 @@ export function parseModel(id: string): Model<string> {
 			input: supportsVisionFallback(id) ? ["text", "image"] : ["text"],
 			cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
 			contextWindow: 128_000,
-			maxTokens: 8_096,
+			maxTokens: DEFAULT_MAX_OUTPUT_TOKENS,
 		});
 	}
 	return anthropicModel(id);

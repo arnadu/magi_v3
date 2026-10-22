@@ -144,12 +144,19 @@ export function cancelBackgroundJob(jobId: string): boolean {
 	} catch {
 		return false;
 	}
+	cancelledJobs.add(jobId);
 	return true;
 }
 
+/** Jobs killed by CancelBackgroundJob, so their exit is recorded as cancelled, not failed (MC9). */
+const cancelledJobs = new Set<string>();
+
 /**
  * Interpreter argv prefix from the script's shebang: `#!/usr/bin/env <cmd>`
- * → `/usr/local/bin/<cmd>`, direct paths as-is, [] when absent. WriteFile
+ * → `/usr/bin/env <cmd>`, so the job's PATH resolves it as the shebang
+ * intends (it used to become `/usr/local/bin/<cmd>`, which broke
+ * `#!/usr/bin/env bash` where bash lives in /usr/bin — #85); direct paths
+ * as-is, [] when absent. WriteFile
  * creates files without +x and the file belongs to another user, so the
  * interpreter is prepended instead of chmod-ing.
  */
@@ -160,7 +167,7 @@ export function readShebangInterpreter(scriptPath: string): string[] {
 		if (!firstLine.startsWith("#!")) return [];
 		const shebang = firstLine.slice(2).trim();
 		const envMatch = shebang.match(/^\/usr\/bin\/env\s+(\S+)/);
-		if (envMatch) return [`/usr/local/bin/${envMatch[1]}`];
+		if (envMatch) return ["/usr/bin/env", envMatch[1]];
 		return [shebang.split(/\s+/)[0]];
 	} catch {
 		return [];
@@ -496,6 +503,7 @@ function recordJobExit(
 	dirs: JobDirs,
 ): void {
 	const { missionId, mailboxRepo, teamConfig, sharedDir } = deps;
+	const cancelled = cancelledJobs.delete(spec.id);
 	const status = {
 		id: spec.id,
 		agentId: spec.agentId,
@@ -505,6 +513,7 @@ function recordJobExit(
 		notifySubject: spec.notifySubject,
 		timeoutMs: spec.timeoutMs,
 		exitCode: exitCode ?? -1,
+		...(cancelled && { cancelled: true }),
 		completedAt: new Date().toISOString(),
 		logPath,
 	};
@@ -525,8 +534,9 @@ function recordJobExit(
 	}
 
 	const success = exitCode === 0;
+	const outcome = success ? "ok" : cancelled ? "cancelled" : "FAILED";
 	console.log(
-		`[daemon:jobs] Job ${spec.id} exited ${exitCode ?? "null"} — ${success ? "ok" : "FAILED"}`,
+		`[daemon:jobs] Job ${spec.id} exited ${exitCode ?? "null"} — ${outcome}`,
 	);
 	const notify = (to: string, subject: string, body: string) =>
 		mailboxRepo
@@ -543,13 +553,16 @@ function recordJobExit(
 			spec.notifySubject ?? `Background job complete: ${spec.id}`,
 			success
 				? `Job completed successfully.\nLog: ${logPath}`
-				: `Job FAILED (exit ${exitCode ?? "null"}).\nLog: ${logPath}`,
+				: cancelled
+					? `Job cancelled (killed by CancelBackgroundJob).\nLog: ${logPath}`
+					: `Job FAILED (exit ${exitCode ?? "null"}).\nLog: ${logPath}`,
 		);
 	}
 	// A failed job is otherwise visible only in its status file; the mission
 	// copilot is the one agent positioned to investigate (issue #3).
 	if (
 		!success &&
+		!cancelled &&
 		deps.missionCopilotEnabled &&
 		teamConfig.agents.some((a) => a.id === MISSION_COPILOT_AGENT_ID)
 	) {

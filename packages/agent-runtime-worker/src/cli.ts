@@ -120,10 +120,27 @@ function makeAbortController(): AbortController {
 // Entry point
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
-	const rawArgs = process.argv.slice(2);
+/** Positional args and flags; exits on an unknown flag (CLI3: a mistyped --setp used to run without it). */
+function parseCliArgs(rawArgs: string[]): {
+	args: string[];
+	flags: Set<string>;
+} {
 	const args = rawArgs.filter((a) => !a.startsWith("--"));
 	const flags = new Set(rawArgs.filter((a) => a.startsWith("--")));
+	const unknownFlags = [...flags].filter(
+		(f) => !["--help", "--step"].includes(f),
+	);
+	if (unknownFlags.length > 0) {
+		console.error(
+			`Unknown flag(s): ${unknownFlags.join(", ")} — accepted: --step, --help`,
+		);
+		process.exit(1);
+	}
+	return { args, flags };
+}
+
+async function main(): Promise<void> {
+	const { args, flags } = parseCliArgs(process.argv.slice(2));
 
 	const teamConfigPath = process.env.TEAM_CONFIG;
 	const mongoUri = process.env.MONGODB_URI;

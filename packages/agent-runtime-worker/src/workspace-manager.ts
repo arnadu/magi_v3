@@ -48,10 +48,8 @@ export interface WorkspaceLayout {
 /**
  * Resolved filesystem paths for one agent within one mission.
  *
- * Dev-mode stopgap: in production this struct is replaced by a control-plane
- * record (MongoDB document) that also carries uid, gid, policy tags, etc.
- * The control plane creates a dedicated OS user per agent per mission at
- * mission startup; here we reuse pre-existing dev users from the team YAML.
+ * The OS user comes from resolveLinuxUsers (linux-user.ts): a dedicated
+ * per-agent user in production Docker, a fixed dev-pool user locally.
  */
 export interface AgentIdentity {
 	/** Private working directory: homeBase/linuxUser/missions/missionId */
@@ -67,7 +65,7 @@ export interface AgentIdentity {
 // ---------------------------------------------------------------------------
 
 /**
- * Dev-mode stopgap for mission filesystem provisioning.
+ * Mission filesystem provisioning, in production and locally alike.
  *
  * Creates per-agent private workdirs and the shared mission dir, then applies
  * setfacl so each agent's OS user can access its own dir and all agents can

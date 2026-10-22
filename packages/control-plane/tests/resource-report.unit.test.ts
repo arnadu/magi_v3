@@ -6,7 +6,7 @@
  * parts a bug would actually break silently.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	buildDailyReport,
 	renderDailyReport,
@@ -480,6 +480,42 @@ describe("runDailyReportsIfDue", () => {
 		});
 		expect(data.resourceSnapshots).toHaveLength(1);
 		expect(data.mailbox).toHaveLength(1);
+	});
+
+	it("releases the day's claim when posting fails, so the next tick sends it (RR1)", async () => {
+		const { db, data } = setup({ missions: [missionDoc()] });
+		let failNext = true;
+		const flaky = {
+			collection(name: string) {
+				const col = db.collection(name);
+				if (name !== "mailbox") return col;
+				return new Proxy(col, {
+					get(target, prop, receiver) {
+						if (prop === "insertOne" && failNext) {
+							return async () => {
+								failNext = false;
+								throw new Error("mailbox write failed");
+							};
+						}
+						return Reflect.get(target, prop, receiver);
+					},
+				});
+			},
+		} as unknown as typeof db;
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		await runDailyReportsIfDue(flaky, {
+			platformAdminUserIds: [],
+			now: () => NOW,
+		});
+		expect(data.resourceSnapshots).toHaveLength(0);
+		expect(data.mailbox).toHaveLength(0);
+		await runDailyReportsIfDue(flaky, {
+			platformAdminUserIds: [],
+			now: () => new Date(NOW.getTime() + 5 * 60_000),
+		});
+		expect(data.resourceSnapshots).toHaveLength(1);
+		expect(data.mailbox).toHaveLength(1);
+		error.mockRestore();
 	});
 
 	it("catches up when the report hour was missed entirely (control plane was down)", async () => {

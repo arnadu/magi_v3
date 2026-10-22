@@ -173,12 +173,7 @@ const SSE_HEARTBEAT_MS = 20_000;
 export class MonitorServer {
 	private readonly clients = new Set<ServerResponse>();
 	private readonly server;
-	/**
-	 * Route table (Sprint 28c, issue #32) — grows one cluster at a time as
-	 * `handleRequest`'s legacy if/else chain is migrated. Checked before the
-	 * legacy chain; the two never overlap since a route is only ever migrated
-	 * once (see handleRequest's dispatch loop).
-	 */
+	/** Route table: every route, one module per cluster in monitor-routes/ (issue #32). */
 	private readonly routes: RouteEntry[];
 	private readonly workspaceGit: WorkspaceGit;
 	private heartbeatTimer: NodeJS.Timeout | null = null;

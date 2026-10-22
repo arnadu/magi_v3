@@ -34,7 +34,7 @@ import {
 import type { Collection, Db } from "mongodb";
 import { postMailbox } from "./mailbox-writer.js";
 import type { AgentLimitsRow, MissionDoc } from "./missions.js";
-import { deriveMonitorToken } from "./monitor-token.js";
+import { deriveMonitorToken, monitorUrl } from "./monitor-token.js";
 import { ceilingChangeRefusal, effectiveCeilingUsd } from "./spend-policy.js";
 
 export interface RouteResult {
@@ -144,7 +144,7 @@ export async function writeMissionCap(
 	if (mission.status === "running" && mission.privateIp) {
 		try {
 			const token = deriveMonitorToken(missionId);
-			const res = await fetch(`http://[${mission.privateIp}]:4000/set-budget`, {
+			const res = await fetch(monitorUrl(mission.privateIp, "/set-budget"), {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",

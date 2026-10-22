@@ -108,8 +108,19 @@ async function main(): Promise<void> {
 
 	const filter: Parameters<typeof repo.query>[0] = { missionId };
 	if (agentFilter) filter.agentId = agentFilter;
-	if (fromArg) filter.from = new Date(fromArg);
-	if (toArg) filter.to = new Date(toArg);
+	// CLI6: an unparseable date used to become Invalid Date and match nothing.
+	const parseDate = (flag: string, raw: string): Date => {
+		const d = new Date(raw);
+		if (Number.isNaN(d.getTime())) {
+			console.error(
+				`Invalid ${flag} date "${raw}" — use ISO 8601, e.g. 2026-10-21`,
+			);
+			process.exit(1);
+		}
+		return d;
+	};
+	if (fromArg) filter.from = parseDate("--from", fromArg);
+	if (toArg) filter.to = parseDate("--to", toArg);
 	if (reflectionOnly) filter.isReflection = true;
 	if (noReflection) filter.isReflection = false;
 

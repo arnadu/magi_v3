@@ -89,7 +89,16 @@ function scanTier(
 	map: Map<string, SkillMetadata>,
 	protectedNames: ReadonlySet<string> = new Set(),
 ): void {
-	if (!existsSync(tierPath)) return;
+	if (!existsSync(tierPath)) {
+		// Mission and agent tiers start empty; a missing platform tier means
+		// the skills were never copied in, and every agent loses them (WM).
+		if (scope === "platform") {
+			console.warn(
+				`[skills] Platform skills directory missing: ${tierPath} — no platform skills are offered`,
+			);
+		}
+		return;
+	}
 
 	let entries: string[];
 	try {

@@ -4,6 +4,7 @@
  */
 
 import { storedCollection } from "@magi/agent-config";
+import { MISSION_COPILOT_AGENT_ID } from "@magi/agent-runtime-worker";
 import type { RequestHandler } from "express";
 import type { AsyncRoutes } from "./async-handler.js";
 import { getMachineState } from "./fly-machines.js";
@@ -17,8 +18,22 @@ import { monitorAuthHeaders } from "./monitor-token.js";
 // List missions (scoped to current user unless admin).
 function listMissions({ col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
+		// MIS2: the list needs a handful of fields, not every stored config
+		// and team file; one mission is fetched in full by GET /:id.
 		const missions = await col
-			.find(userFilter(req), { sort: { createdAt: -1 } })
+			.find(userFilter(req), {
+				sort: { createdAt: -1 },
+				projection: {
+					_id: 0,
+					missionId: 1,
+					name: 1,
+					status: 1,
+					createdAt: 1,
+					updatedAt: 1,
+					errorMessage: 1,
+					"mission.maxCostUsd": 1,
+				},
+			})
 			.toArray();
 		res.json(missions);
 	};
@@ -199,7 +214,11 @@ function postMessagesRead({ db, col }: MissionRouteDeps): RequestHandler {
 			res.status(404).json({ error: "Not found" });
 			return;
 		}
-		const ids = (req.body?.ids as string[] | undefined) ?? [];
+		// MIS5: only string ids reach the query.
+		const rawIds: unknown = req.body?.ids;
+		const ids = Array.isArray(rawIds)
+			? rawIds.filter((id): id is string => typeof id === "string")
+			: [];
 		if (ids.length > 0) {
 			await storedCollection(db, "mailbox").updateMany(
 				{ missionId: req.params.id, to: "user", id: { $in: ids } },
@@ -231,6 +250,18 @@ function postMessagesSend({ db, col }: MissionRouteDeps): RequestHandler {
 			res
 				.status(400)
 				.json({ error: "to (string | string[]) and body are required" });
+			return;
+		}
+		// MIS3: a misspelled recipient used to post mail nobody would ever read.
+		const roster = new Set([
+			...(mission.agents ?? []).map((a) => a.id),
+			MISSION_COPILOT_AGENT_ID,
+		]);
+		const unknown = to.filter((t) => !roster.has(t));
+		if (unknown.length > 0) {
+			res.status(400).json({
+				error: `unknown recipient(s): ${unknown.join(", ")} — not on this mission's roster`,
+			});
 			return;
 		}
 		await postMailbox(db, {

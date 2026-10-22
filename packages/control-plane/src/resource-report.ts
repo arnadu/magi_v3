@@ -11,11 +11,10 @@
  * hour, so a control plane that was down through the whole report hour still
  * sends as soon as it's back up, any time later that same day.
  *
- * Persist-before-post is a deliberate choice: if posting the mailbox message
- * fails after the snapshot is claimed, the report is not retried that day
- * (logged, not silently lost) — the alternative (post-before-persist) risks a
- * duplicate send on a crash between the two steps, which is worse for a
- * report than a rare missed delivery already visible in the logs.
+ * Persist-before-post: the snapshot is the send claim, so a crash between
+ * the two steps never double-sends. If the post itself fails, the claim is
+ * released so the next 5-minute tick retries (RR1) — a lost report is worse
+ * than the rare duplicate from a post that succeeded and then threw.
  *
  * Scoped down from the ADR's illustrative sample report: the sample's "N
  * requests, M renewals" upgrade counts aren't derivable from the current
@@ -274,11 +273,20 @@ async function sendDailyReportIfNeeded(
 	const claimed = await claimAndPersistSnapshot(db, report);
 	if (!claimed) return;
 
-	await postReportMail(db, report).catch((e) =>
+	try {
+		await postReportMail(db, report);
+	} catch (e) {
+		await snapshotCollection(db)
+			.deleteOne({ userId, date })
+			.catch((e2: unknown) =>
+				console.error(
+					`[resource-report] Could not release the send claim { userId: "${userId}", error: "${(e2 as Error).message}" } — today's report will not be retried`,
+				),
+			);
 		console.error(
-			`[resource-report] Failed to post report mailbox message { userId: "${userId}", error: "${(e as Error).message}" }`,
-		),
-	);
+			`[resource-report] Failed to post report mailbox message { userId: "${userId}", error: "${(e as Error).message}" } — retried on the next tick`,
+		);
+	}
 }
 
 export interface DailyReportDeps {

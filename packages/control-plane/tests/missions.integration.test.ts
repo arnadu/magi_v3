@@ -110,6 +110,32 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 		return id;
 	}
 
+	describe("GET / — mission list", () => {
+		it("returns the list fields only, not stored config or team files (MIS2)", async () => {
+			const missionId = newMissionId();
+			await db.collection("missions").insertOne({
+				missionId,
+				userId,
+				name: "List me",
+				status: "suspended",
+				createdAt: new Date(),
+				mission: { id: missionId, name: "List me", maxCostUsd: 25 },
+				agents: [{ id: "lead" }],
+				teamFiles: [{ path: "skills/x/SKILL.md", content: "x" }],
+			});
+			const list = (await (await fetch(baseUrl)).json()) as Record<
+				string,
+				unknown
+			>[];
+			const m = list.find((x) => x.missionId === missionId);
+			expect(m).toMatchObject({ name: "List me", status: "suspended" });
+			expect(m?.mission).toEqual({ maxCostUsd: 25 });
+			expect(m?.teamFiles).toBeUndefined();
+			expect(m?.agents).toBeUndefined();
+			expect(m?._id).toBeUndefined();
+		});
+	});
+
 	describe("POST / — inline structured config", () => {
 		it("creates a mission and persists the structured fields", async () => {
 			const missionId = newMissionId();

@@ -236,7 +236,7 @@ export interface ReflectionContext {
 	model: import("@mariozechner/pi-ai").Model<string>;
 	/** Returns the current mental map HTML (or null if not yet set). */
 	getMentalMap: () => string | null;
-	/** Called with the updated HTML after a successful UpdateMentalMap patch. */
+	/** Called with the updated HTML after a successful mental_map_* edit. */
 	setMentalMap: (html: string) => void;
 	conversationRepo: ConversationRepository;
 	/** The turn number of the session being reflected on (used to compute the compaction cutpoint). */
@@ -302,7 +302,7 @@ export async function runReflection(
 		: "";
 	const userPrompt = `${priorSummaryBlock}${mentalMapBlock}${"─".repeat(60)}\n\nSESSION TRANSCRIPT:\n${transcript}`;
 
-	// 2. Run reflection loop with UpdateMentalMap as the only available tool.
+	// 2. Run reflection loop with the mental_map_* tools as the only ones available.
 	//    Messages are persisted with isReflection:true so they are excluded from
 	//    the agent's prompt context but visible in MongoDB for debugging.
 	//

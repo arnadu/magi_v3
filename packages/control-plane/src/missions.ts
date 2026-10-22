@@ -42,7 +42,7 @@ import { registerMissionLifecycleRoutes } from "./mission-routes-lifecycle.js";
 import { registerMissionLimitsRoutes } from "./mission-routes-limits.js";
 import { registerMissionReadRoutes } from "./mission-routes-read.js";
 import { registerMissionTranscriptRoutes } from "./mission-routes-transcript.js";
-import { monitorAuthHeaders } from "./monitor-token.js";
+import { monitorAuthHeaders, monitorUrl } from "./monitor-token.js";
 
 export type { MissionDoc };
 
@@ -223,7 +223,7 @@ export async function readLimits(
 	let budgetPaused: boolean | null = null;
 	if (missionRunning && mission.privateIp) {
 		try {
-			const res = await fetch(`http://[${mission.privateIp}]:4000/status`, {
+			const res = await fetch(monitorUrl(mission.privateIp, "/status"), {
 				headers: monitorAuthHeaders(mission.missionId),
 				signal: AbortSignal.timeout(5_000),
 			});

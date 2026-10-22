@@ -63,9 +63,27 @@ describe("runInnerLoop llmCallTimeoutMs", () => {
 
 		// Bounded by the deadline, not by some much larger/absent limit.
 		expect(elapsedMs).toBeLessThan(2000);
-		const last = result.messages.at(-1);
-		expect(last?.role).toBe("assistant");
-		expect((last as AssistantMessage).stopReason).toBe("aborted");
+		const last = result.messages.at(-1) as AssistantMessage;
+		expect(last.role).toBe("assistant");
+		// A deadline is an LLM error, not a run abort (LP4).
+		expect(last.stopReason).toBe("error");
+		expect(last.errorMessage).toContain("deadline");
+	});
+
+	it("still reports a run abort as aborted", async () => {
+		const ac = new AbortController();
+		const pending = runInnerLoop({
+			model: CLAUDE_SONNET,
+			getSystemPrompt: () => "system",
+			task: "do something",
+			tools: [],
+			completeFn: hangingCompleteFn(),
+			llmCallTimeoutMs: 60_000,
+			signal: ac.signal,
+		});
+		setTimeout(() => ac.abort(), 20);
+		const last = (await pending).messages.at(-1) as AssistantMessage;
+		expect(last.stopReason).toBe("aborted");
 	});
 
 	it("does not fire the deadline for a call that resolves promptly", async () => {

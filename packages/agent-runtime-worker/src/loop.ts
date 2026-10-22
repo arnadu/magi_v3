@@ -98,7 +98,7 @@ export interface InnerLoopConfig {
 	model: Model<string>;
 	/**
 	 * Returns the system prompt for the current LLM call. Called once per
-	 * loop iteration so changes from tool calls (e.g. UpdateMentalMap) are
+	 * loop iteration so changes from tool calls (e.g. the mental_map_* tools) are
 	 * picked up before the next LLM call.
 	 */
 	getSystemPrompt: () => string;
@@ -410,7 +410,18 @@ async function callLlmWithRetry(
 			...(sessionId ? { sessionId } : {}),
 		};
 		try {
-			return await completeFn(model, context, callOpts);
+			const msg = await completeFn(model, context, callOpts);
+			// The provider reports its own deadline abort as "aborted", the same
+			// as a run abort; a stalled call is an LLM error (alerted, cooled
+			// down), not the operator stopping the run (LP4).
+			if (msg.stopReason === "aborted" && !signal?.aborted) {
+				return {
+					...msg,
+					stopReason: "error",
+					errorMessage: `LLM call exceeded its ${llmCallTimeoutMs / 1000}s deadline`,
+				};
+			}
+			return msg;
 		} finally {
 			deadline.cleanup();
 		}
@@ -443,9 +454,12 @@ function pruneIfLarge(
 	messages: Message[],
 	assistantMessage: AssistantMessage,
 ): void {
+	// Same measure as the reflection trigger (peakContextTokens): tokens just
+	// written to the cache are part of the context too (LP1).
 	const ctxSize =
 		(assistantMessage.usage?.input ?? 0) +
-		(assistantMessage.usage?.cacheRead ?? 0);
+		(assistantMessage.usage?.cacheRead ?? 0) +
+		(assistantMessage.usage?.cacheWrite ?? 0);
 	if (ctxSize <= MID_SESSION_PRUNE_THRESHOLD) return;
 	const pruned = pruneEphemeralResults(messages, 2);
 	messages.splice(0, messages.length, ...pruned);

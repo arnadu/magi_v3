@@ -6,7 +6,7 @@
 
 import type { ToolResult } from "@magi/agent-runtime-worker";
 import type { Db } from "mongodb";
-import { monitorAuthHeaders } from "./monitor-token.js";
+import { monitorAuthHeaders, monitorUrl } from "./monitor-token.js";
 import type { PendingActionsStore } from "./pending-actions.js";
 
 export interface CopilotToolDeps {
@@ -32,7 +32,7 @@ export async function monitorFetch(
 	missionId: string,
 	path: string,
 ): Promise<string> {
-	const url = `http://[${privateIp}]:4000${path}`;
+	const url = monitorUrl(privateIp, path);
 	const res = await fetch(url, {
 		headers: monitorAuthHeaders(missionId),
 		signal: AbortSignal.timeout(10_000),

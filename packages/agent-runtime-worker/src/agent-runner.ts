@@ -96,7 +96,7 @@ export interface AgentRunContext {
 	onUserMessage?: (msg: MailboxMessage) => void;
 	/** Called for every message produced by the inner loop (for logging/streaming). */
 	onMessage?: (msg: Message, allMessages: Message[]) => Promise<void>;
-	/** Called when UpdateMentalMap changes the agent's mental map. Used for SSE push to dashboard. */
+	/** Called when a mental_map_* tool changes the agent's mental map. Used for SSE push to the cockpit. */
 	onMentalMapUpdate?: (agentId: string, html: string) => void;
 	/**
 	 * Extra tools appended after the standard Tier-A tool list.
