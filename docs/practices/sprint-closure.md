@@ -13,3 +13,10 @@ Sprint close is a **confirmation pass** — this work should already be done. If
 7. **Sprint status** — mark the sprint `✅ Done` in `MAGI_V3_ROADMAP.md` with a one-line summary, and update the root `CLAUDE.md` Sprint Roadmap section
 
 Use `/sprint-close` to run checks 1–2 automatically.
+
+Before closing, run `/sprint-audit <sprint>`: a whole-repo audit by seven specialist auditors
+(boundary, schema drift, LLM-facing text, docs, cost, structure, resilience) with an
+independent verifier that tries to refute each finding. Its report lands in the gitignored
+`docs/review/sprint-<sprint>.md`, with a trend entry in `docs/review/metrics.json`; Critical
+and High findings are fixed or filed before the sprint closes.
+
