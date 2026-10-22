@@ -65,23 +65,9 @@ See [MAGI_V3_SPEC.md](MAGI_V3_SPEC.md) for the full design.
 
 ## Sprint Roadmap
 
-Full history: [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) and
-[docs/implementation-history.md](docs/implementation-history.md). Sprints 1–28g are done; this
-section tracks only what's active.
-
-**Done most recently: 28f — third-party audit remediation** (closed 2026-10-22; findings
-F-032…F-078, plan `docs/plans/audit-oct26-remediation-plan.md`). Closed with the first
-whole-repo `/sprint-audit`; open follow-ups are [#88](https://github.com/arnadu/magi_v3/issues/88)–[#96](https://github.com/arnadu/magi_v3/issues/96).
-
-**Sprint 28h — Remaining operational hardening (backlog).** G-5 out-of-band alerting (#3, #4),
-onboarding flow, usage dashboard, CR-06 remainder (#78), CR-07 remainder (confirmation gates for
-pause/resume/schedule-cancel, F-026), CR-08 (blocked on Sprint 29), #21, revisit #31 (OOM).
-
-**Sprint 29 — Sensitive-data encryption + tenant credential isolation (not started, ADR-0026).**
-Application-level encryption at rest, OpenRouter ZDR routing, and per-tenant credentials
-(CR-04's harder half). Needs a research pass first.
-
-**Post-MVP, after Sprint 29:** a generic operator-managed secret registry (see the roadmap).
+Sprint status — what is done, what is active, what is next — lives only in
+[MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) (build log: [docs/implementation-history.md](docs/implementation-history.md)).
+Read it there; this file deliberately keeps no copy, so the two cannot drift.
 
 ---
 

@@ -11,7 +11,7 @@ docs are not treated as code; the same author writes and reviews). Do not narrow
 current branch's changes.
 
 Arguments: `$ARGUMENTS` — the sprint label for the report file (e.g. `28f`). If empty, use the
-highest active sprint in CLAUDE.md's Sprint Roadmap.
+highest active sprint in MAGI_V3_ROADMAP.md's sprint table.
 
 PROJECT CONTEXT:
 

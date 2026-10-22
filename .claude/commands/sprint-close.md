@@ -100,9 +100,9 @@ Scan the sprint diff for significant architectural decisions:
 For each candidate: check whether an ADR exists in `docs/adr/`. If not, suggest a title and the key decision/alternatives.
 If a superseded design was removed: check whether the relevant ADR is marked SUPERSEDED.
 
-## Check 7 — Sprint status (roadmap and CLAUDE.md)
+## Check 7 — Sprint status (roadmap)
 
-Read the sprint table in MAGI_V3_ROADMAP.md (and the Sprint Roadmap section of CLAUDE.md). Identify the highest-numbered sprint not yet marked `✅ Done`. Confirm whether it should now be marked done based on the diff, and give the one-line summary to use.
+Read the sprint table in MAGI_V3_ROADMAP.md (the only place sprint status is kept). Identify the highest-numbered sprint not yet marked `✅ Done`. Confirm whether it should now be marked done based on the diff, and give the one-line summary to use.
 
 ## Summary
 

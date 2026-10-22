@@ -10,7 +10,7 @@ Sprint close is a **confirmation pass** — this work should already be done. If
 4. **Operational resilience current** — run `/operational-resilience`; any new component's failure modes are documented in `docs/operational-resilience.md`; any closed gaps are removed from the gap table
 5. **Code structure current** — run `/code-structure-review`; new files/functions crossing the thresholds in the Code Structure section are logged in `docs/code-structure.md`
 6. **ADRs written** — any decision between concrete alternatives has an ADR in `docs/adr/`; superseded ADRs are marked
-7. **Sprint status** — mark the sprint `✅ Done` in `MAGI_V3_ROADMAP.md` with a one-line summary, and update the root `CLAUDE.md` Sprint Roadmap section
+7. **Sprint status** — mark the sprint `✅ Done` in `MAGI_V3_ROADMAP.md` with a one-line summary (the only place sprint status is kept)
 
 Use `/sprint-close` to run checks 1–2 automatically.
 
