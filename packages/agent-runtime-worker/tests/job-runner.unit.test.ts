@@ -300,8 +300,7 @@ describe("runPendingJobs — killing and logging", () => {
 		pending(d, spec({ scriptPath: script(), timeoutMs: 20 }), UID_A1);
 		await runPendingJobs(d);
 		expect(opts?.detached).toBe(true);
-		await new Promise((r) => setTimeout(r, 40));
-		expect(kills).toEqual([[4242, "magi-w1"]]);
+		await vi.waitFor(() => expect(kills).toEqual([[4242, "magi-w1"]]));
 		expect(cancelBackgroundJob("job-1")).toBe(true);
 		expect(kills).toHaveLength(2);
 		inner.children[0].emit("close", null);
