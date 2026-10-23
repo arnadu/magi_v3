@@ -9,7 +9,7 @@
 	},
 	"dependencies": {
 		"yaml": "^2.0.0",
-		"zod": "^4.3.6"
+		"zod": "^4.6.7"
 	},
 	"devDependencies": {
 		"@mariozechner/pi-ai": "npm:@earendil-works/pi-ai@0.82.1",
