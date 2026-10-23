@@ -11,7 +11,9 @@ T1-env-in-config ^packages/agent-config/src/loader\.ts:[0-9]+:[[:space:]]*\* # c
 # (F-049: & < > " ' escaped before any tag, URL-parser scheme allow-list). The legacy dashboard's
 # 55 sinks are gone with it (M1 C2, F-052); any new hit here is a new sink to justify.
 T2-html-sinks ^packages/cockpit/src/Markdown\.tsx: # sanctioned sink, escaped upstream (remyh, 2026-10-16)
-# T3: no entries — the only href-from-data was the legacy dashboard (deleted M1 C2).
+# T3: the cockpit renderer's one link, whose href is safeLinkHref()'s output: URL-parsed, http/https/mailto
+# only, attribute-escaped (XSS1). Unseen until 2026-10-23: a literal NUL in markdown.ts made grep skip the file.
+T3-href-from-data ^packages/cockpit/src/markdown\.ts:[0-9]+:.*<a[[:space:]]href="\$\{href\}" # scheme allow-listed by safeLinkHref (remyh, 2026-10-23)
 
 # T4: no entries — every daemon-identity path join goes through safe-path.ts since M1 B1 (F-037..F-041).
 # A new hit here means a new raw join on agent-controlled input: use resolveInside/readInside/writeFileInside.

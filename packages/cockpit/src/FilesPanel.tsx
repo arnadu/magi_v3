@@ -28,6 +28,8 @@ import { parseCsv } from "./markdown";
 import { useFileNode } from "./use-file-node";
 
 const joinPath = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
+const dirOf = (path: string) =>
+	path.slice(0, Math.max(path.lastIndexOf("/"), 0));
 const extOf = (name: string) => {
 	const i = name.lastIndexOf(".");
 	return i === -1 ? "" : name.slice(i).toLowerCase();
@@ -396,7 +398,11 @@ function FileViewer({
 						sandbox="allow-scripts"
 					/>
 				) : ext === ".md" || ext === ".markdown" ? (
-					<Markdown text={node.content ?? ""} missionId={missionId} />
+					<Markdown
+						text={node.content ?? ""}
+						missionId={missionId}
+						baseDir={dirOf(path)}
+					/>
 				) : ext === ".csv" ? (
 					<CsvTable text={node.content ?? ""} />
 				) : ext === ".json" && !node.truncated ? (

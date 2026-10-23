@@ -48,14 +48,17 @@ export function Markdown({
 	text,
 	className,
 	missionId,
+	baseDir,
 }: {
 	text: string;
 	className?: string;
 	/** Enables `![alt](path)` image rendering — see renderMarkdown()'s own doc comment. */
 	missionId?: string;
+	/** Folder of the document being shown; image paths resolve from it. */
+	baseDir?: string;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
-	const html = renderMarkdown(text, missionId);
+	const html = renderMarkdown(text, missionId, baseDir);
 
 	// html isn't referenced in the body, but it's what produced ref.current's
 	// DOM content (via dangerouslySetInnerHTML below) — this must re-run

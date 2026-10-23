@@ -96,6 +96,14 @@ Requirements:
   is deliberately left as plain text, not rendered — the dashboard
   doesn't fetch arbitrary third-party images on your behalf.
 
+Markdown *files* in the shared workspace are different: when the Files
+panel shows a `.md` document, its image paths resolve from that
+document's own folder, as in any markdown viewer — so
+`drafts/ch03/ch03.md` writes `![Figure 1](output/fig1.png)` for
+`drafts/ch03/output/fig1.png` (`../` works too; a leading `/` means
+`$SHARED_DIR`). Don't rewrite a document's paths to `$SHARED_DIR`-relative
+ones to make them render.
+
 ## Priority
 
 There is no priority/urgency field on `PostMessage` — every message is

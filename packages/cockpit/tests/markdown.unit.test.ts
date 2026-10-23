@@ -90,6 +90,51 @@ describe("renderMarkdown", () => {
 	});
 });
 
+describe("renderMarkdown — image paths", () => {
+	const imgPath = (html: string) => {
+		const src = html.match(/<img src="([^"]*)"/)?.[1];
+		return src
+			? new URL(src.replace(/&amp;/g, "&"), "http://x").searchParams.get("path")
+			: null;
+	};
+
+	it("resolves a document's image from the document's own folder", () => {
+		const html = renderMarkdown(
+			"![T profile](output/stage0_T_profile.png)",
+			"m1",
+			"drafts/module2/ch03_first_light",
+		);
+		expect(imgPath(html)).toBe(
+			"drafts/module2/ch03_first_light/output/stage0_T_profile.png",
+		);
+	});
+
+	it("resolves ./, ../ and a leading / (the shared root) in a document", () => {
+		const dir = "drafts/module2/ch03";
+		expect(imgPath(renderMarkdown("![a](./fig.png)", "m1", dir))).toBe(
+			"drafts/module2/ch03/fig.png",
+		);
+		expect(imgPath(renderMarkdown("![a](../shared/fig.png)", "m1", dir))).toBe(
+			"drafts/module2/shared/fig.png",
+		);
+		expect(imgPath(renderMarkdown("![a](/figures/fig.png)", "m1", dir))).toBe(
+			"figures/fig.png",
+		);
+		expect(imgPath(renderMarkdown("![a](fig.png)", "m1", ""))).toBe("fig.png");
+	});
+
+	it("leaves an image that climbs above the shared root as text", () => {
+		const html = renderMarkdown("![a](../../x.png)", "m1", "drafts");
+		expect(html).not.toContain("<img");
+	});
+
+	it("keeps chat-message paths (no folder) relative to the shared root", () => {
+		expect(
+			imgPath(renderMarkdown("![a](drafts/ch03/output/fig.png)", "m1")),
+		).toBe("drafts/ch03/output/fig.png");
+	});
+});
+
 describe("parseCsv", () => {
 	it("parses quoted fields with embedded commas and quotes", () => {
 		const rows = parseCsv('a,"b,c","d""e"\n1,2,3');
