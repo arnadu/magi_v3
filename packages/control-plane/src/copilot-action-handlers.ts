@@ -8,6 +8,7 @@
 import {
 	type AgentConfig,
 	applyTeamConfigPatch,
+	LATEST_MENTAL_MAP_SORT,
 	type Limits,
 	type MissionDoc,
 	parseTeamConfig,
@@ -364,7 +365,7 @@ async function saveSessionConfig(ctx: ActionContext): Promise<string> {
 					missionId: scMissionId,
 					mentalMapHtml: { $exists: true },
 				},
-				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+				{ sort: LATEST_MENTAL_MAP_SORT },
 			);
 			if (latest) {
 				await convCol.updateOne(

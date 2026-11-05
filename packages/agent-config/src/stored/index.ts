@@ -13,6 +13,7 @@ export {
 	storedCollection,
 } from "./collections.js";
 export type { ConversationDoc, SummaryMessage } from "./conversation.js";
+export { LATEST_MENTAL_MAP_SORT } from "./conversation.js";
 export type {
 	LlmCallCost,
 	LlmCallLogEntry,

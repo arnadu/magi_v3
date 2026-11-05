@@ -1,4 +1,5 @@
 import {
+	LATEST_MENTAL_MAP_SORT,
 	type MissionDoc,
 	type ScheduledMessageDoc,
 	storedCollection,
@@ -392,7 +393,7 @@ function readMentalMapTool(deps: CopilotToolDeps): MagiTool {
 			// The same document the daemon loads and save_session_config writes.
 			const latest = await storedCollection(db, "conversationMessages").findOne(
 				{ agentId, missionId, mentalMapHtml: { $exists: true } },
-				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+				{ sort: LATEST_MENTAL_MAP_SORT },
 			);
 			if (!latest?.mentalMapHtml) {
 				return err(

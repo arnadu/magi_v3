@@ -218,8 +218,10 @@ from their real source at turn start and cannot be removed by an edit.
 ### Persistence
 
 The current Mental Map travels with the conversation: each assistant message saved to
-`conversationMessages` carries a `mentalMapHtml` snapshot, and a session starts from the most recent
-one (or the agent's `initialMentalMap` on its first wakeup). The tools patch the in-memory copy for
+`conversationMessages` carries a `mentalMapHtml` snapshot, and a session starts from the most recently
+saved one (`LATEST_MENTAL_MAP_SORT`, by `savedAt` — never by turn number) or the agent's
+`initialMentalMap` on its first wakeup. A new turn takes the number after the highest the agent ever
+used, compacted documents included, so the counter never goes back (#102). The tools patch the in-memory copy for
 the rest of the turn. No other state survives between sessions.
 
 ---

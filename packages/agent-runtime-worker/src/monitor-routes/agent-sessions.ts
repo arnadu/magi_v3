@@ -1,4 +1,4 @@
-import { storedCollection } from "@magi/agent-config";
+import { LATEST_MENTAL_MAP_SORT, storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
 import type { RouteEntry } from "./types.js";
 
@@ -98,7 +98,7 @@ export function createAgentSessionsRoutes(
 						missionId: deps.missionId,
 						mentalMapHtml: { $exists: true },
 					},
-					{ sort: { turnNumber: -1, seqInTurn: -1 } },
+					{ sort: LATEST_MENTAL_MAP_SORT },
 				);
 				res.writeHead(200, { "Content-Type": "application/json" });
 				res.end(

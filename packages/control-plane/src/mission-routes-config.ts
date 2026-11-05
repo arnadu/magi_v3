@@ -5,6 +5,7 @@
 
 import {
 	type AgentConfig,
+	LATEST_MENTAL_MAP_SORT,
 	type Limits,
 	parseTeamConfig,
 	SpendCapCeilingExceededError,
@@ -60,7 +61,7 @@ function getConfig({ db, col }: MissionRouteDeps): RequestHandler {
 					missionId: mission.missionId,
 					mentalMapHtml: { $exists: true },
 				},
-				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+				{ sort: LATEST_MENTAL_MAP_SORT },
 			);
 			if (doc?.mentalMapHtml) {
 				mentalMaps[agentId] = doc.mentalMapHtml as string;
@@ -116,7 +117,7 @@ async function checkMentalMapEdits(
 	for (const [agentId, html] of Object.entries(mentalMaps ?? {})) {
 		const latest = await convCol.findOne(
 			{ agentId, missionId, mentalMapHtml: { $exists: true } },
-			{ sort: { turnNumber: -1, seqInTurn: -1 } },
+			{ sort: LATEST_MENTAL_MAP_SORT },
 		);
 		if (!latest) continue; // mission never ran; initialMentalMap in the config is sufficient
 		latestByAgent.set(agentId, {

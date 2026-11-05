@@ -1,4 +1,4 @@
-import { storedCollection } from "@magi/agent-config";
+import { LATEST_MENTAL_MAP_SORT, storedCollection } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import type { MissionCopilotToolDeps } from "./mission-copilot-tool-deps.js";
 import { err, ok, okJson } from "./mission-copilot-tool-result.js";
@@ -19,7 +19,7 @@ function readAgentMentalMapTool(deps: MissionCopilotToolDeps): MagiTool {
 			const agentId = args.agentId as string;
 			const doc = await storedCollection(db, "conversationMessages").findOne(
 				{ agentId, missionId, mentalMapHtml: { $exists: true } },
-				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+				{ sort: LATEST_MENTAL_MAP_SORT },
 			);
 			const html = (doc?.mentalMapHtml as string | undefined) ?? "";
 			return ok(wrapTrustBoundary(`${agentId}'s mental map`, html));

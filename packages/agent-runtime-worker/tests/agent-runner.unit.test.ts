@@ -119,6 +119,10 @@ function fakeConversationRepo(
 		async loadMostRecentMentalMap() {
 			return null;
 		},
+		// Over every document, compacted included, like the MongoDB one.
+		async lastTurnNumber() {
+			return docs.reduce((max, d) => Math.max(max, d.turnNumber), -1);
+		},
 		async findRelevant() {
 			return [];
 		},

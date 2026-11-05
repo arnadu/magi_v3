@@ -1,6 +1,11 @@
-import { type SummaryMessage, storedCollection } from "@magi/agent-config";
+import {
+	type ConversationDoc,
+	LATEST_MENTAL_MAP_SORT,
+	type SummaryMessage,
+	storedCollection,
+} from "@magi/agent-config";
 import type { Message } from "@mariozechner/pi-ai";
-import type { Db } from "mongodb";
+import type { Collection, Db } from "mongodb";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,6 +78,13 @@ export interface ConversationRepository {
 		missionId: string,
 	): Promise<string | null>;
 	/**
+	 * The highest turn number this agent has ever used — compacted and
+	 * reflection documents included — or -1. A new turn takes the next one,
+	 * so the counter never goes back, whatever compaction removed from load()
+	 * (#102: a counter that restarted at 0 reused turn numbers).
+	 */
+	lastTurnNumber(agentId: string, missionId: string): Promise<number>;
+	/**
 	 * Full-text search through ALL stored messages (including compacted and
 	 * reflection) for this agent+mission. Used by AnalyzeMemories to recover
 	 * content that was pruned from the in-memory context.
@@ -98,13 +110,19 @@ export interface ConversationRepository {
 
 // ---------------------------------------------------------------------------
 // MongoDB implementation
-// ---------------------------------------------------------------------------
-
-export function createMongoConversationRepository(
-	db: Db,
-): ConversationRepository {
-	const col = storedCollection(db, "conversationMessages");
-
+/**
+ * The collection's indexes, created at startup without blocking it: a failed
+ * creation degrades a read to a scan, it never stops the repository.
+ */
+function ensureConversationIndexes(col: Collection<ConversationDoc>): void {
+	// #102: an agent's current mental map is its newest snapshot (by savedAt).
+	col
+		.createIndex({ agentId: 1, missionId: 1, savedAt: -1 })
+		.catch((e: unknown) =>
+			console.warn(
+				`[conversation-repository] Failed to create agentId/missionId/savedAt index: ${(e as Error).message} — loading the latest mental map falls back to a scan of the agent's messages`,
+			),
+		);
 	// CR2: mission-wide reads (SearchMissionHistory, newest first) have no
 	// agentId, so the unique index below cannot serve them.
 	col
@@ -144,6 +162,16 @@ export function createMongoConversationRepository(
 			}
 		}
 	})();
+}
+
+// ---------------------------------------------------------------------------
+
+export function createMongoConversationRepository(
+	db: Db,
+): ConversationRepository {
+	const col = storedCollection(db, "conversationMessages");
+
+	ensureConversationIndexes(col);
 
 	return {
 		async load(agentId, missionId) {
@@ -234,9 +262,17 @@ export function createMongoConversationRepository(
 		async loadMostRecentMentalMap(agentId, missionId) {
 			const doc = await col.findOne(
 				{ agentId, missionId, mentalMapHtml: { $exists: true } },
-				{ sort: { turnNumber: -1, seqInTurn: -1 } },
+				{ sort: LATEST_MENTAL_MAP_SORT },
 			);
 			return doc?.mentalMapHtml ?? null;
+		},
+
+		async lastTurnNumber(agentId, missionId) {
+			const doc = await col.findOne(
+				{ agentId, missionId },
+				{ sort: { turnNumber: -1 }, projection: { turnNumber: 1 } },
+			);
+			return doc?.turnNumber ?? -1;
 		},
 
 		async findRelevant(agentId, missionId, query, limit) {

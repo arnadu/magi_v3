@@ -12,6 +12,15 @@ export interface SummaryMessage {
 	content: string;
 }
 
+/**
+ * How to find an agent's current mental map: the most recently saved
+ * snapshot. Never by turn number — an agent whose turn counter once reset
+ * (reflection compacting with no summary, before 2026-10-17) has older
+ * sessions under higher turn numbers, and a turn-number sort returned their
+ * stale map at every wake-up (#102).
+ */
+export const LATEST_MENTAL_MAP_SORT = { savedAt: -1, _id: -1 } as const;
+
 export interface ConversationDoc {
 	agentId: string;
 	missionId: string;

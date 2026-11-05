@@ -502,7 +502,6 @@ export async function reflectSession(
 	missionId: string,
 	input: {
 		sessionMessages: Message[];
-		nonSummaryHistory: StoredMessage[];
 		history: StoredMessage[];
 		getMentalMap: () => string;
 		setMentalMap: (html: string) => void;
@@ -512,9 +511,12 @@ export async function reflectSession(
 		) => Parameters<typeof runReflection>[3]["onLlmCall"];
 	},
 ): Promise<StoredMessage[]> {
-	const lastTurnNumber = input.nonSummaryHistory.reduce(
-		(max, sm) => Math.max(max, sm.turnNumber),
-		-1,
+	// The agent's highest turn ever, not the live history's: the summary then
+	// lands above every earlier number and compaction covers the whole
+	// session, even for an agent whose counter once went back (#102).
+	const lastTurnNumber = await ctx.conversationRepo.lastTurnNumber(
+		agentId,
+		missionId,
 	);
 	const previousSummaries = input.history
 		.filter((sm) => sm.message.role === "summary")

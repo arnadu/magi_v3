@@ -82,6 +82,11 @@ function harness(
 		conversationRepo: {
 			load: async () => history,
 			loadMostRecentMentalMap: async () => null,
+			lastTurnNumber: async () =>
+				[...history, ...appended].reduce(
+					(max, d) => Math.max(max, (d as { turnNumber: number }).turnNumber),
+					-1,
+				),
 			append: async (
 				_a: string,
 				_m: string,

@@ -118,7 +118,6 @@ export async function prepareTurn(
 		await reflectGuarded(ctx, agentId, missionId, async () => {
 			history = await reflectSession(ctx, agentId, missionId, {
 				sessionMessages,
-				nonSummaryHistory,
 				history,
 				getMentalMap: () => state.mentalMapHtml,
 				setMentalMap,
@@ -127,8 +126,10 @@ export async function prepareTurn(
 		});
 	}
 
+	// From every document the agent ever wrote, not just load()'s live
+	// history: compaction must never make the counter go back (#102).
 	state.turnNumber =
-		history.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
+		(await ctx.conversationRepo.lastTurnNumber(agentId, missionId)) + 1;
 	const synced = await syncObjectivesSection(
 		ctx,
 		missionId,
@@ -433,7 +434,7 @@ export async function runWithRecovery(
 	);
 	const cleanHistory = await ctx.conversationRepo.load(agentId, missionId);
 	state.turnNumber =
-		cleanHistory.reduce((max, s) => Math.max(max, s.turnNumber), -1) + 1;
+		(await ctx.conversationRepo.lastTurnNumber(agentId, missionId)) + 1;
 	state.callSeq = -1;
 	// Same tool set as the first attempt (audit R1).
 	const retry = await runInnerLoop({
