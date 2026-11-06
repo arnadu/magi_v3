@@ -217,6 +217,8 @@ function machineConfig(
  * Replace a stopped machine's whole config (image, env, mounts, guest) and
  * leave it stopped (`skip_launch`). The machine keeps its id and its place on
  * the volume's server, which deleting and re-creating gives up (#103).
+ * Fly applies the update asynchronously and refuses a start while it is
+ * "getting replaced", so this returns only once the new instance is stopped.
  * Returns false when the machine no longer exists.
  */
 export async function updateMachine(
@@ -240,8 +242,35 @@ export async function updateMachine(
 			await res.text(),
 		);
 	}
-	const machine = (await res.json()) as { private_ip: string };
+	const machine = (await res.json()) as {
+		private_ip: string;
+		instance_id: string;
+	};
+	await waitForInstanceStopped(machineId, machine.instance_id);
 	return { updated: true, privateIp: machine.private_ip };
+}
+
+/** Fly's `/wait` holds the request up to `timeout` seconds and answers 408 when the state was not reached. */
+const WAIT_SECONDS = 20;
+const WAIT_ATTEMPTS = 6;
+
+async function waitForInstanceStopped(
+	machineId: string,
+	instanceId: string,
+): Promise<void> {
+	const path = `/apps/${appName()}/machines/${machineId}/wait?instance_id=${encodeURIComponent(instanceId)}&state=stopped&timeout=${WAIT_SECONDS}`;
+	for (let attempt = 1; attempt <= WAIT_ATTEMPTS; attempt++) {
+		const res = await flyFetch(path);
+		if (res.ok) return;
+		if (res.status !== 408) {
+			throw new Error(
+				`Failed waiting for machine ${machineId} to finish its update: ${res.status} ${await res.text()}`,
+			);
+		}
+	}
+	throw new Error(
+		`Machine ${machineId} had not finished its update after ${WAIT_SECONDS * WAIT_ATTEMPTS} s`,
+	);
 }
 
 export async function provisionMission(

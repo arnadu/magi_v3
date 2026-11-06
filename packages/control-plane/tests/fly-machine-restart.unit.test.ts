@@ -37,7 +37,11 @@ const body = (call: number) =>
 
 describe("updateMachine", () => {
 	it("posts the full current config to the existing machine and leaves it stopped", async () => {
-		fetchMock.mockResolvedValue(json({ id: "m-1", private_ip: "fdaa::9" }));
+		fetchMock
+			.mockResolvedValueOnce(
+				json({ id: "m-1", private_ip: "fdaa::9", instance_id: "inst-2" }),
+			)
+			.mockResolvedValueOnce(json({ ok: true }));
 		const result = await updateMachine("m-1", "mission-1", "vol-1", {
 			memoryMb: 2048,
 		});
@@ -53,6 +57,32 @@ describe("updateMachine", () => {
 			{ volume: "vol-1", path: "/missions" },
 		]);
 		expect(sent.config.guest.memory_mb).toBe(2048);
+	});
+
+	it("returns only once the updated instance has stopped, since Fly refuses a start while it is being replaced", async () => {
+		fetchMock
+			.mockResolvedValueOnce(
+				json({ id: "m-1", private_ip: "fdaa::9", instance_id: "inst-2" }),
+			)
+			.mockResolvedValueOnce(json({ error: "deadline_exceeded" }, 408))
+			.mockResolvedValueOnce(json({ ok: true }));
+		await updateMachine("m-1", "mission-1", "vol-1");
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+		const waitUrl = fetchMock.mock.calls[2][0] as string;
+		expect(waitUrl).toMatch(
+			/\/machines\/m-1\/wait\?instance_id=inst-2&state=stopped&timeout=\d+$/,
+		);
+	});
+
+	it("throws, so the caller falls back to re-creating, when the update never settles", async () => {
+		fetchMock
+			.mockResolvedValueOnce(
+				json({ id: "m-1", private_ip: "fdaa::9", instance_id: "inst-2" }),
+			)
+			.mockResolvedValue(json({ error: "deadline_exceeded" }, 408));
+		await expect(updateMachine("m-1", "mission-1", "vol-1")).rejects.toThrow(
+			/had not finished its update/,
+		);
 	});
 
 	it("reports a machine that no longer exists instead of throwing", async () => {
