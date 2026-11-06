@@ -229,6 +229,21 @@ yet seen.
   there is nothing actionable on the mission side; point the operator at the
   control-plane copilot instead of investigating locally.
 
+### `volume-forked` (control-plane mission lifecycle, issue #103)
+
+Informational (soft), not a failure. A resume or wake-up needed a new
+machine, and the one Fly server holding the mission's volume had no room for
+it (`volume_placement_capacity`). The control plane forked the volume to
+another zone, pointed `mission.volumeId` at the fork, and started the machine
+there. The mission's data is intact on the fork; the original volume named in
+the message is now unused and kept.
+
+- **Control-plane copilot**: confirm the mission is running and healthy
+  (`GetMissionStatus`), then tell the operator the original volume can be
+  deleted to stop paying for it. Do not delete it yourself.
+- **Mission copilot**: nothing to do; the mission is already running on the
+  fork.
+
 ### `oom-suspected` (ADR-0032)
 
 An unrequested machine exit consistent with an out-of-memory kill (inferred

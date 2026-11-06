@@ -19,12 +19,14 @@ import type { RequestHandler } from "express";
 import type { Collection, Db } from "mongodb";
 import type { AsyncRoutes } from "./async-handler.js";
 import {
-	deleteMachine,
 	isLocalExecution,
 	provisionLocal,
 	volumeExists,
 } from "./fly-machines.js";
-import { provisionTracked } from "./machine-lifecycle.js";
+import {
+	provisionTracked,
+	restartOnCurrentConfigTracked,
+} from "./machine-lifecycle.js";
 import {
 	claimStatus,
 	insertMissionOrConflict,
@@ -300,56 +302,33 @@ function postSuspend({ db, col }: MissionRouteDeps): RequestHandler {
 	};
 }
 
-/**
- * Resume on Fly: delete the stopped machine and provision a fresh one against
- * the preserved workspace volume, so the new machine boots with the current
- * config from MongoDB (the Fly PATCH API for env updates on stopped machines
- * is unreliable). Throws, leaving the old machine untouched, when the volume
- * cannot be confirmed first.
- */
-async function reprovisionOnVolume(
+/** Resume on Fly: restart the mission on the current image and config, on its preserved volume. */
+async function restartOnVolume(
 	db: Db,
 	col: Collection<MissionDoc>,
 	mission: MissionDoc,
 	machineId: string,
 ): Promise<void> {
-	// Resume on Fly: delete the stopped machine and provision a fresh one
-	// against the preserved workspace volume. This guarantees the new machine
-	// boots with the current config from MongoDB — the Fly PATCH API for
-	// env-var updates on stopped machines is unreliable.
 	if (!mission.volumeId) {
 		throw new Error("No volume ID stored for this mission — cannot resume");
 	}
-	// Verify the volume actually exists BEFORE deleting the old (working)
-	// machine. Without this check, a `mission.volumeId` that had drifted
-	// wrong in MongoDB (found live, 2026-09-23) caused this handler to
-	// destroy a healthy machine and then fail to re-create it — the real
-	// data volume was untouched, but the mission was down until someone
-	// noticed and fixed the record by hand. Failing here instead leaves
-	// the working machine exactly as it was.
+	// Verify the volume exists before touching the machine: a drifted
+	// `mission.volumeId` (#62, 2026-09-23) once got a healthy machine
+	// deleted and then never re-created.
 	if (!(await volumeExists(mission.volumeId))) {
 		throw new Error(
 			`Volume ${mission.volumeId} does not exist on Fly — mission.volumeId in MongoDB has likely drifted from the real volume. Not touching the current machine; check \`flyctl volumes list\` for the mission's actual volume before retrying.`,
 		);
 	}
-	// Best-effort delete of the old machine. If it's already gone (deleted
-	// outside MAGI), skip and proceed to provision.
-	try {
-		await deleteMachine(machineId);
-		console.log(
-			`[missions] deleted old machine ${machineId} before re-provision`,
-		);
-	} catch (e) {
-		console.warn(
-			`[missions] could not delete machine ${machineId}: ${(e as Error).message} — proceeding to provision anyway`,
-		);
-	}
-	const handle = await provisionTracked(db, mission.missionId, {
-		existingVolumeId: mission.volumeId,
-		// teamFiles omitted: daemon fetches from missions collection at startup
-		memoryMb: mission.mission?.memoryMb,
-		cpus: mission.mission?.cpus,
+	const handle = await restartOnCurrentConfigTracked(db, {
+		missionId: mission.missionId,
+		machineId,
+		volumeId: mission.volumeId,
+		mission: mission.mission,
 	});
+	console.log(
+		`[missions] resumed { missionId: "${mission.missionId}", how: "${handle.how}", machineId: "${handle.machineId}", volumeId: "${handle.volumeId}" }`,
+	);
 	await col.updateOne(
 		{ missionId: mission.missionId },
 		{
@@ -404,7 +383,7 @@ function postResume({ db, col }: MissionRouteDeps): RequestHandler {
 					},
 				);
 			} else {
-				await reprovisionOnVolume(db, col, mission, mission.machineId);
+				await restartOnVolume(db, col, mission, mission.machineId);
 			}
 			res.json({ status: "running" });
 		} catch (e) {

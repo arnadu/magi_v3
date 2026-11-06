@@ -15,18 +15,22 @@
  */
 
 import { storedCollection } from "@magi/agent-config";
+import { createMongoAnomalyRecorderForMission } from "@magi/agent-runtime-worker";
 import type { Db } from "mongodb";
 import {
 	deleteMachine,
 	destroyMission,
+	FlyCapacityError,
 	type MachineHandle,
 	machineExists,
 	type ProvisionOptions,
 	provisionMission,
 	resumeMission,
 	suspendMission,
+	updateMachine,
 	volumeExists,
 } from "./fly-machines.js";
+import { forkVolume, waitForVolumeReady } from "./fly-volume-fork.js";
 import {
 	closeOpenSegments,
 	defaultShapeOf,
@@ -133,8 +137,7 @@ export interface WakeResult {
  * its delete step, or a machine removed outside MAGI (the Fly dashboard, a
  * quota clean-up: 2026-10-16, when every stopped machine in the app was
  * deleted by hand). The volume is the mission's state; the machine is
- * disposable, and `POST /:id/resume` already deletes and re-creates it on
- * every operator resume. Either branch leaves the mission doc saying
+ * disposable. Either branch leaves the mission doc saying
  * "running" with the machine that is actually up, so both callers share one
  * piece of bookkeeping instead of each updating the doc differently.
  * "local-*" machines are the developer's own daemon: nothing to start.
@@ -175,10 +178,10 @@ export async function wakeTracked(
 			`Volume ${mission.volumeId} does not exist on Fly — mission.volumeId in MongoDB has likely drifted. Try ProposeAction "fix_mission_volume" first.`,
 		);
 	}
-	const handle = await provisionTracked(db, missionId, {
-		existingVolumeId: mission.volumeId,
-		memoryMb: mission.mission?.memoryMb,
-		cpus: mission.mission?.cpus,
+	const handle = await provisionOnVolumeTracked(db, {
+		missionId,
+		volumeId: mission.volumeId,
+		mission: mission.mission,
 	});
 	await missions.updateOne(
 		{ missionId },
@@ -196,6 +199,123 @@ export async function wakeTracked(
 		`[machine-lifecycle] wake re-provisioned { missionId: "${missionId}", goneMachineId: "${machineId}", machineId: "${handle.machineId}" }`,
 	);
 	return { reprovisioned: true, machineId: handle.machineId };
+}
+
+export interface RestartResult extends MachineHandle {
+	/** "updated": the stopped machine took the new config in place; "recreated": a new machine on the same volume; "forked": a new machine on a fork of the volume, which is now the mission's `volumeId`. */
+	how: "updated" | "recreated" | "forked";
+}
+
+interface MissionOnVolume {
+	missionId: string;
+	volumeId: string;
+	mission?: { memoryMb?: number; cpus?: number };
+}
+
+/**
+ * Bring a stopped mission back on the current image and config (an operator
+ * resume). First choice is updating the stopped machine in place and starting
+ * it, which keeps its place on the server that holds the volume. Deleting it
+ * and creating a new one gives that place up, and a full server then strands
+ * the mission (#103), so re-creating is only the fallback: when the machine is
+ * gone, or the update or the start fails.
+ */
+export async function restartOnCurrentConfigTracked(
+	db: Db,
+	mission: MissionOnVolume & { machineId: string },
+): Promise<RestartResult> {
+	const { missionId, machineId, volumeId } = mission;
+	try {
+		const update = await updateMachine(
+			machineId,
+			missionId,
+			volumeId,
+			defaultShapeOf(mission),
+		);
+		if (update.updated) {
+			await resumeTracked(db, {
+				missionId,
+				machineId,
+				mission: mission.mission,
+			});
+			return {
+				machineId,
+				privateIp: update.privateIp,
+				volumeId,
+				how: "updated",
+			};
+		}
+	} catch (e) {
+		console.warn(
+			`[machine-lifecycle] in-place restart failed { missionId: "${missionId}", machineId: "${machineId}", error: "${(e as Error).message}" } — re-creating the machine on its volume`,
+		);
+		try {
+			await deleteMachine(machineId);
+		} catch (del) {
+			console.warn(
+				`[machine-lifecycle] could not delete machine before re-creating it { missionId: "${missionId}", machineId: "${machineId}", error: "${(del as Error).message}" } — provisioning anyway`,
+			);
+		}
+	}
+	return provisionOnVolumeTracked(db, mission);
+}
+
+/**
+ * Provision a machine on the mission's volume. When the volume's server is
+ * full, fork the volume to another zone, point the mission at the fork
+ * (compare-and-set, before waiting, so a timeout still leaves a resumable
+ * mission), and provision there. The original volume is kept; a soft
+ * `volume-forked` anomaly tells the copilot it can be deleted once the
+ * mission is confirmed healthy.
+ */
+export async function provisionOnVolumeTracked(
+	db: Db,
+	mission: MissionOnVolume,
+): Promise<RestartResult> {
+	const { missionId, volumeId } = mission;
+	const shape = defaultShapeOf(mission);
+	const onVolume = (existingVolumeId: string) =>
+		provisionTracked(db, missionId, {
+			existingVolumeId,
+			memoryMb: shape.memoryMb,
+			cpus: shape.cpus,
+		});
+	try {
+		return { ...(await onVolume(volumeId)), how: "recreated" };
+	} catch (e) {
+		if (!(e instanceof FlyCapacityError)) throw e;
+		console.warn(
+			`[machine-lifecycle] volume server full { missionId: "${missionId}", volumeId: "${volumeId}" } — forking the volume to another zone`,
+		);
+	}
+	const fork = await forkVolume(missionId, volumeId, shape);
+	const missions = storedCollection(db, "missions");
+	const repoint = await missions.updateOne(
+		{ missionId, volumeId },
+		{ $set: { volumeId: fork.volumeId, updatedAt: new Date() } },
+	);
+	if (repoint.matchedCount !== 1) {
+		throw new Error(
+			`Mission "${missionId}" no longer records volume ${volumeId}; fork ${fork.volumeId} was created but not attached — check the mission's volumeId before deleting either`,
+		);
+	}
+	const userId = (await missions.findOne({ missionId }))?.userId;
+	if (userId) {
+		await createMongoAnomalyRecorderForMission(db, missionId, userId)
+			.record({
+				missionId,
+				category: "volume-forked",
+				severity: "soft",
+				message: `Volume ${volumeId}'s server had no room for the mission's machine, so the volume was forked to ${fork.volumeId}${fork.zone ? ` (zone ${fork.zone})` : ""} and the mission now uses the fork. ${volumeId} is unused and kept; delete it once the mission is confirmed healthy.`,
+			})
+			.catch((e) =>
+				console.error(
+					`[machine-lifecycle] Failed to record volume-forked anomaly { missionId: "${missionId}", error: "${(e as Error).message}" }`,
+				),
+			);
+	}
+	await waitForVolumeReady(fork.volumeId);
+	return { ...(await onVolume(fork.volumeId)), how: "forked" };
 }
 
 /** Destroy the machine and volume, then close the mission's open segment. */

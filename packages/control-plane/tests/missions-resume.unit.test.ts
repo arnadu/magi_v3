@@ -16,12 +16,11 @@ import type { Server } from "node:http";
 import express from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	deleteMachine,
 	getMachineState,
 	isLocalExecution,
 	volumeExists,
 } from "../src/fly-machines.js";
-import { provisionTracked } from "../src/machine-lifecycle.js";
+import { restartOnCurrentConfigTracked } from "../src/machine-lifecycle.js";
 import { createMissionsRouter } from "../src/missions.js";
 import { fakeDb } from "./support/fake-db.js";
 
@@ -30,18 +29,17 @@ vi.mock("../src/fly-machines.js", () => ({
 	getMachineState: vi.fn(),
 	machineExists: vi.fn(),
 	volumeExists: vi.fn(),
-	deleteMachine: vi.fn(),
 	destroyLocal: vi.fn(),
 	provisionLocal: vi.fn(),
 }));
 vi.mock("../src/machine-lifecycle.js", () => ({
 	provisionTracked: vi.fn(),
+	restartOnCurrentConfigTracked: vi.fn(),
 	destroyTracked: vi.fn(),
 }));
 
 const mockedVolumeExists = vi.mocked(volumeExists);
-const mockedDeleteMachine = vi.mocked(deleteMachine);
-const mockedProvisionTracked = vi.mocked(provisionTracked);
+const mockedRestart = vi.mocked(restartOnCurrentConfigTracked);
 const mockedGetMachineState = vi.mocked(getMachineState);
 const mockedIsLocalExecution = vi.mocked(isLocalExecution);
 
@@ -84,7 +82,7 @@ describe("POST /:id/resume — volume-existence guard", () => {
 		mockedGetMachineState.mockResolvedValue("stopped");
 	});
 
-	it("checks the volume BEFORE deleting the old machine, and never deletes it when the volume is gone", async () => {
+	it("checks the volume BEFORE touching the old machine, and never touches it when the volume is gone", async () => {
 		mockedVolumeExists.mockResolvedValue(false);
 		const { baseUrl, server, data } = await startApp([missionDoc()]);
 		try {
@@ -93,8 +91,7 @@ describe("POST /:id/resume — volume-existence guard", () => {
 			const body = (await res.json()) as { error: string };
 			expect(body.error).toContain("does not exist on Fly");
 
-			expect(mockedDeleteMachine).not.toHaveBeenCalled();
-			expect(mockedProvisionTracked).not.toHaveBeenCalled();
+			expect(mockedRestart).not.toHaveBeenCalled();
 
 			const doc = data.missions[0];
 			expect(doc.status).toBe("error");
@@ -126,21 +123,25 @@ describe("POST /:id/resume — volume-existence guard", () => {
 		}
 	});
 
-	it("deletes the old machine and provisions a new one when the volume exists", async () => {
+	it("restarts on the volume when it exists and records the machine that came back", async () => {
 		mockedVolumeExists.mockResolvedValue(true);
-		mockedDeleteMachine.mockResolvedValue(undefined);
-		mockedProvisionTracked.mockResolvedValue({
+		mockedRestart.mockResolvedValue({
 			machineId: "new-machine",
 			privateIp: "fdaa::1",
 			volumeId: "vol_real",
+			how: "recreated",
 		});
 		const { baseUrl, server, data } = await startApp([missionDoc()]);
 		try {
 			const res = await fetch(`${baseUrl}/m1/resume`, { method: "POST" });
 			expect(res.status).toBe(200);
 
-			expect(mockedDeleteMachine).toHaveBeenCalledWith("old-machine");
-			expect(mockedProvisionTracked).toHaveBeenCalled();
+			expect(mockedRestart).toHaveBeenCalledWith(expect.anything(), {
+				missionId: "m1",
+				machineId: "old-machine",
+				volumeId: "vol_real",
+				mission: undefined,
+			});
 
 			const doc = data.missions[0];
 			expect(doc.status).toBe("running");

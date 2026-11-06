@@ -24,9 +24,9 @@ const FLY_API_BASE = "https://api.machines.dev/v1";
 // accidentally destroyed volume and recover from a snapshot before it too
 // ages out — at this project's current usage (~1-2 GB/mission, incremental
 // snapshot billing), the cost difference over the default is negligible.
-const SNAPSHOT_RETENTION_DAYS = 30;
+export const SNAPSHOT_RETENTION_DAYS = 30;
 
-function appName(): string {
+export function appName(): string {
 	const name = process.env.FLY_MISSIONS_APP_NAME;
 	if (!name) throw new Error("FLY_MISSIONS_APP_NAME is not set");
 	return name;
@@ -43,7 +43,7 @@ export const FLY_TIMEOUT_MS = 30_000;
 /** 429/5xx on an idempotent call (and 429 on any call — not processed) is retried this many times with backoff. */
 export const FLY_RETRIES = 3;
 
-async function flyFetch(
+export async function flyFetch(
 	path: string,
 	options: RequestInit = {},
 	fetchFn: typeof fetch = fetch,
@@ -136,6 +136,114 @@ export function flyVolumeName(missionId: string): string {
 	return slug.length <= 30 ? slug : `${slug.slice(0, 16)}${slug.slice(-14)}`;
 }
 
+/**
+ * Fly answers 412 `volume_placement_capacity` when the one server holding a
+ * volume has no room for a machine that mounts it. Nothing on our side is
+ * wrong and retrying does not help until that server frees up (#103).
+ */
+export class FlyCapacityError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "FlyCapacityError";
+	}
+}
+
+function throwMachineError(what: string, status: number, body: string): never {
+	const message = `Failed to ${what}: ${status} ${body}`;
+	if (status === 412 && body.includes("volume_placement_capacity")) {
+		throw new FlyCapacityError(message);
+	}
+	throw new Error(message);
+}
+
+/**
+ * The full machine config, shared by create and in-place update. It carries no
+ * team-config payload (ADR-0021): the daemon reads its structured config and
+ * team files from `missions` at boot, keyed by MISSION_ID (a payload would also
+ * exceed Fly's machine config size limit for large teams).
+ */
+function machineConfig(
+	missionId: string,
+	volumeId: string,
+	opts: Pick<ProvisionOptions, "cpuKind" | "cpus" | "memoryMb">,
+) {
+	return {
+		// FLY_MISSIONS_IMAGE overrides the default :latest tag; useful when
+		// the latest CI build tag hasn't been aliased to :latest yet.
+		image:
+			process.env.FLY_MISSIONS_IMAGE ?? `registry.fly.io/${appName()}:latest`,
+		env: {
+			MISSION_ID: missionId,
+			AGENT_WORKDIR: "/missions",
+			MONITOR_PORT: "4000",
+			TOOL_PORT: "4001",
+			// Per-mission auth token for MonitorServer mutating routes.
+			// Derived from MONITOR_SIGNING_KEY (control plane only) — never stored in MongoDB.
+			MONITOR_TOKEN: deriveMonitorToken(missionId),
+			// Where the mission copilot's GitHub proxy tools reach the control
+			// plane (ADR-0016, Phase 5). FLY_APP_NAME is auto-injected by Fly
+			// into *this* (the control plane's own) machine — no bootstrap.sh
+			// change needed for the common case. Empty in local dev, where the
+			// GitHub proxy isn't reachable anyway (no deployed control plane).
+			CONTROL_PLANE_URL: process.env.FLY_APP_NAME
+				? `https://${process.env.FLY_APP_NAME}.fly.dev`
+				: "",
+			// Pass runtime secrets explicitly — Fly app-level secrets are NOT
+			// automatically injected into machines created via the Machines API.
+			ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
+			MONGODB_URI: process.env.MONGODB_URI ?? "",
+			BRAVE_SEARCH_API_KEY: process.env.BRAVE_SEARCH_API_KEY ?? "",
+			OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
+			FRED_API_KEY: process.env.FRED_API_KEY ?? "",
+			FMP_API_KEY: process.env.FMP_API_KEY ?? "",
+			NEWSAPIORG_API_KEY: process.env.NEWSAPIORG_API_KEY ?? "",
+		},
+		mounts: [{ volume: volumeId, path: "/missions" }],
+		restart: { policy: "on-failure", max_retries: 3 },
+		// No services — internal access only via WireGuard.
+		// 1 GB RAM default: Node + MongoDB driver + agent pool need ~600 MB at
+		// idle; Playwright/Chromium adds another ~400 MB under load. Heavier
+		// missions (multiple agents, Python data-science stack) can override
+		// via mission.memoryMb (issue #25) — see ProvisionOptions.
+		guest: {
+			cpu_kind: opts.cpuKind ?? DEFAULT_MACHINE.cpuKind,
+			cpus: opts.cpus ?? DEFAULT_MACHINE.cpus,
+			memory_mb: opts.memoryMb ?? DEFAULT_MACHINE.memoryMb,
+		},
+	};
+}
+
+/**
+ * Replace a stopped machine's whole config (image, env, mounts, guest) and
+ * leave it stopped (`skip_launch`). The machine keeps its id and its place on
+ * the volume's server, which deleting and re-creating gives up (#103).
+ * Returns false when the machine no longer exists.
+ */
+export async function updateMachine(
+	machineId: string,
+	missionId: string,
+	volumeId: string,
+	opts: Pick<ProvisionOptions, "cpuKind" | "cpus" | "memoryMb"> = {},
+): Promise<{ updated: false } | { updated: true; privateIp: string }> {
+	const res = await flyFetch(`/apps/${appName()}/machines/${machineId}`, {
+		method: "POST",
+		body: JSON.stringify({
+			config: machineConfig(missionId, volumeId, opts),
+			skip_launch: true,
+		}),
+	});
+	if (res.status === 404) return { updated: false };
+	if (!res.ok) {
+		throwMachineError(
+			`update machine ${machineId}`,
+			res.status,
+			await res.text(),
+		);
+	}
+	const machine = (await res.json()) as { private_ip: string };
+	return { updated: true, privateIp: machine.private_ip };
+}
+
 export async function provisionMission(
 	missionId: string,
 	opts: ProvisionOptions = {},
@@ -174,64 +282,17 @@ export async function provisionMission(
 		await opts.onVolumeCreated?.(volumeId);
 	}
 
-	// 2. Create machine. No team-config env vars — the daemon reads its own
-	// structured config directly from `missions` at boot, keyed by MISSION_ID.
-	// teamFiles are stored in MongoDB before provisioning and fetched by the
-	// daemon at startup — no TEAM_FILES_PAYLOAD env var needed (would exceed
-	// Fly's machine config size limit for large team configs).
+	// 2. Create machine.
 	const machineRes = await flyFetch(`/apps/${app}/machines`, {
 		method: "POST",
 		body: JSON.stringify({
-			config: {
-				// FLY_MISSIONS_IMAGE overrides the default :latest tag; useful when
-				// the latest CI build tag hasn't been aliased to :latest yet.
-				image:
-					process.env.FLY_MISSIONS_IMAGE ?? `registry.fly.io/${app}:latest`,
-				env: {
-					MISSION_ID: missionId,
-					AGENT_WORKDIR: "/missions",
-					MONITOR_PORT: "4000",
-					TOOL_PORT: "4001",
-					// Per-mission auth token for MonitorServer mutating routes.
-					// Derived from MONITOR_SIGNING_KEY (control plane only) — never stored in MongoDB.
-					MONITOR_TOKEN: deriveMonitorToken(missionId),
-					// Where the mission copilot's GitHub proxy tools reach the control
-					// plane (ADR-0016, Phase 5). FLY_APP_NAME is auto-injected by Fly
-					// into *this* (the control plane's own) machine — no bootstrap.sh
-					// change needed for the common case. Empty in local dev, where the
-					// GitHub proxy isn't reachable anyway (no deployed control plane).
-					CONTROL_PLANE_URL: process.env.FLY_APP_NAME
-						? `https://${process.env.FLY_APP_NAME}.fly.dev`
-						: "",
-					// Pass runtime secrets explicitly — Fly app-level secrets are NOT
-					// automatically injected into machines created via the Machines API.
-					ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
-					MONGODB_URI: process.env.MONGODB_URI ?? "",
-					BRAVE_SEARCH_API_KEY: process.env.BRAVE_SEARCH_API_KEY ?? "",
-					OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
-					FRED_API_KEY: process.env.FRED_API_KEY ?? "",
-					FMP_API_KEY: process.env.FMP_API_KEY ?? "",
-					NEWSAPIORG_API_KEY: process.env.NEWSAPIORG_API_KEY ?? "",
-				},
-				mounts: [{ volume: volumeId, path: "/missions" }],
-				restart: { policy: "on-failure", max_retries: 3 },
-				// No services — internal access only via WireGuard.
-				// 1 GB RAM default: Node + MongoDB driver + agent pool need ~600 MB at
-				// idle; Playwright/Chromium adds another ~400 MB under load. Heavier
-				// missions (multiple agents, Python data-science stack) can override
-				// via mission.memoryMb (issue #25) — see ProvisionOptions.
-				guest: {
-					cpu_kind: opts.cpuKind ?? DEFAULT_MACHINE.cpuKind,
-					cpus: opts.cpus ?? DEFAULT_MACHINE.cpus,
-					memory_mb: opts.memoryMb ?? DEFAULT_MACHINE.memoryMb,
-				},
-			},
+			config: machineConfig(missionId, volumeId, opts),
 			region,
 		}),
 	});
 	if (!machineRes.ok) {
 		const body = await machineRes.text();
-		throw new Error(`Failed to create machine: ${machineRes.status} ${body}`);
+		throwMachineError("create machine", machineRes.status, body);
 	}
 	const machine = (await machineRes.json()) as {
 		id: string;
@@ -260,10 +321,8 @@ export async function suspendMission(machineId: string): Promise<void> {
 }
 
 /**
- * Delete a Fly machine without deleting its attached volume.
- * Used during resume to replace a stopped machine with a fresh one that
- * carries the latest config from MongoDB, since the Fly Machines PATCH API
- * is unreliable for env-var updates on stopped machines.
+ * Delete a Fly machine without deleting its attached volume. Resume uses it
+ * only when an in-place `updateMachine` cannot be used; a resize always does.
  */
 export async function deleteMachine(machineId: string): Promise<void> {
 	const app = appName();
@@ -303,9 +362,7 @@ export async function resumeMission(machineId: string): Promise<void> {
 			);
 			return;
 		}
-		throw new Error(
-			`Failed to start machine ${machineId}: ${startRes.status} ${body}`,
-		);
+		throwMachineError(`start machine ${machineId}`, startRes.status, body);
 	}
 }
 

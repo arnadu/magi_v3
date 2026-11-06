@@ -8,21 +8,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	deleteMachine,
 	destroyMission,
+	FlyCapacityError,
 	machineExists,
 	provisionMission,
 	resumeMission,
 	suspendMission,
+	updateMachine,
 	volumeExists,
 } from "../src/fly-machines.js";
+import { forkVolume, waitForVolumeReady } from "../src/fly-volume-fork.js";
 import {
 	destroyTracked,
+	provisionOnVolumeTracked,
 	provisionTracked,
 	ResizeError,
 	resizeTracked,
+	restartOnCurrentConfigTracked,
 	resumeTracked,
 	suspendTracked,
 	wakeTracked,
 } from "../src/machine-lifecycle.js";
+import { fakeDb } from "./support/fake-db.js";
 import { fakeSegmentsDb } from "./support/fake-segments-db.js";
 
 vi.mock("../src/fly-machines.js", () => ({
@@ -31,8 +37,14 @@ vi.mock("../src/fly-machines.js", () => ({
 	resumeMission: vi.fn(),
 	destroyMission: vi.fn(),
 	deleteMachine: vi.fn(),
+	updateMachine: vi.fn(),
 	machineExists: vi.fn(),
 	volumeExists: vi.fn(),
+	FlyCapacityError: class FlyCapacityError extends Error {},
+}));
+vi.mock("../src/fly-volume-fork.js", () => ({
+	forkVolume: vi.fn(),
+	waitForVolumeReady: vi.fn(),
 }));
 
 const provision = vi.mocked(provisionMission);
@@ -344,5 +356,142 @@ describe("resizeTracked", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe("restartOnCurrentConfigTracked (#103)", () => {
+	const update = vi.mocked(updateMachine);
+	const del = vi.mocked(deleteMachine);
+	const target = {
+		missionId: "m1",
+		machineId: "mach-old",
+		volumeId: "vol-1",
+		mission: { memoryMb: 2048, cpus: 2 },
+	};
+
+	it("updates the stopped machine in place and starts it, keeping its id and placement", async () => {
+		update.mockResolvedValue({ updated: true, privateIp: "::7" });
+		const { db, segments } = fakeSegmentsDb({
+			missions: [{ missionId: "m1" }],
+		});
+		const result = await restartOnCurrentConfigTracked(db, target);
+		expect(result).toEqual({
+			machineId: "mach-old",
+			privateIp: "::7",
+			volumeId: "vol-1",
+			how: "updated",
+		});
+		expect(update).toHaveBeenCalledWith("mach-old", "m1", "vol-1", {
+			cpuKind: "shared",
+			cpus: 2,
+			memoryMb: 2048,
+		});
+		expect(start).toHaveBeenCalledWith("mach-old");
+		expect(del).not.toHaveBeenCalled();
+		expect(provision).not.toHaveBeenCalled();
+		expect(segments[0]).toMatchObject({ machineId: "mach-old" });
+	});
+
+	it("re-creates on the volume, without a delete, when the machine is gone", async () => {
+		update.mockResolvedValue({ updated: false });
+		const { db } = fakeSegmentsDb({ missions: [{ missionId: "m1" }] });
+		const result = await restartOnCurrentConfigTracked(db, target);
+		expect(result.how).toBe("recreated");
+		expect(del).not.toHaveBeenCalled();
+		expect(provision).toHaveBeenCalledWith("m1", {
+			existingVolumeId: "vol-1",
+			memoryMb: 2048,
+			cpus: 2,
+		});
+	});
+
+	it("deletes and re-creates when the in-place start fails", async () => {
+		update.mockResolvedValue({ updated: true, privateIp: "::7" });
+		start.mockRejectedValue(new Error("Failed to start machine: 500"));
+		const { db } = fakeSegmentsDb({ missions: [{ missionId: "m1" }] });
+		const result = await restartOnCurrentConfigTracked(db, target);
+		expect(result).toMatchObject({ machineId: "mach-1", how: "recreated" });
+		expect(del).toHaveBeenCalledWith("mach-old");
+	});
+});
+
+describe("provisionOnVolumeTracked (#103)", () => {
+	const fork = vi.mocked(forkVolume);
+	const ready = vi.mocked(waitForVolumeReady);
+	const full = () =>
+		new FlyCapacityError(
+			'Failed to create machine: 412 {"status":"volume_placement_capacity"}',
+		);
+	const seed = () =>
+		fakeDb({
+			missions: [{ missionId: "m1", userId: "u1", volumeId: "vol-1" }],
+			machineSegments: [],
+		});
+
+	it("forks the volume when its server is full, repoints the mission, and provisions on the fork", async () => {
+		provision.mockRejectedValueOnce(full()).mockResolvedValueOnce({
+			...handle,
+			volumeId: "vol-fork",
+		});
+		fork.mockResolvedValue({ volumeId: "vol-fork", zone: "834a" });
+		ready.mockResolvedValue(undefined);
+		const { db, data } = seed();
+		const result = await provisionOnVolumeTracked(db, {
+			missionId: "m1",
+			volumeId: "vol-1",
+		});
+		expect(result.how).toBe("forked");
+		expect(fork).toHaveBeenCalledWith("m1", "vol-1", {
+			cpuKind: "shared",
+			cpus: 1,
+			memoryMb: 1024,
+		});
+		expect(ready).toHaveBeenCalledWith("vol-fork");
+		expect(provision).toHaveBeenLastCalledWith(
+			"m1",
+			expect.objectContaining({ existingVolumeId: "vol-fork" }),
+		);
+		expect(data.missions[0].volumeId).toBe("vol-fork");
+		expect(destroy).not.toHaveBeenCalled();
+		expect(data.missionAnomalies[0]).toMatchObject({
+			category: "volume-forked",
+			severity: "soft",
+		});
+		expect(data.missionAnomalies[0].message).toContain("vol-1");
+	});
+
+	it("records the fork before waiting for it, so a timeout leaves a resumable mission", async () => {
+		provision.mockRejectedValueOnce(full());
+		fork.mockResolvedValue({ volumeId: "vol-fork" });
+		ready.mockRejectedValue(new Error('Volume vol-fork is still "hydrating"'));
+		const { db, data } = seed();
+		await expect(
+			provisionOnVolumeTracked(db, { missionId: "m1", volumeId: "vol-1" }),
+		).rejects.toThrow(/hydrating/);
+		expect(data.missions[0].volumeId).toBe("vol-fork");
+		expect(provision).toHaveBeenCalledTimes(1);
+	});
+
+	it("refuses to use the fork when the mission's volumeId changed meanwhile", async () => {
+		provision.mockRejectedValueOnce(full());
+		fork.mockResolvedValue({ volumeId: "vol-fork" });
+		const { db, data } = fakeDb({
+			missions: [{ missionId: "m1", userId: "u1", volumeId: "vol-other" }],
+			machineSegments: [],
+		});
+		await expect(
+			provisionOnVolumeTracked(db, { missionId: "m1", volumeId: "vol-1" }),
+		).rejects.toThrow(/not attached/);
+		expect(data.missions[0].volumeId).toBe("vol-other");
+		expect(ready).not.toHaveBeenCalled();
+	});
+
+	it("does not fork on any other provisioning failure", async () => {
+		provision.mockRejectedValueOnce(new Error("Failed to create machine: 500"));
+		const { db } = seed();
+		await expect(
+			provisionOnVolumeTracked(db, { missionId: "m1", volumeId: "vol-1" }),
+		).rejects.toThrow(/500/);
+		expect(fork).not.toHaveBeenCalled();
 	});
 });

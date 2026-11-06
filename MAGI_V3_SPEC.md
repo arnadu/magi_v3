@@ -491,15 +491,17 @@ keeps this table and the code in step):
 | `RequestResourceUpgrade` | Request a temporary upgrade to a bigger machine (CPU kind, CPUs, RAM) for a genuine compute burst. |
 | `EndResourceUpgrade` | Return the mission to its default machine now, before the upgrade window ends. |
 
-**Resource oversight (ADR-0032).** `AnomalyCategory` (`anomaly.ts`) has ten values: the six
-original ones (`limit-breach`, `agent-crash`, `agent-timeout`, `llm-error`, `job-failure`,
+**Resource oversight (ADR-0032).** `AnomalyCategory` (`agent-config/src/stored/anomalies.ts`) has
+the original values (`limit-breach`, `agent-crash`, `agent-timeout`, `llm-error`, `job-failure`,
 `scheduling-failure`, `unclean-restart`) plus `disk-usage-high` (daemon sampler, soft 80%/hard
 90% of the Fly Volume), `spend-cap-near`/`spend-spike` (control-plane resource-monitor tick, from
 `missionStats`/`agentTurnStats`), `upgrade-cap-near`/`upgrade-cap-reached`/`upgrade-idle`
 (ADR-0031 machine-upgrade dataset), `resize-failure` (a failed upgrade resize), `oom-suspected`
 (a Fly machine exit consistent with an OOM kill, `fly-events.ts`), and `resume-failure` (a plain
 `resume_mission`/`POST /:id/resume` failing for any reason — most commonly a drifted
-`mission.volumeId`, see issue #62). Every category except `atlas-storage-high` goes through the
+`mission.volumeId`, see issue #62), and `volume-forked` (soft: a machine could not be placed on
+its volume's full Fly server, so the volume was forked to another zone and the mission moved to
+the fork, #103). Every category except `atlas-storage-high` goes through the
 shared `AnomalyRecorder`: persisted to `missionAnomalies`, notified to the mission's own copilot
 at any severity, relayed to `copilot-{userId}` only when hard. `atlas-storage-high` (shared
 MongoDB Atlas cluster storage, soft 70%/hard 85% of `ATLAS_STORAGE_LIMIT_MB`) has no owning

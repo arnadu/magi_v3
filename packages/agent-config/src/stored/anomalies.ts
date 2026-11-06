@@ -29,7 +29,10 @@ export type AnomalyCategory =
 	// Control-plane mission lifecycle. Distinct from resize-failure (ADR-0031's
 	// upgrade/revert path): this covers a plain operator/copilot-initiated
 	// resume failing, for any reason (e.g. a drifted `volumeId` — see issue #62).
-	| "resume-failure";
+	| "resume-failure"
+	// A machine could not be placed on its volume's full server, so the volume
+	// was forked to another zone and the mission moved to the fork (#103).
+	| "volume-forked";
 
 export type AnomalySeverity = "hard" | "soft";
 

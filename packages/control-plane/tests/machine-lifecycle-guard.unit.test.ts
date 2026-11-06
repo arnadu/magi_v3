@@ -16,6 +16,8 @@ const RAW_LIFECYCLE = [
 	"suspendMission",
 	"resumeMission",
 	"destroyMission",
+	"updateMachine",
+	"deleteMachine",
 ];
 // fly-machines.ts defines them; machine-lifecycle.ts is the one sanctioned caller.
 const ALLOWED = new Set(["fly-machines.ts", "machine-lifecycle.ts"]);
