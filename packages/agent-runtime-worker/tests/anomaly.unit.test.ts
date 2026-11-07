@@ -4,7 +4,7 @@
  * mission-copilot-tools.unit.test.ts.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	createMongoAnomalyRecorder,
 	createMongoAnomalyRecorderForMission,
@@ -91,7 +91,7 @@ describe("createMongoAnomalyRecorder", () => {
 		expect(missionMailbox.posted[0].body).toBe("boom");
 	});
 
-	it("sends an anomaly about the mission copilot itself to the operator, never to the copilot", async () => {
+	it("never mails an anomaly about the mission copilot to the copilot or the operator; a hard one reaches the control-plane copilot", async () => {
 		const { db, inserted } = fakeDb();
 		const missionMailbox = fakeMailbox();
 		const copilotMailbox = fakeMailbox();
@@ -118,11 +118,7 @@ describe("createMongoAnomalyRecorder", () => {
 		});
 
 		expect(inserted).toHaveLength(2);
-		expect(missionMailbox.posted.map((m) => m.to)).toEqual([
-			["user"],
-			["user"],
-		]);
-		expect(missionMailbox.posted[0].subject).toContain("mission copilot");
+		expect(missionMailbox.posted).toHaveLength(0);
 		// A hard one still reaches the control-plane copilot, as for any agent.
 		expect(copilotMailbox.posted).toHaveLength(1);
 	});
@@ -414,5 +410,91 @@ describe("notification de-duplication (FE1)", () => {
 			message: "boom 4",
 		});
 		expect(mission.posted).toHaveLength(3);
+	});
+});
+
+describe("soft-anomaly digest (#99/#100)", () => {
+	function digestRecorder(withCopilot = true) {
+		const { db, inserted } = fakeDb();
+		const mailbox = fakeMailbox();
+		const relay = fakeMailbox();
+		const recorder = createMongoAnomalyRecorder(
+			db,
+			mailbox,
+			withCopilot ? "mission-copilot" : undefined,
+			{ mailboxRepo: relay, missionId: "copilot-u1" },
+			{ softDigestMs: 60_000, now: () => Date.now() },
+		);
+		return { recorder, inserted, mailbox, relay };
+	}
+	const breach = (agentId: string, value: number) => ({
+		missionId: "m1",
+		category: "limit-breach" as const,
+		severity: "soft" as const,
+		agentId,
+		message: `Agent "${agentId}" breached a soft limit: peakContextTokens=${value} exceeded threshold 100000`,
+	});
+
+	it("persists every soft anomaly but mails none of them until the digest is due", async () => {
+		vi.useFakeTimers();
+		try {
+			const { recorder, inserted, mailbox } = digestRecorder();
+			await recorder.record(breach("pedagogue", 120_000));
+			await recorder.record(breach("pedagogue", 125_000));
+			await recorder.record(breach("editor", 110_000));
+			expect(inserted).toHaveLength(3);
+			expect(mailbox.posted).toHaveLength(0);
+
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(mailbox.posted).toHaveLength(1);
+			const digest = mailbox.posted[0];
+			expect(digest.to).toEqual(["mission-copilot"]);
+			expect(digest.subject).toBe("Soft anomalies digest: 3 in 2 groups");
+			expect(digest.body).toContain("pedagogue · limit-breach ×2");
+			expect(digest.body).toContain("peakContextTokens=125000");
+			expect(digest.body).toContain("editor · limit-breach ×1");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("sends nothing when no soft anomaly arrived, and one digest per period at most", async () => {
+		vi.useFakeTimers();
+		try {
+			const { recorder, mailbox } = digestRecorder();
+			await vi.advanceTimersByTimeAsync(120_000);
+			expect(mailbox.posted).toHaveLength(0);
+			await recorder.record(breach("pedagogue", 120_000));
+			await vi.advanceTimersByTimeAsync(1);
+			expect(mailbox.posted).toHaveLength(1);
+			await recorder.record(breach("pedagogue", 130_000));
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(mailbox.posted).toHaveLength(1);
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(mailbox.posted).toHaveLength(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("leaves a soft anomaly about the mission copilot out of its digest and out of the operator's inbox", async () => {
+		vi.useFakeTimers();
+		try {
+			const { recorder, inserted, mailbox, relay } = digestRecorder();
+			await recorder.record(breach("mission-copilot", 300_000));
+			await vi.advanceTimersByTimeAsync(120_000);
+			expect(inserted).toHaveLength(1);
+			expect(mailbox.posted).toHaveLength(0);
+			expect(relay.posted).toHaveLength(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("still delivers hard anomalies at once", async () => {
+		const { recorder, mailbox, relay } = digestRecorder();
+		await recorder.record({ ...breach("pedagogue", 0), severity: "hard" });
+		expect(mailbox.posted).toHaveLength(1);
+		expect(relay.posted).toHaveLength(1);
 	});
 });

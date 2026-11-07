@@ -1,5 +1,8 @@
 import { storedCollection } from "@magi/agent-config";
-import { createMongoAnomalyRecorder } from "../anomaly.js";
+import {
+	createMongoAnomalyRecorder,
+	SOFT_ANOMALY_DIGEST_MS,
+} from "../anomaly.js";
 import { createMongoMailboxRepository } from "../mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "../mission-copilot.js";
 import type { BootContext } from "./context.js";
@@ -47,6 +50,7 @@ export async function constructAnomalyRecorder(
 					missionId: `copilot-${missionUserId}`,
 				}
 			: undefined,
+		{ softDigestMs: SOFT_ANOMALY_DIGEST_MS },
 	);
 
 	return { anomalyRecorder };

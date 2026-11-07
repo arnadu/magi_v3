@@ -330,25 +330,6 @@ export function createRemainingOrchestrationCallbacks(
 						`[daemon] failed to record limit-breach anomaly: ${e.message}`,
 					),
 				);
-			// Also notify the operator directly (issue #41) — the copilot
-			// relay above is not a substitute: a hard breach on every agent,
-			// including the mission copilot itself, previously left no one
-			// able to surface it, and the operator only found out days later.
-			if (rule.severity === "hard") {
-				ctx.mailboxRepo
-					.post({
-						missionId: ctx.missionId,
-						from: "system",
-						to: ["user"],
-						subject: `Spend limit hit — "${agentId}"`,
-						body,
-					})
-					.catch((e: Error) =>
-						console.error(
-							`[daemon] failed to notify operator of limit breach { missionId: "${ctx.missionId}", agentId: "${agentId}" }: ${e.message}`,
-						),
-					);
-			}
 		},
 		// Whole-turn crash (runAgent rejected). This is purely the SSE
 		// dashboard signal — orchestrator.ts's own dispatch-error handler

@@ -23,8 +23,12 @@ a mission, not just the one that just woke you.
 
 Two audiences read this skill:
 
-- **Mission copilot**: you get every anomaly for your own mission, both `soft`
-  and `hard` severity. You have direct diagnostic tools (below) — use them.
+- **Mission copilot**: you get every anomaly for your own mission except those
+  about yourself. `hard` ones arrive one by one, as they happen; `soft` ones
+  arrive at most every 6 hours as one "Soft anomalies digest", grouped by agent
+  and kind with a count and the latest values. A digest line repeating for the
+  same agent is the signal, not any single breach.
+  You have direct diagnostic tools (below) — use them.
 - **Control-plane copilot**: you only receive `hard`-severity anomalies,
   relayed from whichever mission hit one. Your own tools here are coarse
   (`ReadMissionMailbox`, `ReadMissionLog`, `ReadMissionFile`) — per your own

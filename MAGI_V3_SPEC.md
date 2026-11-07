@@ -382,8 +382,9 @@ turn/lifetime accumulators (no DB query in the hot path). Two severities:
   aborts the turn immediately (recorded as `status: 'aborted'`); useful work already done in
   the turn is preserved. Never applied unless explicitly configured, so an existing mission's
   legitimate long turn is never cut off by surprise.
-- **Soft** (`warn*`) — **advisory, defaulted**. A breach routes a `limit-alert` to the copilot
-  mailbox and the monitor dashboard (deduped per rule per turn) without interrupting the turn.
+- **Soft** (`warn*`) — **advisory, defaulted**. A breach is recorded as a soft `limit-breach`
+  anomaly and pushed to the monitor dashboard (deduped per rule per turn) without interrupting the
+  turn; the copilot sees it in its next soft-anomaly digest (below).
   Conservative built-in defaults (`warnLlmCallsPerTurn: 40`, `warnPeakContextTokens: 160000`,
   `warnToolErrorsPerTurn: 8`, `warnConsecutiveZeroOutputTurns: 3`) fire only on genuinely
   anomalous turns; set a field to `0` to disable that default.
@@ -502,8 +503,13 @@ the original values (`limit-breach`, `agent-crash`, `agent-timeout`, `llm-error`
 `mission.volumeId`, see issue #62), and `volume-forked` (soft: a machine could not be placed on
 its volume's full Fly server, so the volume was forked to another zone and the mission moved to
 the fork, #103). Every category except `atlas-storage-high` goes through the
-shared `AnomalyRecorder`: persisted to `missionAnomalies`, notified to the mission's own copilot
-at any severity, relayed to `copilot-{userId}` only when hard. `atlas-storage-high` (shared
+shared `AnomalyRecorder`: persisted to `missionAnomalies`; a hard one is mailed to the mission's
+own copilot at once and relayed to `copilot-{userId}`; a soft one raised in the daemon is batched
+into one "Soft anomalies digest" to the mission copilot at most every 6 hours
+(`SOFT_ANOMALY_DIGEST_MS`, #99/#100) — soft ones raised by the control plane, already
+hysteresis-gated, are still mailed at once. An anomaly about the mission copilot itself is never
+mailed to it or to the operator; a hard one reaches the operator through the control-plane
+copilot. `atlas-storage-high` (shared
 MongoDB Atlas cluster storage, soft 70%/hard 85% of `ATLAS_STORAGE_LIMIT_MB`) has no owning
 mission, so it posts directly to each `PLATFORM_ADMIN_USER_IDS` recipient's copilot mailbox
 instead.

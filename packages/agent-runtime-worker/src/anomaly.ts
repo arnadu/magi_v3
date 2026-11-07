@@ -8,8 +8,11 @@
  *   1. Persists the event (`missionAnomalies` — for the cockpit Trace panel
  *      and post-hoc review).
  *   2. Wakes the mission's own copilot via its mailbox, if one is present —
- *      except for an anomaly about the copilot itself, which goes to the
- *      operator instead (waking the copilot about its own breach loops).
+ *      never for an anomaly about the copilot itself (waking the copilot
+ *      about its own breach loops). With `softDigestMs` set (the daemon),
+ *      soft anomalies are not mailed one by one but batched into a periodic
+ *      digest (#99/#100: a per-turn soft breach used to cost a copilot turn
+ *      every time it recurred).
  *   3. For hard-severity anomalies only, relays to the owning user's
  *      control-plane copilot (`copilot-{userId}`). This replaces two prior,
  *      independent direct-post call sites in orchestrator.ts (agent timeout,
@@ -29,6 +32,7 @@ import {
 	storedCollection,
 } from "@magi/agent-config";
 import type { Db } from "mongodb";
+import { createSoftAnomalyDigest } from "./anomaly-digest.js";
 import {
 	createMongoMailboxRepository,
 	type MailboxRepository,
@@ -77,7 +81,70 @@ interface DedupeEntry {
 
 export interface AnomalyRecorderOptions {
 	dedupeWindowMs?: number;
+	/**
+	 * Batch soft anomalies into one mission-copilot message per this many ms
+	 * instead of one message each. The batch is in memory: a restart drops an
+	 * unsent digest (every anomaly is still persisted in `missionAnomalies`).
+	 */
+	softDigestMs?: number;
 	now?: () => number;
+}
+
+/** The daemon's soft-anomaly digest period: at most four copilot wake-ups a day for soft anomalies. */
+export const SOFT_ANOMALY_DIGEST_MS = 6 * 60 * 60_000;
+
+/** Mail one anomaly to the mission copilot (never one about itself) and, when hard, to the control-plane copilot. */
+async function notifyAnomaly(
+	deps: {
+		mailboxRepo: MailboxRepository;
+		missionCopilotAgentId: string | undefined;
+		controlPlaneCopilot?: { mailboxRepo: MailboxRepository; missionId: string };
+	},
+	anomaly: Omit<MissionAnomaly, "createdAt">,
+	suffix: string,
+): Promise<void> {
+	const { mailboxRepo, missionCopilotAgentId, controlPlaneCopilot } = deps;
+	// An anomaly about the mission copilot itself never wakes the copilot:
+	// the turn it would wake breaches the same limits again (a 300k-token
+	// context, no output) or fails the same way (a 402), and each breach
+	// raised the next wake-up — two missions burned $47 of OpenRouter
+	// credit overnight in that loop. It is not mailed to the operator either
+	// (system mail in the operator's inbox was noise); a hard one reaches
+	// the operator through the control-plane copilot below.
+	if (missionCopilotAgentId && anomaly.agentId !== missionCopilotAgentId) {
+		try {
+			await mailboxRepo.post({
+				missionId: anomaly.missionId,
+				from: "system",
+				to: [missionCopilotAgentId],
+				subject: `Anomaly (${anomaly.severity}): ${anomaly.category}`,
+				body: anomaly.message + suffix,
+			});
+		} catch (e) {
+			console.error(
+				`[anomaly] Failed to notify mission copilot { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
+			);
+		}
+	}
+	// Coarse cross-mission triage layer only sees hard breaches — every
+	// soft blip from every mission would drown out what it's meant to
+	// catch (its own prompt says it's a top-level check, not a
+	// diagnosis tool; the mission copilot handles the rest).
+	if (anomaly.severity === "hard" && controlPlaneCopilot) {
+		try {
+			await controlPlaneCopilot.mailboxRepo.post({
+				missionId: controlPlaneCopilot.missionId,
+				from: "system",
+				to: ["copilot"],
+				subject: `Anomaly (hard): ${anomaly.category} — mission ${anomaly.missionId}`,
+				body: `Mission "${anomaly.missionId}": ${anomaly.message}${suffix}`,
+			});
+		} catch (e) {
+			console.error(
+				`[anomaly] Failed to relay to control-plane copilot { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
+			);
+		}
+	}
 }
 
 export function createMongoAnomalyRecorder(
@@ -98,52 +165,24 @@ export function createMongoAnomalyRecorder(
 	// anomalies into a copilot inbox in 30 s, each costing a copilot turn.
 	const recent = new Map<string, DedupeEntry>();
 
-	async function notify(
-		anomaly: Omit<MissionAnomaly, "createdAt">,
-		suffix = "",
-	): Promise<void> {
-		// An anomaly about the mission copilot itself goes to the operator, never
-		// to the copilot: the turn it would wake breaches the same limits again
-		// (a 300k-token context, no output) or fails the same way (a 402), and
-		// each breach raised the next wake-up — two missions burned $47 of
-		// OpenRouter credit overnight in that loop. The operator's mailbox wakes
-		// no agent.
-		if (missionCopilotAgentId) {
-			const aboutCopilot = anomaly.agentId === missionCopilotAgentId;
-			try {
-				await mailboxRepo.post({
-					missionId: anomaly.missionId,
-					from: "system",
-					to: [aboutCopilot ? "user" : missionCopilotAgentId],
-					subject: `Anomaly (${anomaly.severity}): ${anomaly.category}${aboutCopilot ? " — mission copilot" : ""}`,
-					body: anomaly.message + suffix,
-				});
-			} catch (e) {
-				console.error(
-					`[anomaly] Failed to notify ${aboutCopilot ? "the operator" : "mission copilot"} { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
-				);
-			}
-		}
-		// Coarse cross-mission triage layer only sees hard breaches — every
-		// soft blip from every mission would drown out what it's meant to
-		// catch (its own prompt says it's a top-level check, not a
-		// diagnosis tool; the mission copilot handles the rest).
-		if (anomaly.severity === "hard" && controlPlaneCopilot) {
-			try {
-				await controlPlaneCopilot.mailboxRepo.post({
-					missionId: controlPlaneCopilot.missionId,
-					from: "system",
-					to: ["copilot"],
-					subject: `Anomaly (hard): ${anomaly.category} — mission ${anomaly.missionId}`,
-					body: `Mission "${anomaly.missionId}": ${anomaly.message}${suffix}`,
-				});
-			} catch (e) {
-				console.error(
-					`[anomaly] Failed to relay to control-plane copilot { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
-				);
-			}
-		}
-	}
+	const aboutCopilot = (a: Omit<MissionAnomaly, "createdAt">) =>
+		missionCopilotAgentId !== undefined && a.agentId === missionCopilotAgentId;
+	const notify = (anomaly: Omit<MissionAnomaly, "createdAt">, suffix = "") =>
+		notifyAnomaly(
+			{ mailboxRepo, missionCopilotAgentId, controlPlaneCopilot },
+			anomaly,
+			suffix,
+		);
+
+	const digest =
+		options.softDigestMs !== undefined && missionCopilotAgentId
+			? createSoftAnomalyDigest({
+					mailboxRepo,
+					missionCopilotAgentId,
+					periodMs: options.softDigestMs,
+					now,
+				})
+			: undefined;
 
 	function openWindow(
 		key: string,
@@ -186,6 +225,11 @@ export function createMongoAnomalyRecorder(
 				console.error(
 					`[anomaly] Failed to persist { missionId: ${anomaly.missionId}, category: ${anomaly.category} }: ${(e as Error).message}`,
 				);
+			}
+
+			if (anomaly.severity === "soft" && options.softDigestMs !== undefined) {
+				if (!aboutCopilot(anomaly)) digest?.add(anomaly);
+				return;
 			}
 
 			const key = anomalyDedupeKey(anomaly);

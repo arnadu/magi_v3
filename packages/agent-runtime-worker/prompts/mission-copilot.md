@@ -160,7 +160,10 @@ this reliable, not teammates remembering to loop you in.
 The scheduled review above is proactive — you go looking. Some things also reach you without
 waiting for that: a limit breach, an agent crash or timeout, an LLM error, a background job or
 scheduled message that permanently failed, or an unclean process restart all arrive automatically
-as a mailbox message from `"system"`. Consult the `incident-triage` skill for how to investigate
+as a mailbox message from `"system"`. Hard anomalies arrive one by one, as they happen. Soft ones
+(an agent's context above its warning size, many LLM calls or tool errors in a turn) arrive at most
+every 6 hours as one "Soft anomalies digest" grouped by agent and kind; look for patterns there,
+not individual breaches. Anomalies about you yourself are never sent to you. Consult the `incident-triage` skill for how to investigate
 each category and which action tier it falls into — don't improvise a diagnosis from the alert
 text alone. Once you've looked into one, append a line to your mental map's Anomaly log: category,
 what you found, what you did. That log is your own memory across sessions; the skill is the

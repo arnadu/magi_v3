@@ -1170,13 +1170,14 @@ describe("createRemainingOrchestrationCallbacks", () => {
 		expect(mocks.mailboxRepo.post).not.toHaveBeenCalled();
 	});
 
-	it("onLimitAlert also notifies the operator directly for a hard breach", () => {
+	it("onLimitAlert records a hard breach as an anomaly and mails no one directly (the recorder relays it)", () => {
 		const { mocks, ...ctx } = buildCtx();
 		const callbacks = createRemainingOrchestrationCallbacks(ctx, true);
 		callbacks.onLimitAlert(fakeLimitAlert("hard"));
-		expect(mocks.mailboxRepo.post).toHaveBeenCalledWith(
-			expect.objectContaining({ subject: 'Spend limit hit — "analyst"' }),
+		expect(mocks.anomalyRecorder.record).toHaveBeenCalledWith(
+			expect.objectContaining({ category: "limit-breach", severity: "hard" }),
 		);
+		expect(mocks.mailboxRepo.post).not.toHaveBeenCalled();
 	});
 
 	it("onAgentError pushes a non-transient agent-error event", () => {
