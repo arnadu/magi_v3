@@ -87,7 +87,8 @@ only through GitHub (code) and a new production Ops API (monitoring and approval
 
 Platform deliverables: **A** production Ops API, **B** GitHub release control, **C** staging
 installation, **D** in-VM sandbox, **E** approval-policy engine, **F** mission rollout and
-rollback. Phase 1 (community, planning, monitoring reports) needs only 28h items (#54, #95,
+rollback, **G** external API gateway (the one way agents reach any external API; absorbs the
+post-MVP secret registry and the remaining CR-04 work). Phase 1 (community, planning, monitoring reports) needs only 28h items (#54, #95,
 G-5) and part of B. Under the mono-tenant assumption, Sprint 29's per-tenant credential half is
 off MAGI DEV's path; at-rest encryption stays a separate goal.
 

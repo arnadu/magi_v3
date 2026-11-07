@@ -47,21 +47,120 @@ missions: tests first, CI as the gate, a reviewer that is not the author, approv
 
 ## Platform deliverables
 
-The objectives below reduce to six platform capabilities. Everything else is mission
+The objectives below reduce to seven platform capabilities. Everything else is mission
 configuration (team, skills, schedules) that can be iterated without platform changes.
 
 | # | Deliverable | Content | Existing base |
 |---|---|---|---|
-| A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the approval policy (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. A push channel: production's hard anomalies and daily report forwarded to MAGI DEV's mailbox through an authenticated inbound endpoint. New trust boundary: threat-model entry and ADR. | Missions API and copilot actions; anomaly relay; daily report |
+| A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the approval policy (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. A push channel: production's hard anomalies and daily report forwarded to MAGI DEV's mailbox through an authenticated inbound endpoint. The single production interface for human operators too. New trust boundary. Design direction: [Production access](#production-access-deliverable-a). | Missions API and copilot actions; anomaly relay; daily report |
 | B | **GitHub release control** | The GitHub proxy targets a configurable repository per mission and gains git push (branches only) and pull-request operations. Per-role credentials held by MAGI DEV's control plane, never in agent environments: developers push branches and open pull requests; a release manager tags and requests releases; none can bypass protection. Branch protection on `main`, the existing gates as required checks, and a "production" GitHub Environment whose required reviewer is the operator at first, a policy later. | GitHub proxy (issues only, one repo, `GITHUB_REPO`); CI gates |
 | C | **Staging installation** | A full MAGI stack (control plane, missions app, database) that CI deploys release candidates to. Runs the full integration suite, OS-isolation tests included, and an end-to-end smoke test: launch a test mission, check it runs, resume it, roll it out. | `promote.sh --suffix` named environments |
 | D | **In-VM sandbox** | Build, lint, unit tests and lightweight integration tests against a local `mongod`, never MAGI DEV's own database. LLM calls from tests go through a Tool API proxy that speaks the provider API, metered against a test budget; no raw key in the sandbox. A cockpit dev server previewed through BrowseWeb, which needs a sanctioned exception to the loopback block. A bigger default machine shape. | Tool API metering for jobs (`createJobSpend`); machine shapes (28g) |
 | E | **Approval-policy engine** | Per action type: autonomous, notify-after, or approve-first, editable by the operator, loosening as a track record accumulates. Applies across MAGI DEV: publishing, Ops API actions, merges, releases, spend. | Copilot confirmation cards (`ProposeAction`) |
 | F | **Mission rollout and rollback** | A deploy only changes the image for new machines; running missions pick it up on suspend and resume. Production needs a rollout action: canary mission first, health check, then the rest, with automatic rollback. Triggered through A. | In-place resume (#103) |
+| G | **External API gateway** | The one way agents reach any external API: connector definitions, platform-held credentials, per-operation policy, approval-bound single-use capabilities, rate limits and budgets, audit, responses treated as untrusted. MAGI DEV reaches A and GitHub (B) through it; so would any mission reaching a bank, a mailbox or a data provider. Design direction: [External API access](#external-api-access-deliverable-g). | Tool API proxies for FRED, FMP and NewsAPI (CR-04); GitHub proxy; `safe-http.ts`; LLM metering for jobs |
 
 Rule for MAGI DEV's own installation: it runs the previous stable release and is upgraded only
 after production has run a release cleanly for some days. The operator, or a coding-agent
 session, is the emergency fallback if MAGI DEV breaks itself.
+
+## Production access (deliverable A)
+
+**This is the industry's normal pattern, not an agent-specific design.** Mature online services
+converge on three practices, whoever does application support:
+
+1. **No standing access.** People sign in through the identity provider and receive credentials
+   that last minutes or hours. Elevated roles need a request and an approval, and expire on their
+   own. Long-lived personal keys and shared admin secrets are anti-patterns. Examples: AWS IAM
+   Identity Center, Azure Privileged Identity Management, Teleport, HashiCorp Boundary, SSH
+   certificates instead of keys.
+2. **Predefined, audited actions instead of raw access.** Routine operations (restart, roll
+   back, resize, rotate a key) are named runbook actions with typed parameters, permissions and an
+   audit trail: Rundeck, AWS Systems Manager, internal admin tools, the deploy pipeline. A shell or
+   database console on production is break-glass, logged and reviewed.
+3. **Broad read access, narrow write access.** Dashboards, logs and traces are open to the
+   support team; actions are not.
+
+Service-to-service calls use workload identity instead of stored secrets. For example, GitHub
+Actions proves its identity to a cloud provider with a short-lived OIDC token.
+
+**The same mechanism serves human operators and agents.** The Ops API is the single production
+interface for both: people through the cockpit and CLI, MAGI DEV through G. The principles are
+shared; the threats and the substitute for human judgement differ:
+
+| | Human operator | Agent |
+|---|---|---|
+| Who holds the credential | The person, on their own device, protected by MFA | The platform; the agent calls a proxied tool and never sees the token |
+| Main threat | Phishing, a stolen laptop, mistakes under pressure | Prompt injection through what it reads (logs, users' mission data, community posts); mistakes at machine speed |
+| Substitute for seniority | Role, seniority, on-call rota | The approval policy (E) and a track record |
+| Unforeseen situations | Break-glass access, rarely used | Break-glass stays human, at least at first; the agent is limited to predefined actions |
+| Volume | A few actions per incident | Possibly many: rate limits and per-action budgets |
+| Accountability | The named person | The agent, its mission and the approving operator, recorded together |
+
+Data read from production must never be able to authorize an action. Approval happens outside
+anything the agent reads, which is why actions are predefined, typed and confirmed.
+
+**Requirements:**
+- **Identities.** People use their sign-in token (Firebase ID tokens already last an hour and
+  refresh) plus a role. MAGI DEV uses a workload identity, ideally with no stored secret.
+  Fly can issue OIDC tokens to machines, which would let production verify the caller is MAGI
+  DEV's machine; to be confirmed.
+- **Read tier.** A token of about an hour, renewed automatically.
+- **Action tier.** An approval produces a single-use capability bound to one action and its
+  parameters, valid for a few minutes. It cannot be reused, widened, or pointed at another
+  mission. The same applies to a person requesting an elevated action.
+- **Break-glass.** `CONTROL_API_KEY`, today a long-lived, all-powerful shared secret used for
+  routine work, becomes break-glass only: kept, rarely used, every use alerted. Per-mission
+  monitor tokens gain an expiry (#67).
+- **One audit log.** Who acted (person, or agent and mission), who approved, what changed, the
+  outcome.
+
+## External API access (deliverable G)
+
+Production access is one case of a general need: agents calling APIs outside the platform with
+a credential the agent must not hold, under rules the operator sets. The same need appears in
+MAGI DEV (the production Ops API, GitHub, social channels, a status page), in research missions
+(data providers, already proxied for FRED, FMP and NewsAPI after CR-04), and in personal
+missions (a bank, a mailbox, a calendar). G is the one mechanism for all of them. It also
+absorbs the post-MVP secret registry and the remaining CR-04 work, and replaces each proxy
+being hand-built.
+
+**Two sides.** A is a *server* MAGI builds in production. G is the *client* side in every
+installation, used for A and for any third-party API. MAGI DEV calling production goes through
+G on the MAGI DEV installation and arrives at A on the production installation.
+
+**A connector** is declared in configuration, never opened by an agent at run time:
+- the endpoint and the egress rules (`safe-http.ts` pinning; no redirects outside the host);
+- **an operation catalog** with typed parameters, each operation marked read or action. The
+  agent's tools are generated from it. Free-form requests are not offered;
+- **the credential type**:
+  - a static API key;
+  - OAuth 2.0 with the user's consent (mail, calendar, a bank);
+  - workload identity (OIDC);
+  - a token minted per session;
+- which agents or roles may use which operations.
+
+**The gateway does, for every call:**
+1. **Custody.** It holds the credential, refreshes it, and attaches it to the request. Agents and
+   their subprocesses never see it.
+2. **Identity.** It records the calling agent and mission.
+3. **Policy.** It looks up the operation in the approval policy (E): autonomous, notify-after or
+   approve-first.
+4. **Approval.** Approve-first operations wait for a confirmation that yields a single-use
+   capability bound to the parameters.
+5. **Limits.** Rate limits and a budget per connector, operation and agent, including money
+   for paid APIs.
+6. **Audit.** Request, parameters, approver, outcome, and the response size or digest.
+7. **Untrusted response.** The response is wrapped as untrusted content before it reaches the
+   agent, and is size-capped.
+
+**MCP.** Connectors can be MCP servers: the industry's standard way to expose tools to agents,
+and many APIs already ship one. MCP standardises the tool interface but not custody, policy,
+approval or audit. G is the layer that wraps an MCP server so agents can use it safely.
+
+**Credential storage** is where G meets Sprint 29's at-rest encryption: platform-held secrets
+need encryption the providers cannot read. In a mono-tenant installation this is the main
+remaining reason for that work.
 
 ## Objectives and their technical requirements
 
@@ -75,7 +174,7 @@ Letters refer to the deliverables above.
 ### Cross-cutting
 
 - **Decision rights** (E) [partial].
-- **Proxied access to every external system** (A, B, channel connectors): agents never hold raw credentials [partial].
+- **Proxied access to every external system** through G: agents never hold raw credentials [partial].
 - **Budget accounting per deliverable.** Objectives carry `budgetUsd` and a cost-allocation bucket. Agent turns need tagging with the task they serve, so actual spend per deliverable can be compared with its budget [partial].
 - **Untrusted input.** Content from outside (community posts, users' mission data) never directly triggers a write [partial].
 - **Independent oversight.** The post-MVP auditor agent, brought forward [new].
@@ -175,8 +274,8 @@ Mono-tenant (A1), so there is no billing.
 | Phase | Scope | Needs |
 |---|---|---|
 | 1 | Community, planning, monitoring reports | 28h items (#54, #95, G-5); B's per-mission repository; read-only use of A or, before A exists, reports from production's daily report |
-| 2 | Application support | A (read and action tiers), E, F; auditor agent |
-| 3 | Development and testing | B in full, C, D; SDLC skills; evaluation harness |
+| 2 | Application support | A (read and action tiers), E, F, G; auditor agent |
+| 3 | Development and testing | B in full (through G), C, D; SDLC skills; evaluation harness |
 
 ## Open questions
 
