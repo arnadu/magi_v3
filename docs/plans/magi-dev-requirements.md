@@ -26,6 +26,7 @@ missions: tests first, CI as the gate, a reviewer that is not the author, approv
 | A4 | Code reaches production only through GitHub: MAGI DEV pushes, CI deploys. | Release control is mostly GitHub configuration: branch protection, required checks, a protected release environment. |
 | A5 | MAGI DEV has one or more development and test environments, some inside its own VM, none sharing its database. | Three tiers: in-VM sandbox, staging installation, production. |
 | A6 | At-rest encryption against the providers (Fly, Atlas) remains a separate goal (Sprint 29b). | Independent of MAGI DEV. |
+| A7 | **The user sets direction and decides; agents configure and operate.** | Every capability is set up and maintained by agents (a manager agent, the copilot) under the governance engine; the user's part is decisions, plus confirmations an external service insists on (such as creating a GitHub App). |
 
 ## Topology
 
@@ -53,7 +54,7 @@ configuration (team, skills, schedules) that can be iterated without platform ch
 | # | Deliverable | Content | Existing base |
 |---|---|---|---|
 | A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the governance engine (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. A push channel: production's hard anomalies and daily report forwarded to MAGI DEV's mailbox through an authenticated inbound endpoint. The single production interface for human operators too. New trust boundary. Design direction: [Production access](#production-access-deliverable-a). | Missions API and copilot actions; anomaly relay; daily report |
-| B | **GitHub release control** | The GitHub proxy targets a configurable repository per mission and gains git push (branches only) and pull-request operations. Per-role credentials held by MAGI DEV's control plane, never in agent environments: developers push branches and open pull requests; a release manager tags and requests releases; none can bypass protection. Branch protection on `main`, the existing gates as required checks, and a "production" GitHub Environment whose required reviewer is the operator at first, a policy later. | GitHub proxy (issues only, one repo, `GITHUB_REPO`); CI gates |
+| B | **GitHub release control** | The GitHub proxy targets a configurable repository per mission and gains git push (branches only) and pull-request operations. Per-role credentials held by MAGI DEV's control plane, never in agent environments: developers push branches and open pull requests; a release manager tags and requests releases; none can bypass protection. Branch protection on `main`, the existing gates as required checks, and a "production" GitHub Environment whose required reviewer is the operator at first, a policy later. Design: [Source control for project code](#source-control-for-project-code). | GitHub proxy (issues only, one repo, `GITHUB_REPO`); CI gates |
 | C | **Staging installation** | A full MAGI stack (control plane, missions app, database) that CI deploys release candidates to. Runs the full integration suite, OS-isolation tests included, and an end-to-end smoke test: launch a test mission, check it runs, resume it, roll it out. | `promote.sh --suffix` named environments |
 | D | **In-VM sandbox** | Build, lint, unit tests and lightweight integration tests against a local `mongod`, never MAGI DEV's own database. LLM calls from tests go through a Tool API proxy that speaks the provider API, metered against a test budget; no raw key in the sandbox. A cockpit dev server previewed through BrowseWeb, which needs a sanctioned exception to the loopback block. A bigger default machine shape. | Tool API metering for jobs (`createJobSpend`); machine shapes (28g) |
 | E | **Governance engine** | Gates (tollgates) with deterministic triggers at platform chokepoints, typed decision forms with platform-computed facts, deciders assigned by policy with separation of duties, binding single-use approvals, stage enforcement on work items, and a governance section in every agent's prompt and mental map. Not specific to MAGI DEV: any mission can declare gates (a household-finance mission approving payments). Design direction: [Governance engine](#governance-engine-deliverable-e). | Copilot confirmation cards (`ProposeAction`); objectives store write validation; daemon-managed mental-map regions (`#my-objectives`); the `beforeLlmCall` gate; spend ceilings an agent cannot raise |
@@ -586,28 +587,106 @@ Mono-tenant (A1), so there is no billing.
 - **KPIs for the mission:** throughput, cost per deliverable, escaped defects, response times [new].
 - **Pause** [exists]. Rollback of anything done autonomously [partial].
 
+## Source control for project code
+
+**Two git mechanisms, kept apart.** The existing workspace git is a provenance trail for
+`shared/`: owned by the daemon, committed after every turn, hardened against agent-planted hooks
+and config (`safe-git.ts`); agents never run git on it. It stays as it is. Project code is a
+second mechanism: developer agents use git themselves in their own folders, as human developers
+do, and integrate through a shared GitHub repository.
+
+**What works with skills on today's platform.** Git is in the mission image, each agent has a
+private workdir, and agents' `Bash` has outbound network access, so cloning, branching,
+committing, rebasing and running tests locally need only skills (branch and commit conventions,
+testing before pushing, review checklists).
+
+**What needs the platform.** Pushing, pull requests and reviews need a GitHub credential. With
+skills alone the token would sit in the agent's environment or files, which breaks:
+- custody: the agent, and anything injected into it, can read and exfiltrate the token;
+- separation of duties: one token is one GitHub identity, so GitHub sees author and reviewer as
+  the same account;
+- governance: the token works whatever the work item's state; the platform never sees the push.
+
+**Permissions in two layers.**
+1. **GitHub's own model**, which holds even if MAGI is compromised:
+   - one GitHub App per role (author, reviewer, release), with installation tokens that last an
+     hour;
+   - rulesets: no direct push to `main`, a review from the reviewer App, the existing gates as
+     required checks, merges through GitHub's merge queue;
+   - a protected release environment whose required reviewer is the user at first.
+
+   It is coarse: per identity and per repository.
+2. **MAGI's own model**, fine-grained and contextual:
+   - roles in the mission policy, each a set of operations with conditions (a developer pushes
+     `wi/<id>-*` branches only for items assigned to it and approved for build; a reviewer
+     reviews only pull requests it did not author);
+   - agents bound to roles; changing a binding is a policy change and goes through the gates;
+   - the gateway (G) maps each role to its GitHub App, issues the token per call, and checks
+     MAGI's rules first. Agents never see a token.
+
+**How an agent pushes without a token.**
+- A `PushBranch` tool, in which the daemon pushes from the agent's clone using the hardened git
+  calls: simple, a first version.
+- A **git proxy on loopback** run by the daemon, the target design. The agent's remote points at
+  it, and the agent uses plain `git fetch` and `git push`. On a push the proxy reads which refs
+  are being updated, checks each against the policy, and forwards to GitHub with the role's
+  credential. This is the pattern of BrowseWeb's egress proxy.
+- Ruled out: a credential helper that hands git a token, because the token then sits in a
+  process the agent can read.
+
+**Platform capabilities:**
+
+| # | Capability | Part of |
+|---|---|---|
+| 1 | Roles and permissions in the mission policy: roles, bindings, operation grants with conditions; binding changes gated | E |
+| 2 | GitHub connector: an App per role, hour-long tokens, an operation catalog (pull requests, reviews, comments, check results, release requests) | G |
+| 3 | Git proxy with per-ref policy checks (`PushBranch` first) | G |
+| 4 | Repository workspaces: a daemon-owned mirror, worktrees or shared-object clones per agent, shared package caches, disk quotas per agent | new |
+| 5 | Egress policy for agent subprocesses: an allow-list per mission or role (the package registry; GitHub only through the proxy). Today `Bash` can reach anything; this also narrows prompt-injection exfiltration in every mission | new |
+| 6 | GitHub configuration as code with a drift check: Apps, rulesets, CODEOWNERS, environments declared, applied, and checked on a schedule | new |
+| 7 | GitHub events into MAGI (review requested, CI finished, merge-queue result) as mailbox wake-ups, through webhooks (a new authenticated endpoint) or polling | new |
+
+Capabilities 1 to 3 are the general roles-over-connectors mechanism of E and G applied to one
+connector; 5 benefits every mission.
+
+**Commits** are authored as the agent, with trailers for the work item, the decision ids and the
+mission; optionally signed by the platform so GitHub shows them as verified.
+
+### The operator decides; agents configure
+
+The user is not expected to set up or maintain any of this. A manager agent and the copilot
+own the GitHub configuration, as they own the rest of the mission's setup:
+- **The desired configuration is declared**: Apps and their permissions, rulesets, CODEOWNERS,
+  environments, role bindings. It lives in the mission policy or in the repository.
+- **Agents propose changes as diffs to that declaration.** A change goes through the governance
+  engine like any other. A change that loosens a control governing agents (removing a required
+  review, widening a role) falls under the platform invariant that the changer cannot approve
+  it alone; under the default policy the user decides it in the decisions inbox.
+- **The platform applies it**, through an administration role in the GitHub connector that no
+  agent holds directly, and the scheduled drift check compares GitHub with the declaration and
+  raises an anomaly on any difference.
+- **Bootstrap.** GitHub requires the account owner to confirm creating and installing an App.
+  The copilot prepares this with GitHub's App manifest flow, so the user's part is following a
+  link and confirming on GitHub, once per App. Everything after that is done by agents.
+
+The same principle applies across the platform: **the user sets direction and decides; agents
+configure and operate.** A capability that needs the user to configure it by hand is incomplete.
+
 ## Topics still to refine
 
-1. **Source control for project code.** The current workspace git is a provenance trail for
-   `shared/`, owned by the daemon and committed after every turn; agents never run git on it.
-   It stays, but it is not a development workflow. Project code needs: a clone per developer
-   agent outside `shared/`; branches per work item; pushes through the gateway (G) so no agent
-   holds a token; GitHub identities per role so separation of duties holds in GitHub as well;
-   commit trailers linking work items and decisions; a merge queue; disk sharing between
-   clones.
-2. **The work item model.** The unit that ties intake, budget, gates, branch, pull request,
+1. **The work item model.** The unit that ties intake, budget, gates, branch, pull request,
    release and review together. The objectives store's tasks are the starting point.
-3. **Team design.** Roles, which agents are standing and which are started on demand, models,
+2. **Team design.** Roles, which agents are standing and which are started on demand, models,
    and the cost envelope.
-4. **Coding capability.** Code navigation and editing tools for a large codebase, or a coding
+3. **Coding capability.** Code navigation and editing tools for a large codebase, or a coding
    agent run as a tool inside the sandbox.
-5. **Data migrations.** A migration framework and a gate for changes to stored data.
-6. **Incident management.** Severity levels, on-call, communication, post-mortems; the emergency
+4. **Data migrations.** A migration framework and a gate for changes to stored data.
+5. **Incident management.** Severity levels, on-call, communication, post-mortems; the emergency
    path through the gates.
-7. **Porting today's practices.** CLAUDE.md, the practices documents and the Claude Code
+6. **Porting today's practices.** CLAUDE.md, the practices documents and the Claude Code
    commands (sprint-audit, security-review, sprint-close and others) become MAGI skills and
    policy.
-8. **Bootstrapping.** Deploying MAGI DEV's installation, its first policy, and importing the
+7. **Bootstrapping.** Deploying MAGI DEV's installation, its first policy, and importing the
    backlog from GitHub issues and the roadmap.
 
 ## Phasing
