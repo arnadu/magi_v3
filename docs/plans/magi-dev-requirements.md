@@ -23,7 +23,7 @@ missions: tests first, CI as the gate, a reviewer that is not the author, approv
 |---|---|---|
 | A1 | **Mono-tenant.** One installation serves one organization (an enterprise or a family). It runs several teams and users, with no information-security boundary between them. | No per-tenant credential isolation (Sprint 29's CR-04 half), no cross-user privacy, no billing. The shared copilot OS identity (TB-15) becomes an accepted property. A multi-tenant SaaS later would reopen these. |
 | A2 | MAGI DEV belongs to the same organization as the users' missions. | Support agents may read users' mission data. It still goes through an audited API, not raw database access: agents make mistakes, and mission content is untrusted text. |
-| A3 | **Separate installations.** MAGI DEV runs on its own installation (its own Fly apps and database), not the production one. | MAGI DEV never holds a production deploy credential or database URI. A failure in either installation does not take down the other, and MAGI DEV can watch production from outside. |
+| A3 | **Separate installations**, from phase 1. MAGI DEV runs on its own installation (its own Fly apps and database), not the production one. Phase 0 runs as an ordinary mission on the existing installation (see [Starting small](#starting-small-phase-0)). | MAGI DEV never holds a production deploy credential or database URI. A failure in either installation does not take down the other, and MAGI DEV can watch production from outside. |
 | A4 | Code reaches production only through GitHub: MAGI DEV pushes, CI deploys. | Release control is mostly GitHub configuration: branch protection, required checks, a protected release environment. |
 | A5 | MAGI DEV has one or more development and test environments, some inside its own VM, none sharing its database. | Three tiers: in-VM sandbox, staging installation, production. |
 | A6 | At-rest encryption against the providers (Fly, Atlas) remains a separate goal (Sprint 29b). | Independent of MAGI DEV. |
@@ -713,18 +713,65 @@ Mono-tenant (A1), so there is no billing.
   machines or spreading a mission over several machines are considered only when cost or a real
   limit forces it.
 
+- **Bootstrapping** is incremental: see [Starting small](#starting-small-phase-0).
+
 **Still open:**
 1. **Porting today's practices.** CLAUDE.md, the practices documents and the Claude Code
    commands (sprint-audit, security-review, sprint-close and others) become MAGI skills and
    policy.
-2. **Bootstrapping.** Deploying MAGI DEV's installation, its first policy, and importing the
-   backlog from GitHub issues and the roadmap.
+## Starting small (phase 0)
+
+MAGI DEV starts with the smallest scope and the fewest agents that can achieve it, and grows from
+there. The first implementation is **just another mission on the existing installation**: the
+dev environment that runs the user's other missions. Nothing about the separate-installation
+design is needed while the mission is read-only.
+
+**Why this works on today's platform.** The repository is public, so an agent clones it with
+plain `git` in its own folder: no credential and no new platform capability. The separate
+installation (A3), the production Ops API (A) and push rights (B) matter only once the mission
+needs production access or writes to the repository.
+
+**The first scope: an infosec specialist.** Two agents: the mission copilot (always present) and
+the specialist.
+- **Why first.** The October 2026 audit found the same author writing and reviewing to be a root
+  cause; an independent reviewer of each change is useful from day one. The procedures already
+  exist as Claude Code commands (`security-review`, `security-audit`, `threat-model` in
+  `.claude/commands/`) and port to MAGI skills, with the threat model and findings tracker as
+  the agent's reference. The work is read-only.
+- **Remit:**
+  - after each push: review the new commits against the threat model;
+  - weekly: new dependency advisories, consistency of the threat model and findings tracker with
+    the code, and one trust boundary in depth;
+  - on request: a security review of a design, such as the Ops API or the gateway.
+- **Findings stay private.** The repository is public, so a vulnerability filed as a public issue
+  would disclose it before it is fixed. Findings go to reports in the mission's files and to the
+  user through the mission mailbox; later, as private GitHub security advisories through the
+  GitHub connector (G).
+- **Cost.** Diffs on each push plus one budgeted deep dive a week; the mission's spend cap
+  bounds it.
+- **Limits.** Dependabot alerts need a GitHub credential even on a public repository, so they
+  wait for G. CI results are readable without one, at a low rate limit, and `npm audit` runs in
+  the agent's own clone.
+
+**The second agent: a code reviewer.** The same inputs (the repository clone, review skills) with a
+correctness lens, in the manner of `/code-review`. Together the two cover the reviewing side of
+the life-cycle before any agent writes code.
+
+**Other candidates**, for later: a planning and roadmap steward (works today, with issue edits
+through the existing confirmation cards); an ops monitor (needs A's read tier); community and
+triage (needs channel connectors, apart from reading GitHub issues).
+
+**Growing out of phase 0.** If the mission proves useful, the next step is a brand-new
+installation for MAGI DEV, created the way the beta environment for another user was
+(`promote.sh --suffix`), with the mission moved there. That is when the separate-installation
+design starts to apply, and phase 1 begins.
 
 ## Phasing
 
 | Phase | Scope | Needs |
 |---|---|---|
-| 1 | Community, planning, monitoring reports | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier and push channel; today's confirmation cards for every external write |
+| 0 | An infosec specialist, then a code reviewer, read-only, as a mission on the existing installation | Skills ported from the security commands; nothing new in the platform |
+| 1 | Community, planning, monitoring reports, on MAGI DEV's own installation | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier and push channel; today's confirmation cards for every external write |
 | 2 | Application support | A's action tier, E with the decisions inbox, F, H; the auditor agent |
 | 3 | Development and testing | B, C, D; SDLC skills; the evaluation harness (#45) |
 

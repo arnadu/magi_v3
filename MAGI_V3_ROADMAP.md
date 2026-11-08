@@ -90,7 +90,9 @@ installation, **D** in-VM sandbox, **E** governance engine (tollgates enforced b
 plus a governance section in every agent's prompt and mental map; the user decides through a
 decisions inbox), **F** mission rollout and rollback, **G** external API gateway (the one way
 agents reach any external API; absorbs the post-MVP secret registry and the remaining CR-04
-work), **H** egress policy for agent subprocesses. Phase 1 (community, planning, monitoring
+work), **H** egress policy for agent subprocesses. Phase 0 is a read-only mission on the
+existing installation (an infosec specialist, then a code reviewer) and needs no platform work;
+a separate installation follows if it proves useful. Phase 1 (community, planning, monitoring
 reports) needs the 28h items #54, #95 and G-5, G with its first connectors, and A's read tier.
 Under the mono-tenant assumption, Sprint 29's per-tenant credential half is off MAGI DEV's path;
 at-rest encryption stays a separate goal.
