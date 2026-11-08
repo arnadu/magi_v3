@@ -273,16 +273,109 @@ chokepoints ask one decision service, and the policy lives in one place.
   escalation. Nothing is approved by timeout except standard changes, which were pre-approved.
 - **Emergency path.** Expedited approval by a smaller authority, with a mandatory review
   afterwards.
-- **Agent committees** use different roles and an adversarial reviewer, and ideally different
-  models, so their errors are not all the same error. An agent decider approves only within its
-  delegated authority; above it, it escalates.
-- **The policy is data, and changing it is the highest gate.** Only the operator changes it;
-  agents cannot loosen their own policy, as the copilot today cannot raise its own spend
-  ceiling. Rules are unit-tested, and a simulation mode replays past actions to show what would
-  have been gated.
-- **Delegation loosens on evidence.** When a gate's record supports it, the operator moves it
-  from operator approval to an agent committee, or from a committee to a standard change. An
-  incident can move it back.
+- **An agent decider approves only within its delegated authority**; above it, it escalates.
+  Committees are described below.
+- **The platform provides the mechanism; the mission provides the policy.** Which gates exist,
+  which escalate to the user, and the catalogue of pre-approved standard changes are
+  mission-specific policy, not platform code. The platform ships templates and defaults.
+- **No cap on escalations to the user.** If the user is asked too often, the user changes the
+  policy.
+- **The policy is data, and changes to it go through the policy.** The copilot may change the
+  policy, subject to whatever gates the policy places on policy changes. The policy set when the
+  mission is created states who may change what. Every change is versioned and recorded. Rules
+  are unit-tested, and a simulation mode replays past actions to show what would have been
+  gated.
+- **Platform invariants**, the only rules not left to policy:
+  1. no action reaches a chokepoint without asking the engine;
+  2. a requester never decides its own request;
+  3. a change that loosens a gate governing the changer cannot be approved by the changer
+     alone, so the copilot cannot remove its own gates in one step;
+  4. every decision and every policy change is recorded.
+- **Delegation loosens on evidence.** When a gate's record supports it, the policy moves it from
+  user approval to an agent committee, or from a committee to a standard change. An incident can
+  move it back.
+
+### Committees
+
+**How human committees work.** A committee has:
+- a **charter**: its scope and authority;
+- **members** with roles: a chair, members, often a secretary;
+- a **quorum** and a **decision rule**: unanimity, majority, consent ("no objection"), or the
+  chair decides after consultation;
+- **recusal** for conflicts of interest;
+- a **pre-read**: the paper the decision is made on;
+- **minutes** recording the decision, the reasons and any dissent;
+- **escalation** on deadlock;
+- a **cadence**: a standing sitting, such as a weekly change advisory board that batches
+  decisions, or an ad-hoc meeting for urgent ones.
+
+Decisions are taken either in a meeting (deliberation) or by **written resolution**: the paper is
+circulated and members sign or object independently.
+
+**Transposed to agents.** A committee is declared in the policy:
+- members: agent roles, the user, or both;
+- the chair;
+- the quorum and decision rule;
+- the time allowed and the escalation on silence or deadlock;
+- the sitting mode: ad hoc per request, or batched on a schedule.
+
+The requester and the author of the artefact are recused automatically.
+
+**Three decision modes:**
+1. **Written resolution (the default).** Each member reviews the form independently and returns
+   a vote, reasons and checklist answers, without seeing the others' votes. LLMs anchor strongly
+   on what they see first, so independence is what makes several reviewers worth more than one.
+   The engine applies the decision rule. Members review in parallel, so the cost is that of a
+   few single reviews.
+2. **Deliberation, when votes disagree or a member asks for it.** The engine circulates all
+   votes and reasons; each member may revise once; the chair writes the synthesis. The number of
+   rounds is bounded (two at most) to bound the cost. Then the rule applies, or the decision
+   escalates.
+3. **Advisory committee, the decider decides.** Members advise and the chair, often the user,
+   decides. This is how the user sits on most committees (below).
+
+**How a member reviews.** A review runs as a **scoped sub-session**, as the `Research` tool's
+sub-loop does today: the member's role prompt, the form, the review skill's checklist and
+read-only evidence tools, but not the member's own ongoing conversation. That keeps reviews
+cheap, keeps the member's working context free of other work, and keeps text from one work item
+out of another's context. The verdict is recorded with the decision; the member's mental map
+receives a one-line note.
+
+**Sizing to risk.** One reviewer for low-risk gates, three for high-risk ones. Each decision has
+its own LLM budget, charged to the work item.
+
+**Dissent is kept.** Minority opinions are part of the record. The post-implementation review
+(G5) compares outcomes with each member's vote, which gives every reviewer a track record and
+shows which reviews add value.
+
+**Committees with the user:**
+- **User as chair of an advisory committee** (the common case). The agents review first and
+  produce one brief for the user: the recommendation, the votes, the dissent and the risks, in
+  the format of the gate's form. The user decides with the case already analysed.
+- **User as one member**, with a rule such as "the user plus a majority", or a user veto.
+- **User as the escalation target** on deadlock, or above the committee's authority.
+- The user decides asynchronously from the cockpit's decisions inbox, and can ask questions on
+  the decision thread before deciding; the copilot answers from the record and the evidence.
+  Requesting changes sends the form back to the requester and voids the votes.
+- **Batched sittings** suit the user: non-urgent decisions gathered into a daily or weekly
+  sitting; urgent ones ad hoc.
+
+### Existing governance to refactor into the engine
+
+The copilots already carry the beginnings of this. When the engine is built, these become
+policies and gates instead of separate mechanisms:
+- the control-plane copilot's `ProposeAction`: typed action schemas, a pending action, operator
+  confirmation, atomic claim, re-validation at execution (`copilot-actions.ts`);
+- `file_github_issue`: provenance prefix, forced label, daily cap;
+- the mission copilot's same-turn audit copies of every mutating tool to the user, and the
+  missing confirmation for its pause, resume and schedule-cancel actions (CR-07 remainder,
+  F-026);
+- spend caps and ceilings: the default cap, the platform ceiling, only an admin may exceed it
+  (ADR-0034); the copilot's own spend cap and turn time limit;
+- machine upgrades: the mission copilot decides, within a 60-minute window and a 24-hour
+  cumulative cap with an operator reset (ADR-0031);
+- schedule rules: the 5-minute cron floor, recipients on the roster, a job schedule names only
+  its author.
 
 ### MAGI DEV's initial gates
 
@@ -296,14 +389,19 @@ chokepoints ask one decision service, and the policy lives in one place.
 | G5 Post-implementation review | Release plus N days | Planning agent; reported to the operator |
 | Outside the life-cycle | External publication, spend above a threshold, production actions, security exceptions, policy changes | As set in the policy |
 
+### Decided (2026-11-08)
+
+- Committees are not required to use different models.
+- User-level gates and the catalogue of standard changes are mission policy, not platform code.
+- No cap on escalations to the user.
+- The copilot may change the policy, subject to the policy's own gates on policy changes.
+
 ### Open questions
 
-- Should agent committees be required to use different models?
-- Which gates stay with the operator permanently, rather than at first? Candidates: policy
-  changes and new trust boundaries.
-- Throughput: how large the standard-change catalogue should be at the start, so gates do not
-  stall autonomous work.
-- Operator load: a cap on approvals per day, beyond which the policy itself is revisited.
+- The policy format, and how a mission's initial policy is authored (a template per kind of
+  mission, adapted by the copilot with the user).
+- How a member's review sub-session is budgeted and timed out, and what happens to a decision
+  whose reviewer fails.
 
 ## Objectives and their technical requirements
 
