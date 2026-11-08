@@ -377,6 +377,82 @@ policies and gates instead of separate mechanisms:
 - schedule rules: the 5-minute cron floor, recipients on the roster, a job schedule names only
   its author.
 
+**The copilot's confirmation cards are refactored, not kept beside the engine.** Today a
+`ProposeAction` produces a card with a Confirm button in the copilot chat. Under the engine, each
+action type becomes a gate in the default policy, its zod schema becomes the gate's form, and the
+pending action becomes a decision request shown in the decisions inbox (below). The chat card
+becomes a pointer to the inbox, with no buttons. The atomic claim and the re-validation at
+execution carry over as the engine's single-use capability. The other items above become
+policy entries the same way.
+
+### How the user takes part: the decisions inbox
+
+**Why the chat card is not enough.** A card has room for a title and a payload, not for the case
+(facts, recommendation, votes, dissent, risks, evidence). It scrolls away with the conversation.
+It exists only in the control-plane copilot's chat, so a decision about a mission is taken
+outside that mission's cockpit (#87). And it invites approving from a truncated view.
+
+**One component in two places:**
+- a top-level **Decisions** view, with a count badge in the header: everything waiting for the
+  user, across missions and both copilots;
+- a **Decisions** tab in each mission's cockpit: the same component filtered to that mission.
+
+**Layout: the queue on the left, the case on the right.**
+
+```
+┌ Decisions (3 awaiting you) ────────────┬────────────────────────────────────────────────────┐
+│ ▸ G3 Release v0.42 · magi-dev · 2h  ⚑  │ Release readiness: v0.42                     G3     │
+│   Resume meteo · meteo · 5m            │ You are asked: approve release to production?      │
+│   Publish blog post · magi-dev · 1d    │                                                    │
+│                                        │ Recommendation: approve (committee 2–1)            │
+│ ─ Decided ─────────────────────────    │  ✓ release-manager  ✓ architect  ✗ security:       │
+│   G1 Ops API design · approved · 3d    │    "rollback untested on volume forks"             │
+│                                        │                                                    │
+│ Filters: awaiting me · committee ·     │ Facts (verified by the platform)                   │
+│          decided · mission ▾           │  14 PRs · staging e2e ✓ · cost $38/$50 · 3 missions│
+│                                        │ Risks · Rollback plan · Evidence → (Files, Trace)  │
+│                                        │ Thread: questions and answers                      │
+│                                        │ [Approve] [Request changes] [Reject]   comment…    │
+└────────────────────────────────────────┴────────────────────────────────────────────────────┘
+```
+
+**The case, in the order a decision-maker reads it:**
+1. the question being asked;
+2. the recommendation, and the committee's votes with any dissent;
+3. facts, visibly marked as verified by the platform, separate from the requester's claims;
+4. risks, rollback plan, and links into Files, Transcripts and Trace;
+5. a thread of questions and answers.
+
+**The decision bar.** Approve, request changes (returns the form and voids the votes) and reject.
+A comment is required for the last two. Conditions on an approval are structured and enforceable
+by the platform (a lower budget, a shorter expiry), never free text.
+
+**The chat's role.**
+- **It alerts.** The copilot posts which decisions are waiting, with links that open them in the
+  inbox.
+- **It discusses.** A "Discuss with copilot" button opens the chat with the decision in context;
+  answers can be posted to the decision thread.
+- **It does not decide.** One place to decide means the full case is always seen first, and there
+  is one approval path to secure.
+
+**Security.**
+- **The decision is bound to the version seen.** An approval carries the version of the case on
+  screen. If the requester amended it after the page loaded, the server refuses and asks for a
+  reload.
+- **Step-up sign-in.** The policy can require a recent sign-in for high-risk gates.
+- **Every decision is recorded** with the user's identity, the version and the comment.
+
+**From the start:**
+- **Batched sittings.** A sitting mode steps through the queue. Bulk approval only for items the
+  policy marks eligible.
+- **A mobile layout.** This view comes first for #57; approvals will often be made from a phone.
+- **Out-of-band alerts** for urgent decisions (email or phone push), sharing the channel of G-5's
+  alerting.
+- **A searchable history** of decisions, feeding post-implementation reviews.
+
+**A first step ahead of the engine.** The inbox can be built now over the existing pending
+actions. That replaces the chat cards, closes #87, and gives the engine its UI ready-made.
+
 ### MAGI DEV's initial gates
 
 | Gate | Trigger (enforced at) | Decider at first |
@@ -509,6 +585,30 @@ Mono-tenant (A1), so there is no billing.
 - **Weekly report to the operator:** decisions taken, spend against budget, open escalations [new skill].
 - **KPIs for the mission:** throughput, cost per deliverable, escaped defects, response times [new].
 - **Pause** [exists]. Rollback of anything done autonomously [partial].
+
+## Topics still to refine
+
+1. **Source control for project code.** The current workspace git is a provenance trail for
+   `shared/`, owned by the daemon and committed after every turn; agents never run git on it.
+   It stays, but it is not a development workflow. Project code needs: a clone per developer
+   agent outside `shared/`; branches per work item; pushes through the gateway (G) so no agent
+   holds a token; GitHub identities per role so separation of duties holds in GitHub as well;
+   commit trailers linking work items and decisions; a merge queue; disk sharing between
+   clones.
+2. **The work item model.** The unit that ties intake, budget, gates, branch, pull request,
+   release and review together. The objectives store's tasks are the starting point.
+3. **Team design.** Roles, which agents are standing and which are started on demand, models,
+   and the cost envelope.
+4. **Coding capability.** Code navigation and editing tools for a large codebase, or a coding
+   agent run as a tool inside the sandbox.
+5. **Data migrations.** A migration framework and a gate for changes to stored data.
+6. **Incident management.** Severity levels, on-call, communication, post-mortems; the emergency
+   path through the gates.
+7. **Porting today's practices.** CLAUDE.md, the practices documents and the Claude Code
+   commands (sprint-audit, security-review, sprint-close and others) become MAGI skills and
+   policy.
+8. **Bootstrapping.** Deploying MAGI DEV's installation, its first policy, and importing the
+   backlog from GitHub issues and the roadmap.
 
 ## Phasing
 
