@@ -7,13 +7,14 @@ MAGI DEV" section of [MAGI_V3_ROADMAP.md](../../MAGI_V3_ROADMAP.md).
 
 A MAGI mission that runs the whole life-cycle of the MAGI platform: community, planning,
 design, development, security, resilience and application support. The end state is an
-autonomous mission; the operator sets direction, budget and decision rights, and approves what
-the policy says needs approval. It is also the flagship demonstration of MAGI for a software
+autonomous mission; the user (the person or organization that owns the installation, called
+the operator elsewhere in the repository) sets direction, budget and decision rights, and
+approves what the policy says needs approval. It is also the flagship demonstration of MAGI for a software
 audience.
 
 Agent capability is not treated as the limiting factor. The work is in the controls (what each
 agent may touch, for how long, who approves) and in the skills, team design and schedules that
-make agents work well together. Quality is judged by results, as the operator already judges
+make agents work well together. Quality is judged by results, as the user already judges
 missions: tests first, CI as the gate, a reviewer that is not the author, approved releases.
 
 ## Assumptions
@@ -22,7 +23,7 @@ missions: tests first, CI as the gate, a reviewer that is not the author, approv
 |---|---|---|
 | A1 | **Mono-tenant.** One installation serves one organization (an enterprise or a family). It runs several teams and users, with no information-security boundary between them. | No per-tenant credential isolation (Sprint 29's CR-04 half), no cross-user privacy, no billing. The shared copilot OS identity (TB-15) becomes an accepted property. A multi-tenant SaaS later would reopen these. |
 | A2 | MAGI DEV belongs to the same organization as the users' missions. | Support agents may read users' mission data. It still goes through an audited API, not raw database access: agents make mistakes, and mission content is untrusted text. |
-| A3 | **Separate installations.** MAGI DEV runs on its own installation (its own Fly apps and database), not the production one. | MAGI DEV never holds a production deploy credential or database URI. A failure in either installation does not take down the other, and each can watch the other. |
+| A3 | **Separate installations.** MAGI DEV runs on its own installation (its own Fly apps and database), not the production one. | MAGI DEV never holds a production deploy credential or database URI. A failure in either installation does not take down the other, and MAGI DEV can watch production from outside. |
 | A4 | Code reaches production only through GitHub: MAGI DEV pushes, CI deploys. | Release control is mostly GitHub configuration: branch protection, required checks, a protected release environment. |
 | A5 | MAGI DEV has one or more development and test environments, some inside its own VM, none sharing its database. | Three tiers: in-VM sandbox, staging installation, production. |
 | A6 | At-rest encryption against the providers (Fly, Atlas) remains a separate goal (Sprint 29b). | Independent of MAGI DEV. |
@@ -48,22 +49,23 @@ missions: tests first, CI as the gate, a reviewer that is not the author, approv
 
 ## Platform deliverables
 
-The objectives below reduce to seven platform capabilities. Everything else is mission
+The objectives below reduce to eight platform capabilities. Everything else is mission
 configuration (team, skills, schedules) that can be iterated without platform changes.
 
 | # | Deliverable | Content | Existing base |
 |---|---|---|---|
-| A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the governance engine (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. A push channel: production's hard anomalies and daily report forwarded to MAGI DEV's mailbox through an authenticated inbound endpoint. The single production interface for human operators too. New trust boundary. Design direction: [Production access](#production-access-deliverable-a). | Missions API and copilot actions; anomaly relay; daily report |
-| B | **GitHub release control** | The GitHub proxy targets a configurable repository per mission and gains git push (branches only) and pull-request operations. Per-role credentials held by MAGI DEV's control plane, never in agent environments: developers push branches and open pull requests; a release manager tags and requests releases; none can bypass protection. Branch protection on `main`, the existing gates as required checks, and a "production" GitHub Environment whose required reviewer is the operator at first, a policy later. Design: [Source control for project code](#source-control-for-project-code). | GitHub proxy (issues only, one repo, `GITHUB_REPO`); CI gates |
+| A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the governance engine (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. A push channel: production's hard anomalies and daily report forwarded to MAGI DEV's mailbox through an authenticated inbound endpoint. The single production interface for human support staff too. New trust boundary. Design direction: [Production access](#production-access-deliverable-a). | Missions API and copilot actions; anomaly relay; daily report |
+| B | **GitHub release control** | A repository per mission. A GitHub App per role (author, reviewer, release) used only through G; agents never hold a token. A git proxy on loopback (a `PushBranch` tool first) that checks each pushed branch against the policy. GitHub rulesets: no direct push to `main`, a review from the reviewer App, the existing gates as required checks, merges through the merge queue, and a protected release environment whose required reviewer is the user at first. GitHub configuration declared, changed by agents through E, applied by the platform and drift-checked. Design: [Source control for project code](#source-control-for-project-code-deliverable-b). | GitHub proxy (issues only, one repo, `GITHUB_REPO`); CI gates |
 | C | **Staging installation** | A full MAGI stack (control plane, missions app, database) that CI deploys release candidates to. Runs the full integration suite, OS-isolation tests included, and an end-to-end smoke test: launch a test mission, check it runs, resume it, roll it out. | `promote.sh --suffix` named environments |
-| D | **In-VM sandbox** | Build, lint, unit tests and lightweight integration tests against a local `mongod`, never MAGI DEV's own database. LLM calls from tests go through a Tool API proxy that speaks the provider API, metered against a test budget; no raw key in the sandbox. A cockpit dev server previewed through BrowseWeb, which needs a sanctioned exception to the loopback block. A bigger default machine shape. | Tool API metering for jobs (`createJobSpend`); machine shapes (28g) |
+| D | **In-VM sandbox** | Repository workspaces: a daemon-owned mirror, worktrees or shared-object clones per agent, shared package caches, disk quotas per agent. Build, lint, unit tests and lightweight integration tests against a local `mongod`, never MAGI DEV's own database. LLM calls from tests go through a Tool API proxy that speaks the provider API, metered against a test budget; no raw key in the sandbox. A cockpit dev server previewed through BrowseWeb, which needs a sanctioned exception to the loopback block. A bigger default machine shape. | Tool API metering for jobs (`createJobSpend`); machine shapes (28g) |
 | E | **Governance engine** | Gates (tollgates) with deterministic triggers at platform chokepoints, typed decision forms with platform-computed facts, deciders assigned by policy with separation of duties, binding single-use approvals, stage enforcement on work items, and a governance section in every agent's prompt and mental map. Not specific to MAGI DEV: any mission can declare gates (a household-finance mission approving payments). Design direction: [Governance engine](#governance-engine-deliverable-e). | Copilot confirmation cards (`ProposeAction`); objectives store write validation; daemon-managed mental-map regions (`#my-objectives`); the `beforeLlmCall` gate; spend ceilings an agent cannot raise |
 | F | **Mission rollout and rollback** | A deploy only changes the image for new machines; running missions pick it up on suspend and resume. Production needs a rollout action: canary mission first, health check, then the rest, with automatic rollback. Triggered through A. | In-place resume (#103) |
-| G | **External API gateway** | The one way agents reach any external API: connector definitions, platform-held credentials, per-operation policy, approval-bound single-use capabilities, rate limits and budgets, audit, responses treated as untrusted. MAGI DEV reaches A and GitHub (B) through it; so would any mission reaching a bank, a mailbox or a data provider. Design direction: [External API access](#external-api-access-deliverable-g). | Tool API proxies for FRED, FMP and NewsAPI (CR-04); GitHub proxy; `safe-http.ts`; LLM metering for jobs |
+| G | **External API gateway** | The one way agents reach any external API: connector definitions, platform-held credentials, per-operation policy, approval-bound single-use capabilities, rate limits and budgets, audit, responses treated as untrusted, inbound events. MAGI DEV reaches A and GitHub (B) through it; so would any mission reaching a bank, a mailbox or a data provider. Design direction: [External API access](#external-api-access-deliverable-g). | Tool API proxies for FRED, FMP and NewsAPI (CR-04); GitHub proxy; `safe-http.ts`; LLM metering for jobs |
+| H | **Egress policy for agent subprocesses** | An allow-list per mission or role for outbound network access from agents' `Bash` and jobs (for example the package registry; GitHub only through the git proxy). Today they can reach anything. Narrows exfiltration after a prompt injection in every mission, not only MAGI DEV. | BrowseWeb's egress-filtering proxy |
 
 Rule for MAGI DEV's own installation: it runs the previous stable release and is upgraded only
-after production has run a release cleanly for some days. The operator, or a coding-agent
-session, is the emergency fallback if MAGI DEV breaks itself.
+after production has run a release cleanly for some days. The user, helped by an external coding
+assistant, is the emergency fallback if MAGI DEV breaks itself.
 
 ## Production access (deliverable A)
 
@@ -85,18 +87,18 @@ converge on three practices, whoever does application support:
 Service-to-service calls use workload identity instead of stored secrets. For example, GitHub
 Actions proves its identity to a cloud provider with a short-lived OIDC token.
 
-**The same mechanism serves human operators and agents.** The Ops API is the single production
+**The same mechanism serves human support staff and agents.** The Ops API is the single production
 interface for both: people through the cockpit and CLI, MAGI DEV through G. The principles are
 shared; the threats and the substitute for human judgement differ:
 
-| | Human operator | Agent |
+| | Human support staff | Agent |
 |---|---|---|
 | Who holds the credential | The person, on their own device, protected by MFA | The platform; the agent calls a proxied tool and never sees the token |
 | Main threat | Phishing, a stolen laptop, mistakes under pressure | Prompt injection through what it reads (logs, users' mission data, community posts); mistakes at machine speed |
 | Substitute for seniority | Role, seniority, on-call rota | The governance engine (E) and a track record |
 | Unforeseen situations | Break-glass access, rarely used | Break-glass stays human, at least at first; the agent is limited to predefined actions |
 | Volume | A few actions per incident | Possibly many: rate limits and per-action budgets |
-| Accountability | The named person | The agent, its mission and the approving operator, recorded together |
+| Accountability | The named person | The agent, its mission and the approver, recorded together |
 
 Data read from production must never be able to authorize an action. Approval happens outside
 anything the agent reads, which is why actions are predefined, typed and confirmed.
@@ -119,7 +121,7 @@ anything the agent reads, which is why actions are predefined, typed and confirm
 ## External API access (deliverable G)
 
 Production access is one case of a general need: agents calling APIs outside the platform with
-a credential the agent must not hold, under rules the operator sets. The same need appears in
+a credential the agent must not hold, under rules the policy sets. The same need appears in
 MAGI DEV (the production Ops API, GitHub, social channels, a status page), in research missions
 (data providers, already proxied for FRED, FMP and NewsAPI after CR-04), and in personal
 missions (a bank, a mailbox, a calendar). G is the one mechanism for all of them. It also
@@ -193,13 +195,13 @@ remaining reason for that work.
 | Delegation-of-authority matrix | Who may decide what, by amount or kind | Decider assignment rules per gate, with escalation levels |
 | Decision forms | Establish the facts that place a decision in the matrix, and present them in a format the decider knows | Typed forms per gate; facts computed by the platform, judgement supplied by the requester |
 | Stage-gate (tollgate) process | Work cannot pass a stage without sign-off | Work items with stages; the transition through a gate needs a decision record |
-| Change management (ITIL) | **Standard** changes pre-approved; **normal** changes reviewed by a change advisory board; **emergency** changes expedited, then reviewed | Autonomous (a pre-approved catalogue), approve-first (agent committee or operator), emergency path with mandatory review afterwards |
-| Change advisory board | A committee reviews significant changes | An agent committee: different roles and, ideally, different models |
+| Change management (ITIL) | **Standard** changes pre-approved; **normal** changes reviewed by a change advisory board; **emergency** changes expedited, then reviewed | Autonomous (a pre-approved catalogue), approve-first (an agent committee or the user), emergency path with mandatory review afterwards |
+| Change advisory board | A committee reviews significant changes | An agent committee with different roles, with or without the user |
 | Segregation of duties | Whoever requests or performs cannot approve | Requester and decider are different agent identities, enforced |
 | Delegation letter | Authority granted for a scope, an amount and a period | An authorization bound to a work item: paths, budget, expiry |
 | Signature or stamp | Proof of approval | A decision record plus a single-use capability bound to the exact artefact version or parameters |
 | Job description, training, code of conduct | People know the rules before they act | The governance section of each agent's system prompt and mental map |
-| Internal audit | Checks after the fact that the rules were followed | The auditor agent, plus the operator sampling agent-approved decisions |
+| Internal audit | Checks after the fact that the rules were followed | The auditor agent, plus the user sampling agent-approved decisions |
 
 ### Five parts of a gate
 
@@ -207,7 +209,7 @@ remaining reason for that work.
 |---|---|---|---|
 | **Trigger** | The rule that says this action needs a decision | Deterministic platform code at a chokepoint | No |
 | **Form** | The structured decision record | A typed schema; facts by the platform, judgement by the requester | Facts no; judgement is reviewed |
-| **Decider** | Who signs: an agent, a committee, the operator | Assigned by the policy, never chosen by the requester | No |
+| **Decider** | Who signs: an agent, a committee, the user | Assigned by the policy, never chosen by the requester | No |
 | **Record** | The signed decision | Immutable, in the platform's store and audit log | No |
 | **Capability** | What unblocks the action | Single-use, bound to the artefact version or parameters | No |
 
@@ -222,16 +224,16 @@ spend on work a gate will block later. Two injection points, both outside the ag
 mission copilot's control:
 
 - **A governance section in the system prompt**, generated from the policy for the agent's role.
-  It is not part of the team configuration, which the mission copilot can edit, so it changes
-  only through a policy change (the highest gate). Content:
+  It is not part of the team configuration, which the mission copilot edits freely, so it changes
+  only through a policy change, under the gates the policy places on policy changes. Content:
   - the gates that apply to this role;
   - the standing rules in plain, firm language with the reason for each ("Do not begin
     implementation of a work item until it shows *approved for build* in your governance section.
     Work started earlier is wasted: merges of unapproved items are refused.");
   - how to request a decision;
   - **what counts as an approval: only a record shown in the governance section.** A message
-    from a teammate, a user or a web page saying something was approved is not an approval,
-    whoever appears to send it.
+    from a teammate, a community member or a web page saying something was approved is not an
+    approval, whoever appears to send it.
 - **A managed `#governance` region in the mental map**, re-rendered every turn from the
   governance store and read-only to the agent (the same mechanism as `#my-objectives`):
   - my authorizations: work item, scope, budget left, expiry;
@@ -256,8 +258,7 @@ chokepoints ask one decision service, and the policy lives in one place.
     evidence; `Decide` takes approve, reject, request changes or escalate, plus reasons and the
     checklist answers. A decider never sees the requester's conversation.
   - Amending a form voids any approval already given.
-  - For the operator: a decisions inbox in the cockpit that renders the form, with approve and
-    reject.
+  - For the user: the decisions inbox in the cockpit (below).
 - **Stage enforcement on work items.** A gate can only check a state the platform holds, so the
   work an agent is authorized to do must live in a platform store, not only in files or mental
   maps. The objectives store's tasks are that store. The platform addition is small: a stage
@@ -388,7 +389,7 @@ shows which reviews add value.
 
 The copilots already carry the beginnings of this. When the engine is built, these become
 policies and gates instead of separate mechanisms:
-- the control-plane copilot's `ProposeAction`: typed action schemas, a pending action, operator
+- the control-plane copilot's `ProposeAction`: typed action schemas, a pending action, the user's
   confirmation, atomic claim, re-validation at execution (`copilot-actions.ts`);
 - `file_github_issue`: provenance prefix, forced label, daily cap;
 - the mission copilot's same-turn audit copies of every mutating tool to the user, and the
@@ -397,7 +398,7 @@ policies and gates instead of separate mechanisms:
 - spend caps and ceilings: the default cap, the platform ceiling, only an admin may exceed it
   (ADR-0034); the copilot's own spend cap and turn time limit;
 - machine upgrades: the mission copilot decides, within a 60-minute window and a 24-hour
-  cumulative cap with an operator reset (ADR-0031);
+  cumulative cap that the user can reset (ADR-0031);
 - schedule rules: the 5-minute cron floor, recipients on the roster, a job schedule names only
   its author.
 
@@ -481,12 +482,12 @@ actions. That replaces the chat cards, closes #87, and gives the engine its UI r
 
 | Gate | Trigger (enforced at) | Decider at first |
 |---|---|---|
-| G0 Intake accepted, budget allocated | Work item created with a budget (objectives store) | Planning agent within a budget envelope; operator above it |
-| G1 Design approval | Move to *approved for build*; an ADR or threat-model update is required when the change touches defined areas | Architect agent plus a security reviewer; operator for a new trust boundary |
+| G0 Intake accepted, budget allocated | Work item created with a budget (objectives store) | Planning agent within a budget envelope; the user above it |
+| G1 Design approval | Move to *approved for build*; an ADR or threat-model update is required when the change touches defined areas | Architect agent plus a security reviewer; the user for a new trust boundary |
 | G2 Ready to merge | Merge through the GitHub proxy | A reviewer agent that is not the author, plus green CI |
-| G3 Release readiness | Release requested | Release-manager agent plus staging results; operator at first |
-| G4 Production rollout | Rollout action on the Ops API | Canary health; operator at first |
-| G5 Post-implementation review | Release plus N days | Planning agent; reported to the operator |
+| G3 Release readiness | Release requested | Release-manager agent plus staging results; the user at first |
+| G4 Production rollout | Rollout action on the Ops API | Canary health; the user at first |
+| G5 Post-implementation review | Release plus N days | Planning agent; reported to the user |
 | Outside the life-cycle | External publication, spend above a threshold, production actions, security exceptions, policy changes | As set in the policy |
 
 ### Decided (2026-11-08)
@@ -503,114 +504,7 @@ actions. That replaces the chat cards, closes #87, and gives the engine its UI r
 - How a member's review sub-session is budgeted and timed out, and what happens to a decision
   whose reviewer fails.
 
-## Objectives and their technical requirements
-
-In the lists below:
-- **[exists]** means it is in the platform today;
-- **[partial]** means part of it is there;
-- **[new]** means it needs building.
-
-Letters refer to the deliverables above.
-
-### Cross-cutting
-
-- **Decision rights** (E) [partial].
-- **Proxied access to every external system** through G: agents never hold raw credentials [partial].
-- **Budget accounting per deliverable.** Objectives carry `budgetUsd` and a cost-allocation bucket. Agent turns need tagging with the task they serve, so actual spend per deliverable can be compared with its budget [partial].
-- **Untrusted input.** Content from outside (community posts, users' mission data) never directly triggers a write [partial].
-- **Independent oversight.** The post-MVP auditor agent, brought forward [new].
-- **Organizational memory.** Mental maps, the repo's docs and ADRs [exists]. Document search over the repo once the codebase outgrows context [new, post-MVP RAG].
-
-### 1. Promotion and community
-
-- **Channels.** GitHub Discussions, a forum or Discord, social posts, a blog or site, a newsletter. Each needs read and post connectors [new].
-- **Publishing gate** (E) [new]. Brand and voice guidelines as a skill [new].
-- **Content calendar** on schedules [exists].
-- **Assets.** Illustrations (image generation) [new]; screenshots and demo captures through BrowseWeb [partial]; charts [exists].
-- **Moderation** and code-of-conduct enforcement on inbound content [new].
-- **Community metrics** (stars, downloads, active users, engagement), gathered on a schedule [new].
-- **User documentation and onboarding guides** [partial].
-
-### 2. Intake, prioritization, roadmap and budget
-
-- **Intake** from every channel into one backlog: duplicates merged, related reports clustered. GitHub issues and the objectives store exist [partial].
-- **Scoring model** as a skill: user demand, strategic fit, estimated cost (LLM spend plus infrastructure), risk [new].
-- **Budget ledger** of planned against actual spend per deliverable [partial].
-- **Roadmap and plan** artefacts with a cadence: weekly planning, monthly review, operator sign-off on the roadmap [partial].
-- **Feedback loop.** Release, measure usage, revise priorities; depends on product analytics (8) [new].
-
-### 3. Design
-
-- **Artefacts:** ADRs, spec, threat model, FMEA, code-structure inventory [exists as practices and skills].
-- **UX mockups and clickable prototypes.** Needs image generation, the HTML preview in Files, and the sandbox preview (D) [new].
-- **Design review** by a reviewer agent that is not the author, plus operator sign-off above a threshold (E) [partial].
-
-### 4. Development, source control, testing, release
-
-- **Source control.** Branch per change, pull requests, protected `main`, per-role credentials (B) [new].
-- **Supply chain.** Lockfile, audit, pinned versions [partial].
-- **Test tiers.** Sandbox (D), staging (C) [new]. Evaluation harness for agent behaviour (#45) [new].
-- **Pipeline.** The existing gates (verify, tripwires, ratchets, SAST, secret scan, dependency audit) [exists], made required checks on pull requests (B) [new].
-- **Code review** by an agent that did not write the change [new skill]. Author-reviewing-self was a root cause in the October 2026 audit.
-- **Release.** Staging, then beta, then production. Versioning, changelog, rollout and rollback (F) [partial].
-- **Merge policy.** The operator merges at first; policy-based auto-merge for low-risk changes later (E) [new].
-
-### 5. Security
-
-- **Threat model, findings tracker, periodic audits** [exists as skills: security-review, security-audit, threat-model, sprint-audit].
-- **Dependency, secret and static scanning** [exists in CI].
-- **Least privilege per agent role; audit log of every privileged action** (A, B) [partial].
-- **Separation of duties.** The agent that writes a change cannot approve or deploy it (B, E) [new].
-- **Responsible disclosure** intake (a private channel and `SECURITY.md`) and a security incident runbook [new].
-- **Key rotation** runbooks [partial].
-- **Prompt-injection defences** plus the auditor agent [partial].
-
-### 6. Resilience
-
-- **FMEA upkeep** [exists as practice and skill].
-- **Service-level objectives and error budgets** [new].
-- **Drills:** rehearsed restores (#70), provider-outage and capacity drills such as #103 [new].
-- **Backup verification** on a schedule [new].
-- **Capacity planning** from resource trends; the daily report has the data [partial].
-- **Dependency failure plans:** LLM provider fallback, degraded mode [partial].
-- **Mutual watch.** MAGI DEV probes production from outside; an external uptime check watches MAGI DEV (G-5) [new].
-
-### 7. Application support
-
-- **Observability** through A: logs, LLM call traces [exists], metrics [partial], alert routing to MAGI DEV and the operator [new].
-- **Troubleshooting** through A's read tier [new]. Runbooks as skills: incident-triage, mission-recovery and disk-pressure exist [partial].
-- **Remediation** through A's action tier under E [partial; the actions exist as copilot actions].
-- **Resource management:** spend caps, daily report, machine upgrades [exists].
-- **Backups:** Atlas backups and 30-day volume snapshots [exists]; restore runbook (#70) [new].
-- **User support:** requests about failed missions or how to do something. Reading a user's mission data goes through A [new].
-- **Incident communication:** status page and post-mortems [new].
-
-### 8. Product management and analytics
-
-- **Usage events** per feature and per team; dashboards; release impact [new].
-
-### 9. Running costs and providers
-
-Mono-tenant (A1), so there is no billing.
-
-- **Cost-to-serve per installation and per team** [partial; the data mostly exists].
-- **Watches on provider accounts and quotas** (Fly machine limits, Atlas storage, LLM credit) and on model deprecations and price changes [partial].
-
-### 10. Legal and compliance
-
-- **Licence** and contributor agreements (Apache 2.0 and CLA exist; enforcing the CLA is not wired).
-- **Dependency licence scan** in CI [new].
-- **Terms and privacy policy** for any public-facing service [new].
-- **Data retention** rules [new].
-
-### 11. Governance of the mission itself
-
-- **Decision rights** (E) [new].
-- **Weekly report to the operator:** decisions taken, spend against budget, open escalations [new skill].
-- **KPIs for the mission:** throughput, cost per deliverable, escaped defects, response times [new].
-- **Pause** [exists]. Rollback of anything done autonomously [partial].
-
-## Source control for project code
+## Source control for project code (deliverable B)
 
 **Two git mechanisms, kept apart.** The existing workspace git is a provenance trail for
 `shared/`: owned by the daemon, committed after every turn, hardened against agent-planted hooks
@@ -664,18 +558,18 @@ skills alone the token would sit in the agent's environment or files, which brea
 | 1 | Roles and permissions in the mission policy: roles, bindings, operation grants with conditions; binding changes gated | E |
 | 2 | GitHub connector: an App per role, hour-long tokens, an operation catalog (pull requests, reviews, comments, check results, release requests) | G |
 | 3 | Git proxy with per-ref policy checks (`PushBranch` first) | G |
-| 4 | Repository workspaces: a daemon-owned mirror, worktrees or shared-object clones per agent, shared package caches, disk quotas per agent | new |
-| 5 | Egress policy for agent subprocesses: an allow-list per mission or role (the package registry; GitHub only through the proxy). Today `Bash` can reach anything; this also narrows prompt-injection exfiltration in every mission | new |
-| 6 | GitHub configuration as code with a drift check: Apps, rulesets, CODEOWNERS, environments declared, applied, and checked on a schedule | new |
-| 7 | GitHub events into MAGI (review requested, CI finished, merge-queue result) as mailbox wake-ups, through webhooks (a new authenticated endpoint) or polling | new |
+| 4 | Repository workspaces: a daemon-owned mirror, worktrees or shared-object clones per agent, shared package caches, disk quotas per agent | D |
+| 5 | Egress policy for agent subprocesses: an allow-list per mission or role (the package registry; GitHub only through the proxy). Today `Bash` can reach anything | H |
+| 6 | GitHub configuration as code with a drift check: Apps, rulesets, CODEOWNERS, environments declared, applied, and checked on a schedule | B |
+| 7 | GitHub events into MAGI (review requested, CI finished, merge-queue result) as mailbox wake-ups, through webhooks (a new authenticated endpoint) or polling | G |
 
 Capabilities 1 to 3 are the general roles-over-connectors mechanism of E and G applied to one
-connector; 5 benefits every mission.
+connector; 5 (H) benefits every mission.
 
 **Commits** are authored as the agent, with trailers for the work item, the decision ids and the
 mission; optionally signed by the platform so GitHub shows them as verified.
 
-### The operator decides; agents configure
+### The user decides; agents configure
 
 The user is not expected to set up or maintain any of this. A manager agent and the copilot
 own the GitHub configuration, as they own the rest of the mission's setup:
@@ -695,6 +589,113 @@ own the GitHub configuration, as they own the rest of the mission's setup:
 The same principle applies across the platform: **the user sets direction and decides; agents
 configure and operate.** A capability that needs the user to configure it by hand is incomplete.
 
+## Objectives and their technical requirements
+
+In the lists below:
+- **[exists]** means it is in the platform today;
+- **[partial]** means part of it is there;
+- **[new]** means it needs building.
+
+Letters refer to the deliverables above.
+
+### Cross-cutting
+
+- **Decision rights** (E) [partial].
+- **Proxied access to every external system** through G: agents never hold raw credentials [partial].
+- **Budget accounting per deliverable.** Objectives carry `budgetUsd` and a cost-allocation bucket. Agent turns need tagging with the task they serve, so actual spend per deliverable can be compared with its budget [partial].
+- **Untrusted input.** Content from outside (community posts, users' mission data) never directly triggers a write [partial].
+- **Independent oversight.** The post-MVP auditor agent, brought forward [new].
+- **Organizational memory.** Mental maps, the repo's docs and ADRs [exists]. Document search over the repo once the codebase outgrows context [new, post-MVP RAG].
+
+### 1. Promotion and community
+
+- **Channels.** GitHub Discussions, a forum or Discord, social posts, a blog or site, a newsletter. Each needs read and post connectors [new].
+- **Publishing gate** (E) [new]. Brand and voice guidelines as a skill [new].
+- **Content calendar** on schedules [exists].
+- **Assets.** Illustrations (image generation) [new]; screenshots and demo captures through BrowseWeb [partial]; charts [exists].
+- **Moderation** and code-of-conduct enforcement on inbound content [new].
+- **Community metrics** (stars, downloads, active users, engagement), gathered on a schedule [new].
+- **User documentation and onboarding guides** [partial].
+
+### 2. Intake, prioritization, roadmap and budget
+
+- **Intake** from every channel into one backlog: duplicates merged, related reports clustered. GitHub issues and the objectives store exist [partial].
+- **Scoring model** as a skill: user demand, strategic fit, estimated cost (LLM spend plus infrastructure), risk [new].
+- **Budget ledger** of planned against actual spend per deliverable [partial].
+- **Roadmap and plan** artefacts with a cadence: weekly planning, monthly review, the user's sign-off on the roadmap [partial].
+- **Feedback loop.** Release, measure usage, revise priorities; depends on product analytics (8) [new].
+
+### 3. Design
+
+- **Artefacts:** ADRs, spec, threat model, FMEA, code-structure inventory [exists as practices and skills].
+- **UX mockups and clickable prototypes.** Needs image generation, the HTML preview in Files, and the sandbox preview (D) [new].
+- **Design review** by a reviewer agent that is not the author, plus the user's sign-off above a threshold (E) [partial].
+
+### 4. Development, source control, testing, release
+
+- **Source control.** Branch per change, pull requests, protected `main`, per-role credentials (B) [new].
+- **Supply chain.** Lockfile, audit, pinned versions [partial].
+- **Test tiers.** Sandbox (D), staging (C) [new]. Evaluation harness for agent behaviour (#45) [new].
+- **Pipeline.** The existing gates (verify, tripwires, ratchets, SAST, secret scan, dependency audit) [exists], made required checks on pull requests (B) [new].
+- **Code review** by an agent that did not write the change [new skill]. Author-reviewing-self was a root cause in the October 2026 audit.
+- **Release.** Staging, then beta, then production. Versioning, changelog, rollout and rollback (F) [partial].
+- **Merge policy.** The user merges at first; policy-based auto-merge for low-risk changes later (E) [new].
+
+### 5. Security
+
+- **Threat model, findings tracker, periodic audits** [exists as skills: security-review, security-audit, threat-model, sprint-audit].
+- **Dependency, secret and static scanning** [exists in CI].
+- **Least privilege per agent role; audit log of every privileged action** (A, B) [partial].
+- **Separation of duties.** The agent that writes a change cannot approve or deploy it (B, E) [new].
+- **Responsible disclosure** intake (a private channel and `SECURITY.md`) and a security incident runbook [new].
+- **Key rotation** runbooks [partial].
+- **Prompt-injection defences** plus the auditor agent [partial].
+
+### 6. Resilience
+
+- **FMEA upkeep** [exists as practice and skill].
+- **Service-level objectives and error budgets** [new].
+- **Drills:** rehearsed restores (#70), provider-outage and capacity drills such as #103 [new].
+- **Backup verification** on a schedule [new].
+- **Capacity planning** from resource trends; the daily report has the data [partial].
+- **Dependency failure plans:** LLM provider fallback, degraded mode [partial].
+- **Mutual watch.** MAGI DEV probes production from outside; an external uptime check watches MAGI DEV (G-5) [new].
+
+### 7. Application support
+
+- **Observability** through A: logs, LLM call traces [exists], metrics [partial], alert routing to MAGI DEV and the user [new].
+- **Troubleshooting** through A's read tier [new]. Runbooks as skills: incident-triage, mission-recovery and disk-pressure exist [partial].
+- **Remediation** through A's action tier under E [partial; the actions exist as copilot actions].
+- **Resource management:** spend caps, daily report, machine upgrades [exists].
+- **Backups:** Atlas backups and 30-day volume snapshots [exists]; restore runbook (#70) [new].
+- **User support:** requests about failed missions or how to do something. Reading a user's mission data goes through A [new].
+- **Incident communication:** status page and post-mortems [new].
+
+### 8. Product management and analytics
+
+- **Usage events** per feature and per team; dashboards; release impact [new].
+
+### 9. Running costs and providers
+
+Mono-tenant (A1), so there is no billing.
+
+- **Cost-to-serve per installation and per team** [partial; the data mostly exists].
+- **Watches on provider accounts and quotas** (Fly machine limits, Atlas storage, LLM credit) and on model deprecations and price changes [partial].
+
+### 10. Legal and compliance
+
+- **Licence** and contributor agreements (Apache 2.0 and CLA exist; enforcing the CLA is not wired).
+- **Dependency licence scan** in CI [new].
+- **Terms and privacy policy** for any public-facing service [new].
+- **Data retention** rules [new].
+
+### 11. Governance of the mission itself
+
+- **Decision rights** (E) [partial].
+- **Weekly report to the user:** decisions taken, spend against budget, open escalations [new skill].
+- **KPIs for the mission:** throughput, cost per deliverable, escaped defects, response times [new].
+- **Pause** [exists]. Rollback of anything done autonomously [partial].
+
 ## Topics still to refine
 
 **Settled without new platform capability** (2026-11-08):
@@ -708,25 +709,24 @@ configure and operate.** A capability that needs the user to configure it by han
   connector.
 - **Incident management** is process and skills on top of A, G, the governance engine's
   emergency path, and out-of-band alerting (G-5).
+- **Capacity.** A mission stays on one machine. MAGI DEV uses a bigger machine shape; worker
+  machines or spreading a mission over several machines are considered only when cost or a real
+  limit forces it.
 
 **Still open:**
-1. **One machine per mission.** A team of eight to twelve agents, several of them building and
-   testing a large TypeScript codebase at the same time, may not fit one machine even upgraded.
-   Options: larger default shapes, worker machines that run heavy jobs for a mission, or agents
-   spread over several machines.
-2. **Porting today's practices.** CLAUDE.md, the practices documents and the Claude Code
+1. **Porting today's practices.** CLAUDE.md, the practices documents and the Claude Code
    commands (sprint-audit, security-review, sprint-close and others) become MAGI skills and
    policy.
-3. **Bootstrapping.** Deploying MAGI DEV's installation, its first policy, and importing the
+2. **Bootstrapping.** Deploying MAGI DEV's installation, its first policy, and importing the
    backlog from GitHub issues and the roadmap.
 
 ## Phasing
 
 | Phase | Scope | Needs |
 |---|---|---|
-| 1 | Community, planning, monitoring reports | 28h items (#54, #95, G-5); B's per-mission repository; read-only use of A or, before A exists, reports from production's daily report |
-| 2 | Application support | A (read and action tiers), E, F, G; auditor agent |
-| 3 | Development and testing | B in full (through G), C, D; SDLC skills; evaluation harness |
+| 1 | Community, planning, monitoring reports | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier and push channel; today's confirmation cards for every external write |
+| 2 | Application support | A's action tier, E with the decisions inbox, F, H; the auditor agent |
+| 3 | Development and testing | B, C, D; SDLC skills; the evaluation harness (#45) |
 
 ## Open questions
 
