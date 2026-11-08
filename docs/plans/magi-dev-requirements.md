@@ -915,6 +915,94 @@ the KPIs it affects.
 | Quarterly | Security budget proposal | SEC-7 |
 | On request | Design review, release sweep, budget estimate, question (the request contract) | SEC-5, G1–G3 |
 
+#### Skills
+
+The existing Claude Code commands (`security-review`, `security-audit`, `threat-model`,
+`sprint-audit`) are raw material, but they are jobs run on request. The skills below follow how a
+human application security engineer organizes the work over time.
+
+**How the work is organized.** Everything uses or refreshes two things: a **model of the system**
+(architecture, assets, trust boundaries, the house security rules; written down as the threat
+model) and a **risk register**. Four modes:
+
+| Mode | What it looks like | Trigger |
+|---|---|---|
+| Incremental | Triage each change by its security relevance and go only as deep as that warrants; check against the model and the house rules; note when the model has gone stale | Every change, every new advisory |
+| Deep | Refresh the model: a boundary in depth, a design, one vulnerability class across the code, the supply chain end to end | A schedule, a design request, or an incremental review that found the model stale |
+| Engagements | Design review, release sign-off, estimates, questions | Requests |
+| Record and communicate | Register, reports, weekly summary, immediate escalation, KPIs | Every activity |
+
+Three habits matter as much as the procedures:
+- **Depth matched to risk.** Without a triage step, either cost explodes or the risky change
+  gets the same glance as the rest.
+- **Variant analysis.** A confirmed finding triggers a search for the same pattern everywhere
+  (F-073, the Research cache symlink, was a variant of F-038).
+- **Refute before reporting.** As the sprint audit's independent verifier does: false positives
+  cost credibility with the team.
+
+**Foundations** (used by every other skill):
+
+| Skill | Content | Built from |
+|---|---|---|
+| `appsec-foundations` | Where the security documents are and how they fit; MAGI's house security patterns and invariants (`safe-path`, `safe-http`, the sudo boundary, clean environments, scoped queries, untrusted-content wrapping); the mono-tenant assumption; the scope, including what is out of scope | `docs/security/CLAUDE.md`, the security practices |
+| `security-judgement` | Severity in MAGI's context (the `findings.md` scale); the standard of evidence (a concrete exploit path, or labelled as a hypothesis); refuting oneself before reporting; the four verdicts | The sprint audit's verifier step |
+| `findings-register` | Format, `MD-NNN` ids, lifecycle (new, confirmed, reported, accepted as `F-NNN`, fix proposed, verified fixed; or accepted risk, false positive, duplicate), de-duplication, fix verification | `findings.md` conventions |
+| `security-reporting` | Report template and hand-off block; weekly summary; immediate mail for high and critical; never a public issue | New |
+
+**Incremental:**
+
+| Skill | Procedure | Built from |
+|---|---|---|
+| `change-review` | Commits since the cursor; triage each by file patterns and signals (auth, sudo, process spawn, paths, network, queries on external input, environment variables, new endpoints, new dependencies) into skip, skim or deep; check against the house patterns; flag a threat-model delta when a boundary is created or changed; findings through `security-judgement`; variant search for each confirmed finding; report; move the cursor | `security-review` |
+| `advisory-triage` | New advisories since the last baseline: production dependency or not, vulnerable code reached or not, exploitability in MAGI's use; recommend upgrade, override or accepted risk; register | New |
+
+**Deep** (one-off or periodic refresh):
+
+| Skill | Procedure | Built from |
+|---|---|---|
+| `threat-model-refresh` | The whole model, or one boundary in depth: read its implementing files, check each listed mitigation holds, try to break it, propose updated rows (actors, data flows, boundaries, STRIDE, OWASP LLM Top 10) | `threat-model`, `security-audit` |
+| `vulnerability-hunt` | One class across the codebase ("every subprocess spawn", "every query on external input", "every path from input"), with variants and verification | The sprint audit's specialist auditors |
+| `supply-chain-review` | Lockfile integrity, pinning, CI actions, image contents, abandoned or risky dependencies | New |
+| `design-review` | A design or ADR: assets, new boundaries, STRIDE per crossing, house patterns and invariants. Output: testable security requirements and a verdict, shaped as the security section of the G1 form | New |
+| `monitoring-audit-design` | For a capability: events to record, record fields, retention and integrity, readers, alert rules as specifications. Design only | New |
+
+**Engagements and planning:**
+
+| Skill | Procedure | Built from |
+|---|---|---|
+| `release-review` | Open findings in scope, dependency audit, documents current, security tests present for the changes; verdict | New |
+| `security-planning` | Security effort per work item; the costed backlog; the quarterly budget proposal; KPI updates | New |
+
+**One-off:**
+- **`appsec-onboarding`** orchestrates the start: clone, read, mental map, cursor, register
+  import, supply-chain baseline. It is reused to re-baseline after a long gap.
+
+**For teammates later:** `request-security-review`, the request contract (the copilot only, in
+phase 0).
+
+**How they fit together.**
+- **The threat model links the two modes.** `change-review` reads it to decide what matters; a
+  change that alters a boundary queues a `threat-model-refresh` of that boundary.
+- **Scripts for the deterministic parts:** commits since the cursor, file-pattern triage, the
+  difference in `npm audit` results since the last baseline, register format checks. They make
+  the skills cheaper and more consistent.
+- **Objectives to skills:**
+  - SEC-1: `change-review`;
+  - SEC-2: `findings-register`;
+  - SEC-3: `threat-model-refresh`, `vulnerability-hunt`;
+  - SEC-4: `advisory-triage`, `supply-chain-review`;
+  - SEC-5: `design-review`;
+  - SEC-6: `monitoring-audit-design`;
+  - SEC-7: `security-planning`;
+  - SEC: `security-reporting`;
+  - the four foundations: all of them.
+
+**Build order:**
+1. Wave 1, for T-01 to T-04: the four foundations, `appsec-onboarding`, `change-review`,
+   `advisory-triage`.
+2. Wave 2, for T-05 and T-06: `design-review`, `threat-model-refresh`.
+3. Wave 3: the rest.
+
 **Growing out of phase 0.** If the mission proves useful, the next step is a brand-new
 installation for MAGI DEV, created the way the beta environment for another user was
 (`promote.sh --suffix`), with the mission moved there. That is when the separate-installation
