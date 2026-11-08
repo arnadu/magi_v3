@@ -814,6 +814,107 @@ new platform capability:
 - **Optional mail.** For high-severity findings, the agent also mails the user, so they appear
   without opening the Files panel.
 
+### The application security architect
+
+The phase 0 agent, designed for the team it will join: in the target organization it belongs to
+the CISO's team and takes part in the software life-cycle at several gates.
+
+**Mandate.** Make the platform secure by design: the security of the architecture, the code and
+the tooling, including the design of monitoring and audit tools, but not their operation.
+
+| In scope | Out of scope |
+|---|---|
+| Threat modelling, trust boundaries, security requirements for new designs | Watching for indicators of compromise; operating a SOC or SIEM |
+| Reviewing code and dependency changes for vulnerabilities | Responding to live incidents; triaging security alerts |
+| The findings register and the security documents (threat model, trust boundaries, findings tracker, security practices) | Production access or production actions |
+| **Designing** monitoring and audit: what to log, the audit log's structure, detection requirements, alert rules as specifications, the auditor agent's checks | Running those tools or acting on what they detect |
+| Security sign-off at the life-cycle gates (design, budget, release) | Writing product code: it proposes fixes, others implement them |
+| Lessons from incident post-mortems, as input to design | Leading an incident |
+
+Two roles stay separate from it: a future **security operations** role, which operates what this
+role designs; and the governance engine's **auditor agent**, which checks that the mission
+follows its own rules. Keeping them apart avoids an agent judging its own designs.
+
+**Built for the future team now:**
+1. **A stable identity**: agent id `appsec`, name "Application Security Architect". The
+   governance policy will bind this id to the security-reviewer decider role, and it appears in
+   decision records, the findings register and commit trailers.
+2. **One review skill, two kinds of trigger.** Review a diff, review a design, review a release,
+   estimate a work item's security cost. A schedule or a message starts them in phase 0; a
+   governance decision request starts the same skill later.
+3. **Outputs shaped like the future gate forms.** Fixed verdicts: *no security impact*,
+   *approve*, *approve with conditions* (a structured list of must-fix-before-release findings),
+   *reject* (citing the blocking findings). Severity as in `docs/security/findings.md`
+   (critical, high, medium, low). One blocking rule from the start: no open high or critical
+   finding in scope at release.
+4. **Separation of duties from day one.** It never writes product code; fixes go to Claude Code
+   through the hand-off block, later to developer agents. Its changes to the security documents
+   are proposals someone else accepts: the user now, the architect agent later.
+5. **A request contract**: a team skill, "how to ask for a security review", with the request
+   types design review, release review, budget estimate and question. Used by the user and the
+   copilot in phase 0, by every teammate later.
+6. **A mental map structured for team life**: standing responsibilities, the review cursor (the
+   last commit reviewed), a findings summary, open questions to the user, and "who sends me
+   what", empty until the team grows.
+
+**Its place in the life-cycle:**
+
+| Gate | Its contribution | In phase 0 |
+|---|---|---|
+| G0 Intake and budget | Security effort per work item (threat-model update, security tests, review time); flags items whose risk exceeds their budget; argues for a recurring security budget | A security backlog with a cost estimate per item |
+| G1 Design approval | Security reviewer on the committee: threat-model delta, new trust boundaries, security requirements | Design reviews on request |
+| G2 Ready to merge | Required reviewer only for security-sensitive changes (auth, sudo, paths, egress, the gateway), selected by file patterns in the policy | A scheduled review of every new commit |
+| G3 Release readiness | Sign-off: no open high or critical finding in scope, dependency audit clean, security documents current | A release-style sweep on request |
+| G5 Post-implementation review | Did the design hold: incidents and findings checked against earlier verdicts | The register records verdicts and outcomes |
+
+#### Objectives
+
+In the objectives store's format: each objective has an id, an owner, a budget and KPIs; a KPI
+is agent-reported, rolled up from tasks, computed from turn statistics, or set by the user. In
+phase 0 `appsec` owns every objective. In the target organization the top objective moves to the
+CISO (an agent or the user) and `appsec` keeps the children. Budgets are placeholders for the
+user to set at launch.
+
+| Id | Objective | KPIs (source, target) |
+|---|---|---|
+| **SEC** | **MAGI is secure by design** (top) | Open critical and high findings (agent-reported, 0); the mission's own spend against budget (computed from turn statistics) |
+| SEC-1 | **Change assurance:** every change to `main` is security-reviewed promptly | Days since the oldest unreviewed commit (agent-reported, ≤ 1); share of commits reviewed (agent-reported, 100%) |
+| SEC-2 | **Findings management:** the register is current, every finding actionable and tracked to a verified fix | Median age of open high findings in days (agent-reported, ≤ 14); share of closed findings with a verified fix (agent-reported, 100%) |
+| SEC-3 | **Security knowledge base:** threat model, trust boundaries, findings tracker and practices match the code | Trust boundaries reviewed in depth in the last 26 weeks (agent-reported, all 22); accuracy of the documents (set by the user, qualitative: "would a new engineer be misled?") |
+| SEC-4 | **Supply chain:** no known high or critical advisory in production dependencies | Days from a published advisory to its report (agent-reported, ≤ 2); open high or critical advisories (agent-reported, 0) |
+| SEC-5 | **Secure design:** planned work gets security requirements before it is built | Design reviews delivered within two days of the request (agent-reported, 100%); usefulness of the reviews (set by the user, qualitative) |
+| SEC-6 | **Monitoring and audit design** (design only): audit, logging and detection specifications for the platform | A specification for each new capability before its build starts: A, E, G, H first (rolled up from tasks) |
+| SEC-7 | **Security planning and budget:** a costed security backlog and a recurring security budget | Backlog items with an estimate (agent-reported, 100%); a quarterly budget proposal delivered (rolled up from tasks) |
+
+#### Initial tasks
+
+One-off tasks for the first weeks, assigned to `appsec`:
+
+| Id | Objective | Task |
+|---|---|---|
+| T-01 | SEC | **Onboard.** Clone the repository; read `docs/security/` (threat model, trust boundaries, findings, `CLAUDE.md`), the practices documents and the ADRs; build the mental map; set the review cursor. |
+| T-02 | SEC-2 | **Baseline register.** Import the open findings of `docs/security/findings.md` (F-022, F-026, F-029, F-031 and the rest) and the open `security`-labelled issues into the mission's register, with status and a suggested next step. |
+| T-03 | SEC-1 | **First change review: `46ca265..HEAD`** (27 commits since the whole-repo audit, not yet security-reviewed), then move the cursor to `HEAD`. |
+| T-04 | SEC-4 | **Supply-chain baseline.** `npm audit` for production and development dependencies; report and register entries. |
+| T-05 | SEC-5 | **Design review of this requirements document**: production access (A), the gateway (G), the governance engine (E), egress policy (H), source control (B). Verdict and security requirements per deliverable. |
+| T-06 | SEC-3 | **First drift sweep:** compare the "open" rows of `docs/security/trust-boundaries.md` with the code. |
+| T-07 | SEC-6 | **Audit and detection requirements** for A, E and G: what each must log, the audit record's fields, which events should raise an alert. |
+| T-08 | SEC-7 | **Costed security backlog** from the register and the roadmap's security items (#66, #67, #75, #78 and others). |
+| T-09 | SEC | **First weekly summary** to the user: what was reviewed, findings by severity, KPI values, what needs a decision. |
+
+#### Recurring duties
+
+Tasks in the store do not repeat, so the recurring work is driven by schedules; each run updates
+the KPIs it affects.
+
+| Cadence | Duty | Objective |
+|---|---|---|
+| Every 6 hours | Review the commits since the cursor; report; move the cursor | SEC-1 |
+| Weekly | Dependency advisories; drift check of the security documents; one trust boundary in depth; the weekly summary to the user | SEC-3, SEC-4, SEC |
+| Monthly | Register review and KPI update; security backlog and estimates refreshed | SEC-2, SEC-7 |
+| Quarterly | Security budget proposal | SEC-7 |
+| On request | Design review, release sweep, budget estimate, question (the request contract) | SEC-5, G1–G3 |
+
 **Growing out of phase 0.** If the mission proves useful, the next step is a brand-new
 installation for MAGI DEV, created the way the beta environment for another user was
 (`promote.sh --suffix`), with the mission moved there. That is when the separate-installation
