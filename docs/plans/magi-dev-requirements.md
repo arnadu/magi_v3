@@ -1003,6 +1003,57 @@ phase 0).
 2. Wave 2, for T-05 and T-06: `design-review`, `threat-model-refresh`.
 3. Wave 3: the rest.
 
+#### Configuration and mental map
+
+**Where the repository comes from.** The repository is a fact about the mission, not one agent:
+the code reviewer will share it, and B later makes "a repository per mission" a platform setting.
+- **Source of truth: a team file, `team/repositories.json`.** Team files are part of the mission
+  config; the daemon writes them to the mission's `team/` folder at every boot; agents read them;
+  only the user or the copilot changes them, through the config. The onboarding and review
+  scripts read the URL, branch and clone location from it; nothing is hardcoded in a skill.
+
+  ```json
+  { "repositories": [ { "name": "magi_v3", "url": "https://github.com/arnadu/magi_v3",
+      "branch": "main", "clone": "repos/magi_v3", "visibility": "public" } ] }
+  ```
+
+  The shape is that of the future platform setting, so moving to B changes where it is read
+  from, not what it says.
+- **Mirrored in the mental map's mission context** as one readable line.
+
+**System prompt or mental map.** The system prompt says how to behave: mandate, scope, verdicts,
+severity scale, the no-public-issues rule, separation of duties. The mental map holds what to
+know: orientation facts and working state.
+
+**Mental map structure.** The platform already makes template content without an `id`
+permanent: the agent's editing tools reach only `id`'d elements, and only a config change alters
+the rest. Daemon-managed regions are re-rendered each turn.
+
+| Section | Kind | Content |
+|---|---|---|
+| Mission context | Immutable | Mission; role (`appsec`); supervisor (the user now, the CISO later); the repository and `team/repositories.json`; where the security documents are; the register's location; teammates ("none yet") |
+| Standing duties | Immutable | The cadence and the skill for each duty. The schedules are the triggers; this is orientation |
+| My objectives | Platform-managed | Objectives, KPIs and tasks from the store (exists) |
+| Governance | Platform-managed, later | Authorizations, requests, decisions (E) |
+| Review state | Agent-editable | Last commit reviewed and when; last advisory baseline; last trust boundary reviewed in depth and the next in rotation |
+| System model notes | Agent-editable | Its own understanding: components and boundaries, how the house patterns are applied, areas of concern, a queue of model sections noted as stale |
+| Findings summary | Agent-editable | Counts by severity and status, top open items, a pointer to the register (the register itself stays in `shared/reports/security/register.md`, keeping the mental map small) |
+| Requests | Agent-editable | Reviews in progress: who asked, what, by when |
+| Questions for the user | Agent-editable | What it is waiting for |
+| Lessons | Agent-editable | Calibration over time: false positives, the user's feedback on severity, patterns that proved to matter |
+| Working notes | Agent-editable | Scratch for the current task |
+
+**Seed facts; let it discover the analysis.**
+- **Seeded:** the repository, document locations, roles, the cadence, empty labelled sections,
+  and the review cursor set to `46ca265`, so that T-03 covers exactly the 27 unreviewed commits.
+- **Discovered:** its model of the system, written as its own notes during onboarding (T-01).
+  The agent exists to give an independent view; seeding it with our summary would hand it our
+  blind spots, as same-author review did before the October 2026 audit. Writing the notes is
+  also how it learns the codebase.
+- **Imported, not seeded:** the register, built from `findings.md` in T-02, so every entry's
+  source is known.
+- **Empty:** lessons, filled from the user's feedback.
+
 **Growing out of phase 0.** If the mission proves useful, the next step is a brand-new
 installation for MAGI DEV, created the way the beta environment for another user was
 (`promote.sh --suffix`), with the mission moved there. That is when the separate-installation
