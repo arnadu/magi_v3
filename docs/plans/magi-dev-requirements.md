@@ -159,6 +159,26 @@ G on the MAGI DEV installation and arrives at A on the production installation.
 and many APIs already ship one. MCP standardises the tool interface but not custody, policy,
 approval or audit. G is the layer that wraps an MCP server so agents can use it safely.
 
+**Each provider has its own privilege model**, and a connector uses the narrowest, shortest-lived
+credential the provider supports. To be confirmed per provider; what each is understood to offer:
+
+| Provider | Scoped or short-lived credentials | Typical MAGI DEV uses |
+|---|---|---|
+| GitHub | An App per role; installation tokens last an hour; fine-grained repository permissions | Branches, pull requests, reviews, releases, issues |
+| MongoDB Atlas | Service accounts with OAuth tokens; project roles (read-only through owner); temporary database users with an expiry date; access lists per key | Backups and restores, usage and alerts, temporary read access for diagnosis, staging databases |
+| Fly.io | Tokens scoped to an app or an organization, with an expiry; deploy-only and read-only kinds | Staging installations, logs, capacity and quota checks; production changes go through A |
+| OpenRouter | A provisioning key that creates and manages API keys, each with its own credit limit | Keys with a budget per environment or test run; credit monitoring |
+| Firebase / Google Cloud | Service accounts with IAM roles; short-lived tokens by impersonation | User administration for the cockpit; staging projects |
+
+**Two routes into production.** Operations on the product (a mission's status, a resume, a
+rollout) go through the production Ops API (A), whose control plane already holds the provider
+credentials. A connector straight to a provider (G) is for what the product does not expose:
+infrastructure administration, backups and restores, quotas, costs, and building staging
+environments. The first route is preferred whenever both exist.
+
+**Inbound events.** Connectors can also receive: GitHub webhooks, Atlas alerts, Fly machine
+events. G verifies each event's signature and delivers it to the mission as a mailbox wake-up.
+
 **Credential storage** is where G meets Sprint 29's at-rest encryption: platform-held secrets
 need encryption the providers cannot read. In a mono-tenant installation this is the main
 remaining reason for that work.
@@ -238,10 +258,13 @@ chokepoints ask one decision service, and the policy lives in one place.
   - Amending a form voids any approval already given.
   - For the operator: a decisions inbox in the cockpit that renders the form, with approve and
     reject.
-- **Stage enforcement on work items.** Work items carry a life-cycle (proposed, approved for
-  design, designed, approved for build, in build, ready for review, merged, released,
-  reviewed). The objectives store refuses a transition that passes a gate without a bound
-  decision; it already validates writes.
+- **Stage enforcement on work items.** A gate can only check a state the platform holds, so the
+  work an agent is authorized to do must live in a platform store, not only in files or mental
+  maps. The objectives store's tasks are that store. The platform addition is small: a stage
+  field and transition checks, so the store refuses a transition that passes a gate without a
+  bound decision (it already validates ownership on writes). Which stages a mission uses and
+  what they mean (for MAGI DEV: proposed, approved for design, designed, approved for build, in
+  build, ready for review, merged, released, reviewed) is mission policy and skills.
 - **Guards at chokepoints.** Every gated tool asks the governance engine `authorize(agent,
   action, parameters)` before acting: merge, tag and release through the GitHub proxy; Ops API
   actions; external publication; spend above a threshold; writes to protected paths such as the
@@ -674,19 +697,27 @@ configure and operate.** A capability that needs the user to configure it by han
 
 ## Topics still to refine
 
-1. **The work item model.** The unit that ties intake, budget, gates, branch, pull request,
-   release and review together. The objectives store's tasks are the starting point.
-2. **Team design.** Roles, which agents are standing and which are started on demand, models,
-   and the cost envelope.
-3. **Coding capability.** Code navigation and editing tools for a large codebase, or a coding
-   agent run as a tool inside the sandbox.
-4. **Data migrations.** A migration framework and a gate for changes to stored data.
-5. **Incident management.** Severity levels, on-call, communication, post-mortems; the emergency
-   path through the gates.
-6. **Porting today's practices.** CLAUDE.md, the practices documents and the Claude Code
+**Settled without new platform capability** (2026-11-08):
+- **Coding agents are ordinary agents** with their own skills and focus, not a coding tool run
+  inside a sandbox.
+- **The work item model** reduces to the stage field and transition checks in the governance
+  engine (above); the rest is policy and skills.
+- **Data migrations** are a feature of the product MAGI DEV develops (a versioned migration
+  runner with a backup first, shipped in releases), not a capability MAGI DEV needs in order to
+  operate. A migration ships through the release gates; a restore goes through the Atlas
+  connector.
+- **Incident management** is process and skills on top of A, G, the governance engine's
+  emergency path, and out-of-band alerting (G-5).
+
+**Still open:**
+1. **One machine per mission.** A team of eight to twelve agents, several of them building and
+   testing a large TypeScript codebase at the same time, may not fit one machine even upgraded.
+   Options: larger default shapes, worker machines that run heavy jobs for a mission, or agents
+   spread over several machines.
+2. **Porting today's practices.** CLAUDE.md, the practices documents and the Claude Code
    commands (sprint-audit, security-review, sprint-close and others) become MAGI skills and
    policy.
-7. **Bootstrapping.** Deploying MAGI DEV's installation, its first policy, and importing the
+3. **Bootstrapping.** Deploying MAGI DEV's installation, its first policy, and importing the
    backlog from GitHub issues and the roadmap.
 
 ## Phasing
