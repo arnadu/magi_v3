@@ -761,6 +761,59 @@ the life-cycle before any agent writes code.
 through the existing confirmation cards); an ops monitor (needs A's read tier); community and
 triage (needs channel connectors, apart from reading GitHub issues).
 
+**Setting it up.** Nothing on the roadmap blocks phase 0; the time to start is the setup itself,
+about one to two days:
+
+| Step | Effort | Notes |
+|---|---|---|
+| Port `security-review`, `security-audit` and `threat-model` from `.claude/commands/` to MAGI skills | Half a day to a day | Reworded for a MAGI agent: its tools, its own clone, findings kept private, the report format below |
+| Team template `config/teams/magi-dev.yaml`: the copilot and the infosec specialist, prompts, schedules | A few hours | |
+| Launch from the cockpit, with a spend cap above the $25 default | Minutes | |
+| A first supervised run: clone, first diff review, first weekly sweep | Half a day of watching | Where the unknowns show up |
+
+Practical points, none of them roadmap work:
+- **"After each push" becomes "on a schedule".** Without GitHub webhooks (G) a push cannot wake
+  the mission. A scheduled turn every few hours, or daily, reviews the commits since the last
+  reviewed one; the agent records that commit in its files.
+- **Cloning from `Bash`** should work, since agents' subprocesses have no egress filter today
+  (H does not exist yet). Not yet confirmed on a live mission; the first run shows it.
+- **No `npm install`.** `npm audit` reads `package-lock.json`, so the clone stays small.
+- **The 28h items are not prerequisites.** Supervisor cycles (#95) cannot arise with two agents,
+  the soft-anomaly digest already prevents notice floods, and conversation growth (#54) matters
+  only after weeks of running.
+
+**Feedback to the development environment.** In phase 0 the user's development environment is
+a Claude Code session on the user's machine, with the repository. Findings reach it without any
+new platform capability:
+- **Reports are the hand-off.** Each review writes one Markdown report to the mission's files,
+  `shared/reports/security/YYYY-MM-DD-<kind>.md`, with:
+  - the commit range or the area reviewed;
+  - one entry per finding: the mission's own id (`MD-NNN`), severity, `file:line`, the evidence,
+    the suggested fix, and the entry formatted as a row of `docs/security/findings.md`, so it can
+    be pasted in as is;
+  - a closing **hand-off block**: a short, self-contained instruction for a coding assistant
+    ("Fix MD-012 and MD-014; for each, a test that fails before the fix") that the user copies
+    into Claude Code.
+
+  The mission keeps its own register (`shared/reports/security/register.md`) of every finding
+  and its status. Official `F-NNN` numbers are given in the repository when a finding is
+  accepted, so the two numbering schemes never collide.
+- **Getting a report into Claude Code**, simplest first:
+  1. **Copy and paste** the hand-off block from the Files panel.
+  2. **Download** the report from the Files panel and point Claude Code at the file.
+  3. **Claude Code fetches it**, through the control plane's mission-files route, when the user
+     asks ("read the latest MAGI DEV security report"). This needs a credential on the user's
+     machine: today `CONTROL_API_KEY`, which the Ops API design reduces to break-glass, so this
+     option is a convenience for phase 0, not the long-term path.
+- **Closing the loop.** The next scheduled review sees the fix in the new commits and marks the
+  finding *fixed, verified* in the register. The user can also tell the agent directly, by a
+  message from the cockpit ("MD-012 fixed in abc1234"), and it verifies at its next turn.
+- **Not through public issues.** The repository is public, so a security finding filed as an
+  issue would disclose it before it is fixed. Later, G's GitHub connector files findings as
+  private security advisories.
+- **Optional mail.** For high-severity findings, the agent also mails the user, so they appear
+  without opening the Files panel.
+
 **Growing out of phase 0.** If the mission proves useful, the next step is a brand-new
 installation for MAGI DEV, created the way the beta environment for another user was
 (`promote.sh --suffix`), with the mission moved there. That is when the separate-installation
@@ -774,6 +827,25 @@ design starts to apply, and phase 1 begins.
 | 1 | Community, planning, monitoring reports, on MAGI DEV's own installation | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier and push channel; today's confirmation cards for every external write |
 | 2 | Application support | A's action tier, E with the decisions inbox, F, H; the auditor agent |
 | 3 | Development and testing | B, C, D; SDLC skills; the evaluation harness (#45) |
+
+## Timeline
+
+Rough sizes in focused working days, at the project's recent pace: estimates, not commitments.
+
+| Phase | Platform work | Rough size |
+|---|---|---|
+| 0 | None: skills, a template, a launch | **1–2 days** |
+| 1 | 28h prerequisites #54, #95, G-5 (~1–1.5 weeks); G with a first GitHub connector (~1–2 weeks); A's read tier and push channel (~1 week); a new installation like beta (~1 day) | **~4–6 weeks** |
+| 2 | E, the governance engine (the largest, ~2–4 weeks); the decisions inbox (~1 week); F (~1 week); H (~1 week); the auditor agent | **~6–8 weeks** |
+| 3 | B: git proxy and GitHub Apps (~1–2 weeks); C, staging (~1 week); D, sandbox (~1–2 weeks); SDLC skills | **~4–5 weeks** |
+
+**Ways to go faster:**
+- **Run phase 0 now, alongside 28h's reliability work.** They do not compete: phase 0 is skills
+  and configuration, and its findings may feed 28h.
+- **Ship the decisions inbox early**, over today's pending actions: independent of the rest, it
+  closes #87 and replaces the chat cards.
+- **Sequence phase 1 as the next sprint after 28h's reliability items**, ahead of the feature
+  wishlist (interactive apps, illustrations, annotation). The user's call.
 
 ## Open questions
 
