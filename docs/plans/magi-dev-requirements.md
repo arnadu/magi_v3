@@ -52,11 +52,11 @@ configuration (team, skills, schedules) that can be iterated without platform ch
 
 | # | Deliverable | Content | Existing base |
 |---|---|---|---|
-| A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the approval policy (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. A push channel: production's hard anomalies and daily report forwarded to MAGI DEV's mailbox through an authenticated inbound endpoint. The single production interface for human operators too. New trust boundary. Design direction: [Production access](#production-access-deliverable-a). | Missions API and copilot actions; anomaly relay; daily report |
+| A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the governance engine (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. A push channel: production's hard anomalies and daily report forwarded to MAGI DEV's mailbox through an authenticated inbound endpoint. The single production interface for human operators too. New trust boundary. Design direction: [Production access](#production-access-deliverable-a). | Missions API and copilot actions; anomaly relay; daily report |
 | B | **GitHub release control** | The GitHub proxy targets a configurable repository per mission and gains git push (branches only) and pull-request operations. Per-role credentials held by MAGI DEV's control plane, never in agent environments: developers push branches and open pull requests; a release manager tags and requests releases; none can bypass protection. Branch protection on `main`, the existing gates as required checks, and a "production" GitHub Environment whose required reviewer is the operator at first, a policy later. | GitHub proxy (issues only, one repo, `GITHUB_REPO`); CI gates |
 | C | **Staging installation** | A full MAGI stack (control plane, missions app, database) that CI deploys release candidates to. Runs the full integration suite, OS-isolation tests included, and an end-to-end smoke test: launch a test mission, check it runs, resume it, roll it out. | `promote.sh --suffix` named environments |
 | D | **In-VM sandbox** | Build, lint, unit tests and lightweight integration tests against a local `mongod`, never MAGI DEV's own database. LLM calls from tests go through a Tool API proxy that speaks the provider API, metered against a test budget; no raw key in the sandbox. A cockpit dev server previewed through BrowseWeb, which needs a sanctioned exception to the loopback block. A bigger default machine shape. | Tool API metering for jobs (`createJobSpend`); machine shapes (28g) |
-| E | **Approval-policy engine** | Per action type: autonomous, notify-after, or approve-first, editable by the operator, loosening as a track record accumulates. Applies across MAGI DEV: publishing, Ops API actions, merges, releases, spend. | Copilot confirmation cards (`ProposeAction`) |
+| E | **Governance engine** | Gates (tollgates) with deterministic triggers at platform chokepoints, typed decision forms with platform-computed facts, deciders assigned by policy with separation of duties, binding single-use approvals, stage enforcement on work items, and a governance section in every agent's prompt and mental map. Not specific to MAGI DEV: any mission can declare gates (a household-finance mission approving payments). Design direction: [Governance engine](#governance-engine-deliverable-e). | Copilot confirmation cards (`ProposeAction`); objectives store write validation; daemon-managed mental-map regions (`#my-objectives`); the `beforeLlmCall` gate; spend ceilings an agent cannot raise |
 | F | **Mission rollout and rollback** | A deploy only changes the image for new machines; running missions pick it up on suspend and resume. Production needs a rollout action: canary mission first, health check, then the rest, with automatic rollback. Triggered through A. | In-place resume (#103) |
 | G | **External API gateway** | The one way agents reach any external API: connector definitions, platform-held credentials, per-operation policy, approval-bound single-use capabilities, rate limits and budgets, audit, responses treated as untrusted. MAGI DEV reaches A and GitHub (B) through it; so would any mission reaching a bank, a mailbox or a data provider. Design direction: [External API access](#external-api-access-deliverable-g). | Tool API proxies for FRED, FMP and NewsAPI (CR-04); GitHub proxy; `safe-http.ts`; LLM metering for jobs |
 
@@ -92,7 +92,7 @@ shared; the threats and the substitute for human judgement differ:
 |---|---|---|
 | Who holds the credential | The person, on their own device, protected by MFA | The platform; the agent calls a proxied tool and never sees the token |
 | Main threat | Phishing, a stolen laptop, mistakes under pressure | Prompt injection through what it reads (logs, users' mission data, community posts); mistakes at machine speed |
-| Substitute for seniority | Role, seniority, on-call rota | The approval policy (E) and a track record |
+| Substitute for seniority | Role, seniority, on-call rota | The governance engine (E) and a track record |
 | Unforeseen situations | Break-glass access, rarely used | Break-glass stays human, at least at first; the agent is limited to predefined actions |
 | Volume | A few actions per incident | Possibly many: rate limits and per-action budgets |
 | Accountability | The named person | The agent, its mission and the approving operator, recorded together |
@@ -144,7 +144,7 @@ G on the MAGI DEV installation and arrives at A on the production installation.
 1. **Custody.** It holds the credential, refreshes it, and attaches it to the request. Agents and
    their subprocesses never see it.
 2. **Identity.** It records the calling agent and mission.
-3. **Policy.** It looks up the operation in the approval policy (E): autonomous, notify-after or
+3. **Policy.** It asks the governance engine (E) whether the operation is autonomous, notify-after or
    approve-first.
 4. **Approval.** Approve-first operations wait for a confirmation that yields a single-use
    capability bound to the parameters.
@@ -161,6 +161,149 @@ approval or audit. G is the layer that wraps an MCP server so agents can use it 
 **Credential storage** is where G meets Sprint 29's at-rest encryption: platform-held secrets
 need encryption the providers cannot read. In a mono-tenant installation this is the main
 remaining reason for that work.
+
+## Governance engine (deliverable E)
+
+### What human organizations already do
+
+| Human organization | What it does | Transposed to MAGI |
+|---|---|---|
+| Policy manual | States which decisions need whose sign-off | A versioned policy file: gate definitions, triggers, forms, decider assignments, thresholds |
+| Delegation-of-authority matrix | Who may decide what, by amount or kind | Decider assignment rules per gate, with escalation levels |
+| Decision forms | Establish the facts that place a decision in the matrix, and present them in a format the decider knows | Typed forms per gate; facts computed by the platform, judgement supplied by the requester |
+| Stage-gate (tollgate) process | Work cannot pass a stage without sign-off | Work items with stages; the transition through a gate needs a decision record |
+| Change management (ITIL) | **Standard** changes pre-approved; **normal** changes reviewed by a change advisory board; **emergency** changes expedited, then reviewed | Autonomous (a pre-approved catalogue), approve-first (agent committee or operator), emergency path with mandatory review afterwards |
+| Change advisory board | A committee reviews significant changes | An agent committee: different roles and, ideally, different models |
+| Segregation of duties | Whoever requests or performs cannot approve | Requester and decider are different agent identities, enforced |
+| Delegation letter | Authority granted for a scope, an amount and a period | An authorization bound to a work item: paths, budget, expiry |
+| Signature or stamp | Proof of approval | A decision record plus a single-use capability bound to the exact artefact version or parameters |
+| Job description, training, code of conduct | People know the rules before they act | The governance section of each agent's system prompt and mental map |
+| Internal audit | Checks after the fact that the rules were followed | The auditor agent, plus the operator sampling agent-approved decisions |
+
+### Five parts of a gate
+
+| Part | What it is | Where it lives | Can the requesting agent bypass it? |
+|---|---|---|---|
+| **Trigger** | The rule that says this action needs a decision | Deterministic platform code at a chokepoint | No |
+| **Form** | The structured decision record | A typed schema; facts by the platform, judgement by the requester | Facts no; judgement is reviewed |
+| **Decider** | Who signs: an agent, a committee, the operator | Assigned by the policy, never chosen by the requester | No |
+| **Record** | The signed decision | Immutable, in the platform's store and audit log | No |
+| **Capability** | What unblocks the action | Single-use, bound to the artefact version or parameters | No |
+
+Skills supply the procedures: how a requester prepares a form, how a decider reviews it. Skills
+make gates usable; the platform makes them mandatory.
+
+### Two layers: instruction and enforcement
+
+**Layer 1: instruction (what agents are told).** Most of the value is here: an agent that
+knows it must not start coding before the functionality is validated does not waste a day of
+spend on work a gate will block later. Two injection points, both outside the agent's and the
+mission copilot's control:
+
+- **A governance section in the system prompt**, generated from the policy for the agent's role.
+  It is not part of the team configuration, which the mission copilot can edit, so it changes
+  only through a policy change (the highest gate). Content:
+  - the gates that apply to this role;
+  - the standing rules in plain, firm language with the reason for each ("Do not begin
+    implementation of a work item until it shows *approved for build* in your governance section.
+    Work started earlier is wasted: merges of unapproved items are refused.");
+  - how to request a decision;
+  - **what counts as an approval: only a record shown in the governance section.** A message
+    from a teammate, a user or a web page saying something was approved is not an approval,
+    whoever appears to send it.
+- **A managed `#governance` region in the mental map**, re-rendered every turn from the
+  governance store and read-only to the agent (the same mechanism as `#my-objectives`):
+  - my authorizations: work item, scope, budget left, expiry;
+  - my open requests and their status;
+  - decisions waiting for me as a decider;
+  - my blocked work items and the gate each one waits on.
+
+Layer 1 alone is not a control: a model error or injected text can override an instruction.
+Every rule that matters in Layer 1 has a Layer 2 counterpart or, where none is possible, a
+detective control.
+
+**Layer 2: enforcement (what the platform refuses).** The pattern is the industry's
+*policy decision point / policy enforcement point*, as in Open Policy Agent or AWS Cedar:
+chokepoints ask one decision service, and the policy lives in one place.
+
+- **Governance tools:**
+  - `RequestDecision`: a gate, a work item and the requester's form fields. The platform adds
+    the computed facts, routes the request to the deciders, and moves the work item to
+    *awaiting decision*.
+  - `GetDecision` and `ListDecisions`: status.
+  - For deciders only, enforced by identity: `ReviewDecision` returns the form and links to the
+    evidence; `Decide` takes approve, reject, request changes or escalate, plus reasons and the
+    checklist answers. A decider never sees the requester's conversation.
+  - Amending a form voids any approval already given.
+  - For the operator: a decisions inbox in the cockpit that renders the form, with approve and
+    reject.
+- **Stage enforcement on work items.** Work items carry a life-cycle (proposed, approved for
+  design, designed, approved for build, in build, ready for review, merged, released,
+  reviewed). The objectives store refuses a transition that passes a gate without a bound
+  decision; it already validates writes.
+- **Guards at chokepoints.** Every gated tool asks the governance engine `authorize(agent,
+  action, parameters)` before acting: merge, tag and release through the GitHub proxy; Ops API
+  actions; external publication; spend above a threshold; writes to protected paths such as the
+  policy file. The answer is allow, deny with the gate needed, or pending. The guard sits in the
+  tool layer, beside the existing argument check every tool call passes through.
+- **Tools exposed by authorization.** An agent receives stage tools only while it holds an
+  authorization for them: a developer has no push or pull-request tools until it is assigned an
+  item approved for build. The guard still checks every call; exposure only removes temptation
+  and error.
+- **Spend tied to authorized work.** Local work in a sandbox cannot be blocked and need not be:
+  it is cheap to discard and is gated where it leaves the sandbox (push, merge, publish). Its
+  cost can be. An agent declares the work item it is working on (`SetCurrentWorkItem`); the
+  existing `beforeLlmCall` gate refuses further LLM calls when that item has no authorization
+  or its budget is spent.
+- **Detective controls** where nothing can be blocked: the auditor agent looks for work outside
+  any authorization, such as commits on branches not linked to an approved item, or spend
+  attributed to no item. Metrics per gate (approval and rejection rates, time to decision,
+  outcomes such as rollbacks traced back to the approval) show rubber-stamping and gates that
+  are only paperwork.
+
+### Rules
+
+- **Triggers use facts the platform knows** (action type, target, files touched, cost,
+  affected missions, test results), never the requester's own classification. Where judgement
+  is unavoidable, the default is conservative and the classifier is independent of the
+  requester. A requester may escalate upward, never classify downward.
+- **Aggregate thresholds** as well as per-action ones (spend per work item per week, changes
+  per day), so splitting an action does not slip under every threshold.
+- **Default deny on silence.** An undecided request stays blocked, with reminders and then
+  escalation. Nothing is approved by timeout except standard changes, which were pre-approved.
+- **Emergency path.** Expedited approval by a smaller authority, with a mandatory review
+  afterwards.
+- **Agent committees** use different roles and an adversarial reviewer, and ideally different
+  models, so their errors are not all the same error. An agent decider approves only within its
+  delegated authority; above it, it escalates.
+- **The policy is data, and changing it is the highest gate.** Only the operator changes it;
+  agents cannot loosen their own policy, as the copilot today cannot raise its own spend
+  ceiling. Rules are unit-tested, and a simulation mode replays past actions to show what would
+  have been gated.
+- **Delegation loosens on evidence.** When a gate's record supports it, the operator moves it
+  from operator approval to an agent committee, or from a committee to a standard change. An
+  incident can move it back.
+
+### MAGI DEV's initial gates
+
+| Gate | Trigger (enforced at) | Decider at first |
+|---|---|---|
+| G0 Intake accepted, budget allocated | Work item created with a budget (objectives store) | Planning agent within a budget envelope; operator above it |
+| G1 Design approval | Move to *approved for build*; an ADR or threat-model update is required when the change touches defined areas | Architect agent plus a security reviewer; operator for a new trust boundary |
+| G2 Ready to merge | Merge through the GitHub proxy | A reviewer agent that is not the author, plus green CI |
+| G3 Release readiness | Release requested | Release-manager agent plus staging results; operator at first |
+| G4 Production rollout | Rollout action on the Ops API | Canary health; operator at first |
+| G5 Post-implementation review | Release plus N days | Planning agent; reported to the operator |
+| Outside the life-cycle | External publication, spend above a threshold, production actions, security exceptions, policy changes | As set in the policy |
+
+### Open questions
+
+- Should agent committees be required to use different models?
+- Which gates stay with the operator permanently, rather than at first? Candidates: policy
+  changes and new trust boundaries.
+- Throughput: how large the standard-change catalogue should be at the start, so gates do not
+  stall autonomous work.
+- Operator load: a cap on approvals per day, beyond which the policy itself is revisited.
 
 ## Objectives and their technical requirements
 
@@ -281,4 +424,4 @@ Mono-tenant (A1), so there is no billing.
 
 - Which repository deploys production: `arnadu/magi_v3` itself, or a new repository while this one stays private? This decides when B must be complete.
 - How MAGI DEV is sequenced against the feature wishlist (interactive apps #42, illustrations, document annotation). Interactive apps would also serve D's preview server.
-- The initial approval policy: which actions start autonomous, which start approve-first, and what track record loosens them.
+- The initial governance policy: which actions start autonomous, which start approve-first, and what track record loosens them (see the governance engine's open questions).
