@@ -341,6 +341,131 @@ Governance runs where the action happens, not on the control plane:
 - **Platform-level decisions** (launching a mission, changing a spend ceiling) are the exception
   and run on the control plane, as the control-plane copilot's actions do today.
 
+### Policy language: Cedar (decided 2026-11-09)
+
+The policy layer of both the governance engine (E) and the gateway (G) is written in **Cedar**;
+a thin process layer of ordinary code runs around it. Connectors stay YAML: they describe
+providers, they are not policy.
+
+**What Cedar is.** An open-source authorization language (Apache 2.0) released by AWS in 2023, the
+engine behind Amazon Verified Permissions and AgentCore's checks on agent tool calls. It answers
+one question: may this principal take this action on this resource, in this context? The core is
+Rust; `cedar-wasm` runs it in Node.
+- Policies are `permit` or `forbid`, over a principal, an action and a resource, with `when` and
+  `unless` conditions on their attributes and on a request context.
+- **Default deny**, and **`forbid` always overrides `permit`**.
+- Entities have types, attributes and hierarchies (an agent in a role, an app in an
+  environment). A **schema** declares them; policies are type-checked before they are accepted.
+- **Annotations** (`@level("approve-first")`) are ignored by the decision but reported with the
+  policies that produced it, so the application can read them.
+- Evaluation is deterministic and well under a millisecond: no loops, no side effects.
+- **Analysis.** A symbolic compiler, SymCC, turns policies into logic a solver checks; its
+  correctness is formally verified in Lean. It answers: are two policy sets equivalent; does a
+  new set allow anything the old did not (with a concrete example request); does a set always
+  deny.
+
+**What Cedar carries:**
+
+| Element | In Cedar |
+|---|---|
+| Gateway grants (agent, operation, target) | `permit` over agents or roles, actions (connector operations), resources (apps, repositories, missions) |
+| Hard rules ("production only through the Ops API") | `forbid` policies no grant can override |
+| Governance levels | `@level(...)` annotations; the engine turns allow + approve-first + no decision into *pending* |
+| Gate triggers | `forbid ... unless` a decision of that gate exists, annotated `@gate("G1")` so the engine knows which gate to open on refusal |
+| Who may decide, delegated authority | `permit` on a `decide` action over decision requests, with conditions on the request's attributes |
+| Separation of duties, recusal | `forbid` when the decider is the requester or among the artefact's authors |
+| Committees | Entities: membership as hierarchy, attributes for quorum, decision rule, chair and time allowed |
+| Stage gates | The objectives store asks Cedar on each stage change |
+| Platform invariants | `forbid` policies, **proved** on every policy change by analysis (for example: the new set never lets anyone decide their own request) |
+| Rules for policy changes | An action `policy:change`, with the analysis result in the context |
+| Platform-computed facts | The request context: spend, approval ids, test results, area tags |
+
+```cedar
+// Everyday reads on staging run on their own.
+@level("autonomous")
+permit (
+  principal == Agent::"sre",
+  action in [Action::"fly:list-machines", Action::"fly:get-machine"],
+  resource
+) when { resource.app like "magi-staging-*" };
+
+// Production is never changed through the Fly connector.
+forbid (principal, action in Action::"fly:write", resource)
+  when { resource.environment == "production" };
+
+// G1: a work item may not move to "approved for build" without a G1 decision for it.
+@gate("G1")
+forbid (principal, action == Action::"work:move-to", resource)
+  when { resource.toStage == "approved-for-build" }
+  unless { context has decision && context.decision.gate == "G1"
+           && context.decision.workItem == resource.id };
+
+// The design committee decides G1, except for changes that create a new trust boundary.
+permit (principal in Committee::"design", action == Action::"decide", resource is DecisionRequest)
+  when { resource.gate == "G1" && !resource.createsTrustBoundary };
+
+// The user can decide anything.
+permit (principal == User::"owner", action == Action::"decide", resource is DecisionRequest);
+
+// Invariant: nobody decides their own request, or one about an artefact they wrote.
+forbid (principal, action == Action::"decide", resource is DecisionRequest)
+  when { principal == resource.requester || resource.authors.contains(principal) };
+```
+
+**Classifying policy changes automatically.** "Who can change what" sends loosening changes to
+the user. With analysis, the platform checks whether a proposed policy set allows any request the
+current one does not: if it does, the change goes to the user's inbox with a concrete example of
+what would newly be allowed; if not, it is an everyday change. Invariant 3 (the copilot cannot
+loosen its own gates alone) becomes something the platform proves, not estimates.
+
+**What stays in code: the process.** Cedar answers yes or no and keeps no state. A thin workflow
+layer handles:
+- decision requests: creation, routing to the deciders Cedar allows, amendment (which voids
+  votes);
+- committee procedure: independent written votes, quorum and decision rule (read from the
+  committee's attributes), bounded deliberation, time limits, reminders, escalation on silence;
+- records and capabilities: storing decisions, issuing the single-use authorization, voiding it
+  when the artefact changes;
+- **obligations** after an allow (notify the user, schedule a post-implementation review),
+  written as annotations (`@notify("user")`, `@postReview("30d")`) because Cedar has no such
+  notion;
+- counts and thresholds over time (spend this week, approvals asked today), computed and passed
+  in the context;
+- forms, whose structure is a schema (zod, like today's `ProposeAction` payloads).
+
+**Facts become tags first.** Cedar has no "any element of this list matches this pattern", so the
+platform turns raw facts into tags: the files a change touches become `context.areas`, such as
+`["auth", "egress"]`, and a policy tests `context.areas.contains("auth")`.
+
+**A mission's governance policy is therefore:**
+1. Cedar policies: grants, forbids, levels, triggers, deciders, invariants, stage gates;
+2. Cedar entities: agents, roles, committees, environments, apps, repositories, generated from
+   the team config and the stores at evaluation time, so the team config stays their one source;
+3. form schemas, one per gate.
+
+One engine is used in four places: the daemon's governance check, the gateway, the broker's
+second check, and the objectives store's stage changes. One schema covers them all, and analysis
+covers every policy change, the governance rules included.
+
+**Alternatives considered.** Open Policy Agent (Rego) is more general and widely used, but much
+harder to analyze: proving that a change loosens nothing is impractical. A custom YAML evaluator
+is simple at first, but would reinvent evaluation, type checking and analysis, without the proofs.
+
+**To confirm when building:**
+- whether SymCC is reachable from Node or needs a small command-line step, run at policy-change
+  time (rare, not time-critical);
+- the current Cedar version's features: datetime and duration types, `like` patterns,
+  annotations;
+- that LLM-written Cedar is reliable enough with the schema and analysis as checks (a 2026
+  preprint, AutoCedar, uses exactly this loop of an LLM writing Cedar checked by the verifier).
+
+Sources: [Cedar paper](https://arxiv.org/pdf/2403.04651);
+[SymCC crate](https://docs.rs/cedar-policy-symcc);
+[SymCC in the Cedar specification](https://cedar-policy.github.io/cedar-spec/docs/Cedar/SymCC.html);
+[Cedar repository overview](https://docsearch.algolia.com/mcp/docs/repo/cedar-policy/cedar);
+[overview of the Cedar paper](https://hn.jakechampion.name/reader/http://muratbuffalo.blogspot.com/2025/03/cedar-new-language-for-expressive-fast.html);
+[AutoCedar](https://arxiv.org/pdf/2607.03656).
+
 ### Five parts of a gate
 
 | Part | What it is | Where it lives | Can the requesting agent bypass it? |
@@ -1331,8 +1456,8 @@ and product claims are not independently verified.
    rejection, a challenge on high-risk approvals.
 6. **Sender-constrained tokens (DPoP)** where a provider supports them, so a stolen short-lived
    token is useless without the gateway's key.
-7. **Cedar as the policy language** for grants, instead of evaluating custom YAML: open source,
-   designed for this, analyzable, and already used for agent tool calls by AgentCore.
+7. **Cedar as the policy language**: adopted for both G and E; see
+   [Policy language: Cedar](#policy-language-cedar-decided-2026-11-09).
 8. **Justification text never decides** (CB4A): only computed facts and the policy decide;
    the requester's text is kept for the record. MAGI's forms already follow this.
 
@@ -1418,6 +1543,10 @@ operations:
 ```
 
 ### 2. Policy (data, part of the mission policy)
+
+Shown as YAML for readability; the policy is written in Cedar (see
+[Policy language: Cedar](#policy-language-cedar-decided-2026-11-09)), where these grants become
+`permit` policies with `@level` annotations.
 
 ```yaml
 grants:
