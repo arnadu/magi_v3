@@ -673,6 +673,49 @@ becomes a pointer to the inbox, with no buttons. The atomic claim and the re-val
 execution carry over as the engine's single-use capability. The other items above become
 policy entries the same way.
 
+### Accountability through the agent hierarchy (decided 2026-11-09)
+
+A human sponsor per agent, as in Microsoft Entra Agent ID, does not fit a platform with many
+agents and one user. Accountability follows the hierarchy MAGI already has: every agent has a
+`supervisor` in the team config, and the top of the chain reports to the user. **Each supervisor
+is accountable for its reports; the user is accountable for the top of the chain only.**
+
+**What a supervisor reviews, on a schedule:**
+- **Access**: each report's grants, re-certified or narrowed;
+- **Results**: each report's KPIs and open tasks;
+- **Spend**: each report's cost against its budget;
+- **Decisions**: what its reports decided or escalated, sampled.
+
+**Four mechanisms, from instruction to enforcement:**
+1. **A supervisory section in the system prompt**, generated from the policy for agents with
+   reports (as the governance section is): what the agent is accountable for, how to review,
+   when to escalate. It changes only through a policy change.
+2. **A managed `#supervision` region in the mental map**, re-rendered every turn and read-only to
+   the agent (the mechanism of `#my-objectives`): its reports; each one's grants with their
+   expiry and last review date; KPIs and spend against budget; reviews due or overdue; open
+   escalations.
+3. **Scheduled nudges.** The platform posts a review request to each supervisor on the review
+   cadence (monthly for access, weekly for results and spend, as the policy sets), with the facts
+   attached: which grants were used in the period and which were not, spend, KPI movement. The
+   scheduler exists; the request is a governance decision request with a form, so the review
+   follows the gate machinery.
+4. **Expiry as the backstop.** Grants carry an expiry date. A grant not re-certified by its
+   holder's supervisor before it expires stops working: a Cedar `forbid` on expired grants, so a
+   missed review narrows access instead of leaving it to accumulate. Re-certifying is a decision
+   like any other: a supervisor cannot re-certify its own grants (those go to its own
+   supervisor), and the top of the chain goes to the user.
+
+**Making reviews real, not rubber stamps:**
+- **Facts computed by the platform**: for each grant, how often it was used in the period, from
+  the gateway's audit log. A grant unused for the whole period is proposed for removal by
+  default; keeping it needs a reason.
+- **Escalation of overdue reviews**: to the supervisor's supervisor, and finally to the user.
+- **Sampling from outside the chain**: the auditor agent, and the user's weekly report, which
+  includes the state of reviews (done, overdue, grants removed).
+
+**What the user sees**: the top of the chain's reviews, decisions escalated to them, and a weekly
+summary of the rest. Nothing per agent unless something is escalated.
+
 ### Who can change what
 
 Nearly everything is data the mission copilot (or a manager agent) maintains; the default policy
@@ -1493,7 +1536,7 @@ and product claims are not independently verified.
 | Egress | A proxy agents cannot bypass, restricted by method, path, repository and branch | Sandbox allow-lists by host | Finer than host level, which closes the "allowed destination" exfiltration channel |
 | Objectives and KPIs | Objectives tree with owners, KPIs from several sources, tasks, budgets with attributed cost, re-rendered into each agent's working memory | Paperclip (goals, tasks, budgets); OKR-Agent (planning-time OKRs) | KPIs and cost attribution to tasks; persistent, not planning-time |
 | Read-only working memory | Immutable mental-map sections and daemon-managed regions | Letta's read-only blocks | Equivalent idea; MAGI's protection is per element (id addressing) |
-| Agent identity and accountability | One OS user per agent; the user as owner | Entra's sponsors and access reviews | Sponsors and periodic re-certification are not yet in MAGI's design |
+| Agent identity and accountability | One OS user per agent; each supervisor accountable for its reports, the user for the top of the chain; grants expire unless re-certified | Entra's human sponsors and access reviews | Accountability follows the agent hierarchy rather than a human per agent; expiry makes a missed review narrow access |
 
 **Ideas to adopt:**
 1. **Separate the policy decision from credential delivery** (CB4A): the broker mints only
@@ -1503,8 +1546,8 @@ and product claims are not independently verified.
    immediate alert and stops the session.
 3. **An audit log in its own trust boundary**: append-only, hash-chained, not writable by the
    gateway or the broker; no credential is issued while the audit pipeline is down.
-4. **A sponsor per agent and periodic access reviews**: every grant expires or is re-certified
-   on a schedule, so access does not accumulate.
+4. **Periodic access reviews**: adopted through the agent hierarchy rather than a human sponsor per
+   agent; see [Accountability through the agent hierarchy](#accountability-through-the-agent-hierarchy-decided-2026-11-09).
 5. **Approval-fatigue countermeasures**: rate limits on requests to the user, cool-downs after a
    rejection, a challenge on high-risk approvals.
 6. **Sender-constrained tokens (DPoP)** where a provider supports them, so a stolen short-lived
