@@ -161,16 +161,44 @@ stay in one place:
   and the cockpit is where the user decides. Governance itself runs on the mission machine (see
   the governance engine's placement below).
 
+**Few tools, data for the rest, skills for the know-how.** As a human engineer works with a few
+general instruments (`curl`, a CLI), the provider's documentation and the team's runbooks, and is
+limited by credentials and rules rather than by which buttons exist:
+
+| Layer | What it is | How many |
+|---|---|---|
+| **Generic tools** (platform code) | One per kind of access: `ApiCall(connector, method, path, query, body)` for REST APIs; git through the git proxy; possibly a CLI route later | Two or three in total |
+| **Connectors** (data) | Per provider: base URL, authentication, egress host, and an **operation catalogue** of method and path patterns, each marked read or action. Imported from the provider's OpenAPI description where one exists (GitHub, Fly's Machines API, the Atlas Admin API, OpenRouter) | One per provider |
+| **Policy** (data) | Which agent may use which catalogue entries, on which targets, at which governance level, within which limits | Rows in the mission policy |
+| **Skills** (know-how) | Which endpoints serve which task, worked examples, quirks, runbooks | As many as the work needs |
+| **Credential adapters** in the broker (platform code) | How to mint a short-lived credential for each provider | About five |
+
+Enforcement does not depend on the number of tools: the gateway matches every call against the
+connector's catalogue and the policy, and refuses anything that matches no entry, so the generic
+tool is not free-form where it matters. Request bodies are checked against the OpenAPI schemas.
+Adding a provider means a connector, an adapter and skills; adding a task on an existing provider
+is usually a skill, plus a policy line if it needs an operation not yet granted. Pseudo-code:
+[Appendix: the gateway in pseudo-code](#appendix-the-gateway-in-pseudo-code).
+
+**Real CLIs, where possible.** An agent can also use `flyctl`, the `atlas` CLI or `gh` as a human
+would, with the CLI pointed at the gateway as its API endpoint and a placeholder token; the gateway
+checks each request, swaps in the real credential and forwards it, as the git proxy does. This
+needs each CLI to accept another API address over plain HTTP on the machine (otherwise the gateway
+would have to intercept encrypted traffic), so it is checked per tool; `ApiCall` is the universal
+route. A provider's MCP server can sit behind the gateway in the same way.
+
 **A connector** is declared in configuration, never opened by an agent at run time:
 - the endpoint and the egress rules (`safe-http.ts` pinning; no redirects outside the host);
-- **an operation catalog** with typed parameters, each operation marked read or action. The
-  agent's tools are generated from it. Free-form requests are not offered;
-- **the credential type**:
+- **the operation catalogue**: method and path patterns, each marked read or action, with body
+  schemas where available;
+- **the credential**: which broker adapter mints it, and which path parameter it is narrowed to;
+  the adapter handles the provider's credential type:
   - a static API key;
   - OAuth 2.0 with the user's consent (mail, calendar, a bank);
   - workload identity (OIDC);
-  - a token minted per session;
-- which agents or roles may use which operations.
+  - a token minted per session.
+
+Which agents may use which operations is in the mission policy, not in the connector.
 
 **The gateway does, for every call:**
 1. **Custody.** It holds a short-lived credential from the broker, renews it, and attaches it to
@@ -1202,3 +1230,264 @@ Rough sizes in focused working days, at the project's recent pace: estimates, no
 - Which repository deploys production: `arnadu/magi_v3` itself, or a new repository while this one stays private? This decides when B must be complete.
 - How MAGI DEV is sequenced against the feature wishlist (interactive apps #42, illustrations, document annotation). Interactive apps would also serve D's preview server.
 - The initial governance policy: which actions start autonomous, which start approve-first, and what track record loosens them (see the governance engine's open questions).
+
+## Appendix: the gateway in pseudo-code
+
+Illustrative TypeScript-like pseudo-code for G: what the platform code does and what is data.
+Provider endpoints are as currently understood and are to be confirmed when built.
+
+### 1. Connectors (data)
+
+```yaml
+# connectors/fly.yaml — the Fly Machines API, for MAGI DEV's own staging installations
+id: fly
+baseUrl: https://api.machines.dev/v1
+egress: [api.machines.dev]
+credential: { adapter: fly, narrowTo: [app] }   # the token is restricted to the app in the path
+operations:
+  - { id: list-machines,   method: GET,  path: /apps/{app}/machines,                   class: read }
+  - { id: get-machine,     method: GET,  path: /apps/{app}/machines/{machine},         class: read }
+  - { id: restart-machine, method: POST, path: /apps/{app}/machines/{machine}/restart, class: action }
+  - { id: stop-machine,    method: POST, path: /apps/{app}/machines/{machine}/stop,    class: action }
+```
+
+```yaml
+# connectors/github.yaml — REST API; git itself goes through the git proxy
+id: github
+baseUrl: https://api.github.com
+egress: [api.github.com]
+credential: { adapter: github-app, narrowTo: [owner, repo] }   # App chosen by the caller's role
+operations:
+  - { id: list-issues,       method: GET,  path: /repos/{owner}/{repo}/issues,                   class: read }
+  - { id: get-check-runs,    method: GET,  path: /repos/{owner}/{repo}/commits/{ref}/check-runs, class: read }
+  - { id: create-issue,      method: POST, path: /repos/{owner}/{repo}/issues,                   class: action }
+  - { id: open-pull-request, method: POST, path: /repos/{owner}/{repo}/pulls,                    class: action }
+  - { id: review-pull,       method: POST, path: /repos/{owner}/{repo}/pulls/{number}/reviews,   class: action }
+  - { id: draft-advisory,    method: POST, path: /repos/{owner}/{repo}/security-advisories,      class: action }
+```
+
+```yaml
+# connectors/atlas.yaml — the Atlas Admin API
+id: atlas
+baseUrl: https://cloud.mongodb.com/api/atlas/v2
+egress: [cloud.mongodb.com]
+headers: { Accept: application/vnd.atlas.2023-01-01+json }
+credential: { adapter: atlas-service-account, narrowTo: [group] }
+operations:
+  - { id: list-snapshots, method: GET,  path: /groups/{group}/clusters/{cluster}/backup/snapshots, class: read }
+  - { id: list-alerts,    method: GET,  path: /groups/{group}/alerts,                              class: read }
+  - { id: restore-job,    method: POST, path: /groups/{group}/clusters/{cluster}/backup/restoreJobs, class: action }
+```
+
+```yaml
+# connectors/magi-ops.yaml — production's Ops API (deliverable A)
+id: magi-ops
+baseUrl: https://magi-control.fly.dev/ops/v1
+egress: [magi-control.fly.dev]
+credential: { adapter: magi-ops, narrowTo: [] }
+operations:
+  - { id: mission-status, method: GET,  path: /missions/{mission},        class: read }
+  - { id: anomalies,      method: GET,  path: /anomalies,                 class: read }
+  - { id: daily-report,   method: GET,  path: /reports/daily/{date},      class: read }
+  - { id: resume-mission, method: POST, path: /missions/{mission}/resume, class: action }
+```
+
+### 2. Policy (data, part of the mission policy)
+
+```yaml
+grants:
+  - agent: appsec
+    connector: github
+    operations: [list-issues, get-check-runs, draft-advisory]
+    where: { owner: arnadu, repo: magi_v3 }
+    level: { list-issues: autonomous, get-check-runs: autonomous, draft-advisory: approve-first }
+  - agent: sre
+    connector: fly
+    operations: [list-machines, get-machine, restart-machine]
+    where: { app: "magi-staging-*" }        # production apps are never granted on this connector
+    level: { list-machines: autonomous, get-machine: autonomous, restart-machine: notify-after }
+  - agent: sre
+    connector: magi-ops
+    operations: [mission-status, anomalies, daily-report, resume-mission]
+    level: { resume-mission: approve-first }
+limits:
+  - { connector: fly,    perAgentPerHour: 120 }
+  - { connector: github, perAgentPerHour: 300 }
+```
+
+### 3. The generic tool (agent-facing)
+
+```ts
+// One tool for every REST connector. Its execute() runs in the daemon, which attaches the
+// caller's identity: the agent cannot claim to be someone else.
+const ApiCall = tool({
+  name: "ApiCall",
+  description:
+    "Call an external API through the mission's gateway. Credentials are added for you; you " +
+    "never see or handle them. Only operations granted to you in the mission policy succeed; " +
+    "your skills say which connector and path to use for a task.",
+  parameters: {
+    connector: string,                          // "fly", "github", "atlas", "magi-ops", …
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+    path: string,                               // relative to the connector's base URL
+    query?: Record<string, string>,
+    body?: unknown,
+  },
+  async execute(args, ctx) {
+    // Local socket to the gateway, which runs under its own OS user.
+    return gatewaySocket.send({ ...args, caller: { agent: ctx.agentId, mission: ctx.missionId } });
+  },
+});
+```
+
+### 4. The gateway (mission machine, own OS identity)
+
+```ts
+async function handle(req: ApiRequest): Promise<ToolResult> {
+  const conn = connectors.get(req.connector);
+  if (!conn) return refuse(`unknown connector "${req.connector}"`);
+
+  // Match against the catalogue: method + path pattern → operation and its parameters.
+  const match = conn.match(req.method, req.path);   // e.g. { op: "restart-machine", params: { app, machine } }
+  if (!match) return refuse(`no ${conn.id} operation matches ${req.method} ${req.path}`);
+  if (!conn.validBody(match.op, req.body)) return refuse("body does not match the operation's schema");
+
+  // Governance check, in the daemon (E): grants, targets, level, limits, approvals.
+  const d = await governance.authorize({ caller: req.caller, connector: conn.id, op: match.op, params: match.params });
+  if (d.kind === "deny")    return refuse(d.reason);                  // e.g. "fly: app magi-missions is not granted"
+  if (d.kind === "pending") return waiting(d.requestId);              // the user decides in the inbox; the agent resumes later
+
+  // A credential narrowed to this target and this kind of access.
+  const scope = { ...pick(match.params, conn.credential.narrowTo), access: conn.classOf(match.op) };
+  const cred = await credentials.get(conn.credential.adapter, scope, req.caller);
+
+  const res = await safeHttp(conn.baseUrl + req.path, {
+    method: req.method, query: req.query, body: req.body,
+    headers: { ...conn.headers, Authorization: `Bearer ${cred.token}` },
+    allowedHosts: conn.egress, timeoutMs: 30_000, maxBytes: 2_000_000,
+  });
+
+  await audit.write({ caller: req.caller, connector: conn.id, op: match.op, params: match.params,
+                      status: res.status, bytes: res.bytes, decision: d.id });
+  if (d.level === "notify-after") await notifyUser(req.caller, conn.id, match.op, match.params, res.status);
+  return untrusted(res.body);                                         // wrapped, size-capped, never the credential
+}
+
+// Short-lived credentials, cached in the gateway's memory only.
+async function get(adapter: string, scope: Scope, caller: Caller): Promise<Credential> {
+  const cached = cache.find(adapter, (c) => covers(c.scope, scope) && c.expiresAt > now() + 60_000);
+  if (cached) return cached;
+  const fresh = await broker.issue({ adapter, scope, mission: caller.mission, agent: caller.agent });
+  cache.put(fresh);
+  return fresh;
+}
+```
+
+### 5. The git proxy (mission machine, inside the gateway)
+
+```ts
+// The agent's clone has a remote like http://127.0.0.1:7410/magi_v3.git, with no token.
+async function onPush(caller: Caller, repo: string, updates: RefUpdate[]) {
+  for (const u of updates) {
+    const d = await governance.authorize({ caller, connector: "github", op: "push-branch",
+                                           params: { repo, branch: u.ref } });   // e.g. only wi/<item>-* for approved items
+    if (d.kind !== "allow") return rejectPush(u.ref, d.reason);                  // git shows the reason to the agent
+  }
+  const cred = await credentials.get("github-app", { repo, access: "write" }, caller);
+  await forwardPush(`https://github.com/${repo}.git`, updates, cred);            // token added here, never in the clone
+  await audit.write({ caller, connector: "github", op: "push-branch", params: { repo, refs: updates.map((u) => u.ref) } });
+}
+```
+
+### 6. The broker (control plane)
+
+```ts
+// POST /broker/credentials — called only by mission gateways, each authenticated by its
+// machine identity (Fly OIDC, to be confirmed) or a per-mission token.
+async function issue(req: { adapter: string; scope: Scope; mission: string; agent: string }) {
+  // Second, independent check: the mission's grants are read from the database, not from the request.
+  const grants = await policy.grantsFor(req.mission, req.agent);
+  if (!grants.allowsScope(req.adapter, req.scope)) return refuse("scope not granted to this mission");
+
+  const root = rootSecrets[req.adapter];             // Fly secrets today; a managed store later
+  const cred = await adapters[req.adapter].mint(root, req.scope, ttlFor(req.adapter, req.scope));
+  await audit.write({ mission: req.mission, agent: req.agent, adapter: req.adapter, scope: req.scope,
+                      expiresAt: cred.expiresAt });
+  return cred;                                        // { token, scope, expiresAt }; root never leaves
+}
+```
+
+### 7. Credential adapters (control plane, one per provider)
+
+```ts
+const adapters = {
+  // Fly tokens are macaroons: the holder of a broad token can add restrictions without a network call.
+  // To confirm: which restrictions Fly honours; fallback: create an app-scoped token with an expiry via Fly's API.
+  fly: { mint: (root, { app, access }, ttl) =>
+    attenuate(root, [appIs(app), access === "read" ? readOnly() : machinesOnly(), expiresIn(ttl)]) },
+
+  // A JWT signed with the App's private key proves the App's identity; GitHub returns a 1-hour token
+  // narrowed to the repositories and permissions asked for.
+  "github-app": { mint: async (appKeys, { owner, repo, access, role }) => {
+    const jwt = signJwt({ iss: appKeys[role].appId, exp: now() + 540 }, appKeys[role].privateKey);
+    const t = await post(`https://api.github.com/app/installations/${appKeys[role].installationId}/access_tokens`,
+      { repositories: [repo], permissions: access === "read" ? { contents: "read", issues: "read" }
+                                                             : { contents: "write", pull_requests: "write" } },
+      { Authorization: `Bearer ${jwt}` });
+    return { token: t.token, expiresAt: t.expires_at };
+  } },
+
+  // OAuth client credentials for an Atlas service account: a token valid about an hour.
+  "atlas-service-account": { mint: async (sa) => {
+    const t = await post("https://cloud.mongodb.com/api/oauth/token",
+      form({ grant_type: "client_credentials" }), basicAuth(sa.clientId, sa.clientSecret));
+    return { token: t.access_token, expiresAt: now() + t.expires_in * 1000 };
+  } },
+
+  // OpenRouter: a provisioning key creates a key with its own credit limit; deleted when its time is up.
+  openrouter: { mint: async (provisioningKey, { purpose, limitUsd }, ttl) => {
+    const k = await post("https://openrouter.ai/api/v1/keys", { name: `magi-dev ${purpose}`, limit: limitUsd },
+      { Authorization: `Bearer ${provisioningKey}` });
+    scheduleDelete(k.hash, now() + ttl);
+    return { token: k.key, expiresAt: now() + ttl };
+  } },
+
+  // Production's Ops API: exchange MAGI DEV's client credential at production's token endpoint.
+  "magi-ops": { mint: async (client) => {
+    const t = await post("https://magi-control.fly.dev/ops/v1/token",
+      form({ grant_type: "client_credentials" }), basicAuth(client.id, client.secret));
+    return { token: t.access_token, expiresAt: now() + t.expires_in * 1000 };
+  } },
+};
+```
+
+### 8. A skill that uses it
+
+```markdown
+---
+name: staging-machines
+description: Inspect and restart the machines of MAGI DEV's staging installations on Fly.io.
+---
+# Staging machines
+
+## Find a stuck machine
+ApiCall({ connector: "fly", method: "GET", path: "/apps/magi-staging-missions/machines" })
+Look at each machine's `state`. A machine in `replacing` or `starting` for more than ten minutes is
+stuck; check its `events` for the last exit.
+
+## Restart it
+ApiCall({ connector: "fly", method: "POST", path: "/apps/magi-staging-missions/machines/<id>/restart" })
+The user is notified afterwards. Production machines are never touched through the `fly`
+connector: a production mission is resumed through `magi-ops` (`POST /missions/<id>/resume`),
+which asks the user first.
+```
+
+### What each piece is
+
+| Piece | Kind | Where |
+|---|---|---|
+| `ApiCall`, the git proxy, the gateway's matching, governance call, cache, audit | Platform code, written once | Mission machine |
+| The broker and about five adapters | Platform code, one adapter per provider | Control plane |
+| Connectors | Data, imported from OpenAPI where possible | Mission configuration |
+| Grants and limits | Data, under the governance engine | Mission policy |
+| How to do a task | Skills | Mission skills |
