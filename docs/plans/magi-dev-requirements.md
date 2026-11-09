@@ -181,9 +181,72 @@ environments. The first route is preferred whenever both exist.
 **Inbound events.** Connectors can also receive: GitHub webhooks, Atlas alerts, Fly machine
 events. G verifies each event's signature and delivers it to the mission as a mailbox wake-up.
 
-**Credential storage** is where G meets Sprint 29's at-rest encryption: platform-held secrets
-need encryption the providers cannot read. In a mono-tenant installation this is the main
-remaining reason for that work.
+### Secrets management
+
+**How organizations do it with human staff.** Three generations, all still seen:
+1. **Credentials handed to people**, kept in `~/.aws/credentials`, `.env` files or a shared
+   password vault. The source of most credential leaks: keys committed to git, stolen laptops,
+   keys that outlive a departure, no record of who used what.
+2. **A secrets manager with injection.** Secrets live in a central store (HashiCorp Vault, AWS
+   Secrets Manager, Google Secret Manager, Azure Key Vault, Doppler, Infisical, 1Password) that
+   encrypts them, controls who reads each one, logs every read, keeps versions and rotates them.
+   A wrapper injects a secret into one command for its lifetime (`doppler run`, `op run`,
+   `vault exec`, `aws-vault exec`): never on disk, but visible to the command and to whoever can
+   inspect it.
+3. **Identity first, secrets as the exception** (current best practice):
+   - people hold no long-lived keys; they sign in once (single sign-on with MFA) and tools
+     obtain short-lived credentials from that identity (`aws sso login`, `gcloud auth login`,
+     `gh auth login`, the Atlas CLI's login); elevated access is requested and expires;
+   - **dynamic secrets**: the manager creates a credential on demand and destroys it afterwards
+     (Vault's database engine creates a temporary database user per request);
+   - **access proxies** (Teleport, StrongDM, Boundary) inject the credential into the connection,
+     so the person never sees it;
+   - the remaining long-lived secrets are the keys that make keys (a provider's admin or
+     provisioning key) and break-glass credentials: kept in the manager, rotated, read only by
+     the systems that mint short-lived credentials.
+
+Two problems every design answers: **secret zero** (what lets a process read the secrets manager;
+the modern answer is workload identity, a signed token proving which machine is calling) and the
+**lifecycle** (an inventory of every secret, rotation, and revocation as the first step of any
+incident).
+
+**Transposed to agents: stricter than generation 2.** Agents never receive a secret, not even
+injected into a command they control: an agent can inspect its own processes, and an injected
+instruction can ask it to print its environment.
+
+| Layer | Human practice | MAGI |
+|---|---|---|
+| Root credentials (Atlas admin, Fly organization, OpenRouter provisioning, GitHub App private keys, a Google service account) | In the secrets manager, read only by the minting systems | In a secrets store read only by the gateway's broker. Never on a mission machine |
+| Per-use credentials | Dynamic, short-lived | Minted per call or session where the provider allows: GitHub App tokens (1 h), Atlas service-account tokens and temporary database users, Fly tokens with an expiry, OpenRouter keys created with a credit limit for one task and deleted afterwards, Google tokens by impersonation |
+| Delivery | Proxy injection, or injection into one command | **Proxy injection by default**: G's connectors for API calls, the git proxy for git. **Catalogue commands** where a CLI is unavoidable (`flyctl`, `atlas`, `firebase`): the platform runs a predefined command under its own OS identity with the credential injected, and returns the output marked untrusted; the agent chooses the command and its parameters, never the environment |
+| Secret zero | Workload identity | The control plane proves its identity to the store by workload identity, if Fly's machine OIDC tokens work with the chosen store (to be confirmed); otherwise one bootstrap secret, as today's Fly secrets |
+| People | Single sign-on and short-lived logins; break-glass in a password manager | The user and any human staff use their own provider logins, never a shared key. The break-glass `CONTROL_API_KEY` sits in a password manager, not a file |
+| Lifecycle | Inventory, rotation, revocation | A secrets inventory kept by the platform; rotation and revocation are governed operations run by an operations agent through E; the appsec agent reviews the inventory |
+
+**Egress policy (H) complements, not replaces, this.** A leaked key works from anywhere, so the
+first defence is that agents never hold one. H narrows what an injected instruction can send out
+and forces traffic through the gateway and git proxy, where policy and audit apply.
+
+**Where MAGI stands.** The data-provider keys (FRED, FMP, NewsAPI) already follow proxy
+injection: background jobs call the Tool API, which adds the key (CR-04). The gap: every mission
+daemon receives the cluster-wide `MONGODB_URI` and LLM keys in its environment, and the control
+plane's root credentials are Fly secrets in environment variables. Under the mono-tenant
+assumption this is no longer a cross-tenant problem, but it is the blast radius if an agent
+escapes to the daemon.
+
+**Direction:**
+1. **Use a secrets store, do not build one.** Encryption, access policy, audit, versions and
+   rotation are what a managed store already does. Google Secret Manager fits (Firebase already
+   gives MAGI a Google Cloud project, with IAM and audit logs); Infisical is the open-source,
+   self-hostable alternative.
+2. **The broker runs in the control plane** (or a small service beside it), so root credentials
+   never reach mission machines; daemons ask it for a per-use credential, or route the call
+   through it.
+3. **Dynamic credentials per provider**, as far as each allows; a provider with only static keys
+   keeps its key in the store, used only by the proxy.
+
+With a managed store, Sprint 29b's at-rest encryption is no longer needed for credentials; it
+reduces to encrypting mission data.
 
 ## Governance engine (deliverable E)
 
