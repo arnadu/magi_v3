@@ -1262,6 +1262,100 @@ Rough sizes in focused working days, at the project's recent pace: estimates, no
 - How MAGI DEV is sequenced against the feature wishlist (interactive apps #42, illustrations, document annotation). Interactive apps would also serve D's preview server.
 - The initial governance policy: which actions start autonomous, which start approve-first, and what track record loosens them (see the governance engine's open questions).
 
+## Prior art (researched 2026-11-09)
+
+A web survey, mostly vendor documentation, blogs, an IETF draft and preprints; not exhaustive,
+and product claims are not independently verified.
+
+**Credentials and gateways: the design matches where the field is converging.**
+- **Credential brokers with injection** are the common answer: agentgateway, Gravitee's MCP
+  gateway (OAuth token exchange), AgentCordon (self-hosted; "secrets never reach the agent"),
+  Hermes' iron-proxy, Docker's and Blaxel's sandbox proxies.
+- **Amazon Bedrock AgentCore** is the closest commercial analogue: a token vault (Identity), a
+  gateway that applies outbound credentials per target, and a policy engine (Cedar, default deny,
+  general availability March 2026) that checks every tool call before it runs. It is a managed,
+  central gateway; MAGI's gateway runs on the mission machine.
+- **IETF draft CB4A** (Credential Broker for Agents, SANS, March 2026) names three models: a proxy
+  that injects credentials (strongest isolation), short-lived token minting (its recommended
+  default; the agent holds the token), and wrapping a real credential (weakest). MAGI's split is
+  the first two combined: tokens are minted, but held by the gateway, never by the agent.
+- **Sandbox egress through a proxy the sandbox cannot bypass** is standard practice (Claude
+  Code's sandbox domain allow-list, Docker, Blaxel), with a known caveat: an allowed destination is
+  itself an exfiltration channel (allowing `github.com` allows pushing to any repository). MAGI's
+  catalogue (method and path) and git proxy (repository and branch) restrict below the host
+  level, which addresses it.
+
+**Governance: the pieces exist separately; the combination does not.**
+- **Approval holds at the gateway**: MCP gateways (TrueFoundry, Permit) hold a tool call until a
+  human decides, and stress that approval does not replace authorization, as here.
+- **Separation of duties in an agentic SDLC** is recognized (a single agent can initiate,
+  authorize and execute); the recommendations are role-separated agents, risk-tiered gates
+  rather than gating everything, and human approval at plan and pull-request stages.
+- **No specification language exists for AI-SDLC protocols**, according to a 2026 preprint
+  (arXiv 2606.20615); teams use ad-hoc tooling. MAGI's policy-as-data with enforced gates is an
+  attempt at exactly this.
+- **Microsoft Entra Agent ID** gives every agent identity a human **sponsor**, and grants access
+  through packages with approval, expiry and recurring access reviews.
+- **Paperclip** (open source, 2026) runs "AI-agent companies": org chart, board approval (hiring
+  an agent is gated by default), per-agent budgets with warning and hard stop, enforced approval
+  gates including tool-gateway calls, durable activity log, versioned configuration with rollback,
+  encrypted secret references. Closest to MAGI's governance and budgets; it has no KPI framework,
+  no gates enforced at platform chokepoints beyond its own approvals, and no OS-level isolation.
+- **MetaGPT** (`Code = SOP(Team)`) structures agent teams by standard operating procedures with
+  document hand-offs; review is optional.
+
+**Objectives, tasks and KPIs: no system found with all of MAGI's pieces.**
+- **OKR-Agent** (research, 2023, later peer-reviewed) uses objectives and key results to
+  decompose work and generate agents: planning-time structure, not a persistent store with KPIs,
+  owners and budgets.
+- **OrgAgent** (2026 preprint) has a governance layer for planning and resource allocation; no
+  released code found.
+- **Paperclip** links every task to company goals ("goal ancestry") and has budgets, but no KPIs.
+- **Letta**'s read-only memory blocks, updated from outside the agent, are the same idea as MAGI's
+  immutable mental-map sections and daemon-managed regions.
+- MAGI's combination (an objectives tree with owners, KPIs with sources including computed and
+  rolled-up ones, tasks, budgets with cost attributed to tasks, re-rendered into a read-only
+  region of each agent's working memory every turn) was not found elsewhere.
+
+**Ideas to adopt:**
+1. **Separate the policy decision from credential delivery** (CB4A): the broker mints only
+   against a signed decision from the governance check, not on the gateway's word, so a
+   compromised gateway cannot obtain credentials without a valid decision.
+2. **Canary credentials**: decoys in the broker's store that must never be used; any use is an
+   immediate alert and stops the session.
+3. **An audit log in its own trust boundary**: append-only, hash-chained, not writable by the
+   gateway or the broker; no credential is issued while the audit pipeline is down.
+4. **A sponsor per agent and periodic access reviews**: every grant expires or is re-certified
+   on a schedule, so access does not accumulate.
+5. **Approval-fatigue countermeasures**: rate limits on requests to the user, cool-downs after a
+   rejection, a challenge on high-risk approvals.
+6. **Sender-constrained tokens (DPoP)** where a provider supports them, so a stolen short-lived
+   token is useless without the gateway's key.
+7. **Cedar as the policy language** for grants, instead of evaluating custom YAML: open source,
+   designed for this, analyzable, and already used for agent tool calls by AgentCore.
+8. **Justification text never decides** (CB4A): only computed facts and the policy decide;
+   the requester's text is kept for the record. MAGI's forms already follow this.
+
+Sources: [CB4A draft](https://www.ietf.org/archive/id/draft-hartman-credential-broker-4-agents-00.html);
+[SANS on credential brokers](https://www.sans.org/blog/your-ai-agent-easily-confused-deputy-why-cloud-security-needs-credential-broker);
+[agentgateway on credential injection](https://agentgateway.dev/blog/2026-07-27-credential-injection-ai-agent-egress-cb4a/);
+[Gravitee MCP credential brokering](https://www.gravitee.io/blog/mcp-credential-brokering-keep-api-keys-from-ai-agents);
+[AgentCordon](https://github.com/agentcordon/agentcordon);
+[AgentCore gateway outbound auth](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-outbound-auth.html);
+[AgentCore Identity](https://aws.amazon.com/blogs/machine-learning/introducing-amazon-bedrock-agentcore-identity-securing-agentic-ai-at-scale);
+[TrueFoundry on MCP approvals](https://www.truefoundry.com/blog/mcp-tool-approval-human-gate-call-path);
+[Permit MCP gateway](https://docs.permit.io/permit-mcp-gateway/overview/);
+[permitted egress as attack surface](https://agentpatterns.ai/security/permitted-egress-attack-surface/);
+[Augment on the agentic SDLC](https://www.augmentcode.com/guides/security-architecture-agentic-sdlc);
+[segregation of duties and AI agents](https://www.cloudeagle.ai/blogs/segregation-of-duties-ai-agents);
+[AI-SDLC protocol language](https://arxiv.org/pdf/2606.20615);
+[Microsoft Entra and AI agents](https://learn.microsoft.com/en-us/entra/fundamentals/zero-trust-ai);
+[Paperclip](https://github.com/paperclipai/paperclip);
+[MetaGPT](https://arxiv.org/pdf/2308.00352v3.pdf);
+[OKR-Agent](https://arxiv.org/pdf/2311.16542);
+[OrgAgent](https://arxiv.org/pdf/2604.01020);
+[Letta memory blocks](https://docs.letta.com/guides/agents/memory-blocks).
+
 ## Appendix: the gateway in pseudo-code
 
 Illustrative TypeScript-like pseudo-code for G: what the platform code does and what is data.
