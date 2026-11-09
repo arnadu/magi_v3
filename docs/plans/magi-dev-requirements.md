@@ -548,6 +548,37 @@ becomes a pointer to the inbox, with no buttons. The atomic claim and the re-val
 execution carry over as the engine's single-use capability. The other items above become
 policy entries the same way.
 
+### Who can change what
+
+Nearly everything is data the mission copilot (or a manager agent) maintains; the default policy
+routes changes that would loosen the controls on agents to the user. Root keys and platform code
+are maintained differently.
+
+| Tier | What | Who changes it, and how | Why |
+|---|---|---|---|
+| **0. Platform** | `ApiCall`, the gateway, the git proxy, the broker and its adapters, the governance engine, the platform invariants | A code release only: pull request, review, CI, release approval. In phase 3 MAGI DEV's developers can write the change; changes to these files need the appsec agent's review and the user's approval | They are the controls; MAGI DEV runs the previous stable release, so a change applies only after production has run it cleanly |
+| **1. Root keys** | Fly organization token, GitHub App keys, Atlas service account, OpenRouter provisioning key, Ops API client credential | The user, with the copilot preparing it (Fly secrets, GitHub App confirmation pages). Later, rotation can be a governed operation the broker runs after the user's approval | No agent ever sees a root key, so none can set one |
+| **2. Loosening changes** | Connector endpoints and credential binding; granting an agent a new operation or a wider target; lowering an approval level; widening the egress policy; binding an agent to a role; the rules for policy changes | The copilot proposes; under the default policy the user decides in the decisions inbox | A copilot able to widen rights alone would be the weak link (platform invariant 3) |
+| **3. Everyday changes** | Adding a catalogue entry (grants nothing by itself); narrowing a grant; skills; schedules; prompts and mental-map templates; objectives and tasks | The copilot itself, recorded, with a notice to the user for some | None can widen anyone's access: enforcement is in the gateway and the policy, not in what an agent knows |
+
+Every change is versioned in the mission's config revisions: who, which decision, and a way back.
+
+**Details that keep this safe:**
+- **A credential is bound to its provider's hosts.** Each broker adapter declares its provider's
+  hosts, and the gateway attaches a credential only to requests to those hosts. This is platform
+  code (tier 0), so changing a connector's base URL cannot send a minted token elsewhere.
+- **Granting rights to another agent counts as loosening.** Otherwise the copilot could grant an
+  agent an operation and then direct it, widening its own reach indirectly.
+- **Skills are knowledge, not permission.** A call succeeds only if a grant exists, so skills sit
+  in tier 3. Agent-written skills stay labelled and cannot shadow platform or team skills
+  (F-047).
+
+**The tiers are the default policy template**, mission policy rather than platform code, except
+tier 0 and the invariants. As the copilot builds a track record, the user can move items down,
+for example letting it add grants on staging apps itself while production-facing grants stay with
+the user. Today's copilot tools (`SaveMissionConfig`, applied at the next resume; the immediate
+tools of F-026) become tier 2 or tier 3 entries when the engine is built.
+
 ### How the user takes part: the decisions inbox
 
 **Why the chat card is not enough.** A card has room for a title and a payload, not for the case
