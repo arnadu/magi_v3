@@ -157,6 +157,9 @@ stay in one place:
 - **If the control plane is down,** calls continue until the gateway's current credentials
   expire (minutes to an hour). A fully compromised mission machine exposes its short-lived
   credentials for their remaining lifetime, never the keys that make them.
+- **The control plane's role is therefore narrow:** the broker issues short-lived credentials,
+  and the cockpit is where the user decides. Governance itself runs on the mission machine (see
+  the governance engine's placement below).
 
 **A connector** is declared in configuration, never opened by an agent at run time:
 - the endpoint and the egress rules (`safe-http.ts` pinning; no redirects outside the host);
@@ -261,10 +264,14 @@ assumption this is no longer a cross-tenant problem, but it is the blast radius 
 escapes to the daemon.
 
 **Direction:**
-1. **Use a secrets store, do not build one.** Encryption, access policy, audit, versions and
-   rotation are what a managed store already does. Google Secret Manager fits (Firebase already
-   gives MAGI a Google Cloud project, with IAM and audit logs); Infisical is the open-source,
-   self-hostable alternative.
+1. **Start with Fly secrets; move to a managed store when needed, never build one.** Today the
+   control plane's keys are Fly secrets: encrypted by Fly and injected only into the control
+   plane machine. The broker starts by reading its root keys the same way, so no new service is
+   needed at first. A managed store (Google Secret Manager, in the Google Cloud project Firebase
+   already gives MAGI; or Infisical, open source and self-hostable) adds rotation, versions and a
+   log of every read, when those become needed. Building a store is not on the table:
+   encryption, access policy, audit, versions and rotation are what a managed store already
+   does.
 2. **The broker runs in the control plane** (or a small service beside it), so root credentials
    never reach mission machines; each mission's gateway asks it for short-lived credentials and
    makes the calls itself (see "Two parts" above).
@@ -291,6 +298,20 @@ reduces to encrypting mission data.
 | Signature or stamp | Proof of approval | A decision record plus a single-use capability bound to the exact artefact version or parameters |
 | Job description, training, code of conduct | People know the rules before they act | The governance section of each agent's system prompt and mental map |
 | Internal audit | Checks after the fact that the rules were followed | The auditor agent, plus the user sampling agent-approved decisions |
+
+### Where it runs
+
+Governance runs where the action happens, not on the control plane:
+- **The policy check** runs on the mission machine: in the gateway (external calls, through the
+  daemon's check) and in the daemon (stage transitions in the objectives store, which it already
+  validates).
+- **The policy and the decision records** are data in the installation's database, like the
+  rest of the mission's state.
+- **The decisions inbox** is a cockpit view. A mission's Decisions tab is served through the
+  cockpit's mission proxy, like every other mission tab; the cross-mission list reads the
+  database, like the missions list.
+- **Platform-level decisions** (launching a mission, changing a spend ceiling) are the exception
+  and run on the control plane, as the control-plane copilot's actions do today.
 
 ### Five parts of a gate
 
