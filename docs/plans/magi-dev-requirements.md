@@ -1090,9 +1090,18 @@ the specialist.
   wait for G. CI results are readable without one, at a low rate limit, and `npm audit` runs in
   the agent's own clone.
 
-**The second agent: a code reviewer.** The same inputs (the repository clone, review skills) with a
-correctness lens, in the manner of `/code-review`. Together the two cover the reviewing side of
-the life-cycle before any agent writes code.
+**Two more agents from the start** (decided 2026-11-09), neither needing new capability:
+- **A code reviewer**: the same inputs (the repository clone, review skills) with a correctness
+  lens (correctness, maintainability, tests, the code-structure rules), in the manner of
+  `/code-review`.
+- **A documenter**: keeps the documentation consistent with the code (the spec,
+  `docs/code-structure.md`, `docs/env.md`, the user guide, ADR status, this document); it cannot
+  push, so its changes are ready-to-apply diffs in its reports.
+
+The appsec agent and the code reviewer read the same commits through different lenses: their
+schedules are staggered and a shared cursor file records what each has covered. The mission
+copilot supervises all three. Together they cover the reviewing side of the life-cycle before any
+agent writes code.
 
 **Other candidates**, for later: a planning and roadmap steward (works today, with issue edits
 through the existing confirmation cards); an ops monitor (needs A's read tier); community and
@@ -1400,10 +1409,34 @@ design starts to apply, and phase 1 begins.
 
 | Phase | Scope | Needs |
 |---|---|---|
-| 0 | An infosec specialist, then a code reviewer, read-only, as a mission on the existing installation | Skills ported from the security commands; nothing new in the platform |
+| 0 | An application security architect, a code reviewer and a documenter, read-only, as a mission on the existing installation | Skills ported from the security commands; nothing new in the platform |
 | 1 | Community, planning, monitoring reports, on MAGI DEV's own installation | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier (alerts and the daily report included); today's confirmation cards for every external write |
 | 2 | Application support | A's action tier, E with the decisions inbox, F, H; the auditor agent |
 | 3 | Development and testing | B, C, D; SDLC skills; the evaluation harness (#45) |
+
+### Building the modules on running missions (agreed 2026-11-09)
+
+The two platform modules MAGI DEV needs are built against missions already running, which gives
+them real users and the user's feedback from the start. Everything built goes into the platform;
+everything specific to a mission stays data (its policy, connectors and skills), so MAGI DEV
+inherits general modules.
+
+- **Governance engine (E) on meteo** (roadmap sprint 31). Meteo already has decision points: the
+  pedagogue and the editor agree on content, and the user decides publication. Chapters move
+  draft → content-reviewed (the editor) → approved (a pedagogue + editor committee chaired by the
+  user) → published (the user). *Published* means moving the chapter into the `textbook` folder.
+  Steps: the decisions inbox over today's pending actions; the Cedar engine, decision requests,
+  forms and stage gates; the governance prompt section and `#governance` region; committee
+  procedure. The policy is opt-in per mission: a mission without one behaves as today. Meteo
+  needs none of the gateway.
+- **Gateway (G, H, broker) on gold-digest** (roadmap sprint 32). Gold-digest already calls three
+  protected APIs (FRED, FMP, NewsAPI) through hand-built Tool API proxies. The first step moves
+  one of them to the generic design (the gateway process under its own OS identity, `ApiCall`, a
+  connector file, audit) and, once it works, removes its old proxy code; the other two follow.
+  Then Cedar grants, the egress policy, and the broker once there is something to mint (data
+  APIs use static keys, so minting arrives with MAGI DEV's GitHub App tokens, or with per-job
+  OpenRouter keys). Anything able to place real trades stays out of scope.
+- **Shared:** the Cedar integration is built once, by whichever sprint gets there first.
 
 ## Timeline
 
@@ -1416,13 +1449,10 @@ Rough sizes in focused working days, at the project's recent pace: estimates, no
 | 2 | E, the governance engine (the largest, ~2–4 weeks); the decisions inbox (~1 week); F (~1 week); H (~1 week); the auditor agent | **~6–8 weeks** |
 | 3 | B: git proxy and GitHub Apps (~1–2 weeks); C, staging (~1 week); D, sandbox (~1–2 weeks); SDLC skills | **~4–5 weeks** |
 
-**Ways to go faster:**
-- **Run phase 0 now, alongside 28h's reliability work.** They do not compete: phase 0 is skills
-  and configuration, and its findings may feed 28h.
-- **Ship the decisions inbox early**, over today's pending actions: independent of the rest, it
-  closes #87 and replaces the chat cards.
-- **Sequence phase 1 as the next sprint after 28h's reliability items**, ahead of the feature
-  wishlist (interactive apps, illustrations, annotation). The user's call.
+**Sequence agreed 2026-11-09** (roadmap sprints 30–33): phase 0 now, alongside 28h's
+reliability work; the governance engine on meteo and the gateway on gold-digest in parallel, the
+decisions inbox first; then phase 1 on MAGI DEV's own installation. The feature wishlist
+(interactive apps, illustrations, annotation) comes after, unless the user re-prioritizes.
 
 ## Open questions
 
