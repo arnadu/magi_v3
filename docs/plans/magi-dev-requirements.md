@@ -54,7 +54,7 @@ configuration (team, skills, schedules) that can be iterated without platform ch
 
 | # | Deliverable | Content | Existing base |
 |---|---|---|---|
-| A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the governance engine (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. A push channel: production's hard anomalies and daily report forwarded to MAGI DEV's mailbox through an authenticated inbound endpoint. The single production interface for human support staff too. New trust boundary. Design direction: [Production access](#production-access-deliverable-a). | Missions API and copilot actions; anomaly relay; daily report |
+| A | **Production Ops API** | A service identity for MAGI DEV, separate from `CONTROL_API_KEY`, with short-lived tokens. A read tier with no approval: mission status and health, anomalies, logs (through the control plane), stats and spend, resource samples, a mission's files and transcripts. An action tier, each action under the governance engine (E): suspend, resume, rollout, rollback, fork a volume, raise a cap. Every call recorded in production's audit log. Production's hard anomalies and daily report reach MAGI DEV through the read tier, polled by MAGI DEV's gateway; a push to an authenticated inbound endpoint is the alternative if polling proves too slow. The single production interface for human support staff too. New trust boundary. Design direction: [Production access](#production-access-deliverable-a). | Missions API and copilot actions; anomaly relay; daily report |
 | B | **GitHub release control** | A repository per mission. A GitHub App per role (author, reviewer, release) used only through G; agents never hold a token. A git proxy on loopback (a `PushBranch` tool first) that checks each pushed branch against the policy. GitHub rulesets: no direct push to `main`, a review from the reviewer App, the existing gates as required checks, merges through the merge queue, and a protected release environment whose required reviewer is the user at first. GitHub configuration declared, changed by agents through E, applied by the platform and drift-checked. Design: [Source control for project code](#source-control-for-project-code-deliverable-b). | GitHub proxy (issues only, one repo, `GITHUB_REPO`); CI gates |
 | C | **Staging installation** | A full MAGI stack (control plane, missions app, database) that CI deploys release candidates to. Runs the full integration suite, OS-isolation tests included, and an end-to-end smoke test: launch a test mission, check it runs, resume it, roll it out. | `promote.sh --suffix` named environments |
 | D | **In-VM sandbox** | Repository workspaces: a daemon-owned mirror, worktrees or shared-object clones per agent, shared package caches, disk quotas per agent. Build, lint, unit tests and lightweight integration tests against a local `mongod`, never MAGI DEV's own database. LLM calls from tests go through a Tool API proxy that speaks the provider API, metered against a test budget; no raw key in the sandbox. A cockpit dev server previewed through BrowseWeb, which needs a sanctioned exception to the loopback block. A bigger default machine shape. | Tool API metering for jobs (`createJobSpend`); machine shapes (28g) |
@@ -130,7 +130,33 @@ being hand-built.
 
 **Two sides.** A is a *server* MAGI builds in production. G is the *client* side in every
 installation, used for A and for any third-party API. MAGI DEV calling production goes through
-G on the MAGI DEV installation and arrives at A on the production installation.
+G on MAGI DEV's mission machine and arrives at A on the production installation.
+
+**Two parts: the gateway on the mission machine, the broker on the control plane** (decided
+2026-11-09). Missions stay self-contained, as in MAGI's original design, and root credentials
+stay in one place:
+- **The gateway** runs on each mission machine as its own process, under its own OS identity
+  that neither the agents nor the daemon's sudo rule can reach. It does everything on the call
+  path: connectors and the tools generated from them, the git proxy, the policy check (E), rate
+  limits and budgets, audit, marking results untrusted. It is where the mission's egress policy
+  (H) sends agents' traffic. It holds **short-lived credentials only**.
+- **The credential broker** runs on the control plane and is the only reader of root
+  credentials. It hands a mission's gateway a short-lived credential for an operation that
+  mission's configuration allows, authenticating the gateway by the machine's own identity (Fly
+  OIDC, to be confirmed) or a per-mission token like today's monitor token. It is off the call
+  path: consulted only to issue or renew a credential.
+- **Why not all central:** every external call would pass through the control plane, making it a
+  dependency for all mission work; today running missions keep working while it is down or
+  redeploying. **Why not all local:** root credentials would sit on every mission machine that
+  needs them. The split is the common industry pattern: a local agent enforcing policy with
+  temporary credentials from a central issuer (Vault Agent, SPIFFE/SPIRE, cloud instance
+  credentials).
+- **Static keys are the exception.** For a provider with no way to mint a short-lived
+  credential, either the broker proxies that call centrally or the key sits in the gateway
+  process: a per-connector choice recorded in the policy with its risk.
+- **If the control plane is down,** calls continue until the gateway's current credentials
+  expire (minutes to an hour). A fully compromised mission machine exposes its short-lived
+  credentials for their remaining lifetime, never the keys that make them.
 
 **A connector** is declared in configuration, never opened by an agent at run time:
 - the endpoint and the egress rules (`safe-http.ts` pinning; no redirects outside the host);
@@ -144,8 +170,8 @@ G on the MAGI DEV installation and arrives at A on the production installation.
 - which agents or roles may use which operations.
 
 **The gateway does, for every call:**
-1. **Custody.** It holds the credential, refreshes it, and attaches it to the request. Agents and
-   their subprocesses never see it.
+1. **Custody.** It holds a short-lived credential from the broker, renews it, and attaches it to
+   the request. Agents and their subprocesses never see it.
 2. **Identity.** It records the calling agent and mission.
 3. **Policy.** It asks the governance engine (E) whether the operation is autonomous, notify-after or
    approve-first.
@@ -216,7 +242,7 @@ instruction can ask it to print its environment.
 
 | Layer | Human practice | MAGI |
 |---|---|---|
-| Root credentials (Atlas admin, Fly organization, OpenRouter provisioning, GitHub App private keys, a Google service account) | In the secrets manager, read only by the minting systems | In a secrets store read only by the gateway's broker. Never on a mission machine |
+| Root credentials (Atlas admin, Fly organization, OpenRouter provisioning, GitHub App private keys, a Google service account) | In the secrets manager, read only by the minting systems | In a secrets store read only by the credential broker on the control plane. Never on a mission machine |
 | Per-use credentials | Dynamic, short-lived | Minted per call or session where the provider allows: GitHub App tokens (1 h), Atlas service-account tokens and temporary database users, Fly tokens with an expiry, OpenRouter keys created with a credit limit for one task and deleted afterwards, Google tokens by impersonation |
 | Delivery | Proxy injection, or injection into one command | **Proxy injection by default**: G's connectors for API calls, the git proxy for git. **Catalogue commands** where a CLI is unavoidable (`flyctl`, `atlas`, `firebase`): the platform runs a predefined command under its own OS identity with the credential injected, and returns the output marked untrusted; the agent chooses the command and its parameters, never the environment |
 | Secret zero | Workload identity | The control plane proves its identity to the store by workload identity, if Fly's machine OIDC tokens work with the chosen store (to be confirmed); otherwise one bootstrap secret, as today's Fly secrets |
@@ -240,8 +266,8 @@ escapes to the daemon.
    gives MAGI a Google Cloud project, with IAM and audit logs); Infisical is the open-source,
    self-hostable alternative.
 2. **The broker runs in the control plane** (or a small service beside it), so root credentials
-   never reach mission machines; daemons ask it for a per-use credential, or route the call
-   through it.
+   never reach mission machines; each mission's gateway asks it for short-lived credentials and
+   makes the calls itself (see "Two parts" above).
 3. **Dynamic credentials per provider**, as far as each allows; a provider with only static keys
    keeps its key in the store, used only by the proxy.
 
@@ -1127,7 +1153,7 @@ design starts to apply, and phase 1 begins.
 | Phase | Scope | Needs |
 |---|---|---|
 | 0 | An infosec specialist, then a code reviewer, read-only, as a mission on the existing installation | Skills ported from the security commands; nothing new in the platform |
-| 1 | Community, planning, monitoring reports, on MAGI DEV's own installation | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier and push channel; today's confirmation cards for every external write |
+| 1 | Community, planning, monitoring reports, on MAGI DEV's own installation | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier (alerts and the daily report included); today's confirmation cards for every external write |
 | 2 | Application support | A's action tier, E with the decisions inbox, F, H; the auditor agent |
 | 3 | Development and testing | B, C, D; SDLC skills; the evaluation harness (#45) |
 
@@ -1138,7 +1164,7 @@ Rough sizes in focused working days, at the project's recent pace: estimates, no
 | Phase | Platform work | Rough size |
 |---|---|---|
 | 0 | None: skills, a template, a launch | **1–2 days** |
-| 1 | 28h prerequisites #54, #95, G-5 (~1–1.5 weeks); G with a first GitHub connector (~1–2 weeks); A's read tier and push channel (~1 week); a new installation like beta (~1 day) | **~4–6 weeks** |
+| 1 | 28h prerequisites #54, #95, G-5 (~1–1.5 weeks); G with a first GitHub connector (~1–2 weeks); A's read tier, alerts and the daily report included (~1 week); a new installation like beta (~1 day) | **~4–6 weeks** |
 | 2 | E, the governance engine (the largest, ~2–4 weeks); the decisions inbox (~1 week); F (~1 week); H (~1 week); the auditor agent | **~6–8 weeks** |
 | 3 | B: git proxy and GitHub Apps (~1–2 weeks); C, staging (~1 week); D, sandbox (~1–2 weeks); SDLC skills | **~4–5 weeks** |
 
