@@ -1442,6 +1442,59 @@ and product claims are not independently verified.
   rolled-up ones, tasks, budgets with cost attributed to tasks, re-rendered into a read-only
   region of each agent's working memory every turn) was not found elsewhere.
 
+**Details worth keeping from the closest systems.**
+- **CB4A** (IETF draft, Kenneth Hartman, SANS, March 2026):
+  - a Policy Decision Point that issues signed approvals but never touches credentials, and a
+    Credential Delivery Point that mints only against a signed approval and never decides;
+    compromising one does not give the other's power;
+  - agent identity by SPIFFE workload attestation over mutual TLS; tokens bound to the holder's
+    key (DPoP), so a stolen token is useless elsewhere;
+  - three approval tiers: automatic within policy; a human, denied on timeout (five minutes by
+    default); a human with an MFA challenge for high risk; plus approval-fatigue
+    countermeasures;
+  - an append-only, hash-chained audit log in its own trust boundary; no credential is issued if
+    the audit pipeline is down;
+  - the requester's justification text is kept for the record and must not influence approval.
+- **AgentCore**: a token vault encrypted with KMS keys (OAuth tokens, client credentials, API
+  keys); per-target outbound authentication on the gateway (none, service role, caller
+  credentials, OAuth client credentials, authorization code, token exchange, passthrough, API
+  key); Cedar policies attached to the gateway, default deny, evaluated on every tool call before
+  it runs; separate roles for running the gateway and for changing its configuration.
+- **Paperclip**:
+  - issues link to a goal, a project or a parent issue, with one assignee and an atomic checkout
+    so two runs cannot take the same task;
+  - agents wake on assigned work, follow-ups or schedules; a wake-up queue merges requests and
+    checks the budget before running; a mention alone wakes no one;
+  - budgets per company, agent and project, with warning thresholds and hard stops (noting that
+    in-flight work can delay a stop);
+  - approval gates for hiring agents and for tool-gateway calls; versioned configuration with
+    rollback; a durable activity log of mutating actions, approvals and cost events;
+  - secrets supplied to runs by reference, stored encrypted, left out of exported packages.
+- **Entra Agent ID**: every agent identity has at least one human sponsor; access requested
+  through packages with approval, expiry and recurring review; conditional access that treats
+  agents as identities in their own right, with "block unless approved" as the recommended
+  baseline.
+- **Letta**: read-only applies to a whole memory block, not per agent; shared blocks update for
+  every attached agent at once, and concurrent writes are last-write-wins, which is why the
+  documentation advises read-only for shared configuration updated from outside.
+- **MetaGPT**: a fixed pipeline (requirements, product requirements document, system design,
+  task breakdown, implementation, review) with document hand-offs between role agents, reported
+  to use fewer tokens per line of code than ChatDev's conversational hand-offs.
+
+**How MAGI's design compares.**
+
+| Concern | MAGI (this design) | Closest elsewhere | Difference |
+|---|---|---|---|
+| Who holds credentials | The gateway on the mission machine, short-lived only; root keys in the broker | CB4A model B (agent holds short-lived token); AgentCore vault and central gateway | The agent never holds even a short-lived token, and calls do not pass through a central service |
+| Policy language | Cedar, for gateway grants and governance | AgentCore (Cedar for tool calls) | Cedar also carries gates, deciders, committees and invariants, with analysis on every change |
+| Human approvals | Decisions inbox; committees with or without the user; levels per action | MCP gateways' approval holds; CB4A tiers; Paperclip's board | Committees of agents, independent written votes and dissent kept on record |
+| Separation of duties | Platform invariant, proved by analysis | Recommended practice (role-separated agents) | Enforced and checked on every policy change |
+| Life-cycle gates | Stage transitions refused without a decision, at platform chokepoints | Ad-hoc tooling (no specification language exists, per a 2026 preprint) | Gates as policy data the platform enforces |
+| Egress | A proxy agents cannot bypass, restricted by method, path, repository and branch | Sandbox allow-lists by host | Finer than host level, which closes the "allowed destination" exfiltration channel |
+| Objectives and KPIs | Objectives tree with owners, KPIs from several sources, tasks, budgets with attributed cost, re-rendered into each agent's working memory | Paperclip (goals, tasks, budgets); OKR-Agent (planning-time OKRs) | KPIs and cost attribution to tasks; persistent, not planning-time |
+| Read-only working memory | Immutable mental-map sections and daemon-managed regions | Letta's read-only blocks | Equivalent idea; MAGI's protection is per element (id addressing) |
+| Agent identity and accountability | One OS user per agent; the user as owner | Entra's sponsors and access reviews | Sponsors and periodic re-certification are not yet in MAGI's design |
+
 **Ideas to adopt:**
 1. **Separate the policy decision from credential delivery** (CB4A): the broker mints only
    against a signed decision from the governance check, not on the gateway's word, so a
