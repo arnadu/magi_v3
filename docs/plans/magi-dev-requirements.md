@@ -1129,6 +1129,22 @@ schedules are staggered and a shared cursor file records what each has covered. 
 copilot supervises all three. Together they cover the reviewing side of the life-cycle before any
 agent writes code.
 
+**A known-answer test for the first run** (decided 2026-11-09). The sprint-28f audit left a set
+of verified documentation and prompt-text inconsistencies in
+[#96](https://github.com/arnadu/magi_v3/issues/96): `trust-boundaries.md` marking fixed findings
+as open (BND-6..8), stale threat-model, spec, user-guide and README statements (DOC-8..20), and
+copilot skills and prompts naming tools, paths and files that no longer exist (LLM-4..25). They
+are left unfixed until the first run, without telling the agents, as a test with known answers:
+- the documenter should find the DOC and LLM items, appsec the BND items and the threat-model
+  DOC items (DOC-8..10, DOC-20);
+- the measure is recall (how many of the known items a report names) and precision (how many
+  reported items are real), compared by the user or in Claude Code against #96's list;
+- afterwards every item is fixed, whether found or not, and #96 records which were found.
+
+This is the first measurement of the kind [#72](https://github.com/arnadu/magi_v3/issues/72)
+proposes for the whole-repo audit, and the first evidence on whether the phase-0 agents are
+worth running.
+
 **The documenter's write access: documentation pull requests** (decided 2026-11-09). A
 low-risk first use of GitHub write access, and an early piece of B. GitHub has no per-directory
 write permission (an App or token writes to a whole repository), so the control is on merging,
