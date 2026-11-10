@@ -309,6 +309,27 @@ escapes to the daemon.
 With a managed store, Sprint 29b's at-rest encryption is no longer needed for credentials; it
 reduces to encrypting mission data.
 
+### Authentication: who is calling (added 2026-11-09)
+
+Cedar answers *may this principal do this?*; it takes the principal as given. Every decision is
+therefore only as good as the authentication that names the principal. Each point where a
+principal is named:
+
+| Point | Question | Answer |
+|---|---|---|
+| Gateway → provider | How does the provider know it is MAGI? | Short-lived credentials minted by the broker (above); agents and the gateway never hold root keys |
+| Gateway → broker | Which mission's gateway is asking? | The machine's own identity: Fly machine OIDC if it works (open question), otherwise a per-mission signed key, as the monitor token is today |
+| **Agent → gateway** | Which agent made this `ApiCall`, including from a background job or a script? | **The OS identity already enforced.** The gateway listens on Unix sockets, not TCP: one socket per agent, in a directory only that agent's OS user can enter, so being able to connect proves who you are, with no token to leak. (Peer credentials, `SO_PEERCRED`, would do the same but Node has no native access to them.) No bearer tokens on loopback: anything able to read a token becomes that agent |
+| Agent → git proxy | Same question for git | Same mechanism: the proxy is part of the gateway |
+| **Approvals** | Is "the committee approved this" or "the user said yes" real? | Enforcement accepts only a **decision record** in the governance store, matched to the request by id, with an authenticated decider. Text in the mailbox, a prompt or a file never counts, whoever it claims to come from. Platform invariant 5 |
+| The user and human staff | Is this really the user deciding? | Firebase sign-in with MFA; the decisions inbox requires a recent sign-in for high-risk gates (step-up, see the decisions inbox) |
+| **Commits** | Who wrote this commit? | The git proxy pushes with the role's GitHub App token, so each push is tied to an App identity. Later the proxy signs commits and a ruleset requires signed commits. An `Agent:` trailer helps readers but proves nothing |
+| Revocation | Can a misbehaving agent be stopped now, not when a token expires? | Yes: credentials are short-lived and the gateway re-evaluates Cedar on every call, so disabling the agent in the policy cuts it off at its next call. A test case for G and E |
+
+The approval row matters most: forging an approval, by prompt injection or a message that looks
+like the user's, is the classic attack on an agent governance system, and it is defeated only if
+the enforcement point never reads approvals from text.
+
 ## Governance engine (deliverable E)
 
 ### What human organizations already do
@@ -578,7 +599,10 @@ chokepoints ask one decision service, and the policy lives in one place.
   2. a requester never decides its own request;
   3. a change that loosens a gate governing the changer cannot be approved by the changer
      alone, so the copilot cannot remove its own gates in one step;
-  4. every decision and every policy change is recorded.
+  4. every decision and every policy change is recorded;
+  5. an approval exists only as a decision record with an authenticated decider: enforcement
+     never accepts one from a message, a prompt or a file (see
+     [Authentication](#authentication-who-is-calling-added-2026-11-09)).
 - **Delegation loosens on evidence.** When a gate's record supports it, the policy moves it from
   user approval to an agent committee, or from a committee to a standard change. An incident can
   move it back.
@@ -1065,8 +1089,9 @@ design is needed while the mission is read-only.
 
 **Why this works on today's platform.** The repository is public, so an agent clones it with
 plain `git` in its own folder: no credential and no new platform capability. The separate
-installation (A3), the production Ops API (A) and push rights (B) matter only once the mission
-needs production access or writes to the repository.
+installation (A3), the production Ops API (A) and the git proxy (B) matter only once the mission
+needs production access or writes code. The one write in phase 0, the documenter's
+documentation pull requests, needs only a GitHub App and repository rules (below).
 
 **The first scope: an infosec specialist.** Two agents: the mission copilot (always present) and
 the specialist.
@@ -1095,13 +1120,50 @@ the specialist.
   lens (correctness, maintainability, tests, the code-structure rules), in the manner of
   `/code-review`.
 - **A documenter**: keeps the documentation consistent with the code (the spec,
-  `docs/code-structure.md`, `docs/env.md`, the user guide, ADR status, this document); it cannot
-  push, so its changes are ready-to-apply diffs in its reports.
+  `docs/code-structure.md`, `docs/env.md`, the user guide, ADR status, this document). It is
+  the mission's first agent with write access to GitHub, limited to documentation pull
+  requests (below); until that is set up, its changes are ready-to-apply diffs in its reports.
 
 The appsec agent and the code reviewer read the same commits through different lenses: their
 schedules are staggered and a shared cursor file records what each has covered. The mission
 copilot supervises all three. Together they cover the reviewing side of the life-cycle before any
 agent writes code.
+
+**The documenter's write access: documentation pull requests** (decided 2026-11-09). A
+low-risk first use of GitHub write access, and an early piece of B. GitHub has no per-directory
+write permission (an App or token writes to a whole repository), so the control is on merging,
+as in most organizations: writing a branch is cheap, merging into `main` is governed.
+1. **Same repository, branches and pull requests only.** The documenter has its own GitHub App
+   with contents and pull-request write on `arnadu/magi_v3`. It pushes only `docs/*` branches
+   and opens pull requests; it never merges. In phase 0 its token is a plain App installation
+   token held by the platform, not by the agent; the git proxy (B) takes over when it exists.
+2. **A path-guard check.** A required CI check fails any pull request from the documenter's App
+   that touches a path outside its allowed set. About twenty lines of workflow, and dependable.
+3. **Rules on `main`:** a pull request and the path-guard check are required, with **the user
+   on the bypass list**, so the user's direct pushes to `main` keep working. The user approves
+   the documenter's pull requests at first; later that approval becomes a gate in E.
+4. **Later, in the git proxy with Cedar:** the proxy reads the paths a push changes and evaluates
+   a policy such as `permit(principal == Agent::"documenter", action == Git::"push", resource)
+   when every changed path is in the allowed set`, refusing the push before it reaches GitHub.
+   A natural Cedar demonstration for roadmap sprint 32.
+
+GitHub's push rulesets can restrict file paths, but the rule is inverted (block the listed paths
+for everyone outside a bypass list), may not be available on this repository's plan, and a new
+top-level folder slips through; the path-guard check is preferred. A separate documentation
+repository would need only repository-level permission, but the documentation would drift from
+the code it describes, and ADRs and plans belong beside the code.
+
+**The allowed set is narrower than "every Markdown file".** Some Markdown files are instructions
+to agents, not documentation, and a documenter able to edit them would be a prompt-injection
+path into the user's Claude Code sessions or into every mission:
+- excluded: `CLAUDE.md` files and `.claude/` (steer Claude Code), `packages/skills/**` and
+  `prompts/` (ship to missions as prompts), `docs/security/` (the threat model and findings
+  belong to appsec), accepted ADRs (the documenter may propose a new ADR or flag a stale one,
+  not edit an accepted one);
+- allowed to start: `docs/**` minus those exclusions, `USER_GUIDE.md`, `MAGI_V3_SPEC.md`.
+
+**Merging deploys.** A merged pull request is a push to `main`, which deploys dev through CI. A
+`paths-ignore` filter on the deploy jobs lets documentation-only changes skip the deploy.
 
 **Other candidates**, for later: a planning and roadmap steward (works today, with issue edits
 through the existing confirmation cards); an ops monitor (needs A's read tier); community and
@@ -1409,7 +1471,7 @@ design starts to apply, and phase 1 begins.
 
 | Phase | Scope | Needs |
 |---|---|---|
-| 0 | An application security architect, a code reviewer and a documenter, read-only, as a mission on the existing installation | Skills ported from the security commands; nothing new in the platform |
+| 0 | An application security architect, a code reviewer and a documenter, as a mission on the existing installation; read-only except the documenter's documentation pull requests | Skills ported from the security commands; a GitHub App for the documenter, the path-guard check and the rules on `main`; nothing new in the platform |
 | 1 | Community, planning, monitoring reports, on MAGI DEV's own installation | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier (alerts and the daily report included); today's confirmation cards for every external write |
 | 2 | Application support | A's action tier, E with the decisions inbox, F, H; the auditor agent |
 | 3 | Development and testing | B, C, D; SDLC skills; the evaluation harness (#45) |
@@ -1444,7 +1506,7 @@ Rough sizes in focused working days, at the project's recent pace: estimates, no
 
 | Phase | Platform work | Rough size |
 |---|---|---|
-| 0 | None: skills, a template, a launch | **1–2 days** |
+| 0 | None: skills, a template, a launch; plus the documenter's GitHub App, path-guard check and rules on `main` (~half a day) | **2–3 days** |
 | 1 | 28h prerequisites #54, #95, G-5 (~1–1.5 weeks); G with a first GitHub connector (~1–2 weeks); A's read tier, alerts and the daily report included (~1 week); a new installation like beta (~1 day) | **~4–6 weeks** |
 | 2 | E, the governance engine (the largest, ~2–4 weeks); the decisions inbox (~1 week); F (~1 week); H (~1 week); the auditor agent | **~6–8 weeks** |
 | 3 | B: git proxy and GitHub Apps (~1–2 weeks); C, staging (~1 week); D, sandbox (~1–2 weeks); SDLC skills | **~4–5 weeks** |
