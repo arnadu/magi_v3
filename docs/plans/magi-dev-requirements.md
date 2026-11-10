@@ -1193,8 +1193,8 @@ about one to two days:
 
 | Step | Effort | Notes |
 |---|---|---|
-| Port `security-review`, `security-audit` and `threat-model` from `.claude/commands/` to MAGI skills | Half a day to a day | Reworded for a MAGI agent: its tools, its own clone, findings kept private, the report format below |
-| Team template `config/teams/magi-dev.yaml`: the copilot and the infosec specialist, prompts, schedules | A few hours | |
+| Port `security-review`, `security-audit` and `threat-model` from `.claude/commands/` to MAGI skills | Half a day to a day | **Wave 1 done 2026-11-10** as team skills (not platform skills, which ship to every mission): `repo-workspace` (clone, cursor, commit triage scripts), the four foundations, `appsec-onboarding`, `change-review`, `advisory-triage` (with an `npm audit` baseline script), plus `code-review` and `doc-consistency` for the other two agents. The skills point to the repository's documents instead of restating them, so they don't go stale, and avoid naming any known-answer item |
+| Team template `config/teams/magi-dev.yaml`: the three agents, prompts, mental maps; team skills and scripts in `config/teams/magi-dev/skills/`; `team/repositories.json`; `team/bootstrap.md` | A few hours | **Done 2026-11-10.** A template cannot seed objectives or schedules directly (schedule files written at boot are daemon-owned and refused; the objectives files are the retired legacy path, #97), so `team/bootstrap.md` holds the objectives tree, tasks and schedules, and the mission copilot applies it with its own tools when the user asks after launch |
 | Launch from the cockpit, with a spend cap above the $25 default | Minutes | |
 | A first supervised run: clone, first diff review, first weekly sweep | Half a day of watching | Where the unknowns show up |
 
@@ -1321,10 +1321,10 @@ One-off tasks for the first weeks, assigned to `appsec`:
 |---|---|---|
 | T-01 | SEC | **Onboard.** Clone the repository; read `docs/security/` (threat model, trust boundaries, findings, `CLAUDE.md`), the practices documents and the ADRs; build the mental map; set the review cursor. |
 | T-02 | SEC-2 | **Baseline register.** Import the open findings of `docs/security/findings.md` (F-022, F-026, F-029, F-031 and the rest) and the open `security`-labelled issues into the mission's register, with status and a suggested next step. |
-| T-03 | SEC-1 | **First change review: `46ca265..HEAD`** (27 commits since the whole-repo audit, not yet security-reviewed), then move the cursor to `HEAD`. |
+| T-03 | SEC-1 | **First change review: `46ca265..HEAD`** (the commits since the whole-repo audit, not yet security-reviewed: 43 on 2026-11-10), then move the cursor to `HEAD`. |
 | T-04 | SEC-4 | **Supply-chain baseline.** `npm audit` for production and development dependencies; report and register entries. |
 | T-05 | SEC-5 | **Design review of this requirements document**: production access (A), the gateway (G), the governance engine (E), egress policy (H), source control (B). Verdict and security requirements per deliverable. |
-| T-06 | SEC-3 | **First drift sweep:** compare the "open" rows of `docs/security/trust-boundaries.md` with the code. |
+| T-06 | SEC-3 | **First drift sweep:** compare the security documents (threat model, trust boundaries, findings tracker) with the code. Worded neutrally on purpose: it is part of the known-answer test. |
 | T-07 | SEC-6 | **Audit and detection requirements** for A, E and G: what each must log, the audit record's fields, which events should raise an alert. |
 | T-08 | SEC-7 | **Costed security backlog** from the register and the roadmap's security items (#66, #67, #75, #78 and others). |
 | T-09 | SEC | **First weekly summary** to the user: what was reviewed, findings by severity, KPI values, what needs a decision. |
@@ -1472,7 +1472,10 @@ the rest. Daemon-managed regions are re-rendered each turn.
 
 **Seed facts; let it discover the analysis.**
 - **Seeded:** the repository, document locations, roles, the cadence, empty labelled sections,
-  and the review cursor set to `46ca265`, so that T-03 covers exactly the 27 unreviewed commits.
+  and the review cursor set to `46ca265`, so that T-03 covers exactly the commits not yet
+  security-reviewed. The cursor value sits in the immutable mission context; each agent writes it
+  to the shared cursor file on its first run (a team file copied into `shared/` would be
+  read-only to agents).
 - **Discovered:** its model of the system, written as its own notes during onboarding (T-01).
   The agent exists to give an independent view; seeding it with our summary would hand it our
   blind spots, as same-author review did before the October 2026 audit. Writing the notes is

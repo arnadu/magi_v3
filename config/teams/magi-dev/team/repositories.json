@@ -1,0 +1,11 @@
+{
+  "repositories": [
+    {
+      "name": "magi_v3",
+      "url": "https://github.com/arnadu/magi_v3",
+      "branch": "main",
+      "clone": "repos/magi_v3",
+      "visibility": "public"
+    }
+  ]
+}
