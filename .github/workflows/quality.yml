@@ -50,6 +50,7 @@ jobs:
               - 'packages/agent-config/**'
               - 'packages/agent-runtime-worker/**'
               - 'packages/cockpit/**'
+              - 'config/**'
               - 'package.json'
               - 'package-lock.json'
               - 'patches/**'
