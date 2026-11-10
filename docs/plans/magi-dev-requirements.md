@@ -1090,8 +1090,8 @@ design is needed while the mission is read-only.
 **Why this works on today's platform.** The repository is public, so an agent clones it with
 plain `git` in its own folder: no credential and no new platform capability. The separate
 installation (A3), the production Ops API (A) and the git proxy (B) matter only once the mission
-needs production access or writes code. The one write in phase 0, the documenter's
-documentation pull requests, needs only a GitHub App and repository rules (below).
+needs production access or writes to the repository. Phase 0 writes nothing: even the
+documenter's pull requests wait for the git proxy (below).
 
 **The first scope: an infosec specialist.** Two agents: the mission copilot (always present) and
 the specialist.
@@ -1120,9 +1120,10 @@ the specialist.
   lens (correctness, maintainability, tests, the code-structure rules), in the manner of
   `/code-review`.
 - **A documenter**: keeps the documentation consistent with the code (the spec,
-  `docs/code-structure.md`, `docs/env.md`, the user guide, ADR status, this document). It is
-  the mission's first agent with write access to GitHub, limited to documentation pull
-  requests (below); until that is set up, its changes are ready-to-apply diffs in its reports.
+  `docs/code-structure.md`, `docs/env.md`, the user guide, ADR status, this document). In phase 0
+  its changes are ready-to-apply diffs in its reports. It becomes the mission's first agent
+  with write access to GitHub, limited to documentation pull requests (below), once the git
+  proxy exists (roadmap sprint 32).
 
 The appsec agent and the code reviewer read the same commits through different lenses: their
 schedules are staggered and a shared cursor file records what each has covered. The mission
@@ -1145,14 +1146,16 @@ This is the first measurement of the kind [#72](https://github.com/arnadu/magi_v
 proposes for the whole-repo audit, and the first evidence on whether the phase-0 agents are
 worth running.
 
-**The documenter's write access: documentation pull requests** (decided 2026-11-09). A
-low-risk first use of GitHub write access, and an early piece of B. GitHub has no per-directory
+**The documenter's write access: documentation pull requests** (decided 2026-11-09; deferred
+to the git proxy in roadmap sprint 32, since until then no platform component exists to hold the
+App's token on the agent's behalf). A low-risk first use of GitHub write access, and an early
+piece of B. GitHub has no per-directory
 write permission (an App or token writes to a whole repository), so the control is on merging,
 as in most organizations: writing a branch is cheap, merging into `main` is governed.
 1. **Same repository, branches and pull requests only.** The documenter has its own GitHub App
    with contents and pull-request write on `arnadu/magi_v3`. It pushes only `docs/*` branches
-   and opens pull requests; it never merges. In phase 0 its token is a plain App installation
-   token held by the platform, not by the agent; the git proxy (B) takes over when it exists.
+   and opens pull requests; it never merges. The token is minted by the broker and used only by
+   the git proxy; the agent never holds it.
 2. **A path-guard check.** A required CI check fails any pull request from the documenter's App
    that touches a path outside its allowed set. About twenty lines of workflow, and dependable.
 3. **Rules on `main`:** a pull request and the path-guard check are required, with **the user
@@ -1487,7 +1490,7 @@ design starts to apply, and phase 1 begins.
 
 | Phase | Scope | Needs |
 |---|---|---|
-| 0 | An application security architect, a code reviewer and a documenter, as a mission on the existing installation; read-only except the documenter's documentation pull requests | Skills ported from the security commands; a GitHub App for the documenter, the path-guard check and the rules on `main`; nothing new in the platform |
+| 0 | An application security architect, a code reviewer and a documenter, read-only, as a mission on the existing installation (the documenter's pull requests come with the git proxy, roadmap sprint 32) | Skills ported from the security commands; nothing new in the platform |
 | 1 | Community, planning, monitoring reports, on MAGI DEV's own installation | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier (alerts and the daily report included); today's confirmation cards for every external write |
 | 2 | Application support | A's action tier, E with the decisions inbox, F, H; the auditor agent |
 | 3 | Development and testing | B, C, D; SDLC skills; the evaluation harness (#45) |
@@ -1522,14 +1525,14 @@ Rough sizes in focused working days, at the project's recent pace: estimates, no
 
 | Phase | Platform work | Rough size |
 |---|---|---|
-| 0 | None: skills, a template, a launch; plus the documenter's GitHub App, path-guard check and rules on `main` (~half a day) | **2–3 days** |
+| 0 | None: skills, a template, a launch | **1–2 days** |
 | 1 | 28h prerequisites #54, #95, G-5 (~1–1.5 weeks); G with a first GitHub connector (~1–2 weeks); A's read tier, alerts and the daily report included (~1 week); a new installation like beta (~1 day) | **~4–6 weeks** |
 | 2 | E, the governance engine (the largest, ~2–4 weeks); the decisions inbox (~1 week); F (~1 week); H (~1 week); the auditor agent | **~6–8 weeks** |
 | 3 | B: git proxy and GitHub Apps (~1–2 weeks); C, staging (~1 week); D, sandbox (~1–2 weeks); SDLC skills | **~4–5 weeks** |
 
-**Sequence agreed 2026-11-09** (roadmap sprints 30–33): phase 0 now, alongside 28h's
-reliability work; the governance engine on meteo and the gateway on gold-digest in parallel, the
-decisions inbox first; then phase 1 on MAGI DEV's own installation. The feature wishlist
+**Sequence agreed 2026-11-09** (roadmap sprints 30–33): phase 0 first, then 28h's
+reliability work while it runs; the governance engine on meteo, then the gateway on gold-digest
+(one after the other, the decisions inbox first, the gateway reusing the engine's Cedar); then phase 1 on MAGI DEV's own installation. The feature wishlist
 (interactive apps, illustrations, annotation) comes after, unless the user re-prioritizes.
 
 ## Open questions
