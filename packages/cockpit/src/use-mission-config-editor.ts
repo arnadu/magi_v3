@@ -9,10 +9,25 @@ import {
 	type MissionStatusValue,
 	saveMissionConfig,
 } from "./data";
+import { changedMentalMaps } from "./mental-map-diff";
 
 function orUndef(v: string): string | undefined {
 	const s = v.trim();
 	return s === "" ? undefined : s;
+}
+
+/** The stored mission fields with this editor's edits applied; a blank field means "unset". */
+function mergeMissionDraft(
+	mission: MissionConfigData["mission"],
+	draft: ConfigMissionDraft,
+): MissionConfigData["mission"] {
+	return {
+		...mission,
+		name: draft.name.trim() ? draft.name : mission.name,
+		model: orUndef(draft.model),
+		visionModel: orUndef(draft.visionModel),
+		timezone: orUndef(draft.timezone),
+	};
 }
 
 /**
@@ -90,13 +105,7 @@ export function useMissionConfigEditor(missionId: string | null) {
 		setSaving(true);
 		setSaveError(null);
 		setSaved(false);
-		const nextMission = {
-			...config.mission,
-			name: missionDraft.name.trim() ? missionDraft.name : config.mission.name,
-			model: orUndef(missionDraft.model),
-			visionModel: orUndef(missionDraft.visionModel),
-			timezone: orUndef(missionDraft.timezone),
-		};
+		const nextMission = mergeMissionDraft(config.mission, missionDraft);
 		try {
 			await saveMissionConfig(missionId, {
 				mission: nextMission,
@@ -105,10 +114,17 @@ export function useMissionConfigEditor(missionId: string | null) {
 				// can't silently clear either one; the API is a full replace.
 				missionCopilotLimits: config.missionCopilotLimits,
 				teamFiles: config.teamFiles,
-				mentalMaps: mentalMapDrafts,
+				// Only the maps edited here: sending an untouched copy would
+				// overwrite whatever the agent wrote since this editor loaded.
+				mentalMaps: changedMentalMaps(mentalMapDrafts, config.mentalMaps),
 				expectedUpdatedAt: loadedUpdatedAtRef.current ?? undefined,
 			});
-			setConfig({ ...config, mission: nextMission, agents: agentsDraft });
+			setConfig({
+				...config,
+				mission: nextMission,
+				agents: agentsDraft,
+				mentalMaps: { ...config.mentalMaps, ...mentalMapDrafts },
+			});
 			// Our own write moved updatedAt; re-read it so the next save is not refused.
 			loadedUpdatedAtRef.current = await fetchMissionUpdatedAt(missionId);
 			setSaved(true);

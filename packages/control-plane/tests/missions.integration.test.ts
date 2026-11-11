@@ -461,6 +461,31 @@ describe("missions.ts router — POST /, PUT /:id/config, POST /:id/resume", () 
 			expect(notice?.subject).toContain("edited directly");
 		});
 
+		it("PUT with an unchanged map neither rewrites it nor notifies the agent", async () => {
+			await fetch(`${baseUrl}/${missionId}/suspend`, { method: "POST" });
+			const putRes = await fetch(`${baseUrl}/${missionId}/config`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					mission: {
+						name: "Mental Map Mission",
+						model: "claude-haiku-4-5-20251001",
+					},
+					agents: baseAgents(),
+					teamFiles: [],
+					mentalMaps: {
+						analyst:
+							'<section data-managed="my-objectives"></section><section id="notes"><p>hi</p></section>',
+					},
+				}),
+			});
+			expect(putRes.status).toBe(200);
+			const notice = await db
+				.collection("mailbox")
+				.findOne({ missionId, to: "analyst" });
+			expect(notice).toBeNull();
+		});
+
 		it("400s and writes nothing if the save would drop a data-managed region", async () => {
 			await fetch(`${baseUrl}/${missionId}/suspend`, { method: "POST" });
 			const putRes = await fetch(`${baseUrl}/${missionId}/config`, {

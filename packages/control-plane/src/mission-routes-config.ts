@@ -139,6 +139,36 @@ async function checkMentalMapEdits(
 	return { latestByAgent };
 }
 
+/**
+ * Write the operator's mental-map edits over each agent's latest snapshot and
+ * tell the agent (issue #39), so it can learn between turns that its memory
+ * changed. A map identical to the stored one is not an edit: no write, no
+ * notice. Inputs were validated by checkMentalMapEdits.
+ */
+async function applyMentalMapEdits(
+	db: Db,
+	missionId: string,
+	mentalMaps: Record<string, string> | undefined,
+	latestByAgent: Map<string, { _id: ObjectId; mentalMapHtml: string }>,
+): Promise<void> {
+	const convCol = storedCollection(db, "conversationMessages");
+	for (const [agentId, html] of Object.entries(mentalMaps ?? {})) {
+		const latest = latestByAgent.get(agentId);
+		if (!latest || latest.mentalMapHtml === html) continue;
+		await convCol.updateOne(
+			{ _id: latest._id },
+			{ $set: { mentalMapHtml: html } },
+		);
+		await postMailbox(db, {
+			missionId,
+			from: "user",
+			to: [agentId],
+			subject: "Your mental map was edited directly",
+			body: "The operator edited your mental map directly while the mission was suspended. Review the current content.",
+		});
+	}
+}
+
 // Update config (structured + mental maps). Mission must be suspended.
 function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
@@ -211,7 +241,6 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 			return;
 		}
 		const latestByAgent = checked.latestByAgent;
-		const convCol = storedCollection(db, "conversationMessages");
 
 		const written = await writeConfigOrRefuse(res, () =>
 			createMongoMissionConfigWriter(db).write(
@@ -230,24 +259,7 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 			{ $set: { teamFiles: teamFiles ?? [] } },
 		);
 
-		// Update live mental maps in conversationMessages — validated above.
-		// Notify the target agent (issue #39) — previously silent, so the agent
-		// had no way to learn its own memory changed or why between turns.
-		for (const [agentId, html] of Object.entries(mentalMaps ?? {})) {
-			const latest = latestByAgent.get(agentId);
-			if (!latest) continue;
-			await convCol.updateOne(
-				{ _id: latest._id },
-				{ $set: { mentalMapHtml: html } },
-			);
-			await postMailbox(db, {
-				missionId: req.params.id,
-				from: "user",
-				to: [agentId],
-				subject: "Your mental map was edited directly",
-				body: "The operator edited your mental map directly while the mission was suspended. Review the current content.",
-			});
-		}
+		await applyMentalMapEdits(db, req.params.id, mentalMaps, latestByAgent);
 
 		res.json({ ok: true });
 	};
