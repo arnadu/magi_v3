@@ -10,7 +10,7 @@ Run the dev setup script **as root** to create pool users and configure password
 sudo bash scripts/setup-dev.sh
 ```
 
-This creates pool users `magi-w1..w6` and the `magi-copilot` user, sets up `/missions/` with shared ACLs, creates `/home/magi-copilot/workdir` with the correct group permissions, and writes `/etc/sudoers.d/magi` so the orchestrator can fork tool processes as pool users without a password prompt. It is idempotent — safe to re-run at any time.
+This creates pool users `magi-w1..w6`, the `magi-copilot` user (control-plane copilot), and the `mission-copilot` user (per-mission copilot, ADR-0016), sets up `/missions/` with shared ACLs, creates `/home/magi-copilot/workdir` with the correct group permissions, and writes `/etc/sudoers.d/magi` so the orchestrator can fork tool processes as pool users without a password prompt. It is idempotent — safe to re-run at any time.
 
 > **nvm users:** the sudoers rule pins the exact `node` binary path. If you upgrade Node via nvm, re-run the script to update the entry, otherwise tool execution will fail.
 
@@ -53,8 +53,7 @@ Run both commands once after cloning; re-run after Playwright version upgrades.
 **Terminal 1 — control plane:**
 ```bash
 LOCAL_EXECUTION=true FLY_API_TOKEN_MACHINES=dummy FLY_MISSIONS_APP_NAME=dummy \
-node --import ./packages/agent-runtime-worker/dist/node-polyfill.js \
-  packages/control-plane/dist/index.js
+node packages/control-plane/dist/index.js
 ```
 
 The control plane loads `.env` automatically via dotenv — the Firebase vars you set there are picked up at startup. No need to inline them in the command.
@@ -217,6 +216,10 @@ per-mission `x-monitor-token`, which the proxy injects.
 | `config/teams/test/word-count.yaml` | lead, worker | Dev smoke-test: count words in a file |
 | `config/teams/test/fetch-share.yaml` | lead, analyst | Fetch a PDF and inspect page images |
 | `config/teams/test/skills-test.yaml` | lead, worker | Skill creation and git-provenance workflow |
+| `config/teams/test/hello-world.yaml` | echo | Minimal single-agent hello-world |
+| `config/teams/test/reflection-test.yaml` | researcher | Context-management / reflection smoke-test |
+| `config/teams/test/daemon-job-test.yaml` | data-researcher | Daemon background-job integration test |
+| `config/teams/test/data-factory-test.yaml` | data-researcher | Data-factory integration test |
 
 ---
 

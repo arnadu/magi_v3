@@ -74,11 +74,15 @@ The architecture makes three advances over MAGI V2:
       │                              registry.fly.io/magi-missions-dev:latest
       │                              (pulled by new Execution Plane machines)
       │
-      └── packages/control-plane/**   ──▶  deploy-control-plane.yml
-          packages/agent-config/**          │  flyctl deploy
-                                            ▼
-                                       magi-control-dev.fly.dev
-                                       (rolling restart)
+      ├── packages/control-plane/**   ──▶  deploy-control-plane.yml
+      │   packages/agent-runtime-worker/**       │  flyctl deploy
+      │   packages/agent-config/**               ▼
+      │   packages/cockpit/**         magi-control-dev.fly.dev
+      │   config/**                   (rolling restart)
+      │   (+ root package files — see quality.yml for the full filter)
+      │
+      └── (both triggers require all gates to pass: lint, typecheck, tests,
+          SAST, dep audit, secret scan)
 ```
 
 For local development setup and environment variables, see [USER_GUIDE.md](USER_GUIDE.md).
@@ -256,7 +260,7 @@ LLM call sequence handles planning, tool execution, and message sending in one u
 1. **Mental Map is always in full.** It is injected into the system prompt via `{{mentalMap}}` substitution — never truncated. It is the agent's persistent working memory.
 2. **Message history is this agent's turns only.** Prior LLM calls, tool calls, and tool results for this agent within the current session. Cross-agent messages enter only via the inbox user message.
 3. **Session boundary compaction.** At the start of a new session, `reflect()` is called if the prior session was large (peak input tokens ≥ 120k). Reflection writes a cumulative summary as a `SummaryMessage` and marks the prior session's raw messages as `compacted: true`. The LLM then sees the summary in place of the raw history. `convertToLlm` also calls `pruneEphemeralResults(out, 2)` so cross-session history is lean before the inner loop starts.
-4. **In-session ephemeral pruning.** After each LLM call, if `usage.input + usage.cacheRead > 160,000` tokens (80% of the 200k window), `pruneEphemeralResults(messages, 2)` stubs the `content` of all ephemeral tool results (Bash, SearchWeb, FetchUrl, BrowseWeb, ReadFile, InspectImage) from every round except the two most recent, and strips `thinking` blocks from all but the most recent assistant message. MongoDB retains full content; agents can recover pruned results on demand via `AnalyzeMemories`.
+4. **In-session ephemeral pruning.** After each LLM call, if `usage.input + usage.cacheRead > 100,000` tokens (50% of the 200k window), `pruneEphemeralResults(messages, 2)` stubs the `content` of all ephemeral tool results (Bash, SearchWeb, FetchUrl, BrowseWeb, InspectImage, and the copilot diagnostics tools — see `EPHEMERAL_TOOLS` in `context-utils.ts`) from every round except the two most recent, and strips `thinking` blocks from all but the most recent assistant message. MongoDB retains full content; agents can recover pruned results on demand via `AnalyzeMemories`.
 5. **Skills block.** Appended to the system prompt by `formatSkillsBlock()`. Contains the content of each `SKILL.md` discovered in `sharedDir/skills/` (platform, team, and mission tiers).
 6. **Current-time block.** Built by `buildTimeBlock()` (prompt.ts) and appended to every system prompt: UTC time (ISO-8601, minute precision) + day of week, Unix epoch, and — if `mission.timezone` is set in team YAML (an IANA name, e.g. `America/New_York`) — a local-time line. Rounded to the nearest 5 minutes, deliberately: the whole system prompt is sent as one cache_control block (pi-ai's Anthropic provider), and `buildSystemPrompt()` is rebuilt fresh before every LLM call in the inner loop (turn start *and* after every tool-call round), so a to-the-second timestamp would invalidate the cache on every call. 5-minute buckets keep the block genuinely current while typically staying stable across a turn's own tool-call iterations. Deliberately minimal — no derived signals like mission elapsed-time or market-hours status; a team whose domain needs that (e.g. equity research reasoning about NYSE hours) computes it from local time within its own `systemPrompt`, not the platform.
 
