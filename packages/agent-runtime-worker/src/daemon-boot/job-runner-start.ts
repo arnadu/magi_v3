@@ -16,7 +16,7 @@ import type { BootContext } from "./context.js";
  * doc comment), then start the job-runner heartbeat.
  *
  * startJobRunner itself stays defined in daemon.ts (along with
- * runPendingJobs and logMemoryUsage, which it wraps) — passed in here as a
+ * runPendingJobs, which it wraps) — passed in here as a
  * parameter rather than imported, since nothing outside daemon.ts needs it
  * and importing it back from a daemon-boot module would be circular for no
  * benefit.

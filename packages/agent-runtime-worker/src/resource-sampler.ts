@@ -1,7 +1,7 @@
 /**
  * Per-mission disk usage sampling (ADR-0032 Decision 2, closes G-4).
  *
- * Runs from the existing 60 s job-runner tick, next to `logMemoryUsage` —
+ * Runs from the existing 60 s job-runner tick —
  * no second interval. `AGENT_WORKDIR` is the Fly Volume mount in production
  * (`fly-machines.ts`'s `mounts: [{path: "/missions"}]`); in local dev it's
  * an ordinary directory on the host disk, so disk *alerts* are skipped there
@@ -42,7 +42,7 @@ export interface ResourceSamplerDeps {
 	missionId: string;
 	/** The Fly Volume mount root in production (`AGENT_WORKDIR`). */
 	workdir: string;
-	/** `process.memoryUsage().rss`, already sampled once per tick by `logMemoryUsage`. */
+	/** `process.memoryUsage().rss` at this tick; its history is `missionResources`, not the log. */
 	rssMb: number;
 	/** The job-runner's own in-flight-job counter, for ADR-0032's `upgrade-idle` check (read back by the control plane's own tick — this daemon never alerts on it itself). */
 	runningJobs: number;
