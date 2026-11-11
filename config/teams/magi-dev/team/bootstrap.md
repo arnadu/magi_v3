@@ -85,3 +85,19 @@ Staggered so two reviewers never start on the same commits at the same time.
 | code-review | code-reviewer | `0 3,9,15,21 * * *` | Code review | Run code-review on the commits since your cursor. If onboarding (CR-01) isn't finished, continue it instead. |
 | docs-check | documenter | `0 5 * * *` | Documentation check | Run doc-consistency on the commits since your cursor. If onboarding (DC-01) isn't finished, continue it instead. |
 | docs-sweep | documenter | `0 6 * * 3` | Documentation sweep | Weekly sweep of the next area in your rotation (doc-consistency, sweep mode); then a short PostMessage to the user. |
+
+## Addendum 2026-11-11 — code reviewer, wave 1
+
+Apply only this section if the steps above were already applied. AddTask:
+
+| id | objective | assignee | title |
+|---|---|---|---|
+| CR-03 | CODE | code-reviewer | First rules-enforcement audit: build the rules matrix (skill rules-enforcement-audit) |
+| CR-04 | CODE | code-reviewer | First hotspot analysis and weekly report; choose the first module for a deep review |
+
+CreateScheduledMessage:
+
+| label | to | cron | subject | body |
+|---|---|---|---|---|
+| code-weekly | code-reviewer | `0 8 * * 2` | Weekly code health | Run hotspot-analysis and write the weekly report (top hotspots and change since last week, the module recommended for a deep review). |
+| code-monthly | code-reviewer | `0 9 2 * *` | Monthly rules audit | Run rules-enforcement-audit: update the rules matrix and write the report with enforcement proposals. |

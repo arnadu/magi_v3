@@ -1489,6 +1489,56 @@ installation for MAGI DEV, created the way the beta environment for another user
 (`promote.sh --suffix`), with the mission moved there. That is when the separate-installation
 design starts to apply, and phase 1 begins.
 
+### The code reviewer (decided 2026-11-11)
+
+**Mandate.** Keep the code healthy (correct, maintainable, tested, following the repository's
+own rules) and make sure those rules are enforced. The October 2026 audit concluded that rules
+nothing checks get ignored, so enforcement is part of the role, not an afterthought.
+
+**A quality model that drives decisions, not an aspiration.** Standards such as ISO/IEC 25010
+are useful as a checklist of what not to forget, but they don't say what passes. The agent's
+`quality-model` skill grades a criterion only if it has four parts: a **signal**, a **measure**
+(a command or a count), a **pass bar or trend**, and the **decision it drives**. What can't be
+measured is a review question. Twelve criteria: correctness (escaped defects, fix-of-recent-change
+commits), failure handling, readability, design and dependencies, **data-model integrity**,
+modifiability (hotspots, duplication, dead code), test effectiveness, type safety, operability,
+performance, rule enforcement, delivery (CI on main, change failure rate). Each row names what
+already enforces it, so the reviewer never re-checks what CI gates.
+
+**Data-model integrity** (a criterion of its own). The stored document's type is the code's type:
+one canonical type per collection in `agent-config/src/stored/`, collections reached through
+`storedCollection()`, dotted paths through `field()`/`ref()`, translation only at real boundaries
+(the cockpit's API, external providers). Stored data outlives code, so a shape change needs a
+migration or a reader that accepts both shapes, with a test. Measured by T13, local
+re-declarations of stored shapes, raw dotted-path strings, multi-reader collections without a
+contract test.
+
+**How it works in practice.** Automate what can be automated; review the rest. Several passes at
+different scales, because one kind of scan misses whole classes of problems:
+
+| Pass | Cadence | Skill | Wave |
+|---|---|---|---|
+| Per change: CI result first (GitHub's public API), then the judgement criteria | Every 6 h | `code-review` | 1 |
+| Hotspots: churn × complexity from git history, trend week to week | Weekly | `hotspot-analysis` | 1 |
+| Rules enforcement: every written rule → its enforcement → sampled compliance → proposals for automatic checks | Monthly | `rules-enforcement-audit` | 1 |
+| Bottom-up: one hotspot module in depth, all criteria | Rotating | `module-deep-review` | 2 |
+| Top-down: architecture as built versus the spec and ADRs, dependency graph, cycles | Monthly | `architecture-review` | 2 |
+| Cross-cutting: test effectiveness (assertions, flakiness, sampled mutation testing) | Monthly | `test-quality-review` | 2 |
+| Trend: one scorecard over time (allowlists, exemptions, tripwire counts, coverage, duplication, cycles, dead exports, hotspots, escaped defects) | Monthly | `quality-scorecard` | 2 |
+
+Findings use Conventional Comments labels (`issue`, `suggestion`, `question`, `nitpick`),
+blocking or not, with a failure scenario and a refutation attempt (`review-judgement`). The
+approval bar is Google's: a change passes when it improves the overall health of the code. **A
+kind of finding seen twice comes with a proposal for a deterministic check** (tripwire, lint rule,
+ratchet, contract test), so the rule stops depending on anyone remembering it.
+
+**Where the analysis tools run** (decided 2026-11-11). Wave 1 needs no installed tools (git and
+Python only). Wave 2's tools (duplication, dead code, dependency graph, mutation testing) need the
+repository's dependencies: they run in the mission first, `npm ci --ignore-scripts` in the
+reviewer's clone with the heavy runs as weekly background jobs, and move to CI as report-only
+jobs once the gateway (sprint 32) gives the mission a GitHub credential to read CI artifacts. New
+checks start report-only and become ratchets once measured, as the structure check did.
+
 ## Phasing
 
 | Phase | Scope | Needs |

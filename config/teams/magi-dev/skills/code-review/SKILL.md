@@ -1,60 +1,61 @@
 ---
 name: code-review
-description: Correctness and maintainability review of the commits since your cursor — bugs first, then tests, structure and the repository's working rules — with findings judged and refuted before they are reported, and a hand-off block for the developers.
+description: Per-change review of the commits since your cursor — confirm CI was green, then judge what tools can't (correctness, failure handling, design, data-model integrity, tests, operability, performance) against the quality model, with labelled, refuted findings and a hand-off block.
 ---
 
-# Code review
+# Code review (per change)
 
-You review every change to the main branch for **correctness** (does it do what it claims, in
-every case?) and **maintainability** (will the next change be easy and safe?). Security is the
-application security architect's lens; when you see something security-relevant, note it in
-your report under "For appsec" and leave the judgement to them.
-
-## Your reference: the repository's own rules
-
-Read them in your clone, once at onboarding and again when they change: the root `CLAUDE.md`
-and each package's `CLAUDE.md` ("Working rules"), `docs/practices/*.md` (code quality, code
-structure, operational resilience, documentation, testing), `docs/code-structure.md`.
-Review against **these** rules, not generic preferences. A style point the linter would catch is
-not worth a finding.
+You review every change to the main branch. Tools already gate style, types, size, complexity,
+known dangerous patterns and coverage floors (`quality-model`, "What is already enforced"); you
+don't redo their work. You spend your effort on what only judgement finds. Security is appsec's
+lens: note anything security-relevant under "For appsec" and leave the verdict to them.
 
 ## Procedure
 
-1. **Sync and list** (`repo-workspace`) with `--lens code`. No commits: note it in your mental map
-   and stop.
-2. **Read each commit as a whole**: message, diff, and enough surrounding code to know the
-   callers and the data. Check the commit does what its message says.
-3. **Look for, in this order:**
-   - **Bugs**: wrong condition, missed case (empty, missing, duplicate, concurrent, retried, after
-     a crash), wrong unit, an error swallowed or reported with no context, a promise not awaited,
-     a resource not released, a write that a crash mid-way would leave half-done.
-   - **Tests**: does a test fail without the change? Do tests cover the new branch and the
-     failure path? Is a test asserting something real, or only that the code runs?
-   - **Operational resilience**: a new loop, timer, external call or write, against the questions
-     in `docs/practices/operational-resilience.md` (crash, hang, overlap, catch-up, disk).
-   - **Structure**: a file or function crossing the thresholds in the root `CLAUDE.md`; a new
-     module born large; duplicated logic that already exists elsewhere (search for it).
-   - **Documentation in the same commit**: the working rules say which documents change with which
-     code; note when one was missed (the documenter checks the documents themselves).
-4. **Judge before reporting.** For each candidate: can you state the input or sequence that
-   produces the wrong result? Try to refute it (a guard upstream, a caller that never passes that
-   value, a test that already covers it). Unrefuted with a concrete scenario: a finding. Plausible
-   but not shown: a question, labelled as such.
-5. **Report**: `$SHARED_DIR/reports/code-review/YYYY-MM-DD-change-review.md`:
-   - scope (commit range), depth per commit, overall assessment;
-   - findings, each with an id `CR-NNN` (sequential across your reports; keep the last id in your
-     mental map), severity (bug / risk / maintainability), `file:line`, the failure scenario, the
-     suggested fix;
-   - "For appsec", if any;
-   - a **hand-off block**: a self-contained instruction for the developers' coding assistant
-     ("Fix CR-004 and CR-007; for each, a test that fails before the fix. ...").
-6. **Move your cursor** past what you reviewed, update your mental map (review state, open
-   findings summary) and your KPIs. PostMessage the user only for a bug that could lose data,
-   money or availability; otherwise the report is enough.
+1. **Sync and list** (`repo-workspace`) with `--lens code`. No commits: note it in your mental
+   map and stop.
+2. **CI first.** `python3 $SHARED_DIR/skills/_team/repo-workspace/scripts/ci-status.py <sha> ...`
+   for the commits in the batch (at most ~10 per call: 60 requests an hour without a credential).
+   A red commit on main is a blocking `issue` whatever its content: name the failed check. A
+   `no-ci` commit only touched paths CI ignores; check that this was right.
+3. **Read each commit as a whole**: the message, the diff, and enough of the surrounding code to
+   know the callers and the data. Does it do what the message says, completely?
+4. **Judge against the quality model**, judgement criteria first:
+   - **Q1 correctness**: missed cases (empty, missing, duplicate, concurrent, retried, after a
+     crash), wrong units, off-by-one, wrong comparison;
+   - **Q2 failure handling**: errors swallowed or logged without operation, input and
+     consequence; external calls without timeout and abort; multi-step writes that a crash
+     would leave half done (atomic or compare-and-set?); background loops that can overlap,
+     hang or die silently;
+   - **Q5 data-model integrity**: a new local shape for a stored collection; a dotted path as a
+     raw string; a changed stored shape without a migration or tolerant reader and a test;
+   - **Q7 tests**: is there a test that fails without this change? Does it assert the behaviour
+     or only that the code runs? Bug fixes need a failing-first test;
+   - **Q4 design**: does the change put logic where it belongs, reuse the house mechanism
+     (search for an existing helper before accepting a new one), keep dependency direction?
+   - **Q9 operability** and **Q10 performance**: new failure modes documented in
+     `docs/operational-resilience.md`? Unbounded growth, queries in loops?
+   - **house rules**: the root `CLAUDE.md` "Working rules" and the package `CLAUDE.md`
+     conventions, quoted when broken.
+5. **Grade** each candidate with `review-judgement`: label, blocking or not, failure scenario,
+   refutation attempted. If the same kind of finding has appeared before, add an enforcement
+   proposal.
+6. **Report**: `$SHARED_DIR/reports/code-review/YYYY-MM-DD-change-review.md`:
+   - first line: blocking findings or none; scope (commit range); CI result per commit;
+   - depth per commit (read fully / skimmed / skipped, and why);
+   - findings `CR-NNN` (sequential across reports; last id in your mental map), each with label,
+     blocking flag, criterion, `file:line`, failure scenario, refutation, suggested fix;
+   - "For appsec", if any; enforcement proposals, if any;
+   - a **hand-off block** for the developers' coding assistant: "Fix CR-004 and CR-007; for each,
+     first a test that fails before the fix. ...".
+7. **Move your cursor** past what you reviewed; update your mental map (review state, open
+   findings, proposed enforcement) and KPIs. PostMessage the user only for a blocking `issue`
+   that could lose data, money or availability.
 
 ## Don't
 
-- Rewrite the code yourself or propose large refactors in a change review; one concrete fix per
-  finding.
-- Report preferences as findings.
+- Re-report what a tool enforces, unless the tool's allowlist entry has an expired reason.
+- Propose large refactors in a change review; one concrete fix per finding. Refactoring
+  candidates go to the weekly hotspot report.
+- Report preferences as findings, or write a vague all-clear: "no findings" lists what was read.
 - File anything publicly; reports stay in the mission's files.

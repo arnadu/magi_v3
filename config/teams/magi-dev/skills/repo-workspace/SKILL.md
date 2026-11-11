@@ -23,6 +23,7 @@ change what you are reading. You never push, commit or open pull requests from i
 | Commits to review | `python3 $S/commits-since.py <clone> <cursor> --lens security\|code\|docs` | Oldest first, each with its changed files marked `deep`, `skim` or `skip` for your lens; at most 60 commits per call |
 | Move your cursor | `python3 $S/cursor.py set <sha> "<note>"` | Only after the report covering that commit is written |
 | See everyone's cursor | `python3 $S/cursor.py show` | What each reviewer has covered |
+| CI result | `python3 $S/ci-status.py <sha> [...]` | green / red / pending / no-ci per commit, from GitHub's public API (60 requests an hour without a credential) |
 
 The cursors live in `$SHARED_DIR/reports/review-cursor.json`, one entry per agent.
 
