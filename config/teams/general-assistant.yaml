@@ -3,7 +3,7 @@ mission:
   name: "General Assistant"
   maxCostUsd: 25
   model: deepseek/deepseek-chat
-  visionModel: google/gemini-flash-1.5-8b
+  visionModel: google/gemini-2.5-flash-lite
 
 agents:
   - id: assistant
