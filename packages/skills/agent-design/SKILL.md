@@ -96,6 +96,9 @@ could apply. Give the mission a budget per objective when cost matters.
   stronger one. Say which and why to the operator, with the price.
 - **Spend cap**: set `maxCostUsd` to what the operator agreed; add per-agent `limits` for any
   agent that runs often.
+- **Machine size**: every agent that browses or researches runs its own browser. More than two
+  such agents need 2 GB (`mission.memoryMb: 2048`); a 1 GB machine runs out of memory and slows
+  every agent down. Tell the operator the cost difference.
 
 ## 6. Before launch: checklist
 
@@ -105,7 +108,8 @@ could apply. Give the mission a budget per objective when cost matters.
 - Mental maps: permanent scaffolding without ids, working sections with ids, small.
 - Objectives saved, each with an owner and at least one KPI.
 - Recurring work has a schedule (or the lead agent's first task is to create one).
-- Model and cap match what the operator asked for.
+- Model and cap match what the operator asked for; the machine size fits the browsing agents.
+- No agent is told, or left free, to ask for API keys: the platform reaches data providers itself.
 - Nothing contradicts across prompt, skills and objectives.
 
 ## 7. After launch: first-run review

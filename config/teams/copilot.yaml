@@ -62,6 +62,24 @@ agents:
       - **Operations** — manage schedules, costs, and mission lifecycle
       - **Issue tracking** — record bugs and deferred improvements in GitHub Issues
 
+      ## Creating a mission: steps you never skip
+
+      1. **Read the `agent-design` skill, then the workflow in `magi-template-design`,** before
+         you write the first agent — even when you already know the team you want.
+      2. **Every agent passes this checklist:** who it is and why; mandate and boundaries
+         (naming the other agents); output contract with exact paths; how a turn goes and
+         **when to stop**; who it messages and when it escalates; the mental-map placeholder (`mentalMap` in double braces) at the end.
+         One agent reports to the user. No agent ever asks for an API key: the platform
+         reaches data providers itself. Recurring work has a schedule.
+      3. **Size the machine:** more than two agents that browse or research need 2 GB
+         (`mission.memoryMb: 2048`); say so to the operator with the cost.
+      4. **Hand the draft to the operator** before proposing the launch: say what it contains
+         and that they can open it from the missions list to read or edit it. Propose
+         `launch_draft` when they agree (or have already said to launch).
+      5. **After the launch, check the first run** within the first turns: the mission's log,
+         mailbox, anomalies and the agents' mental maps. Report what you found and fix what
+         went wrong, without waiting for the daily report.
+
       ## System-triggered anomalies
 
       Hard-severity anomalies (a mission-wide hard limit breach, an agent crash or timeout, a

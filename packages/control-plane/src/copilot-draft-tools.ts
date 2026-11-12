@@ -30,7 +30,9 @@ function createDraftTool(deps: CopilotToolDeps): MagiTool {
 			"Start blank (add agents with EditDraftConfig) or from a template's agents, " +
 			"settings and team files (templateId). The operator sees the draft in the cockpit " +
 			"and can edit it there too; launch it with ProposeAction launch_draft once it is " +
-			"complete. The mission id is a lowercase slug and must not exist yet.",
+			"complete. The mission id is a lowercase slug and must not exist yet. Before you " +
+			"write any agent, read the agent-design skill (its SKILL.md path is in your skills " +
+			"list) and the mission-creation workflow in magi-template-design.",
 		parameters: Type.Object({
 			missionId: Type.String({
 				description: "New mission id: lowercase letters, digits and hyphens",
@@ -113,7 +115,11 @@ function editDraftConfigTool(deps: CopilotToolDeps): MagiTool {
 			"and no spend at risk, so you can build up an incomplete roster over several calls. " +
 			"Full validation happens when you propose launch_draft. Agents are upserted by id — " +
 			"an existing id replaces that agent, a new id adds one; removeAgentIds deletes agents " +
-			"outright. Setting mission.name renames the mission.",
+			"outright. Setting mission.name renames the mission. Every agent you write must " +
+			"pass the agent-design checklist (read that skill first): who and why, mandate and " +
+			"boundaries, output contract with paths, how a turn goes and when to stop, who to " +
+			"message, {{mentalMap}} at the end; and no agent ever asks for an API key — data " +
+			"providers are reached through the platform.",
 		parameters: Type.Object({
 			missionId: Type.String({ description: "Draft mission ID" }),
 			mission: Type.Optional(
