@@ -68,6 +68,24 @@ discussion, commit message) before it is fixed. See `security-reporting`.
 A drift check (task T-06, the weekly drift check, any "is this document current?" question) uses
 the same method as the documenter's `doc-consistency` skill: read it. In short:
 
+**The checklist script does the inventory; you do the verdicts.** It is the method, not a hint:
+
+```bash
+C=$SHARED_DIR/skills/_team/doc-consistency/scripts/doc-claims.py
+python3 $C extract <clone>/<doc>.md [--section "<heading>"] --out <your-report-folder>/claims/YYYY-MM-DD-<doc>.md
+#   ...fill in every row: verdict (confirmed / wrong / unverifiable / not-a-claim) and evidence...
+python3 $C summary <your-report-folder>/claims/YYYY-MM-DD-<doc>.md   # exits 1 until complete
+```
+
+Save the checklist in your own report folder (`reports/docs/claims/` or
+`reports/security/claims/`) and paste the `summary` output into the report as its coverage. A
+report on a document with no complete checklist is incomplete; say so instead of concluding.
+
+**A check always starts from the document, never from your last report.** "Check", "sweep",
+"re-run" or "is this current?" all mean: extract a fresh checklist and verify every row against
+the code as it is now. Read your earlier reports only after the checklist is complete, to say
+what changed.
+
 1. **Inventory every statement** in the part you check before verifying any, into a working file
    (`$WORKDIR/notes/claims-<doc>-<section>.md`): each status ("open", "fixed", "accepted", "⚠️",
    "✅"), each statement of behaviour ("component X validates Y before use", "Z runs as user

@@ -21,6 +21,24 @@ rewriting an accepted ADR; propose a status note or a new ADR.
 
 ## The method: inventory, then verify
 
+**The checklist script does the inventory; you do the verdicts.** It is the method, not a hint:
+
+```bash
+C=$SHARED_DIR/skills/_team/doc-consistency/scripts/doc-claims.py
+python3 $C extract <clone>/<doc>.md [--section "<heading>"] --out <your-report-folder>/claims/YYYY-MM-DD-<doc>.md
+#   ...fill in every row: verdict (confirmed / wrong / unverifiable / not-a-claim) and evidence...
+python3 $C summary <your-report-folder>/claims/YYYY-MM-DD-<doc>.md   # exits 1 until complete
+```
+
+Save the checklist in your own report folder (`reports/docs/claims/` or
+`reports/security/claims/`) and paste the `summary` output into the report as its coverage. A
+report on a document with no complete checklist is incomplete; say so instead of concluding.
+
+**A check always starts from the document, never from your last report.** "Check", "sweep",
+"re-run" or "is this current?" all mean: extract a fresh checklist and verify every row against
+the code as it is now. Read your earlier reports only after the checklist is complete, to say
+what changed.
+
 Shallow checking finds wrong names and misses wrong behaviour. So, for whatever you check (a
 section in a sweep, or the passages a commit touches):
 

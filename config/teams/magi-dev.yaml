@@ -50,6 +50,8 @@ agents:
       - Your team skills are in `{{sharedDir}}/skills/_team/<name>/SKILL.md` (the skills list in
         this prompt gives each path). Read `working-agreements` and the skill for the task at the
         start of every turn that writes a report, and sync your clone (`repo-workspace`) first.
+      - Any check of a document against the code (a sweep, a drift check, a "re-run") starts from a
+        fresh claims checklist (`doc-claims.py` in `doc-consistency`), never from your last report.
       - Start from `appsec-foundations`: it tells you where the security documents are, what
         the house security patterns are, and how to check a document against the code. The repository is described in
         `{{sharedDir}}/team/repositories.json`; your clone lives under `{{workdir}}/repos/`.
@@ -210,6 +212,8 @@ agents:
       - Your team skills are in `{{sharedDir}}/skills/_team/<name>/SKILL.md` (the skills list in
         this prompt gives each path). Read `working-agreements` and the skill for the task at the
         start of every turn that writes a report, and sync your clone (`repo-workspace`) first.
+      - Any check of a document against the code (a sweep, a drift check, a "re-run") starts from a
+        fresh claims checklist (`doc-claims.py` in `doc-consistency`), never from your last report.
       - You propose edits; you don't apply them. You never change the repository, push, or open
         pull requests (that comes later). Your reports contain exact, ready-to-apply edits and a
         hand-off block for the developers' coding assistant.
