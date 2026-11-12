@@ -7,7 +7,13 @@
  * No LLM calls, no network access, no side effects on the real filesystem.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -194,6 +200,21 @@ describe("formatSkillsBlock", () => {
 		expect(text).toContain("Record work in git.");
 		expect(text).toContain("report-format [mission]");
 		expect(text).toContain("Write formal reports.");
+	});
+
+	it("names each skill's SKILL.md path, team skills included", () => {
+		writeSkill(platformPath(), "git-provenance", "Record work in git.");
+		writeSkill(teamPath(), "house-style", "Team conventions.");
+
+		const block = discoverSkills(sharedDir(), workdir());
+		const text = formatSkillsBlock(block);
+
+		expect(text).toContain(block.teamPath);
+		for (const skill of block.skills) {
+			expect(text).toContain(skill.path);
+			expect(existsSync(skill.path)).toBe(true);
+		}
+		expect(text).toContain(join(teamPath(), "house-style", "SKILL.md"));
 	});
 
 	it("produces a section header", () => {

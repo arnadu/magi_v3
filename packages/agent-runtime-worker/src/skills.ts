@@ -12,6 +12,8 @@ export interface SkillMetadata {
 	name: string;
 	description: string;
 	scope: SkillScope;
+	/** Absolute path of the skill's SKILL.md, so the agent can read it without guessing. */
+	path: string;
 }
 
 export interface SkillsBlock {
@@ -21,6 +23,8 @@ export interface SkillsBlock {
 	missionPath: string;
 	/** Absolute path to the agent-local skill tier (private writable). */
 	agentPath: string;
+	/** Absolute path to the team skill tier (the mission config's skills, read-only). */
+	teamPath: string;
 	/** All discovered skills, one entry per name (see discoverSkills for precedence). */
 	skills: SkillMetadata[];
 }
@@ -79,6 +83,7 @@ export function discoverSkills(
 		platformPath,
 		missionPath,
 		agentPath,
+		teamPath,
 		skills: Array.from(map.values()),
 	};
 }
@@ -131,7 +136,7 @@ function scanTier(
 			continue;
 		}
 
-		map.set(meta.name, { ...meta, scope });
+		map.set(meta.name, { ...meta, scope, path: skillMdPath });
 	}
 }
 
@@ -188,18 +193,19 @@ export function parseFrontmatter(
 /**
  * Format the skills block for injection into an agent's system prompt.
  *
- * Shows three explicit absolute paths so the agent knows exactly where to
- * read SKILL.md files and where to write new skills, without guessing, and
+ * Shows the tier paths and each skill's own SKILL.md path, so the agent knows
+ * exactly where to read SKILL.md files and where to write new skills, without guessing, and
  * says which entries were written by agents during the mission.
  */
 export function formatSkillsBlock(block: SkillsBlock): string {
 	const lines: string[] = [
 		"## Available Skills",
 		`Platform skills (read-only): ${block.platformPath}`,
+		`Team skills (read-only):     ${block.teamPath}`,
 		`Mission skills (shared):      ${block.missionPath}`,
 		`Your private skills:          ${block.agentPath}`,
 		"",
-		"Read SKILL.md and run scripts/ via Bash when relevant.",
+		"Each skill below names its SKILL.md: read it before using the skill, and run its scripts/ via Bash.",
 		"To add a skill for the whole team this mission, write it under the mission path.",
 		"To add a skill for yourself only, write it under your private path.",
 	];
@@ -207,7 +213,9 @@ export function formatSkillsBlock(block: SkillsBlock): string {
 	if (block.skills.length > 0) {
 		lines.push("");
 		for (const skill of block.skills) {
-			lines.push(`- ${skill.name} [${skill.scope}]: ${skill.description}`);
+			lines.push(
+				`- ${skill.name} [${skill.scope}]: ${skill.description} (${skill.path})`,
+			);
 		}
 		if (
 			block.skills.some((s) => s.scope === "mission" || s.scope === "agent")
