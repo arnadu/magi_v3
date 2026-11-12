@@ -13,7 +13,7 @@ Secrets are never logged and never reach agent tool or job subprocesses (those g
 | `BRAVE_SEARCH_API_KEY` | mission daemon, CLI | — | secret | Enables the SearchWeb tool (free tier: 2000 requests/month). Without it the tool is absent. |
 | `CONTROL_API_KEY` | control plane | — | required, secret | Admin key (API and cockpit). Also the only identity that may raise a mission's ceiling above the platform ceiling. |
 | `CONTROL_PLANE_URL` | mission daemon | — | — | Base URL the mission copilot's GitHub-proxy tools call; injected at machine creation. Empty in local dev. |
-| `CSP_ENFORCE` | control plane | `false` | — | `true` makes the cockpit CSP enforcing instead of report-only. Flip once `[csp] violation` logs are clean. |
+| `CSP_ENFORCE` | control plane | `true` | — | The cockpit CSP is enforcing unless this is `false` (report-only: violations logged as `[csp] violation`, nothing blocked). Use `false` only temporarily, e.g. while adding a new source. |
 | `DATA_PROVIDER_DAILY_CAP` | mission daemon | `500` | — | Per-provider daily call cap for the daemon's data-fred / data-fmp / data-newsapi tools. |
 | `DEBUG_SESSIONS` | mission daemon, CLI | — | — | `1` prints each session's system prompt, dynamic context and prior messages. |
 | `FIREBASE_CLIENT_API_KEY` | control plane | — | — | Public Firebase client value served to the browser via /firebase-config.js. |

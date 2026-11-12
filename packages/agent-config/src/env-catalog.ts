@@ -316,9 +316,9 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 	{
 		name: "CSP_ENFORCE",
 		planes: ["control"],
-		default: "false",
+		default: "true",
 		description:
-			"`true` makes the cockpit CSP enforcing instead of report-only. Flip once `[csp] violation` logs are clean.",
+			"The cockpit CSP is enforcing unless this is `false` (report-only: violations logged as `[csp] violation`, nothing blocked). Use `false` only temporarily, e.g. while adding a new source.",
 	},
 	{
 		name: "PLATFORM_MAX_COST_CEILING_USD",

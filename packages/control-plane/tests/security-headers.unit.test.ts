@@ -82,10 +82,11 @@ describe("securityHeaders middleware", () => {
 		expect(r.headers.has("Content-Security-Policy-Report-Only")).toBe(false);
 	});
 
-	it("reads CSP_ENFORCE=true from the environment, anything else means report-only", () => {
+	it("enforces by default; only CSP_ENFORCE=false switches to report-only", () => {
+		expect(cspEnforced({})).toBe(true);
 		expect(cspEnforced({ CSP_ENFORCE: "true" })).toBe(true);
-		expect(cspEnforced({ CSP_ENFORCE: "1" })).toBe(false);
-		expect(cspEnforced({})).toBe(false);
+		expect(cspEnforced({ CSP_ENFORCE: "1" })).toBe(true);
+		expect(cspEnforced({ CSP_ENFORCE: "false" })).toBe(false);
 	});
 });
 

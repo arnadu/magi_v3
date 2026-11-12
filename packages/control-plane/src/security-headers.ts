@@ -3,13 +3,15 @@
  * Policy, `nosniff`, a referrer policy and a frame-ancestors restriction on
  * every response the control plane serves.
  *
- * The CSP ships **report-only** until `CSP_ENFORCE=true`: the cockpit loads
- * Firebase Auth (popup + iframe to the auth domain), mermaid (inline styles)
- * and KaTeX (bundled fonts), and agent-authored HTML previews are shown in
- * `sandbox="allow-scripts"` iframes whose `srcdoc` inherits this policy — so
- * the exact source list is verified against real violation reports
- * (`POST /api/csp-report`, logged) before it blocks anything. The policy
- * string is identical in both modes; only the header name changes.
+ * The CSP is **enforcing** by default, in every deployment; `CSP_ENFORCE=false`
+ * switches it to report-only (a deliberate opt-out, e.g. while a new source
+ * is being added). The cockpit loads Firebase Auth (popup + iframe to the
+ * deployment's own auth domain), mermaid (inline styles) and KaTeX (bundled
+ * fonts), and agent-authored HTML previews are shown in
+ * `sandbox="allow-scripts"` iframes whose `srcdoc` inherits this policy;
+ * violations are reported to `POST /api/csp-report` and logged in both
+ * modes. The policy string is identical in both modes; only the header name
+ * changes. Verified enforcing on dev on 2026-11-13.
  */
 
 import type { NextFunction, Request, Response } from "express";
@@ -57,7 +59,7 @@ export function buildCsp(opts: CspOptions = {}): string {
 }
 
 export function cspEnforced(env: NodeJS.ProcessEnv = process.env): boolean {
-	return env.CSP_ENFORCE === "true";
+	return env.CSP_ENFORCE !== "false";
 }
 
 /** Express middleware: sets the headers on every response (API, static, SPA fallback). */

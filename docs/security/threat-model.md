@@ -383,7 +383,7 @@ graph TB
 ### TB-9: Browser → Control plane HTTPS (dual-mode auth)
 - `packages/control-plane/src/auth.ts` — `createAuthMiddleware(db)`: extracts credential from Bearer header / `X-Api-Key` / `magi_session` cookie (never the query string, F-050); validates `CONTROL_API_KEY` first (constant-time), then Firebase JWT via `verifyFirebaseToken`; sets `req.userId` and `req.isAdmin`
 - `packages/control-plane/src/session-routes.ts` — `POST /api/auth/session` (bearer → `HttpOnly` cookie), `GET /api/auth/me`, `POST /api/auth/logout`; mounted after `requireAuth`
-- `packages/control-plane/src/security-headers.ts`, `public-routes.ts` — CSP (`buildCsp`, report-only unless `CSP_ENFORCE=true`), `nosniff`, referrer/framing/permissions headers on every response; unauthenticated rate-limited `POST /api/csp-report` sink (log-only)
+- `packages/control-plane/src/security-headers.ts`, `public-routes.ts` — CSP (`buildCsp`, enforcing by default, report-only only with `CSP_ENFORCE=false`), `nosniff`, referrer/framing/permissions headers on every response; unauthenticated rate-limited `POST /api/csp-report` sink (log-only)
 - `packages/control-plane/src/firebase.ts` — `initFirebase()`: Firebase Admin SDK init from `FIREBASE_SERVICE_ACCOUNT_KEY` (preferred) or `applicationDefault()` + `FIREBASE_PROJECT_ID`; `verifyFirebaseToken()`: calls `getAuth().verifyIdToken()`
 - `packages/control-plane/src/users.ts` — `syncFirebaseUser()`: upserts `uid`, `email`, `displayName`, `lastLoginAt` into `users` collection on every authenticated request; `uid` is never derived from request body
 - `packages/control-plane/src/missions.ts` — `userFilter(req)`: admin sees all (`{}`); regular user sees only `{ userId: req.userId }`; applied to all CRUD + lifecycle queries

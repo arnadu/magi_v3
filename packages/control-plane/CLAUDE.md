@@ -39,8 +39,8 @@ Full list: [`docs/env.md`](../../docs/env.md). The ones that change behaviour:
   with a $25 cap. Operator guide: `docs/spend-limits.md`; ADR-0034.
 - `MONITOR_SIGNING_KEY` — HMAC key for per-mission monitor tokens; never forwarded to mission
   machines.
-- `CSP_ENFORCE` — `"true"` makes the cockpit CSP enforcing (default report-only; violations are
-  logged as `[csp] violation …`).
+- `CSP_ENFORCE` — the cockpit CSP is enforcing by default; `"false"` switches it to report-only
+  (violations are logged as `[csp] violation …` in both modes).
 - `GH_TOKEN`, `GITHUB_REPO` (default `arnadu/magi_v3`) — the copilots' GitHub tools; every
   GitHub write is a pending action the operator confirms.
 - `FLY_MISSIONS_IMAGE` — the image new mission machines use; pinned by CI after each build.
