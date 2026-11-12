@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { MagiTool } from "@magi/agent-runtime-worker";
 import { Type } from "@sinclair/typebox";
+import { preflightAction } from "./copilot-action-preflight.js";
 import {
 	ActionValidationError,
 	describeActions,
@@ -13,7 +14,7 @@ import type { PendingAction } from "./pending-actions.js";
 
 // ─── B2: mutating via ProposeAction ───────────────────────────────────────
 function proposeActionTool(deps: CopilotToolDeps): MagiTool {
-	const { pushEvent, pending, userId } = deps;
+	const { db, pushEvent, pending, userId } = deps;
 	return {
 		name: "ProposeAction",
 		description:
@@ -22,7 +23,10 @@ function proposeActionTool(deps: CopilotToolDeps): MagiTool {
 			"full validated payload under a server-computed label. This tool returns immediately — " +
 			"execution happens when the operator confirms. The payload is validated strictly: a " +
 			"missing, mistyped or unknown field is rejected here (nothing is proposed), so pass " +
-			"exactly the fields listed.\n\n" +
+			"exactly the fields listed. launch_draft and save_session_config are also checked " +
+			"against the stored config now (the same checks as at confirmation), so fix any " +
+			"error returned here before the operator sees a card. You are told when the " +
+			"operator confirms or dismisses an action, and when one fails.\n\n" +
 			`Action types and payloads:\n${describeActions()}`,
 		parameters: Type.Object({
 			type: Type.String({ description: "Action type (see description)" }),
@@ -48,6 +52,17 @@ function proposeActionTool(deps: CopilotToolDeps): MagiTool {
 			if (parsed.type === GITHUB_ISSUE_ACTION) {
 				return proposeGithubIssue(deps, parsed.payload);
 			}
+			const problem = await preflightAction(
+				db,
+				parsed.type,
+				parsed.payload as Record<string, unknown>,
+				userId,
+			);
+			if (problem) {
+				return err(
+					`Not proposed — it would fail at confirmation: ${problem}. Fix it and propose again.`,
+				);
+			}
 			const action: PendingAction = {
 				id: randomUUID(),
 				userId,
@@ -65,8 +80,8 @@ function proposeActionTool(deps: CopilotToolDeps): MagiTool {
 			});
 			return ok(
 				`Action proposed: "${action.label}" (id: ${action.id}).\n` +
-					"Waiting for operator confirmation. You can continue your response — " +
-					"execution will happen when the operator confirms.",
+					"Waiting for operator confirmation. You will receive a message when the " +
+					"operator confirms or dismisses it, or if it fails.",
 			);
 		},
 	};

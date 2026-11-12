@@ -7,6 +7,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
 import { asyncHandler, asyncRoutes } from "./async-handler.js";
+import { reportActionOutcome } from "./copilot-action-outcome.js";
 import type { CopilotEventBus } from "./copilot-runtime.js";
 import type { PendingAction, PendingActionsStore } from "./pending-actions.js";
 
@@ -69,6 +70,7 @@ export function createPendingActionRoutes(
 				ok: true,
 				result,
 			});
+			await reportActionOutcome(db, taken, { kind: "executed", result });
 			res.json({ ok: true, result });
 		} catch (e) {
 			const msg = (e as Error).message;
@@ -77,6 +79,7 @@ export function createPendingActionRoutes(
 				ok: false,
 				error: msg,
 			});
+			await reportActionOutcome(db, taken, { kind: "failed", error: msg });
 			res.status(500).json({ error: msg });
 		}
 	});
@@ -117,6 +120,7 @@ export function createPendingActionRoutes(
 				return;
 			}
 			await pending.delete(pendingActionId);
+			if (action) await reportActionOutcome(db, action, { kind: "dismissed" });
 			res.json({ ok: true });
 		}),
 	);

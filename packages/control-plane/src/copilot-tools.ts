@@ -20,7 +20,8 @@
  *     scoped to the copilot's own data (not an external system or another
  *     agent's state).
  *
- * B5: EditDraftConfig — direct write to a draft mission's config (mission-prep).
+ * B5: CreateDraft, ReadMissionConfig, EditDraftConfig — create, read and edit
+ *     a draft mission's config (copilot-draft-tools.ts).
  *     No operator confirmation required: unlike a live mission, a draft has no
  *     running agent to collide with and no spend at risk, so an errant edit can
  *     only leave the stored doc in a state the operator notices before Launch.
@@ -29,6 +30,7 @@
  */
 import type { MagiTool } from "@magi/agent-runtime-worker";
 import type { Db } from "mongodb";
+import { createDraftTools } from "./copilot-draft-tools.js";
 import { createGithubTools } from "./copilot-github-tools.js";
 import { createObjectiveTools } from "./copilot-objective-tools.js";
 import { createProposeTools } from "./copilot-propose-tool.js";
@@ -55,6 +57,7 @@ export function createCopilotTools(
 	const deps = { db, pushEvent, pending, userId };
 	const read = createReadTools(deps);
 	const objectives = createObjectiveTools(deps);
+	const drafts = createDraftTools(deps);
 	const github = createGithubTools(deps);
 	return [
 		read.listMissions,
@@ -66,7 +69,9 @@ export function createCopilotTools(
 		objectives.reviewObjectives,
 		objectives.assessKpi,
 		objectives.saveObjectiveTree,
-		objectives.editDraftConfig,
+		drafts.createDraft,
+		drafts.readMissionConfig,
+		drafts.editDraftConfig,
 		read.listSchedule,
 		read.listTemplates,
 		read.getTemplate,

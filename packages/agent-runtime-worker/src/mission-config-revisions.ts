@@ -105,6 +105,8 @@ export function createMongoMissionConfigWriter(db: Db): MissionConfigWriter {
 				{
 					$set: {
 						mission,
+						// The list shows the document's name; keep it the config's name.
+						name: mission.name,
 						agents: snapshot.agents,
 						updatedAt: now,
 						...(snapshot.missionCopilotLimits !== undefined

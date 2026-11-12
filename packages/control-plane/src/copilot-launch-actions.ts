@@ -35,6 +35,7 @@ export async function executeLaunchMission(
 	const resolvedMission = withDefaultSpendCap({
 		...template.config.mission,
 		id: missionId,
+		name,
 	});
 	try {
 		await missions.insertOne({

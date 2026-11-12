@@ -6,21 +6,16 @@
  */
 
 import {
-	type AgentConfig,
-	applyTeamConfigPatch,
 	LATEST_MENTAL_MAP_SORT,
-	type Limits,
 	type MissionDoc,
-	parseTeamConfig,
 	storedCollection,
-	type TeamConfig,
-	validateTeamFiles,
 } from "@magi/agent-config";
-import {
-	assertKnownModels,
-	createMongoMissionConfigWriter,
-} from "@magi/agent-runtime-worker";
+import { createMongoMissionConfigWriter } from "@magi/agent-runtime-worker";
 import type { Collection, Db } from "mongodb";
+import {
+	validateDraftForLaunch,
+	validateSessionConfigPatch,
+} from "./copilot-action-preflight.js";
 import {
 	type ActionPayload,
 	type ActionType,
@@ -123,17 +118,8 @@ async function launchDraft(ctx: ActionContext): Promise<string> {
 	if (draft.status !== "draft")
 		throw new Error(`Mission "${missionId}" is not a draft`);
 
-	let validated: TeamConfig;
-	try {
-		validated = parseTeamConfig({
-			mission: draft.mission,
-			agents: draft.agents,
-			missionCopilotLimits: draft.missionCopilotLimits,
-		});
-		assertKnownModels(validated.mission);
-	} catch (e) {
-		throw new Error(`Invalid team config: ${(e as Error).message}`);
-	}
+	// The draft as it is now: the operator may have edited it after the proposal.
+	const validated = validateDraftForLaunch(draft);
 
 	try {
 		// Before any machine starts, local or Fly: nothing runs uncapped (SCH-4).
@@ -291,13 +277,6 @@ async function writeMissionFile(ctx: ActionContext): Promise<string> {
 async function saveSessionConfig(ctx: ActionContext): Promise<string> {
 	const { db, payload, userId, missions, now } = ctx;
 	const scMissionId = payload.missionId as string | undefined;
-	const scMissionPatch = payload.mission as
-		| Partial<TeamConfig["mission"]>
-		| undefined;
-	const scAgentsPatch = payload.agents as AgentConfig[] | undefined;
-	const scMissionCopilotLimitsPatch = payload.missionCopilotLimits as
-		| Limits
-		| undefined;
 	const scTeamFilesProvided = payload.teamFiles !== undefined;
 	const scFiles =
 		(payload.teamFiles as
@@ -318,28 +297,7 @@ async function saveSessionConfig(ctx: ActionContext): Promise<string> {
 			`Mission ${scMissionId} must be suspended before editing config (current: ${scMission.status})`,
 		);
 	}
-	if (!scMission.mission || !scMission.agents) {
-		throw new Error(`Mission ${scMissionId} has no structured config stored`);
-	}
-
-	let scValidated: TeamConfig;
-	try {
-		scValidated = applyTeamConfigPatch(
-			{ ...scMission, mission: scMission.mission, agents: scMission.agents },
-			scMissionId,
-			{
-				mission: scMissionPatch,
-				agents: scAgentsPatch,
-				missionCopilotLimits: scMissionCopilotLimitsPatch,
-			},
-		);
-		assertKnownModels(scValidated.mission, scMission.mission);
-	} catch (e) {
-		throw new Error(`Invalid team config: ${(e as Error).message}`);
-	}
-	// TF1/CHAIN-A: scFiles is copilot/LLM-authored and reaches the
-	// daemon's filesystem unvalidated otherwise (team-files-sync.ts).
-	if (scTeamFilesProvided) validateTeamFiles(scFiles);
+	const scValidated = validateSessionConfigPatch(scMission, payload);
 
 	await createMongoMissionConfigWriter(db).write(
 		scMissionId,

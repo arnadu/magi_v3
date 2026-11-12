@@ -440,11 +440,13 @@ execution plane — see below.)
 | `ReviewObjectives` | Read a mission's objective tree with current task status, KPI values, and budget-vs-spend. |
 | `AssessKpi` | Record a value for a KPI you assess (a copilot-assessment KPI). |
 | `SaveObjectiveTree` | Replace a mission's objective tree (definitions + KPI definitions — not task/KPI status, which agents update themselves during the mission). |
-| `EditDraftConfig` | Directly edit a draft mission's config — mission-level fields and agents (add, update, or remove). |
+| `CreateDraft` | Create a draft mission (blank or from a template): stored config only, no machine, no spend; the operator can review and edit it in the cockpit before `launch_draft`. |
+| `ReadMissionConfig` | Read a mission's stored config (draft, running or suspended): settings, agents, team files' paths and sizes. |
+| `EditDraftConfig` | Directly edit a draft mission's config — mission-level fields (a new name renames the mission), agents (add, update, or remove) and team files (paths validated). |
 | `ListSchedule` | List scheduled messages, optionally filtered by mission. |
 | `ListTemplates` | List available mission team config templates. |
 | `GetTemplate` | Get the full config and associated files for a team config template. |
-| `ProposeAction` | Propose a mutating action for operator confirmation. |
+| `ProposeAction` | Propose a mutating action for operator confirmation. `launch_draft` and `save_session_config` are checked against the stored config when proposed (the same checks as at confirmation), and the copilot receives a mailbox message when the operator confirms or dismisses the card or the action fails. |
 | `ListIssues` | List or search open GitHub Issues in the MAGI repository. |
 | `CreateIssue` | Propose a new GitHub Issue in the MAGI repository for operator confirmation. |
 | `CloseIssue` | Propose closing a GitHub Issue (optionally with a closing comment) for operator confirmation. |

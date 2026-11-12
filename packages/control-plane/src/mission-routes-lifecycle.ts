@@ -32,6 +32,7 @@ import {
 	insertMissionOrConflict,
 	runningPatch,
 } from "./mission-claims.js";
+import { createDraftMission } from "./mission-drafts.js";
 import type { MissionRouteDeps } from "./mission-scope.js";
 import { type MissionDoc, userFilter } from "./mission-scope.js";
 import { suspendMissionMachine } from "./resource-upgrade.js";
@@ -213,60 +214,17 @@ function postDraft({ col }: MissionRouteDeps): RequestHandler {
 			/** Template id to clone from; omit for a blank draft. */
 			teamConfig?: string;
 		};
-		if (!missionId || !name) {
-			res.status(400).json({ error: "missionId and name are required" });
-			return;
-		}
-		try {
-			validateNewMissionId(missionId);
-		} catch (e) {
-			res.status(400).json({ error: (e as Error).message });
-			return;
-		}
-
-		const existing = await col.findOne({ missionId });
-		if (existing) {
-			res.status(409).json({ error: "Mission already exists" });
-			return;
-		}
-
-		let mission: TeamConfig["mission"];
-		let agents: AgentConfig[];
-		let missionCopilotLimits: Limits | undefined;
-		let teamFiles: Array<{ path: string; content: string }>;
-
-		if (teamConfig) {
-			const template = getTemplate(teamConfig);
-			if (!template) {
-				res.status(404).json({ error: `Unknown template "${teamConfig}"` });
-				return;
-			}
-			mission = { ...template.config.mission, id: missionId, name };
-			agents = template.config.agents;
-			missionCopilotLimits = template.config.missionCopilotLimits;
-			teamFiles = template.teamFiles;
-		} else {
-			mission = { id: missionId, name };
-			agents = [];
-			teamFiles = [];
-		}
-
-		const doc: MissionDoc = {
-			missionId,
+		const created = await createDraftMission(col, {
+			missionId: missionId ?? "",
+			name: name ?? "",
+			templateId: teamConfig,
 			userId: req.userId,
-			name,
-			teamConfig: teamConfig ?? "blank",
-			mission: mission ? withDefaultSpendCap(mission) : mission,
-			agents,
-			missionCopilotLimits,
-			teamFiles,
-			maxCostCeilingUsd: platformMaxCostCeilingUsd(),
-			status: "draft",
-			createdAt: new Date(),
-			updatedAt: new Date(),
-		};
-		if (!(await insertMissionOrConflict(col, doc, res))) return;
-		res.status(201).json(doc);
+		});
+		if (!created.ok) {
+			res.status(created.status).json({ error: created.error });
+			return;
+		}
+		res.status(201).json(created.doc);
 	};
 }
 
