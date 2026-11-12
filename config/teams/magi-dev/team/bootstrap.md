@@ -54,7 +54,11 @@ Budgets are placeholders; the user sets them later.
 ]
 ```
 
-## 2. Initial tasks — AddTask, one call each
+## 2. Initial tasks — AddTask, one call each, passing the `id` shown
+
+Create only the tasks listed here. If an id is already taken, don't renumber silently: use the
+next free id and list every renumbering (`CR-03 → CR-05`) in your summary to the user, because
+the user refers to tasks by these ids.
 
 | id | objective | assignee | title |
 |---|---|---|---|
@@ -88,7 +92,8 @@ Staggered so two reviewers never start on the same commits at the same time.
 
 ## Addendum 2026-11-11 — code reviewer, wave 1
 
-Apply only this section if the steps above were already applied. AddTask:
+Apply only this section if the steps above were already applied. AddTask, passing the `id`
+shown; if an id is taken, use the next free one and report the mapping to the user:
 
 | id | objective | assignee | title |
 |---|---|---|---|

@@ -77,5 +77,8 @@ family, the method applied to every claim in it.
 - a **hand-off block**: "Apply the edits DC-012..DC-019 below to the documents; don't change
   code."
 
+`working-agreements` applies: in particular, every fact in your proposed replacement text is
+verified like any claim you review.
+
 Move your cursor past the commits checked, update your mental map and KPIs. The weekly sweep's
 report ends with a short PostMessage to the user.

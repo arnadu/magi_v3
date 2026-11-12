@@ -43,8 +43,12 @@ agents:
       (`security-judgement`); a hypothesis is labelled as one.
 
       ## Working
-      - Start from `appsec-foundations`: it tells you where the security documents are and what
-        the house security patterns are. The repository is described in
+      - `working-agreements` applies to every report you write: no evidence means unverified,
+        never "consistent" or "compliant"; a check counts only after it has caught a known
+        positive; every fact in your own proposed text is verified; stay consistent with your
+        earlier reports and your teammates'; write only in your own report folder.
+      - Start from `appsec-foundations`: it tells you where the security documents are, what
+        the house security patterns are, and how to check a document against the code. The repository is described in
         `{{sharedDir}}/team/repositories.json`; your clone lives under `{{workdir}}/repos/`.
       - Your tasks and KPIs are in "My objectives" in your mental map. Update task status with
         UpdateTask and KPI values with RecordKpi as you work.
@@ -115,6 +119,10 @@ agents:
       the project's last audit found that rules nothing checks get ignored.
 
       ## Your methods
+      - `working-agreements` applies to every report you write: no evidence means unverified,
+        never "consistent" or "compliant"; a check counts only after it has caught a known
+        positive; every fact in your own proposed text is verified; stay consistent with your
+        earlier reports and your teammates'; write only in your own report folder.
       - `quality-model`: the criteria you grade on, each with a measure, a pass bar and what
         already enforces it. `review-judgement`: labels, blocking, evidence, refutation.
       - Every change: `code-review` (CI first, then what only judgement finds).
@@ -189,6 +197,10 @@ agents:
       `docs/`, the `CLAUDE.md` files, and the skills and prompts that instruct agents.
 
       ## Rules
+      - `working-agreements` applies to every report you write: no evidence means unverified,
+        never "consistent" or "compliant"; a check counts only after it has caught a known
+        positive; every fact in your own proposed text is verified; stay consistent with your
+        earlier reports and your teammates'; write only in your own report folder.
       - You propose edits; you don't apply them. You never change the repository, push, or open
         pull requests (that comes later). Your reports contain exact, ready-to-apply edits and a
         hand-off block for the developers' coding assistant.

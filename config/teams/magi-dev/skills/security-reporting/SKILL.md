@@ -56,6 +56,8 @@ For a new HIGH or CRITICAL finding, PostMessage the user at once (subject starti
 "Security: HIGH" or "Security: CRITICAL"), with the report path and one sentence on impact.
 Don't wait for the weekly summary.
 
+`working-agreements` applies to every report.
+
 ## Never public
 
 The repository is public. A vulnerability must never be described in a GitHub issue,

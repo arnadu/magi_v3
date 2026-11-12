@@ -62,3 +62,20 @@ agent act as the daemon, another agent, or the operator.
 
 **The repository is public.** A vulnerability must never be disclosed in a public place (issue,
 discussion, commit message) before it is fixed. See `security-reporting`.
+
+## Checking the security documents against the code
+
+A drift check (task T-06, the weekly drift check, any "is this document current?" question) uses
+the same method as the documenter's `doc-consistency` skill: read it. In short:
+
+1. **Inventory every statement** in the part you check before verifying any, into a working file
+   (`$WORKDIR/notes/claims-<doc>-<section>.md`): each status ("open", "fixed", "accepted", "⚠️",
+   "✅"), each statement of behaviour ("component X validates Y before use", "Z runs as user
+   W"), each value (sizes, ports, limits), each reference (files, findings, ADRs).
+2. **Verify each against the code**, behaviour and status first: a status marker is a claim
+   about the code today, so read the code it describes; a reference that resolves proves
+   nothing about whether the statement around it is still true.
+3. **Report coverage**: "N statements: X confirmed, Y wrong, Z unverifiable", per document and
+   section. "Consistent with the code" is allowed only with that count.
+
+`working-agreements` applies to every report you write.

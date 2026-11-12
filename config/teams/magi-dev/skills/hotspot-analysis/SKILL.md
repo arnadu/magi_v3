@@ -30,12 +30,17 @@ Tests, generated files and `experimental/` are excluded.
 2. **Repeated fixes are the strongest signal.** `git -C <clone> log --since="90 days ago"
    --oneline -- <path> | grep -ci fix` — a hotspot fixed again and again needs a design look, not
    another patch.
-3. **Cross-check the structure inventory**: is the file on `scripts/audit/structure.allow.json`,
-   and does `docs/code-structure.md` record a reason and a plan for it?
+3. **Cross-check the structure inventory, against the measurement**: is the file on
+   `scripts/audit/structure.allow.json`, and does `docs/code-structure.md` record a reason and a
+   plan for it? Then test that reason against what you measured: a row that says "Done" or
+   "decomposed" for a file that is still a top hotspot (high churn, many fixes, still over the
+   size limit) is a finding about the row, not a reason to skip the file.
+4. **Trend claims cite numbers.** "The fix rate has dropped since the refactor" needs the fix
+   counts before and after, from `git log --since/--until`; otherwise don't say it.
 
 ## Output
 
 A short section in your weekly report (`$SHARED_DIR/reports/code-review/YYYY-MM-DD-weekly.md`):
 the top 10 with the change since last week, the one or two files you recommend for a deep review
 or a refactor and why, and the module you will deep-review next. Keep the rotation and the
-last-reviewed date per module in your mental map.
+last-reviewed date per module in your mental map. `working-agreements` applies.

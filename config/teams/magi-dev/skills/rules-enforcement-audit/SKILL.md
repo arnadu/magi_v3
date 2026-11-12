@@ -34,18 +34,32 @@ the first run builds the matrix, later runs update it.
    and their comments), `biome.json`, `scripts/audit/structure-check.mjs`, `vitest.config.ts`,
    `.github/workflows/quality.yml`, the `tests/` folders (contract and `llm-text-references`
    tests), `.githooks/`. Name the exact check, or write `review only` / `none`.
-3. **Measure compliance where enforcement is partial.** Use `grep -rn` across `packages/*/src`
-   with a pattern that approximates the rule. Count hits, read a sample of 5–10, and classify
-   each as a violation, a justified exception, or a false hit. Record the pattern so the next
-   run is comparable.
-4. **Check allowlists.** For `tripwires.allow`, `structure.allow.json` and Biome's exemptions:
-   does each entry's stated reason still hold in the current code? An entry whose reason has
-   expired is a finding.
+3. **Measure compliance for every rule a tool does not fully enforce**, including
+   review-only rules. Use `grep -rn` across `packages/*/src`, or `git log` for rules about
+   commits (for example "documentation in the same commit as the code": sample recent commits
+   that changed behaviour and check whether the documents that describe it changed too). Count
+   hits, read a sample of 5–10, classify each as a violation, a justified exception, or a false
+   hit, and record the pattern so the next run is comparable. "No violations observed in recent
+   reviews" is not a measurement: a rule you did not sample is **unverified**.
+   **Also search the team's own reports** (`$SHARED_DIR/reports/`): a documentation drift item,
+   a security finding or a review finding is evidence that the rule it breaks is broken.
+4. **Check allowlists by re-running the check without the entry.** For `tripwires.allow`,
+   `structure.allow.json` and Biome's exemptions, the question is whether the entry is still
+   needed, and only the tool answers it: for Biome, copy `biome.json` to a temporary folder
+   without the exemption and run `npx biome lint --config-path=<folder>
+   --only=complexity/noExcessiveCognitiveComplexity <file>`; no violation means the exemption has
+   expired. File length is not complexity. For a `maxcount` ratchet, count the current hits the
+   way the script does; a count below the ceiling means the ceiling should drop to the count
+   (counts only ratchet down), which is a proposal.
 5. **Propose enforcement** for each rule that is broken and only review-enforced: the tripwire
    pattern (`grep -E` syntax, the paths it scans), or a lint rule, or a test; its current hit
    count; whether it needs an allowlist to start (a ratchet: today's count as the ceiling).
    Proposals that would create noise (many false hits) are worse than none: say so and propose
-   a narrower rule.
+   a narrower rule. Prioritize proposals for rules you found **broken**; a check for a rule with
+   no violations is low priority.
+
+`working-agreements` applies: in particular, prove each check on a known positive before
+trusting a zero.
 
 ## Output
 

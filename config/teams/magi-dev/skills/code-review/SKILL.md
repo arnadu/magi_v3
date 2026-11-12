@@ -52,6 +52,8 @@ lens: note anything security-relevant under "For appsec" and leave the verdict t
    findings, proposed enforcement) and KPIs. PostMessage the user only for a blocking `issue`
    that could lose data, money or availability.
 
+`working-agreements` applies to every report.
+
 ## Don't
 
 - Re-report what a tool enforces, unless the tool's allowlist entry has an expired reason.
