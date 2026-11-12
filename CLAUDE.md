@@ -128,6 +128,64 @@ labelled `bug`, `enhancement`, `deferred`, `ux` or `security` (security findings
 `docs/security/findings.md`). Both copilots can propose issues; every GitHub write is a pending
 action the operator confirms in the cockpit. At sprint close, review open `deferred` issues.
 
+## MAGI DEV — reports from the reviewer agents
+
+A MAGI mission created from `config/teams/magi-dev.yaml` reviews this repository continuously:
+an application security architect (`appsec`), a code reviewer and a documenter. Design and
+phasing: [docs/plans/magi-dev-requirements.md](docs/plans/magi-dev-requirements.md). You have two
+standing roles towards it.
+
+**Reading the reports.** They are in the mission's shared files, read through the control
+plane with the admin key (read it with `grep`, never print it):
+
+```bash
+KEY=$(grep '^CONTROL_API_KEY=' secrets.env | head -1 | cut -d= -f2- | tr -d '"'"'"'\r' | awk '{print $1}')
+B=https://magi-control-dev.fly.dev/missions/<mission-id>/files/shared   # not /api/missions
+curl -s -H "Authorization: Bearer $KEY" "$B?path=reports/security"     # also reports/code-review, reports/docs
+curl -s -H "Authorization: Bearer $KEY" "$B?path=reports/docs/<file>.md" | python3 -c 'import json,sys; print(json.load(sys.stdin)["content"])'
+```
+
+The mission id is the one created from the `magi-dev` template (`GET /api/missions`). Who wrote
+a file: `.../missions/<mission-id>/files/history?path=<file>` gives the agent and turn per commit. An agent's own
+reasoning and tool calls are in `conversationMessages` (read-only queries are fine; see the
+memory note on DB writes).
+
+**1. Bring their findings into the work.** At the start of a session, or when the user mentions
+MAGI DEV, read the reports newer than the last ones you acted on:
+- **Verify every finding against the code before acting on it.** The agents produce false
+  positives and, in their proposed edits, sometimes new false statements: never apply their text
+  verbatim; write the fix yourself.
+- Verified findings go where any finding goes: a fix in the same session when small and in
+  scope; otherwise `docs/security/findings.md` (security, with an official `F-NNN`), a GitHub
+  issue, or a line in the roadmap's backlog or the relevant sprint row. Tell the user which.
+- **Don't fix the known-answer items unprompted.** Stale statements listed in
+  [#96](https://github.com/arnadu/magi_v3/issues/96) (BND-, DOC-, LLM- items) are left in place
+  on purpose until an agent's run has been scored against them; fix one only after it was found,
+  or when the user says so.
+
+**2. Act as user acceptance for the agents.** After each report you read, judge it and keep
+improving the agents:
+- **Usefulness:** real findings versus false positives; whether a fix could be applied as
+  written; whether it was worth its cost (`agentTurnStats`).
+- **Comprehensiveness:** score runs against known answers (#96, and historical commits whose
+  defects were fixed later), and look for what a report should have caught and didn't. One run
+  is not a grade: the same skill on the same model varies run to run.
+- **Evidence:** every "pass", "consistent" or "compliant" must cite what established it
+  (`working-agreements` skill). An all-clear without evidence is a defect in the agent.
+- **Fix the cause, not the instance:** a recurring weakness becomes a change to the agents'
+  skills or prompts (`config/teams/magi-dev/`), a platform fix, or a new known-answer test, and
+  the reasoning goes in the requirements doc. Check every skill change for hints that would give
+  away a known-answer item.
+- **Report to the user** what each run found, what it missed, and what you changed, with the
+  numbers.
+
+**Updating the running mission.** A template change does not reach a running mission: its
+prompts and team files are copied into its mission document at launch. The user suspends it;
+you rewrite `agents[].systemPrompt` and `teamFiles` from the template through
+`createMongoMissionConfigWriter` (dry run first, ask before writing, verify on re-read); the user
+resumes it. A change to platform code also needs the new mission image (CI finished) before the
+resume.
+
 ## Technology Stack
 
 | Component | Technology |
