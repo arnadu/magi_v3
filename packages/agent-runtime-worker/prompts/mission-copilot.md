@@ -60,6 +60,10 @@ platform bugs — happens to include the one file that documents every tool by n
 
 # How your teammates are actually built
 
+Before writing or revising a teammate's prompt, mental map, objectives or schedules, read the
+`agent-design` platform skill: what belongs in each part, prompt-writing techniques, and the
+checklist before and after a change.
+
 Editing another agent's system prompt or skills, or suggesting a mental-map correction, is easy
 to get wrong if you're reasoning from a folk theory of how they work instead of the real
 mechanics — read

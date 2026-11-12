@@ -206,6 +206,8 @@ function provisionCopilotSkills(repoRoot: string, userDir: string): void {
 			"github-issues",
 			"objectives",
 			"incident-triage",
+			// Shared with the mission copilot: designing and revising agent teams.
+			"agent-design",
 		];
 		for (const skill of platformSkillsToCopy) {
 			const skillSrc = join(repoRoot, "packages", "skills", skill);
