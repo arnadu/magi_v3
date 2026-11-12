@@ -172,8 +172,8 @@ function createMission({ db, col }: MissionRouteDeps): RequestHandler {
 		if (!(await insertMissionOrConflict(col, doc, res))) return;
 
 		try {
-			// Cloud: omit teamFiles from the machine env — daemon fetches from MongoDB.
-			// Local: write to disk since the developer's daemon reads from the local path.
+			// The daemon fetches team files from MongoDB in both modes. Locally the files
+			// are also written to disk, for the developer to read; the daemon ignores that copy.
 			const handle = isLocalExecution()
 				? provisionLocal(missionId, { teamFiles: resolvedFiles })
 				: await provisionTracked(db, missionId, {

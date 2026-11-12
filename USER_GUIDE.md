@@ -76,10 +76,11 @@ npm run daemon -w packages/agent-runtime-worker
 
 The daemon reads its structured config (`mission`/`agents`/`missionCopilotLimits`) directly from
 the mission's own MongoDB document via `MISSION_ID` — no YAML file involved for a
-control-plane-launched mission (ADR-0021). Team files (skills, playbooks) are still written to
-disk under `~/.magi/local/<missionId>/team/`; override the base directory with
-`LOCAL_MISSIONS_DIR`. The dashboard, copilot, and all lifecycle controls (suspend/resume/destroy)
-work normally.
+control-plane-launched mission (ADR-0021). Team files (skills, playbooks) come from the same
+document: the daemon writes them to its own `team/` folder at every boot. The control plane also
+writes a copy under `~/.magi/local/<missionId>/team/` (base directory: `LOCAL_MISSIONS_DIR`), but
+the daemon does not read it, so change team files through the mission's config, not on disk. The
+cockpit, copilot, and all lifecycle controls (suspend/resume/destroy) work normally.
 
 ---
 
@@ -166,12 +167,12 @@ TEAM_CONFIG=../../config/teams/equity-research.yaml npm run cli:tail -- --all # 
 
 ```bash
 # From any terminal (daemon keeps running in Terminal 1):
-MISSION_ID=<mission id> npm run cli:stop
+MISSION_ID=<mission id> npm run cli:stop -w packages/agent-runtime-worker
 ```
 
 This sends SIGTERM to the daemon process. It aborts any in-progress agent turn (the turn is recorded as aborted; its unread mail is not replayed), closes the MongoDB connection and removes the PID file; if shutdown takes longer than 30 s the daemon exits anyway.
 
-**Dashboard Kill button** also works — the ■ Kill button in the monitor UI (http://localhost:4000) shows a confirmation dialog and then sends the same shutdown signal.
+**`POST /stop`** on the monitor server (`curl -X POST http://localhost:4000/stop`, no token needed for a local daemon) asks for the same graceful shutdown. There is no Kill button any more: the pre-cockpit dashboard was deleted (F-052).
 
 **Ctrl+C** works if the daemon is in the foreground (Terminal 1) and not mid-turn. If it appears to hang, Ctrl+C a second time will force-exit.
 
@@ -274,4 +275,4 @@ The control plane was started with `FLY_API_TOKEN_MACHINES=dummy`. Use local exe
 
 **Templates not appearing in the UI after a database reset**
 
-The control plane seeds templates from `config/teams/*.yaml` on startup. If you dropped the database, just restart the control plane — seeding is automatic and idempotent. Test configs under `config/teams/test/` are excluded from the UI by design.
+The control plane reads templates from `config/teams/*.yaml` into memory at startup; they are never stored in the database (ADR-0021), so dropping the database does not affect them. If templates are missing, check the control plane's startup log for `[templates]` lines (a template that fails validation is skipped) and `TEMPLATE_ALLOWLIST`. Test configs under `config/teams/test/` are excluded from the UI by design.
