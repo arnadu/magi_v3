@@ -63,6 +63,22 @@ agent act as the daemon, another agent, or the operator.
 **The repository is public.** A vulnerability must never be disclosed in a public place (issue,
 discussion, commit message) before it is fixed. See `security-reporting`.
 
+## The security controls checklist: what should exist
+
+`checklists/security-controls.md` lists the controls MAGI should have (authentication, access
+control, input and output handling, secrets, logging and monitoring, LLM and agent risks,
+supply chain, deployment), drawn from OWASP ASVS, the OWASP LLM Top 10, OWASP's agentic-AI
+threats, NIST SSDF and SLSA. Reading code finds controls done wrong; this list finds controls
+never built.
+
+- **Weekly**, as part of the in-depth duty: one area of the checklist (rotate through the
+  areas; keep the rotation in your mental map), every row with evidence. Each `missing` row is
+  a finding with a severity like any other.
+- **On a change review**, for each deep commit: which rows does this kind of change touch (a
+  new route: SC-05, SC-10, SC-11, SC-26; a new tool for agents: SC-15, SC-30, SC-31, SC-33; a
+  new dependency: SC-39)? Check those rows for the change.
+- **On a design review**: every row, against the design.
+
 ## Checking the security documents against the code
 
 A drift check (task T-06, the weekly drift check, any "is this document current?" question) uses

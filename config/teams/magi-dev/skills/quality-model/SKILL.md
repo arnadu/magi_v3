@@ -43,6 +43,10 @@ longer holds.
 | Q11 | **Rule enforcement** | Written rules nobody checks | `rules-enforcement-audit` matrix: rules with no enforcement and broken in a sample | Every broken unenforced rule has an enforcement proposal | Propose a tripwire, lint rule or test | `rules-enforcement-audit` |
 | Q12 | **Delivery** | Red builds, reverts | CI conclusion per commit on main; reverts and fix-of-fix commits | Main green; change failure rate trend down | Investigate the commit that broke it | CI |
 
+Journeys (can each actor complete each operator journey, does every hand-off report back,
+does a test play it end to end) and test layers are the qa-lead's lens: flag what you notice
+under "For qa-lead" in your report, and leave the review to them.
+
 The repository's own working rules (root `CLAUDE.md` "Working rules", `docs/practices/*.md`) are
 the house version of Q2–Q9; quote them in findings.
 

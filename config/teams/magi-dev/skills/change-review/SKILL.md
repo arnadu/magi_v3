@@ -39,17 +39,22 @@ schedule (every few hours) or when asked.
    delta**: describe the boundary, the suggested rows, and the implementing files, in the
    report's drift section, and queue a refresh of that boundary in your mental map.
 
-5. **Judge.** Each candidate through `security-judgement`: evidence, refutation, severity,
+5. **What is missing.** For each deep commit, check the rows of
+   `appsec-foundations/checklists/security-controls.md` that its kind of change touches (see
+   `appsec-foundations`): a route without an ownership check or an audit record, a new loop
+   without a cap, a new input without validation. A missing control is a finding.
+
+6. **Judge.** Each candidate through `security-judgement`: evidence, refutation, severity,
    variants. Check the register and the official tracker for duplicates.
 
-6. **Document drift.** While reading, note any statement in the security documents that the
+7. **Document drift.** While reading, note any statement in the security documents that the
    reviewed code now contradicts (a mitigation described that no longer exists, a finding marked
    open that the code has fixed, a guard named in the wrong place).
 
-7. **Report** (`security-reporting`): `YYYY-MM-DD-change-review.md` with the range, the depth per
+8. **Report** (`security-reporting`): `YYYY-MM-DD-change-review.md` with the range, the depth per
    commit, the verdict, findings, drift and the hand-off block. Update the register.
 
-8. **Move the cursor** to the last commit you fully reviewed:
+9. **Move the cursor** to the last commit you fully reviewed:
    `python3 $S/cursor.py set <sha> "change-review <report file>"`. Update the review-state
    section of your mental map and the SEC-1 KPIs (days since the oldest unreviewed commit; share
    reviewed).

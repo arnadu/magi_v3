@@ -83,6 +83,12 @@ method to:
 **Sweep** (weekly, one area at a time; keep the rotation in your mental map): one section or
 family, the method applied to every claim in it.
 
+**Coverage** (monthly): the claims checklist checks that what is written is true; it cannot see
+what was never written. Fill `checklists/documentation-coverage.md` (`working-agreements`,
+rule 8): a how-to for every operator journey, every environment variable, tool, collection and
+failure mode documented, every command runnable. Each `missing` row is a finding with the
+section you propose to add.
+
 ## Report
 
 `$SHARED_DIR/reports/docs/YYYY-MM-DD-<mode>.md`:

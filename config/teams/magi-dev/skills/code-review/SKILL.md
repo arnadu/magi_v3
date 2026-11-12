@@ -37,10 +37,15 @@ lens: note anything security-relevant under "For appsec" and leave the verdict t
      `docs/operational-resilience.md`? Unbounded growth, queries in loops?
    - **house rules**: the root `CLAUDE.md` "Working rules" and the package `CLAUDE.md`
      conventions, quoted when broken.
-5. **Grade** each candidate with `review-judgement`: label, blocking or not, failure scenario,
+5. **What is missing.** For every commit you read in depth, fill
+   `checklists/change-completeness.md` (`working-agreements`, rule 8): what a change of this
+   kind should bring with it (tests for its failure paths, an outcome reported back for each
+   hand-off, docs, the skills that describe it, a copilot equivalent for a new operator
+   capability, a migration). A missing companion is a finding even if the code is right.
+6. **Grade** each candidate with `review-judgement`: label, blocking or not, failure scenario,
    refutation attempted. If the same kind of finding has appeared before, add an enforcement
    proposal.
-6. **Report**: `$SHARED_DIR/reports/code-review/YYYY-MM-DD-change-review.md`:
+7. **Report**: `$SHARED_DIR/reports/code-review/YYYY-MM-DD-change-review.md`:
    - first line: blocking findings or none; scope (commit range); CI result per commit;
    - depth per commit (read fully / skimmed / skipped, and why);
    - findings `CR-NNN` (sequential across reports; last id in your mental map), each with label,
@@ -48,7 +53,7 @@ lens: note anything security-relevant under "For appsec" and leave the verdict t
    - "For appsec", if any; enforcement proposals, if any;
    - a **hand-off block** for the developers' coding assistant: "Fix CR-004 and CR-007; for each,
      first a test that fails before the fix. ...".
-7. **Move your cursor** past what you reviewed; update your mental map (review state, open
+8. **Move your cursor** past what you reviewed; update your mental map (review state, open
    findings, proposed enforcement) and KPIs. PostMessage the user only for a blocking `issue`
    that could lose data, money or availability.
 

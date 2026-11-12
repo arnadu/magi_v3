@@ -106,3 +106,41 @@ CreateScheduledMessage:
 |---|---|---|---|---|
 | code-weekly | code-reviewer | `0 8 * * 2` | Weekly code health | Run hotspot-analysis and write the weekly report (top hotspots and change since last week, the module recommended for a deep review). |
 | code-monthly | code-reviewer | `0 9 2 * *` | Monthly rules audit | Run rules-enforcement-audit: update the rules matrix and write the report with enforcement proposals. |
+
+## Addendum 2026-11-13 — qa-lead, and checklists for everyone
+
+Apply only this section if the earlier ones were already applied.
+
+**1. Objectives.** EditObjectiveTree replaces the whole tree: call ReadMissionObjectives first,
+keep every existing objective unchanged, add this one, and save the complete list.
+
+```json
+{"id":"QA","parent":null,"title":"Every operator journey works end to end, is quick, keeps the operator informed, and is tested","owner":"qa-lead","status":"active","budgetUsd":10,
+ "kpis":[
+   {"id":"K-qa-journeys","label":"journeys reviewed in the last 8 weeks","owner":"qa-lead","kind":"quantitative","source":"agent-reported","target":17},
+   {"id":"K-qa-tested","label":"journeys with an end-to-end test","owner":"qa-lead","kind":"quantitative","source":"agent-reported","target":17},
+   {"id":"K-qa-live-bugs","label":"bugs found by the operator in live use, last 30 days","owner":"qa-lead","kind":"quantitative","source":"agent-reported","target":0},
+   {"id":"K-qa-cost","label":"spend","owner":"qa-lead","kind":"quantitative","source":"auto-stat","metricKey":"objectiveCostUsd","target":10,"unit":"USD"}]}
+```
+
+**2. Tasks.** AddTask, passing the `id` shown; if an id is taken, use the next free one and
+report the mapping to the user.
+
+| id | objective | assignee | title |
+|---|---|---|---|
+| QA-01 | QA | qa-lead | Onboard: clone, read docs/plans/scenario-test-harness.md, the cockpit's screens, the copilots' tools, actions, prompts and skills; build your journey rotation |
+| QA-02 | QA | qa-lead | Journey review J-02 (create a mission from a request) at commit f4eb26d, in a worktree, then at HEAD; report both and the difference |
+| QA-03 | QA | qa-lead | Test layers: fill the test-layers checklist for the repository as it is |
+| QA-04 | QA | qa-lead | Where bugs are found: the bug fixes of the last 30 days and how each was found |
+| QA-05 | QA | qa-lead | Usability review of the cockpit's draft editor and launch flow |
+| SEC-T1 | SEC | appsec | First full pass of the security controls checklist, one area per weekly run until all areas are done |
+| CR-T1 | CODE | code-reviewer | Use the change-completeness checklist on every commit read in depth from now on |
+| DC-T1 | DOCS | documenter | First documentation coverage checklist |
+
+**3. Schedules.** CreateScheduledMessage (cron in UTC):
+
+| label | to | cron | subject | body |
+|---|---|---|---|---|
+| qa-weekly | qa-lead | `0 7 * * 4` | Weekly journey review | Review the next one or two journeys in your rotation with the journey checklist (qa-journeys), and write scenarios for those without a test. If onboarding (QA-01) isn't finished, continue it instead. |
+| qa-monthly | qa-lead | `0 10 3 * *` | Monthly QA duties | Fill the test-layers checklist, review where the last 30 days' bugs were found, and do one usability review (ux-review). |
+| docs-monthly | documenter | `0 10 4 * *` | Monthly documentation coverage | Fill the documentation coverage checklist (doc-consistency, "Coverage"). |

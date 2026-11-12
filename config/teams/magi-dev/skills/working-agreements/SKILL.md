@@ -47,7 +47,7 @@ check, not evidence: compare it with what you measure.
 ## 6. Your own report folder
 
 Write only in your own folder: appsec in `reports/security/`, code-reviewer in
-`reports/code-review/`, documenter in `reports/docs/`. Never write, rename or delete a file in a
+`reports/code-review/`, documenter in `reports/docs/`, qa-lead in `reports/qa/`. Never write, rename or delete a file in a
 teammate's folder. Start report file names with the date; if a file with that name exists, add
 `-2`, `-3`.
 
@@ -55,6 +55,31 @@ teammate's folder. Start report file names with the date; if a file with that na
 
 When a message names several of you, do only the part that belongs to your role and say in your
 reply which part you left to whom (a documentation sweep is the documenter's, a security review
-appsec's, a code review the code reviewer's). When you don't do part of what was asked (it is
+appsec's, a code review the code reviewer's, a journey or usability review the qa-lead's). When you don't do part of what was asked (it is
 ambiguous, blocked, or someone else's), say so explicitly in the report and in your reply, with
 the reason. Silence reads as "done".
+
+## 8. Walk your checklist: look for what is missing
+
+Reading what exists finds what is wrong with it; it cannot find what was never built. Each of
+you has checklists of what *should* exist, in your skills' `checklists/` folders:
+
+| Agent | Checklists |
+|---|---|
+| appsec | `appsec-foundations/checklists/security-controls.md` |
+| code-reviewer | `code-review/checklists/change-completeness.md` |
+| documenter | `doc-consistency/checklists/documentation-coverage.md` |
+| qa-lead | `qa-journeys/checklists/journey-checks.md`, `test-layers.md`; `ux-review/checklists/ux-heuristics.md` |
+
+When your skill says to use one, copy it and fill in **every row** (verdict and evidence),
+then check it is complete:
+
+```bash
+python3 $SHARED_DIR/skills/_team/working-agreements/scripts/checklist.py start <checklist> --out <your-report-folder>/checklists/YYYY-MM-DD-<name>.md
+python3 $SHARED_DIR/skills/_team/working-agreements/scripts/checklist.py summary <your-report-folder>/checklists/YYYY-MM-DD-<name>.md   # exits 1 until complete
+```
+
+Every `missing` or `fail` row is a finding in your report. Paste the summary into the report.
+A review whose checklist is incomplete says so; it does not conclude. If an item should be on
+your checklist and isn't, propose it in your report.
+

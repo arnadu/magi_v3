@@ -1556,11 +1556,42 @@ reviewer's clone with the heavy runs as weekly background jobs, and move to CI a
 jobs once the gateway (sprint 32) gives the mission a GitHub credential to read CI artifacts. New
 checks start report-only and become ratchets once measured, as the structure check did.
 
+### The QA lead, and checklists for every agent (decided 2026-11-13)
+
+**Why a fourth agent.** In November 2026 the operator found, in one afternoon of creating a
+mission with the control copilot, four basic bugs that the code reviewer and two whole-repo
+audits had missed: a step the copilot could not reach, a confirmation whose result nobody heard
+about, validation that came too late, and a skill describing the slow path. Each sat between
+modules that were each correct. Reviewing code module by module cannot see that; in an IT firm
+it is quality assurance's job, working from the users' journeys, top down. So `qa-lead` joins
+phase 0: it walks each operator journey through the code for each actor (operator, control
+copilot, mission copilot), checks reachability and parity between actors, closed loops,
+ordering, friction and test coverage, reviews usability (cockpit and copilot conversations),
+and writes the acceptance scenarios the scenario harness will run
+([scenario-test-harness.md](scenario-test-harness.md)). Its first review is a known-answer test:
+the mission-creation journey at the commit before those bugs were fixed.
+
+**Checklists, not references to standards.** Reading what exists finds what is wrong; it cannot
+find what was never built. Each agent now carries concrete checklists of what *should* exist,
+written for MAGI from the standards (in a firm, a specialist would maintain these lists):
+
+| Agent | Checklist | Rows | Drawn from |
+|---|---|---|---|
+| appsec | Security controls | 47 | OWASP ASVS, OWASP Top 10 for LLM applications, OWASP agentic-AI threats, NIST SSDF, SLSA |
+| code-reviewer | Change completeness | 34 | Google's code-review guide, the repository's working rules |
+| documenter | Documentation coverage | 20 | Docs-as-code practice, the repository's documentation rules |
+| qa-lead | Journey checks; test layers; usability | 16; 14; 14 | Journey mapping, the test pyramid, Nielsen's ten heuristics |
+
+Every row gets a verdict (pass, fail, missing, n/a, unverifiable) and evidence; `checklist.py`
+refuses an incomplete list, and every `missing` or `fail` row is a finding. The lists live in
+the agents' skills (`config/teams/magi-dev/skills/*/checklists/`), so a lesson becomes a new
+row.
+
 ## Phasing
 
 | Phase | Scope | Needs |
 |---|---|---|
-| 0 | An application security architect, a code reviewer and a documenter, read-only, as a mission on the existing installation (the documenter's pull requests come with the git proxy, roadmap sprint 32) | Skills ported from the security commands; nothing new in the platform |
+| 0 | An application security architect, a code reviewer, a documenter and a QA lead, read-only, as a mission on the existing installation (the documenter's pull requests come with the git proxy, roadmap sprint 32) | Skills ported from the security commands; nothing new in the platform |
 | 1 | Community, planning, monitoring reports, on MAGI DEV's own installation | 28h items (#54, #95, G-5); G with its first connectors (GitHub issues and discussions, the mission's repository, read-only); A's read tier (alerts and the daily report included); today's confirmation cards for every external write |
 | 2 | Application support | A's action tier, E with the decisions inbox, F, H; the auditor agent |
 | 3 | Development and testing | B, C, D; SDLC skills; the evaluation harness (#45) |
