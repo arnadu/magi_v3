@@ -195,8 +195,25 @@ export const KNOWN_ANTHROPIC_MODEL_IDS: readonly string[] = [
  * experiment, not for a tenant's config (audit MD1).
  */
 export function isKnownModelId(id: string): boolean {
-	if (id.includes("/")) return registeredOpenRouterModel(id) !== undefined;
+	if (id.includes("/")) {
+		const registered = registeredOpenRouterModel(id);
+		return registered !== undefined && hasRealPrice(registered.cost);
+	}
 	return KNOWN_ANTHROPIC_MODEL_IDS.includes(id);
+}
+
+/**
+ * The registry marks routers whose price depends on the model they pick
+ * (`openrouter/auto`) with a negative placeholder. Metering such a model
+ * records negative costs, so a spend cap would never trip.
+ */
+function hasRealPrice(cost: { input: number; output: number }): boolean {
+	return (
+		Number.isFinite(cost.input) &&
+		Number.isFinite(cost.output) &&
+		cost.input >= 0 &&
+		cost.output >= 0
+	);
 }
 
 type ModelFields = { model?: string; visionModel?: string };

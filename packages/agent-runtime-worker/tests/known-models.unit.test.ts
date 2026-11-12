@@ -6,6 +6,15 @@ import {
 	unknownModelIds,
 } from "../src/models.js";
 
+function assertKnownModelsMessage(m: { model?: string }): string {
+	try {
+		assertKnownModels(m);
+		return "";
+	} catch (e) {
+		return (e as Error).message;
+	}
+}
+
 describe("known model ids (MD1)", () => {
 	it("accepts the platform's Anthropic ids and registry OpenRouter ids, rejects the rest", () => {
 		for (const id of KNOWN_ANTHROPIC_MODEL_IDS)
@@ -13,6 +22,15 @@ describe("known model ids (MD1)", () => {
 		expect(isKnownModelId("claude-sonnet-9-9")).toBe(false);
 		expect(isKnownModelId("deepseek/deepseek-chat")).toBe(true);
 		expect(isKnownModelId("someone/made-this-up-v0")).toBe(false);
+	});
+
+	it("rejects a router whose registry price is a negative placeholder (openrouter/auto)", () => {
+		// Metered at a negative price, such a model would keep a mission's spend
+		// below any cap forever.
+		expect(isKnownModelId("openrouter/auto")).toBe(false);
+		expect(assertKnownModelsMessage({ model: "openrouter/auto" })).toContain(
+			"openrouter/auto",
+		);
 	});
 
 	it("lists the unknown ids a config names, so the caller can refuse it", () => {

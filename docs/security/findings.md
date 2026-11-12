@@ -40,6 +40,12 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 
 ## Fixed Findings
 
+### 2026-11-12 found while choosing a model for MAGI DEV
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-079 | MEDIUM | `packages/agent-runtime-worker/src/models.ts` (`isKnownModelId`) | **A model priced at a negative placeholder was accepted, which would make a mission's spend cap never trip.** The OpenRouter registry pi-ai ships lists `openrouter/auto` (a router whose price depends on the model it picks) at −$1,000,000 per million tokens. `isKnownModelId` accepted any registry id, so a config naming `openrouter/auto` passed validation and every call would have been metered at a negative cost. Not observed in use: no mission named it. | `isKnownModelId` also requires a finite, non-negative input and output price; `openrouter/auto` is refused with the usual "unknown model id" error. Test: `known-models.unit`. |
+
 ### 2026-10-21 whole-repo sprint audit (Sprint 28f, `/sprint-audit 28f`)
 
 | ID | Severity | Location | Description | Fix applied |
