@@ -35,21 +35,17 @@ export function createAuthMiddleware(
 			(req.headers["x-api-key"] as string | undefined) ??
 			extractCookie(req.headers.cookie, "magi_session");
 
-		// AUTH-BF: a client that keeps failing is answered 429 for the rest of
-		// its window; successes do not reset it (a guesser interleaving a valid
-		// Firebase token with admin-key guesses gains nothing).
+		// AUTH-BF: the limiter protects the one guessable secret, the admin key.
+		// A blocked client cannot try the admin key at all for the rest of its
+		// window (successes do not reset it), but a Firebase token is still
+		// verified: it is signature-checked, so it can't be guessed, and a
+		// blocked browser must be able to sign in again.
 		const client = req.ip ?? "unknown";
-		if (limiter.isBlocked(client)) {
-			res.setHeader("Retry-After", String(limiter.retryAfterSeconds(client)));
-			res
-				.status(429)
-				.json({ error: "Too many failed authentication attempts" });
-			return;
-		}
+		const blocked = limiter.isBlocked(client);
 
 		// 1. CONTROL_API_KEY → admin (CI, headless scripts, bootstrap.sh)
 		const apiKey = process.env.CONTROL_API_KEY;
-		if (apiKey && provided && safeEqual(provided, apiKey)) {
+		if (!blocked && apiKey && provided && safeEqual(provided, apiKey)) {
 			req.userId = "admin";
 			req.isAdmin = true;
 			next();
@@ -57,6 +53,7 @@ export function createAuthMiddleware(
 		}
 
 		// 2. Firebase JWT → regular user
+		let expired = false;
 		if (provided) {
 			try {
 				const { uid, email, displayName } = await verifyFirebaseToken(provided);
@@ -66,6 +63,7 @@ export function createAuthMiddleware(
 				next();
 				return;
 			} catch (e) {
+				expired = isExpiredTokenError(e);
 				console.error(
 					`[auth] Firebase token verification failed: ${(e as Error).message}`,
 				);
@@ -74,9 +72,26 @@ export function createAuthMiddleware(
 			console.warn(`[auth] 401 — no credential on ${req.method} ${req.path}`);
 		}
 
-		if (provided) limiter.fail(client);
+		if (blocked) {
+			res.setHeader("Retry-After", String(limiter.retryAfterSeconds(client)));
+			res
+				.status(429)
+				.json({ error: "Too many failed authentication attempts" });
+			return;
+		}
+		// An expired token was genuinely issued to this user: a stale browser
+		// session, not a guess. Counting it locked users out after one page load
+		// (every panel's request failed at once).
+		if (provided && !expired) limiter.fail(client);
 		res.status(401).json({ error: "Unauthorized" });
 	};
+}
+
+/** Firebase's verdict for a correctly signed token whose lifetime is over. */
+export function isExpiredTokenError(e: unknown): boolean {
+	const code = (e as { code?: unknown } | null)?.code;
+	if (code === "auth/id-token-expired") return true;
+	return /auth\/id-token-expired/.test(String((e as Error)?.message ?? ""));
 }
 
 export function safeEqual(a: string, b: string): boolean {
