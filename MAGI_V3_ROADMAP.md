@@ -136,6 +136,7 @@ general Post-MVP backlog below.
 
 | Item | Notes |
 |------|-------|
+| **Scenario test harness** (proposed 2026-11-13) | Operator stories played against the real copilots, with the test as the operator; state assertions and friction budgets (cards, replies, time, cost). Two tiers: scripted-model seam tests on every push; real-model scenarios nightly and before promote. First scenario: "Haiku Desk" mission creation. Prompted by the mission-creation bugs found live in November. Shares its runner with the evaluation harness ([#45](https://github.com/arnadu/magi_v3/issues/45)) and MAGI DEV's known-answer tests. ~7 days in 5 steps. Plan and requirements: [docs/plans/scenario-test-harness.md](docs/plans/scenario-test-harness.md) |
 | Interactive service exposure (Jupyter, other web apps on a mission machine) | Issue [#42](https://github.com/arnadu/magi_v3/issues/42), filed by the mission-copilot on `meteo-textbook-20260730`. Path-based reverse proxy through the existing monitor-server connection (reuses the CR-03 egress-proxy's raw-socket-tunneling technique), config-declared allowed ports (not agent-openable at runtime) — needs its own ADR before implementation. |
 
 ---
