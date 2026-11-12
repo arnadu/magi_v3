@@ -14,13 +14,7 @@
 	"packages/agent-runtime-worker/src/conversation-repository.ts": {
 		"lines": 290,
 		"fns": {
-			"createMongoConversationRepository@103": 182
-		}
-	},
-	"packages/agent-runtime-worker/src/daemon-boot/orchestration-callbacks.ts": {
-		"lines": 343,
-		"fns": {
-			"createRemainingOrchestrationCallbacks@280": 124
+			"createMongoConversationRepository@169": 162
 		}
 	},
 	"packages/agent-runtime-worker/src/mailbox.ts": {
@@ -50,7 +44,7 @@
 	"packages/cockpit/src/FilesPanel.tsx": {
 		"lines": 504,
 		"fns": {
-			"FileViewer@229": 192
+			"FileViewer@231": 192
 		}
 	},
 	"packages/cockpit/src/LimitsPanel.tsx": {

@@ -111,10 +111,10 @@ distinct logical components:
   deliberate trade-off, not an oversight (see the security note above). Mainly helps a user define
   and launch a new mission, and otherwise watches across that user's own missions at a coarse
   grain.
-- **Cron scheduler.** A once-a-minute heartbeat with three fixed jobs: deliver any due scheduled
+- **Cron scheduler.** Three fixed jobs: every minute, deliver any due scheduled
   message into its mission's mailbox, or hand a due scheduled job to the mission's daemon
   (resuming a suspended machine if needed), expire any
-  temporary resource upgrade that's run past its window, and prune old LLM call-log entries. It
+  temporary resource upgrade that's run past its window; every 30 minutes, prune old LLM call-log entries. It
   lives here, not on a mission's own machine, because that machine is suspended between sessions
   and can't reliably drive its own clock.
 - **Resource monitor.** A separate five-minute tick ([ADR-0032](docs/adr/0032-proactive-resource-oversight.md))
@@ -223,7 +223,7 @@ This system runs AI agents that execute shell commands, write files, browse the 
 You never know what they could do in your name...
 
 !!!THINK THREE TIMES BEFORE GIVING THEM ANY OTHER SENSITIVE INFORMATION, AND THEN DO NOT DO IT ANYWAY!!! 
-Your information will be written at external providers (Fly.io, MongoDB Atlas, and of course your LLM providers). The plaform has not undergone any pen-testing.
+Your information will be written at external providers (Fly.io, MongoDB Atlas, and of course your LLM providers). The platform has not undergone any pen-testing.
 
 !!!ALWAYS MAINTAIN A HARD SPEND LIMIT AT YOUR LLM PROVIDER (and do not use auto-replenish features)!!! 
 MAGI-V3 ships with its own limit system, but better safe than sorry.
@@ -318,7 +318,7 @@ TEAM_CONFIG=$PWD/config/teams/test/word-count.yaml \
 
 # Persistent daemon (waits for messages, runs indefinitely):
 TEAM_CONFIG=$PWD/config/teams/equity-research.yaml npm run daemon -w packages/agent-runtime-worker
-# Dashboard: http://localhost:4000 — click ▶ Start
+# Status: curl http://localhost:4000/status (JSON). The cockpit is the only UI; it needs the control plane.
 
 # Post a message to a running daemon:
 TEAM_CONFIG=$PWD/config/teams/equity-research.yaml \
@@ -348,9 +348,11 @@ packages/
   control-plane/          — Express API (missions CRUD + lifecycle), Fly client, cron scheduler, copilot, proxy, UI
   agent-runtime-worker/   — daemon, agent loop, tools, orchestrator, monitor server, tool IPC server, CLI
   agent-config/           — YAML team config loader (Zod schema)
+  cockpit/                — the operator UI (Vite + React), built into the control plane's public/
   skills/                 — platform-tier skill playbooks
 config/
-  teams/                  — team YAML configs (equity-research, gold-digest, general-assistant; test/ for fixtures)
+  teams/                  — team templates (one YAML each, plus a folder of team files), the
+                            control-plane copilot's config (copilot.yaml), and test/ fixtures
 docs/
   adr/                    — architecture decision records
   deployment.md           — cloud deployment guide

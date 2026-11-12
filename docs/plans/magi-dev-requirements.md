@@ -118,6 +118,23 @@ anything the agent reads, which is why actions are predefined, typed and confirm
 - **One audit log.** Who acted (person, or agent and mission), who approved, what changed, the
   outcome.
 
+### Effective configuration, readable by agents (added 2026-11-12)
+
+In phase 0 the appsec agent could not tell whether an operator step (turning on CSP enforcement)
+had been done: the documents said one thing, the deployment another, and only a person with
+`flyctl` could look. Some of this is visible from outside (security headers, `/healthz`, TLS),
+and the agents now probe it with `curl`. The rest needs the Ops API: A's read tier gains an
+**effective-configuration** endpoint reporting each security-relevant setting's *state*, never
+its value:
+- CSP enforcing or report-only; the spend-cap ceiling and default cap; the template allowlist;
+  the pinned mission image and when it was built;
+- which secrets are set, and when each was last rotated (names and dates, never values);
+- auth settings: session cookie flags, the admin key's presence, rate limits.
+
+It turns "did the operator do it?" into a check an agent can run, feeds the release gate (G3)
+and the appsec agent's drift checks, and gives the auditor agent something to compare the policy
+against.
+
 ## External API access (deliverable G)
 
 Production access is one case of a general need: agents calling APIs outside the platform with

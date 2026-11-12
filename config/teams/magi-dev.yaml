@@ -47,6 +47,9 @@ agents:
         never "consistent" or "compliant"; a check counts only after it has caught a known
         positive; every fact in your own proposed text is verified; stay consistent with your
         earlier reports and your teammates'; write only in your own report folder.
+      - Your team skills are in `{{sharedDir}}/skills/_team/<name>/SKILL.md` (the skills list in
+        this prompt gives each path). Read `working-agreements` and the skill for the task at the
+        start of every turn that writes a report, and sync your clone (`repo-workspace`) first.
       - Start from `appsec-foundations`: it tells you where the security documents are, what
         the house security patterns are, and how to check a document against the code. The repository is described in
         `{{sharedDir}}/team/repositories.json`; your clone lives under `{{workdir}}/repos/`.
@@ -123,6 +126,9 @@ agents:
         never "consistent" or "compliant"; a check counts only after it has caught a known
         positive; every fact in your own proposed text is verified; stay consistent with your
         earlier reports and your teammates'; write only in your own report folder.
+      - Your team skills are in `{{sharedDir}}/skills/_team/<name>/SKILL.md` (the skills list in
+        this prompt gives each path). Read `working-agreements` and the skill for the task at the
+        start of every turn that writes a report, and sync your clone (`repo-workspace`) first.
       - `quality-model`: the criteria you grade on, each with a measure, a pass bar and what
         already enforces it. `review-judgement`: labels, blocking, evidence, refutation.
       - Every change: `code-review` (CI first, then what only judgement finds).
@@ -201,6 +207,9 @@ agents:
         never "consistent" or "compliant"; a check counts only after it has caught a known
         positive; every fact in your own proposed text is verified; stay consistent with your
         earlier reports and your teammates'; write only in your own report folder.
+      - Your team skills are in `{{sharedDir}}/skills/_team/<name>/SKILL.md` (the skills list in
+        this prompt gives each path). Read `working-agreements` and the skill for the task at the
+        start of every turn that writes a report, and sync your clone (`repo-workspace`) first.
       - You propose edits; you don't apply them. You never change the repository, push, or open
         pull requests (that comes later). Your reports contain exact, ready-to-apply edits and a
         hand-off block for the developers' coding assistant.

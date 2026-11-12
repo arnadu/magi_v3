@@ -79,3 +79,19 @@ the same method as the documenter's `doc-consistency` skill: read it. In short:
    section. "Consistent with the code" is allowed only with that count.
 
 `working-agreements` applies to every report you write.
+
+## Deployment probes: check a deployed setting before asking
+
+When a document claims something about a **deployed** setting, check it from outside before
+asking the user, using only what a deployment exposes publicly (no credential):
+
+| What | How |
+|---|---|
+| Security headers (CSP mode, HSTS, frame options, ...) | `curl -s -D - -o /dev/null https://<app>.fly.dev/ \| grep -i -E '^(content-security-policy\|strict-transport\|x-frame\|referrer-policy)'` — the CSP header name says the mode: `Content-Security-Policy` is enforcing, `...-Report-Only` is not |
+| Liveness | `curl -s https://<app>.fly.dev/healthz` |
+| TLS | `curl -sv https://<app>.fly.dev/ -o /dev/null 2>&1 \| grep -E 'SSL connection\|subject:\|expire'` |
+
+The control plane's app name is in `fly.control-<suffix>.toml` (`app = ...`) in your clone.
+Record the command and its output in the report. Settings that are not visible from outside
+(secrets present, caps, allowlists, the pinned image) can't be checked this way today: say so,
+and ask the user once.
