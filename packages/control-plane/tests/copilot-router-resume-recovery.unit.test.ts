@@ -1,18 +1,25 @@
 /**
- * copilot-router.ts's executeAction — resume_mission's destroyed-machine
- * fallback and fix_mission_volume (issue #62 follow-up,
- * docs/plans/mission-volume-drift-recovery-plan.md Step 3). Fly and the
- * machine-lifecycle layer are mocked; a minimal in-memory fake stands in for
- * Mongo, matching this repo's existing mock-based test style for this file
- * (see copilot-router-execute-action.unit.test.ts). `flyVolumeName` is kept
- * real (pure, deterministic) via importActual.
+ * copilot-router.ts's executeAction — resume_mission/suspend_mission and
+ * fix_mission_volume (issue #62 follow-up,
+ * docs/plans/mission-volume-drift-recovery-plan.md Step 3).
+ *
+ * resume/suspend must be the cockpit's own operation, not a second
+ * implementation: a copy built on the scheduler's wake path failed for 7 h
+ * on a destroyed machine the cockpit route recovered at once (2026-11-13).
+ * So these tests check the hand-off to mission-lifecycle-actions.ts, whose
+ * behaviour is tested once, with the route (missions-resume.unit.test.ts).
+ * Fly is mocked; a minimal in-memory fake stands in for Mongo.
+ * `flyVolumeName` is kept real (pure, deterministic) via importActual.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { executeAction } from "../src/copilot-router.js";
 import type { PendingAction } from "../src/copilot-tools.js";
 import { flyVolumeName, listVolumes } from "../src/fly-machines.js";
-import { wakeTracked } from "../src/machine-lifecycle.js";
+import {
+	resumeMission,
+	suspendMission,
+} from "../src/mission-lifecycle-actions.js";
 
 vi.mock("../src/fly-machines.js", async () => {
 	const actual = await vi.importActual<typeof import("../src/fly-machines.js")>(
@@ -27,15 +34,14 @@ vi.mock("../src/fly-machines.js", async () => {
 		volumeExists: vi.fn(),
 	};
 });
-// The start-or-reprovision decision itself lives in machine-lifecycle.ts and
-// is tested there (machine-lifecycle.unit.test.ts, "wakeTracked"); here only
-// the hand-off and the operator-facing message are checked.
-vi.mock("../src/machine-lifecycle.js", () => ({
-	wakeTracked: vi.fn(),
+vi.mock("../src/mission-lifecycle-actions.js", () => ({
+	resumeMission: vi.fn(),
+	suspendMission: vi.fn(),
 }));
 
 const mockedListVolumes = vi.mocked(listVolumes);
-const mockedWakeTracked = vi.mocked(wakeTracked);
+const mockedResume = vi.mocked(resumeMission);
+const mockedSuspend = vi.mocked(suspendMission);
 
 interface MissionDoc {
 	missionId: string;
@@ -123,15 +129,13 @@ beforeEach(() => {
 	vi.clearAllMocks();
 });
 
-describe("executeAction: resume_mission — hands off to wakeTracked", () => {
-	it("passes the mission's machine, volume and shape, and reports a plain resume", async () => {
-		mockedWakeTracked.mockResolvedValue({
-			reprovisioned: false,
-			machineId: "old-machine",
+describe("executeAction: resume_mission and suspend_mission are the cockpit's operations", () => {
+	it("resumes the user's own mission through the shared lifecycle code and reports its message", async () => {
+		mockedResume.mockResolvedValue({
+			ok: true,
+			message: 'Mission "m1" resumed (recreated)',
 		});
-		const missions = [
-			missionM1({ status: "suspended", mission: { memoryMb: 2048 } }),
-		];
+		const missions = [missionM1({ status: "error" })];
 		const db = fakeDb(missions);
 
 		const result = await executeAction(
@@ -140,51 +144,52 @@ describe("executeAction: resume_mission — hands off to wakeTracked", () => {
 			"user1",
 		);
 
-		expect(result).toBe('Mission "m1" resumed');
-		expect(mockedWakeTracked).toHaveBeenCalledWith(db, {
-			missionId: "m1",
-			machineId: "old-machine",
-			volumeId: "vol_real",
-			mission: { memoryMb: 2048 },
-		});
+		expect(result).toBe('Mission "m1" resumed (recreated)');
+		expect(mockedResume).toHaveBeenCalledTimes(1);
+		const [, , mission] = mockedResume.mock.calls[0];
+		expect(mission).toMatchObject({ missionId: "m1", userId: "user1" });
 	});
 
-	it("tells the operator when the machine had to be re-provisioned", async () => {
-		mockedWakeTracked.mockResolvedValue({
-			reprovisioned: true,
-			machineId: "new-machine",
+	it("turns a refusal into an error carrying the same reason", async () => {
+		mockedResume.mockResolvedValue({
+			ok: false,
+			status: 500,
+			error:
+				"Volume vol_real does not exist on Fly — mission.volumeId in MongoDB has likely drifted",
 		});
-		const db = fakeDb([missionM1({ errorMessage: "boom" })]);
-
-		const result = await executeAction(
-			db,
-			action("resume_mission", { missionId: "m1" }),
-			"user1",
-		);
-
-		expect(result).toContain("machine had been destroyed");
-		expect(result).toContain("new-machine");
-	});
-
-	it("surfaces wakeTracked's refusal (e.g. a drifted volumeId) unchanged", async () => {
-		mockedWakeTracked.mockRejectedValue(
-			new Error(
-				'Volume vol_real does not exist on Fly — mission.volumeId in MongoDB has likely drifted. Try ProposeAction "fix_mission_volume" first.',
-			),
-		);
 		const db = fakeDb([missionM1()]);
-
 		await expect(
 			executeAction(db, action("resume_mission", { missionId: "m1" }), "user1"),
 		).rejects.toThrow(/mission\.volumeId in MongoDB has likely drifted/);
 	});
 
-	it("refuses a mission with no machine before calling the lifecycle layer", async () => {
-		const db = fakeDb([missionM1({ machineId: undefined })]);
+	it("never hands another user's mission to the lifecycle code", async () => {
+		mockedResume.mockResolvedValue({
+			ok: false,
+			status: 404,
+			error: "Not found or no machine",
+		});
+		const db = fakeDb([missionM1({ userId: "someone-else" })]);
 		await expect(
 			executeAction(db, action("resume_mission", { missionId: "m1" }), "user1"),
-		).rejects.toThrow(/has no machine/);
-		expect(mockedWakeTracked).not.toHaveBeenCalled();
+		).rejects.toThrow(/Not found/);
+		expect(mockedResume.mock.calls[0][2]).toBeNull();
+	});
+
+	it("suspends through the same shared code", async () => {
+		mockedSuspend.mockResolvedValue({
+			ok: true,
+			message: 'Mission "m1" suspended',
+		});
+		const db = fakeDb([missionM1({ status: "running" })]);
+		expect(
+			await executeAction(
+				db,
+				action("suspend_mission", { missionId: "m1" }),
+				"user1",
+			),
+		).toBe('Mission "m1" suspended');
+		expect(mockedSuspend).toHaveBeenCalledTimes(1);
 	});
 });
 

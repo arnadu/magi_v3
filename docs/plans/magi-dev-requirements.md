@@ -1042,7 +1042,7 @@ Letters refer to the deliverables above.
 ### 7. Application support
 
 - **Observability** through A: logs, LLM call traces [exists], metrics [partial], alert routing to MAGI DEV and the user [new].
-- **Troubleshooting** through A's read tier [new]. Runbooks as skills: incident-triage, mission-recovery and disk-pressure exist [partial].
+- **Troubleshooting** through A's read tier [new]. Runbooks as skills: incident-triage, mission-recovery and disk-pressure exist [partial]. A production support engineer agent (see [below](#the-production-support-engineer-added-2026-11-13)) [new].
 - **Remediation** through A's action tier under E [partial; the actions exist as copilot actions].
 - **Resource management:** spend caps, daily report, machine upgrades [exists].
 - **Backups:** Atlas backups and 30-day volume snapshots [exists]; restore runbook (#70) [new].
@@ -1586,6 +1586,76 @@ Every row gets a verdict (pass, fail, missing, n/a, unverifiable) and evidence; 
 refuses an incomplete list, and every `missing` or `fail` row is a finding. The lists live in
 the agents' skills (`config/teams/magi-dev/skills/*/checklists/`), so a lesson becomes a new
 row.
+
+### The production support engineer (added 2026-11-13)
+
+**Why.** On 2026-11-13 the AI News Digest mission ran out of memory at night. Its mission
+copilot rightly asked for a bigger machine; the resize destroyed the old machine and could not
+place the new one (the volume's server was full), and the mission sat in `error` for seven
+hours. The control copilot reacted within seconds, proposed the right action and, once it
+failed, found the bug in the source and filed an accurate issue — and still could not bring the
+mission back. Claude Code, asked by the operator, brought it back with one call and found three
+platform defects in an hour. The difference was not intelligence or credentials:
+
+| | Control copilot | What brought the mission back |
+|---|---|---|
+| Resume | `resume_mission`, a second implementation built on the scheduler's wake path, which took a destroyed machine for a stopped one | The cockpit's resume route, which handled it |
+| Evidence | Its summary tools; it inferred the resize was "auto-recovery" | The records themselves: the mission document, anomalies, machine segments, both copilots' conversations, Fly, CI; the resize was the mission copilot's request |
+| Authority | A confirmation card per action; the operator was asleep | The operator's instruction in the conversation |
+| Change | File an issue | Fix the code, test it, deploy it through CI |
+| Memory | Its mental map | Earlier incidents (the 2026-10-16 machine deletion was recovered the same way) |
+
+**The role.** The control copilot assists one operator with their missions. The production
+support engineer looks after the platform: it investigates incidents across missions and both
+planes, establishes the cause from evidence, restores service through runbook actions, and
+proposes the code fix and its regression test. It never deploys.
+
+**What it needs, by deliverable:**
+- **A's read tier:** mission documents, anomalies, machine segments, resource samples,
+  schedules, LLM-call metadata, Fly machines, volumes and events, control-plane logs, CI runs,
+  and the repository with its history. Agents' conversations only within an incident the
+  operator opened for that mission (A2: the data is the organization's, but it is untrusted
+  text and private to its users).
+- **A's action tier, under E:** the runbook actions that exist as copilot actions (resume,
+  suspend, fix the volume record, fork a volume) and the ones still missing. Approval follows
+  the effect, not the actor: an action that only restores a known-good state — resume a mission
+  on its default machine and its existing volume — runs at once and is reported; anything that
+  changes cost or size, deletes, or touches another mission's data needs approval. A seven-hour
+  wait for a confirmation card is the failure this policy addresses.
+- **B:** a branch with the fix and its test, opened as a pull request (the git proxy, sprint 32);
+  updates to `docs/operational-resilience.md` in the same change.
+- **Alerts routed to it** (phase 1), not only to the copilots.
+
+**Skills (aims, with a checklist):**
+- *Evidence before narrative:* a timeline built from records with timestamps; every causal
+  claim cites the record that shows it. "Auto-recovery triggered a resize" was a plausible
+  story; the mission copilot's conversation showed a deliberate request.
+- *Which code actually ran:* when one operation has several entry points, find the one the
+  failing caller used and compare it with the one that works.
+- *Claims against code:* the resilience document said the wake path "re-provisions whether or
+  not the old machine exists"; it did not. A support engineer checks the claims its runbooks
+  rely on.
+- *Contracts with providers:* what the code assumes about Fly, OpenRouter or Atlas (a 404 for a
+  destroyed machine) is a claim to verify against the provider, not against our own mocks.
+- *Write-ups:* timeline, cause, what detected it and when, what would have prevented it, the
+  fix, the test that would now catch it.
+
+**Known-answer test KA-S1 (the 2026-11-13 incident).** Given the state at 13:00 that day (the
+mission in `error`, the anomalies, the copilots' conversations, the repository at `8de1f80`),
+a good run finds:
+1. the resize was the mission copilot's `RequestResourceUpgrade` after the second OOM kill;
+2. `machineExists` counts a destroyed machine as alive, so `wakeTracked` (the copilot's resume
+   and the scheduler's wakes) tries to start it;
+3. a failed resize has no fallback to the default machine;
+4. the copilot's resume and the cockpit's resume are two implementations of one operation;
+5. the resilience document's claim about the wake path is false;
+6. the cockpit offers no Resume for a mission in `error`;
+and restores service through the resume route. Fixed in `ef94c3e` and the commit that
+unified the two resumes.
+
+**Phasing.** Phase 2 (application support) with A's read and action tiers. Before that, the
+qa-lead's journey reviews cover part of the ground from the code side, and Claude Code acts as
+production support (CLAUDE.md, "MAGI DEV").
 
 ## Phasing
 

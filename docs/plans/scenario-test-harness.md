@@ -101,6 +101,16 @@ A later stage lets the local daemon run the first turn and checks that `haiku/` 
 | S8 | The daily resource report | One summary; already-known flags not repeated |
 | S9 | "File a bug about X" | A GitHub card with the provenance label; not executed |
 
+**Platform recovery** (needs an HTTP-level fake of Fly's Machines API, so lifecycle code runs
+unmocked; each starts from a state seen live):
+
+| # | Story | Checked by |
+|---|---|---|
+| R1 | An upgrade cannot be placed (412 `volume_placement_capacity`) | The mission runs on its default machine; a `resize-failure` saying so; never `error` with no machine |
+| R2 | The machine was destroyed (Fly still answers, `state: destroyed`); the copilot's resume is confirmed | A new machine on the volume; status `running` |
+| R3 | A scheduled message comes due for a destroyed machine | Re-provisioned and delivered; no `scheduling-failure` |
+| R4 | The volume's server is full on resume | The volume forked, the mission running on the fork, a `volume-forked` anomaly |
+
 **Mission copilot:**
 
 | # | Story | Checked by |

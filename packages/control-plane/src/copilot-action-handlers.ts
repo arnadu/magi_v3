@@ -37,10 +37,13 @@ import {
 	GITHUB_ISSUE_ACTION,
 	parseGithubIssuePayload,
 } from "./github-issues.js";
-import { provisionTracked, wakeTracked } from "./machine-lifecycle.js";
+import { provisionTracked } from "./machine-lifecycle.js";
+import {
+	resumeMission as resumeLifecycle,
+	suspendMission as suspendLifecycle,
+} from "./mission-lifecycle-actions.js";
 import { deriveMonitorToken, monitorUrl } from "./monitor-token.js";
 import type { PendingAction } from "./pending-actions.js";
-import { suspendMissionMachine } from "./resource-upgrade.js";
 import { ensureMissionSpendCap } from "./spend-policy.js";
 
 interface ActionContext {
@@ -158,46 +161,26 @@ async function launchDraft(ctx: ActionContext): Promise<string> {
 	}
 }
 
-async function suspendMission(ctx: ActionContext): Promise<string> {
-	const { db, payload, userId, missions, now } = ctx;
-	const missionId = payload.missionId as string;
-	const mission = await missions.findOne({ missionId, userId });
-	if (!mission?.machineId)
-		throw new Error(`Mission "${missionId}" has no machine`);
-	await suspendMissionMachine(db, {
-		missionId,
-		machineId: mission.machineId,
+/** The operator's suspend/resume, the same code as the cockpit's routes (mission-lifecycle-actions.ts). */
+async function runLifecycle(
+	{ db, payload, userId, missions }: ActionContext,
+	op: typeof suspendLifecycle,
+): Promise<string> {
+	const mission = await missions.findOne({
+		missionId: payload.missionId as string,
+		userId,
 	});
-	await missions.updateOne(
-		{ missionId },
-		{ $set: { status: "suspended", updatedAt: now } },
-	);
-	return `Mission "${missionId}" suspended`;
+	const result = await op(db, missions, mission);
+	if (!result.ok) throw new Error(result.error);
+	return result.message;
+}
+
+async function suspendMission(ctx: ActionContext): Promise<string> {
+	return runLifecycle(ctx, suspendLifecycle);
 }
 
 async function resumeMission(ctx: ActionContext): Promise<string> {
-	const { db, payload, userId, missions } = ctx;
-	const missionId = payload.missionId as string;
-	const mission = await missions.findOne({ missionId, userId });
-	if (!mission?.machineId)
-		throw new Error(`Mission "${missionId}" has no machine`);
-
-	// A mission left in "error" status (e.g. after a resume that failed
-	// because its volumeId had drifted — issue #62) has no guarantee its
-	// machineId still points to a real Fly machine; wakeTracked starts it
-	// when it exists and re-provisions on the volume when it is gone —
-	// without that, this action could never recover a mission
-	// fix_mission_volume just fixed, since its old machineId is exactly
-	// the one that got deleted.
-	const woke = await wakeTracked(db, {
-		missionId,
-		machineId: mission.machineId,
-		volumeId: mission.volumeId,
-		mission: mission.mission,
-	});
-	return woke.reprovisioned
-		? `Mission "${missionId}" resumed (its machine had been destroyed — reprovisioned fresh: ${woke.machineId})`
-		: `Mission "${missionId}" resumed`;
+	return runLifecycle(ctx, resumeLifecycle);
 }
 
 async function fixMissionVolume(ctx: ActionContext): Promise<string> {

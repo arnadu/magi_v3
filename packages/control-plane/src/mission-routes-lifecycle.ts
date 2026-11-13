@@ -11,31 +11,20 @@ import {
 	validateNewMissionId,
 	validateTeamFiles,
 } from "@magi/agent-config";
-import {
-	assertKnownModels,
-	createMongoAnomalyRecorderForMission,
-} from "@magi/agent-runtime-worker";
+import { assertKnownModels } from "@magi/agent-runtime-worker";
 import type { RequestHandler } from "express";
-import type { Collection, Db } from "mongodb";
 import type { AsyncRoutes } from "./async-handler.js";
-import {
-	isLocalExecution,
-	provisionLocal,
-	volumeExists,
-} from "./fly-machines.js";
-import {
-	provisionTracked,
-	restartOnCurrentConfigTracked,
-} from "./machine-lifecycle.js";
-import {
-	claimStatus,
-	insertMissionOrConflict,
-	runningPatch,
-} from "./mission-claims.js";
+import { isLocalExecution, provisionLocal } from "./fly-machines.js";
+import { provisionTracked } from "./machine-lifecycle.js";
+import { insertMissionOrConflict, runningPatch } from "./mission-claims.js";
 import { createDraftMission } from "./mission-drafts.js";
+import {
+	type LifecycleResult,
+	resumeMission,
+	suspendMission,
+} from "./mission-lifecycle-actions.js";
 import type { MissionRouteDeps } from "./mission-scope.js";
 import { type MissionDoc, userFilter } from "./mission-scope.js";
-import { suspendMissionMachine } from "./resource-upgrade.js";
 import {
 	platformMaxCostCeilingUsd,
 	withDefaultSpendCap,
@@ -229,154 +218,34 @@ function postDraft({ col }: MissionRouteDeps): RequestHandler {
 }
 
 // Suspend.
+/** The HTTP shape of a suspend/resume outcome. */
+function sendLifecycle(
+	res: Parameters<RequestHandler>[1],
+	result: LifecycleResult,
+	status: "suspended" | "running",
+): void {
+	if (result.ok) res.json({ status });
+	else res.status(result.status).json({ error: result.error });
+}
+
 function postSuspend({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
 			missionId: req.params.id,
 			...userFilter(req),
 		});
-		if (!mission?.machineId) {
-			res.status(404).json({ error: "Not found or no machine" });
-			return;
-		}
-		try {
-			if (!mission.machineId.startsWith("local-")) {
-				await suspendMissionMachine(db, {
-					missionId: req.params.id,
-					machineId: mission.machineId,
-				});
-			}
-			await col.updateOne(
-				{ missionId: req.params.id },
-				{ $set: { status: "suspended", updatedAt: new Date() } },
-			);
-			res.json({ status: "suspended" });
-		} catch (e) {
-			console.error(
-				`[missions] suspend failed { missionId: "${req.params.id}", error: "${(e as Error).message}" }`,
-			);
-			res.status(500).json({ error: (e as Error).message });
-		}
+		sendLifecycle(res, await suspendMission(db, col, mission), "suspended");
 	};
-}
-
-/** Resume on Fly: restart the mission on the current image and config, on its preserved volume. */
-async function restartOnVolume(
-	db: Db,
-	col: Collection<MissionDoc>,
-	mission: MissionDoc,
-	machineId: string,
-): Promise<void> {
-	if (!mission.volumeId) {
-		throw new Error("No volume ID stored for this mission — cannot resume");
-	}
-	// Verify the volume exists before touching the machine: a drifted
-	// `mission.volumeId` (#62, 2026-09-23) once got a healthy machine
-	// deleted and then never re-created.
-	if (!(await volumeExists(mission.volumeId))) {
-		throw new Error(
-			`Volume ${mission.volumeId} does not exist on Fly — mission.volumeId in MongoDB has likely drifted from the real volume. Not touching the current machine; check \`flyctl volumes list\` for the mission's actual volume before retrying.`,
-		);
-	}
-	const handle = await restartOnCurrentConfigTracked(db, {
-		missionId: mission.missionId,
-		machineId,
-		volumeId: mission.volumeId,
-		mission: mission.mission,
-	});
-	console.log(
-		`[missions] resumed { missionId: "${mission.missionId}", how: "${handle.how}", machineId: "${handle.machineId}", volumeId: "${handle.volumeId}" }`,
-	);
-	await col.updateOne(
-		{ missionId: mission.missionId },
-		{
-			$set: {
-				machineId: handle.machineId,
-				privateIp: handle.privateIp,
-				status: "running",
-				updatedAt: new Date(),
-			},
-			$unset: { errorMessage: "" },
-		},
-	);
 }
 
 // Resume — the daemon reads structured config directly from `missions` at boot (ADR-0021).
 function postResume({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
-		const missionId = req.params.id;
 		const mission = await col.findOne({
-			missionId,
+			missionId: req.params.id,
 			...userFilter(req),
 		});
-		if (!mission?.machineId) {
-			res.status(404).json({ error: "Not found or no machine" });
-			return;
-		}
-		// Idempotency guard: without this, a duplicate/retried resume call (e.g.
-		// a slow first request the operator gives up on and retries, or a
-		// double-click) races with itself — the second call reads the mission
-		// doc before the first call's $set lands, deletes the machine the first
-		// call just created, and re-provisions again. Only a mission that isn't
-		// already running or mid-provision can be (re-)resumed.
-		if (mission.status === "running" || mission.status === "provisioning") {
-			res.status(409).json({
-				error: `Mission is already ${mission.status} — resume not needed`,
-			});
-			return;
-		}
-		if (!(await claimStatus(col, missionId, mission.status, "provisioning"))) {
-			res.status(409).json({ error: "Mission is already being resumed" });
-			return;
-		}
-		try {
-			if (mission.machineId.startsWith("local-")) {
-				// Nothing to re-write — the developer's restarted daemon reads
-				// structured config directly from `missions` at boot (ADR-0021).
-				await col.updateOne(
-					{ missionId },
-					{
-						$set: { status: "running", updatedAt: new Date() },
-						$unset: { errorMessage: "" },
-					},
-				);
-			} else {
-				await restartOnVolume(db, col, mission, mission.machineId);
-			}
-			res.json({ status: "running" });
-		} catch (e) {
-			const errorMessage = (e as Error).message;
-			console.error(
-				`[missions] resume failed { missionId: "${missionId}", error: "${errorMessage}" }`,
-			);
-			// Surface the failure in Mongo, not just the HTTP response — without
-			// this, a failed resume left the mission looking like an ordinary,
-			// resumable "suspended" mission while actually pointing at a machine
-			// that may already be deleted, with no visible explanation anywhere.
-			await col.updateOne(
-				{ missionId },
-				{ $set: { status: "error", errorMessage, updatedAt: new Date() } },
-			);
-			// Wake the copilot the same way every other resource-oversight category
-			// does (ADR-0032) — without this, a resume failure was only ever
-			// discovered by someone happening to notice the mission's status
-			// (found live, issue #62: a drifted volumeId went undetected on a
-			// second mission until a proactive check, precisely because nothing
-			// woke anyone). Covers any resume failure, not just a drifted volume.
-			await createMongoAnomalyRecorderForMission(db, missionId, mission.userId)
-				.record({
-					missionId,
-					category: "resume-failure",
-					severity: "hard",
-					message: errorMessage,
-				})
-				.catch((e) =>
-					console.error(
-						`[missions] Failed to record resume-failure anomaly { missionId: "${missionId}", error: "${(e as Error).message}" }`,
-					),
-				);
-			res.status(500).json({ error: errorMessage });
-		}
+		sendLifecycle(res, await resumeMission(db, col, mission), "running");
 	};
 }
 
