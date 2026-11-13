@@ -11,6 +11,7 @@ import {
 	suspendMission,
 	type TemplateSummary,
 } from "./data";
+import { statusAction } from "./mission-status-action";
 
 /** Relative-time formatting for "last activity" — matches index.html's relativeTime(). */
 function relativeTime(iso: string): string {
@@ -479,7 +480,7 @@ export function MissionsPanel({
 											Suspend
 										</button>
 									)}
-									{m.status === "suspended" && (
+									{statusAction(m.status) === "resume" && (
 										<button
 											type="button"
 											className="rail-btn"

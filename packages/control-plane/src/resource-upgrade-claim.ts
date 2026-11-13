@@ -2,7 +2,11 @@
 
 import { type MissionDoc, storedCollection } from "@magi/agent-config";
 import type { Db } from "mongodb";
-import { ResizeError } from "./machine-lifecycle.js";
+import { volumeExists } from "./fly-machines.js";
+import {
+	ResizeError,
+	restartOnCurrentConfigTracked,
+} from "./machine-lifecycle.js";
 import { closeOpenSegments } from "./machine-segments.js";
 import {
 	cancelReminder,
@@ -48,6 +52,15 @@ export async function claim(
  * it a compare-and-set: if the claim it saw has since completed or been
  * replaced, nothing is changed (RU4 — a slow resize was otherwise failed
  * underneath itself).
+ *
+ * A failure after the stop step used to leave the mission in `error` with no
+ * machine until the operator resumed it — at night, for hours, the
+ * memory-starved mission that asked for the upgrade then could not run at
+ * all (ai-news-digest, 2026-11-13: the volume's server had no room for the
+ * bigger machine). Now the mission is brought back on its default machine
+ * the way an operator resume does (restore below); `error` remains only when
+ * that fails too. The sweeper's stale claims are not restored: the resize
+ * they abandon may still be running.
  */
 export async function failResize(
 	db: Db,
@@ -92,18 +105,74 @@ export async function failResize(
 		),
 	);
 	await cancelReminder(db, mission.missionId, mission.upgrade?.reminderId);
-	await recordAnomaly(db, mission, "resize-failure", errorMessage).catch(
-		() => {},
+
+	const restored = expectClaimedAt ? null : await restore(db, mission);
+	const report = restored?.ok
+		? `Could not ${verb} at the ${stage} step (${message}). The mission was restarted on its default machine (${restored.how}, ${restored.machineId}); whatever needed the bigger machine is still there — consider a permanent size (mission.memoryMb) with the operator.`
+		: restored
+			? `${errorMessage} Restarting it on the default machine also failed: ${restored.error}`
+			: errorMessage;
+	await recordAnomaly(db, mission, "resize-failure", report).catch(
+		(e: unknown) =>
+			console.error(
+				`[resource-upgrade] could not record the resize-failure anomaly { missionId: "${mission.missionId}", error: "${(e as Error).message}" } — the copilots are not woken; the requester and operator are still mailed`,
+			),
 	);
 	await notify(
 		db,
 		mission,
 		mission.upgrade?.requestedByAgentId,
-		"Machine resize failed",
-		errorMessage,
+		restored?.ok
+			? "Machine resize failed — back on the default machine"
+			: "Machine resize failed",
+		report,
 	);
 	console.error(
-		`[resource-upgrade] Resize failed { missionId: "${mission.missionId}", stage: "${stage}", error: "${message}" }`,
+		`[resource-upgrade] Resize failed { missionId: "${mission.missionId}", stage: "${stage}", error: "${message}", restored: ${restored?.ok ?? "not attempted"} }`,
 	);
-	return fail(500, errorMessage);
+	return fail(restored?.ok ? 502 : 500, report);
+}
+
+type Restore =
+	| { ok: true; how: string; machineId: string }
+	| { ok: false; error: string };
+
+/**
+ * Bring the mission back on its default machine after a failed resize, as an
+ * operator resume would: the stopped machine updated in place when it still
+ * exists, else a new machine on the volume, or on a fork of it in another
+ * zone when the volume's server is full (restartOnCurrentConfigTracked).
+ */
+async function restore(db: Db, mission: MissionDoc): Promise<Restore> {
+	const { missionId, machineId, volumeId } = mission;
+	if (!machineId || !volumeId) {
+		return { ok: false, error: "the mission records no machine or volume" };
+	}
+	try {
+		if (!(await volumeExists(volumeId))) {
+			return { ok: false, error: `volume ${volumeId} does not exist on Fly` };
+		}
+		const handle = await restartOnCurrentConfigTracked(db, {
+			missionId,
+			machineId,
+			volumeId,
+			mission: mission.mission,
+		});
+		await missionsOf(db).updateOne(
+			{ missionId },
+			{
+				$set: {
+					machineId: handle.machineId,
+					privateIp: handle.privateIp,
+					status: "running",
+					"resize.lastAt": new Date(),
+					updatedAt: new Date(),
+				},
+				$unset: { errorMessage: "" },
+			},
+		);
+		return { ok: true, how: handle.how, machineId: handle.machineId };
+	} catch (e) {
+		return { ok: false, error: (e as Error).message };
+	}
 }

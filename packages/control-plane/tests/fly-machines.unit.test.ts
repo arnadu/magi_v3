@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	machineExists,
 	provisionLocal,
 	provisionMission,
 	volumeExists,
@@ -226,5 +227,25 @@ describe("flyFetch resilience (FLY6)", () => {
 		await volumeExists("v");
 		const init = fetchMock.mock.calls[0][1] as RequestInit;
 		expect(init.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	it("machineExists: a destroyed machine Fly still answers for is gone; a lookup failure throws", async () => {
+		const answer = (status: number, body: unknown) =>
+			vi.stubGlobal(
+				"fetch",
+				vi
+					.fn()
+					.mockResolvedValue(new Response(JSON.stringify(body), { status })),
+			);
+		answer(200, { id: "m", state: "destroyed" });
+		expect(await machineExists("m")).toBe(false);
+		answer(200, { id: "m", state: "destroying" });
+		expect(await machineExists("m")).toBe(false);
+		answer(200, { id: "m", state: "stopped" });
+		expect(await machineExists("m")).toBe(true);
+		answer(404, { error: "not found" });
+		expect(await machineExists("m")).toBe(false);
+		answer(403, { error: "forbidden" });
+		await expect(machineExists("m")).rejects.toThrow(/look up machine m: 403/);
 	});
 });

@@ -7,10 +7,11 @@
 
 import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { isLocalExecution } from "../src/fly-machines.js";
+import { isLocalExecution, volumeExists } from "../src/fly-machines.js";
 import {
 	ResizeError,
 	resizeTracked,
+	restartOnCurrentConfigTracked,
 	suspendTracked,
 } from "../src/machine-lifecycle.js";
 import {
@@ -31,14 +32,21 @@ vi.mock("../src/fly-machines.js", () => ({
 	resumeMission: vi.fn(),
 	destroyMission: vi.fn(),
 	deleteMachine: vi.fn(),
+	volumeExists: vi.fn(),
 }));
 vi.mock("../src/machine-lifecycle.js", async (importOriginal) => {
 	const actual =
 		await importOriginal<typeof import("../src/machine-lifecycle.js")>();
-	return { ...actual, resizeTracked: vi.fn(), suspendTracked: vi.fn() };
+	return {
+		...actual,
+		resizeTracked: vi.fn(),
+		suspendTracked: vi.fn(),
+		restartOnCurrentConfigTracked: vi.fn(),
+	};
 });
 
 const resize = vi.mocked(resizeTracked);
+const restart = vi.mocked(restartOnCurrentConfigTracked);
 const suspend = vi.mocked(suspendTracked);
 
 const NOW = new Date("2026-09-20T12:00:00.000Z");
@@ -129,6 +137,7 @@ function upgradedSegment(
 beforeEach(() => {
 	vi.resetAllMocks();
 	vi.mocked(isLocalExecution).mockReturnValue(false);
+	vi.mocked(volumeExists).mockResolvedValue(true);
 	resize.mockResolvedValue({
 		machineId: "mach-2",
 		privateIp: "fdaa::2",
@@ -419,8 +428,45 @@ describe("requestUpgrade — new upgrade", () => {
 			expect(t.data.missionAnomalies).toHaveLength(0);
 		});
 
+		it("restarts the mission on its default machine when the bigger one cannot be placed", async () => {
+			resize.mockRejectedValue(new ResizeError("provision", "no capacity"));
+			restart.mockResolvedValue({
+				machineId: "mach-default",
+				privateIp: "fdaa::9",
+				volumeId: "vol-1",
+				how: "recreated",
+			});
+			const t = setup(undefined, {
+				machineSegments: [upgradedSegment(-MIN, null)],
+			});
+			const r = await requestUpgrade(t.db, "m1", request(), NOW);
+
+			expect(r.status).toBe(502);
+			expect(String(r.body.error)).toMatch(/restarted on its default machine/);
+			const m = t.mission();
+			expect(m).toMatchObject({
+				status: "running",
+				machineId: "mach-default",
+				privateIp: "fdaa::9",
+			});
+			expect(m.errorMessage).toBeUndefined();
+			expect(m.upgrade).toBeUndefined();
+			expect(m.resize?.claimedAt).toBeUndefined();
+			expect(
+				t.data.missionAnomalies.some(
+					(a) =>
+						a.category === "resize-failure" &&
+						/default machine/.test(String(a.message)),
+				),
+			).toBe(true);
+			expect(
+				t.mail("Machine resize failed — back on the default machine"),
+			).toHaveLength(1);
+		});
+
 		it("puts the mission in error, raises resize-failure and tells the operator to Resume when the re-create fails", async () => {
 			resize.mockRejectedValue(new ResizeError("provision", "no capacity"));
+			restart.mockRejectedValue(new Error("no capacity anywhere"));
 			const t = setup(undefined, {
 				machineSegments: [upgradedSegment(-MIN, null)],
 			});
@@ -649,6 +695,7 @@ describe("revertUpgrade", () => {
 
 	it("puts the mission in error when the re-create fails", async () => {
 		resize.mockRejectedValue(new ResizeError("delete", "Fly refused"));
+		restart.mockRejectedValue(new Error("Fly refused again"));
 		const t = upgraded();
 		const r = await revertUpgrade(t.db, "m1", { reason: "expired", now: NOW });
 		expect(r.status).toBe(500);

@@ -258,7 +258,8 @@ exit code 137/−9 — treat that the same way.
 - **Mission copilot**: if not already on the maximum shape, consider
   `RequestResourceUpgrade` sized for the task that failed. If it already ran
   at the maximum shape, the job itself needs redesigning — a bigger machine
-  isn't available as the fix.
+  isn't available as the fix. A kill that recurs means the default machine is
+  too small: see `request-resources` ("When the pressure keeps coming back").
 - **Control-plane copilot**: see the `vm-upgrade-oversight` skill.
 
 ## Worked example: don't let a plausible story substitute for evidence

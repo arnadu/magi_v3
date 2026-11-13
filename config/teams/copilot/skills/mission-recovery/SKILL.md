@@ -101,24 +101,21 @@ In production (Fly.io), this should not occur — file a bug if it does.
 ### 7. Temporary machine upgrade resize failed (`resize-failure`, ADR-0031)
 
 **Signature:** A hard `resize-failure` anomaly relayed to you: the machine was
-stopped as part of an upgrade or revert, but re-creating it on the same
-volume failed. The mission's status is set to `error`.
+stopped for an upgrade or revert and the machine of the new size could not be
+created on the mission's volume — often because the volume's server has no
+room for a bigger machine (`volume_placement_capacity`).
 
-**What happened:** ADR-0031's temporary upgrades work by stopping the machine
-and re-provisioning it at the new size on the same Fly volume (Fly can't
-resize a running machine in place). The stop succeeded; the re-create didn't —
-usually a transient Fly API issue, occasionally a genuinely invalid shape.
+**What happens next:** the platform brings the mission straight back on its
+default machine, the way an operator resume does (in place, re-created on the
+volume, or on a fork of it in another zone). The anomaly then says "back on
+the default machine" and the mission is running: the upgrade is lost, the
+mission is not. What remains is the pressure that asked for the upgrade — see
+`vm-upgrade-oversight`.
 
-**Recovery:**
-- `GetMissionStatus` to confirm the current state — the mission has no live
-  machine right now, just a volume.
-- Propose `resume_mission`. Because there's no machine currently, this
-  re-provisions one at the mission's default shape (the upgrade itself was
-  already lost when the resize failed — this recovers the mission, not the
-  upgrade).
-- If `resume_mission` also fails, this is a genuine Fly-side problem beyond
-  what you can retry your way out of — escalate to the operator with the
-  error text rather than repeatedly retrying.
+**When the anomaly says that restart failed too**, the mission is in `error`
+with no machine. `GetMissionStatus` to confirm, then propose `resume_mission`,
+which re-provisions on the volume. If that also fails, this is a Fly-side
+problem beyond retrying — escalate to the operator with the error text.
 
 ### 8. Resume failed — volume drift (`resume-failure` anomaly, issue #62)
 

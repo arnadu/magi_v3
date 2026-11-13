@@ -7,10 +7,11 @@ import {
 	suspendMission,
 } from "./data";
 import { headerSpend } from "./mission-spend";
+import { statusAction } from "./mission-status-action";
 import { SignOutButton } from "./SignOutButton";
 import type { FoldedTree } from "./types";
 
-/** Suspend/Resume toggle for the mission dashboard header — same action the Missions list already has, without needing to go back there. */
+/** Suspend/Resume toggle for the mission dashboard header — same action the Missions list already has, without needing to go back there. A mission in error offers Resume. */
 export function MissionStatusButton({ missionId }: { missionId: string }) {
 	const [status, setStatus] = useState<MissionStatusValue | null>(null);
 	const [busy, setBusy] = useState(false);
@@ -31,12 +32,14 @@ export function MissionStatusButton({ missionId }: { missionId: string }) {
 		};
 	}, [missionId]);
 
+	const action = statusAction(status);
+
 	async function handleClick() {
-		if (status !== "running" && status !== "suspended") return;
+		if (!action) return;
 		setBusy(true);
 		setError(null);
 		try {
-			if (status === "running") {
+			if (action === "suspend") {
 				await suspendMission(missionId);
 				setStatus("suspended");
 			} else {
@@ -50,8 +53,7 @@ export function MissionStatusButton({ missionId }: { missionId: string }) {
 		}
 	}
 
-	// Nothing sensible to toggle mid-transition (provisioning/error/destroyed).
-	if (status !== "running" && status !== "suspended") return null;
+	if (!action) return null;
 
 	return (
 		<>
@@ -61,7 +63,7 @@ export function MissionStatusButton({ missionId }: { missionId: string }) {
 				disabled={busy}
 				onClick={handleClick}
 			>
-				{busy ? "…" : status === "running" ? "⏸ Suspend" : "▶ Resume"}
+				{busy ? "…" : action === "suspend" ? "⏸ Suspend" : "▶ Resume"}
 			</button>
 			{error && <span className="error-msg header-status-error">{error}</span>}
 		</>

@@ -31,6 +31,17 @@ machine is too small for what it's trying to do right now.
   everything into memory) — a bigger machine isn't available as the fix.
   Say so plainly rather than suggesting a re-request that can't help.
 
+The aim is a mission that runs within its machine, not one rescued from it
+night after night. A temporary upgrade treats a moment; when memory pressure
+recurs — a second kill, an upgrade that keeps being needed, or a team you know
+is too large for its machine (`agent-design`: more than two browsing agents
+need 2 GB) — the default size is wrong. Propose the permanent change to the
+operator as soon as you see the pattern, with the cost: `save_session_config`
+with `mission.memoryMb` (the mission must be suspended; it applies on resume).
+A failed upgrade does not settle the question either way: the mission is put
+back on its default machine, and the pressure that asked for the upgrade is
+still there.
+
 ## `upgrade-idle`
 
 An upgraded machine with no conversation activity and no running background

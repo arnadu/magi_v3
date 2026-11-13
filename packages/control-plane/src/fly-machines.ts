@@ -411,10 +411,15 @@ export async function getMachineState(machineId: string): Promise<string> {
  * Used to distinguish "PATCH failed because machine is gone" from "PATCH failed
  * for another reason while the machine still exists".
  */
+/** Whether the machine can still be started: Fly keeps answering for a destroyed one (operational-resilience.md). */
 export async function machineExists(machineId: string): Promise<boolean> {
 	const app = appName();
 	const res = await flyFetch(`/apps/${app}/machines/${machineId}`);
-	return res.status !== 404;
+	if (res.status === 404) return false;
+	if (!res.ok)
+		throw new Error(`Failed to look up machine ${machineId}: ${res.status}`);
+	const m = (await res.json()) as { state?: string };
+	return m.state !== "destroyed" && m.state !== "destroying";
 }
 
 /**

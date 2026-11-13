@@ -107,6 +107,14 @@ the default way this mission operates — if a job keeps needing the same upgrad
 a signal the mission's default machine size should change (`SaveMissionConfig`), not
 that it should stay perpetually upgraded.
 
+**When the pressure keeps coming back.** A temporary upgrade answers a moment of
+pressure; the aim is a mission that runs within its own machine. When the same pressure
+recurs — a second out-of-memory kill, an upgrade every daily cycle, renewals — the
+default machine is too small, and another temporary upgrade only postpones the next
+crash. Say so to the operator the first time you see the pattern, with the size you
+would set and its cost: the permanent fix is `mission.memoryMb` (`SaveMissionConfig`,
+applied the next time the mission is resumed), and it is the operator's decision.
+
 **Ending early.** If the requester reports the job is done before the window expires,
 call `EndResourceUpgrade` to return to the default machine and stop paying for the
 bigger one — don't wait out the timer if nothing needs it anymore.
