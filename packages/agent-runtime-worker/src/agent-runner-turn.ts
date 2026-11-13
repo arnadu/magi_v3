@@ -6,7 +6,10 @@
  * object, so each closure reads the current value instead of a captured copy.
  */
 
-import type { AgentConfig } from "@magi/agent-config";
+import {
+	type AgentConfig,
+	DEFAULT_IMAGE_AGENT_MODEL_ID,
+} from "@magi/agent-config";
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import {
 	type AgentRunContext,
@@ -18,10 +21,12 @@ import {
 	createLimitEnforcer,
 	syncObjectivesSection,
 } from "./agent-runner-phases.js";
+import { tryCreateCreateImageTool } from "./images/create-image-tool.js";
 import type { LlmCallEvent, LlmCallMeter } from "./llm-meter.js";
 import { type InnerLoopConfig, runInnerLoop } from "./loop.js";
 import { createMailboxTools } from "./mailbox.js";
 import { createMentalMapTools, initMentalMap } from "./mental-map.js";
+import { resolveModel } from "./models.js";
 import { createObjectivesTools } from "./objectives/tools.js";
 import {
 	convertToLlm,
@@ -319,6 +324,12 @@ export function buildTurnTools(
 		]);
 	};
 
+	const createImageTool = createImageToolFor(
+		ctx,
+		agentId,
+		hooks,
+		appendSubLoop,
+	);
 	const tierA = [
 		...createFileTools(workdir, acl),
 		...createMailboxTools(ctx.mailboxRepo, ctx.teamConfig, agentId, {
@@ -345,6 +356,7 @@ export function buildTurnTools(
 			beforeSubLoopLlmCall: hooks.beforeLlmCall,
 			disabledTools: agent.disabledTools,
 		}),
+		...(createImageTool ? [createImageTool] : []),
 		createAnalyzeMemoriesTool({
 			conversationRepo: ctx.conversationRepo,
 			agentId,
@@ -366,6 +378,28 @@ export function buildTurnTools(
 			await browseWebHandle?.close();
 		},
 	};
+}
+
+/** CreateImage with the mission's image settings, when OpenRouter is configured. */
+function createImageToolFor(
+	ctx: AgentRunContext,
+	agentId: string,
+	hooks: Pick<TurnHooks, "meter" | "beforeLlmCall">,
+	appendSubLoop: (toolUseId: string, msg: Message) => Promise<void>,
+): MagiTool | undefined {
+	const mission = ctx.teamConfig.mission;
+	return tryCreateCreateImageTool({
+		agentModel: resolveModel(
+			mission.imageAgentModel ?? DEFAULT_IMAGE_AGENT_MODEL_ID,
+		),
+		workdir: ctx.identity.workdir,
+		sharedDir: ctx.identity.sharedDir,
+		agentId,
+		...(mission.imageModels ? { allowedKinds: mission.imageModels } : {}),
+		meter: hooks.meter,
+		beforeLlmCall: hooks.beforeLlmCall,
+		onSubLoopMessage: appendSubLoop,
+	});
 }
 
 export interface LoopRun {

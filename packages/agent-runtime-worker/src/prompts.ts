@@ -16,6 +16,8 @@ const PROMPTS_DIR = new URL("../prompts/", import.meta.url);
 
 export type PromptFile =
 	| "browse-agent.md"
+	| "image-agent.md"
+	| "image-critique.md"
 	| "image-describe.md"
 	| "image-ocr.md"
 	| "image-page-visual.md"

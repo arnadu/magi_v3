@@ -96,9 +96,13 @@ describe("buildMissionCopilotAgentConfig", () => {
 		expect(cfg.initialMentalMap).toContain("{{workdir}}");
 	});
 
-	it("disables Research and InspectImage", () => {
+	it("disables Research, InspectImage and CreateImage", () => {
 		const cfg = buildMissionCopilotAgentConfig(baseTeamConfig());
-		expect(cfg.disabledTools).toEqual(["Research", "InspectImage"]);
+		expect(cfg.disabledTools).toEqual([
+			"Research",
+			"InspectImage",
+			"CreateImage",
+		]);
 	});
 
 	it("disables analyst-domain and broken/superseded skills", () => {

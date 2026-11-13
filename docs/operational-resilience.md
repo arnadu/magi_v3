@@ -239,6 +239,11 @@ missed the way there would be if this lived in a per-mission, on-demand process.
 | Chromium crash (BrowseWeb) | BrowseWeb returns error result | 🟡 | Error result returned to agent; agent can fall back to FetchUrl | None |
 | BrowseWeb page hangs | Stagehand `execute` blocks | 🟠 | Playwright default timeouts (~30 s) | `MAX_AGENT_RUN_SECONDS` backstop; Playwright timeouts may not always fire |
 | External site unreachable | FetchUrl / SearchWeb / BrowseWeb returns error | 🟡 | Error result to agent | None |
+| Image provider error or timeout mid-job (CreateImage) | One generation fails | 🟡 | `generate_image` returns the error to the image sub-agent, which can retry or switch model; 120 s timeout per generation, 10 min per job; abort or a limit ends the job with a `partial` manifest and a contact sheet of what was made | None |
+| OpenRouter reports no charge for an image | The image would be recorded as free | 🟡 | Charged at the menu's ceiling price (about twice the measured price) and flagged `costEstimated`; never $0 (ADR-0035) | Over-counts until the provider reports the charge again |
+| A menu model is withdrawn by OpenRouter | Every generation with it fails | 🟡 | The provider error reaches the sub-agent, which can use the kind's other tier; `image-models.unit` fails when pi-ai's registry drops a menu model at upgrade | The menu changes only by a commit |
+| Chromium missing or failing during image previews | No critique image for SVG candidates; contact sheet without previews | 🟡 | Raster candidates are critiqued from the original file (up to 3.5 MB); the contact sheet embeds small originals or names the file; the failure is logged | SVG candidates cannot be critiqued without Chromium |
+| Many concurrent image jobs | Memory pressure from preview browsers | 🟡 | One short-lived preview browser at a time per process (serialized), closed after each batch | Shares the machine with BrowseWeb sessions (#104, #105) |
 
 ---
 

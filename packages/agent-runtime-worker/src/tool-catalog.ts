@@ -22,6 +22,7 @@ export const TIER_A_TOOL_NAMES = [
 	"FetchUrl",
 	"InspectImage",
 	"Research",
+	"CreateImage",
 	"AnalyzeMemories",
 	"SearchWeb",
 	"BrowseWeb",
@@ -35,4 +36,5 @@ export const TIER_A_TOOL_NAMES = [
 export const CONDITIONAL_TOOL_NAMES: ReadonlySet<string> = new Set([
 	"SearchWeb",
 	"BrowseWeb",
+	"CreateImage",
 ]);

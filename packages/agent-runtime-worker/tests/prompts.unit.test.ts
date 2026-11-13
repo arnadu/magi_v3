@@ -46,6 +46,8 @@ describe("loadPrompt", () => {
 	it("has a file for every prompt name, and a name for every prompt file", () => {
 		const names: PromptFile[] = [
 			"browse-agent.md",
+			"image-agent.md",
+			"image-critique.md",
 			"image-describe.md",
 			"image-ocr.md",
 			"image-page-visual.md",

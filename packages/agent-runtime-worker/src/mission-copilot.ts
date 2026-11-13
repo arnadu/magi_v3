@@ -96,7 +96,7 @@ export function buildMissionCopilotAgentConfig(
 		systemPrompt: buildSystemPromptTemplate(mission.id, mission.name, roster),
 		initialMentalMap: initialMentalMap(),
 		// No nested research sub-loop or image workload for a lead role.
-		disabledTools: ["Research", "InspectImage"],
+		disabledTools: ["Research", "InspectImage", "CreateImage"],
 		// github-issues: its own SKILL.md already defers to the built-in
 		// GitHub tools for copilot agents — and its scripts need GH_TOKEN,
 		// which the execution plane never has (that's the whole point of the
