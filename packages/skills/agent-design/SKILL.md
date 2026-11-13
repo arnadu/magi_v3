@@ -104,7 +104,8 @@ could apply. Give the mission a budget per objective when cost matters.
   `CreateImage` to the others' `disabledTools`, so an analyst does not spend on illustrations.
   Point those agents at the `illustration` skill. One call costs up to $1.50 by default
   (8 images); a logo or a set of figures is a few calls, so budget it into `maxCostUsd` and say
-  so to the operator. `mission.imageModels` restricts the kinds (vector, raster-art,
+  so to the operator. Say in the agent's prompt how much the operator wants to be involved in
+  visual choices (every direction, or only the final pick); the skill leaves it to context. `mission.imageModels` restricts the kinds (vector, raster-art,
   raster-instruct) when a mission needs only one; `mission.imageAgentModel` changes the model
   that writes prompts and critiques (default Claude Sonnet).
 

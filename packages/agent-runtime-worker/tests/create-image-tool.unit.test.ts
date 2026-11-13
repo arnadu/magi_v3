@@ -197,6 +197,18 @@ describe("CreateImage references", () => {
 	});
 });
 
+describe("CreateImage turn spend", () => {
+	it("reports the images spent this turn, adding up across calls", async () => {
+		const t = tool();
+		const first = text(await t.execute("1", { brief: "a leaf" }));
+		expect(first).toMatch(
+			/Spent on images this turn: \$\d+\.\d\d across 1 job\(s\)/,
+		);
+		const second = text(await t.execute("2", { brief: "a fern" }));
+		expect(second).toMatch(/across 2 job\(s\)/);
+	});
+});
+
 describe("tryCreateCreateImageTool", () => {
 	it("offers the tool only when OpenRouter is configured", () => {
 		const opts = {

@@ -10,8 +10,22 @@ candidates, critiques them against your brief, refines the best, and returns fil
 contact sheet and a short summary. The images never enter your context; open the contact
 sheet in the Files panel, or call `InspectImage` on a candidate if you need to look at one.
 
-A call takes one to several minutes and costs money (default budget: 8 images, $1.50). Ask
-once with a good brief rather than many times with vague ones.
+A call takes one to several minutes and costs money (default budget: 8 images, $1.50) —
+image generation costs far more than text, and whoever you work for sees the bill.
+
+## What you are aiming for
+
+- **Images the requester actually wants**, fit for the use they have in mind. Taste is theirs:
+  a candidate you like is a proposal until they have seen it.
+- **Spend they would agree to.** Each call is a purchase; more variants and refinements are
+  worth it only when they move the work toward what was asked.
+- **The requester involved where their judgement matters** — choosing a direction, approving a
+  refinement, deciding whether more variants are worth the money. How often depends on the
+  context: an illustration for your own working draft needs no check-in; a brand identity, an
+  expensive series, or a vague brief does. When unsure, show what you have, with what it cost,
+  and ask.
+
+A good brief is the cheapest way to a good result.
 
 ## Write the brief
 
@@ -52,11 +66,12 @@ Deliverable: an isolated logo on a plain background, no mock-up.",
 Other parameters: `options` (distinct options, 1–6, default 3), `aspectRatio` (`1:1`, `16:9`,
 `9:16`, `4:3`, `3:4`, `3:2`, `2:3`), `references` (up to 3 PNG, JPEG or WebP files in your
 workdir or the shared folder, as style examples or the image to edit), `maxImages` and
-`maxUsd` (raise them for a large job; the platform caps them at 16 images and $5).
+`maxUsd` (the platform caps them at 16 images and $5).
 
 ## Read the result
 
-The result names the job (`img-…`), its status, the cost, the contact sheet
+The result names the job (`img-…`), its status, its cost and what you have spent on images
+so far this turn, the contact sheet
 (`shared/images/<job>/contact-sheet.html`), every candidate file with its model and the image
 agent's note, and the image agent's summary with its recommendation.
 

@@ -220,12 +220,17 @@ async function readParent(
 	};
 }
 
-export function outcomeText(sharedDir: string, o: ImageJobOutcome): string {
+export function outcomeText(
+	sharedDir: string,
+	o: ImageJobOutcome,
+	turn: { jobs: number; usd: number },
+): string {
 	const m = o.manifest;
 	const t = m.totals;
 	const rec = new Set(m.recommended ?? []);
 	const lines = [
 		`Image job ${m.jobId} — ${m.status}${m.statusDetail ? `: ${m.statusDetail}` : ""}. ${t.images} image(s), total $${t.totalUsd.toFixed(3)}${t.estimated ? " (partly estimated)" : ""}.`,
+		`Spent on images this turn: $${turn.usd.toFixed(2)} across ${turn.jobs} job(s).`,
 	];
 	if (o.contactSheet)
 		lines.push(`Contact sheet: ${join(sharedDir, o.contactSheet)}`);
@@ -324,6 +329,8 @@ export function createCreateImageTool(opts: CreateImageToolOptions): MagiTool {
 			? undefined
 			: (opts.renderPreviews ?? createPreviewRenderer());
 	const roots = [opts.workdir, opts.sharedDir];
+	// The tool is built once per turn, so this is the turn's image spend.
+	const turn = { jobs: 0, usd: 0 };
 	return {
 		name: "CreateImage",
 		description: description(),
@@ -365,7 +372,9 @@ export function createCreateImageTool(opts: CreateImageToolOptions): MagiTool {
 					`CreateImage: could not start the job: ${(e as Error).message}`,
 				);
 			}
-			const text = outcomeText(opts.sharedDir, outcome);
+			turn.jobs++;
+			turn.usd += outcome.manifest.totals.totalUsd;
+			const text = outcomeText(opts.sharedDir, outcome, turn);
 			return outcome.manifest.status === "failed"
 				? err(text)
 				: { content: [{ type: "text", text }] };
