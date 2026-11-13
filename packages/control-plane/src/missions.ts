@@ -42,6 +42,7 @@ import { registerMissionLifecycleRoutes } from "./mission-routes-lifecycle.js";
 import { registerMissionLimitsRoutes } from "./mission-routes-limits.js";
 import { registerMissionReadRoutes } from "./mission-routes-read.js";
 import { registerMissionTranscriptRoutes } from "./mission-routes-transcript.js";
+import { missionSpend } from "./mission-spend.js";
 import { monitorAuthHeaders, monitorUrl } from "./monitor-token.js";
 
 export type { MissionDoc };
@@ -314,7 +315,8 @@ export async function writeUpgradedRuntimeReset(
  * Folded objectives tree, read directly from MongoDB (ADR-0019) — unlike the
  * old proxy-through-MonitorServer path this replaces, this works regardless
  * of mission running state (the same "readLimits works while suspended"
- * property ADR-0018 already gave cost/limits).
+ * property ADR-0018 already gave cost/limits). With the mission's real spend
+ * and cap, and the part of it not yet attributed (mission-spend.ts).
  */
 export async function readObjectives(
 	col: Collection<MissionDoc>,
@@ -324,8 +326,21 @@ export async function readObjectives(
 ): Promise<RouteResult> {
 	const mission = await col.findOne({ missionId, ...filter });
 	if (!mission) return { status: 404, body: { error: "Not found" } };
-	const tree = await createMongoObjectivesRepository(db).readTree(missionId);
-	return { status: 200, body: tree };
+	const repo = createMongoObjectivesRepository(db);
+	const [tree, costEvents, snapshot] = await Promise.all([
+		repo.readTree(missionId),
+		repo.readCostEvents(missionId),
+		createMongoAgentStatsRepository(db).readMissionSnapshot(missionId),
+	]);
+	const costByAgent = new Map(
+		snapshot.map((s) => [s.agentId, s.lifetimeCostUsd + s.turnCostUsd]),
+	);
+	const spend = missionSpend(
+		costByAgent,
+		costEvents,
+		mission.mission?.maxCostUsd ?? null,
+	);
+	return { status: 200, body: { ...tree, spend } };
 }
 
 export {

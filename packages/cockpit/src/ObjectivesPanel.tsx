@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchAgents } from "./data";
 import { LoadError, useLoadError } from "./load-error";
+import { unattributedUsd } from "./mission-spend";
 import type {
 	FoldedKpi,
 	FoldedObjective,
@@ -222,6 +223,7 @@ export function ObjectivesPanel({
 }) {
 	const { loadError, failed } = useLoadError();
 	const roots = tree.objectives.filter((o) => o.parent === null);
+	const unattributed = unattributedUsd(tree);
 	const [filterAgent, setFilterAgent] = useState<string | null>(null);
 	const [rosterIds, setRosterIds] = useState<string[]>([]);
 	useEffect(() => {
@@ -284,6 +286,13 @@ export function ObjectivesPanel({
 			{tree.overheadCostUsd > 0 && (
 				<p className="mut">
 					Unattributed / overhead: ≈{fmt(tree.overheadCostUsd)}
+				</p>
+			)}
+			{unattributed !== null && (
+				<p className="mut">
+					Not yet attributed to an objective: ≈{fmt(unattributed)} — spent in
+					turns where the agent updated no task. It is attributed when the agent
+					next updates a task, or to its own objectives after three turns.
 				</p>
 			)}
 		</div>

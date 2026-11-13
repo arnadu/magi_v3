@@ -6,6 +6,7 @@ import {
 	resumeMission,
 	suspendMission,
 } from "./data";
+import { headerSpend } from "./mission-spend";
 import { SignOutButton } from "./SignOutButton";
 import type { FoldedTree } from "./types";
 
@@ -82,10 +83,7 @@ export function Header({
 	/** Shows a Suspend/Resume toggle when set — same lifecycle action the Missions list already has, available without leaving the mission dashboard. */
 	missionId?: string;
 }) {
-	const spent = tree ? tree.objectives.reduce((a, o) => a + o.costUsd, 0) : 0;
-	const budget = tree
-		? tree.objectives.reduce((a, o) => a + o.budgetUsd, 0)
-		: 0;
+	const spend = tree ? headerSpend(tree) : null;
 	const missionName = useMissionName(missionId);
 	return (
 		<header>
@@ -101,9 +99,13 @@ export function Header({
 					: "MAGI Control Cockpit"}
 			</h1>
 			{missionId && <MissionStatusButton missionId={missionId} />}
-			{tree && (
-				<span className="mut">
-					spend <b>{`$${spent.toFixed(2)}`}</b> / ${budget.toFixed(2)}
+			{spend && (
+				<span
+					className="mut"
+					title="Every LLM and image call, as in the Limits panel"
+				>
+					spend <b>{`$${spend.spentUsd.toFixed(2)}`}</b>
+					{spend.capUsd != null && ` / $${spend.capUsd.toFixed(2)} cap`}
 				</span>
 			)}
 			{budgetPaused && (

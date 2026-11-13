@@ -55,4 +55,11 @@ export interface FoldedTree {
 	tasks: FoldedTask[];
 	orphanTasks: FoldedTask[];
 	overheadCostUsd: number;
+	/** Added by the control plane: the mission's real spend and cap, and what is not yet attributed. */
+	spend?: {
+		totalUsd: number;
+		attributedUsd: number;
+		unattributedUsd: number;
+		capUsd: number | null;
+	};
 }
