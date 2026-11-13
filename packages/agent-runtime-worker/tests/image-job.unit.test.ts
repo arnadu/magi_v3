@@ -121,6 +121,31 @@ describe("image job folder", () => {
 		expect(html).toContain("(estimated)");
 	});
 
+	it("stops embedding images once the sheet's budget is spent", () => {
+		const job = ImageJob.create(shared, init, ID);
+		const meta = {
+			model: "m",
+			prompt: "p",
+			references: [],
+			costUsd: 0.1,
+			costEstimated: false,
+		};
+		job.addCandidate({ mimeType: "image/png", bytes: PNG }, meta);
+		job.addCandidate({ mimeType: "image/png", bytes: PNG }, meta);
+		const preview = Buffer.alloc(300);
+		const html = contactSheetHtml(
+			job.manifest,
+			new Map([
+				[1, preview],
+				[2, preview],
+			]),
+			new Map(),
+			preview.toString("base64").length,
+		);
+		expect(html.match(/data:image\/jpeg/g)).toHaveLength(1);
+		expect(html).toContain("No preview: open candidate-2.png");
+	});
+
 	it("embeds a small raster original when no preview exists, and names the file otherwise", () => {
 		const job = ImageJob.create(shared, init, ID);
 		const meta = {

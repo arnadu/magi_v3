@@ -1,18 +1,26 @@
+import { ImageSettingsFields } from "./ImageSettingsFields";
+import type { ImageMenuItem, ImageSettingsDraft } from "./image-settings";
+
 /** The mission-level fields of a running mission's config (editable only while suspended). */
 export interface ConfigMissionDraft {
 	name: string;
 	model: string;
 	visionModel: string;
 	timezone: string;
+	image: ImageSettingsDraft;
 }
 
 export function ConfigMissionFields({
 	value,
 	canEdit,
+	imageMenu,
+	defaultImageModel,
 	onChange,
 }: {
 	value: ConfigMissionDraft;
 	canEdit: boolean;
+	imageMenu: readonly ImageMenuItem[];
+	defaultImageModel: string;
 	onChange: (patch: Partial<ConfigMissionDraft>) => void;
 }) {
 	return (
@@ -56,6 +64,14 @@ export function ConfigMissionFields({
 					onChange={(e) => onChange({ timezone: e.target.value })}
 				/>
 			</div>
+			<ImageSettingsFields
+				idPrefix="cfg"
+				value={value.image}
+				menu={imageMenu}
+				defaultModel={defaultImageModel}
+				canEdit={canEdit}
+				onChange={(patch) => onChange({ image: { ...value.image, ...patch } })}
+			/>
 		</div>
 	);
 }

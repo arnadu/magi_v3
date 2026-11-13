@@ -99,6 +99,14 @@ could apply. Give the mission a budget per objective when cost matters.
 - **Machine size**: every agent that browses or researches runs its own browser. More than two
   such agents need 2 GB (`mission.memoryMb: 2048`); a 1 GB machine runs out of memory and slows
   every agent down. Tell the operator the cost difference.
+- **Images** (`CreateImage`): every agent has it unless disabled. Keep it on the agents whose
+  output needs pictures (a designer, a web or report writer, a textbook author) and add
+  `CreateImage` to the others' `disabledTools`, so an analyst does not spend on illustrations.
+  Point those agents at the `illustration` skill. One call costs up to $1.50 by default
+  (8 images); a logo or a set of figures is a few calls, so budget it into `maxCostUsd` and say
+  so to the operator. `mission.imageModels` restricts the kinds (vector, raster-art,
+  raster-instruct) when a mission needs only one; `mission.imageAgentModel` changes the model
+  that writes prompts and critiques (default Claude Sonnet).
 
 ## 6. Before launch: checklist
 
@@ -109,6 +117,8 @@ could apply. Give the mission a budget per objective when cost matters.
 - Objectives saved, each with an owner and at least one KPI.
 - Recurring work has a schedule (or the lead agent's first task is to create one).
 - Model and cap match what the operator asked for; the machine size fits the browsing agents.
+- `CreateImage` is on only for the agents that make pictures, and their prompts say where the
+  chosen images go.
 - No agent is told, or left free, to ask for API keys: the platform reaches data providers itself.
 - Nothing contradicts across prompt, skills and objectives.
 

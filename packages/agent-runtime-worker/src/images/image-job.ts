@@ -22,6 +22,11 @@ const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
 const MAX_CANDIDATE_BYTES = 16 * 1024 * 1024;
 /** A raster original embedded in the contact sheet when no preview could be made. */
 const MAX_EMBEDDED_ORIGINAL_BYTES = 2 * 1024 * 1024;
+/**
+ * Base64 the contact sheet may embed in all: the Files panel opens HTML up
+ * to 10 MB (TEXT_FILE_MAX_BYTES); candidates past the budget are named, not shown.
+ */
+export const CONTACT_SHEET_EMBED_BUDGET = 6 * 1024 * 1024;
 
 const EXT_BY_MIME: Record<string, string> = {
 	"image/png": "png",
@@ -301,16 +306,22 @@ function money(usd: number, estimated: boolean): string {
 	return `$${usd.toFixed(3)}${estimated ? " (estimated)" : ""}`;
 }
 
+/** The card's image as a data URL within the remaining embed budget, or a pointer to the file. */
 function cardImage(
 	c: CandidateRecord,
 	preview: Buffer | undefined,
 	original: { mimeType: string; bytes: Buffer } | undefined,
+	budget: { left: number },
 ): string {
-	if (preview) {
-		return `<img alt="candidate ${c.n}" src="data:image/jpeg;base64,${preview.toString("base64")}">`;
-	}
-	if (original) {
-		return `<img alt="candidate ${c.n}" src="data:${original.mimeType};base64,${original.bytes.toString("base64")}">`;
+	const source = preview
+		? { mimeType: "image/jpeg", bytes: preview }
+		: original;
+	if (source) {
+		const b64 = source.bytes.toString("base64");
+		if (b64.length <= budget.left) {
+			budget.left -= b64.length;
+			return `<img alt="candidate ${c.n}" src="data:${source.mimeType};base64,${b64}">`;
+		}
 	}
 	return `<p class="nopreview">No preview: open ${escapeHtml(c.file)}</p>`;
 }
@@ -328,15 +339,17 @@ export function contactSheetHtml(
 		number,
 		{ mimeType: string; bytes: Buffer }
 	> = new Map(),
+	embedBudget = CONTACT_SHEET_EMBED_BUDGET,
 ): string {
 	const recommended = new Set(m.recommended ?? []);
+	const budget = { left: embedBudget };
 	const cards = m.candidates
 		.map((c) => {
 			const badge = recommended.has(c.n)
 				? ' <span class="badge">recommended</span>'
 				: "";
 			return `<section class="card">
-${cardImage(c, previews.get(c.n), originals.get(c.n))}
+${cardImage(c, previews.get(c.n), originals.get(c.n), budget)}
 <h2>Candidate ${c.n}${badge}</h2>
 <p class="meta">${escapeHtml(c.file)} · ${escapeHtml(c.model)} · ${money(c.costUsd, c.costEstimated)}</p>
 ${c.note ? `<p>${escapeHtml(c.note)}</p>` : ""}

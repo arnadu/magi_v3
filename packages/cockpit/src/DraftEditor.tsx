@@ -2,6 +2,7 @@ import { useState } from "react";
 import { availableSkills } from "./available-skills";
 import { DraftAgentForm } from "./DraftAgentForm";
 import { DraftMissionFields } from "./DraftMissionFields";
+import { menuKinds } from "./image-settings";
 import { useCatalog } from "./use-catalog";
 import { useDraftSaveLaunch } from "./use-draft-save-launch";
 import { useDraftState } from "./use-draft-state";
@@ -37,7 +38,8 @@ export function DraftEditor({
 	const { catalog } = useCatalog();
 	const [busy, setBusy] = useState(0);
 	const draft = useDraftState(missionId, busy > 0);
-	const flow = useDraftSaveLaunch(missionId, draft, setBusy, onLaunched);
+	const kinds = menuKinds(catalog.imageMenu);
+	const flow = useDraftSaveLaunch(missionId, draft, setBusy, onLaunched, kinds);
 	const { config, missionDraft, agentsDraft, selectedAgentId, edit } = draft;
 
 	if (config === null) return <p className="mut">Loading…</p>;
@@ -64,23 +66,17 @@ export function DraftEditor({
 				click Launch when the roster is ready.
 			</p>
 			{draft.remoteUpdateAvailable && (
-				<p className="config-hint">
-					The copilot updated this draft while you were editing it.{" "}
-					<button
-						type="button"
-						className="rail-btn"
-						onClick={() =>
-							draft
-								.reload()
-								.catch((e) => flow.setSaveError((e as Error).message))
-						}
-					>
-						Reload
-					</button>{" "}
-					— this replaces your unsaved changes with the copilot's version.
-				</p>
+				<RemoteUpdateBanner
+					onReload={() =>
+						draft.reload().catch((e) => flow.setSaveError((e as Error).message))
+					}
+				/>
 			)}
-			<DraftMissionFields value={missionDraft} onChange={edit.missionField} />
+			<DraftMissionFields
+				value={missionDraft}
+				catalog={catalog}
+				onChange={edit.missionField}
+			/>
 			{duplicateIds.length > 0 && (
 				<p className="error-msg">
 					Duplicate agent id: {[...new Set(duplicateIds)].join(", ")} — ids must
@@ -139,5 +135,18 @@ export function DraftEditor({
 				)}
 			</div>
 		</div>
+	);
+}
+
+/** Offered when the copilot changed the draft while the operator has unsaved edits. */
+function RemoteUpdateBanner({ onReload }: { onReload: () => void }) {
+	return (
+		<p className="config-hint">
+			The copilot updated this draft while you were editing it.{" "}
+			<button type="button" className="rail-btn" onClick={onReload}>
+				Reload
+			</button>{" "}
+			— this replaces your unsaved changes with the copilot's version.
+		</p>
 	);
 }

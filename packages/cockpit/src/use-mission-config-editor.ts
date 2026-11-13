@@ -9,6 +9,7 @@ import {
 	type MissionStatusValue,
 	saveMissionConfig,
 } from "./data";
+import { imageFieldsForSave, imageSettingsOf } from "./image-settings";
 import { changedMentalMaps } from "./mental-map-diff";
 
 function orUndef(v: string): string | undefined {
@@ -20,13 +21,35 @@ function orUndef(v: string): string | undefined {
 function mergeMissionDraft(
 	mission: MissionConfigData["mission"],
 	draft: ConfigMissionDraft,
+	imageKinds: readonly string[],
 ): MissionConfigData["mission"] {
+	const { imageAgentModel: _model, imageModels: _kinds, ...rest } = mission;
 	return {
-		...mission,
+		...rest,
 		name: draft.name.trim() ? draft.name : mission.name,
 		model: orUndef(draft.model),
 		visionModel: orUndef(draft.visionModel),
 		timezone: orUndef(draft.timezone),
+		...imageFieldsForSave(draft.image, imageKinds),
+	};
+}
+
+const EMPTY_DRAFT: ConfigMissionDraft = {
+	name: "",
+	model: "",
+	visionModel: "",
+	timezone: "",
+	image: { imageAgentModel: "", imageKinds: null },
+};
+
+/** The editor's draft of a stored mission. */
+function draftOf(mission: MissionConfigData["mission"]): ConfigMissionDraft {
+	return {
+		name: mission.name ?? "",
+		model: mission.model ?? "",
+		visionModel: mission.visionModel ?? "",
+		timezone: mission.timezone ?? "",
+		image: imageSettingsOf(mission),
 	};
 }
 
@@ -36,17 +59,17 @@ function mergeMissionDraft(
  * overwrite a newer config. The PUT is a full replace, so every field this
  * editor does not touch round-trips unchanged.
  */
-export function useMissionConfigEditor(missionId: string | null) {
+export function useMissionConfigEditor(
+	missionId: string | null,
+	/** The kinds on the image menu: ticking all of them saves as no restriction. */
+	imageKinds: readonly string[],
+) {
 	const [config, setConfig] = useState<MissionConfigData | "error" | null>(
 		null,
 	);
 	const [status, setStatus] = useState<MissionStatusValue | null>(null);
-	const [missionDraft, setMissionDraft] = useState<ConfigMissionDraft>({
-		name: "",
-		model: "",
-		visionModel: "",
-		timezone: "",
-	});
+	const [missionDraft, setMissionDraft] =
+		useState<ConfigMissionDraft>(EMPTY_DRAFT);
 	const [agentsDraft, setAgentsDraft] = useState<MissionConfigAgent[]>([]);
 	const [mentalMapDrafts, setMentalMapDrafts] = useState<
 		Record<string, string>
@@ -72,12 +95,7 @@ export function useMissionConfigEditor(missionId: string | null) {
 				loadedUpdatedAtRef.current = updatedAt;
 				setConfig(c);
 				setStatus(s);
-				setMissionDraft({
-					name: c.mission.name ?? "",
-					model: c.mission.model ?? "",
-					visionModel: c.mission.visionModel ?? "",
-					timezone: c.mission.timezone ?? "",
-				});
+				setMissionDraft(draftOf(c.mission));
 				setAgentsDraft(c.agents);
 				setMentalMapDrafts({ ...c.mentalMaps });
 				setSelectedAgentId(c.agents[0]?.id ?? null);
@@ -105,7 +123,11 @@ export function useMissionConfigEditor(missionId: string | null) {
 		setSaving(true);
 		setSaveError(null);
 		setSaved(false);
-		const nextMission = mergeMissionDraft(config.mission, missionDraft);
+		const nextMission = mergeMissionDraft(
+			config.mission,
+			missionDraft,
+			imageKinds,
+		);
 		try {
 			await saveMissionConfig(missionId, {
 				mission: nextMission,

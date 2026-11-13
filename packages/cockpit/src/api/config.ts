@@ -33,6 +33,8 @@ export interface MissionConfigMission {
 	model?: string;
 	visionModel?: string;
 	timezone?: string;
+	imageAgentModel?: string;
+	imageModels?: string[];
 	[key: string]: unknown;
 }
 

@@ -1,3 +1,4 @@
+import type { ImageMenuItem } from "../image-settings";
 import type { FoldedTree } from "../types";
 import { api, mp, request } from "./http";
 
@@ -114,6 +115,9 @@ export function fetchMissionsStats(): Promise<
 export interface ToggleCatalog {
 	platformSkills: string[];
 	tierATools: string[];
+	/** The image model menu (ADR-0035): kinds, models, tiers, ceiling prices. */
+	imageMenu: ImageMenuItem[];
+	defaultImageAgentModel: string;
 }
 
 export function fetchCatalog(): Promise<ToggleCatalog> {

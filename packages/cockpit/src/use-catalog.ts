@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { fetchCatalog, type ToggleCatalog } from "./data";
 
-const EMPTY: ToggleCatalog = { platformSkills: [], tierATools: [] };
+const EMPTY: ToggleCatalog = {
+	platformSkills: [],
+	tierATools: [],
+	imageMenu: [],
+	defaultImageAgentModel: "",
+};
 let cached: Promise<ToggleCatalog> | null = null;
 
 /**

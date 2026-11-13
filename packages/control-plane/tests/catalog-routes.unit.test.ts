@@ -27,4 +27,15 @@ describe("readCatalog", () => {
 		expect(c.platformSkills).toContain("schedule-task");
 		expect(c.platformSkills).not.toContain("market-analysis-framework");
 	});
+
+	it("serves the worker's image menu with a ceiling price per model, and the default image agent model", () => {
+		root = mkdtempSync(join(tmpdir(), "magi-catalog-"));
+		const c = readCatalog(root);
+		expect(c.imageMenu.map((m) => m.kind)).toEqual(
+			expect.arrayContaining(["vector", "raster-art", "raster-instruct"]),
+		);
+		for (const m of c.imageMenu)
+			expect(m.ceilingUsdPerImage).toBeGreaterThan(0);
+		expect(c.defaultImageAgentModel).toBe("anthropic/claude-sonnet-5");
+	});
 });

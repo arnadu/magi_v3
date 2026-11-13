@@ -1,4 +1,8 @@
-/** The mission-level fields of the draft editor (name, models, timezone, spend cap). */
+/** The mission-level fields of the draft editor (name, models, timezone, spend cap, image settings). */
+
+import type { ToggleCatalog } from "./data";
+import { ImageSettingsFields } from "./ImageSettingsFields";
+import type { ImageSettingsDraft } from "./image-settings";
 
 export interface MissionDraftFields {
 	name: string;
@@ -7,6 +11,7 @@ export interface MissionDraftFields {
 	timezone: string;
 	/** Dollars as typed; blank means the platform default applies at launch. */
 	maxCostUsd: string;
+	image: ImageSettingsDraft;
 }
 
 /**
@@ -40,9 +45,11 @@ export function validateDraft(
 
 export function DraftMissionFields({
 	value,
+	catalog,
 	onChange,
 }: {
 	value: MissionDraftFields;
+	catalog: Pick<ToggleCatalog, "imageMenu" | "defaultImageAgentModel">;
 	onChange: (patch: Partial<MissionDraftFields>) => void;
 }) {
 	return (
@@ -94,6 +101,13 @@ export function DraftMissionFields({
 					onChange={(e) => onChange({ maxCostUsd: e.target.value })}
 				/>
 			</div>
+			<ImageSettingsFields
+				idPrefix="draft"
+				value={value.image}
+				menu={catalog.imageMenu}
+				defaultModel={catalog.defaultImageAgentModel}
+				onChange={(patch) => onChange({ image: { ...value.image, ...patch } })}
+			/>
 		</div>
 	);
 }

@@ -4,18 +4,26 @@
  * read once at startup) and the Tier A tool names from the worker's own
  * list. Both used to be hard-coded in the cockpit; seven of thirteen shipped
  * skills could not be disabled from the UI, and the tool list named a tool
- * that had been renamed.
+ * that had been renamed. Also the image model menu and the default image
+ * agent model, shown beside the mission's image settings (ADR-0035).
  */
 
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { TIER_A_TOOL_NAMES } from "@magi/agent-runtime-worker";
+import { DEFAULT_IMAGE_AGENT_MODEL_ID } from "@magi/agent-config";
+import {
+	IMAGE_MENU,
+	type ImageMenuEntry,
+	TIER_A_TOOL_NAMES,
+} from "@magi/agent-runtime-worker";
 import type { Router } from "express";
 import express from "express";
 
 export interface Catalog {
 	platformSkills: string[];
 	tierATools: string[];
+	imageMenu: ImageMenuEntry[];
+	defaultImageAgentModel: string;
 }
 
 export function readCatalog(repoRoot: string): Catalog {
@@ -36,7 +44,12 @@ export function readCatalog(repoRoot: string): Catalog {
 			`[catalog] could not list platform skills in ${dir}: ${(e as Error).message} — the cockpit will offer no platform-skill toggles`,
 		);
 	}
-	return { platformSkills, tierATools: [...TIER_A_TOOL_NAMES] };
+	return {
+		platformSkills,
+		tierATools: [...TIER_A_TOOL_NAMES],
+		imageMenu: [...IMAGE_MENU],
+		defaultImageAgentModel: DEFAULT_IMAGE_AGENT_MODEL_ID,
+	};
 }
 
 export function createCatalogRouter(repoRoot: string): Router {

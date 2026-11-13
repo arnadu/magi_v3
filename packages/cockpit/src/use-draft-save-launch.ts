@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { validateDraft } from "./DraftMissionFields";
 import { launchDraft, saveDraftConfig } from "./data";
+import { imageFieldsForSave } from "./image-settings";
 import type { useDraftState } from "./use-draft-state";
 
 /**
@@ -14,6 +15,8 @@ export function useDraftSaveLaunch(
 	/** A counter, since a launch runs a save inside it: the poll stays paused until both end. */
 	setBusy: (update: (n: number) => number) => void,
 	onLaunched: (missionId: string) => void,
+	/** The kinds on the image menu: ticking all of them saves as no restriction. */
+	imageKinds: readonly string[],
 ) {
 	const [saving, setSaving] = useState(false);
 	const [launching, setLaunching] = useState(false);
@@ -34,13 +37,19 @@ export function useDraftSaveLaunch(
 		setBusy((n) => n + 1);
 		setSaveError(null);
 		setSaved(false);
+		const {
+			imageAgentModel: _model,
+			imageModels: _kinds,
+			...stored
+		} = config.mission;
 		const nextMission = {
-			...config.mission,
+			...stored,
 			name: missionDraft.name.trim() ? missionDraft.name : config.mission.name,
 			model: missionDraft.model.trim() || undefined,
 			visionModel: missionDraft.visionModel.trim() || undefined,
 			timezone: missionDraft.timezone.trim() || undefined,
 			maxCostUsd: checked.maxCostUsd,
+			...imageFieldsForSave(missionDraft.image, imageKinds),
 		};
 		try {
 			await saveDraftConfig(missionId, {

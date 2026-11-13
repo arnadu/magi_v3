@@ -6,6 +6,7 @@ import {
 	type MissionConfigAgent,
 	type MissionConfigData,
 } from "./data";
+import { imageSettingsOf } from "./image-settings";
 
 /** How often to check whether the copilot changed this draft while the operator has it open. */
 const POLL_MS = 5000;
@@ -16,6 +17,7 @@ const EMPTY_FIELDS: MissionDraftFields = {
 	visionModel: "",
 	timezone: "",
 	maxCostUsd: "",
+	image: { imageAgentModel: "", imageKinds: null },
 };
 
 function blankAgent(id: string): MissionConfigAgent {
@@ -40,6 +42,7 @@ function fieldsOf(c: MissionConfigData): MissionDraftFields {
 			typeof c.mission.maxCostUsd === "number"
 				? String(c.mission.maxCostUsd)
 				: "",
+		image: imageSettingsOf(c.mission),
 	};
 }
 

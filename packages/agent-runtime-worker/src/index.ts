@@ -26,6 +26,7 @@ export type {
 } from "./conversation-repository.js";
 export { createMongoConversationRepository } from "./conversation-repository.js";
 export { exitOnFatal } from "./exit-on-fatal.js";
+export { IMAGE_MENU, type ImageMenuEntry } from "./images/image-models.js";
 export type {
 	LimitAlert,
 	LimitBreach,

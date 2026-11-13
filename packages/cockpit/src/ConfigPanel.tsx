@@ -5,6 +5,7 @@ import {
 	CopilotConfigView,
 	MISSION_COPILOT_AGENT_ID,
 } from "./CopilotConfigView";
+import { menuKinds } from "./image-settings";
 import { useCatalog } from "./use-catalog";
 import { useMissionConfigEditor } from "./use-mission-config-editor";
 
@@ -38,7 +39,10 @@ import { useMissionConfigEditor } from "./use-mission-config-editor";
 
 export function ConfigPanel({ missionId }: { missionId: string | null }) {
 	const { catalog } = useCatalog();
-	const editor = useMissionConfigEditor(missionId);
+	const editor = useMissionConfigEditor(
+		missionId,
+		menuKinds(catalog.imageMenu),
+	);
 	const {
 		config,
 		status,
@@ -78,6 +82,8 @@ export function ConfigPanel({ missionId }: { missionId: string | null }) {
 			<ConfigMissionFields
 				value={missionDraft}
 				canEdit={canEdit}
+				imageMenu={catalog.imageMenu}
+				defaultImageModel={catalog.defaultImageAgentModel}
 				onChange={(patch) => setMissionDraft((d) => ({ ...d, ...patch }))}
 			/>
 
