@@ -12,7 +12,7 @@ Verdicts: pass · fail · missing · n/a · unverifiable — each with evidence.
 | QJ-03 | Reach | The control copilot can complete its part with its own tools, every step, without asking the operator to do a step it could do itself | ? | |
 | QJ-04 | Reach | The mission copilot can complete its part with its own tools | ? | |
 | QJ-05 | Parity | Anything one actor can do here that another expected actor cannot is listed, with whether that gap matters | ? | |
-| QJ-05b | Sameness | Where several actors can take the same step, each gets the same outcome — the same checks, effects and behaviour on failure — shown by naming the function each one reaches; differences are listed with whether they are justified | ? | |
+| QJ-18 | Sameness | Where several actors can take the same step, each gets the same outcome — the same checks, effects and behaviour on failure — shown by naming the function each one reaches; differences are listed with whether they are justified | ? | |
 | QJ-06 | Path | The copilots' skills and prompts lead through the shortest safe path the code offers, in the right order | ? | |
 | QJ-07 | Order | No step can take effect before its prerequisite (for example a resume before a config change) | ? | |
 | QJ-08 | Loop | Every asynchronous step (a card, a job, a schedule, a request to an agent) tells the requester its outcome, and the requester then continues on its own | ? | |
