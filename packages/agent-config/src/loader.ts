@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { ZodError, z } from "zod";
+import { IMAGE_KINDS } from "./models.js";
 
 // ---------------------------------------------------------------------------
 // Schemas — single source of truth for both validation and TypeScript types
@@ -126,6 +127,10 @@ export const TeamConfigSchema = z.object({
 		model: z.string().trim().min(1).optional(),
 		/** Vision model for FetchUrl, InspectImage, BrowseWeb. Overrides VISION_MODEL env var. */
 		visionModel: z.string().trim().min(1).optional(),
+		/** The image sub-agent's own model (prompts and critique; ADR-0035). Default: DEFAULT_IMAGE_AGENT_MODEL_ID. */
+		imageAgentModel: z.string().trim().min(1).optional(),
+		/** Restricts image generation to these kinds of job; absent means all kinds (ADR-0035). */
+		imageModels: z.array(z.enum(IMAGE_KINDS)).min(1).optional(),
 		/**
 		 * IANA timezone (e.g. "America/New_York") used to add a local-time line to the
 		 * current-time block every agent sees in its system prompt (prompt.ts). Optional —

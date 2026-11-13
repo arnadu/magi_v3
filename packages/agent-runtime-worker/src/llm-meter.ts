@@ -10,6 +10,7 @@
  * model added so a vision model's price table is used for a vision call.
  */
 
+import type { LlmCallCost } from "@magi/agent-config";
 import type {
 	AssistantMessage,
 	Context,
@@ -35,6 +36,35 @@ export interface LlmCallEvent {
 	model?: Model<string>;
 	/** Set by runInnerLoop; absent for tool-side calls, which produce no transcript message. */
 	callId?: string;
+	/**
+	 * The call's cost when it is not priced per token (image generation): the
+	 * provider's reported charge (`estimated: false`), or a ceiling price
+	 * (`estimated: true`) when no charge was reported. Overrides the token
+	 * computation, whose registry prices are $0 for most per-image models.
+	 */
+	fixedCost?: { totalUsd: number; estimated: boolean };
+}
+
+/** The cost both meters record for an event: its fixed cost if any, else tokens × prices, with the provider's charge preferred. */
+export function resolveEventCost(
+	event: LlmCallEvent,
+	model: Model<string>,
+): { cost: LlmCallCost; costEstimated: boolean } {
+	const usage = event.response.usage as {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+		providerCost?: number;
+	};
+	const estimated = computeCost(usage, model.cost);
+	if (event.fixedCost) {
+		return {
+			cost: { ...estimated, totalCostUsd: event.fixedCost.totalUsd },
+			costEstimated: event.fixedCost.estimated,
+		};
+	}
+	return resolveCallCost(estimated, model.provider, usage.providerCost);
 }
 
 export type LlmCallMeter = (event: LlmCallEvent) => Promise<void>;
@@ -111,19 +141,8 @@ export function createLogOnlyMeter(
 	return async (event) => {
 		const model = event.model;
 		if (!model) return;
-		const usage = event.response.usage as {
-			input: number;
-			output: number;
-			cacheRead: number;
-			cacheWrite: number;
-			providerCost?: number;
-		};
-		const estimated = computeCost(usage, model.cost);
-		const { cost, costEstimated } = resolveCallCost(
-			estimated,
-			model.provider,
-			usage.providerCost,
-		);
+		const usage = event.response.usage;
+		const { cost, costEstimated } = resolveEventCost(event, model);
 		await llmCallLog.append({
 			missionId,
 			agentId,

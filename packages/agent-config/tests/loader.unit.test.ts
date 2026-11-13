@@ -118,6 +118,33 @@ describe("parseTeamConfigYaml — mission.memoryMb/cpus (issue #25)", () => {
 	});
 });
 
+describe("parseTeamConfigYaml — image settings (ADR-0035)", () => {
+	const withMission = (extra: string) =>
+		baseYaml("lead").replace(
+			"name: Test Mission",
+			`name: Test Mission\n${extra}`,
+		);
+
+	it("accepts an image agent model and a list of image kinds", () => {
+		const config = parseTeamConfigYaml(
+			withMission(
+				"  imageAgentModel: anthropic/claude-sonnet-5\n  imageModels: [vector, raster-art]",
+			),
+		);
+		expect(config.mission.imageAgentModel).toBe("anthropic/claude-sonnet-5");
+		expect(config.mission.imageModels).toEqual(["vector", "raster-art"]);
+	});
+
+	it("rejects an unknown image kind and an empty list", () => {
+		expect(() =>
+			parseTeamConfigYaml(withMission("  imageModels: [video]")),
+		).toThrow();
+		expect(() =>
+			parseTeamConfigYaml(withMission("  imageModels: []")),
+		).toThrow();
+	});
+});
+
 describe("parseTeamConfigYaml — agent name/role defaulting (ADR-0021)", () => {
 	it("defaults name and role to id when both are omitted", () => {
 		const config = parseTeamConfigYaml(baseYaml("lead"));

@@ -25,7 +25,13 @@ export {
 	RESERVED_MISSION_ID_NAMES,
 	validateNewMissionId,
 } from "./mission-id.js";
-export { DEFAULT_MODEL_ID, DEFAULT_VISION_MODEL_ID } from "./models.js";
+export {
+	DEFAULT_IMAGE_AGENT_MODEL_ID,
+	DEFAULT_MODEL_ID,
+	DEFAULT_VISION_MODEL_ID,
+	IMAGE_KINDS,
+	type ImageKind,
+} from "./models.js";
 export {
 	capForConfigWrite,
 	DEFAULT_MISSION_MAX_COST_USD,

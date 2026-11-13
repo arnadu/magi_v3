@@ -216,8 +216,12 @@ function hasRealPrice(cost: { input: number; output: number }): boolean {
 	);
 }
 
-type ModelFields = { model?: string; visionModel?: string };
-const MODEL_FIELDS = ["model", "visionModel"] as const;
+type ModelFields = {
+	model?: string;
+	visionModel?: string;
+	imageAgentModel?: string;
+};
+const MODEL_FIELDS = ["model", "visionModel", "imageAgentModel"] as const;
 
 /**
  * The model fields a config sets to an unknown id — empty when acceptable.

@@ -8,13 +8,12 @@
  */
 
 import type { AgentRunContext } from "./agent-runner.js";
+import { truncateOldMessages, truncateToolBodies } from "./llm-call-log.js";
 import {
-	computeCost,
-	resolveCallCost,
-	truncateOldMessages,
-	truncateToolBodies,
-} from "./llm-call-log.js";
-import { type LlmCallEvent, stripImageData } from "./llm-meter.js";
+	type LlmCallEvent,
+	resolveEventCost,
+	stripImageData,
+} from "./llm-meter.js";
 
 export function createLlmCallHook(
 	ctx: Pick<AgentRunContext, "llmCallLog" | "statsCollector" | "model">,
@@ -30,25 +29,8 @@ export function createLlmCallHook(
 			// A vision call (InspectImage, captioning, OCR) names its own model;
 			// pricing it with the loop model's table misstated its cost (COST-1).
 			const model = event.model ?? ctx.model;
-			const usage = event.response.usage as {
-				input: number;
-				output: number;
-				cacheRead: number;
-				cacheWrite: number;
-				providerCost?: number;
-			};
-			const modelCost = model.cost as {
-				input: number;
-				output: number;
-				cacheRead: number;
-				cacheWrite: number;
-			};
-			const estimatedCost = computeCost(usage, modelCost);
-			const { cost, costEstimated } = resolveCallCost(
-				estimatedCost,
-				model.provider,
-				usage.providerCost,
-			);
+			const usage = event.response.usage;
+			const { cost, costEstimated } = resolveEventCost(event, model);
 			if (ctx.llmCallLog) {
 				await ctx.llmCallLog.append({
 					missionId,

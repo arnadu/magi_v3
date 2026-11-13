@@ -10,6 +10,18 @@ index ed81baa..f4eeae5 100644
      };
      calculateCost(model, usage);
      return usage;
+diff --git a/node_modules/@mariozechner/pi-ai/dist/api/openrouter-images.js b/node_modules/@mariozechner/pi-ai/dist/api/openrouter-images.js
+index 8f5b110..a66eed7 100644
+--- a/node_modules/@mariozechner/pi-ai/dist/api/openrouter-images.js
++++ b/node_modules/@mariozechner/pi-ai/dist/api/openrouter-images.js
+@@ -124,6 +124,7 @@ function parseUsage(rawUsage, model) {
+             cacheWrite: (model.cost.cacheWrite / 1000000) * cacheWriteTokens,
+             total: 0,
+         },
++        ...(typeof rawUsage.cost === "number" && { providerCost: rawUsage.cost }),
+     };
+     usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+     return usage;
 diff --git a/node_modules/@mariozechner/pi-ai/dist/types.d.ts b/node_modules/@mariozechner/pi-ai/dist/types.d.ts
 index 0a1b769..8a3b4d7 100644
 --- a/node_modules/@mariozechner/pi-ai/dist/types.d.ts

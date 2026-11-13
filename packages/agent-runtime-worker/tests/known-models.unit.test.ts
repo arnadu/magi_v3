@@ -58,6 +58,15 @@ describe("known model ids (MD1)", () => {
 		]);
 	});
 
+	it("validates the image agent model like the other model fields", () => {
+		expect(() =>
+			assertKnownModels({ imageAgentModel: "anthropic/claude-sonnet-5" }),
+		).not.toThrow();
+		expect(() => assertKnownModels({ imageAgentModel: "nope/model" })).toThrow(
+			/mission\.imageAgentModel: unknown model id/,
+		);
+	});
+
 	it("names the offending field in the refusal", () => {
 		expect(() => assertKnownModels({ visionModel: "nope/model" })).toThrow(
 			/mission\.visionModel: unknown model id "nope\/model"/,

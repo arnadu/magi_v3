@@ -1,6 +1,6 @@
 # Image generation — plan of action
 
-Status: **agreed 2026-11-13; Phase 0 done, Phase 1 next.** Decision record:
+Status: **agreed 2026-11-13; Phases 0–1 done, Phase 2 next.** Decision record:
 [ADR-0035](../adr/0035-image-generation-sub-agent.md) (Accepted after appsec's review and the spike).
 First use cases: the Houseplant Grand Hotel logo and website illustrations; figures for the
 meteorology textbook. Interactive apps (#42) follow as a separate plan.
@@ -147,3 +147,4 @@ About 3–3½ days, then the live Houseplant demo.
   - **Critique model:** Claude Sonnet 5 ($0.026, 21 s) caught every real defect and wrote an exact refinement instruction; Gemini 3.6 Flash ($0.009) stopped mid-answer. Default `imageAgentModel`: `anthropic/claude-sonnet-5`, with a generous output limit.
   - **Menu change:** FLUX.2 Pro serves both illustration tiers (cheaper and better than Flex).
   - **Ceiling prices** for the menu table (about twice the measured maximum): Recraft vector $0.16, pro-vector $0.60, FLUX.2 Pro $0.20 (larger sizes cost more), Gemini Flash Lite $0.08, Gemini 3 Pro $0.30.
+- 2026-11-13 — **Phase 1 done.** The pi-ai patch covers `api/openrouter-images.js`, guarded by `pi-ai-patch.unit` (fails if an upgrade drops either patched line). Menu in `src/images/image-models.ts`, validated by `image-models.unit` against pi-ai's image registry. The registry is reached through `builtinImagesModels()` (`@mariozechner/pi-ai/providers/all`): a bare `createImagesModels()` has no providers and resolves nothing. Registry prices confirmed $0 for Recraft and FLUX. Client `src/images/image-client.ts`: abort plus a 120 s timeout, reference and output caps, ceiling charge when no positive charge is reported. Metering: `LlmCallEvent.fixedCost` resolved by one `resolveEventCost` in both meters. Config: `mission.imageAgentModel` (checked by `assertKnownModels` at every config entry point) and `mission.imageModels`. `image-client.unit` runs one generation through real pi-ai against a stubbed `fetch`.
