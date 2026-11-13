@@ -42,6 +42,26 @@ Start with operations that change state (create, launch, change, stop, recover, 
 the reads that show the operator a figure or a status, where two ways of computing the same
 figure can disagree.
 
+## How to work
+
+The inventory is too large for one turn's memory: an agent that tries to hold every entry point
+in its context ends up writing names from memory. So:
+
+- **Keep a working file** in your folder (`reports/qa/work/operations-inventory.md`) and add
+  to it as you go. Each turn starts by reading it and ends by saving it; your mental map says
+  which actor or area is next.
+- **One actor or area per turn** — the cockpit's operations, the control copilot's, the
+  mission copilot's, the agents', background jobs, the platform's scheduled work, then the
+  figures shown in several places.
+- **Reconcile with the code's own list** once your top-down list for an actor exists:
+  `python3 $SHARED_DIR/skills/_team/operations-inventory/scripts/entry-points.py <clone>`
+  lists every route, action, tool and scheduled task with file:line. An entry point there that
+  your list does not explain, and an operation of yours with no entry point there, are both
+  findings to resolve. It says what exists, not what each entry point does: read the code for
+  that.
+- **Name only what you read** (`working-agreements`, rule 9), and run `check-citations.py`
+  before a report is done.
+
 ## Deliverable
 
 `$SHARED_DIR/reports/qa/YYYY-MM-DD-operations-inventory.md`:

@@ -13,7 +13,7 @@ question, not a grade. Never write "the code quality is good" without the measur
 
 These run on every push in CI (`.github/workflows/quality.yml`) and locally before every push
 (`npm run verify`). Your job for them is to confirm CI was green for the commits you review
-(`ci-status.sh`, in `code-review`), and to read their allowlists for entries whose reason no
+(`ci-status.py`, in `repo-workspace`), and to read their allowlists for entries whose reason no
 longer holds.
 
 | Enforcement | Where it is defined | What it covers |

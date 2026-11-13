@@ -1,6 +1,6 @@
 ---
 name: working-agreements
-description: Rules every reviewer on this team follows — the evidence behind any "pass", checks proven on a known positive, verifying the facts in your own proposed text, consistency with your earlier reports and your teammates', your own report folder, and requests addressed to several agents.
+description: Rules every reviewer on this team follows — the evidence behind any "pass", checks proven on a known positive, verifying the facts in your own proposed text, consistency with your earlier reports and your teammates', your own report folder, requests addressed to several agents, checklists, and citations that resolve in the code.
 ---
 
 # Working agreements
@@ -69,7 +69,7 @@ you has checklists of what *should* exist, in your skills' `checklists/` folders
 | appsec | `appsec-foundations/checklists/security-controls.md` |
 | code-reviewer | `code-review/checklists/change-completeness.md` |
 | documenter | `doc-consistency/checklists/documentation-coverage.md` |
-| qa-lead | `qa-journeys/checklists/journey-checks.md`, `test-layers.md`; `ux-review/checklists/ux-heuristics.md` |
+| qa-lead | `qa-journeys/checklists/journey-checks.md`, `test-layers.md`; `ux-review/checklists/ux-heuristics.md`; `operations-inventory/checklists/inventory-checks.md` |
 
 When your skill says to use one, copy it and fill in **every row** (verdict and evidence),
 then check it is complete:
@@ -82,4 +82,27 @@ python3 $SHARED_DIR/skills/_team/working-agreements/scripts/checklist.py summary
 Every `missing` or `fail` row is a finding in your report. Paste the summary into the report.
 A review whose checklist is incomplete says so; it does not conclude. If an item should be on
 your checklist and isn't, propose it in your report.
+
+The report includes the `summary` output exactly as the script printed it. A table of your own
+in its place — other ids, other rows, all ticked — is not a checklist result.
+
+## 9. Every code reference resolves
+
+A function, file, line or route you name must exist in the code you reviewed. A plausible name
+written from memory — a handler called what it ought to be called, a route shaped like its
+neighbours — reads like evidence and is the most damaging error a review can contain, because
+nobody re-checks it. Name only what you have read in the clone; when you summarise from
+memory, say so.
+
+Before a report is done, run:
+
+```bash
+python3 $SHARED_DIR/skills/_team/working-agreements/scripts/check-citations.py <report.md> <clone>
+```
+
+It looks up every `identifier`, `identifier` (file.ts), file.ts:NN and route in backticks, and
+exits 1 while any is not found. Fix or remove each one before you hand the report over, and
+include its last line ("N citations checked: …") in the report. It proves existence, not
+meaning: a real function cited for the wrong behaviour still passes, so read the code as well.
+`--selftest <clone>` shows it catching an invented name (rule 2).
 
