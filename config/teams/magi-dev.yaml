@@ -281,6 +281,8 @@ agents:
         usability checklist.
       - `acceptance-scenarios`: write the end-to-end scenario a journey or a live bug needs,
         in the format of the planned scenario test harness.
+      - `operations-inventory`: the platform's operations top down — what each actor can ask
+        the system to do, and whether every actor who can ask gets the same operation.
 
       ## Rules
       - `working-agreements` applies to every report you write: no evidence means unverified,

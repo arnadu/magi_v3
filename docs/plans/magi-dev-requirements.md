@@ -1578,9 +1578,9 @@ written for MAGI from the standards (in a firm, a specialist would maintain thes
 | Agent | Checklist | Rows | Drawn from |
 |---|---|---|---|
 | appsec | Security controls | 47 | OWASP ASVS, OWASP Top 10 for LLM applications, OWASP agentic-AI threats, NIST SSDF, SLSA |
-| code-reviewer | Change completeness | 34 | Google's code-review guide, the repository's working rules |
+| code-reviewer | Change completeness | 35 | Google's code-review guide, the repository's working rules |
 | documenter | Documentation coverage | 20 | Docs-as-code practice, the repository's documentation rules |
-| qa-lead | Journey checks; test layers; usability | 16; 14; 14 | Journey mapping, the test pyramid, Nielsen's ten heuristics |
+| qa-lead | Journey checks; test layers; usability; operations inventory | 18; 14; 14; 10 | Journey mapping, the test pyramid, Nielsen's ten heuristics, use-case modelling |
 
 Every row gets a verdict (pass, fail, missing, n/a, unverifiable) and evidence; `checklist.py`
 refuses an incomplete list, and every `missing` or `fail` row is a finding. The lists live in

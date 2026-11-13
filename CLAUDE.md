@@ -90,6 +90,12 @@ These apply continuously, not at sprint close. Each has a full write-up in
 - Pause at a file near 500 lines or a function near 80–100 lines: one responsibility, or
   separable phases? Extract before adding more. The ratchet fails at 600 / 120.
 - A new module born large, or a file grown by addition sprint after sprint, is a signal on its own.
+- **One operation, one home.** An operation is something the system does for whoever asks it —
+  the cockpit, a copilot, an agent, a job, the scheduler. Its rules (checks, effects, behaviour
+  on failure) live in one function; each entry point adds only who may ask and how the answer is
+  shown. Requests with the same intent are one operation even when their code paths look
+  different; a shared mechanism does not make two operations one. A fix or a guard belongs to
+  the operation, for every caller — find them before changing it, under incident pressure too.
 
 **Security** ([detail](docs/security/CLAUDE.md)) — pause at each of these:
 - New external HTTP call: user-influenced URL? `ssrf.ts`/`safe-http.ts` used? Secrets sent? Response parsed safely?

@@ -20,7 +20,11 @@ lens: note anything security-relevant under "For appsec" and leave the verdict t
    `no-ci` commit only touched paths CI ignores; check that this was right.
 3. **Read each commit as a whole**: the message, the diff, and enough of the surrounding code to
    know the callers and the data. Does it do what the message says, completely?
-4. **Judge against the quality model**, judgement criteria first:
+4. **Judge a change by what it does to the system, not only by its lines.** A new entry point
+   should reach an existing operation rather than re-implement it; a fix to an operation should
+   reach every caller of that operation. When either is not the case, the finding names the
+   other callers and what differs.
+5. **Judge against the quality model**, judgement criteria first:
    - **Q1 correctness**: missed cases (empty, missing, duplicate, concurrent, retried, after a
      crash), wrong units, off-by-one, wrong comparison;
    - **Q2 failure handling**: errors swallowed or logged without operation, input and
@@ -37,15 +41,15 @@ lens: note anything security-relevant under "For appsec" and leave the verdict t
      `docs/operational-resilience.md`? Unbounded growth, queries in loops?
    - **house rules**: the root `CLAUDE.md` "Working rules" and the package `CLAUDE.md`
      conventions, quoted when broken.
-5. **What is missing.** For every commit you read in depth, fill
+6. **What is missing.** For every commit you read in depth, fill
    `checklists/change-completeness.md` (`working-agreements`, rule 8): what a change of this
    kind should bring with it (tests for its failure paths, an outcome reported back for each
    hand-off, docs, the skills that describe it, a copilot equivalent for a new operator
    capability, a migration). A missing companion is a finding even if the code is right.
-6. **Grade** each candidate with `review-judgement`: label, blocking or not, failure scenario,
+7. **Grade** each candidate with `review-judgement`: label, blocking or not, failure scenario,
    refutation attempted. If the same kind of finding has appeared before, add an enforcement
    proposal.
-7. **Report**: `$SHARED_DIR/reports/code-review/YYYY-MM-DD-change-review.md`:
+8. **Report**: `$SHARED_DIR/reports/code-review/YYYY-MM-DD-change-review.md`:
    - first line: blocking findings or none; scope (commit range); CI result per commit;
    - depth per commit (read fully / skimmed / skipped, and why);
    - findings `CR-NNN` (sequential across reports; last id in your mental map), each with label,
@@ -53,7 +57,7 @@ lens: note anything security-relevant under "For appsec" and leave the verdict t
    - "For appsec", if any; enforcement proposals, if any;
    - a **hand-off block** for the developers' coding assistant: "Fix CR-004 and CR-007; for each,
      first a test that fails before the fix. ...".
-8. **Move your cursor** past what you reviewed; update your mental map (review state, open
+9. **Move your cursor** past what you reviewed; update your mental map (review state, open
    findings, proposed enforcement) and KPIs. PostMessage the user only for a blocking `issue`
    that could lose data, money or availability.
 

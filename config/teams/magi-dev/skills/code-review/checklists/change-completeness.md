@@ -34,7 +34,7 @@ fine; say which commits it covers.
 | CR-21 | Docs | A new environment variable is in the env catalog and `docs/env.md` | ? | |
 | CR-22 | Docs | A new or changed agent tool is in the spec's tool tables and its description says what it does and when to use it | ? | |
 | CR-23 | Docs | A decision between alternatives has an ADR; a new trust boundary is in the threat model | ? | |
-| CR-24 | Parity | A new operator capability in the cockpit has a copilot equivalent where a copilot would need it, and the reverse | ? | |
+| CR-24 | Parity | A new operator capability in the cockpit has a copilot equivalent where a copilot would need it, and the reverse; the equivalents reach the same implementation (name the function each entry point reaches) | ? | |
 | CR-25 | Instructions | If a tool, route or workflow changed, the skills and prompts that describe it were updated in the same commit, and still describe the best path | ? | |
 | CR-26 | Cockpit | If an API response changed, the cockpit code that reads it was updated | ? | |
 | CR-27 | Design | The change reuses the existing helper for the job instead of adding a parallel one (search before accepting a new one) | ? | |
@@ -45,3 +45,4 @@ fine; say which commits it covers.
 | CR-32 | Cleanup | A removed feature is removed everywhere: code, tests, docs, skills, prompts, cockpit | ? | |
 | CR-33 | Naming | Names say what things are; one term for one thing across code, docs and UI | ? | |
 | CR-34 | Rollout | Missions running an older image or config keep working until they are resumed; anything that needs a resume or a migration is said in the commit | ? | |
+| CR-35 | Operations | A new entry point (route, copilot action or tool, agent tool) reaches an existing operation's implementation rather than re-implementing it; a fix or guard added to an operation reaches every entry point of that operation (list them) | ? | |
