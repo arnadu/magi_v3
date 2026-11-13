@@ -25,10 +25,10 @@ the plan's progress log:
 1. **Request shape** per model: does `image_config` (aspect ratio, size) apply; how many images
    per call; does a reference image work for editing; text rendering.
 2. **Response shape**: PNG vs SVG (`data:image/svg+xml`), size in bytes, latency.
-3. **Cost**: does the chat-completions response carry `usage.cost` (with
-   `usage: { include: true }`)? If not, does `GET /api/v1/generation?id=<responseId>` return the
-   charge, and how soon? Decide: pi-ai with an `onPayload` hook and the generation endpoint, or
-   our own small client (one POST, full control of `usage`).
+3. **Cost**: does each image response carry `usage.cost`, as chat responses do (which our
+   pi-ai patch already surfaces as `providerCost` for chat)? If it does, extending the patch to
+   `api/openrouter-images.js` is all that is needed. If not, fall back to
+   `GET /api/v1/generation?id=<responseId>` for the charge.
 4. **Critique model**: compare two vision models (e.g. a Gemini Flash and a Claude Sonnet) on
    critiquing four candidates against a brief; pick the default `imageAgentModel` on quality
    per dollar.
@@ -43,7 +43,8 @@ default critique model. Any surprise that changes ADR-0035 is written into it be
 | File | Content |
 |---|---|
 | `packages/agent-runtime-worker/src/images/image-models.ts` | The typed menu: id, kind (`vector`, `raster-art`, `raster-instruct`), tier (draft, final), output format, ceiling price per image; `resolveImageModel(kind, tier, missionRestriction)` |
-| `packages/agent-runtime-worker/src/images/image-client.ts` | One generation call: prompt, reference images (contained paths, size-capped), aspect ratio; returns images (bytes, mime type), the provider's charge (or the ceiling estimate, flagged), response id; honours `AbortSignal` and a timeout |
+| `patches/@mariozechner+pi-ai+0.82.1.patch` | Extended to `api/openrouter-images.js`: `parseUsage` surfaces OpenRouter's `usage.cost` as `usage.providerCost`, as the chat path already does (regenerate with `npx patch-package @mariozechner/pi-ai`) |
+| `packages/agent-runtime-worker/src/images/image-client.ts` | One generation call over pi-ai's `generateImages`: prompt, reference images (contained paths, size-capped), aspect ratio (via `onPayload`); returns images (bytes, mime type), `providerCost` (or the ceiling estimate, flagged), response id; honours `AbortSignal` and a timeout |
 | `packages/agent-runtime-worker/src/llm-meter.ts` | Accept an image call: record `providerCost` (or the flagged ceiling estimate) through the same path as other tool-side calls; never zero for a generation that returned an image |
 | `packages/agent-config/src/loader.ts`, `env-catalog.ts` | `mission.imageAgentModel` (optional, known model) and `mission.imageModels` (optional restriction of the menu kinds); validated like `model`/`visionModel` |
 | `packages/agent-runtime-worker/src/models.ts` | Image models are known only through the menu; `isKnownModelId` unchanged for chat models |
@@ -82,6 +83,7 @@ to Accepted.
 | Test | Checks |
 |---|---|
 | `image-models.unit` | Every menu model has a kind, a format and a ceiling price; resolution by kind/tier/mission restriction; an unknown or restricted kind is refused |
+| `pi-ai-patch.unit` | The patched `openrouter-images` `parseUsage` returns `providerCost` from a raw usage with `cost`, so a dependency upgrade that drops the patch fails a test |
 | `image-client.unit` (stubbed HTTP) | Request shape per family; PNG and SVG parsing; provider charge recorded; **missing charge → ceiling estimate, flagged, never 0**; abort and timeout; oversized or wrong-type responses refused |
 | `image-metering.unit` | A generation reaches `llmCallLog` and turn stats with its cost and `costEstimated`; the mission cap blocks a generation once reached; the calling agent's per-turn limits count it |
 | `create-image-tool.unit` | Parameter validation; reference paths outside the permitted roots refused; budget overrides capped |

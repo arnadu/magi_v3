@@ -27,7 +27,11 @@ Two facts about the plumbing shape the decision:
    chat-completions endpoint with `modalities: ["image"]`. It computes `usage.cost` from its
    own registry prices — **$0 for FLUX, Recraft and most per-image models** — and discards the
    charge OpenRouter reports. Metering through it as-is would record every such image as free:
-   the spend cap would never see image spend (the same class of hole as F-079).
+   the spend cap would never see image spend (the same class of hole as F-079). MAGI already
+   fixed this for chat calls with a `patch-package` patch
+   (`patches/@mariozechner+pi-ai+0.82.1.patch`, ed93db0) that surfaces OpenRouter's
+   `usage.cost` as `usage.providerCost`; the patch covers `api/openai-completions.js` only, not
+   the images path (`api/openrouter-images.js`).
 2. The cost path of the platform (`resolveCallCost`, `llm-meter.ts`) already prefers a
    provider-reported cost (`providerCost`) when one is present.
 
@@ -57,8 +61,9 @@ Two facts about the plumbing shape the decision:
 
    The menu is code (a typed table with each model's kind and output format), extended by a
    commit, never by an agent. A mission may restrict it (`mission.imageModels`, optional).
-4. **Metered at the provider's charge, never at a registry price.** Each generation records
-   OpenRouter's reported cost as `providerCost` through the existing meter (`llmCallLog`, turn
+4. **Metered at the provider's charge, never at a registry price.** The existing pi-ai patch is
+   extended to `api/openrouter-images.js` so image responses carry `usage.providerCost` the way
+   chat responses already do. Each generation records that cost through the existing meter (`llmCallLog`, turn
    statistics, the mission cap, the calling agent's limits). If the cost cannot be obtained,
    the call is recorded at the model's **ceiling price from the menu table** (a deliberately
    high estimate, marked estimated) — never $0. A menu model with no ceiling price cannot be
@@ -87,9 +92,9 @@ Two facts about the plumbing shape the decision:
   brand-consistent series of many images.
 - **One default model.** Each family is weak where another is strong (vector logos,
   photorealism, labelled diagrams); a menu chosen per job costs no more.
-- **pi-ai's images API as-is.** It drops the provider's charge (Context, fact 1). The
-  implementation either supplies the charge itself or uses its own small client; the spike
-  decides, the requirement (decision 4) does not change.
+- **pi-ai's images API as-is.** It drops the provider's charge (Context, fact 1).
+- **Our own image client instead of pi-ai.** Full control, but a second provider client to
+  maintain; extending the patch MAGI already carries for the same problem is smaller.
 - **User-drawn masks now.** None of the menu's models takes a mask through OpenRouter; editing
   is by instruction plus reference image. Marking a region on an image in the cockpit is
   deferred to the document-annotation feature, which serves images and documents alike.
