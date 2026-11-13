@@ -44,6 +44,27 @@ Run both commands once after cloning; re-run after Playwright version upgrades.
 
 > **Production / Docker note:** In a Dockerfile, run both commands during the image build. The `install-deps` step is equivalent to the official `playwright install-deps` or adding the packages listed in the Playwright docs for your distro. Use `--with-deps` shorthand: `npx playwright install --with-deps chromium`.
 
+
+### CreateImage tool (optional)
+
+Lets agents have images made: logos and icons (SVG), illustrations, diagrams, and edits of an
+image (ADR-0035). It needs `OPENROUTER_API_KEY` (the image models are served through
+OpenRouter); without it the tool is absent. Chromium (above) is used to render previews for
+critique and the contact sheet; without it, raster images are still critiqued from the files,
+but SVG candidates are not.
+
+- **Asking for images:** tell the agent what you need (purpose, subject, style, colours, exact
+  text). It calls `CreateImage` with a brief, following the `illustration` skill.
+- **Results:** `shared/images/<job-id>/` holds the candidates, `manifest.json` (model, prompt,
+  cost and notes per candidate) and `contact-sheet.html`, which opens in the cockpit's Files
+  panel. Ask the agent to refine a candidate by its number.
+- **Cost:** each call is capped (default 8 images and $1.50, at most 16 and $5) and counts
+  against the mission's spend cap like any LLM call; an image with no reported charge is
+  recorded at the model's ceiling price, never as free.
+- **Settings:** Mission Config → *Image generation*: the model that writes prompts and
+  critiques (default Claude Sonnet) and which kinds of image are allowed, with each model's
+  ceiling price. Turn the tool off for an agent with `disabledTools: [CreateImage]`.
+
 ---
 
 ## Local execution mode (full stack without Fly.io)
