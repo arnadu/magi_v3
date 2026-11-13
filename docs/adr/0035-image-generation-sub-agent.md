@@ -1,6 +1,6 @@
 # ADR-0035: Image generation through a sub-agent tool, metered at the provider's charge
 
-**Status:** Proposed (2026-11-13) — for appsec's design review before implementation
+**Status:** Accepted (2026-11-13) — after appsec's design review (approve with conditions, folded in below) and the Phase 0 spike
 **Relates to:** ADR-0034 (spend containment), F-079 (models without a real price), F-051 (SVG
 served as attachment), the Research tool (in-process sub-agent precedent), #104–#106 (machine
 memory)
@@ -55,9 +55,12 @@ Two facts about the plumbing shape the decision:
 
    | Job | Draft | Final |
    |---|---|---|
-   | Logos, icons, marks (SVG) | `recraft/recraft-v4.1-vector` | `recraft/recraft-v4.1-pro-vector` |
-   | Illustrations, photoreal scenes | `black-forest-labs/flux.2-flex` | `black-forest-labs/flux.2-pro` |
-   | Diagrams with labels, instruction edits | `google/gemini-3.1-flash-lite-image` | `google/gemini-3-pro-image` |
+   | Logos, icons, marks (SVG) | `recraft/recraft-v4.1-vector` (~$0.08) | `recraft/recraft-v4.1-pro-vector` (~$0.30) |
+   | Illustrations, photoreal scenes, raster logos | `black-forest-labs/flux.2-pro` (~$0.03 at 1 MP) | `black-forest-labs/flux.2-pro` |
+   | Diagrams with labels, instruction edits | `google/gemini-3.1-flash-lite-image` (~$0.03) | `google/gemini-3-pro-image` (~$0.14) |
+
+   Prices are those measured in the spike (2026-11-13). FLUX.2 Pro proved both cheaper and
+   better than FLUX.2 Flex, so it serves both tiers.
 
    The menu is code (a typed table with each model's kind and output format), extended by a
    commit, never by an agent. A mission may restrict it (`mission.imageModels`, optional).
@@ -79,8 +82,23 @@ Two facts about the plumbing shape the decision:
    cockpit or a prompt), already served as an attachment with a sandbox CSP (F-051), and
    rasterized for critique in an isolated headless page with scripts and network disabled.
 8. **The sub-agent's own model** (briefing, prompt writing, critique) is a strong vision model
-   set per mission (`mission.imageAgentModel`, default chosen in the implementation spike),
-   because critique is where image quality is decided; generation uses the menu.
+   set per mission (`mission.imageAgentModel`, default `anthropic/claude-sonnet-5`), because
+   critique is where image quality is decided; generation uses the menu. In the spike it caught
+   every real defect across four candidates (a mock-up instead of an asset, gold lettering that
+   fails contrast, a cloche read as a bell) for $0.03; a cheaper model stopped mid-answer.
+9. **Validation** (appsec's conditions, 2026-11-13):
+   - every menu entry exists in pi-ai's **image** model registry and has a finite ceiling price
+     **greater than zero** in the menu table; the registry's own image prices are not used
+     (they are $0 for most per-image models, which `hasRealPrice` would accept), and
+     `openrouter/auto` is never a menu entry — a unit test fails otherwise;
+   - the pi-ai patch extension ships in the same release as the tool, with a test that fails
+     if a dependency upgrade drops it;
+   - `mission.imageAgentModel` is validated by `assertKnownModels` like `model` and
+     `visionModel`, and each entry of `mission.imageModels` must name a menu kind.
+10. **Sizes**: reference images and generated images are size-capped; a generated image is
+    downscaled for critique (rendered at most 1024 px in the same isolated page used for SVG),
+    and the full-size file is kept for the operator. Recraft SVGs carry a C2PA provenance
+    manifest (content credentials); it is preserved.
 
 ## Alternatives considered
 
@@ -104,8 +122,12 @@ Two facts about the plumbing shape the decision:
 - Agents get images at the cost of one tool call and a paragraph of context; the operator sees
   a contact sheet and chooses.
 - Image spend is inside the cap, at the real price.
-- A new provider surface: requests carry agent-written briefs and the caller's reference
-  images to OpenRouter (the same provider as chat calls, no new key).
+- Requests carry agent-written briefs and the caller's reference images to OpenRouter: the
+  same data class (agent-authored content and files the agent can already read) sent to the
+  same provider the agent's chat calls already use, with the same key — no new data exposure.
+- The sub-agent's final paragraph flows back into the calling agent's context; it is model
+  output shaped by the brief and the images, so it is treated like any tool result (no
+  authority), and its length is capped.
 - Rasterizing SVG uses a headless browser: it must share the per-machine browser limit of #105
   and counts toward the machine memory concern of #104.
 - New failure modes for `docs/operational-resilience.md`: provider error or timeout mid-job

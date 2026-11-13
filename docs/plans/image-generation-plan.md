@@ -1,7 +1,7 @@
 # Image generation — plan of action
 
-Status: **agreed 2026-11-13, not started.** Decision record:
-[ADR-0035](../adr/0035-image-generation-sub-agent.md) (Proposed until appsec's design review).
+Status: **agreed 2026-11-13; Phase 0 done, Phase 1 next.** Decision record:
+[ADR-0035](../adr/0035-image-generation-sub-agent.md) (Accepted after appsec's review and the spike).
 First use cases: the Houseplant Grand Hotel logo and website illustrations; figures for the
 meteorology textbook. Interactive apps (#42) follow as a separate plan.
 
@@ -138,3 +138,12 @@ About 3–3½ days, then the live Houseplant demo.
 ## Progress log
 
 - 2026-11-13 — plan agreed; ADR-0035 proposed.
+- 2026-11-13 — appsec design review: approve with conditions (C-1 menu validation, C-2 patch ships with the tool, C-3 data class; config validation of `imageAgentModel`). C-1 as written relied on `hasRealPrice`, which accepts the $0 registry prices of per-image models; corrected in ADR-0035 decision 9 (menu entries need a ceiling price > 0). Also missed by the review, now in the ADR: escaping contact-sheet captions, size caps on reference images, the sub-agent's paragraph as untrusted output.
+- 2026-11-13 — **Phase 0 spike done** (≈ $1.35 of live calls). Findings:
+  - **Cost:** every image response carries `usage.cost` (FLUX and Recraft included), so extending the existing pi-ai patch to `api/openrouter-images.js` is sufficient. OpenRouter's per-request generation lookup often had no data yet seconds later: not used.
+  - **Measured cost and latency per image:** Recraft vector $0.08 / pro-vector $0.30 (SVG, 44–48 KB, ~9 s); FLUX.2 Flex $0.05, **FLUX.2 Pro $0.03** (PNG ~300 KB, 7–8 s); Gemini 3.1 Flash Lite Image $0.034 (JPEG 67 KB, 3–4 s); Gemini 3 Pro Image $0.138 (PNG 616 KB, 2 s). FLUX.2 Flex at 16:9 via `image_config.aspect_ratio`: $0.10, a 3.8 MB PNG (size caps and downscaling needed).
+  - **Quality (one logo brief):** FLUX.2 Pro and Recraft vector produced the best logos (correct lettering, clean assets); Gemini 3 Pro integrated leaf and bell best; Gemini Flash Lite delivered a mock-up on a card unless told otherwise (the prompt must ask for an isolated asset). Instruction editing with a reference image worked precisely (Gemini Flash Lite: "make the leaf gold" changed nothing else).
+  - **SVG:** clean (no scripts, no external references, text as paths), with an embedded C2PA manifest. Rasterized in headless Chromium with JavaScript off and all non-data requests blocked in 0.1–0.4 s.
+  - **Critique model:** Claude Sonnet 5 ($0.026, 21 s) caught every real defect and wrote an exact refinement instruction; Gemini 3.6 Flash ($0.009) stopped mid-answer. Default `imageAgentModel`: `anthropic/claude-sonnet-5`, with a generous output limit.
+  - **Menu change:** FLUX.2 Pro serves both illustration tiers (cheaper and better than Flex).
+  - **Ceiling prices** for the menu table (about twice the measured maximum): Recraft vector $0.16, pro-vector $0.60, FLUX.2 Pro $0.20 (larger sizes cost more), Gemini Flash Lite $0.08, Gemini 3 Pro $0.30.
