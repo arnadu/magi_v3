@@ -1622,6 +1622,11 @@ proposes the code fix and its regression test. It never deploys.
   on its default machine and its existing volume — runs at once and is reported; anything that
   changes cost or size, deletes, or touches another mission's data needs approval. A seven-hour
   wait for a confirmation card is the failure this policy addresses.
+  The same rule holds for the control copilot (`docs/product/`, Q-02): it recovers on its own
+  within a recovery budget the platform counts per mission, never repeats a failed attempt
+  without a new diagnosis, and hands over to the operator, with its analysis and a plan, when
+  the budget is spent, when it is unsure of the cause, or when the fix goes beyond a known-good
+  restore. The budget, not the prompt, is what prevents a loop.
 - **B:** a branch with the fix and its test, opened as a pull request (the git proxy, sprint 32);
   updates to `docs/operational-resilience.md` in the same change.
 - **Alerts routed to it** (phase 1), not only to the copilots.
@@ -1656,6 +1661,164 @@ unified the two resumes.
 **Phasing.** Phase 2 (application support) with A's read and action tiers. Before that, the
 qa-lead's journey reviews cover part of the ground from the code side, and Claude Code acts as
 production support (CLAUDE.md, "MAGI DEV").
+
+### The application model: intended, as built, and each reviewer's view (added 2026-11-14)
+
+**What the first runs showed.** The qa-lead's operations-inventory runs (2026-11-13 and 14)
+were scored against a known-answer set kept outside the repository. Each run failed differently:
+- First, names written from memory: 37 citations named functions or files that do not exist.
+- Then, after the citation check (`working-agreements` rule 9) brought that to zero, real names
+  with wrong conclusions: which code an entry point actually runs, decided without following the
+  call to the definition.
+
+Each fix was a new rule or checklist row answering the last miss. That is fitting to the test:
+one run of one model against answers only we hold. The misses were not failures of judgment.
+They were failures to trace calls, which is a tool's job, and the agents had no agreed statement
+of what the application is meant to be to trace against.
+
+**How people in these roles work.** Reviewers and QA analysts don't hold the code in their heads.
+They work from shared requirements and an architecture description, hold a map of the
+application, and look details up with standard tools.
+- **Code reviewer:**
+  - *The map:* modules and boundaries; where state lives and which function may change it;
+    the invariants; the existing home for each concern; fragile areas.
+  - *The tools:* go to definition, find references and call hierarchy; code search; the type
+    checker; dependency rules; hotspots; temporal coupling (files that keep changing together,
+    the usual sign of logic kept in two places); coverage; history.
+- **QA analyst:**
+  - *The map:* actors and journeys; the entities' state machines; a risk map.
+  - *The methods:* state-transition testing; the role matrix (entity × operation × actor) with
+    consistency across entry points; a traceability matrix from requirement to test; risk-based
+    depth; exploratory sessions.
+
+**Three models, kept apart.**
+
+| Model | What it is | Owner | Where |
+|---|---|---|---|
+| **Intended** | Actors, entities and their states, operations and their rules, journeys (the product); components and dependency rules (the architecture) | The user as product owner and architect; changes approved at a gate | [`docs/product/`](../product/README.md), [`docs/architecture/components.md`](../architecture/components.md), the SPEC and ADRs |
+| **As built** | Entry points, the code each one reaches, status writes, the operations registry, dependencies, hotspots, coupling | The scans | `shared/analysis/`, regenerated on every run |
+| **Each reviewer's view** | Where intended and as built differ through its lens, how much it matters, what it has not checked | The agent | Its mental map, nothing else |
+
+The agents do not keep their own description of the application in files: a third copy with
+nothing keeping it true would drift. Facts come from the scans, intent from the baselines, and
+the mental map holds only the agent's judgment of the gap.
+
+**How the bottom-up scans tie to the top-down baselines.** Common practice in regulated fields
+(DO-178C, ISO 26262, IEC 62304) is requirement ids carried in the code and tests, with a scanner
+building the traceability matrix (Doorstop, StrictDoc, OpenFastTrack). Mainstream teams use
+lighter keys: test names, folder structure, the domain's vocabulary in the code. The robust form
+is a key the compiler or a test checks, not a comment. MAGI does not tag every function: it
+anchors the roots of the call tree (the entry points, where requirements meet code) and lets the
+scans compute everything underneath.
+
+| Baseline element | Join key in the code | Checked by |
+|---|---|---|
+| Entity and its states | The canonical stored type and collection (`MissionDoc`, `MissionStatus` in `agent-config/src/stored/`) | A scan of status writes against the intended transitions |
+| Operation | The operations registry: every entry point declares the operation id it serves | A unit test: no entry point without an id, no id outside `operations.md` |
+| Actor | The kind of entry point (route with a session, copilot action, mission-copilot tool, agent tool, Tool API, timer) | Derived by the entry-point scan |
+| Journey | Tests and scenarios name the journey id | The traceability scan |
+| Invariant or rule | The enforcing check names the rule (as tripwires carry T-ids) | The rules matrix |
+| Component | Path patterns in `components.md`; every source file in exactly one | A scan of the patterns against the tree |
+
+Reconciliation is then three questions any agent can ask of the scans:
+1. Does every entry point serve an operation in the baseline, and does every operation have an
+   entry point for each actor the baseline expects?
+2. Do all entry points of one operation converge on a single home in the call graph, inside one
+   component?
+3. Does every status write match an intended transition, and does every intended transition
+   have code (and a test)?
+
+A "no" is a finding against the code, or a question for the product owner about the baseline,
+never a quiet edit of either.
+
+**The analysis results, by reference.** Scheduled tools write to `shared/analysis/<tool>/`, with
+an index of the latest run of each (when, at which commit, headline numbers, where the output
+is). The platform renders the index into a managed region of every reviewer's mental map,
+re-rendered each turn, as "My objectives" is.
+
+| Tool | Answers | Status |
+|---|---|---|
+| Code query (TypeScript language service): definition, references, call hierarchy, following a control-plane → mission-machine route | Which code an entry point actually runs; whether two names are one function | to build |
+| Entry points with their operation ids and actors; the traceability report (questions 1 and 2) | Who can ask for what, through which entry point, reaching which home | `entry-points.py` exists; ids and report to build |
+| Status writes against `entities.md` (question 3) | The state machines as built | to build |
+| Component coverage and dependency rules | Every file placed; forbidden dependencies | coverage check written; rules to build |
+| Hotspots and temporal coupling | Where defects are likely; what changes together | hotspots exist; coupling to build |
+| CI, coverage, tripwires and ratchets, `check-citations.py` | What is already gated; whether a report's names resolve | exist |
+
+**A to-do list fed by the scans.** Each scan also emits items that need judgment: an entry point
+without an operation, an operation reached through two homes, a status write with no intended
+transition, a newly coupled pair, a stale view. Items go to a queue per agent. A managed region
+shows the count and the oldest. The agent disposes of each with a script, as a *finding* (with its
+report), *dismissed* (with a reason) or *deferred* (to a date). An item cannot disappear
+unhandled, and dismissals are what we review as user acceptance.
+
+**The system prompt, rewritten in four parts** (worked example: the qa-lead).
+
+1. **Role.** Who the agent is and what it is responsible for, in two or three sentences.
+2. **How it is judged.** Objectives carry the measurable outcomes; the prompt carries the
+   standard:
+   - *Recall first:* a defect in its area found later by someone else (the operator, an
+     incident, a teammate) is its miss. "Where bugs are found" becomes every role's headline KPI.
+   - *Evidence:* a wrong "same" or "fine" is worse than "not checked".
+   - *A current view:* a stale or wrong view is a failure in itself.
+   - *Depth follows risk.*
+3. **Method.** The discipline named, its principles stated, the steps left to skills:
+   - QA: risk-based QA through journeys, state machines and the role matrix.
+   - Code review: each change judged against the architecture and the operations' homes.
+   - Shared: look things up rather than recall them; anything that does not fit is either a
+     finding or a correction to the view, and the agent finds out which.
+4. **Its view of the application:**
+
+   ```
+   The team's baselines define what MAGI is meant to be: docs/product/ (actors, entities and
+   their states, operations, journeys) and docs/architecture/components.md. The scans show
+   what is built. Your mental map holds your view of the gap between the two, through your
+   lens: one entry per part of the baselines you cover, the scan it rests on, what differs,
+   how much it matters, and what you have not yet checked. Start every review from it;
+   update it when a scan reports a change or a review proves it wrong. A requirement that is
+   missing or ambiguous is a finding for the user; never fill it in yourself.
+   ```
+
+Each role covers a different part of the same baselines: QA journeys, states and operations;
+the code reviewer components, operations' homes and invariants; appsec boundaries and actors'
+authority; the documenter whether user-facing documents agree with the baselines; production
+support incidents against the state machines.
+
+**Enforcing that the view is maintained, without prompting harder:**
+- *Structure:* the mental map's sections are fixed by the template (headings without an `id`
+  cannot be edited by the agent); a template change reaches a running mission through the usual
+  update.
+- *Freshness:* each entry records the commit it was checked at and the baseline parts and paths
+  it covers. A scan flags entries whose paths or baseline parts changed since; stale entries
+  become to-do items.
+- *Size:* the view stays a map (on the order of 1,500 tokens); the platform warns above it.
+- *Use:* a report names the baseline parts and scans it relied on.
+- *Our review:* we read the maps as well as the reports: is the view current and true, are the
+  dismissals sound, did a known-answer item surface and get judged correctly.
+
+**Tollgates** (deliverable E):
+- *Requirements gate:* a change to `docs/product/` or `docs/architecture/` is proposed (a
+  reviewer's finding, a commit) and approved by the product owner.
+- *Release gate:* traceability holds: every entry point has an operation, every operation one
+  home, every journey a test, every intended transition code that makes it.
+
+**What this replaces.** Checklists stay for what *should* exist (a control, a test layer, a
+document). We stop adding rows or rules after each miss: a recurring miss becomes a baseline
+entry, a tool, a scan or a view section, and the skills describe standard methods by name.
+
+**Building it, in order:**
+1. The baselines approved: `docs/product/` and `docs/architecture/components.md` (drafts of
+   2026-11-14; the product owner's decisions are recorded in its README).
+2. The operations registry in the code, with the test of question 1. The duplications already
+   found are fixed first, so the registry starts with one home per operation.
+3. The scans: operation ids and traceability, status writes, component coverage; then the code
+   query tool, the analysis index, and a managed region rendered from it (a small platform
+   change: today only the objectives store feeds a managed region).
+4. The four system prompts rewritten as above; the mental map templates given the view sections;
+   a re-onboarding turn in which each agent builds its view.
+5. The scan queue and disposition script; freshness flags.
+6. The skills `operations-inventory` and `qa-journeys` cut back to their aims and these tools;
+   the journeys list removed from the qa-lead's skill in favour of `docs/product/journeys.md`.
 
 ## Phasing
 
