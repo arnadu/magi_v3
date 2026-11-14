@@ -1806,13 +1806,46 @@ support incidents against the state machines.
 document). We stop adding rows or rules after each miss: a recurring miss becomes a baseline
 entry, a tool, a scan or a view section, and the skills describe standard methods by name.
 
+**Tools: standard where they exist** (decided 2026-11-14). Most of the scanning is standard
+tooling; only the glue is ours.
+
+| Need | Tool |
+|---|---|
+| Call graph, what an entry point reaches, status writes, linking a control-plane call to the mission-machine route it hits | **CodeQL** (queries in a repository pack) |
+| Lookups during a review: definition, references, callers | A thin command-line wrapper over the **TypeScript language service** |
+| Components and dependency rules | **dependency-cruiser**; its configuration and `components.md` are checked against each other |
+| Hotspots and change coupling | code-maat's method over `git log` |
+| Dead code, duplication | knip, jscpd (wave 2) |
+| Requirements and traceability report | The Markdown baselines, parsed by the trace scripts; StrictDoc or OpenFastTrack only if the baseline outgrows tables. Their comment tags add nothing over an operation id the compiler checks |
+
+Ours: the operation id on every entry point and the test that checks it; the join of the CodeQL
+results with the operation ids and `entities.md`; the analysis index, the to-do queue and the
+managed regions that bring results to the agents.
+
+CodeQL measured on the repository at `0d28b30` (CLI 2.27.4): database build 30 s, 0.95 GB peak,
+33 MB; a query up to about 40 s and 2.4 GB peak. Four prototype queries answered the four
+questions:
+- which definition a call reaches (two same-named functions in two packages told apart; a call
+  through an injected dependency resolves to its interface, one step from the implementation);
+- every status write, from → to;
+- what two entry points of one operation each reach, and the difference;
+- which mission-machine route a control-plane call hits (literal paths; paths built in a
+  variable need its data-flow library).
+
+The call graph is approximate (one false edge in the sample), so a query result tells an agent
+where to look, not what to conclude. The status-write query also found a transition no baseline
+listed: reading a mission overwrote its status from the machine's state (decided as Q-09 and
+Q-10 in `docs/product/`). For MAGI DEV this means a 4 GB machine (CodeQL can be capped near
+1.5 GB, more slowly) and 1.4 GB of disk for the CLI. CodeQL's terms allow it on open-source
+code; MAGI is public under Apache 2.0, and that would need revisiting if it went private.
+
 **Building it, in order:**
 1. The baselines approved: `docs/product/` and `docs/architecture/components.md` (drafts of
    2026-11-14; the product owner's decisions are recorded in its README).
 2. The operations registry in the code, with the test of question 1. The duplications already
    found are fixed first, so the registry starts with one home per operation.
-3. The scans: operation ids and traceability, status writes, component coverage; then the code
-   query tool, the analysis index, and a managed region rendered from it (a small platform
+3. The scans: the CodeQL query pack (reach, status writes, route hops) joined with the operation
+   ids and `entities.md`; dependency-cruiser for components; then the code query tool, the analysis index, and a managed region rendered from it (a small platform
    change: today only the objectives store feeds a managed region).
 4. The four system prompts rewritten as above; the mental map templates given the view sections;
    a re-onboarding turn in which each agent builds its view.

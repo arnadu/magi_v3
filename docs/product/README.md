@@ -43,3 +43,5 @@ Answered by the product owner on 2026-11-14:
 | Q-06 | Who may pause an agent | The operator and the copilots only; a supervisor agent works with the agents it oversees through the mailbox |
 | Q-07 | A paused agent across a restart | It stays paused |
 | Q-08 | Which configuration changes need all activity stopped | A change of machine size or of the agents roster |
+| Q-09 | Keeping a mission's status in step with its machine | Continuously, by the platform on a timer, as one operation; reads only read |
+| Q-10 | A machine that stops or disappears without a suspend | The mission goes to `error` with the reason, which brings in the copilot's recovery (Q-02); it is not shown as suspended |

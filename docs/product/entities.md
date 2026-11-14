@@ -20,6 +20,8 @@ Stored as `missions` (`MissionDoc`, `MissionStatus`). A draft is a mission in st
 | `suspended` | resume | `running` | OP, CC |
 | `suspended` | a schedule falls due | `running` (woken; it stays running, and the operator is told why) | PLT |
 | `running` | temporary upgrade, revert | `running` (machine replaced) | MC, PLT |
+| `running` | the machine stopped or disappeared without a suspend (crash, out of memory, provider) | `error`, with the reason; the operator is told | PLT |
+| `suspended` | the machine is found running | `running` | PLT |
 | `running` | upgrade or revert failed and the default machine could not be restored | `error` | PLT |
 | `error` | resume on the default machine and the existing volume | `running` | OP; CC on its own within its recovery budget |
 | `suspended` | archive (planned) | `archived` | OP |
@@ -30,6 +32,8 @@ Invariants:
 - A mission's volume (its work) survives every transition. Missions are not deleted: suspend is
   the end state until archive exists (decision D-6); archive will stop all costs and keep the
   results readable.
+- The stored status follows the machine's actual state, kept in step by the platform on a timer
+  (`mission.reconcile`), never by reading a mission.
 - A mission in `error` is recovered by the control copilot within a budget the platform enforces;
   beyond it, the copilot hands over to the operator. See `mission.resume`.
 
