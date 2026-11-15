@@ -1622,7 +1622,7 @@ proposes the code fix and its regression test. It never deploys.
   on its default machine and its existing volume — runs at once and is reported; anything that
   changes cost or size, deletes, or touches another mission's data needs approval. A seven-hour
   wait for a confirmation card is the failure this policy addresses.
-  The same rule holds for the control copilot (`docs/product/`, Q-02): it recovers on its own
+  The same rule holds for the control copilot (the `mission.resume` operation in the baseline): it recovers on its own
   within a recovery budget the platform counts per mission, never repeats a failed attempt
   without a new diagnosis, and hands over to the operator, with its analysis and a plan, when
   the budget is spent, when it is unsure of the cause, or when the fix goes beyond a known-good
@@ -1834,15 +1834,15 @@ questions:
 
 The call graph is approximate (one false edge in the sample), so a query result tells an agent
 where to look, not what to conclude. The status-write query also found a transition no baseline
-listed: reading a mission overwrote its status from the machine's state (decided as Q-09 and
-Q-10 in `docs/product/`). For MAGI DEV this means a 4 GB machine (CodeQL can be capped near
+listed: reading a mission overwrote its status from the machine's state (now covered by the
+`mission.reconcile` operation and the mission invariants in the baseline). For MAGI DEV this means a 4 GB machine (CodeQL can be capped near
 1.5 GB, more slowly) and 1.4 GB of disk for the CLI. CodeQL's terms allow it on open-source
 code; MAGI is public under Apache 2.0, and that would need revisiting if it went private.
 
 **Building it, in order:**
 1. The baselines approved: the catalog in `packages/agent-config/src/baseline/`, rendered to
-   `docs/product/` and `docs/architecture/components.md` (draft of 2026-11-14; ADR-0036 records
-   the format and the product owner's decisions Q-01 to Q-10).
+   `docs/product/` and `docs/architecture/components.md` (draft of 2026-11-14; the approach is
+   ADR-0036).
 2. The operations registry in the code, with the test of question 1. The duplications already
    found are fixed first, so the registry starts with one home per operation.
 3. The scans: the CodeQL query pack (reach, status writes, route hops) joined with the operation

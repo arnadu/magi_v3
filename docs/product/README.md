@@ -6,7 +6,8 @@ This folder says what MAGI is meant to do: who uses it, what they work with, wha
 for, and the journeys they take. It is the **intended** model. The code is the **as-built**
 model, read by scans. Reviews compare the two. The design behind this split is in
 [magi-dev-requirements.md](../plans/magi-dev-requirements.md), "The application model"; the
-decision to keep it as a typed catalog is [ADR-0036](../adr/0036-product-and-architecture-baselines.md).
+approach (why, which practices, which tools, how agents and code comply) is
+[ADR-0036](../adr/0036-product-and-architecture-baselines.md).
 
 ## Where it lives
 
@@ -47,11 +48,6 @@ catalog, not the tables.** This README is the only hand-written page.
 - **Reviews name the commit** of the catalog they checked against.
 - **One home per fact.** The SPEC describes mechanisms and cites these ids rather than restating
   states or rules.
-
-## Decisions
-
-The product owner's decisions Q-01 to Q-10 (2026-11-14) are recorded in
-[ADR-0036](../adr/0036-product-and-architecture-baselines.md).
 
 ## Open questions
 
