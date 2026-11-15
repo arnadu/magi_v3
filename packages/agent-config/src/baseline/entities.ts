@@ -169,26 +169,96 @@ const mission = defineEntity({
 const agent = defineEntity({
 	id: "agent",
 	name: "Agent (within a mission)",
-	store: { kind: "other", where: "The mission's configuration (`agents`)" },
+	store: {
+		kind: "other",
+		where:
+			"The mission's configuration (`agents`, the roster) and the daemon's dispatch state",
+	},
 	states: [
-		{ id: "active", meaning: "Dispatched when it has work" },
+		{
+			id: "idle",
+			meaning: "No turn running; dispatched when it has unread mail",
+		},
+		{ id: "running", meaning: "A turn is running" },
 		{ id: "paused", meaning: "Never dispatched until resumed" },
+		{
+			id: "cooling-down",
+			meaning:
+				"Its last turn ended on a model error; not dispatched until the cooldown ends",
+		},
+		{
+			id: "held",
+			meaning:
+				"The mission's spend has reached its cap; not dispatched until the cap is raised",
+		},
 	],
 	transitions: [
 		{
-			from: "active",
+			from: "idle",
+			event: "dispatched: unread mail, within budget",
+			to: "running",
+			actors: ["PLT"],
+		},
+		{ from: "running", event: "turn ends", to: "idle", actors: ["PLT"] },
+		{
+			from: "running",
+			event: "turn ends on a model error",
+			to: "cooling-down",
+			actors: ["PLT"],
+		},
+		{
+			from: "cooling-down",
+			event: "cooldown ends",
+			to: "idle",
+			actors: ["PLT"],
+			note: "Dispatched again without new mail if mail is still unread",
+		},
+		{
+			from: "idle",
+			event: "the mission's spend reaches its cap",
+			to: "held",
+			actors: ["PLT"],
+		},
+		{
+			from: "held",
+			event: "the cap is raised above the spend",
+			to: "idle",
+			actors: ["OP", "CC", "MC"],
+			note: "Through `mission.set-spend-cap`",
+		},
+		{
+			from: "idle",
 			event: "pause",
 			to: "paused",
 			actors: ["OP", "CC", "MC"],
 		},
 		{
+			from: "running",
+			event: "pause",
+			to: "paused",
+			actors: ["OP", "CC", "MC"],
+			note: "The running turn finishes; no next turn",
+		},
+		{
 			from: "paused",
 			event: "resume",
-			to: "active",
+			to: "idle",
 			actors: ["OP", "CC", "MC"],
 		},
 	],
 	invariants: [
+		{
+			id: "agent.one-turn",
+			text: "An agent runs at most one turn at a time.",
+		},
+		{
+			id: "agent.turn-ends",
+			text: "Every turn ends, within the agent's limits and a wall-clock timeout.",
+		},
+		{
+			id: "agent.within-budget",
+			text: "No turn starts once the mission's spend has reached its cap.",
+		},
 		{
 			id: "agent.pause-holds",
 			text: "A pause holds until someone resumes the agent, across any restart of the mission (resume, upgrade, crash).",
@@ -197,7 +267,13 @@ const agent = defineEntity({
 			id: "agent.no-teammate-control",
 			text: "Agents never act on a teammate. A supervisor agent works with the agents it oversees through the mailbox only.",
 		},
+		{
+			id: "agent.own-identity",
+			text: "An agent's tools run as its own OS user, with no secrets in their environment.",
+		},
 	],
+	notes:
+		"The agent loop is the operations `agent.dispatch`, `agent.turn` and `agent.reflect`. A turn's work is the agent's tool calls, each an operation of its own.",
 });
 
 const schedule = defineEntity({
@@ -333,6 +409,7 @@ const job = defineEntity({
 		{ id: "running", meaning: "Running as its author" },
 		{ id: "done", meaning: "Finished" },
 		{ id: "failed", meaning: "Finished with an error, or lost" },
+		{ id: "cancelled", meaning: "Stopped on request while running" },
 	],
 	transitions: [
 		{
@@ -368,6 +445,20 @@ const job = defineEntity({
 			to: "failed",
 			actors: ["PLT"],
 			note: "A job still running after the restart stays `running`",
+		},
+		{
+			from: "running",
+			event: "cancel",
+			to: "cancelled",
+			actors: ["MC"],
+			note: "The operator is told",
+		},
+		{
+			from: null,
+			event: "restart a failed or cancelled job, as a new job",
+			to: "pending",
+			actors: ["MC"],
+			note: "Same script and author as the original",
 		},
 	],
 	invariants: [

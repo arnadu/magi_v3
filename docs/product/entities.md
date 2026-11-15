@@ -45,21 +45,37 @@ Invariants:
 
 ## Agent (within a mission) (`agent`)
 
-Stored in: The mission's configuration (`agents`).
+Stored in: The mission's configuration (`agents`, the roster) and the daemon's dispatch state.
+
+The agent loop is the operations `agent.dispatch`, `agent.turn` and `agent.reflect`. A turn's work is the agent's tool calls, each an operation of its own.
 
 | State | Meaning |
 |---|---|
-| `active` | Dispatched when it has work |
+| `idle` | No turn running; dispatched when it has unread mail |
+| `running` | A turn is running |
 | `paused` | Never dispatched until resumed |
+| `cooling-down` | Its last turn ended on a model error; not dispatched until the cooldown ends |
+| `held` | The mission's spend has reached its cap; not dispatched until the cap is raised |
 
 | From | Event | To | Who | Note |
 |---|---|---|---|---|
-| `active` | pause | `paused` | OP, CC, MC |  |
-| `paused` | resume | `active` | OP, CC, MC |  |
+| `idle` | dispatched: unread mail, within budget | `running` | PLT |  |
+| `running` | turn ends | `idle` | PLT |  |
+| `running` | turn ends on a model error | `cooling-down` | PLT |  |
+| `cooling-down` | cooldown ends | `idle` | PLT | Dispatched again without new mail if mail is still unread |
+| `idle` | the mission's spend reaches its cap | `held` | PLT |  |
+| `held` | the cap is raised above the spend | `idle` | OP, CC, MC | Through `mission.set-spend-cap` |
+| `idle` | pause | `paused` | OP, CC, MC |  |
+| `running` | pause | `paused` | OP, CC, MC | The running turn finishes; no next turn |
+| `paused` | resume | `idle` | OP, CC, MC |  |
 
 Invariants:
+- `agent.one-turn`: An agent runs at most one turn at a time.
+- `agent.turn-ends`: Every turn ends, within the agent's limits and a wall-clock timeout.
+- `agent.within-budget`: No turn starts once the mission's spend has reached its cap.
 - `agent.pause-holds`: A pause holds until someone resumes the agent, across any restart of the mission (resume, upgrade, crash).
 - `agent.no-teammate-control`: Agents never act on a teammate. A supervisor agent works with the agents it oversees through the mailbox only.
+- `agent.own-identity`: An agent's tools run as its own OS user, with no secrets in their environment.
 
 ## Schedule (`schedule`)
 
@@ -118,6 +134,7 @@ Stored in: Files under `shared/jobs/`; the daemon's private record is authoritat
 | `running` | Running as its author |
 | `done` | Finished |
 | `failed` | Finished with an error, or lost |
+| `cancelled` | Stopped on request while running |
 
 | From | Event | To | Who | Note |
 |---|---|---|---|---|
@@ -126,6 +143,8 @@ Stored in: Files under `shared/jobs/`; the daemon's private record is authoritat
 | `running` | finished | `done` | PLT | The author is told |
 | `running` | finished with an error | `failed` | PLT | The author is told |
 | `running` | daemon restarted, job lost | `failed` | PLT | A job still running after the restart stays `running` |
+| `running` | cancel | `cancelled` | MC | The operator is told |
+| — | restart a failed or cancelled job, as a new job | `pending` | MC | Same script and author as the original |
 
 Invariants:
 - `job.as-author`: A job runs as its author, with no secrets.

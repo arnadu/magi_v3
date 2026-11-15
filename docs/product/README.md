@@ -21,7 +21,7 @@ catalog, not the tables.** This README is the only hand-written page.
 |---|---|---|
 | [actors.md](actors.md) | Who can ask MAGI for something, and how they reach it | `OP`, `CC`, `MC`, … |
 | [entities.md](entities.md) | What they work with; where each is stored, its states, allowed transitions and invariants | `mission`, `schedule`, …; invariants `mission.capped`, … |
-| [operations.md](operations.md) | What each actor can ask for, the rules that hold whoever asks, and the component meant to hold its one implementation | `mission.launch`, … |
+| [operations.md](operations.md) | What each actor can ask for, the rules that hold whoever asks, and the component meant to hold its one implementation; the entry classes for entry points that serve no operation | `mission.launch`, …; `infrastructure`, … |
 | [journeys.md](journeys.md) | The operator journeys, as sequences of operations | `J-01`, … |
 | [../architecture/components.md](../architecture/components.md) | The components and the source paths each owns; dependency rules | `cp-api`, `mm-state`, … |
 
@@ -54,7 +54,7 @@ catalog, not the tables.** This README is the only hand-written page.
 ## Open questions
 
 - **Homes marked "undecided"** in [operations.md](operations.md): `mission.change-config`,
-  `mission.archive`, `schedule.create`, `schedule.cancel`, `agent.pause`, `agent.resume`,
-  `file.write`, `mission.status`, `mission.results`. Each is a choice of component for the
-  architect.
+  `mission.archive`, `mission.status`, `agent.pause`, `agent.resume`, `agent.history`,
+  `file.write`, `file.read`, `schedule.create`, `schedule.cancel`, `schedule.list`. Each is a
+  choice of component for the architect.
 - **Transitions of objectives and tasks** are not yet specified.

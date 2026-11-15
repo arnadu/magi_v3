@@ -8,6 +8,7 @@ export {
 	patternOwns,
 } from "./components.js";
 export { ENTITIES, type EntityId } from "./entities.js";
+export { ENTRY_CLASSES, type EntryClassId } from "./entry-classes.js";
 export { JOURNEYS, type JourneyId } from "./journeys.js";
 export { OPERATIONS, type OperationId } from "./operations.js";
 export { BASELINE_STATUS, renderBaselineDocs } from "./render.js";

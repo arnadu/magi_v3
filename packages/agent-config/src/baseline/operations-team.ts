@@ -1,0 +1,306 @@
+import { defineOperations } from "./define-operations.js";
+
+/** The work inside a mission: agents and their loop, messages, files, schedules, jobs, objectives, images. See `operations.ts`. */
+export const TEAM_OPERATIONS = defineOperations([
+	// ── Agents and the agent loop ───────────────────────────────────────────
+	{
+		id: "agent.dispatch",
+		group: "agents",
+		intent: "Decide which agent runs next, and start its turn",
+		actors: ["PLT"],
+		home: "mm-daemon",
+		rules: [
+			"Only an agent with unread mail",
+			"Never a paused agent, nor one cooling down after a model error",
+			"Nothing while the mission's spend has reached its cap",
+			"One turn per agent at a time",
+			"New mail during a turn is picked up after it",
+		],
+	},
+	{
+		id: "agent.turn",
+		group: "agents",
+		intent:
+			"Run one turn: build the prompt, call the model, run the tools, record cost, report to the supervisor",
+		actors: ["PLT"],
+		home: "mm-agent-loop",
+		rules: [
+			"The prompt holds the agent's role, its mental map and the regions the platform manages",
+			"Every turn ends, within the agent's limits and a wall-clock timeout",
+			"Spend counts against the mission",
+			"Tool arguments are checked against the tool's schema",
+		],
+	},
+	{
+		id: "agent.reflect",
+		group: "agents",
+		intent:
+			"Compact an agent's memory when its context grows too large or its turns stop producing output",
+		actors: ["PLT"],
+		home: "mm-agent-loop",
+		rules: [
+			"Keeps the mental map and the conversation's history readable",
+			"Spend counts against the mission",
+		],
+	},
+	{
+		id: "agent.remember",
+		group: "agents",
+		intent: "Edit one's own mental map",
+		actors: ["AG"],
+		home: "mm-agent-loop",
+		rules: [
+			"Sections with an id only",
+			"Regions the platform manages are not editable by the agent",
+		],
+	},
+	{
+		id: "agent.shell",
+		group: "agents",
+		intent: "Run a command in one's own workspace",
+		actors: ["AG"],
+		home: "mm-tools",
+		rules: [
+			"As the agent's own OS user, with no secrets in its environment",
+			"Bounded in time and output",
+		],
+	},
+	{
+		id: "web.read",
+		group: "agents",
+		intent: "Search, fetch, browse and research the web; inspect images",
+		actors: ["AG", "JOB"],
+		home: "mm-tools",
+		rules: [
+			"Never reaches an internal address, at any redirect",
+			"Bounded in size and time",
+			"Spend counts against the mission",
+		],
+	},
+	{
+		id: "data.query",
+		group: "agents",
+		intent: "Query a data provider",
+		actors: ["JOB"],
+		home: "mm-tools",
+		rules: ["The provider's key never reaches the caller"],
+	},
+	{
+		id: "agent.pause",
+		group: "agents",
+		intent: "Stop one agent's dispatch",
+		actors: ["OP", "CC", "MC"],
+		home: "undecided",
+		rules: [
+			"Takes effect before the agent's next turn",
+			"Holds across restarts until someone resumes the agent",
+			"Agents never pause a teammate",
+		],
+	},
+	{
+		id: "agent.resume",
+		group: "agents",
+		intent: "Restart one agent's dispatch",
+		actors: ["OP", "CC", "MC"],
+		home: "undecided",
+		rules: ["Takes effect before the agent's next turn"],
+	},
+	{
+		id: "agent.history",
+		group: "agents",
+		intent:
+			"What an agent did and why: its turns, transcripts, model calls, mental map and memories",
+		actors: ["OP", "CC", "MC", "AG"],
+		home: "undecided",
+		rules: ["AG: its own memories only"],
+		read: true,
+	},
+	// ── Messages ────────────────────────────────────────────────────────────
+	{
+		id: "message.send",
+		group: "messages",
+		intent: "Give an agent work or information",
+		actors: ["OP", "MC", "AG", "JOB"],
+		home: "mm-state",
+		rules: ["Recipients on the roster", "Wakes the recipient"],
+	},
+	{
+		id: "message.read",
+		group: "messages",
+		intent: "Read messages and mark them read; who talked to whom",
+		actors: ["OP", "CC", "MC", "AG"],
+		home: "mm-state",
+		rules: ["AG: messages addressed to it only"],
+		read: true,
+	},
+	// ── Files ───────────────────────────────────────────────────────────────
+	{
+		id: "file.write",
+		group: "files",
+		intent:
+			"Put a file in the mission's shared folder, or in an agent's workdir",
+		actors: ["OP", "CC", "AG"],
+		home: "undecided",
+		rules: [
+			"Contained in the shared folder or the workdir; no symlink escapes",
+			"An agent's workdir: OP only, besides the agent itself",
+		],
+	},
+	{
+		id: "file.read",
+		group: "files",
+		intent:
+			"Read the mission's shared files and their history, or an agent's workdir",
+		actors: ["OP", "CC", "MC"],
+		home: "undecided",
+		rules: [
+			"Contained in the shared folder or the workdir; no symlink escapes",
+			"An agent's workdir: OP and MC only",
+		],
+		read: true,
+	},
+	// ── Schedules ───────────────────────────────────────────────────────────
+	{
+		id: "schedule.create",
+		group: "schedules",
+		intent: "Have a message or job delivered later or repeatedly",
+		actors: ["OP", "CC", "MC", "AG"],
+		home: "undecided",
+		rules: [
+			"OP in the cockpit or through CC",
+			"The schedule invariants hold (see the schedule entity)",
+		],
+	},
+	{
+		id: "schedule.cancel",
+		group: "schedules",
+		intent: "Stop a schedule",
+		actors: ["OP", "CC", "MC", "AG"],
+		home: "undecided",
+		rules: [
+			"AG: its own schedules only",
+			"A cancelled file-backed schedule stays cancelled until its file is removed",
+		],
+	},
+	{
+		id: "schedule.deliver",
+		group: "schedules",
+		intent: "Deliver what is due, waking the mission if needed",
+		actors: ["PLT"],
+		home: "cp-scheduler",
+		rules: [
+			"Each occurrence delivered once, even with two deliverers",
+			"Due occurrences missed while the platform was down are delivered when it is back",
+			"Retried a bounded number of times; the operator is told of a failure",
+		],
+	},
+	{
+		id: "schedule.list",
+		group: "schedules",
+		intent: "A mission's schedules",
+		actors: ["OP", "CC", "MC"],
+		home: "undecided",
+		rules: [],
+		read: true,
+	},
+	// ── Background jobs ─────────────────────────────────────────────────────
+	{
+		id: "job.submit",
+		group: "jobs",
+		intent: "Run a script in the background",
+		actors: ["AG"],
+		home: "mm-jobs",
+		rules: ["Submitted by writing a job file; its author is the file's owner"],
+	},
+	{
+		id: "job.run",
+		group: "jobs",
+		intent: "Start submitted jobs, and import file-backed schedules",
+		actors: ["PLT"],
+		home: "mm-jobs",
+		rules: [
+			"A job runs as its author, with no secrets, within a timeout",
+			"A file whose author cannot be established is refused",
+			"Its author is told the outcome",
+		],
+	},
+	{
+		id: "job.control",
+		group: "jobs",
+		intent: "Cancel a running job, or restart a failed or cancelled one",
+		actors: ["MC"],
+		home: "mm-jobs",
+		rules: [
+			"A restarted job runs as its original author",
+			"The operator is told",
+		],
+	},
+	{
+		id: "job.status",
+		group: "jobs",
+		intent: "A mission's jobs and their state",
+		actors: ["MC"],
+		home: "mm-jobs",
+		rules: [],
+		read: true,
+	},
+	// ── Objectives ──────────────────────────────────────────────────────────
+	{
+		id: "objectives.edit",
+		group: "objectives",
+		intent: "Change the objective tree",
+		actors: ["CC", "MC"],
+		home: "mm-state",
+		rules: ["No duplicate ids, unknown parents or cycles"],
+	},
+	{
+		id: "task.create",
+		group: "objectives",
+		intent: "Add a task under an objective",
+		actors: ["AG", "MC"],
+		home: "mm-state",
+		rules: ["Under an existing objective"],
+	},
+	{
+		id: "task.update",
+		group: "objectives",
+		intent: "Record progress on a task",
+		actors: ["AG", "MC"],
+		home: "mm-state",
+		rules: ["Assignee, creator, objective owner or MC only"],
+	},
+	{
+		id: "kpi.record",
+		group: "objectives",
+		intent: "Record a KPI's value",
+		actors: ["AG", "CC"],
+		home: "mm-state",
+		rules: ["AG: KPIs of objectives it owns", "CC: KPIs assessed by judgement"],
+	},
+	{
+		id: "cost.allocate",
+		group: "objectives",
+		intent: "Attribute one's spend to objectives",
+		actors: ["AG"],
+		home: "mm-state",
+		rules: ["Only one's own spend", "To existing objectives"],
+	},
+	{
+		id: "objectives.progress",
+		group: "objectives",
+		intent: "Objectives, tasks and KPIs, and their progress",
+		actors: ["OP", "CC", "MC"],
+		home: "mm-state",
+		rules: [],
+		read: true,
+	},
+	// ── Images ──────────────────────────────────────────────────────────────
+	{
+		id: "image.create",
+		group: "images",
+		intent: "Make images for the mission's work",
+		actors: ["AG"],
+		home: "mm-tools",
+		rules: ["Within the per-call budget", "Spend counts against the mission"],
+	},
+]);

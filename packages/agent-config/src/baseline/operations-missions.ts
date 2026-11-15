@@ -1,0 +1,227 @@
+import { defineOperations } from "./define-operations.js";
+
+/** Missions, their spend and their machine. See `operations.ts`. */
+export const MISSION_OPERATIONS = defineOperations([
+	// ── Missions ────────────────────────────────────────────────────────────
+	{
+		id: "mission.create-draft",
+		group: "missions",
+		intent: "Start a mission as an editable draft",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: ["Valid id, owned by the requester", "Nothing runs"],
+	},
+	{
+		id: "mission.edit-draft",
+		group: "missions",
+		intent: "Change a draft before launch",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: [
+			"Validated as a launch would validate it",
+			"A write based on an outdated version is refused",
+		],
+	},
+	{
+		id: "mission.launch",
+		group: "missions",
+		intent: "Start a draft running",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: [
+			"Only a draft",
+			"Only once, even if asked twice at the same moment",
+			"Capped before any machine starts",
+			"A failure leaves the mission in `error` with its reason, and no orphaned resources",
+		],
+	},
+	{
+		id: "mission.create",
+		group: "missions",
+		intent: "Create from a template and launch at once",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: [
+			"The same checks as `mission.create-draft` followed by `mission.launch`",
+		],
+	},
+	{
+		id: "mission.suspend",
+		group: "missions",
+		intent: "Stop a mission's machine, keeping its work",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: ["Only a running mission"],
+	},
+	{
+		id: "mission.resume",
+		group: "missions",
+		intent: "Bring a suspended or failed mission back",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: [
+			"Works whatever happened to the old machine; on the default machine and the existing volume",
+			"For a mission in `error`, CC diagnoses first, then may run this restore on its own, within a recovery budget the platform counts per mission",
+			"A failed attempt is never repeated without a new diagnosis",
+			"CC hands over to the operator, with its analysis and a plan, when the budget is spent, when it is unsure of the cause, or when the fix would change cost or size, delete anything or touch data",
+		],
+	},
+	{
+		id: "mission.reconcile",
+		group: "missions",
+		intent: "Keep the stored status in step with the machine's actual state",
+		actors: ["PLT"],
+		home: "cp-mission-ops",
+		rules: [
+			"On a timer, one home",
+			"An unplanned stop becomes `error` with its reason, and the operator is told",
+			"Never during a resize or another claimed transition",
+			"Reading a mission never changes it",
+		],
+	},
+	{
+		id: "mission.wake",
+		group: "missions",
+		intent: "Start a stopped machine so due work is delivered",
+		actors: ["PLT"],
+		home: "cp-machines",
+		rules: [
+			"Wakes a suspended mission too; it stays running",
+			"The operator is told what woke it",
+		],
+	},
+	{
+		id: "mission.change-config",
+		group: "missions",
+		intent:
+			"Change a mission's agents, prompts, models, settings, files or limits",
+		actors: ["OP", "CC", "MC"],
+		home: "undecided",
+		rules: [
+			"Applied while the mission runs; suspension is a last resort, only for a change that needs all activity stopped (a change of machine size or of the agents roster)",
+			"Validated as a launch",
+			"A write based on an outdated version is refused",
+			"The operator is told what changed",
+		],
+	},
+	{
+		id: "mission.repair",
+		group: "missions",
+		intent:
+			"Correct the mission's record of its machine and volume from the provider's actual state",
+		actors: ["CC"],
+		home: "cp-machines",
+		rules: [
+			"Ids are taken from the provider, never from the request",
+			"Never creates or deletes a machine or a volume",
+			"A proposal the operator confirms",
+		],
+	},
+	{
+		id: "mission.archive",
+		group: "missions",
+		intent: "End a mission: stop all its costs, keep its results readable",
+		actors: ["OP"],
+		home: "undecided",
+		rules: [
+			"Until it is built, a mission ends suspended",
+			"Missions are not deleted (decision D-6, 2026-09-12)",
+		],
+		planned: true,
+	},
+	{
+		id: "mission.status",
+		group: "missions",
+		intent:
+			"A mission's state, machine and roster, and the reason for an error",
+		actors: ["OP", "CC", "MC", "AG"],
+		home: "undecided",
+		rules: ["AG: its own mission's roster only"],
+		read: true,
+	},
+	{
+		id: "mission.config",
+		group: "missions",
+		intent: "A mission's stored configuration",
+		actors: ["OP", "CC", "MC"],
+		home: "cp-api",
+		rules: ["No secret values"],
+		read: true,
+	},
+	{
+		id: "mission.log",
+		group: "missions",
+		intent: "The daemon's log, for diagnosis",
+		actors: ["OP", "CC", "MC"],
+		home: "mm-monitor",
+		rules: ["No secret values", "Bounded in size"],
+		read: true,
+	},
+	// ── Spend and machine ───────────────────────────────────────────────────
+	{
+		id: "mission.set-spend-cap",
+		group: "spend",
+		intent: "Set the most a mission may spend",
+		actors: ["OP", "CC", "MC"],
+		home: "cp-mission-ops",
+		rules: [
+			"Never above the ceiling",
+			"Takes effect without a restart",
+			"A cap above current spend lifts a budget pause",
+			"The operator is told",
+		],
+	},
+	{
+		id: "mission.set-ceiling",
+		group: "spend",
+		intent: "Set the most anyone may set the cap to",
+		actors: ["OP", "ADM"],
+		home: "cp-mission-ops",
+		rules: [
+			"OP up to the platform maximum; ADM above it",
+			"Not reachable by any copilot or agent",
+		],
+	},
+	{
+		id: "mission.spend",
+		group: "spend",
+		intent:
+			"Spend against cap and ceiling: in total, per agent, over time, and runtime by machine shape",
+		actors: ["OP", "CC", "MC"],
+		home: "cp-mission-ops",
+		rules: [
+			"Shown in the header, Limits, Objectives and both copilots, always the same figure",
+		],
+		read: true,
+	},
+	{
+		id: "account.usage",
+		group: "spend",
+		intent: "Spend across all of one's missions",
+		actors: ["OP", "ADM"],
+		home: "cp-oversight",
+		rules: ["OP: their own missions; ADM: all"],
+		read: true,
+	},
+	{
+		id: "machine.upgrade",
+		group: "spend",
+		intent: "Run on a bigger machine for a while, then go back",
+		actors: ["AG", "MC", "PLT"],
+		home: "cp-machines",
+		rules: [
+			"AG asks through MC",
+			"Within the duration and daily caps",
+			"PLT reverts it on time",
+			"The operator is told",
+		],
+	},
+	{
+		id: "machine.reset-upgrade-allowance",
+		group: "spend",
+		intent: "Reset the cumulative upgrade cap",
+		actors: ["OP"],
+		home: "cp-machines",
+		rules: ["Not reachable by any copilot or agent"],
+	},
+]);

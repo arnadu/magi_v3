@@ -7,6 +7,7 @@
 import { ACTORS, ACTORS_NOTE } from "./actors.js";
 import { COMPONENTS, DEPENDENCY_RULES } from "./components.js";
 import { ENTITIES } from "./entities.js";
+import { ENTRY_CLASSES } from "./entry-classes.js";
 import { JOURNEYS } from "./journeys.js";
 import { OPERATIONS } from "./operations.js";
 import type { BaselineStatus, OperationGroup, Plane } from "./types.js";
@@ -115,16 +116,26 @@ function renderEntities(): string {
 
 const GROUP_TITLES: Record<OperationGroup, string> = {
 	missions: "Missions",
-	work: "Work inside a mission",
-	reads: "Reads that must agree wherever they are shown",
-	copilot: "Copilot and account",
+	spend: "Spend and machine",
+	agents: "Agents and the agent loop",
+	messages: "Messages",
+	files: "Files",
+	schedules: "Schedules",
+	jobs: "Background jobs",
+	objectives: "Objectives",
+	images: "Images",
+	copilot: "Copilot",
+	platform: "Platform and account",
 };
+
+const READ_RULE =
+	"The same figure wherever it is shown; reading never changes it";
 
 function renderOperations(): string {
 	const parts = [
 		header(
 			"Operations",
-			'What actors can ask MAGI to do. An operation is defined by its intent; its rules hold whoever asks. Each operation has **one** implementation in the code (its home), in the component named here, and every entry point that serves it calls that home, adding only who may ask and how the result is shown ([code-structure practice](../practices/code-structure.md), "One operation, one home"). Entry points declare the operation id they serve; a test fails on an entry point without an id. "undecided" is an open question for the architect. Actors: [actors.md](actors.md); "CC" means a proposal the operator confirms.',
+			'What actors can ask MAGI to do. An operation is defined by its intent; its rules hold whoever asks. **One operation per intent whose rules differ** (who may ask, what is checked, what it costs, what it changes): requests with the same rules are one operation whatever their entry point, and different rules make different operations even on the same data. Each operation has **one** implementation in the code (its home), in the component named here, and every entry point that serves it calls that home, adding only who may ask and how the result is shown ([code-structure practice](../practices/code-structure.md), "One operation, one home"). Every entry point declares the operation id it serves, or an entry class (end of this page). "undecided" is an open question for the architect. "(read)" marks a figure shown to its actors. Actors: [actors.md](actors.md); "CC" means a proposal the operator confirms.',
 		),
 	];
 	for (const group of Object.keys(GROUP_TITLES) as OperationGroup[]) {
@@ -135,16 +146,29 @@ function renderOperations(): string {
 			table(
 				["Id", "Intent", "Actors", "Home", "Rules that hold for every actor"],
 				ops.map((o) => [
-					code(o.id) + (o.planned ? " (planned)" : ""),
+					code(o.id) +
+						(o.read ? " (read)" : "") +
+						(o.planned ? " (planned)" : ""),
 					o.intent,
 					list(o.actors),
 					o.home === "undecided" ? "undecided" : code(o.home),
-					o.rules.join("; "),
+					[...(o.read ? [READ_RULE] : []), ...o.rules].join("; "),
 				]),
 			),
 			"",
 		);
 	}
+	parts.push(
+		"## Entry classes",
+		"",
+		"Entry points that serve no product operation declare one of these classes instead. Adding a class is a baseline change, approved like an operation.",
+		"",
+		table(
+			["Class", "What", "Why no operation"],
+			ENTRY_CLASSES.map((c) => [code(c.id), c.what, c.why]),
+		),
+		"",
+	);
 	return parts.join("\n");
 }
 

@@ -14,6 +14,7 @@ import {
 	COMPONENTS,
 	componentsOwning,
 	ENTITIES,
+	ENTRY_CLASSES,
 	JOURNEYS,
 	OPERATIONS,
 	patternOwns,
@@ -46,6 +47,12 @@ describe("baseline catalog", () => {
 		expect(duplicates(OPERATIONS.map((o) => o.id))).toEqual([]);
 		expect(duplicates(JOURNEYS.map((j) => j.id))).toEqual([]);
 		expect(
+			duplicates([
+				...OPERATIONS.map((o) => o.id),
+				...ENTRY_CLASSES.map((c) => c.id),
+			]),
+		).toEqual([]);
+		expect(
 			duplicates(ENTITIES.flatMap((e) => e.invariants.map((i) => i.id))),
 		).toEqual([]);
 		for (const e of ENTITIES) {
@@ -76,25 +83,16 @@ describe("baseline catalog", () => {
 		expect(dead).toEqual([]);
 	});
 
-	it("puts every operation in a journey, or says why not", () => {
-		const inJourney = new Set(JOURNEYS.flatMap((j) => j.operations));
-		const without = OPERATIONS.filter((o) => !inJourney.has(o.id)).map(
-			(o) => o.id,
-		);
-		// Platform operations and the copilot's settings are not steps an
-		// operator takes; they are covered by the journeys that depend on them.
-		expect(without.sort()).toEqual(
-			[
-				"copilot.dismiss",
-				"copilot.limits",
-				"copilot.settings",
-				"image.create",
-				"job.submit",
-				"mission.create",
-				"mission.reconcile",
-				"task.update",
-			].sort(),
-		);
+	it("puts every operation the operator or a copilot can ask for in a journey", () => {
+		// Operations asked only by agents, jobs or the platform are steps
+		// inside the team's own work; the journeys that depend on them cover
+		// them.
+		const operatorSide = new Set(["OP", "ADM", "CC", "MC"]);
+		const inJourney = new Set<string>(JOURNEYS.flatMap((j) => j.operations));
+		const without = OPERATIONS.filter(
+			(o) => o.actors.some((a) => operatorSide.has(a)) && !inJourney.has(o.id),
+		).map((o) => o.id);
+		expect(without).toEqual([]);
 	});
 
 	it("matches path patterns as documented", () => {

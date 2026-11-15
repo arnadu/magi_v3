@@ -85,7 +85,19 @@ export interface Entity<
 	notes?: string;
 }
 
-export type OperationGroup = "missions" | "work" | "reads" | "copilot";
+/** What an operation acts on; the operations table is grouped by it. */
+export type OperationGroup =
+	| "missions"
+	| "spend"
+	| "agents"
+	| "messages"
+	| "files"
+	| "schedules"
+	| "jobs"
+	| "objectives"
+	| "images"
+	| "copilot"
+	| "platform";
 
 export interface Operation<
 	O extends string = string,
@@ -104,7 +116,20 @@ export interface Operation<
 	home: C | "undecided";
 	/** Rules that hold whoever asks. */
 	rules: readonly string[];
+	/** A figure shown to its actors: it must agree wherever it is shown, and reading it never changes it. */
+	read?: boolean;
 	planned?: boolean;
+}
+
+/**
+ * An entry point that serves no product operation. Every entry point declares
+ * either the operation it serves or one of these classes.
+ */
+export interface EntryClass<K extends string = string> {
+	id: K;
+	what: string;
+	/** Why no product operation applies. */
+	why: string;
 }
 
 export interface Journey<
