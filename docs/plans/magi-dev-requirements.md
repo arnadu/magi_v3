@@ -1695,7 +1695,7 @@ application, and look details up with standard tools.
 
 | Model | What it is | Owner | Where |
 |---|---|---|---|
-| **Intended** | Actors, entities and their states, operations and their rules, journeys (the product); components and dependency rules (the architecture) | The user as product owner and architect; changes approved at a gate | [`docs/product/`](../product/README.md), [`docs/architecture/components.md`](../architecture/components.md), the SPEC and ADRs |
+| **Intended** | Actors, entities and their states, operations and their rules, journeys (the product); components and dependency rules (the architecture) | The user as product owner and architect; changes approved at a gate | A typed catalog in `packages/agent-config/src/baseline/`, rendered to [`docs/product/`](../product/README.md) and [`docs/architecture/components.md`](../architecture/components.md) ([ADR-0036](../adr/0036-product-and-architecture-baselines.md)) |
 | **As built** | Entry points, the code each one reaches, status writes, the operations registry, dependencies, hotspots, coupling | The scans | `shared/analysis/`, regenerated on every run |
 | **Each reviewer's view** | Where intended and as built differ through its lens, how much it matters, what it has not checked | The agent | Its mental map, nothing else |
 
@@ -1713,12 +1713,12 @@ scans compute everything underneath.
 
 | Baseline element | Join key in the code | Checked by |
 |---|---|---|
-| Entity and its states | The canonical stored type and collection (`MissionDoc`, `MissionStatus` in `agent-config/src/stored/`) | A scan of status writes against the intended transitions |
-| Operation | The operations registry: every entry point declares the operation id it serves | A unit test: no entry point without an id, no id outside `operations.md` |
+| Entity and its states | The collection, document type and status field the catalog names for the entity (`missions`, `MissionDoc`, `status`) | A scan of status writes against the intended transitions |
+| Operation | The operations registry: every entry point declares the operation id it serves | The compiler (an id is an `OperationId`) and a unit test: no entry point without an id |
 | Actor | The kind of entry point (route with a session, copilot action, mission-copilot tool, agent tool, Tool API, timer) | Derived by the entry-point scan |
 | Journey | Tests and scenarios name the journey id | The traceability scan |
 | Invariant or rule | The enforcing check names the rule (as tripwires carry T-ids) | The rules matrix |
-| Component | Path patterns in `components.md`; every source file in exactly one | A scan of the patterns against the tree |
+| Component | Path patterns in the catalog; every source file in exactly one | `baseline.unit.test.ts` |
 
 Reconciliation is then three questions any agent can ask of the scans:
 1. Does every entry point serve an operation in the baseline, and does every operation have an
@@ -1741,7 +1741,7 @@ re-rendered each turn, as "My objectives" is.
 | Code query (TypeScript language service): definition, references, call hierarchy, following a control-plane → mission-machine route | Which code an entry point actually runs; whether two names are one function | to build |
 | Entry points with their operation ids and actors; the traceability report (questions 1 and 2) | Who can ask for what, through which entry point, reaching which home | `entry-points.py` exists; ids and report to build |
 | Status writes against `entities.md` (question 3) | The state machines as built | to build |
-| Component coverage and dependency rules | Every file placed; forbidden dependencies | coverage check written; rules to build |
+| Component coverage and dependency rules | Every file placed; forbidden dependencies | coverage in `baseline.unit.test.ts`; rules to build |
 | Hotspots and temporal coupling | Where defects are likely; what changes together | hotspots exist; coupling to build |
 | CI, coverage, tripwires and ratchets, `check-citations.py` | What is already gated; whether a report's names resolve | exist |
 
@@ -1840,12 +1840,13 @@ Q-10 in `docs/product/`). For MAGI DEV this means a 4 GB machine (CodeQL can be 
 code; MAGI is public under Apache 2.0, and that would need revisiting if it went private.
 
 **Building it, in order:**
-1. The baselines approved: `docs/product/` and `docs/architecture/components.md` (drafts of
-   2026-11-14; the product owner's decisions are recorded in its README).
+1. The baselines approved: the catalog in `packages/agent-config/src/baseline/`, rendered to
+   `docs/product/` and `docs/architecture/components.md` (draft of 2026-11-14; ADR-0036 records
+   the format and the product owner's decisions Q-01 to Q-10).
 2. The operations registry in the code, with the test of question 1. The duplications already
    found are fixed first, so the registry starts with one home per operation.
 3. The scans: the CodeQL query pack (reach, status writes, route hops) joined with the operation
-   ids and `entities.md`; dependency-cruiser for components; then the code query tool, the analysis index, and a managed region rendered from it (a small platform
+   ids and the catalog's entities; dependency-cruiser for components; then the code query tool, the analysis index, and a managed region rendered from it (a small platform
    change: today only the objectives store feeds a managed region).
 4. The four system prompts rewritten as above; the mental map templates given the view sections;
    a re-onboarding turn in which each agent builds its view.

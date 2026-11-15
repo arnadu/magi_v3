@@ -12,6 +12,7 @@ MAGI V3 is an autonomous multi-agent system where teams of AI agents run long-ho
 - [USER_GUIDE.md](USER_GUIDE.md) — developer quick-start (setup, build, run)
 - [docs/implementation-history.md](docs/implementation-history.md) — sprint-by-sprint build log and key file descriptions
 - [docs/env.md](docs/env.md) — every environment variable (generated, test-checked)
+- [docs/product/](docs/product/README.md) and [docs/architecture/components.md](docs/architecture/components.md) — the product and architecture baselines: what MAGI is meant to do and the components it is built from (generated from `packages/agent-config/src/baseline/`, ADR-0036)
 - [docs/practices/](docs/practices/) — the full working practices behind the rules below
 - [docs/references.md](docs/references.md) — MAGI v2 and pi-mono reference material
 

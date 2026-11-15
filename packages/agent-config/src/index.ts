@@ -4,6 +4,7 @@ export type {
 	LlmCallSummary,
 	TranscriptEntry,
 } from "./api/transcripts.js";
+export * as baseline from "./baseline/index.js";
 export { applyTeamConfigPatch, type TeamConfigPatch } from "./config-patch.js";
 export {
 	ENV_CATALOG,

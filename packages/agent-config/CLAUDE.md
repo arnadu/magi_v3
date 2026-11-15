@@ -2,7 +2,8 @@
 
 The shared contract between the packages: the Zod schema for team configs (`loadTeamConfig()`,
 `parseTeamConfig()`), the canonical stored-document types and collection names (`src/stored/`),
-the model defaults, and the env catalog that generates `docs/env.md`. Loaded on top of the root
+the model defaults, the env catalog that generates `docs/env.md`, and the product and
+architecture baselines (`src/baseline/`). Loaded on top of the root
 `CLAUDE.md` when working in this package.
 
 ## Rules here
@@ -15,6 +16,11 @@ the model defaults, and the env catalog that generates `docs/env.md`. Loaded on 
 - Typed dotted paths: `field<T>()` for `$match`/`$set` keys, `ref<T>()` for aggregation
   expressions; a wrong path fails `tsc`.
 - A new env var goes into `src/env-catalog.ts`; run `npm run docs:env`.
+- The product and architecture baselines (actors, components, entities, operations, journeys)
+  live in `src/baseline/` (ADR-0036); `docs/product/*.md` and `docs/architecture/components.md`
+  are rendered from it by `npm run docs:baseline`. A new source file must fall in exactly one
+  component's path patterns (`tests/baseline.unit.test.ts`). The product owner approves every
+  change to the catalog's content.
 
 ## Storage (MongoDB collections)
 

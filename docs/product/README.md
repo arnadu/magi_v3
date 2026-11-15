@@ -1,47 +1,62 @@
 # MAGI product baseline
 
-**Status: draft, 2026-11-14.** The product owner's decisions on the first open questions are
-at the end of this page; the baseline as a whole awaits their review.
+**Status: draft since 2026-11-14,** awaiting the product owner's review.
 
 This folder says what MAGI is meant to do: who uses it, what they work with, what they can ask
 for, and the journeys they take. It is the **intended** model. The code is the **as-built**
 model, read by scans. Reviews compare the two. The design behind this split is in
-[magi-dev-requirements.md](../plans/magi-dev-requirements.md), "The application model".
+[magi-dev-requirements.md](../plans/magi-dev-requirements.md), "The application model"; the
+decision to keep it as a typed catalog is [ADR-0036](../adr/0036-product-and-architecture-baselines.md).
 
-| File | Defines | Ids |
+## Where it lives
+
+The source is a typed catalog in
+[`packages/agent-config/src/baseline/`](../../packages/agent-config/src/baseline/). The tables in
+this folder and in [`docs/architecture/components.md`](../architecture/components.md) are
+generated from it by `npm run docs:baseline`, and a test fails when they are stale. **Edit the
+catalog, not the tables.** This README is the only hand-written page.
+
+| Document | Defines | Ids |
 |---|---|---|
 | [actors.md](actors.md) | Who can ask MAGI for something, and how they reach it | `OP`, `CC`, `MC`, … |
-| [entities.md](entities.md) | What they work with: missions, schedules, jobs…; each one's states and allowed transitions | `mission`, `schedule`, … |
-| [operations.md](operations.md) | What each actor can ask for, and the rules that hold whoever asks | `mission.launch`, … |
+| [entities.md](entities.md) | What they work with; where each is stored, its states, allowed transitions and invariants | `mission`, `schedule`, …; invariants `mission.capped`, … |
+| [operations.md](operations.md) | What each actor can ask for, the rules that hold whoever asks, and the component meant to hold its one implementation | `mission.launch`, … |
 | [journeys.md](journeys.md) | The operator journeys, as sequences of operations | `J-01`, … |
+| [../architecture/components.md](../architecture/components.md) | The components and the source paths each owns; dependency rules | `cp-api`, `mm-state`, … |
 
-The components the software is built from are in the architecture baseline,
-[../architecture/components.md](../architecture/components.md).
+## How it is used
+
+- **The code** names baseline ids: an entry point declares the operation it serves (an
+  `OperationId`, checked by the compiler); a test that walks a journey or enforces an invariant
+  names its id.
+- **Scans** join their results to the catalog by these ids: every file to its component, every
+  entry point to its operation and the home it reaches, every status write to an entity's
+  transitions. They report where code and baseline disagree.
+- **Reviewer agents** read these documents for intent and the scans for facts, and judge each
+  disagreement: a finding against the code, or a question for the product owner.
+- **The product owner** approves every change to the catalog.
 
 ## Rules for this baseline
 
 - **Written from intent, not from the code.** Where the code does something else, that is a
   finding against the code, or a question for the product owner. It is never a quiet edit here.
-- **Ids are stable.** They appear in the code's operations registry, in tests and scenarios, and
-  in reviewers' reports. A retired id is never reused.
+- **Ids are stable.** A retired id is never reused.
 - **The product owner approves changes.** Anyone may propose one: a reviewer agent through a
-  finding, the coding assistant through a commit. A change merges when the product owner has
-  approved it; the governance engine's requirements gate will enforce this later.
-- **Reviews name the commit** of this folder they checked against.
+  finding, the coding assistant through a commit. A decision between alternatives is recorded
+  in an ADR that names the ids it changes.
+- **Reviews name the commit** of the catalog they checked against.
+- **One home per fact.** The SPEC describes mechanisms and cites these ids rather than restating
+  states or rules.
 
 ## Decisions
 
-Answered by the product owner on 2026-11-14:
+The product owner's decisions Q-01 to Q-10 (2026-11-14) are recorded in
+[ADR-0036](../adr/0036-product-and-architecture-baselines.md).
 
-| Id | Question | Decision |
-|---|---|---|
-| Q-01 | A schedule falls due while its mission is suspended | Wake the machine; it stays running, and the operator is told what woke it |
-| Q-02 | A mission in `error` | The control copilot recovers it on its own, within a budget the platform enforces, and decides when it needs human help: when the budget is spent, when it is unsure of the cause, or when the fix goes beyond restoring a known-good state. No doom loop: a failed attempt is never repeated without a new diagnosis |
-| Q-03 | Creating schedules | Both: the intended way is through the copilot, and the operator can also define a schedule by hand in the cockpit |
-| Q-04 | Changing a mission's configuration | Changes that can be applied while agents run are applied without suspending; suspending is a last resort for changes that need all activity stopped |
-| Q-05 | How a mission ends | Suspend is the end state until archive exists; archive stops all costs and keeps the results readable; missions are not deleted (decision D-6) |
-| Q-06 | Who may pause an agent | The operator and the copilots only; a supervisor agent works with the agents it oversees through the mailbox |
-| Q-07 | A paused agent across a restart | It stays paused |
-| Q-08 | Which configuration changes need all activity stopped | A change of machine size or of the agents roster |
-| Q-09 | Keeping a mission's status in step with its machine | Continuously, by the platform on a timer, as one operation; reads only read |
-| Q-10 | A machine that stops or disappears without a suspend | The mission goes to `error` with the reason, which brings in the copilot's recovery (Q-02); it is not shown as suspended |
+## Open questions
+
+- **Homes marked "undecided"** in [operations.md](operations.md): `mission.change-config`,
+  `mission.archive`, `schedule.create`, `schedule.cancel`, `agent.pause`, `agent.resume`,
+  `file.write`, `mission.status`, `mission.results`. Each is a choice of component for the
+  architect.
+- **Transitions of objectives and tasks** are not yet specified.
