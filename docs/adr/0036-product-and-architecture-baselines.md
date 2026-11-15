@@ -225,6 +225,157 @@ Each answers one question and cites the others by id rather than restating them:
 | Implementation history | What happened |
 | Threat model, resilience document | Trust boundaries and failure modes, expressed in actors and components |
 
+## A worked example: archiving a mission
+
+This follows one feature through the whole scheme. Archiving is planned and not built, so the
+code below is illustrative: the names are invented, and the exact form of an operation tag is
+settled in build step 2.
+
+### 1. Intent: from a conversation to the baseline
+
+The product owner says: *"When a mission is finished, I want it to stop costing money, but I
+still want to read what it produced."*
+
+The coding agent turns that into a proposed change to the catalog (decision 2), and nothing else
+yet:
+
+```ts
+// operations.ts
+{
+  id: "mission.archive",
+  group: "missions",
+  intent: "End a mission: stop all its costs, keep its results readable",
+  actors: ["OP", "CC"],          // CC: as a proposal the operator confirms
+  home: "cp-mission-ops",
+  rules: ["Only a suspended mission", "Final: nothing brings it back to running"],
+},
+
+// entities.ts, in the mission entity
+states:      [ …, { id: "archived", meaning: "Ended: no costs, results readable" } ],
+transitions: [ …, { from: "suspended", event: "archive", to: "archived", actors: ["OP", "CC"] } ],
+invariants:  [ …, { id: "mission.archived-is-final", text: "An archived mission never runs again." } ],
+
+// journeys.ts
+{ id: "J-17", title: "Stop a mission for good", actors: ["OP", "CC"],
+  operations: ["mission.suspend", "mission.archive"] },
+```
+
+`npm run docs:baseline` re-renders `operations.md`, `entities.md` and `journeys.md`. The product
+owner reads the rendered tables in the commit, not the TypeScript, and approves (the requirements
+gate, decision 9). No ADR is needed: nothing was chosen between alternatives.
+
+### 2. Build: the coding agent, held by `CLAUDE.md`
+
+Following decision 8, the coding agent writes the operation **once**, in the component the
+baseline names, and two entry points that call it:
+
+```ts
+// cp-mission-ops: mission-lifecycle-actions.ts — the home
+export async function archiveMission(db, missionId, requester) { /* checks, effects, failure */ }
+
+// cp-api: an operator route
+router.post("/:id/archive", operation("mission.archive"), (req, res) => archiveMission(…));
+
+// cp-copilot: the copilot's action, executed when the operator confirms
+{ name: "archive_mission", operation: "mission.archive", execute: (p) => archiveMission(…) }
+```
+
+And tests that name what they verify (decision 4):
+
+```ts
+it("J-17: the operator suspends, then archives a mission", …);
+it("mission.archived-is-final: resume refuses an archived mission", …);
+```
+
+What the machine catches at this stage:
+
+- A typo, `operation("mission.archvie")`, fails `tsc`: the id is not an `OperationId`.
+- Forgetting the tag on the copilot action fails the entry-point test (decision 3).
+- A new file outside every component's path patterns fails the baseline test.
+
+### 3. Scans: the three questions
+
+CI and the scheduled `npm run trace` (decision 5) answer the reconciliation questions
+(decision 6):
+
+| Question | Result |
+|---|---|
+| 1. Entry points per operation and actor | `mission.archive`: OP through the route, CC through `archive_mission`. As the baseline expects |
+| 2. One home | Both entry points reach `archiveMission`, in `cp-mission-ops`. As the baseline names |
+| 3. Status writes | `suspended → archived` in `archiveMission`: intended. **Also `archived → running`, written by the wake path** (`cp-machines`, reached from the scheduler): no such transition |
+
+The third line is a real defect the feature introduced without anyone touching the wake code: a
+recurring schedule still falls due for the archived mission, `mission.wake` starts its machine,
+and it costs money again. No test of the archive feature would show it, because the archive code
+is correct. It shows only as a status write that the intended state machine does not allow. CI
+reports it (decision 9) and the scan puts it on the to-do list of the reviewers who cover the
+mission entity.
+
+### 4. Review: the QA lead's view and judgment
+
+The QA lead's managed region shows a new to-do item:
+
+```
+[status-write] missions.status archived → running — not an intended transition
+  at cp-machines (wake path), reached from cp-scheduler. Since commit 1a2b3c4.
+```
+
+Its mental map already has an entry for the mission entity (decision 7):
+
+```
+Mission states — checked at 9f8e7d6 against entities.md (mission)
+  Scan: trace/status-writes. Differences: none open. Not yet checked: archive (new).
+```
+
+The agent judges the item:
+
+- The baseline says `archived` has no way out, and invariant `mission.archived-is-final` says it
+  never runs again. The `mission.wake` operation's rules say "wakes a suspended mission"; they do
+  not mention archived missions.
+- So this is a **finding against the code**, not a question about the baseline. Its report
+  cites the transition, the invariant, the write's location (every name resolves: the citation
+  check) and the reach path from the scan. It disposes of the to-do item as a finding linked to
+  the report, and updates its map entry: "archive: 1 open finding (wake revives archived
+  missions)".
+
+### 5. Fix and release gate
+
+The fix goes where the rule belongs: in the home of `mission.wake`, which every caller goes
+through ("One operation, one home"), not in the scheduler. The coding agent adds the test
+`mission.archived-is-final: a due schedule does not wake an archived mission`. The next trace
+shows no unexpected status write, the to-do item closes, and the release gate's reported checks
+are clear.
+
+### 6. Support: when the baseline itself is wrong
+
+A month later, the platform's daily resource report shows storage cost on archived missions.
+The production support agent compares it with the baseline:
+
+- the `mission.archive` intent says "stop all its costs";
+- it also says "keep its results readable", and the results live on the mission's volume, which
+  costs money while it exists.
+
+The code does what the baseline says. The baseline contradicts itself. This is not a finding
+against the code and not something the agent may settle by editing the catalog: it is a
+**question for the product owner**, sent with the evidence (the cost figures, the two rules).
+
+The product owner decides, say, that an archive exports the results to cheaper storage and then
+deletes the volume. That chooses between alternatives, so it gets an ADR, which names the ids it
+changes (`mission.archive`, `mission.work-kept`). The catalog change goes through the
+requirements gate, the scans show the code that no longer matches, and the cycle starts again at
+step 2.
+
+### What the example shows
+
+| Stage | Who | Made by hand | Checked or computed by machine |
+|---|---|---|---|
+| Intent | Product owner, coding agent | The catalog entries | Ids and references (`tsc`), rendered documents (test) |
+| Build | Coding agent | The home, the tags, the test names | Tags valid and present, files placed |
+| Scans | Platform | — | Reach, homes, status writes against transitions |
+| Review | Reviewer agent | The judgment: finding or question | Citations resolve; to-do item cannot vanish |
+| Fix, release | Coding agent | The fix in the operation's home | Next scan clean; gate |
+| Support | Support agent, product owner | The question; the decision; the ADR | The cost figures; the scan after the change |
+
 ## Alternatives considered
 
 - **Better prompts and longer checklists.** Tried first; each fix answered the last miss and the
