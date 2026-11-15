@@ -1695,7 +1695,7 @@ application, and look details up with standard tools.
 
 | Model | What it is | Owner | Where |
 |---|---|---|---|
-| **Intended** | Actors, entities and their states, operations and their rules, journeys (the product); components and dependency rules (the architecture) | The user as product owner and architect; changes approved at a gate | A typed catalog in `packages/agent-config/src/baseline/`, rendered to [`docs/product/`](../product/README.md) and [`docs/architecture/components.md`](../architecture/components.md) ([ADR-0036](../adr/0036-product-and-architecture-baselines.md)) |
+| **Intended** | Actors, entities and their states, operations and their rules, journeys (the product); components and dependency rules (the architecture) | The user as product owner and architect; changes approved at a gate | A typed catalog in `packages/agent-config/src/baseline/`, rendered to [`docs/product/`](../product/README.md) and [`docs/architecture/components.md`](../architecture/components.md); the rules of accepted ADRs, in their front matter ([ADR-0036](../adr/0036-product-and-architecture-baselines.md)) |
 | **As built** | Entry points, the code each one reaches, status writes, the operations registry, dependencies, hotspots, coupling | The scans | `shared/analysis/`, regenerated on every run |
 | **Each reviewer's view** | Where intended and as built differ through its lens, how much it matters, what it has not checked | The agent | Its mental map, nothing else |
 

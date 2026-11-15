@@ -35,6 +35,8 @@ catalog, not the tables.** This README is the only hand-written page.
   transitions. They report where code and baseline disagree.
 - **Reviewer agents** read these documents for intent and the scans for facts, and judge each
   disagreement: a finding against the code, or a question for the product owner.
+- **ADRs** add the design rules the code must keep. Their front matter names the baseline ids
+  each governs and how each rule is enforced (ADR-0036, decision 10).
 - **The product owner** approves every change to the catalog.
 
 ## Rules for this baseline
