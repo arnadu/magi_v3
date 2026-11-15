@@ -317,18 +317,28 @@ export const DEPENDENCY_RULES: readonly DependencyRule[] = [
 	},
 ];
 
-function globToRegExp(glob: string): RegExp {
-	const escaped = glob
-		.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-		.replace(/\*/g, "[^/]*");
-	return new RegExp(`^${escaped}$`);
+/** `*` matches any run of characters except `/`; everything else is literal. */
+function globMatches(glob: string, text: string): boolean {
+	const [first, ...rest] = glob.split("*");
+	if (!text.startsWith(first)) return false;
+	if (rest.length === 0) return text === first;
+	let pos = first.length;
+	for (let k = 0; k < rest.length; k++) {
+		const part = rest[k];
+		const last = k === rest.length - 1;
+		const at = last ? text.length - part.length : text.indexOf(part, pos);
+		if (at < pos || !text.endsWith(part, at + part.length)) return false;
+		if (text.slice(pos, at).includes("/")) return false;
+		pos = at + part.length;
+	}
+	return pos === text.length;
 }
 
 /** Does `pattern` (see `Component.paths`) own `rel`, a path relative to the component's root? */
 export function patternOwns(pattern: string, rel: string): boolean {
 	if (pattern === "**") return true;
 	if (pattern.endsWith("/")) return rel.startsWith(pattern);
-	return globToRegExp(pattern).test(rel);
+	return globMatches(pattern, rel);
 }
 
 /** Every component owning `repoPath` (a path from the repository root); exactly one when the baseline is sound. */

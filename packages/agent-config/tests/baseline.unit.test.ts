@@ -97,6 +97,20 @@ describe("baseline catalog", () => {
 		);
 	});
 
+	it("matches path patterns as documented", () => {
+		expect(patternOwns("loop*.ts", "loop.ts")).toBe(true);
+		expect(patternOwns("loop*.ts", "loop-steps.ts")).toBe(true);
+		expect(patternOwns("loop*.ts", "loop/x.ts")).toBe(false);
+		expect(patternOwns("loop*.ts", "loop.tsx")).toBe(false);
+		expect(patternOwns("a*b*c", "axxbyyc")).toBe(true);
+		expect(patternOwns("a*b*c", "abc")).toBe(true);
+		expect(patternOwns("a*b*c", "ab/c")).toBe(false);
+		expect(patternOwns("index.ts", "sub/index.ts")).toBe(false);
+		expect(patternOwns("tools/", "tools/bash.ts")).toBe(true);
+		expect(patternOwns("tools/", "tools.ts")).toBe(false);
+		expect(patternOwns("**", "any/depth/file.ts")).toBe(true);
+	});
+
 	it("renders docs/product and docs/architecture from the catalog", () => {
 		for (const [path, rendered] of Object.entries(renderBaselineDocs())) {
 			const abs = join(ROOT, path);
