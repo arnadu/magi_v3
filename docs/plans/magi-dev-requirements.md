@@ -1854,6 +1854,27 @@ code; MAGI is public under Apache 2.0, and that would need revisiting if it went
 6. The skills `operations-inventory` and `qa-journeys` cut back to their aims and these tools;
    the journeys list removed from the qa-lead's skill in favour of `docs/product/journeys.md`.
 
+**First use of the scan on magi-dev-1 (2026-11-16, scan of `b552063`).** 207 findings; each
+reviewer recorded a decision on its share within about 40 minutes (129 records):
+- qa-lead (6 decisions): each cited the code it read; useful, catalog-level observations (an
+  operation the control-plane copilot cannot reach, operations with no tagged entry point).
+- appsec (12): every unenforced security invariant dismissed with one identical reason ("the
+  mechanism exists"), no location cited for any of them. The substance (the catalog lacks
+  `enforcedBy` links) is right, but nothing was verified per invariant.
+- code reviewer (111): 41 operation findings dismissed with one reason generalised from checking
+  a single operation ("same pattern applies"), which dismissed at least one real divergence the
+  trace had reported precisely; the other 78 deferred in bulk, which emptied its to-do without
+  verifying anything; plus one test record.
+
+Cause: the disposition script took any text as a reason, and deferring took a finding off the
+list, so closing the to-do was cheaper than working it. Fix (in `scripts/trace/todo.mjs` and
+the `trace-scan` and `working-agreements` skills): a finding or a dismissal must cite the
+`file:line` read for that finding, the same reason is refused for a second finding, a deferred
+finding stays on the to-do, a decision recorded without evidence does not count (so the
+dismissals above come back), and the to-do is rebuilt after each record. To score next: whether
+decisions now carry per-finding evidence, the share of real findings dismissed, and the cost
+per decided finding (`agentTurnStats`).
+
 ## Phasing
 
 | Phase | Scope | Needs |

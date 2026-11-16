@@ -82,6 +82,9 @@ invariants share one ADR. A decision not yet made is written in the invariant's 
 
 Every finding names the baseline id it is about and the `file:line` it rests on. Read a finding
 as evidence to check, not as a verdict: confirm it in the code before acting on it.
+`node scripts/trace/todo.mjs dispose` records a reviewer's decision on one finding. A finding
+or a dismissal must cite the `file:line` that establishes it and cannot reuse another
+finding's reason; a deferred finding stays on the reviewer's to-do.
 
 **How each part is computed, and its limits.**
 

@@ -3,6 +3,10 @@
  * small synthetic inputs: what each kind of finding means, independent of
  * the real catalog and of CodeQL.
  */
+
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { computeFindings, markNew } from "../../../scripts/trace/findings.mjs";
 import {
@@ -10,7 +14,12 @@ import {
 	entryReach,
 	linkHttpHops,
 } from "../../../scripts/trace/reach.mjs";
-import { covers, renderTodo } from "../../../scripts/trace/todo.mjs";
+import {
+	build,
+	covers,
+	dispose,
+	renderTodo,
+} from "../../../scripts/trace/todo.mjs";
 
 const fn = (
 	id: string,
@@ -312,7 +321,12 @@ describe("trace to-do lists", () => {
 			"code-reviewer",
 			{ commit: "abc1234", time: "2026-11-16T12:00:00Z" },
 			fs,
-			new Set(["cccccccccccc"]),
+			new Map([
+				[
+					"cccccccccccc",
+					{ disposition: "dismissed", reason: "handled in a.ts:12" },
+				],
+			]),
 			3000,
 		);
 		expect(Buffer.byteLength(text)).toBeLessThanOrEqual(3000);
@@ -321,8 +335,63 @@ describe("trace to-do lists", () => {
 		);
 		expect(text).not.toContain("cccccccccccc");
 		expect(text).toContain(
-			"Open: 202 (new since the last scan: 1); handled: 1.",
+			"Open: 202 (new since the last scan: 1); deferred: 0; decided: 1.",
 		);
 		expect(text).toMatch(/\d+ more under "Other open findings"/);
+	});
+
+	function analysis() {
+		const dir = mkdtempSync(join(tmpdir(), "todo-"));
+		writeFileSync(
+			join(dir, "todo.json"),
+			JSON.stringify({
+				meta: { commit: "abc1234", time: "t" },
+				findings: [
+					f("aaaaaaaaaaaa", "op.divergent-writes", "x.one"),
+					f("bbbbbbbbbbbb", "op.divergent-writes", "x.two"),
+				],
+			}),
+		);
+		writeFileSync(
+			join(dir, "coverage.json"),
+			JSON.stringify({ agents: { cr: ["op.divergent-writes"] } }),
+		);
+		build(dir, join(dir, "coverage.json"));
+		return dir;
+	}
+	const todo = (dir: string) => readFileSync(join(dir, "todo-cr.md"), "utf8");
+
+	it("takes a finding off only with a cited, finding-specific reason, and rebuilds the to-do", () => {
+		const dir = analysis();
+		expect(() =>
+			dispose(dir, "aaaaaaaaaaaa", "dismissed", "same pattern as before", "cr"),
+		).toThrow(/cite the file:line/);
+		dispose(dir, "aaaaaaaaaaaa", "dismissed", "guarded at a.ts:40", "cr");
+		expect(() =>
+			dispose(dir, "bbbbbbbbbbbb", "dismissed", "guarded at a.ts:40", "cr"),
+		).toThrow(/same reason/);
+		expect(todo(dir)).toContain("Open: 1 (new since the last scan: 0)");
+		expect(todo(dir)).not.toContain("aaaaaaaaaaaa");
+	});
+
+	it("keeps a deferred finding on the to-do, and a reopened one open", () => {
+		const dir = analysis();
+		dispose(dir, "aaaaaaaaaaaa", "deferred", "needs the owner's answer", "cr");
+		expect(todo(dir)).toContain("deferred: 1");
+		expect(todo(dir)).toMatch(/## Deferred\n\n- `aaaaaaaaaaaa`/);
+		dispose(dir, "bbbbbbbbbbbb", "finding", "CR-9 at b.ts:7", "cr");
+		dispose(dir, "bbbbbbbbbbbb", "reopen", "wrong line", "cr");
+		expect(todo(dir)).toContain("`bbbbbbbbbbbb`");
+		expect(todo(dir)).toContain("[reopened]");
+	});
+
+	it("does not count an earlier decision recorded without evidence", () => {
+		const dir = analysis();
+		writeFileSync(
+			join(dir, "dispositions.jsonl"),
+			`${JSON.stringify({ key: "aaaaaaaaaaaa", agent: "cr", disposition: "dismissed", reason: "by analogy", at: "t" })}\n`,
+		);
+		build(dir, join(dir, "coverage.json"));
+		expect(todo(dir)).toContain("cites no file:line, so it does not count");
 	});
 });

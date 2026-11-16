@@ -36,13 +36,19 @@ repository ("The trace"). Read that section once before you rely on a finding.
    unresolved calls.
 2. **Quote the row you used.** A report that relies on the scan cites the finding's `key` and the
    report row, as with any evidence (`working-agreements`).
-3. **Record what you decided**, so it leaves your open list:
+3. **Record what you decided**, one finding at a time:
    ```bash
-   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> finding "<your finding id and one line>"
-   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> dismissed "<why it is not a defect>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> finding "<your finding id; the file:line that shows it>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> dismissed "<why it is not a defect; the file:line that shows it>"
    node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> deferred "<what it waits for>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> reopen "<why>"
    ```
-   A finding whose text changes gets a new key and comes back.
+   A finding or a dismissal is a claim about the code, so it leaves your open list only with
+   the `file:line` you read for *that* finding; the same reason for two findings is refused, as
+   is "same pattern as another one". Deferring does not close anything: a deferred finding stays
+   on your to-do under "Deferred" until you decide it. Your to-do is rebuilt after each record;
+   your latest record per finding counts. A finding whose text changes gets a new key and comes
+   back.
 4. **When the code and the catalog disagree**, decide which is wrong: a finding against the code,
    or a question for the user about the catalog. Never treat the catalog as automatically right.
 
