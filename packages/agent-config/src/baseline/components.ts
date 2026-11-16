@@ -9,6 +9,7 @@ export const COMPONENT_IDS = [
 	"cp-machines",
 	"cp-scheduler",
 	"cp-oversight",
+	"cp-records",
 	"cp-copilot",
 	"cp-mc-gateway",
 	"cp-edge",
@@ -104,18 +105,22 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		],
 	},
 	{
+		id: "cp-records",
+		plane: "control-plane",
+		name: "Mission records",
+		responsibility:
+			"Reads of what agents and copilots did (turns, transcripts, model calls), served from the database so they work while a mission's machine is stopped",
+		root: CP,
+		paths: ["transcript-queries.ts"],
+	},
+	{
 		id: "cp-copilot",
 		plane: "control-plane",
 		name: "Control copilot",
 		responsibility:
 			"Its loop, tools, proposals and their execution, visibility",
 		root: CP,
-		paths: [
-			"copilot-*",
-			"pending-actions.ts",
-			"transcript-queries.ts",
-			"github*.ts",
-		],
+		paths: ["copilot-*", "pending-actions.ts", "github*.ts"],
 	},
 	{
 		id: "cp-mc-gateway",
@@ -258,8 +263,9 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 	{
 		id: "mm-isolation",
 		plane: "mission-machine",
-		name: "Isolation and safety",
-		responsibility: "OS users, workspaces, git, safe paths and HTTP",
+		name: "Isolation and mission files",
+		responsibility:
+			"OS users, workspaces, git, safe paths and HTTP; reading and writing the mission's files within their folders",
 		root: MM,
 		paths: [
 			"linux-user.ts",

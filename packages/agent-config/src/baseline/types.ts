@@ -109,11 +109,8 @@ export interface Operation<
 	/** What is asked for (a change), or the figure shown (a read). */
 	intent: string;
 	actors: readonly A[];
-	/**
-	 * The component meant to hold the operation's one implementation;
-	 * "undecided" is an open question for the architect.
-	 */
-	home: C | "undecided";
+	/** The component meant to hold the operation's one implementation. */
+	home: C;
 	/** Rules that hold whoever asks. */
 	rules: readonly string[];
 	/** A figure shown to its actors: it must agree wherever it is shown, and reading it never changes it. */

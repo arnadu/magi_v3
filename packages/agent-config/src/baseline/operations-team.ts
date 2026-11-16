@@ -90,7 +90,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		group: "agents",
 		intent: "Stop one agent's dispatch",
 		actors: ["OP", "CC", "MC"],
-		home: "undecided",
+		home: "mm-daemon",
 		rules: [
 			"Takes effect before the agent's next turn",
 			"Holds across restarts until someone resumes the agent",
@@ -102,7 +102,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		group: "agents",
 		intent: "Restart one agent's dispatch",
 		actors: ["OP", "CC", "MC"],
-		home: "undecided",
+		home: "mm-daemon",
 		rules: ["Takes effect before the agent's next turn"],
 	},
 	{
@@ -111,7 +111,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		intent:
 			"What an agent did and why: its turns, transcripts, model calls, mental map and memories",
 		actors: ["OP", "CC", "MC", "AG"],
-		home: "undecided",
+		home: "cp-records",
 		rules: ["AG: its own memories only"],
 		read: true,
 	},
@@ -140,7 +140,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		intent:
 			"Put a file in the mission's shared folder, or in an agent's workdir",
 		actors: ["OP", "CC", "AG"],
-		home: "undecided",
+		home: "mm-isolation",
 		rules: [
 			"Contained in the shared folder or the workdir; no symlink escapes",
 			"An agent's workdir: OP only, besides the agent itself",
@@ -152,7 +152,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		intent:
 			"Read the mission's shared files and their history, or an agent's workdir",
 		actors: ["OP", "CC", "MC"],
-		home: "undecided",
+		home: "mm-isolation",
 		rules: [
 			"Contained in the shared folder or the workdir; no symlink escapes",
 			"An agent's workdir: OP and MC only",
@@ -165,7 +165,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		group: "schedules",
 		intent: "Have a message or job delivered later or repeatedly",
 		actors: ["OP", "CC", "MC", "AG"],
-		home: "undecided",
+		home: "cp-scheduler",
 		rules: [
 			"OP in the cockpit or through CC",
 			"The schedule invariants hold (see the schedule entity)",
@@ -176,7 +176,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		group: "schedules",
 		intent: "Stop a schedule",
 		actors: ["OP", "CC", "MC", "AG"],
-		home: "undecided",
+		home: "cp-scheduler",
 		rules: [
 			"AG: its own schedules only",
 			"A cancelled file-backed schedule stays cancelled until its file is removed",
@@ -199,7 +199,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		group: "schedules",
 		intent: "A mission's schedules",
 		actors: ["OP", "CC", "MC"],
-		home: "undecided",
+		home: "cp-scheduler",
 		rules: [],
 		read: true,
 	},

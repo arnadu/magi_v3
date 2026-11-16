@@ -135,7 +135,7 @@ function renderOperations(): string {
 	const parts = [
 		header(
 			"Operations",
-			'What actors can ask MAGI to do. An operation is defined by its intent; its rules hold whoever asks. **One operation per intent whose rules differ** (who may ask, what is checked, what it costs, what it changes): requests with the same rules are one operation whatever their entry point, and different rules make different operations even on the same data. Each operation has **one** implementation in the code (its home), in the component named here, and every entry point that serves it calls that home, adding only who may ask and how the result is shown ([code-structure practice](../practices/code-structure.md), "One operation, one home"). Every entry point declares the operation id it serves, or an entry class (end of this page). "undecided" is an open question for the architect. "(read)" marks a figure shown to its actors. Actors: [actors.md](actors.md); "CC" means a proposal the operator confirms.',
+			'What actors can ask MAGI to do. An operation is defined by its intent; its rules hold whoever asks. **One operation per intent whose rules differ** (who may ask, what is checked, what it costs, what it changes): requests with the same rules are one operation whatever their entry point, and different rules make different operations even on the same data. Each operation has **one** implementation in the code (its home), in the component named here, and every entry point that serves it calls that home, adding only who may ask and how the result is shown ([code-structure practice](../practices/code-structure.md), "One operation, one home"). Every entry point declares the operation id it serves, or an entry class (end of this page). "(read)" marks a figure shown to its actors. Actors: [actors.md](actors.md); "CC" means a proposal the operator confirms.',
 		),
 	];
 	for (const group of Object.keys(GROUP_TITLES) as OperationGroup[]) {
@@ -151,7 +151,7 @@ function renderOperations(): string {
 						(o.planned ? " (planned)" : ""),
 					o.intent,
 					list(o.actors),
-					o.home === "undecided" ? "undecided" : code(o.home),
+					code(o.home),
 					[...(o.read ? [READ_RULE] : []), ...o.rules].join("; "),
 				]),
 			),

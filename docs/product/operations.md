@@ -2,7 +2,7 @@
 
 # Operations
 
-**Draft since 2026-11-14, awaiting the product owner's approval.** What actors can ask MAGI to do. An operation is defined by its intent; its rules hold whoever asks. **One operation per intent whose rules differ** (who may ask, what is checked, what it costs, what it changes): requests with the same rules are one operation whatever their entry point, and different rules make different operations even on the same data. Each operation has **one** implementation in the code (its home), in the component named here, and every entry point that serves it calls that home, adding only who may ask and how the result is shown ([code-structure practice](../practices/code-structure.md), "One operation, one home"). Every entry point declares the operation id it serves, or an entry class (end of this page). "undecided" is an open question for the architect. "(read)" marks a figure shown to its actors. Actors: [actors.md](actors.md); "CC" means a proposal the operator confirms.
+**Draft since 2026-11-14, awaiting the product owner's approval.** What actors can ask MAGI to do. An operation is defined by its intent; its rules hold whoever asks. **One operation per intent whose rules differ** (who may ask, what is checked, what it costs, what it changes): requests with the same rules are one operation whatever their entry point, and different rules make different operations even on the same data. Each operation has **one** implementation in the code (its home), in the component named here, and every entry point that serves it calls that home, adding only who may ask and how the result is shown ([code-structure practice](../practices/code-structure.md), "One operation, one home"). Every entry point declares the operation id it serves, or an entry class (end of this page). "(read)" marks a figure shown to its actors. Actors: [actors.md](actors.md); "CC" means a proposal the operator confirms.
 
 ## Missions
 
@@ -16,10 +16,10 @@
 | `mission.resume` | Bring a suspended or failed mission back | OP, CC | `cp-mission-ops` | Works whatever happened to the old machine; on the default machine and the existing volume; For a mission in `error`, CC diagnoses first, then may run this restore on its own, within a recovery budget the platform counts per mission; A failed attempt is never repeated without a new diagnosis; CC hands over to the operator, with its analysis and a plan, when the budget is spent, when it is unsure of the cause, or when the fix would change cost or size, delete anything or touch data |
 | `mission.reconcile` | Keep the stored status in step with the machine's actual state | PLT | `cp-mission-ops` | On a timer, one home; An unplanned stop becomes `error` with its reason, and the operator is told; Never during a resize or another claimed transition; Reading a mission never changes it |
 | `mission.wake` | Start a stopped machine so due work is delivered | PLT | `cp-machines` | Wakes a suspended mission too; it stays running; The operator is told what woke it |
-| `mission.change-config` | Change a mission's agents, prompts, models, settings, files or limits | OP, CC, MC | undecided | Applied while the mission runs; suspension is a last resort, only for a change that needs all activity stopped (a change of machine size or of the agents roster); Validated as a launch; A write based on an outdated version is refused; The operator is told what changed |
+| `mission.change-config` | Change a mission's agents, prompts, models, settings, files or limits | OP, CC, MC | `cp-mission-ops` | Applied while the mission runs; suspension is a last resort, only for a change that needs all activity stopped (a change of machine size or of the agents roster); Validated as a launch; A write based on an outdated version is refused; The operator is told what changed |
 | `mission.repair` | Correct the mission's record of its machine and volume from the provider's actual state | CC | `cp-machines` | Ids are taken from the provider, never from the request; Never creates or deletes a machine or a volume; A proposal the operator confirms |
-| `mission.archive` (planned) | End a mission: stop all its costs, keep its results readable | OP | undecided | Until it is built, a mission ends suspended; Missions are not deleted (decision D-6, 2026-09-12) |
-| `mission.status` (read) | A mission's state, machine and roster, and the reason for an error | OP, CC, MC, AG | undecided | The same figure wherever it is shown; reading never changes it; AG: its own mission's roster only |
+| `mission.archive` (planned) | End a mission: stop all its costs, keep its results readable | OP | `cp-mission-ops` | Until it is built, a mission ends suspended; Missions are not deleted (decision D-6, 2026-09-12) |
+| `mission.status` (read) | A mission's state, machine and roster, and the reason for an error | OP, CC, MC, AG | `cp-mission-ops` | The same figure wherever it is shown; reading never changes it; AG: its own mission's roster only |
 | `mission.config` (read) | A mission's stored configuration | OP, CC, MC | `cp-api` | The same figure wherever it is shown; reading never changes it; No secret values |
 | `mission.log` (read) | The daemon's log, for diagnosis | OP, CC, MC | `mm-monitor` | The same figure wherever it is shown; reading never changes it; No secret values; Bounded in size |
 
@@ -45,9 +45,9 @@
 | `agent.shell` | Run a command in one's own workspace | AG | `mm-tools` | As the agent's own OS user, with no secrets in its environment; Bounded in time and output |
 | `web.read` | Search, fetch, browse and research the web; inspect images | AG, JOB | `mm-tools` | Never reaches an internal address, at any redirect; Bounded in size and time; Spend counts against the mission |
 | `data.query` | Query a data provider | JOB | `mm-tools` | The provider's key never reaches the caller |
-| `agent.pause` | Stop one agent's dispatch | OP, CC, MC | undecided | Takes effect before the agent's next turn; Holds across restarts until someone resumes the agent; Agents never pause a teammate |
-| `agent.resume` | Restart one agent's dispatch | OP, CC, MC | undecided | Takes effect before the agent's next turn |
-| `agent.history` (read) | What an agent did and why: its turns, transcripts, model calls, mental map and memories | OP, CC, MC, AG | undecided | The same figure wherever it is shown; reading never changes it; AG: its own memories only |
+| `agent.pause` | Stop one agent's dispatch | OP, CC, MC | `mm-daemon` | Takes effect before the agent's next turn; Holds across restarts until someone resumes the agent; Agents never pause a teammate |
+| `agent.resume` | Restart one agent's dispatch | OP, CC, MC | `mm-daemon` | Takes effect before the agent's next turn |
+| `agent.history` (read) | What an agent did and why: its turns, transcripts, model calls, mental map and memories | OP, CC, MC, AG | `cp-records` | The same figure wherever it is shown; reading never changes it; AG: its own memories only |
 
 ## Messages
 
@@ -60,17 +60,17 @@
 
 | Id | Intent | Actors | Home | Rules that hold for every actor |
 |---|---|---|---|---|
-| `file.write` | Put a file in the mission's shared folder, or in an agent's workdir | OP, CC, AG | undecided | Contained in the shared folder or the workdir; no symlink escapes; An agent's workdir: OP only, besides the agent itself |
-| `file.read` (read) | Read the mission's shared files and their history, or an agent's workdir | OP, CC, MC | undecided | The same figure wherever it is shown; reading never changes it; Contained in the shared folder or the workdir; no symlink escapes; An agent's workdir: OP and MC only |
+| `file.write` | Put a file in the mission's shared folder, or in an agent's workdir | OP, CC, AG | `mm-isolation` | Contained in the shared folder or the workdir; no symlink escapes; An agent's workdir: OP only, besides the agent itself |
+| `file.read` (read) | Read the mission's shared files and their history, or an agent's workdir | OP, CC, MC | `mm-isolation` | The same figure wherever it is shown; reading never changes it; Contained in the shared folder or the workdir; no symlink escapes; An agent's workdir: OP and MC only |
 
 ## Schedules
 
 | Id | Intent | Actors | Home | Rules that hold for every actor |
 |---|---|---|---|---|
-| `schedule.create` | Have a message or job delivered later or repeatedly | OP, CC, MC, AG | undecided | OP in the cockpit or through CC; The schedule invariants hold (see the schedule entity) |
-| `schedule.cancel` | Stop a schedule | OP, CC, MC, AG | undecided | AG: its own schedules only; A cancelled file-backed schedule stays cancelled until its file is removed |
+| `schedule.create` | Have a message or job delivered later or repeatedly | OP, CC, MC, AG | `cp-scheduler` | OP in the cockpit or through CC; The schedule invariants hold (see the schedule entity) |
+| `schedule.cancel` | Stop a schedule | OP, CC, MC, AG | `cp-scheduler` | AG: its own schedules only; A cancelled file-backed schedule stays cancelled until its file is removed |
 | `schedule.deliver` | Deliver what is due, waking the mission if needed | PLT | `cp-scheduler` | Each occurrence delivered once, even with two deliverers; Due occurrences missed while the platform was down are delivered when it is back; Retried a bounded number of times; the operator is told of a failure |
-| `schedule.list` (read) | A mission's schedules | OP, CC, MC | undecided | The same figure wherever it is shown; reading never changes it |
+| `schedule.list` (read) | A mission's schedules | OP, CC, MC | `cp-scheduler` | The same figure wherever it is shown; reading never changes it |
 
 ## Background jobs
 

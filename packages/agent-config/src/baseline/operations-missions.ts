@@ -96,7 +96,7 @@ export const MISSION_OPERATIONS = defineOperations([
 		intent:
 			"Change a mission's agents, prompts, models, settings, files or limits",
 		actors: ["OP", "CC", "MC"],
-		home: "undecided",
+		home: "cp-mission-ops",
 		rules: [
 			"Applied while the mission runs; suspension is a last resort, only for a change that needs all activity stopped (a change of machine size or of the agents roster)",
 			"Validated as a launch",
@@ -122,7 +122,7 @@ export const MISSION_OPERATIONS = defineOperations([
 		group: "missions",
 		intent: "End a mission: stop all its costs, keep its results readable",
 		actors: ["OP"],
-		home: "undecided",
+		home: "cp-mission-ops",
 		rules: [
 			"Until it is built, a mission ends suspended",
 			"Missions are not deleted (decision D-6, 2026-09-12)",
@@ -135,7 +135,7 @@ export const MISSION_OPERATIONS = defineOperations([
 		intent:
 			"A mission's state, machine and roster, and the reason for an error",
 		actors: ["OP", "CC", "MC", "AG"],
-		home: "undecided",
+		home: "cp-mission-ops",
 		rules: ["AG: its own mission's roster only"],
 		read: true,
 	},

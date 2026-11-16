@@ -53,8 +53,4 @@ catalog, not the tables.** This README is the only hand-written page.
 
 ## Open questions
 
-- **Homes marked "undecided"** in [operations.md](operations.md): `mission.change-config`,
-  `mission.archive`, `mission.status`, `agent.pause`, `agent.resume`, `agent.history`,
-  `file.write`, `file.read`, `schedule.create`, `schedule.cancel`, `schedule.list`. Each is a
-  choice of component for the architect.
 - **Transitions of objectives and tasks** are not yet specified.
