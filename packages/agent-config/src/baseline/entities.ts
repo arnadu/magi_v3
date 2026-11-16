@@ -256,11 +256,6 @@ const agent = defineEntity({
 			text: "Agents never act on a teammate. A supervisor agent works with the agents it oversees through the mailbox only.",
 			enforcedBy: [],
 		},
-		{
-			id: "agent.own-identity",
-			text: "An agent's tools run as its own OS user, with no secrets in their environment.",
-			enforcedBy: [],
-		},
 	],
 	notes:
 		"The agent loop is the operations `agent.dispatch`, `agent.turn` and `agent.reflect`. A turn's work is the agent's tool calls, each an operation of its own.",

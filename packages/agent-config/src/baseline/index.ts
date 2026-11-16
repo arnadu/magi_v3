@@ -14,5 +14,6 @@ export { JOURNEYS, type JourneyId } from "./journeys.js";
 export { OPERATIONS, type OperationId } from "./operations.js";
 export { PLATFORM_INVARIANTS } from "./platform-invariants.js";
 export { BASELINE_STATUS, renderBaselineDocs } from "./render.js";
+export { SECURITY_INVARIANTS } from "./security-invariants.js";
 export { DATA_STORES, EXTERNAL_SYSTEMS } from "./stores.js";
 export type * from "./types.js";

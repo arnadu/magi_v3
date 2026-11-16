@@ -21,6 +21,7 @@ import {
 	PLATFORM_INVARIANTS,
 	patternOwns,
 	renderBaselineDocs,
+	SECURITY_INVARIANTS,
 } from "../src/baseline/index.js";
 import { COLLECTION_NAMES } from "../src/stored/collections.js";
 
@@ -49,6 +50,7 @@ const SOURCES = ROOTS.flatMap((r) => [...files(join(ROOT, r))]);
 const INVARIANTS = [
 	...ENTITIES.flatMap((e) => e.invariants),
 	...PLATFORM_INVARIANTS,
+	...SECURITY_INVARIANTS,
 ];
 
 /** Every test title in the repository's unit and integration tests. */

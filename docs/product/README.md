@@ -20,7 +20,7 @@ catalog, not the tables.** This README is the only hand-written page.
 | Document | Defines | Ids |
 |---|---|---|
 | [actors.md](actors.md) | Who can ask MAGI for something, and how they reach it | `OP`, `CC`, `MC`, … |
-| [entities.md](entities.md) | What they work with; where each is stored, its states, allowed transitions and invariants; the platform-wide invariants | `mission`, `turn`, …; invariants `mission.capped`, `platform.no-memory-only-state`, … |
+| [entities.md](entities.md) | What they work with; where each is stored, its states, allowed transitions and invariants; the platform-wide and security invariants | `mission`, `turn`, …; invariants `mission.capped`, `platform.no-memory-only-state`, `sec.authenticated`, … |
 | [operations.md](operations.md) | What each actor can ask for, the rules that hold whoever asks, and the component meant to hold its one implementation; the entry classes for entry points that serve no operation | `mission.launch`, …; `infrastructure`, … |
 | [journeys.md](journeys.md) | The operator journeys, as sequences of operations | `J-01`, … |
 | [../architecture/components.md](../architecture/components.md) | The components and the source paths each owns; the data stores and the one component that writes each; the external systems; dependency rules | `cp-api`, `mm-state`, `ui-files`, … |
@@ -62,5 +62,7 @@ catalog, not the tables.** This README is the only hand-written page.
   (`turn.no-silent-loss`).
 - **Decision D-6** (missions are not deleted), behind `mission.work-kept`, has no ADR.
 - **Drafted 2026-11-16, to review:** the cockpit's ten components, the owner of each data store,
-  the external systems.
+  the external systems, the security invariants.
+- **The threat model and the trust-boundaries table** still state their guards in their own
+  words; they will cite the security invariants by id.
 - **Transitions of objectives and tasks** are not yet specified.

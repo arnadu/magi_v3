@@ -11,6 +11,7 @@ import { ENTRY_CLASSES } from "./entry-classes.js";
 import { JOURNEYS } from "./journeys.js";
 import { OPERATIONS } from "./operations.js";
 import { PLATFORM_INVARIANTS } from "./platform-invariants.js";
+import { SECURITY_INVARIANTS } from "./security-invariants.js";
 import { DATA_STORES, EXTERNAL_SYSTEMS } from "./stores.js";
 import type {
 	BaselineStatus,
@@ -145,6 +146,12 @@ function renderEntities(): string {
 		"What holds across entities: the record of what happened, and what survives a restart.",
 		"",
 		...PLATFORM_INVARIANTS.map(invariantLine),
+		"",
+		"## Security invariants",
+		"",
+		"What must always hold for MAGI to be safe. The threats and trust boundaries they guard against are in [the threat model](../security/threat-model.md) and [the trust-boundaries table](../security/trust-boundaries.md).",
+		"",
+		...SECURITY_INVARIANTS.map(invariantLine),
 		"",
 	);
 	return parts.join("\n");

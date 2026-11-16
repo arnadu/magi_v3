@@ -75,7 +75,6 @@ Invariants:
 - `agent.within-budget`: No turn starts once the mission's spend has reached its cap. *(not yet enforced)*
 - `agent.pause-holds`: A pause holds until someone resumes the agent, across any restart of the mission (resume, upgrade, crash). *(not yet enforced)*
 - `agent.no-teammate-control`: Agents never act on a teammate. A supervisor agent works with the agents it oversees through the mailbox only. *(not yet enforced)*
-- `agent.own-identity`: An agent's tools run as its own OS user, with no secrets in their environment. *(not yet enforced)*
 
 ## Schedule (`schedule`)
 
@@ -254,3 +253,20 @@ What holds across entities: the record of what happened, and what survives a res
 - `platform.no-memory-only-state`: Every piece of state that decides what the platform does next (pauses, holds, cooldowns, claims, queued work) is stored, and rebuilt after a restart. *(not yet enforced)*
 - `platform.changes-audited`: Every change to a mission by the operator, a copilot or the platform (configuration, cap, schedule, pause, machine) is recorded: who, what, when and why. *(not yet enforced)*
 - `platform.failures-surface`: Every failure that stops work (a crashed turn, a timeout, a failed delivery, a failed provisioning) is recorded with its reason and reaches the operator. *(not yet enforced)*
+
+## Security invariants
+
+What must always hold for MAGI to be safe. The threats and trust boundaries they guard against are in [the threat model](../security/threat-model.md) and [the trust-boundaries table](../security/trust-boundaries.md).
+
+- `sec.authenticated`: Every route and Tool API name requires an authenticated caller (a session, the admin key, the mission's monitor token, a job's tool token), except the entry points of the `infrastructure` class. *(not yet enforced)*
+- `sec.authorized`: Every request about a mission is checked against the caller's right to that mission before it reaches the operation's home. *(not yet enforced)*
+- `sec.tenant-scoped`: Every database query on mission data is scoped to one mission, and to one user where the data is a user's; input supplies values, never operators or field names. *(not yet enforced)*
+- `sec.no-secrets-to-agents`: No secret reaches an agent's or a job's environment, prompt, files or tool results. *(not yet enforced)*
+- `sec.secrets-not-recorded`: No secret value is written to logs, conversations or model-call records. *(not yet enforced)*
+- `sec.contained-paths`: Every path that comes from input is resolved inside its root, after following symlinks, before it is used. *(not yet enforced)*
+- `sec.safe-egress`: Every outbound request to a URL an agent or the web can influence is checked against internal addresses, at every redirect. *(not yet enforced)*
+- `sec.input-validated`: Every input from outside a component's trust boundary is checked against a schema before it is used. *(not yet enforced)*
+- `sec.untrusted-text-labelled`: Text written by agents or taken from the web, when placed in a more privileged actor's context, is marked as data, not instructions. *(not yet enforced)*
+- `sec.output-safe`: Content written by agents or taken from the web is escaped or sandboxed wherever the cockpit shows it. *(not yet enforced)*
+- `sec.least-privilege`: Each agent's tools and jobs run as its own OS user. Only the daemon may use `sudo`, only to become an agent's user, with a minimal environment. *(not yet enforced)*
+- `sec.confirmed-effects`: Every change the control copilot makes, and every GitHub write from either copilot, is a proposal the operator confirms. The mission copilot changes only its own mission, within its ceilings, and reports each change to the operator. *(not yet enforced)*
