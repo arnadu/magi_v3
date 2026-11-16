@@ -114,12 +114,17 @@ is found by the full trace, not by `callers`.
 **Running it.** `bash scripts/trace/install-codeql.sh` installs the pinned CodeQL release, checked
 against its published SHA-256, into `~/.cache/magi/codeql` (`CODEQL_HOME`). A full run takes
 about four minutes; `--no-security` skips the security suite, and `--reuse-db` keeps the CodeQL
-database for repeated runs on unchanged code. CI runs it on every push (the `trace` job in
-`quality.yml`), report-only: no deploy waits for it, it fails only when the tool breaks, and the
-reports are the run's `trace` artifact, with the headline numbers in the run summary. The
-artifact never contains the security results (`security.*`, the `sec.result` findings): artifacts of
-a public repository can be downloaded by anyone signed in to GitHub, and a possible vulnerability
-is never described anywhere public. Only their counts reach the run summary.
+database for repeated runs on unchanged code.
+
+**In CI** (`quality.yml`), report-only: no deploy waits for it, and it fails only when the tool
+breaks. The `trace` job runs the repository's code, so it has no write access to the repository;
+it sends CodeQL's security results to code scanning (the repository's Security tab, maintainers
+only) and nowhere else, because a possible vulnerability is never described anywhere public: the
+run's `trace` artifact and summary carry only their counts. On a push to `main`, the
+`trace-publish` job, which runs none of the repository's code, pushes the other reports to the
+`trace` branch, one commit per scanned commit. MAGI DEV's scan job fetches them from there (skill
+`trace-scan`): the analysis runs on GitHub's machines, not on a mission's shared CPUs, where
+CodeQL is throttled into the job's time limit.
 
 ## Changing intent
 

@@ -22,10 +22,19 @@ export function codeqlPath() {
 
 function run(cq, args, log) {
 	try {
-		execFileSync(cq, args, { stdio: ["ignore", "pipe", "pipe"], maxBuffer: 1 << 28 });
+		execFileSync(cq, args, {
+			stdio: ["ignore", "pipe", "pipe"],
+			maxBuffer: 1 << 28,
+		});
 	} catch (e) {
-		const out = `${e.stdout ?? ""}${e.stderr ?? ""}`.trim().split("\n").slice(-15).join("\n");
-		throw new Error(`codeql ${args[0]} ${args[1] ?? ""} failed (${log}):\n${out}`);
+		const out = `${e.stdout ?? ""}${e.stderr ?? ""}`
+			.trim()
+			.split("\n")
+			.slice(-15)
+			.join("\n");
+		throw new Error(
+			`codeql ${args[0]} ${args[1] ?? ""} failed (${log}):\n${out}`,
+		);
 	}
 }
 
@@ -59,11 +68,16 @@ function decode(cq, bqrs) {
 /** Runs every query in ql/; returns `{ <query name>: rows }`. */
 export function runPack(cq, root, dbDir) {
 	const pack = join(root, "scripts/trace/ql");
-	run(cq, ["database", "run-queries", dbDir, pack, "--threads=0"], "the trace queries");
+	run(
+		cq,
+		["database", "run-queries", dbDir, pack, "--threads=0"],
+		"the trace queries",
+	);
 	const results = join(dbDir, "results/magi/trace");
 	const out = {};
 	for (const f of readdirSync(results))
-		if (f.endsWith(".bqrs")) out[f.replace(/\.bqrs$/, "")] = decode(cq, join(results, f));
+		if (f.endsWith(".bqrs"))
+			out[f.replace(/\.bqrs$/, "")] = decode(cq, join(results, f));
 	return out;
 }
 

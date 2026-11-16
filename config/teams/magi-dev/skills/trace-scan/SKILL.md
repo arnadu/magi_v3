@@ -7,20 +7,24 @@ description: The trace of the MAGI repository against its baseline catalog — w
 
 ## What it is
 
-A scheduled job runs the repository's own `npm run trace` on the latest `main`: it scans the
-code and joins what it finds to the baseline catalog (`docs/product/`,
-`docs/architecture/components.md`, ADR-0036). It publishes to `$SHARED_DIR/analysis/`:
+The repository's CI runs `npm run trace` on every push to `main`: it scans the code and joins
+what it finds to the baseline catalog (`docs/product/`, `docs/architecture/components.md`,
+ADR-0036), and publishes its reports to the repository's `trace` branch. A scheduled job of this
+mission fetches the latest of them into `$SHARED_DIR/analysis/`:
 
 | File | Question it answers |
 |---|---|
 | `index.md` | The commit and time of the scan, headline numbers, findings by kind, what is new |
 | `operations.md` | Each operation's entry points, what each reaches, how they differ |
 | `writes.md` | Every database write, the component that owns its collection, the status changes it can make |
-| `security.md` | CodeQL's standard security queries, filed under the security invariants |
 | `invariants.md` | Every invariant and what enforces it |
 | `components.html` | The component map |
 | `todo.json` | Every finding, with a stable `key` |
-| `todo-<agent>.md` | Your share of the findings, the open ones; it is also the "Scan to-do" region of your mental map |
+| `todo-<agent>.md` | Your share of the findings, the open ones, new ones (since this mission's previous fetch) first; it is also the "Scan to-do" region of your mental map |
+
+CodeQL's security results are not here: they describe possible vulnerabilities, so they go only
+to the repository's code scanning, which only maintainers see. Ask the user for them when a
+review needs them; never describe one anywhere public.
 
 How each part is computed, and where it can be wrong: `docs/practices/traceability.md` in the
 repository ("The trace"). Read that section once before you rely on a finding.
@@ -29,7 +33,7 @@ repository ("The trace"). Read that section once before you rely on a finding.
 
 1. **It is evidence, not a verdict.** Open the `file:line` it cites in your clone, at the
    scanned commit, and confirm what it says. Reach can be incomplete where the report lists
-   unresolved calls; a security result can be a false positive.
+   unresolved calls.
 2. **Quote the row you used.** A report that relies on the scan cites the finding's `key` and the
    report row, as with any evidence (`working-agreements`).
 3. **Record what you decided**, so it leaves your open list:
@@ -56,10 +60,11 @@ bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" \
   --script "$SHARED_DIR/skills/_team/trace-scan/scripts/run-trace.sh" \
   --args "$SHARED_DIR $WORKDIR" \
   --agent "$AGENT_ID" \
-  --notify-subject "Trace scan finished"
+  --notify-subject "Trace scan fetched"
 ```
 
-It runs half an hour before each code review. The first run installs dependencies and CodeQL
-(several minutes); later runs take about five minutes. To run it once now, use `submit-job.sh`
-with the same `--script` and `--args`. If a run fails, the job's log is in
-`$SHARED_DIR/logs/bg-<jobId>.log`; report the failure to the user rather than working around it.
+It runs half an hour before each code review and takes well under a minute: it only fetches
+and copies. To run it once now, use `submit-job.sh` with the same `--script` and `--args`. If a
+run fails, its log is in `$SHARED_DIR/logs/bg-<jobId>.log`; report the failure to the user rather
+than working around it. `index.md` names the commit and time of the scan: a scan older than the
+latest commit means CI has not published yet, or failed.

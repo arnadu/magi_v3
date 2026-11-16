@@ -427,6 +427,8 @@ locally. It is report-only: no deploy job waits for it.
 | The run hangs | The job is killed at 30 minutes | `timeout-minutes: 30` on the job; a full run takes about four |
 | A reviewer's scan region (`managedRegions`) reads a missing, stale or oversized file | The agent sees "Nothing yet", a "Stale" mark, or the file cut at `maxBytes` | Rendered from the file each turn; a read error is logged and leaves the region as it was, never failing the turn |
 | A large region inflates `conversationMessages` | The mental map, region included, is saved with every assistant message (G-9) | `maxBytes` defaults to 8,000 and is capped at 20,000; MAGI DEV uses about 6,000 |
+| The `trace-publish` job fails, or the `trace` branch is missing | MAGI DEV's scan job finds nothing new, or exits 3 with "no trace branch yet" | The reviewers keep the last fetched reports; their regions are marked stale after 36 hours; `index.md` names the commit and time of the scan |
+| Two pushes close together publish out of order | The `trace` branch can end on the older commit's scan until the next push | Publishes are serialized (`concurrency: trace-publish`); `index.md` names the scanned commit, so a reviewer sees which commit it reads |
 | The CodeQL database fills the disk | Local only: `analysis/.codeql-db` is about 30 MB, rebuilt on each run | Not uploaded as an artifact; `analysis/` is ignored by git |
 
 ## Gap summary

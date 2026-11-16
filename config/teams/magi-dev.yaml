@@ -6,9 +6,6 @@ mission:
   id: magi-dev
   name: "MAGI DEV — reviewers (phase 0)"
   maxCostUsd: 25
-  # The trace job (skill trace-scan) builds a CodeQL database: it needs the larger machine.
-  memoryMb: 4096
-  cpus: 2
 
 agents:
   # ─── Application Security Architect ──────────────────────────────────────

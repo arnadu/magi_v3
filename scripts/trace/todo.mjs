@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Per-reviewer to-do lists from the trace's findings, and their dispositions.
 //
-//   node scripts/trace/todo.mjs build <analysis dir> <coverage.json> [--max-bytes N]
+//   node scripts/trace/todo.mjs build <analysis dir> <coverage.json> [--max-bytes N] [--previous <todo.json>]
 //     writes todo-<agent>.md into <analysis dir> for every agent in coverage.json,
 //     from <analysis dir>/todo.json and <analysis dir>/dispositions.jsonl
 //
@@ -102,10 +102,23 @@ export function renderTodo(agent, meta, findings, disposed, maxBytes) {
 	return text;
 }
 
-export function build(dir, coveragePath, maxBytes = 6000) {
-	const { meta, findings } = JSON.parse(
+/**
+ * Marks as new the findings whose key was not in `previousPath`'s todo.json:
+ * new since the scan the reader last saw, not since the previous push.
+ */
+function markNewSince(findings, previousPath) {
+	if (!previousPath || !existsSync(previousPath)) return findings;
+	const before = new Set(
+		JSON.parse(readFileSync(previousPath, "utf8")).findings.map((f) => f.key),
+	);
+	return findings.map((f) => ({ ...f, new: !before.has(f.key) }));
+}
+
+export function build(dir, coveragePath, maxBytes = 6000, previousPath = null) {
+	const { meta, findings: all } = JSON.parse(
 		readFileSync(join(dir, "todo.json"), "utf8"),
 	);
+	const findings = markNewSince(all, previousPath);
 	const coverage = JSON.parse(readFileSync(coveragePath, "utf8")).agents;
 	const dispositions = readDispositions(dir);
 	const written = [];
@@ -154,8 +167,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	try {
 		if (cmd === "build") {
 			const i = a.indexOf("--max-bytes");
+			const p = a.indexOf("--previous");
 			console.log(
-				build(a[0], a[1], i >= 0 ? Number(a[i + 1]) : undefined).join("\n"),
+				build(
+					a[0],
+					a[1],
+					i >= 0 ? Number(a[i + 1]) : undefined,
+					p >= 0 ? a[p + 1] : null,
+				).join("\n"),
 			);
 		} else if (cmd === "dispose") {
 			const [dir, key, disposition, ...reason] = a;

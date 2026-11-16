@@ -7,7 +7,10 @@ import { createHash } from "node:crypto";
 /** CodeQL security rules -> the security invariant each one checks. */
 const RULE_INVARIANT = [
 	[/^js\/(sql-injection|nosql-injection)/, "sec.tenant-scoped"],
-	[/^js\/(path-injection|zipslip|tainted-path|file-system-race)/, "sec.contained-paths"],
+	[
+		/^js\/(path-injection|zipslip|tainted-path|file-system-race)/,
+		"sec.contained-paths",
+	],
 	[
 		/^js\/(request-forgery|server-side-request-forgery|client-side-request-forgery)/,
 		"sec.safe-egress",

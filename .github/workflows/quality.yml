@@ -145,11 +145,15 @@ jobs:
 
   trace:
     # Report-only (ADR-0036): the CodeQL trace joined to the baseline catalog. No deploy job
-    # needs it, and it fails only when the tool itself breaks, never on what it finds. The
-    # reports are uploaded as the `trace` artifact; the headline numbers go to the run summary.
+    # needs it, and it fails only when the tool itself breaks, never on what it finds. It runs
+    # the repository's code, so it holds no write access to the repository: the reports reach
+    # the `trace` branch through `trace-publish`. Security results go only to code scanning.
     name: Trace (report only)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -165,8 +169,21 @@ jobs:
           key: codeql-${{ hashFiles('scripts/trace/install-codeql.sh') }}
       - name: Install CodeQL (pinned version, checksum verified)
         run: bash scripts/trace/install-codeql.sh
+      - name: The previous scan, so new findings are marked
+        run: |
+          mkdir -p analysis
+          if git fetch --quiet --depth=1 origin trace; then
+            git show FETCH_HEAD:todo.json > analysis/todo.json || rm -f analysis/todo.json
+          fi
       - name: Trace
         run: npm run trace
+      - name: Security results to code scanning (maintainers only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: analysis/security.sarif
+          category: magi-trace
       # CodeQL's security results describe possible vulnerabilities, and artifacts of a public
       # repository can be downloaded by anyone signed in to GitHub: they never leave the job.
       # Their counts stay in the run summary (index.md).
@@ -187,6 +204,46 @@ jobs:
             !analysis/.codeql-db/
             !analysis/previous/
           retention-days: 30
+
+  trace-publish:
+    # Pushes the trace's reports (security results already removed) to the `trace` branch,
+    # one commit per scanned commit of main; MAGI DEV's scan job fetches them from there.
+    # The only job with write access to the repository: it runs none of the repository's code,
+    # only git on the downloaded reports, and pushes only the `trace` branch.
+    name: Publish the trace
+    needs: [trace]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: trace-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: trace
+          path: reports
+      - name: Push to the trace branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -e reports/security.md ] || [ -e reports/security.sarif ]; then
+            echo "::error::security results in the reports; refusing to publish"; exit 1
+          fi
+          AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          URL="https://github.com/${GITHUB_REPOSITORY}.git"
+          if git -c http.extraheader="$AUTH" clone --quiet --depth 1 --branch trace "$URL" pub; then :
+          else git init --quiet pub && git -C pub checkout --quiet --orphan trace && git -C pub remote add origin "$URL"; fi
+          find pub -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r reports/. pub/
+          cd pub
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "trace of ${GITHUB_SHA}" || { echo "no change"; exit 0; }
+          git -c http.extraheader="$AUTH" push --quiet origin trace
 
   deploy-control-plane:
     name: Deploy control plane (dev)

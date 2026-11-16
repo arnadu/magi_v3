@@ -38,7 +38,11 @@ const INSERTS = new Set(["insertOne", "insertMany"]);
 export function platformProgram() {
 	const configPath = join(ROOT, "packages/control-plane/tsconfig.json");
 	const cfg = ts.readConfigFile(configPath, ts.sys.readFile);
-	const parsed = ts.parseJsonConfigFileContent(cfg.config, ts.sys, dirname(configPath));
+	const parsed = ts.parseJsonConfigFileContent(
+		cfg.config,
+		ts.sys,
+		dirname(configPath),
+	);
 	const files = PACKAGES.flatMap((pkg) => {
 		const c = join(ROOT, "packages", pkg, "tsconfig.json");
 		return ts.parseJsonConfigFileContent(

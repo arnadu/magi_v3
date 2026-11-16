@@ -31,6 +31,7 @@ import {
 } from "./components.mjs";
 import { extractEntryPoints } from "./entry-points.mjs";
 import { computeFindings, markNew } from "./findings.mjs";
+import { QUERY_COMMANDS, runQuery } from "./query.mjs";
 import { callGraph, entryReach, linkHttpHops } from "./reach.mjs";
 import {
 	renderIndex,
@@ -39,7 +40,6 @@ import {
 	renderSecurity,
 	renderWrites,
 } from "./report-md.mjs";
-import { QUERY_COMMANDS, runQuery } from "./query.mjs";
 import { extractWrites } from "./writes.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -171,7 +171,10 @@ writeFileSync(
 	join(OUT, "invariants.md"),
 	renderInvariants(meta, result.invariants),
 );
-writeFileSync(join(OUT, "components.html"), renderComponentMap(meta, b, imports));
+writeFileSync(
+	join(OUT, "components.html"),
+	renderComponentMap(meta, b, imports),
+);
 
 const counts = {
 	"Entry points": entries.length,
