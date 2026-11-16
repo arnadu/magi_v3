@@ -167,6 +167,16 @@ jobs:
         run: bash scripts/trace/install-codeql.sh
       - name: Trace
         run: npm run trace
+      # CodeQL's security results describe possible vulnerabilities, and artifacts of a public
+      # repository can be downloaded by anyone signed in to GitHub: they never leave the job.
+      # Their counts stay in the run summary (index.md).
+      - name: Keep security results out of the artifact
+        if: always()
+        run: |
+          rm -f analysis/security.md analysis/security.json analysis/security.sarif
+          if [ -f analysis/todo.json ]; then
+            node -e 'const f="analysis/todo.json",fs=require("fs"),t=JSON.parse(fs.readFileSync(f));t.findings=t.findings.filter(x=>x.kind!=="sec.result");fs.writeFileSync(f,JSON.stringify(t,null,1))'
+          fi
       - name: Upload the reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -175,6 +185,7 @@ jobs:
           path: |
             analysis/
             !analysis/.codeql-db/
+            !analysis/previous/
           retention-days: 30
 
   deploy-control-plane:

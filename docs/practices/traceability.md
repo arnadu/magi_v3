@@ -116,7 +116,10 @@ against its published SHA-256, into `~/.cache/magi/codeql` (`CODEQL_HOME`). A fu
 about four minutes; `--no-security` skips the security suite, and `--reuse-db` keeps the CodeQL
 database for repeated runs on unchanged code. CI runs it on every push (the `trace` job in
 `quality.yml`), report-only: no deploy waits for it, it fails only when the tool breaks, and the
-reports are the run's `trace` artifact, with the headline numbers in the run summary.
+reports are the run's `trace` artifact, with the headline numbers in the run summary. The
+artifact never contains the security results (`security.*`, the `sec.result` findings): artifacts of
+a public repository can be downloaded by anyone signed in to GitHub, and a possible vulnerability
+is never described anywhere public. Only their counts reach the run summary.
 
 ## Changing intent
 
