@@ -13,11 +13,17 @@ export {
 	type EnvVar,
 	renderEnvDoc,
 } from "./env-catalog.js";
-export type { AgentConfig, Limits, TeamConfig } from "./loader.js";
+export type {
+	AgentConfig,
+	Limits,
+	ManagedRegion,
+	TeamConfig,
+} from "./loader.js";
 export {
 	AgentSchema,
 	LimitsSchema,
 	loadTeamConfig,
+	ManagedRegionSchema,
 	parseTeamConfig,
 	parseTeamConfigYaml,
 	TeamConfigSchema,

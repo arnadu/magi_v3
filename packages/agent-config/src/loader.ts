@@ -26,6 +26,7 @@ export const LimitsSchema = z
 		warnConsecutiveZeroOutputTurns: z.number().int().nonnegative().optional(),
 	})
 	.strict();
+export type ManagedRegion = z.infer<typeof ManagedRegionSchema>;
 
 /**
  * The one username rule, shared by `id` and `linuxUser`: exactly what the
@@ -47,6 +48,32 @@ export const RESERVED_AGENT_IDS = new Set([
 export const MAX_AGENTS = 25;
 export const MAX_SYSTEM_PROMPT_CHARS = 200_000;
 export const MAX_MENTAL_MAP_CHARS = 500_000;
+
+/**
+ * A mental-map region filled from a file in the mission's shared folder. The
+ * key names the region (`data-managed`), never an agent-editable id; the file
+ * is a relative path inside the shared folder. Its content is shown as text,
+ * capped at `maxBytes`, with its age, and marked stale after `staleAfterHours`.
+ */
+export const ManagedRegionSchema = z
+	.object({
+		key: z
+			.string()
+			.regex(/^[a-z][a-z0-9-]{0,39}$/, "must be a lowercase slug")
+			.refine((k) => k !== "my-objectives", {
+				message: "my-objectives is reserved for the objectives sync",
+			}),
+		title: z.string().trim().min(1).max(80).optional(),
+		file: z
+			.string()
+			.regex(/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/, "must be a relative path")
+			.refine((f) => !f.split("/").includes(".."), {
+				message: "must stay inside the shared folder",
+			}),
+		maxBytes: z.number().int().min(256).max(20_000).optional(),
+		staleAfterHours: z.number().positive().max(720).optional(),
+	})
+	.strict();
 
 const AgentInputSchema = z.object({
 	/**
@@ -95,6 +122,18 @@ const AgentInputSchema = z.object({
 	active: z.boolean().optional(),
 	disabledSkills: z.array(z.string()).optional(),
 	disabledTools: z.array(z.string()).optional(),
+	/**
+	 * Mental-map regions the daemon fills from a file in the mission's shared
+	 * folder before each turn (e.g. a scan's to-do list). Read-only for the
+	 * agent, shown as data with the file's age; see ManagedRegionSchema.
+	 */
+	managedRegions: z
+		.array(ManagedRegionSchema)
+		.max(4)
+		.refine((rs) => new Set(rs.map((r) => r.key)).size === rs.length, {
+			message: "managedRegions keys must be unique",
+		})
+		.optional(),
 });
 // No catchall/passthrough: `name`/`role` were previously tolerated only via
 // `.catchall(z.string())` even though every authored config sets them and

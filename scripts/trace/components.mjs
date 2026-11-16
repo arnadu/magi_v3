@@ -140,7 +140,7 @@ function layout(b) {
 }
 
 /** Imports that run against the layering: same plane, same or higher layer. */
-function againstLayering(b, edges) {
+export function againstLayering(b, edges) {
 	const c = new Map(b.COMPONENTS.map((x) => [x.id, x]));
 	return edges.filter(([a, t]) => {
 		const from = c.get(a);
@@ -155,8 +155,8 @@ function againstLayering(b, edges) {
 	});
 }
 
-export function renderComponentMap(meta, b, root) {
-	const { sizes, edges } = componentImports(b, root);
+export function renderComponentMap(meta, b, imports) {
+	const { sizes, edges } = imports;
 	const geo = layout(b);
 	const against = againstLayering(b, edges);
 	const planeOf = new Map(b.COMPONENTS.map((c) => [c.id, c.plane]));

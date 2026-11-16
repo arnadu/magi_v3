@@ -1,8 +1,11 @@
-# Operator journeys
+# Operator journeys: outlines
 
-The journeys MAGI must support, and which actors are expected to perform them. A reference
-list, not a checklist: review one or two journeys per run with `journey-checks.md`. Add a
-journey when you find one that is missing here (in your report and your mental map).
+The journeys MAGI must support (their ids, expected actors and operations) are in the
+repository's baseline catalog, `docs/product/journeys.md`; when the two disagree, the catalog is
+the intended one and the difference is a question for the user. This file keeps the outline of
+each journey's steps, for walking it. Review one or two journeys per run with
+`journey-checks.md`. A journey you find missing from the catalog goes in your report as a
+question for the user.
 
 Actors: **O** the operator in the cockpit · **CC** the control-plane copilot (on request) ·
 **MC** the mission copilot (inside a mission) · **A** an agent.

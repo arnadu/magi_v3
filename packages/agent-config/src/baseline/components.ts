@@ -213,7 +213,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 			"retry-backoff.ts",
 			"agent-stats.ts",
 			"usage.ts",
-			"mental-map.ts",
+			"mental-map*",
 			"skills.ts",
 		],
 	},

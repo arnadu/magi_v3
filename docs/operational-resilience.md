@@ -425,6 +425,8 @@ locally. It is report-only: no deploy job waits for it.
 | A scan or the join throws | The job fails, with the step named in the log | Reports from the previous run stay as they were; `index.md` names the commit and time it describes, so stale reports show their age |
 | The call graph misses calls (injected dependencies, dynamic dispatch) | Reach is under-counted; an entry point can look as if it skipped its home | Each entry point lists its unresolved calls; findings are evidence to confirm, not verdicts |
 | The run hangs | The job is killed at 30 minutes | `timeout-minutes: 30` on the job; a full run takes about four |
+| A reviewer's scan region (`managedRegions`) reads a missing, stale or oversized file | The agent sees "Nothing yet", a "Stale" mark, or the file cut at `maxBytes` | Rendered from the file each turn; a read error is logged and leaves the region as it was, never failing the turn |
+| A large region inflates `conversationMessages` | The mental map, region included, is saved with every assistant message (G-9) | `maxBytes` defaults to 8,000 and is capped at 20,000; MAGI DEV uses about 6,000 |
 | The CodeQL database fills the disk | Local only: `analysis/.codeql-db` is about 30 MB, rebuilt on each run | Not uploaded as an artifact; `analysis/` is ignored by git |
 
 ## Gap summary

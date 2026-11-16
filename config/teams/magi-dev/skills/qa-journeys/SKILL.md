@@ -11,8 +11,8 @@ down the slow path, a journey no test plays. In November 2026 the operator found
 one afternoon of creating a mission. This skill exists to find them first.
 
 Checklists, in this skill's `checklists/` folder (`$SHARED_DIR/skills/_team/qa-journeys/checklists/`):
-- `journeys.md` — the operator journeys and their actors (a reference list; add journeys you
-  discover);
+- `journeys.md` — the outline of each journey's steps; the journeys themselves (ids, actors,
+  operations) are the catalog's `docs/product/journeys.md` in the repository;
 - `journey-checks.md` — the questions to answer for one journey;
 - `test-layers.md` — what kinds of tests exist and run.
 

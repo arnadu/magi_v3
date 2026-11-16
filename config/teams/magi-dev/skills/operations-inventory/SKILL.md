@@ -30,13 +30,26 @@ rule of the system has one authoritative home, whoever triggers it.
 
 ## Where to start
 
-Top down, from what actors are meant to be able to do, not from a listing of the code:
-the journeys (`qa-journeys/checklists/journeys.md`), the cockpit's screens and buttons, what
-the copilots' prompts and skills tell them they can do, the agents' tool catalogue, the
-platform's scheduled work, the user guide and the spec. Then go to the code for each entry
-point to find what it actually runs. An entry point you meet in the code that matches no
-operation on your list is itself a finding: either the list missed an intent, or the code
-offers something no actor is meant to have.
+The intended inventory exists: the baseline catalog, `docs/product/operations.md` in the
+repository (operations by intent, their actors, rules and home component, and the granularity
+rule at its top), with `actors.md`, `entities.md` and `journeys.md` beside it. The product owner
+approves it; you do not rewrite it. Your job is the comparison with the code, and what a scan
+cannot see.
+
+The scan (`trace-scan`) has done the mechanical part: `$SHARED_DIR/analysis/operations.md`
+lists, for each operation, its entry points with their actors, whether each reaches the
+operation's home, the database writes each reaches and the HTTP routes it crosses. Start from
+it, and from the findings in your "Scan to-do".
+
+What the scan cannot see, and you establish by reading the code:
+
+- **The checks and failure behaviour** each entry point applies: validation, ownership, the
+  status it requires, what happens when a resource is missing or a provider refuses. Two entry
+  points can reach the same write and still differ here.
+- **Whether a difference has a reason** the asker would accept, or is a defect.
+- **Whether the catalog is right**: an intent the code serves that no operation describes, an
+  actor the catalog lists that should not have it, a rule nobody could implement. These are
+  questions for the user, not edits.
 
 Start with operations that change state (create, launch, change, stop, recover, spend); then
 the reads that show the operator a figure or a status, where two ways of computing the same
@@ -49,16 +62,11 @@ in its context ends up writing names from memory. So:
 
 - **Keep a working file** in your folder (`reports/qa/work/operations-inventory.md`) and add
   to it as you go. Each turn starts by reading it and ends by saving it; your mental map says
-  which actor or area is next.
-- **One actor or area per turn** — the cockpit's operations, the control copilot's, the
-  mission copilot's, the agents', background jobs, the platform's scheduled work, then the
-  figures shown in several places.
-- **Reconcile with the code's own list** once your top-down list for an actor exists:
-  `python3 $SHARED_DIR/skills/_team/operations-inventory/scripts/entry-points.py <clone>`
-  lists every route, action, tool and scheduled task with file:line. An entry point there that
-  your list does not explain, and an operation of yours with no entry point there, are both
-  findings to resolve. It says what exists, not what each entry point does: read the code for
-  that.
+  which group of operations is next.
+- **One group of operations per turn**, in the order of `operations.md`.
+- **Confirm every scan row you use** in the code (`trace-scan`, "How to use a finding"); reach
+  can be incomplete where the report lists unresolved calls. For one question, use your clone:
+  `npm run trace -- callers <file:line>` or `npm run trace:entry-points`.
 - **Name only what you read** (`working-agreements`, rule 9), and run `check-citations.py`
   before a report is done.
 
@@ -66,11 +74,11 @@ in its context ends up writing names from memory. So:
 
 `$SHARED_DIR/reports/qa/YYYY-MM-DD-operations-inventory.md`:
 
-1. **The inventory**, one row per operation: id (O-NN), intent in one sentence, its rules
-   (checks, effects, failure behaviour), and for each actor the entry point and the function it
-   reaches (file and name). Mark each operation **one implementation** or **several**.
+1. **The comparison**, one row per catalog operation (its id, e.g. `mission.launch`): for each
+   entry point, the checks and failure behaviour it applies and the function that applies them
+   (file and name). Mark each operation **one implementation** or **several**.
 2. **Findings**, for every operation with several implementations, every operation an expected
-   actor cannot reach, and every entry point with no operation: what differs, the evidence, what
+   actor cannot reach, and every catalog question: what differs, the evidence, what
    an operator or agent would experience, and the fix (usually: one implementation, the entry
    points reduced to who may ask and how the result is shown).
 3. **Coverage**: which actors and areas you inventoried fully, which partly, and what you did

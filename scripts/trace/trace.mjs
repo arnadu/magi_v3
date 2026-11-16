@@ -24,7 +24,11 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildDatabase, codeqlPath, runPack, runSecurity } from "./codeql.mjs";
-import { renderComponentMap } from "./components.mjs";
+import {
+	againstLayering,
+	componentImports,
+	renderComponentMap,
+} from "./components.mjs";
 import { extractEntryPoints } from "./entry-points.mjs";
 import { computeFindings, markNew } from "./findings.mjs";
 import { callGraph, entryReach, linkHttpHops } from "./reach.mjs";
@@ -123,7 +127,14 @@ if (!flag("--no-security")) {
 }
 
 step("join");
-const result = computeFindings(b, entries, writes, sarif);
+const imports = componentImports(b, ROOT);
+const result = computeFindings(
+	b,
+	entries,
+	writes,
+	sarif,
+	againstLayering(b, imports.edges),
+);
 markNew(result.findings, previous);
 
 const json = (name, data) =>
@@ -160,7 +171,7 @@ writeFileSync(
 	join(OUT, "invariants.md"),
 	renderInvariants(meta, result.invariants),
 );
-writeFileSync(join(OUT, "components.html"), renderComponentMap(meta, b, ROOT));
+writeFileSync(join(OUT, "components.html"), renderComponentMap(meta, b, imports));
 
 const counts = {
 	"Entry points": entries.length,

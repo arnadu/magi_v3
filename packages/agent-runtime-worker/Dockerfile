@@ -33,12 +33,17 @@ RUN npm run build -w packages/agent-runtime-worker
 FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS runtime
 
 # System dependencies.
+# curl, zstd and ca-certificates: MAGI DEV's trace job installs the pinned CodeQL bundle
+# (a .tar.zst, checksum verified) with the repository's scripts/trace/install-codeql.sh.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     acl \
     sudo \
     git \
     python3 \
     python3-venv \
+    curl \
+    zstd \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chromium for BrowseWeb (Playwright). Adds ~400 MB but required for

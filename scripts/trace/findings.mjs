@@ -50,8 +50,13 @@ export const ACTOR_OF_KIND = {
 	"copilot-action": "CC",
 };
 
+/**
+ * A finding's stable key: its kind, subject, text and files, without line
+ * numbers, so an edit elsewhere in a file does not make it look new.
+ */
 function key(...parts) {
-	return createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 12);
+	const stable = parts.map((p) => String(p).replace(/:\d+(?::\d+)?/g, ""));
+	return createHash("sha1").update(stable.join("|")).digest("hex").slice(0, 12);
 }
 
 const at = (file, line) => `${file}:${line}`;
@@ -62,7 +67,7 @@ const at = (file, line) => `${file}:${line}`;
  * @param {object[]} writes MongoDB writes from writes.mjs, with `fn` (function id) attached
  * @param {object|null} sarif the security suite's SARIF, or null when it was not run
  */
-export function computeFindings(b, entries, writes, sarif) {
+export function computeFindings(b, entries, writes, sarif, layering = []) {
 	const findings = [];
 	const add = (kind, about, text, where = [], detail = {}) =>
 		findings.push({
@@ -302,6 +307,17 @@ export function computeFindings(b, entries, writes, sarif) {
 				);
 			}
 	}
+
+	// ── Layering ──────────────────────────────────────────────────────────
+	const layerOf = new Map(b.COMPONENTS.map((c) => [c.id, c.layer]));
+	for (const [from, to, n] of layering)
+		add(
+			"layer.against",
+			from,
+			`${from} (layer ${layerOf.get(from)}) imports ${to} (layer ${layerOf.get(to)}) ${n} time(s), against the declared layering.`,
+			[],
+			{ to, imports: n },
+		);
 
 	// ── Invariants ────────────────────────────────────────────────────────
 	const invariants = [

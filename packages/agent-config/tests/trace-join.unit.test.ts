@@ -10,6 +10,7 @@ import {
 	entryReach,
 	linkHttpHops,
 } from "../../../scripts/trace/reach.mjs";
+import { covers, renderTodo } from "../../../scripts/trace/todo.mjs";
 
 const fn = (
 	id: string,
@@ -61,6 +62,7 @@ function baseline(overrides: Record<string, unknown> = {}) {
 			},
 		],
 		PLATFORM_INVARIANTS: [],
+		COMPONENTS: [],
 		SECURITY_INVARIANTS: [
 			{ id: "sec.contained-paths", text: "", enforcedBy: [] },
 		],
@@ -266,5 +268,61 @@ describe("trace reach", () => {
 		const [r] = entryReach(graph, [{ file: "a.ts", line: 2, endLine: 6 }]);
 		expect(r.httpHops).toEqual(['monitor-route POST "/pause-agent"']);
 		expect(r.functions.map((f: { id: string }) => f.id)).toContain("m");
+	});
+});
+
+describe("trace to-do lists", () => {
+	const f = (key: string, kind: string, about: string, isNew = false) => ({
+		key,
+		kind,
+		about,
+		text: `${kind} about ${about}`,
+		where: ["a.ts:1"],
+		new: isNew,
+	});
+
+	it("selects findings by kind, optionally narrowed by a baseline-id prefix", () => {
+		expect(covers(["sec.result"], f("k", "sec.result", "sec.authorized"))).toBe(
+			true,
+		);
+		expect(
+			covers(
+				["inv.unenforced:sec."],
+				f("k", "inv.unenforced", "sec.authorized"),
+			),
+		).toBe(true);
+		expect(
+			covers(
+				["inv.unenforced:sec."],
+				f("k", "inv.unenforced", "mission.capped"),
+			),
+		).toBe(false);
+	});
+
+	it("lists new findings first, leaves out disposed ones, and stays within its size", () => {
+		const fs = [
+			f("aaaaaaaaaaaa", "op.home-not-reached", "mission.launch", true),
+			f("bbbbbbbbbbbb", "op.home-not-reached", "mission.suspend"),
+			f("cccccccccccc", "op.home-not-reached", "mission.resume"),
+			...Array.from({ length: 200 }, (_, i) =>
+				f(i.toString(16).padStart(12, "0"), "store.foreign-writer", `c${i}`),
+			),
+		];
+		const text = renderTodo(
+			"code-reviewer",
+			{ commit: "abc1234", time: "2026-11-16T12:00:00Z" },
+			fs,
+			new Set(["cccccccccccc"]),
+			3000,
+		);
+		expect(Buffer.byteLength(text)).toBeLessThanOrEqual(3000);
+		expect(text.indexOf("aaaaaaaaaaaa")).toBeLessThan(
+			text.indexOf("bbbbbbbbbbbb"),
+		);
+		expect(text).not.toContain("cccccccccccc");
+		expect(text).toContain(
+			"Open: 202 (new since the last scan: 1); handled: 1.",
+		);
+		expect(text).toMatch(/\d+ more under "Other open findings"/);
 	});
 });

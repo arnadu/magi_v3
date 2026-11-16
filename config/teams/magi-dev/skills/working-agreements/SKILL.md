@@ -106,3 +106,11 @@ include its last line ("N citations checked: …") in the report. It proves exis
 meaning: a real function cited for the wrong behaviour still passes, so read the code as well.
 `--selftest <clone>` shows it catching an invented name (rule 2).
 
+## 10. Scan findings are evidence to confirm
+
+The trace's reports and your "Scan to-do" (`trace-scan`) are evidence, not verdicts. Before a
+report relies on a finding, open the `file:line` it cites at the scanned commit and confirm it;
+cite the finding's key with the row you used. Record what you decided with `todo.mjs dispose`
+(finding, dismissed or deferred, with a reason), so it leaves your open list. A scan that says
+nothing about a question is not an all-clear: say what you read.
+

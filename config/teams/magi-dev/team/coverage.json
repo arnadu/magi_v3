@@ -1,0 +1,20 @@
+{
+	"about": "Which findings of the trace each reviewer owns: a finding kind, optionally narrowed to baseline ids starting with a prefix (kind:prefix). Read by scripts/trace/todo.mjs to build shared/analysis/todo-<agent>.md.",
+	"agents": {
+		"appsec": ["sec.result", "inv.unenforced:sec."],
+		"code-reviewer": [
+			"op.home-not-reached",
+			"op.divergent-writes",
+			"store.foreign-writer",
+			"status.undeclared-transition",
+			"layer.against"
+		],
+		"documenter": [
+			"status.unknown-state",
+			"status.unseen-transition",
+			"op.actor-extra",
+			"op.no-entry-point"
+		],
+		"qa-lead": ["op.actor-missing", "op.no-entry-point", "inv.unenforced"]
+	}
+}

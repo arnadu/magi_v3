@@ -265,7 +265,7 @@ export function renderIndex(meta, counts, findings, previousRan) {
 		"- [writes.md](writes.md): every database write, its owner and the status changes it can make",
 		"- [security.md](security.md): CodeQL's security results, by security invariant",
 		"- [invariants.md](invariants.md): every invariant and what enforces it",
-		"- [components.html](components.html): the component map, from the imports in the code",
+		"- [components.html](components.html): the component map, from the imports in the code; `layer.against` findings list the imports against the declared layering",
 		"",
 	].join("\n");
 }

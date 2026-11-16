@@ -1,0 +1,65 @@
+---
+name: trace-scan
+description: The trace of the MAGI repository against its baseline catalog — what it reports, how to read a finding, how to record what you decided, and (code reviewer) how its scheduled job is set up.
+---
+
+# Trace scan
+
+## What it is
+
+A scheduled job runs the repository's own `npm run trace` on the latest `main`: it scans the
+code and joins what it finds to the baseline catalog (`docs/product/`,
+`docs/architecture/components.md`, ADR-0036). It publishes to `$SHARED_DIR/analysis/`:
+
+| File | Question it answers |
+|---|---|
+| `index.md` | The commit and time of the scan, headline numbers, findings by kind, what is new |
+| `operations.md` | Each operation's entry points, what each reaches, how they differ |
+| `writes.md` | Every database write, the component that owns its collection, the status changes it can make |
+| `security.md` | CodeQL's standard security queries, filed under the security invariants |
+| `invariants.md` | Every invariant and what enforces it |
+| `components.html` | The component map |
+| `todo.json` | Every finding, with a stable `key` |
+| `todo-<agent>.md` | Your share of the findings, the open ones; it is also the "Scan to-do" region of your mental map |
+
+How each part is computed, and where it can be wrong: `docs/practices/traceability.md` in the
+repository ("The trace"). Read that section once before you rely on a finding.
+
+## How to use a finding
+
+1. **It is evidence, not a verdict.** Open the `file:line` it cites in your clone, at the
+   scanned commit, and confirm what it says. Reach can be incomplete where the report lists
+   unresolved calls; a security result can be a false positive.
+2. **Quote the row you used.** A report that relies on the scan cites the finding's `key` and the
+   report row, as with any evidence (`working-agreements`).
+3. **Record what you decided**, so it leaves your open list:
+   ```bash
+   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> finding "<your finding id and one line>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> dismissed "<why it is not a defect>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> deferred "<what it waits for>"
+   ```
+   A finding whose text changes gets a new key and comes back.
+4. **When the code and the catalog disagree**, decide which is wrong: a finding against the code,
+   or a question for the user about the catalog. Never treat the catalog as automatically right.
+
+For one question without waiting for a scan, your clone answers directly (TypeScript language
+service, seconds): `npm run trace -- def <name>`, `refs <file:line>`, `callers <file:line> --depth 2`.
+
+## Setting up the job (code reviewer, once)
+
+The job runs as you, so you create its schedule (a schedule file must belong to its author):
+
+```bash
+bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" \
+  --label trace-scan \
+  --cron "30 2,8,14,20 * * *" \
+  --script "$SHARED_DIR/skills/_team/trace-scan/scripts/run-trace.sh" \
+  --args "$SHARED_DIR $WORKDIR" \
+  --agent "$AGENT_ID" \
+  --notify-subject "Trace scan finished"
+```
+
+It runs half an hour before each code review. The first run installs dependencies and CodeQL
+(several minutes); later runs take about five minutes. To run it once now, use `submit-job.sh`
+with the same `--script` and `--args`. If a run fails, the job's log is in
+`$SHARED_DIR/logs/bg-<jobId>.log`; report the failure to the user rather than working around it.

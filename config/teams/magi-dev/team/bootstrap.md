@@ -144,3 +144,23 @@ report the mapping to the user.
 | qa-weekly | qa-lead | `0 7 * * 4` | Weekly journey review | Review the next one or two journeys in your rotation with the journey checklist (qa-journeys), and write scenarios for those without a test. If onboarding (QA-01) isn't finished, continue it instead. |
 | qa-monthly | qa-lead | `0 10 3 * *` | Monthly QA duties | Fill the test-layers checklist, review where the last 30 days' bugs were found, and do one usability review (ux-review). |
 | docs-monthly | documenter | `0 10 4 * *` | Monthly documentation coverage | Fill the documentation coverage checklist (doc-consistency, "Coverage"). |
+
+## Addendum 2026-11-16 — the scan
+
+Apply only this section if the earlier ones were already applied. The reviewers now get a
+"Scan to-do" region in their mental map, filled from `shared/analysis/` by a scheduled trace of
+the repository against its baseline catalog (skill `trace-scan`).
+
+**Tasks.** AddTask, passing the `id` shown; if an id is taken, use the next free one and report
+the mapping to the user.
+
+| id | objective | assignee | title |
+|---|---|---|---|
+| CR-T2 | CODE | code-reviewer | Set up the trace-scan job (skill trace-scan, "Setting up the job"), run it once now with submit-job.sh, and send the user the first scan's headline numbers from shared/analysis/index.md |
+| SEC-T2 | SEC | appsec | Once the first scan is published: read "The trace" in docs/practices/traceability.md, then work through your Scan to-do (confirm, report, dispose) |
+| CR-T3 | CODE | code-reviewer | Once the first scan is published: read "The trace" in docs/practices/traceability.md, then work through your Scan to-do (confirm, report, dispose) |
+| DC-T2 | DOCS | documenter | Once the first scan is published: read "The trace" in docs/practices/traceability.md, then work through your Scan to-do (confirm, report, dispose) |
+| QA-T2 | QA | qa-lead | Once the first scan is published: read "The trace" in docs/practices/traceability.md, then work through your Scan to-do (confirm, report, dispose) |
+
+Then PostMessage code-reviewer: "CR-T2 is assigned to you: set up and run the trace-scan job
+now." No schedule to create: the code reviewer creates the scan's own schedule as part of CR-T2.

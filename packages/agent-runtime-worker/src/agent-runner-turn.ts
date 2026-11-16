@@ -26,6 +26,7 @@ import type { LlmCallEvent, LlmCallMeter } from "./llm-meter.js";
 import { type InnerLoopConfig, runInnerLoop } from "./loop.js";
 import { createMailboxTools } from "./mailbox.js";
 import { createMentalMapTools, initMentalMap } from "./mental-map.js";
+import { syncFileRegions } from "./mental-map-regions.js";
 import { resolveModel } from "./models.js";
 import { createObjectivesTools } from "./objectives/tools.js";
 import {
@@ -143,6 +144,13 @@ export async function prepareTurn(
 		state.mentalMapHtml,
 	);
 	if (synced !== null) setMentalMap(synced);
+	const filled = syncFileRegions(
+		agent,
+		missionId,
+		sharedDir,
+		state.mentalMapHtml,
+	);
+	if (filled !== null) setMentalMap(filled);
 
 	return {
 		state,

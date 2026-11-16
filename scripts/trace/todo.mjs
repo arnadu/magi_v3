@@ -1,0 +1,182 @@
+#!/usr/bin/env node
+// Per-reviewer to-do lists from the trace's findings, and their dispositions.
+//
+//   node scripts/trace/todo.mjs build <analysis dir> <coverage.json> [--max-bytes N]
+//     writes todo-<agent>.md into <analysis dir> for every agent in coverage.json,
+//     from <analysis dir>/todo.json and <analysis dir>/dispositions.jsonl
+//
+//   node scripts/trace/todo.mjs dispose <analysis dir> <key> <finding|dismissed|deferred> <reason…>
+//     records what the calling agent ($AGENT_ID) decided about one finding;
+//     the finding leaves that agent's open list until its key changes
+//
+// coverage.json: { "agents": { "<agent id>": ["<kind>", "<kind>:<about prefix>", …] } }
+// selects, per agent, the findings it owns: by kind, optionally narrowed to
+// the baseline ids starting with a prefix ("inv.unenforced:sec.").
+
+import {
+	appendFileSync,
+	existsSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export const DISPOSITIONS = ["finding", "dismissed", "deferred"];
+
+function readDispositions(dir) {
+	const path = join(dir, "dispositions.jsonl");
+	if (!existsSync(path)) return [];
+	return readFileSync(path, "utf8")
+		.split("\n")
+		.filter((l) => l.trim())
+		.flatMap((l) => {
+			try {
+				return [JSON.parse(l)];
+			} catch {
+				return [];
+			}
+		});
+}
+
+/** Does finding `f` belong to an agent whose coverage is `selectors`? */
+export function covers(selectors, f) {
+	return selectors.some((s) => {
+		const [kind, prefix] = s.split(":");
+		return f.kind === kind && (!prefix || f.about.startsWith(prefix));
+	});
+}
+
+const line = (f) => {
+	const text = f.text.length > 220 ? `${f.text.slice(0, 217)}…` : f.text;
+	const where = f.where?.length
+		? ` (${f.where.slice(0, 2).join(", ")}${f.where.length > 2 ? ", …" : ""})`
+		: "";
+	return `- \`${f.key}\` ${f.kind} · ${f.about}: ${text}${where}`;
+};
+
+/** One agent's to-do, at most `maxBytes` long. */
+export function renderTodo(agent, meta, findings, disposed, maxBytes) {
+	const open = findings.filter((f) => !disposed.has(f.key));
+	const fresh = open.filter((f) => f.new);
+	const rest = open.filter((f) => !f.new);
+	const byKind = {};
+	for (const f of open) byKind[f.kind] = (byKind[f.kind] ?? 0) + 1;
+	const head = [
+		`# Scan to-do: ${agent}`,
+		"",
+		`Scan of commit ${meta.commit} at ${meta.time}. Full reports in shared/analysis/: index.md, operations.md, writes.md, security.md, invariants.md, components.html.`,
+		`Open: ${open.length} (new since the last scan: ${fresh.length}); handled: ${findings.length - open.length}.`,
+		`By kind: ${
+			Object.entries(byKind)
+				.map(([k, n]) => `${k} ${n}`)
+				.join(", ") || "none"
+		}.`,
+		"",
+		"A finding is evidence to check, not a verdict. Verify it in the code, then record what you decided:",
+		'node <your clone>/scripts/trace/todo.mjs dispose "$SHARED_DIR/analysis" <key> finding|dismissed|deferred "<reason>"',
+		"",
+	];
+	const tail = [];
+	const sections = [
+		["## New since the last scan", fresh],
+		["## Other open findings", rest],
+	];
+	let text = head.join("\n");
+	for (const [title, list] of sections) {
+		if (list.length === 0) continue;
+		text += `\n${title}\n\n`;
+		let shown = 0;
+		for (const f of list) {
+			const l = `${line(f)}\n`;
+			if (Buffer.byteLength(text + l) > maxBytes - 200) break;
+			text += l;
+			shown++;
+		}
+		if (shown < list.length)
+			tail.push(
+				`${list.length - shown} more under "${title.slice(3)}": see todo.json.`,
+			);
+	}
+	if (tail.length) text += `\n${tail.join(" ")}\n`;
+	return text;
+}
+
+export function build(dir, coveragePath, maxBytes = 6000) {
+	const { meta, findings } = JSON.parse(
+		readFileSync(join(dir, "todo.json"), "utf8"),
+	);
+	const coverage = JSON.parse(readFileSync(coveragePath, "utf8")).agents;
+	const dispositions = readDispositions(dir);
+	const written = [];
+	for (const [agent, selectors] of Object.entries(coverage)) {
+		const mine = findings.filter((f) => covers(selectors, f));
+		const disposed = new Set(
+			dispositions.filter((d) => d.agent === agent).map((d) => d.key),
+		);
+		writeFileSync(
+			join(dir, `todo-${agent}.md`),
+			renderTodo(agent, meta, mine, disposed, maxBytes),
+		);
+		written.push(
+			`${agent}: ${mine.length - [...disposed].filter((k) => mine.some((f) => f.key === k)).length} open`,
+		);
+	}
+	return written;
+}
+
+export function dispose(dir, key, disposition, reason, agent) {
+	if (!DISPOSITIONS.includes(disposition))
+		throw new Error(`disposition must be one of ${DISPOSITIONS.join(", ")}`);
+	if (!/^[0-9a-f]{12}$/.test(key))
+		throw new Error(`"${key}" is not a finding key`);
+	if (!agent) throw new Error("AGENT_ID is not set");
+	if (!reason.trim()) throw new Error("give a reason");
+	const { findings } = JSON.parse(readFileSync(join(dir, "todo.json"), "utf8"));
+	if (!findings.some((f) => f.key === key))
+		throw new Error(`no finding ${key} in the last scan`);
+	const record = {
+		key,
+		agent,
+		disposition,
+		reason: reason.slice(0, 500),
+		at: new Date().toISOString(),
+	};
+	appendFileSync(
+		join(dir, "dispositions.jsonl"),
+		`${JSON.stringify(record)}\n`,
+	);
+	return record;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+	const [cmd, ...a] = process.argv.slice(2);
+	try {
+		if (cmd === "build") {
+			const i = a.indexOf("--max-bytes");
+			console.log(
+				build(a[0], a[1], i >= 0 ? Number(a[i + 1]) : undefined).join("\n"),
+			);
+		} else if (cmd === "dispose") {
+			const [dir, key, disposition, ...reason] = a;
+			console.log(
+				JSON.stringify(
+					dispose(
+						dir,
+						key,
+						disposition,
+						reason.join(" "),
+						process.env.AGENT_ID,
+					),
+				),
+			);
+		} else {
+			throw new Error(
+				"usage: todo.mjs build <dir> <coverage.json> | dispose <dir> <key> <disposition> <reason>",
+			);
+		}
+	} catch (e) {
+		console.error(`[todo] ${e.message}`);
+		process.exit(2);
+	}
+}
