@@ -1,3 +1,4 @@
+import { operation } from "./async-handler.js";
 /**
  * Everything the control plane serves *before* `requireAuth`: the response
  * headers every reply carries, the cockpit's static bundle, the public
@@ -39,14 +40,14 @@ export function mountPublicSurface(app: express.Express): string {
 	// Mongo outage must not make Fly restart the control plane in a loop; the
 	// resource monitor and the copilot report that failure through their own
 	// paths.
-	app.get("/healthz", (_req, res) => {
+	app.get("/healthz", operation("infrastructure"), (_req, res) => {
 		res.setHeader("Cache-Control", "no-store");
 		res.json({ ok: true, uptimeSeconds: Math.floor(process.uptime()) });
 	});
 
 	// Firebase client config — served from env vars so dev/prod use different projects.
 	// These are public client-side identifiers, not secrets.
-	app.get("/firebase-config.js", (_req, res) => {
+	app.get("/firebase-config.js", operation("infrastructure"), (_req, res) => {
 		res.setHeader("Content-Type", "application/javascript");
 		res.setHeader("Cache-Control", "no-store");
 		res.send(
@@ -63,6 +64,7 @@ export function mountPublicSurface(app: express.Express): string {
 	// log-only.
 	app.post(
 		"/api/csp-report",
+		operation("infrastructure"),
 		express.json({
 			limit: "16kb",
 			type: [

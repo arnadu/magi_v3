@@ -25,6 +25,7 @@ function createDraftTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "CreateDraft",
+		operation: "mission.create-draft",
 		description:
 			"Create a draft mission: stored config only, no machine, no spend, no confirmation. " +
 			"Start blank (add agents with EditDraftConfig) or from a template's agents, " +
@@ -72,6 +73,7 @@ function readMissionConfigTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "ReadMissionConfig",
+		operation: "mission.config",
 		description:
 			"Read a mission's stored config — draft, running or suspended: mission settings, " +
 			"every agent (prompt, initial mental map, supervisor, limits, disabled tools and " +
@@ -104,10 +106,42 @@ function readMissionConfigTool(deps: CopilotToolDeps): MagiTool {
 	};
 }
 
+const EDIT_DRAFT_PARAMS = Type.Object({
+	missionId: Type.String({ description: "Draft mission ID" }),
+	mission: Type.Optional(
+		Type.Record(Type.String(), Type.Unknown(), {
+			description:
+				"Partial mission-level fields to merge in (name, model, visionModel, " +
+				"timezone, maxCostUsd, memoryMb, cpus)",
+		}),
+	),
+	agents: Type.Optional(
+		Type.Array(Type.Record(Type.String(), Type.Unknown()), {
+			description:
+				"Agents to add or update (upserted by id) — id, name, role, supervisor, " +
+				"systemPrompt, initialMentalMap, limits, disabledSkills, disabledTools",
+		}),
+	),
+	removeAgentIds: Type.Optional(
+		Type.Array(Type.String(), {
+			description: "Agent ids to remove from the roster entirely",
+		}),
+	),
+	missionCopilotLimits: Type.Optional(
+		Type.Record(Type.String(), Type.Unknown()),
+	),
+	teamFiles: Type.Optional(
+		Type.Array(Type.Object({ path: Type.String(), content: Type.String() }), {
+			description: "Replaces the draft's team files wholesale",
+		}),
+	),
+});
+
 function editDraftConfigTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "EditDraftConfig",
+		operation: "mission.edit-draft",
 		description:
 			"Directly edit a draft mission's config — mission-level fields and agents (add, " +
 			"update, or remove). Unlike save_session_config on a live mission, this needs no " +
@@ -120,37 +154,7 @@ function editDraftConfigTool(deps: CopilotToolDeps): MagiTool {
 			"boundaries, output contract with paths, how a turn goes and when to stop, who to " +
 			"message, {{mentalMap}} at the end; and no agent ever asks for an API key — data " +
 			"providers are reached through the platform.",
-		parameters: Type.Object({
-			missionId: Type.String({ description: "Draft mission ID" }),
-			mission: Type.Optional(
-				Type.Record(Type.String(), Type.Unknown(), {
-					description:
-						"Partial mission-level fields to merge in (name, model, visionModel, " +
-						"timezone, maxCostUsd, memoryMb, cpus)",
-				}),
-			),
-			agents: Type.Optional(
-				Type.Array(Type.Record(Type.String(), Type.Unknown()), {
-					description:
-						"Agents to add or update (upserted by id) — id, name, role, supervisor, " +
-						"systemPrompt, initialMentalMap, limits, disabledSkills, disabledTools",
-				}),
-			),
-			removeAgentIds: Type.Optional(
-				Type.Array(Type.String(), {
-					description: "Agent ids to remove from the roster entirely",
-				}),
-			),
-			missionCopilotLimits: Type.Optional(
-				Type.Record(Type.String(), Type.Unknown()),
-			),
-			teamFiles: Type.Optional(
-				Type.Array(
-					Type.Object({ path: Type.String(), content: Type.String() }),
-					{ description: "Replaces the draft's team files wholesale" },
-				),
-			),
-		}),
+		parameters: EDIT_DRAFT_PARAMS,
 		async execute(_id, args) {
 			const missionId = args.missionId as string;
 			const mission = await storedCollection(db, "missions").findOne({

@@ -16,7 +16,11 @@
  * and copilot waker.
  */
 
-import { type MissionDoc, storedCollection } from "@magi/agent-config";
+import {
+	entryTrigger,
+	type MissionDoc,
+	storedCollection,
+} from "@magi/agent-config";
 import {
 	type AlertStateStore,
 	createMongoAgentStatsRepository,
@@ -413,6 +417,6 @@ export function startResourceMonitor(
 	};
 
 	void tick();
-	const task = schedule("*/5 * * * *", tick);
+	const task = schedule("*/5 * * * *", entryTrigger("oversight.alert", tick));
 	return () => task.stop();
 }

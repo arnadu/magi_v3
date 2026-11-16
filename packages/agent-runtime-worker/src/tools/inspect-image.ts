@@ -76,6 +76,7 @@ export function createInspectImageTool(
 ): MagiTool {
 	return {
 		name: "InspectImage",
+		operation: "web.read",
 		description:
 			"Analyse an image file with the vision LLM and return a detailed description. " +
 			"Supply the absolute path returned by FetchUrl, e.g. " +

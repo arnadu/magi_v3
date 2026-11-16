@@ -88,6 +88,7 @@ export function createAgentSessionsRoutes(
 		{
 			method: "GET",
 			path: /^\/agents\/([^/]+)\/mental-map$/,
+			operation: "agent.history",
 			async handler({ res }, agentId) {
 				const doc = await storedCollection(
 					deps.db,
@@ -112,6 +113,7 @@ export function createAgentSessionsRoutes(
 		{
 			method: "GET",
 			path: /^\/agents\/([^/]+)\/sessions$/,
+			operation: "agent.history",
 			async handler({ res }, agentId) {
 				const sessions = await sessionSummaries(deps, agentId);
 				sessions.sort((a, b) => a.turnNumber - b.turnNumber);
@@ -122,6 +124,7 @@ export function createAgentSessionsRoutes(
 		{
 			method: "GET",
 			path: /^\/agents\/([^/]+)\/sessions\/(\d+)$/,
+			operation: "agent.history",
 			async handler({ res }, agentId, turnParam) {
 				const turnNumber = Number.parseInt(turnParam, 10);
 
@@ -142,6 +145,7 @@ export function createAgentSessionsRoutes(
 		{
 			method: "GET",
 			path: /^\/agents\/([^/]+)\/usage$/,
+			operation: "mission.spend",
 			async handler({ res }, agentId) {
 				const docs = await storedCollection(deps.db, "llmCallLog")
 					.find(

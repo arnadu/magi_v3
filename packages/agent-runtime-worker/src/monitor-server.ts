@@ -5,9 +5,9 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { extname, relative } from "node:path";
-import { type MailboxMessage, storedCollection } from "@magi/agent-config";
+import { entryTrigger, storedCollection } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
-import type { Db, WithId } from "mongodb";
+import type { Db } from "mongodb";
 import type { StatsCollector } from "./agent-stats.js";
 import {
 	createDescribeImage,
@@ -18,6 +18,7 @@ import {
 import { missionLifetimeCostUsd } from "./limits.js";
 import { MAILBOX_MAX_BODY_BYTES, type MailboxRepository } from "./mailbox.js";
 import type { MissionConfigRepository } from "./mission-config.js";
+import { followMissionInserts } from "./monitor-feeds.js";
 import {
 	containOrReply,
 	editHeadConflict,
@@ -442,15 +443,18 @@ export class MonitorServer {
 		});
 		console.log(`[monitor] Dashboard: http://localhost:${port}`);
 
-		this.heartbeatTimer = setInterval(() => {
-			for (const client of this.clients) {
-				try {
-					client.write("event: ping\ndata: {}\n\n");
-				} catch {
-					this.clients.delete(client);
+		this.heartbeatTimer = setInterval(
+			entryTrigger("feed", () => {
+				for (const client of this.clients) {
+					try {
+						client.write("event: ping\ndata: {}\n\n");
+					} catch {
+						this.clients.delete(client);
+					}
 				}
-			}
-		}, SSE_HEARTBEAT_MS);
+			}),
+			SSE_HEARTBEAT_MS,
+		);
 	}
 
 	stop(): void {
@@ -963,110 +967,46 @@ export class MonitorServer {
 		return agentId;
 	}
 
-	private async watchMailbox(): Promise<void> {
-		let backoffMs = 1_000;
-		while (true) {
-			try {
-				await new Promise<void>((resolve, reject) => {
-					const stream = storedCollection(this.db, "mailbox").watch<
-						WithId<MailboxMessage>
-					>(
-						[
-							{
-								$match: {
-									operationType: "insert",
-									"fullDocument.missionId": this.missionId,
-								},
-							},
-						],
-						{ fullDocument: "updateLookup" },
-					);
-					stream.on("change", (change) => {
-						if (change.operationType !== "insert") return;
-						const doc = change.fullDocument;
-						this.push("mailbox-msg", {
-							id: String(doc._id),
-							from: doc.from,
-							to: doc.to,
-							subject: doc.subject,
-							bodyPreview:
-								doc.body.length > 400 ? `${doc.body.slice(0, 400)}…` : doc.body,
-							body: doc.body,
-							timestamp: (doc.timestamp ?? new Date()).toISOString(),
-						});
-						this.statusPayload()
-							.then((payload) => this.push("status", payload))
-							.catch((e) =>
-								console.error(
-									`[monitor] statusPayload failed after mailbox insert: ${(e as Error).message}`,
-								),
-							);
-					});
-					stream.on("error", (e) => {
-						stream.close().catch(() => {});
-						reject(e);
-					});
-					this.server.once("close", () => {
-						stream.close().catch(() => {});
-						resolve();
-					});
+	private watchMailbox(): Promise<void> {
+		return followMissionInserts({
+			col: storedCollection(this.db, "mailbox"),
+			missionId: this.missionId,
+			label: "Mailbox",
+			onClose: (stop) => this.server.once("close", stop),
+			onInsert: (doc) => {
+				this.push("mailbox-msg", {
+					id: String(doc._id),
+					from: doc.from,
+					to: doc.to,
+					subject: doc.subject,
+					bodyPreview:
+						doc.body.length > 400 ? `${doc.body.slice(0, 400)}…` : doc.body,
+					body: doc.body,
+					timestamp: (doc.timestamp ?? new Date()).toISOString(),
 				});
-				return;
-			} catch (e) {
-				console.error(
-					`[monitor] Mailbox watch error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
-				);
-				await new Promise<void>((res) => setTimeout(res, backoffMs));
-				backoffMs = Math.min(backoffMs * 2, 30_000);
-			}
-		}
+				this.statusPayload()
+					.then((payload) => this.push("status", payload))
+					.catch((e) =>
+						console.error(
+							`[monitor] statusPayload failed after mailbox insert: ${(e as Error).message}`,
+						),
+					);
+			},
+		});
 	}
 
-	private async watchConversations(): Promise<void> {
-		let backoffMs = 1_000;
-		while (true) {
-			try {
-				await new Promise<void>((resolve, reject) => {
-					const stream = storedCollection(
-						this.db,
-						"conversationMessages",
-					).watch(
-						[
-							{
-								$match: {
-									operationType: "insert",
-									"fullDocument.missionId": this.missionId,
-								},
-							},
-						],
-						{ fullDocument: "updateLookup" },
-					);
-					stream.on("change", (change) => {
-						if (change.operationType !== "insert") return;
-						const doc = change.fullDocument;
-						this.push("conversation-update", {
-							agentId: doc.agentId,
-							message: doc,
-						});
-					});
-					stream.on("error", (e) => {
-						stream.close().catch(() => {});
-						reject(e);
-					});
-					this.server.once("close", () => {
-						stream.close().catch(() => {});
-						resolve();
-					});
-				});
-				return;
-			} catch (e) {
-				console.error(
-					`[monitor] Conversation watch error: ${(e as Error).message}. Retrying in ${backoffMs}ms`,
-				);
-				await new Promise<void>((res) => setTimeout(res, backoffMs));
-				backoffMs = Math.min(backoffMs * 2, 30_000);
-			}
-		}
+	private watchConversations(): Promise<void> {
+		return followMissionInserts({
+			col: storedCollection(this.db, "conversationMessages"),
+			missionId: this.missionId,
+			label: "Conversation",
+			onClose: (stop) => this.server.once("close", stop),
+			onInsert: (doc) =>
+				this.push("conversation-update", {
+					agentId: doc.agentId,
+					message: doc,
+				}),
+		});
 	}
 
 	// ── Helpers ───────────────────────────────────────────────────────────────

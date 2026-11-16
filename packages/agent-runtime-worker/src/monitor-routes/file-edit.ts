@@ -17,6 +17,7 @@ export function createFileEditRoutes(deps: FileEditDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/files/shared/edit",
+			operation: "file.write",
 			async handler({ req, res }) {
 				await deps.handleFileEdit(req, res);
 			},

@@ -130,5 +130,6 @@ Entry points that serve no product operation declare one of these classes instea
 | `infrastructure` | Health check, the browser's client configuration, CSP violation reports | Serve the platform's hosting and the browser, not an actor's request |
 | `developer` | Run controls of the local dashboard (start, step, stop) | Local development only; the cockpit does not use them |
 | `sub-agent` | Tools inside a sub-agent that an agent's tool call starts | They act within the calling operation, on the agent's behalf and within its budget |
+| `feed` | Keepalives and change feeds that push updates to the open event streams of a route | Part of the route they serve, which declares the operation |
 | `housekeeping` | Evicting idle sessions, pruning old records | Keep the platform's own resources bounded; no actor asks for them |
 | `retired` | An entry point kept only to refuse a request the product no longer supports | It must answer with a refusal rather than disappear |

@@ -94,6 +94,7 @@ export function createResourceUpgradeTools(
 
 	const requestResourceUpgrade: MagiTool = {
 		name: "RequestResourceUpgrade",
+		operation: "machine.upgrade",
 		description:
 			"Request a temporary upgrade to a bigger machine (CPU kind, CPUs, RAM) for a genuine compute burst. " +
 			"A new upgrade REPLACES the mission's machine: every running agent turn is aborted and every background job re-runs from scratch " +
@@ -152,6 +153,7 @@ export function createResourceUpgradeTools(
 
 	const endResourceUpgrade: MagiTool = {
 		name: "EndResourceUpgrade",
+		operation: "machine.upgrade",
 		description:
 			"Return the mission to its default machine now, e.g. because the job that needed the bigger one is finished, to stop paying for it. " +
 			"This restarts the machine like an upgrade does (running turns abort, background jobs re-run from scratch), so only call it when nothing is mid-task. " +

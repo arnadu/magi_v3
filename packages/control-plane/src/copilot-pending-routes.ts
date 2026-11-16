@@ -6,7 +6,7 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
-import { asyncHandler, asyncRoutes } from "./async-handler.js";
+import { asyncHandler, asyncRoutes, operation } from "./async-handler.js";
 import { reportActionOutcome } from "./copilot-action-outcome.js";
 import type { CopilotEventBus } from "./copilot-runtime.js";
 import type { PendingAction, PendingActionsStore } from "./pending-actions.js";
@@ -31,58 +31,62 @@ export function createPendingActionRoutes(
 
 	// ── POST /api/copilot/confirm ─────────────────────────────────────────────
 
-	routes.post("/confirm", async (req: Request, res: Response) => {
-		const { pendingActionId } = req.body as { pendingActionId?: string };
-		if (!pendingActionId) {
-			res.status(400).json({ error: "pendingActionId is required" });
-			return;
-		}
+	routes.post(
+		"/confirm",
+		"copilot.confirm",
+		async (req: Request, res: Response) => {
+			const { pendingActionId } = req.body as { pendingActionId?: string };
+			if (!pendingActionId) {
+				res.status(400).json({ error: "pendingActionId is required" });
+				return;
+			}
 
-		const action = await pending.get(pendingActionId);
-		if (!action) {
-			res
-				.status(404)
-				.json({ error: "Pending action not found or already executed" });
-			return;
-		}
+			const action = await pending.get(pendingActionId);
+			if (!action) {
+				res
+					.status(404)
+					.json({ error: "Pending action not found or already executed" });
+				return;
+			}
 
-		if (!req.isAdmin && action.userId !== req.userId) {
-			res.status(403).json({ error: "Forbidden" });
-			return;
-		}
+			if (!req.isAdmin && action.userId !== req.userId) {
+				res.status(403).json({ error: "Forbidden" });
+				return;
+			}
 
-		// Atomic claim: a second click (or a second tab) finds nothing to take
-		// and gets a 409 instead of a second execution.
-		const taken = await pending.take(pendingActionId);
-		if (!taken) {
-			res.status(409).json({ error: "Pending action already executed" });
-			return;
-		}
+			// Atomic claim: a second click (or a second tab) finds nothing to take
+			// and gets a 409 instead of a second execution.
+			const taken = await pending.take(pendingActionId);
+			if (!taken) {
+				res.status(409).json({ error: "Pending action already executed" });
+				return;
+			}
 
-		// The action executes as the user whose copilot proposed it — an admin
-		// confirming another user's card acts on that user's missions, not
-		// their own (EA3). The result goes to that user's cockpit, where the
-		// card is.
-		try {
-			const result = await executeAction(db, taken, taken.userId);
-			eventBus.push(taken.userId, "copilot-action-result", {
-				id: pendingActionId,
-				ok: true,
-				result,
-			});
-			await reportActionOutcome(db, taken, { kind: "executed", result });
-			res.json({ ok: true, result });
-		} catch (e) {
-			const msg = (e as Error).message;
-			eventBus.push(taken.userId, "copilot-action-result", {
-				id: pendingActionId,
-				ok: false,
-				error: msg,
-			});
-			await reportActionOutcome(db, taken, { kind: "failed", error: msg });
-			res.status(500).json({ error: msg });
-		}
-	});
+			// The action executes as the user whose copilot proposed it — an admin
+			// confirming another user's card acts on that user's missions, not
+			// their own (EA3). The result goes to that user's cockpit, where the
+			// card is.
+			try {
+				const result = await executeAction(db, taken, taken.userId);
+				eventBus.push(taken.userId, "copilot-action-result", {
+					id: pendingActionId,
+					ok: true,
+					result,
+				});
+				await reportActionOutcome(db, taken, { kind: "executed", result });
+				res.json({ ok: true, result });
+			} catch (e) {
+				const msg = (e as Error).message;
+				eventBus.push(taken.userId, "copilot-action-result", {
+					id: pendingActionId,
+					ok: false,
+					error: msg,
+				});
+				await reportActionOutcome(db, taken, { kind: "failed", error: msg });
+				res.status(500).json({ error: msg });
+			}
+		},
+	);
 
 	// ── GET /api/copilot/pending ──────────────────────────────────────────────
 	// Cards still awaiting confirmation — replayed by the cockpit on connect,
@@ -90,6 +94,7 @@ export function createPendingActionRoutes(
 
 	router.get(
 		"/pending",
+		operation("copilot.confirm"),
 		asyncHandler(async (req: Request, res: Response) => {
 			const actions = await pending.listForUser(req.userId);
 			res.json({
@@ -108,6 +113,7 @@ export function createPendingActionRoutes(
 
 	router.post(
 		"/dismiss",
+		operation("copilot.dismiss"),
 		asyncHandler(async (req: Request, res: Response) => {
 			const { pendingActionId } = req.body as { pendingActionId?: string };
 			if (!pendingActionId) {

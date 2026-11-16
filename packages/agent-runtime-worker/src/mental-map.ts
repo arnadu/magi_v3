@@ -236,6 +236,7 @@ export function createMentalMapTools(
 
 	const update: MagiTool = {
 		name: "mental_map_update",
+		operation: "agent.remember",
 		description:
 			"Update the content of an EXISTING element in your mental map, addressed " +
 			"by its id. mode='replace' overwrites the element's content; mode='append' " +
@@ -271,6 +272,7 @@ export function createMentalMapTools(
 
 	const add: MagiTool = {
 		name: "mental_map_add",
+		operation: "agent.remember",
 		description:
 			"Add a NEW id'd element to your mental map as the last child of an existing " +
 			"parent element. Use this to grow your notes within the map's structure. " +
@@ -309,6 +311,7 @@ export function createMentalMapTools(
 
 	const remove: MagiTool = {
 		name: "mental_map_remove",
+		operation: "agent.remember",
 		description:
 			"Delete an element from your mental map, addressed by its id. Removes the " +
 			"whole element (not just its content). Only id'd elements can be removed. " +

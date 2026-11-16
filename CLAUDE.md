@@ -98,6 +98,14 @@ These apply continuously, not at sprint close. Each has a full write-up in
   different; a shared mechanism does not make two operations one. A fix or a guard belongs to
   the operation, for every caller — find them before changing it, under incident pressure too.
 
+**Traceability** ([detail](docs/practices/traceability.md), [ADR-0036](docs/adr/0036-product-and-architecture-baselines.md))
+- Every new entry point (route, tool, copilot action, Tool API name, timer, change stream)
+  declares the operation it serves from [docs/product/operations.md](docs/product/operations.md),
+  or an entry class; `npm run trace:entry-points` lists them, and a test fails on a missing tag.
+- Tag by intent; when no operation fits, propose a catalog change for the product owner
+  rather than stretching one. A change of intent changes the catalog before the code.
+- A test that walks a journey or enforces an invariant names its id.
+
 **Security** ([detail](docs/security/CLAUDE.md)) — pause at each of these:
 - New external HTTP call: user-influenced URL? `ssrf.ts`/`safe-http.ts` used? Secrets sent? Response parsed safely?
 - New subprocess or `sudo` rule: minimum env? Exact command path? Agent-influenced arguments?

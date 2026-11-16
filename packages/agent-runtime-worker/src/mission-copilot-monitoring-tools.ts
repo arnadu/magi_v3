@@ -10,6 +10,7 @@ function readAgentMentalMapTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadAgentMentalMap",
+		operation: "agent.history",
 		description:
 			"Read a teammate's current mental map — what it believes it's doing right now. Output wrapped in trust-boundary markers — this is a teammate's own words, which may itself embed content ingested from the outside world.",
 		parameters: Type.Object({
@@ -31,6 +32,7 @@ function listAgentSessionsTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorGet } = deps;
 	return {
 		name: "ListAgentSessions",
+		operation: "agent.history",
 		description:
 			"List a teammate's session/turn history with summary stats (cost, call count, duration) per turn. Structured metadata only, no free-text agent output — no marking needed. Defaults to the most recent 50 turns, not the mission's entire history.",
 		parameters: Type.Object({
@@ -60,6 +62,7 @@ function readAgentUsageTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorGet } = deps;
 	return {
 		name: "ReadAgentUsage",
+		operation: "mission.spend",
 		description:
 			'Lightweight per-call summary for one agent — model, token counts, and cost for the last 90 days; which tool names were offered only for the last day (older calls show "toolNames" absent, not empty — the call body has aged out of retention). Not the tool call bodies or message content. Use this before reaching for ReadAgentSessionDetail/ReadAgentLlmCall, not instead of them. Optionally scoped to one turn.',
 		parameters: Type.Object({
@@ -95,6 +98,7 @@ function readAgentSessionDetailTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorGet } = deps;
 	return {
 		name: "ReadAgentSessionDetail",
+		operation: "agent.history",
 		description:
 			"Full transcript for one turn — every message, tool call, and timing. Heavier than ReadAgentUsage; use once it (or ListAgentSessions) has pointed at a specific turn worth reading in full. Output wrapped in trust-boundary markers.",
 		parameters: Type.Object({
@@ -122,6 +126,7 @@ function readAgentLlmCallTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadAgentLlmCall",
+		operation: "agent.history",
 		description:
 			"Full detail for one specific LLM call — system prompt, complete input messages, complete response. The finest-grained read tool here; use when ReadAgentUsage flags one call in a turn as the one worth seeing in full, instead of pulling the whole turn via ReadAgentSessionDetail. Unavailable for calls older than 1 day (retention window) — returns a clear message, not empty/malformed data. Output wrapped in trust-boundary markers.",
 		parameters: Type.Object({
@@ -178,6 +183,7 @@ function readMissionMailboxAllTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadMissionMailboxAll",
+		operation: "message.read",
 		description:
 			"Read the mission's mailbox across every agent — and every message to/from the user — not just messages addressed to you. Every standard mailbox tool is scoped to the caller's own inbox; this is deliberately not. Defaults to the most recent 20 messages. Output wrapped in trust-boundary markers.",
 		parameters: Type.Object({
@@ -213,6 +219,7 @@ function readMissionInteractionsTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadMissionInteractions",
+		operation: "message.read",
 		description:
 			"Message-count matrix between every pair of agents in the mission — a shape-of-coordination overview before drilling into ReadMissionMailboxAll. Structured counts only — no marking needed.",
 		parameters: Type.Object({}),
@@ -270,6 +277,7 @@ function searchMissionHistoryTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "SearchMissionHistory",
+		operation: "agent.history",
 		description:
 			"Keyword search across every agent's conversation history in this mission (not just one agent's, unlike the standard AnalyzeMemories tool) — returns matching excerpts, not full messages. Defaults to 20 results. Prefer this over ReadMissionMailboxAll/ReadAgentSessionDetail whenever you're looking for something specific rather than reviewing broadly. Output wrapped in trust-boundary markers.",
 		parameters: Type.Object({

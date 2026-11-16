@@ -18,6 +18,7 @@ export function createPauseResumeRoutes(deps: PauseResumeDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/pause-agent",
+			operation: "agent.pause",
 			async handler({ req, res }) {
 				const agentId = await deps.readAgentId(req, res);
 				if (agentId === null) return;
@@ -32,6 +33,7 @@ export function createPauseResumeRoutes(deps: PauseResumeDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/resume-agent",
+			operation: "agent.resume",
 			async handler({ req, res }) {
 				const agentId = await deps.readAgentId(req, res);
 				if (agentId === null) return;

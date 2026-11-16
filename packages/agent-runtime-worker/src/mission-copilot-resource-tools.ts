@@ -9,6 +9,7 @@ function readMissionCostSeriesTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadMissionCostSeries",
+		operation: "mission.spend",
 		description:
 			"Per-turn cost series for the mission, optionally filtered to one agent — the same data backing the cockpit's Trace chart. Also the spend side of the alignment-review cost-vs-progress cross-check. Defaults to the most recent 100 turns across the mission, not its entire lifetime.",
 		parameters: Type.Object({
@@ -49,6 +50,7 @@ function readMissionLifetimeStatsTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadMissionLifetimeStats",
+		operation: "mission.spend",
 		description: "Lifetime cost/call/turn totals per agent.",
 		parameters: Type.Object({}),
 		async execute() {
@@ -75,6 +77,7 @@ function setMissionSpendCapTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorPost, auditPost } = deps;
 	return {
 		name: "SetMissionSpendCap",
+		operation: "mission.set-spend-cap",
 		description:
 			"Set the mission-wide hard spending cap — pauses the entire mission if exceeded (distinct from an objective's own budgetUsd, which is soft/informational and set with EditObjectiveTree). Raise only when justified by the mission's objectives. Posts an audit message to the user's mailbox — this is self-referential: raising it also funds the copilot's own further calls.",
 		parameters: Type.Object({

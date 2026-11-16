@@ -90,5 +90,5 @@ export function registerMissionLaunchRoutes(
 	routes: AsyncRoutes,
 	deps: MissionRouteDeps,
 ): void {
-	routes.post("/:id/launch", postLaunch(deps));
+	routes.post("/:id/launch", "mission.launch", postLaunch(deps));
 }

@@ -22,6 +22,7 @@ function readMissionConfigTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadMissionConfig",
+		operation: "mission.config",
 		description:
 			"Read this mission's current team configuration — mission name/model, every agent's role/system prompt/skills — and its attached team files. Use before proposing any change.",
 		parameters: Type.Object({}),
@@ -129,6 +130,7 @@ function saveMissionConfigTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId, missionConfigWriter, auditPost } = deps;
 	return {
 		name: "SaveMissionConfig",
+		operation: "mission.change-config",
 		description:
 			"Patch this mission's structured team configuration. Validated before saving — an invalid resulting config is rejected with the specific error and nothing is written. Most changes (system prompt, agent roster, models, skills) take effect the next time the mission is resumed, not immediately. The exception: changes to an agent's `limits` or `mission.maxCostUsd` apply on the very next limit check, no resume needed. Read current config with ReadMissionConfig first, then pass only what needs to change.\n\n" +
 			"`mission`, if passed, is shallow-merged into the current mission object (omit a field to keep its current value; `id` is always preserved as this mission's own id regardless of what's passed). `agents`, if passed, is upserted by `id` into the current roster — an existing id is replaced, a new id is appended; to remove an agent, set its `active: false` rather than omitting it from the array (omitting an existing agent from this list does NOT delete it). `missionCopilotLimits`, if passed, replaces the current value wholesale. Omit any of the three top-level fields entirely to leave it untouched.\n\n" +

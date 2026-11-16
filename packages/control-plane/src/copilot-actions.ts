@@ -14,6 +14,7 @@
  * validated payload under a server-computed label.
  */
 
+import type { baseline } from "@magi/agent-config";
 import cronParser from "cron-parser";
 import { z } from "zod";
 import {
@@ -143,6 +144,25 @@ export const ACTION_DOCS: Record<ActionType, string> = {
 		"{ missionId, capUsd } — the mission's absolute spending cap in USD (below the operator's ceiling)",
 	[GITHUB_ISSUE_ACTION]:
 		"{ op: 'create', title, body, labels? } | { op: 'comment', number, body } | { op: 'close', number, comment? } — the CreateIssue/CloseIssue/AddIssueComment tools build this for you",
+};
+
+type OperationId = baseline.OperationId;
+
+/** The operation each action serves (ADR-0036); every action names one. */
+export const ACTION_OPERATIONS: Record<ActionType, OperationId> = {
+	launch_mission: "mission.create",
+	launch_draft: "mission.launch",
+	suspend_mission: "mission.suspend",
+	resume_mission: "mission.resume",
+	fix_mission_volume: "mission.repair",
+	write_mission_file: "file.write",
+	save_session_config: "mission.change-config",
+	cancel_schedule: "schedule.cancel",
+	create_schedule: "schedule.create",
+	pause_agent: "agent.pause",
+	resume_agent: "agent.resume",
+	set_mission_budget: "mission.set-spend-cap",
+	[GITHUB_ISSUE_ACTION]: "issue.track",
 };
 
 export function describeActions(): string {

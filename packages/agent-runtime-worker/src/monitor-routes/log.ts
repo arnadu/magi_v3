@@ -12,6 +12,7 @@ export function createLogRoutes(deps: LogRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/log",
+			operation: "mission.log",
 			handler({ rawUrl, res }) {
 				const logPath = join(deps.workdir, "daemon.log");
 				const maxLines = Math.min(

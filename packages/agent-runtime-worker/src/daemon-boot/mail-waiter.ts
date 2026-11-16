@@ -1,4 +1,5 @@
 import type { MailboxMessage } from "@magi/agent-config";
+import { entryTrigger } from "@magi/agent-config";
 import type { Collection } from "mongodb";
 
 /**
@@ -54,12 +55,15 @@ export function createMailWaiter(
 				resolve();
 			};
 			signal.addEventListener("abort", onAbort, { once: true });
-			stream.once("change", () => {
-				clearTimeout(pollTimer);
-				signal.removeEventListener("abort", onAbort);
-				stream.close().catch(() => {});
-				resolve();
-			});
+			stream.once(
+				"change",
+				entryTrigger("agent.dispatch", () => {
+					clearTimeout(pollTimer);
+					signal.removeEventListener("abort", onAbort);
+					stream.close().catch(() => {});
+					resolve();
+				}),
+			);
 			stream.once("error", (err) => {
 				clearTimeout(pollTimer);
 				signal.removeEventListener("abort", onAbort);

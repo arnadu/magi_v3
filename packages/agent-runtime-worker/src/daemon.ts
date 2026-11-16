@@ -41,7 +41,11 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { storedCollection, type TeamConfig } from "@magi/agent-config";
+import {
+	entryTrigger,
+	storedCollection,
+	type TeamConfig,
+} from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
 import { removeIfExists } from "./remove-if-exists.js";
 
@@ -218,7 +222,7 @@ function startJobRunner(
 	// Run any pending jobs immediately on startup (handles crash recovery).
 	tick();
 
-	const handle = setInterval(tick, 60_000);
+	const handle = setInterval(entryTrigger("job.run", tick), 60_000);
 	return () => clearInterval(handle);
 }
 

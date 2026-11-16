@@ -29,6 +29,7 @@ function listMissionsTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "ListMissions",
+		operation: "mission.status",
 		description: "List all missions with their current status.",
 		parameters: Type.Object({}),
 		async execute() {
@@ -118,6 +119,7 @@ function getMissionStatusTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "GetMissionStatus",
+		operation: "mission.status",
 		description:
 			"Get full status of a mission including live Fly machine state.",
 		parameters: Type.Object({
@@ -160,6 +162,7 @@ function readMissionMailboxTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "ReadMissionMailbox",
+		operation: "message.read",
 		description: "Read recent messages from any mission's mailbox.",
 		parameters: Type.Object({
 			missionId: Type.String({ description: "Mission ID" }),
@@ -195,6 +198,7 @@ function readMissionLogTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "ReadMissionLog",
+		operation: "mission.log",
 		description:
 			"Read the daemon log for a running mission from its monitor server.",
 		parameters: Type.Object({
@@ -232,6 +236,7 @@ function readMissionFileTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "ReadMissionFile",
+		operation: "file.read",
 		description:
 			"Browse or read files in a mission's sharedDir or an agent's workdir.",
 		parameters: Type.Object({
@@ -281,6 +286,7 @@ function listScheduleTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "ListSchedule",
+		operation: "schedule.list",
 		description: "List scheduled messages, optionally filtered by mission.",
 		parameters: Type.Object({
 			missionId: Type.Optional(
@@ -329,6 +335,7 @@ function listScheduleTool(deps: CopilotToolDeps): MagiTool {
 function listTemplatesTool(_deps: CopilotToolDeps): MagiTool {
 	return {
 		name: "ListTemplates",
+		operation: "platform.catalog",
 		description:
 			"List available mission team config templates. Templates are immutable " +
 			"(disk-authored, ADR-0021) — there is no version history to browse.",
@@ -344,6 +351,7 @@ function listTemplatesTool(_deps: CopilotToolDeps): MagiTool {
 function getTemplateTool(_deps: CopilotToolDeps): MagiTool {
 	return {
 		name: "GetTemplate",
+		operation: "platform.catalog",
 		description:
 			"Get the full config and associated files for a team config template.",
 		parameters: Type.Object({
@@ -376,6 +384,7 @@ function readMentalMapTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "ReadMentalMap",
+		operation: "agent.history",
 		description:
 			"Read an agent's current mental map (its durable HTML memory) — the map save_session_config's mentalMaps would replace. Read it before proposing an edit, and send back the whole map with only your section changed.",
 		parameters: Type.Object({

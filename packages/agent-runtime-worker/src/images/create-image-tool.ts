@@ -333,6 +333,7 @@ export function createCreateImageTool(opts: CreateImageToolOptions): MagiTool {
 	const turn = { jobs: 0, usd: 0 };
 	return {
 		name: "CreateImage",
+		operation: "image.create",
 		description: description(),
 		parameters: PARAMS,
 		maxRuntimeMs: () => CREATE_IMAGE_MAX_RUNTIME_MS,

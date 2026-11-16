@@ -12,6 +12,7 @@ import {
 function listIssuesTool(_deps: CopilotToolDeps): MagiTool {
 	return {
 		name: "ListIssues",
+		operation: "issue.track",
 		description:
 			"List or search open GitHub Issues in the MAGI repository. " +
 			"Use to check known bugs and deferred items before raising a new issue. " +
@@ -80,6 +81,7 @@ export async function proposeGithubIssue(
 function createIssueTool(deps: CopilotToolDeps): MagiTool {
 	return {
 		name: "CreateIssue",
+		operation: "issue.track",
 		description:
 			"Propose a new GitHub Issue in the MAGI repository for operator confirmation. " +
 			"Use to record bugs or deferred improvements discovered during a session. " +
@@ -107,6 +109,7 @@ function createIssueTool(deps: CopilotToolDeps): MagiTool {
 function closeIssueTool(deps: CopilotToolDeps): MagiTool {
 	return {
 		name: "CloseIssue",
+		operation: "issue.track",
 		description:
 			"Propose closing a GitHub Issue (optionally with a closing comment) for operator confirmation.",
 		parameters: Type.Object({
@@ -124,6 +127,7 @@ function closeIssueTool(deps: CopilotToolDeps): MagiTool {
 function addIssueCommentTool(deps: CopilotToolDeps): MagiTool {
 	return {
 		name: "AddIssueComment",
+		operation: "issue.track",
 		description:
 			"Propose a comment on an existing GitHub Issue for operator confirmation.",
 		parameters: Type.Object({

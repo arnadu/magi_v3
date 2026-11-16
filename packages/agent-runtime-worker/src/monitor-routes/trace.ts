@@ -17,6 +17,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/mission-stats",
+			operation: "mission.spend",
 			async handler({ res }) {
 				const docs = await storedCollection(deps.db, "missionStats")
 					.find(
@@ -39,6 +40,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/cost-series",
+			operation: "mission.spend",
 			// Per-agent per-turn stats, for the cost-over-time chart and its
 			// turn/file/anomaly markers — only finalized turns have a settled
 			// cost and duration.
@@ -70,6 +72,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/interactions",
+			operation: "message.read",
 			// Message counts between agent pairs.
 			async handler({ res }) {
 				const docs = await storedCollection(deps.db, "mailbox")
@@ -99,6 +102,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/message-events",
+			operation: "message.read",
 			// Per-message timestamps, for the message/scheduled-wakeup markers on
 			// the timeline. Scheduler-delivered messages are written with
 			// `createdAt` instead of `timestamp` — see scheduler.ts — so both are

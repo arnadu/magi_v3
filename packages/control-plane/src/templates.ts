@@ -1,3 +1,4 @@
+import { operation } from "./async-handler.js";
 /**
  * Mission templates — immutable, disk-only (ADR-0021).
  *
@@ -175,11 +176,11 @@ export function listTemplates(): Array<{ id: string; name: string }> {
 export function createTemplatesRouter(): Router {
 	const router = Router();
 
-	router.get("/", (_req, res) => {
+	router.get("/", operation("platform.catalog"), (_req, res) => {
 		res.json(listTemplates());
 	});
 
-	router.get("/:id", (req, res) => {
+	router.get("/:id", operation("platform.catalog"), (req, res) => {
 		const template = getTemplate(req.params.id);
 		if (!template) {
 			res.status(404).json({ error: "Not found" });

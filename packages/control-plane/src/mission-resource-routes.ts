@@ -37,39 +37,45 @@ export function createMissionResourceRoutes(db: Db): Router {
 	const routes = asyncRoutes(router);
 	const missions = storedCollection(db, "missions");
 
-	routes.get("/:id/machine-runtime", async (req: Request, res: Response) => {
-		const missionId = req.params.id;
-		const mission = await missions.findOne({
-			missionId,
-			...userFilter(req),
-		});
-		if (!mission) {
-			res.status(404).json({ error: "Not found" });
-			return;
-		}
+	routes.get(
+		"/:id/machine-runtime",
+		"mission.spend",
+		async (req: Request, res: Response) => {
+			const missionId = req.params.id;
+			const mission = await missions.findOne({
+				missionId,
+				...userFilter(req),
+			});
+			if (!mission) {
+				res.status(404).json({ error: "Not found" });
+				return;
+			}
 
-		const now = new Date();
-		const byHorizon: Record<
-			string,
-			Array<{
-				shape: ReturnType<typeof runtimeByConfig>[number]["shape"];
-				upgraded: boolean;
-				ms: number;
-				/** Display-only estimate from the static price table (never enforcement — see ADR-0031 Decision 1). */
-				estimatedCostUsd: number;
-			}>
-		> = {};
-		for (const [key, since] of Object.entries(horizons(now))) {
-			const segments = await listSegments(db, missionId, since);
-			byHorizon[key] = runtimeByConfig(segments, { since, now }).map((row) => ({
-				...row,
-				estimatedCostUsd:
-					(row.ms / 3_600_000) * estimateCostPerHourUsd(row.shape),
-			}));
-		}
+			const now = new Date();
+			const byHorizon: Record<
+				string,
+				Array<{
+					shape: ReturnType<typeof runtimeByConfig>[number]["shape"];
+					upgraded: boolean;
+					ms: number;
+					/** Display-only estimate from the static price table (never enforcement — see ADR-0031 Decision 1). */
+					estimatedCostUsd: number;
+				}>
+			> = {};
+			for (const [key, since] of Object.entries(horizons(now))) {
+				const segments = await listSegments(db, missionId, since);
+				byHorizon[key] = runtimeByConfig(segments, { since, now }).map(
+					(row) => ({
+						...row,
+						estimatedCostUsd:
+							(row.ms / 3_600_000) * estimateCostPerHourUsd(row.shape),
+					}),
+				);
+			}
 
-		res.json({ byHorizon });
-	});
+			res.json({ byHorizon });
+		},
+	);
 
 	return router;
 }

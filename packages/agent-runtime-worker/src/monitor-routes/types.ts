@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { EntryTag } from "@magi/agent-config";
 
 /**
  * Everything a route handler needs about the current request. `url` is the
@@ -25,5 +26,7 @@ export interface RequestCtx {
 export interface RouteEntry {
 	method: "GET" | "POST" | "DELETE";
 	path: string | string[] | RegExp;
+	/** The operation this route serves, or its entry class (ADR-0036). */
+	operation: EntryTag;
 	handler: (ctx: RequestCtx, ...params: string[]) => Promise<void> | void;
 }

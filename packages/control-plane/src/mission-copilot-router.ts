@@ -25,7 +25,7 @@
 import type { Router as ExpressRouter, Request, Response } from "express";
 import { Router } from "express";
 import type { Db } from "mongodb";
-import { asyncRoutes } from "./async-handler.js";
+import { asyncRoutes, operation } from "./async-handler.js";
 import { safeEqual } from "./auth.js";
 import {
 	type ProposeForOwnerDeps,
@@ -107,16 +107,18 @@ export function createMissionCopilotRouter(
 	// requesting, with an unchanged shape.
 	router.post(
 		"/resources/upgrade",
+		operation("machine.upgrade"),
 		resourceRoute((missionId, body) => requestUpgrade(db, missionId, body)),
 	);
 	router.post(
 		"/resources/revert",
+		operation("machine.upgrade"),
 		resourceRoute((missionId) =>
 			revertUpgrade(db, missionId, { reason: "requested" }),
 		),
 	);
 
-	routes.get("/github/issues", async (req, res) => {
+	routes.get("/github/issues", "issue.track", async (req, res) => {
 		const query = req.query.query as string | undefined;
 		try {
 			const issues = await searchOpenIssues({ q: query });
@@ -139,7 +141,7 @@ export function createMissionCopilotRouter(
 	// teammates' output, which may quote untrusted sources). The forced
 	// `mission-copilot` label and the provenance block are applied at
 	// execution, server-side.
-	routes.post("/github/issue", async (req, res) => {
+	routes.post("/github/issue", "issue.track", async (req, res) => {
 		const missionId = req.body?.missionId as string;
 		try {
 			const result = await proposeIssueForMissionOwner(deps, missionId, {

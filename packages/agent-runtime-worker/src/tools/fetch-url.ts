@@ -483,6 +483,7 @@ export function createFetchUrlTool(
 	const { meter } = opts;
 	return {
 		name: "FetchUrl",
+		operation: "web.read",
 		description:
 			"Fetch an http:// or https:// URL and save its content as an artifact. " +
 			"Supports HTML (article text + images), PDF (text + per-page visuals), " +

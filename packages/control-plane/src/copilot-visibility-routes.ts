@@ -7,7 +7,7 @@
 
 import type { Request, Response, Router } from "express";
 import type { Db } from "mongodb";
-import type { asyncRoutes } from "./async-handler.js";
+import { type asyncRoutes, operation } from "./async-handler.js";
 import { COPILOT_WORKDIR, copilotWorkdirFor } from "./copilot-daemon.js";
 import { readCopilotFileNode } from "./copilot-files.js";
 import { registerCopilotLimitsRoutes } from "./copilot-limits-routes.js";
@@ -30,46 +30,68 @@ export function registerCopilotVisibilityRoutes(
 	// exists for "copilot-{userId}", so there's no ownership lookup to do; the
 	// userId is already the whole scope. See transcript-queries.ts.
 
-	routes.get("/turns", async (req: Request, res: Response) => {
-		const missionId = `copilot-${req.userId}`;
-		res.json(await queryTurns(db, missionId, COPILOT_AGENT_ID));
-	});
+	routes.get(
+		"/turns",
+		"copilot.history",
+		async (req: Request, res: Response) => {
+			const missionId = `copilot-${req.userId}`;
+			res.json(await queryTurns(db, missionId, COPILOT_AGENT_ID));
+		},
+	);
 
-	routes.get("/transcript", async (req: Request, res: Response) => {
-		const missionId = `copilot-${req.userId}`;
-		const turn = Number(req.query.turn);
-		if (Number.isNaN(turn)) {
-			res.status(400).json({ error: "turn query param required" });
-			return;
-		}
-		res.json(await queryTranscript(db, missionId, COPILOT_AGENT_ID, turn));
-	});
+	routes.get(
+		"/transcript",
+		"copilot.history",
+		async (req: Request, res: Response) => {
+			const missionId = `copilot-${req.userId}`;
+			const turn = Number(req.query.turn);
+			if (Number.isNaN(turn)) {
+				res.status(400).json({ error: "turn query param required" });
+				return;
+			}
+			res.json(await queryTranscript(db, missionId, COPILOT_AGENT_ID, turn));
+		},
+	);
 
-	routes.get("/llm-calls", async (req: Request, res: Response) => {
-		const missionId = `copilot-${req.userId}`;
-		const turn = Number(req.query.turn);
-		if (Number.isNaN(turn)) {
-			res.status(400).json({ error: "turn query param required" });
-			return;
-		}
-		res.json(await queryLlmCalls(db, missionId, COPILOT_AGENT_ID, turn));
-	});
+	routes.get(
+		"/llm-calls",
+		"copilot.history",
+		async (req: Request, res: Response) => {
+			const missionId = `copilot-${req.userId}`;
+			const turn = Number(req.query.turn);
+			if (Number.isNaN(turn)) {
+				res.status(400).json({ error: "turn query param required" });
+				return;
+			}
+			res.json(await queryLlmCalls(db, missionId, COPILOT_AGENT_ID, turn));
+		},
+	);
 
-	routes.get("/llm-call", async (req: Request, res: Response) => {
-		const missionId = `copilot-${req.userId}`;
-		const turn = Number(req.query.turn);
-		const i = Number(req.query.i);
-		if (Number.isNaN(turn) || Number.isNaN(i)) {
-			res.status(400).json({ error: "turn and i query params required" });
-			return;
-		}
-		const detail = await queryLlmCall(db, missionId, COPILOT_AGENT_ID, turn, i);
-		if (!detail) {
-			res.status(404).json({ error: "call not found" });
-			return;
-		}
-		res.json(detail);
-	});
+	routes.get(
+		"/llm-call",
+		"copilot.history",
+		async (req: Request, res: Response) => {
+			const missionId = `copilot-${req.userId}`;
+			const turn = Number(req.query.turn);
+			const i = Number(req.query.i);
+			if (Number.isNaN(turn) || Number.isNaN(i)) {
+				res.status(400).json({ error: "turn and i query params required" });
+				return;
+			}
+			const detail = await queryLlmCall(
+				db,
+				missionId,
+				COPILOT_AGENT_ID,
+				turn,
+				i,
+			);
+			if (!detail) {
+				res.status(404).json({ error: "call not found" });
+				return;
+			}
+			res.json(detail);
+		},
+	);
 
 	// ── GET /api/copilot/files ──────────────────────────────────────────────
 	// Direct filesystem read, not a proxy — the copilot runs in-process in the
@@ -79,18 +101,22 @@ export function registerCopilotVisibilityRoutes(
 	// X-TENANT3: a user sees only their own copilot's subdirectory. Admins
 	// see the whole workdir, which also keeps files written before per-user
 	// subdirectories existed reachable to someone.
-	router.get("/files", (req: Request, res: Response) => {
-		const userPath = (req.query.path as string | undefined) ?? "";
-		const root = req.isAdmin
-			? COPILOT_WORKDIR
-			: copilotWorkdirFor(`copilot-${req.userId}`);
-		const node = readCopilotFileNode(root, userPath);
-		if (node === null) {
-			res.status(400).json({ error: "Path outside root" });
-			return;
-		}
-		res.json(node);
-	});
+	router.get(
+		"/files",
+		operation("copilot.history"),
+		(req: Request, res: Response) => {
+			const userPath = (req.query.path as string | undefined) ?? "";
+			const root = req.isAdmin
+				? COPILOT_WORKDIR
+				: copilotWorkdirFor(`copilot-${req.userId}`);
+			const node = readCopilotFileNode(root, userPath);
+			if (node === null) {
+				res.status(400).json({ error: "Path outside root" });
+				return;
+			}
+			res.json(node);
+		},
+	);
 
 	registerCopilotLimitsRoutes(routes, db);
 }

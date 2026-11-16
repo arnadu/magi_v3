@@ -144,6 +144,7 @@ function addTaskTool({
 }: ObjectivesToolDeps): MagiTool {
 	return {
 		name: "AddTask",
+		operation: "task.create",
 		description:
 			"Add a new task to the objectives store. Defaults: assignee = you, status = open, id auto-generated. Prints the new task id.",
 		parameters: Type.Object({
@@ -220,6 +221,7 @@ function updateTaskTool({
 }: ObjectivesToolDeps): MagiTool {
 	return {
 		name: "UpdateTask",
+		operation: "task.update",
 		description:
 			"Update a task in the objectives store. Only the fields you pass are changed (last-write-wins); note is appended to the task's notes. effort is a relative per-turn weight used by cost attribution.",
 		parameters: Type.Object({
@@ -299,6 +301,7 @@ function recordKpiTool({
 }: ObjectivesToolDeps): MagiTool {
 	return {
 		name: "RecordKpi",
+		operation: "kpi.record",
 		description:
 			"Record a value for a KPI you own (the latest value wins on read). A numeric value is stored as a number; otherwise as text (e.g. met/partial/unmet).",
 		parameters: Type.Object({
@@ -349,6 +352,7 @@ function allocateTool({
 }: ObjectivesToolDeps): MagiTool {
 	return {
 		name: "Allocate",
+		operation: "cost.allocate",
 		description:
 			'Explicit cost-allocation timesheet (fallback) — use ONLY when your mental map flags unattributed cost; normally cost is attributed automatically from your UpdateTask calls. Split your unattributed spend across targets by relative weight, e.g. "TASK-1:60,overhead:40". A target is a task id, an objective id, or the literal "overhead".',
 		parameters: Type.Object({

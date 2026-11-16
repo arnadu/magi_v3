@@ -14,7 +14,7 @@
  * after every stream reconnect) for anything the stream missed.
  */
 
-import { storedCollection } from "@magi/agent-config";
+import { entryTrigger, storedCollection } from "@magi/agent-config";
 import type { ChangeStream, Db } from "mongodb";
 
 const COPILOT_MAILBOX_PREFIX = "copilot-";
@@ -127,16 +127,19 @@ export function startCopilotWaker(
 			return;
 		}
 		stream = opened;
-		opened.on("change", (change) => {
-			consecutiveFailures = 0;
-			const userId = userIdFromCopilotMissionId(insertedMissionId(change));
-			if (!userId) return;
-			ensureCopilotRunning(userId).catch((e) =>
-				console.error(
-					`[copilot-waker] Failed to start copilot { userId: "${userId}", error: "${(e as Error).message}" }`,
-				),
-			);
-		});
+		opened.on(
+			"change",
+			entryTrigger("copilot.wake", (change) => {
+				consecutiveFailures = 0;
+				const userId = userIdFromCopilotMissionId(insertedMissionId(change));
+				if (!userId) return;
+				ensureCopilotRunning(userId).catch((e) =>
+					console.error(
+						`[copilot-waker] Failed to start copilot { userId: "${userId}", error: "${(e as Error).message}" }`,
+					),
+				);
+			}),
+		);
 		opened.on("error", (err: Error) => {
 			opened.close().catch(() => {});
 			if (stream === opened) stream = null;
@@ -147,7 +150,7 @@ export function startCopilotWaker(
 	open();
 	void scan();
 	const scanTimer = setInterval(
-		() => void scan(),
+		entryTrigger("copilot.wake", () => void scan()),
 		opts.scanIntervalMs ?? SCAN_INTERVAL_MS,
 	);
 	scanTimer.unref();

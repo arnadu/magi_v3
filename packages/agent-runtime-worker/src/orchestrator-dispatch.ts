@@ -1,3 +1,4 @@
+import { entryTrigger } from "@magi/agent-config";
 /**
  * The concurrent dispatcher behind runOrchestrationLoop: start every agent
  * that has unread mail and is not running, paused, inactive or cooling down
@@ -52,8 +53,11 @@ export class Dispatcher {
 	private retryTimer: NodeJS.Timeout | undefined;
 
 	constructor(private readonly deps: DispatcherDeps) {
-		this.cooldown = createErrorCooldown(deps.config, () =>
-			this.kick("cooldown end", () => this.dispatchReady()),
+		this.cooldown = createErrorCooldown(
+			deps.config,
+			entryTrigger("agent.dispatch", () =>
+				this.kick("cooldown end", () => this.dispatchReady()),
+			),
 		);
 	}
 

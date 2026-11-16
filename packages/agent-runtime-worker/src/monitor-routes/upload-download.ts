@@ -19,6 +19,7 @@ export function createUploadDownloadRoutes(
 		{
 			method: "POST",
 			path: "/upload",
+			operation: "file.write",
 			async handler({ req, res }) {
 				await deps.handleUpload(req, res);
 			},
@@ -26,6 +27,7 @@ export function createUploadDownloadRoutes(
 		{
 			method: "GET",
 			path: "/download",
+			operation: "file.read",
 			handler({ rawUrl, res }) {
 				deps.handleDownload(rawUrl, res);
 			},

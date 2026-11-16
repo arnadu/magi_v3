@@ -17,6 +17,7 @@ export function createDashboardShellRoutes(
 		{
 			method: "GET",
 			path: "/events",
+			operation: "agent.history",
 			async handler({ req, res }) {
 				res.writeHead(200, {
 					"Content-Type": "text/event-stream",
@@ -34,6 +35,7 @@ export function createDashboardShellRoutes(
 		{
 			method: "GET",
 			path: "/team",
+			operation: "mission.status",
 			handler({ res }) {
 				res.writeHead(200, { "Content-Type": "application/json" });
 				res.end(JSON.stringify(deps.agents));
@@ -42,6 +44,7 @@ export function createDashboardShellRoutes(
 		{
 			method: "GET",
 			path: "/status",
+			operation: "mission.status",
 			async handler({ res }) {
 				res.writeHead(200, { "Content-Type": "application/json" });
 				res.end(JSON.stringify(await deps.statusPayload()));

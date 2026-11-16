@@ -10,6 +10,7 @@ function readMissionObjectivesTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { missionId, objectivesRepo } = deps;
 	return {
 		name: "ReadMissionObjectives",
+		operation: "objectives.progress",
 		description:
 			"Read the mission's full objective tree — every objective, owner, status, KPIs with current values, budget vs. spend, and tasks under it. Use to check whether teammates have clear goals and whether actions still track them.",
 		parameters: Type.Object({}),
@@ -28,6 +29,7 @@ function editObjectiveTreeTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { missionId, objectivesRepo, auditPost } = deps;
 	return {
 		name: "EditObjectiveTree",
+		operation: "objectives.edit",
 		description:
 			"Replace the mission's objective tree (definitions + KPI definitions — not task/KPI status, which agents update themselves via AddTask/UpdateTask/RecordKpi). This is a full replace, not a merge: call ReadMissionObjectives first, edit the objectives array in memory, and pass the complete updated list back. This is the only way to change objective/KPI definitions — agents cannot write them directly.",
 		parameters: Type.Object({

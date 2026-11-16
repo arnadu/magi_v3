@@ -12,6 +12,7 @@ function pauseAgentTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorPost, auditPost } = deps;
 	return {
 		name: "PauseAgent",
+		operation: "agent.pause",
 		description:
 			"Halt a teammate at its next dispatch boundary. Rejects targeting yourself. Posts an audit message to the user's mailbox.",
 		parameters: Type.Object({
@@ -37,6 +38,7 @@ function resumeAgentTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorPost, auditPost } = deps;
 	return {
 		name: "ResumeAgent",
+		operation: "agent.resume",
 		description:
 			"Lift a previous pause. Posts an audit message to the user's mailbox.",
 		parameters: Type.Object({
@@ -59,6 +61,7 @@ function cancelBackgroundJobTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { cancelBackgroundJob, auditPost } = deps;
 	return {
 		name: "CancelBackgroundJob",
+		operation: "job.control",
 		description:
 			"Kill a running background job (a run-background-skill job, distinct from the scheduled messages above). Posts an audit message to the user's mailbox.",
 		parameters: Type.Object({
@@ -85,6 +88,7 @@ function restartBackgroundJobTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { sharedDir, auditPost } = deps;
 	return {
 		name: "RestartBackgroundJob",
+		operation: "job.control",
 		description:
 			"Re-submit a failed or cancelled job's original spec as a new job. Runs under the copilot's own identity in the sense that this call, not the original submitter's turn, is what resubmits it — fine for jobs that write to sharedDir (the common case), but note the distinction if a job was scoped to a specific agent's own workdir. Posts an audit message to the user's mailbox.",
 		parameters: Type.Object({

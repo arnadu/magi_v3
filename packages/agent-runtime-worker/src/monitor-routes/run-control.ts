@@ -27,6 +27,7 @@ export function createRunControlRoutes(deps: RunControlDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/step",
+			operation: "developer",
 			handler({ res }) {
 				const stepResolve = deps.getStepResolve();
 				if (stepResolve) {
@@ -44,6 +45,7 @@ export function createRunControlRoutes(deps: RunControlDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/toggle-step",
+			operation: "developer",
 			handler({ res }) {
 				const stepEnabled = !deps.getStepEnabled();
 				deps.setStepEnabled(stepEnabled);
@@ -61,6 +63,7 @@ export function createRunControlRoutes(deps: RunControlDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/start",
+			operation: "developer",
 			handler({ res }) {
 				if (!deps.getStarted()) {
 					deps.setStarted(true);

@@ -130,10 +130,26 @@ export function registerMissionLimitsRoutes(
 	routes: AsyncRoutes,
 	deps: MissionRouteDeps,
 ): void {
-	routes.get("/:id/limits", getLimits(deps));
-	routes.get("/:id/objectives", getObjectives(deps));
-	routes.patch("/:id/limits/mission", patchLimitsMission(deps));
-	routes.patch("/:id/limits/ceiling", patchLimitsCeiling(deps));
-	routes.patch("/:id/limits/upgrade-reset", patchLimitsUpgradeReset(deps));
-	routes.patch("/:id/limits/agent/:agentId", patchLimitsAgent(deps));
+	routes.get("/:id/limits", "mission.spend", getLimits(deps));
+	routes.get("/:id/objectives", "objectives.progress", getObjectives(deps));
+	routes.patch(
+		"/:id/limits/mission",
+		"mission.set-spend-cap",
+		patchLimitsMission(deps),
+	);
+	routes.patch(
+		"/:id/limits/ceiling",
+		"mission.set-ceiling",
+		patchLimitsCeiling(deps),
+	);
+	routes.patch(
+		"/:id/limits/upgrade-reset",
+		"machine.reset-upgrade-allowance",
+		patchLimitsUpgradeReset(deps),
+	);
+	routes.patch(
+		"/:id/limits/agent/:agentId",
+		"mission.change-config",
+		patchLimitsAgent(deps),
+	);
 }

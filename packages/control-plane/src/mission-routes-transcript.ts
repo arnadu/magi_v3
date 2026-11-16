@@ -112,8 +112,8 @@ export function registerMissionTranscriptRoutes(
 	routes: AsyncRoutes,
 	deps: MissionRouteDeps,
 ): void {
-	routes.get("/:id/turns", getTurns(deps));
-	routes.get("/:id/transcript", getTranscript(deps));
-	routes.get("/:id/llm-calls", getLlmCalls(deps));
-	routes.get("/:id/llm-call", getLlmCall(deps));
+	routes.get("/:id/turns", "agent.history", getTurns(deps));
+	routes.get("/:id/transcript", "agent.history", getTranscript(deps));
+	routes.get("/:id/llm-calls", "agent.history", getLlmCalls(deps));
+	routes.get("/:id/llm-call", "agent.history", getLlmCall(deps));
 }

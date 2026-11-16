@@ -21,6 +21,7 @@ export function createAnalyzeMemoriesTool(
 ): MagiTool {
 	return {
 		name: "AnalyzeMemories",
+		operation: "agent.history",
 		description:
 			"Search your full conversation history (including pruned or compacted turns) " +
 			"for tool outputs and messages that match a keyword query. " +

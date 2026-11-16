@@ -8,6 +8,7 @@
  * `asyncRoutes(router)` instead, which cannot forget the wrapper.
  */
 
+import type { EntryTag } from "@magi/agent-config";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 type Handler = (req: Request, res: Response, next: NextFunction) => unknown;
@@ -20,16 +21,29 @@ export function asyncHandler(fn: Handler): RequestHandler {
 	};
 }
 
-type Method = "get" | "post" | "put" | "patch" | "delete" | "use";
+type Verb = "get" | "post" | "put" | "patch" | "delete";
+type Method = Verb | "use";
 export type AsyncRoutes = Record<
-	Method,
-	(path: string, ...handlers: RequestHandler[]) => void
->;
+	Verb,
+	(path: string, operation: EntryTag, ...handlers: RequestHandler[]) => void
+> & { use: (path: string, ...handlers: RequestHandler[]) => void };
+
+/**
+ * Declares the operation a route registered directly on a router serves,
+ * as its first handler: `router.get("/x", operation("mission.status"), h)`.
+ * It does nothing at run time; the entry-point scan reads the tag. Routes
+ * registered through `asyncRoutes` pass the tag as an argument instead.
+ */
+export function operation(tag: EntryTag): RequestHandler {
+	void tag;
+	return (_req, _res, next) => next();
+}
 
 /**
  * A router's registration methods with the last handler wrapped in
  * `asyncHandler`. Middlewares before the handler (e.g. `express.json()`) are
- * passed through untouched.
+ * passed through untouched. Every route names the operation it serves
+ * (ADR-0036); `use` mounts middleware and names none.
  */
 export function asyncRoutes(
 	router: {
@@ -43,12 +57,16 @@ export function asyncRoutes(
 			if (!last) throw new Error(`asyncRoutes.${method}(${path}): no handler`);
 			router[method](path, ...handlers.slice(0, -1), asyncHandler(last));
 		};
+	const route =
+		(verb: Verb) =>
+		(path: string, _operation: EntryTag, ...handlers: RequestHandler[]) =>
+			wrap(verb)(path, ...handlers);
 	return {
-		get: wrap("get"),
-		post: wrap("post"),
-		put: wrap("put"),
-		patch: wrap("patch"),
-		delete: wrap("delete"),
+		get: route("get"),
+		post: route("post"),
+		put: route("put"),
+		patch: route("patch"),
+		delete: route("delete"),
 		use: wrap("use"),
 	};
 }

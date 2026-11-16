@@ -1,3 +1,4 @@
+import { operation } from "./async-handler.js";
 /**
  * GET /api/catalog — what the cockpit's config editors may offer as toggles:
  * the platform skills actually shipped (the `packages/skills/` directory,
@@ -55,7 +56,7 @@ export function readCatalog(repoRoot: string): Catalog {
 export function createCatalogRouter(repoRoot: string): Router {
 	const catalog = readCatalog(repoRoot);
 	const router = express.Router();
-	router.get("/", (_req, res) => {
+	router.get("/", operation("platform.catalog"), (_req, res) => {
 		res.json(catalog);
 	});
 	return router;

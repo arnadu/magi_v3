@@ -7,6 +7,7 @@ function listGithubIssuesTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { missionId } = deps;
 	return {
 		name: "ListGithubIssues",
+		operation: "issue.track",
 		description:
 			"Search open issues in the MAGI_V3 repo — call before filing, to avoid duplicates.",
 		parameters: Type.Object({
@@ -31,6 +32,7 @@ function reportGithubIssueTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { missionId } = deps;
 	return {
 		name: "ReportGithubIssue",
+		operation: "issue.track",
 		description:
 			"Propose a new GitHub issue for a genuine platform bug (not a mission-content problem). Nothing is filed by this call: the proposal appears as a confirmation card in the operator's cockpit and is created only when they confirm — the issue tracker is public. Auto-labeled mission-copilot and tagged with this mission's id server-side.",
 		parameters: Type.Object({

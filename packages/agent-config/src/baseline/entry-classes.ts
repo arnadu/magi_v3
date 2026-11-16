@@ -27,6 +27,11 @@ export const ENTRY_CLASSES = defineEntryClasses([
 		why: "They act within the calling operation, on the agent's behalf and within its budget",
 	},
 	{
+		id: "feed",
+		what: "Keepalives and change feeds that push updates to the open event streams of a route",
+		why: "Part of the route they serve, which declares the operation",
+	},
+	{
 		id: "housekeeping",
 		what: "Evicting idle sessions, pruning old records",
 		why: "Keep the platform's own resources bounded; no actor asks for them",

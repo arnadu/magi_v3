@@ -209,6 +209,7 @@ export function createMailboxTools(
 
 	const postMessage: MagiTool = {
 		name: "PostMessage",
+		operation: "message.send",
 		description:
 			"Send a message to one or more agents or to the operator. " +
 			'Use "user" as a recipient id to send a message to the operator. ' +
@@ -283,6 +284,7 @@ export function createMailboxTools(
 
 	const listTeam: MagiTool = {
 		name: "ListTeam",
+		operation: "mission.status",
 		description:
 			"List all agents in the team with their id, name, role, and supervisor.",
 		parameters: Type.Object({}),
@@ -299,6 +301,7 @@ export function createMailboxTools(
 
 	const listMessages: MagiTool = {
 		name: "ListMessages",
+		operation: "message.read",
 		description:
 			"List message headers in your inbox. Use for reviewing older messages; " +
 			"new messages for this run are already shown in the conversation.",
@@ -334,6 +337,7 @@ export function createMailboxTools(
 
 	const readMessage: MagiTool = {
 		name: "ReadMessage",
+		operation: "message.read",
 		description: "Read the full body of a message by id.",
 		parameters: Type.Object({
 			id: Type.String({ description: "Message id from ListMessages" }),

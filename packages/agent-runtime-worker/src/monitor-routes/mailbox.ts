@@ -16,6 +16,7 @@ export function createMailboxRoutes(deps: MailboxRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/mailbox",
+			operation: "message.read",
 			async handler({ res }) {
 				// The newest 500, delivered oldest-first: sorting ascending and
 				// limiting returned the *oldest* 500 and hid every recent message
@@ -47,6 +48,7 @@ export function createMailboxRoutes(deps: MailboxRoutesDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/send-message",
+			operation: "message.send",
 			async handler({ req, res }) {
 				const body = await readBody(req);
 				let parsed: unknown;

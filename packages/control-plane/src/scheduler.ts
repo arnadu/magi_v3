@@ -13,6 +13,7 @@
  */
 
 import {
+	entryTrigger,
 	type MissionDoc,
 	type ScheduledMessageDoc,
 	storedCollection,
@@ -354,11 +355,20 @@ export function startScheduler(db: Db): () => void {
 	// Prune any stale log entries immediately on startup (catches missed days).
 	prune();
 
-	const deliveryTask = schedule("* * * * *", tick);
-	const upgradeSweepTask = schedule("* * * * *", () => void sweepUpgrades());
+	const deliveryTask = schedule(
+		"* * * * *",
+		entryTrigger("schedule.deliver", tick),
+	);
+	const upgradeSweepTask = schedule(
+		"* * * * *",
+		entryTrigger("machine.upgrade", () => void sweepUpgrades()),
+	);
 	// Every 30 minutes — was daily at 02:00 UTC, too slow to catch fast
 	// accumulation on a busy mission before it reached the Atlas quota.
-	const pruneTask = schedule("*/30 * * * *", prune);
+	const pruneTask = schedule(
+		"*/30 * * * *",
+		entryTrigger("housekeeping", prune),
+	);
 
 	return () => {
 		deliveryTask.stop();

@@ -30,9 +30,9 @@
 		}
 	},
 	"packages/agent-runtime-worker/src/monitor-server.ts": {
-		"lines": 1137,
+		"lines": 1087,
 		"fns": {
-			"handleUpload@545": 142
+			"handleUpload@553": 142
 		}
 	},
 	"packages/agent-runtime-worker/src/tools/inspect-image.ts": {
@@ -56,20 +56,20 @@
 	"packages/cockpit/src/MissionsPanel.tsx": {
 		"lines": 504,
 		"fns": {
-			"CreateMissionForm@55": 135,
-			"MissionsPanel@347": 157
+			"CreateMissionForm@56": 135,
+			"MissionsPanel@348": 157
 		}
 	},
 	"packages/control-plane/src/copilot-daemon.ts": {
 		"lines": 455,
 		"fns": {
-			"runWatchLoop@227": 176
+			"runWatchLoop@230": 176
 		}
 	},
 	"packages/control-plane/src/missions.ts": {
 		"lines": 359,
 		"fns": {
-			"readLimits@109": 171
+			"readLimits@110": 171
 		}
 	}
 }

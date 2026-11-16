@@ -56,6 +56,7 @@ export function createBudgetRoutes(deps: BudgetDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/extend-budget",
+			operation: "mission.set-spend-cap",
 			async handler({ req, res }) {
 				const body = await readBody(req);
 				let addUsd = 5;
@@ -102,6 +103,7 @@ export function createBudgetRoutes(deps: BudgetDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/set-budget",
+			operation: "mission.set-spend-cap",
 			// cf. /extend-budget which adds; this sets an absolute spending cap.
 			async handler({ req, res }) {
 				const body = await readBody(req);

@@ -280,11 +280,11 @@ export function registerMissionReadRoutes(
 	routes: AsyncRoutes,
 	deps: MissionRouteDeps,
 ): void {
-	routes.get("/", listMissions(deps));
-	routes.get("/stats", getStats(deps));
-	routes.get("/:id", getMission(deps));
-	routes.get("/:id/conversations", getConversations(deps));
-	routes.get("/:id/agents", getAgents(deps));
-	routes.post("/:id/messages/read", postMessagesRead(deps));
-	routes.post("/:id/messages/send", postMessagesSend(deps));
+	routes.get("/", "mission.status", listMissions(deps));
+	routes.get("/stats", "mission.spend", getStats(deps));
+	routes.get("/:id", "mission.status", getMission(deps));
+	routes.get("/:id/conversations", "agent.history", getConversations(deps));
+	routes.get("/:id/agents", "mission.status", getAgents(deps));
+	routes.post("/:id/messages/read", "message.read", postMessagesRead(deps));
+	routes.post("/:id/messages/send", "message.send", postMessagesSend(deps));
 }

@@ -98,6 +98,7 @@ export function tryCreateDataFredTool(): MagiTool | null {
 	if (!apiKey) return null;
 	return {
 		name: "data-fred",
+		operation: "data.query",
 		description:
 			"Internal — fetches raw FRED observations JSON for a series. " +
 			"Used by the data-factory FRED adapter; not agent-facing.",
@@ -131,6 +132,7 @@ export function tryCreateDataFmpTool(): MagiTool | null {
 	const FMP_API = "https://financialmodelingprep.com/api/v3";
 	return {
 		name: "data-fmp",
+		operation: "data.query",
 		description:
 			"Internal — fetches raw FMP OHLCV or SEC-filings JSON for a ticker. " +
 			"Used by the data-factory FMP adapter; not agent-facing.",
@@ -157,6 +159,7 @@ export function tryCreateDataNewsapiTool(): MagiTool | null {
 	if (!apiKey) return null;
 	return {
 		name: "data-newsapi",
+		operation: "data.query",
 		description:
 			"Internal — fetches raw NewsAPI.org articles JSON for a query. " +
 			"Used by the data-factory NewsAPI adapter; not agent-facing.",

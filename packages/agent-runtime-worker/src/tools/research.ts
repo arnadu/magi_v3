@@ -380,6 +380,7 @@ export function createResearchTool(
 
 	return {
 		name: "Research",
+		operation: "web.read",
 		description: researchDescription(sharedDir),
 		parameters: RESEARCH_PARAMS,
 		// A sub-agent of up to RESEARCH_MAX_TURNS calls needs more than the

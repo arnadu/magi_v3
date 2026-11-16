@@ -33,6 +33,7 @@ function createScheduledMessageTool({
 }: ScheduleToolDeps): MagiTool {
 	return {
 		name: "CreateScheduledMessage",
+		operation: "schedule.create",
 		description:
 			"Schedule a one-off or recurring wakeup message to one or more teammates. Provide either deliverAt (one-off, ISO timestamp) or cron (recurring, standard 5-field expression) — cron re-arms itself after each delivery. Posts an audit message to the user's mailbox.",
 		parameters: Type.Object({
@@ -95,6 +96,7 @@ function cancelScheduledMessageTool({
 }: ScheduleToolDeps): MagiTool {
 	return {
 		name: "CancelScheduledMessage",
+		operation: "schedule.cancel",
 		description:
 			"Cancel a pending scheduled message. Posts an audit message to the user's mailbox.",
 		parameters: Type.Object({
@@ -157,6 +159,7 @@ function listScheduledMessagesTool({
 }: ScheduleToolDeps): MagiTool {
 	return {
 		name: "ListScheduledMessages",
+		operation: "schedule.list",
 		description: "List this mission's pending scheduled wakeups.",
 		parameters: Type.Object({}),
 		async execute() {

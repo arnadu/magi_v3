@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { EntryTag } from "@magi/agent-config";
 import { type TSchema, Type } from "@sinclair/typebox";
 import { execa } from "execa";
 
@@ -21,6 +22,8 @@ export interface ToolResult {
 
 export interface MagiTool {
 	name: string;
+	/** The operation this tool serves, or its entry class (ADR-0036). */
+	operation: EntryTag;
 	description: string;
 	/** TypeBox TSchema — passed to pi-ai as the tool's parameter schema. */
 	parameters: TSchema;
@@ -487,6 +490,7 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 
 	const bash: MagiTool = {
 		name: "Bash",
+		operation: "agent.shell",
 		description:
 			"Execute a bash command in the agent working directory. Returns combined stdout and stderr. " +
 			"Use for reading files (cat), listing dirs (ls), searching (grep/rg), running tests, compiling, etc.",
@@ -523,6 +527,7 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 
 	const writeFile: MagiTool = {
 		name: "WriteFile",
+		operation: "file.write",
 		description:
 			"Write content to a file, creating parent directories if needed. Overwrites existing content.",
 		parameters: Type.Object({
@@ -549,6 +554,7 @@ export function createFileTools(cwd: string, acl: AclPolicy): MagiTool[] {
 
 	const editFile: MagiTool = {
 		name: "EditFile",
+		operation: "file.write",
 		description:
 			"Replace the first occurrence of old_string with new_string in a file. " +
 			"Set replace_all to true to replace every occurrence.",

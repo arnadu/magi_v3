@@ -1,3 +1,4 @@
+import { operation } from "./async-handler.js";
 /**
  * The browser session cookie, issued by the server (F-049 / AUTH1 / C2).
  *
@@ -31,27 +32,39 @@ export function createSessionRouter(): ExpressRouter {
 	const router = Router();
 
 	// Exchange a verified bearer credential for the HttpOnly cookie.
-	router.post("/session", (req: Request, res: Response) => {
-		const token = extractBearer(req.headers.authorization);
-		if (!token) {
-			res.status(400).json({
-				error:
-					"Send the credential as `Authorization: Bearer …`; the cookie is issued from it",
-			});
-			return;
-		}
-		res.setHeader("Set-Cookie", sessionCookieHeader(token));
-		res.json({ ok: true, userId: req.userId, isAdmin: Boolean(req.isAdmin) });
-	});
+	router.post(
+		"/session",
+		operation("session.sign-in"),
+		(req: Request, res: Response) => {
+			const token = extractBearer(req.headers.authorization);
+			if (!token) {
+				res.status(400).json({
+					error:
+						"Send the credential as `Authorization: Bearer …`; the cookie is issued from it",
+				});
+				return;
+			}
+			res.setHeader("Set-Cookie", sessionCookieHeader(token));
+			res.json({ ok: true, userId: req.userId, isAdmin: Boolean(req.isAdmin) });
+		},
+	);
 
-	router.get("/me", (req: Request, res: Response) => {
-		res.json({ userId: req.userId, isAdmin: Boolean(req.isAdmin) });
-	});
+	router.get(
+		"/me",
+		operation("session.sign-in"),
+		(req: Request, res: Response) => {
+			res.json({ userId: req.userId, isAdmin: Boolean(req.isAdmin) });
+		},
+	);
 
-	router.post("/logout", (_req: Request, res: Response) => {
-		res.setHeader("Set-Cookie", clearSessionCookieHeader());
-		res.json({ ok: true });
-	});
+	router.post(
+		"/logout",
+		operation("session.sign-out"),
+		(_req: Request, res: Response) => {
+			res.setHeader("Set-Cookie", clearSessionCookieHeader());
+			res.json({ ok: true });
+		},
+	);
 
 	return router;
 }

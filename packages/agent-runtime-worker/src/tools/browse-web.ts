@@ -360,6 +360,7 @@ function createBrowseWebHandle(
 	);
 	const tool: MagiTool = {
 		name: "BrowseWeb",
+		operation: "web.read",
 		description:
 			"Render a web page with a real browser and interact with it to extract information. " +
 			"Handles JS-rendered pages, form submission, login flows, and multi-step navigation. " +

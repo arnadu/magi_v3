@@ -15,6 +15,7 @@ function reviewObjectivesTool(deps: CopilotToolDeps): MagiTool {
 	const objectivesRepo = createMongoObjectivesRepository(db);
 	return {
 		name: "ReviewObjectives",
+		operation: "objectives.progress",
 		description:
 			"Read a mission's objective tree with current task status, KPI values, " +
 			"and budget-vs-spend. Use this to assess progress and decide which KPIs to update. " +
@@ -44,6 +45,7 @@ function assessKpiTool(deps: CopilotToolDeps): MagiTool {
 	const objectivesRepo = createMongoObjectivesRepository(db);
 	return {
 		name: "AssessKpi",
+		operation: "kpi.record",
 		description:
 			"Record a value for a KPI you assess (a copilot-assessment KPI). The latest " +
 			"value wins. Use after ReviewObjectives to publish your judgement (e.g. " +
@@ -94,6 +96,7 @@ function saveObjectiveTreeTool(deps: CopilotToolDeps): MagiTool {
 	const objectivesRepo = createMongoObjectivesRepository(db);
 	return {
 		name: "SaveObjectiveTree",
+		operation: "objectives.edit",
 		description:
 			"Replace a mission's objective tree (definitions + KPI definitions — not task/KPI " +
 			"status, which agents update themselves during the mission). This is a full replace, " +

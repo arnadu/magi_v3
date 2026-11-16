@@ -40,6 +40,7 @@ export function createFileBrowsingRoutes(deps: FileBrowsingDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/files/shared",
+			operation: "file.read",
 			handler({ rawUrl, res }) {
 				const userPath =
 					new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
@@ -49,6 +50,7 @@ export function createFileBrowsingRoutes(deps: FileBrowsingDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/files/history",
+			operation: "file.read",
 			async handler({ rawUrl, res }) {
 				const userPath =
 					new URL(rawUrl, "http://x").searchParams.get("path") ?? "";
@@ -58,6 +60,7 @@ export function createFileBrowsingRoutes(deps: FileBrowsingDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: /^\/files\/workdir\/([^/]+)$/,
+			operation: "file.read",
 			handler({ rawUrl, res }, agentId) {
 				const root = agentWorkdirOr404(deps, agentId, res);
 				if (!root) return;
@@ -69,6 +72,7 @@ export function createFileBrowsingRoutes(deps: FileBrowsingDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: "/files/shared/write",
+			operation: "file.write",
 			async handler({ req, res }) {
 				const body = await readBody(req);
 				deps.writeFilePath(deps.sharedDir, body, res);
@@ -77,6 +81,7 @@ export function createFileBrowsingRoutes(deps: FileBrowsingDeps): RouteEntry[] {
 		{
 			method: "POST",
 			path: /^\/files\/workdir\/([^/]+)\/write$/,
+			operation: "file.write",
 			async handler({ req, res }, agentId) {
 				const root = agentWorkdirOr404(deps, agentId, res);
 				if (!root) return;

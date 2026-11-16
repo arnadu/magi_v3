@@ -16,6 +16,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+	entryTrigger,
 	loadTeamConfig,
 	type MailboxMessage,
 	storedCollection,
@@ -76,15 +77,18 @@ async function main(): Promise<void> {
 		`[cli:tail] Mission ${missionId} — ${showAll ? "all messages" : "to:user only"} — Ctrl+C to exit`,
 	);
 
-	stream.on("change", (event) => {
-		if (event.operationType !== "insert") return;
-		const msg = event.fullDocument;
-		const ts = new Date(msg.timestamp).toISOString();
-		console.log(
-			`\n[${ts}] ${msg.from} → ${msg.to.join(", ")} | ${msg.subject}`,
-		);
-		console.log(msg.body);
-	});
+	stream.on(
+		"change",
+		entryTrigger("developer", (event) => {
+			if (event.operationType !== "insert") return;
+			const msg = event.fullDocument;
+			const ts = new Date(msg.timestamp).toISOString();
+			console.log(
+				`\n[${ts}] ${msg.from} → ${msg.to.join(", ")} | ${msg.subject}`,
+			);
+			console.log(msg.body);
+		}),
+	);
 
 	stream.on("error", (err) => {
 		console.error("[cli:tail] Error:", err);

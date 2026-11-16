@@ -69,6 +69,9 @@ Full list: [`docs/env.md`](../../docs/env.md). The ones that change behaviour:
 
 ## Conventions in this package
 
+- Every tool, monitor route and Tool API entry has a required `operation`; a timer, change
+  stream or cooldown callback is wrapped in `entryTrigger`
+  ([traceability](../../docs/practices/traceability.md)).
 - One file per tool in `src/tools/`; a tool that may run longer than the loop's 2-minute default
   declares `maxRuntimeMs` (the loop aborts the call's signal at the limit — honour it).
 - Platform prompts are files in `prompts/`, loaded with `loadPrompt()` (`src/prompts.ts`); see

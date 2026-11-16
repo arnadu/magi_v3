@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+	entryTrigger,
 	loadTeamConfig,
 	type MailboxMessage,
 	storedCollection,
@@ -437,11 +438,14 @@ function waitForMailboxInsert(
 			resolve();
 		};
 		signal.addEventListener("abort", onAbort, { once: true });
-		stream.once("change", () => {
-			signal.removeEventListener("abort", onAbort);
-			stream.close().catch(() => {});
-			resolve();
-		});
+		stream.once(
+			"change",
+			entryTrigger("copilot.wake", () => {
+				signal.removeEventListener("abort", onAbort);
+				stream.close().catch(() => {});
+				resolve();
+			}),
+		);
 		stream.once("error", (err: Error) => {
 			signal.removeEventListener("abort", onAbort);
 			reject(err);

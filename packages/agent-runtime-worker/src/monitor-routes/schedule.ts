@@ -14,6 +14,7 @@ export function createScheduleRoutes(deps: ScheduleRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/schedule",
+			operation: "schedule.list",
 			async handler({ res }) {
 				const docs = await storedCollection(deps.db, "scheduledMessages")
 					.find({ missionId: deps.missionId, status: "pending" })
@@ -37,6 +38,7 @@ export function createScheduleRoutes(deps: ScheduleRoutesDeps): RouteEntry[] {
 		{
 			method: "DELETE",
 			path: /^\/schedule\/([^/]+)$/,
+			operation: "schedule.cancel",
 			async handler({ res }, id) {
 				if (!deps.cancelSchedule) {
 					res.writeHead(501, { "Content-Type": "application/json" });

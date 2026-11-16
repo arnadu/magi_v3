@@ -16,6 +16,7 @@ function readMissionLogTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorGet } = deps;
 	return {
 		name: "ReadMissionLog",
+		operation: "mission.log",
 		description: "Tail the daemon's own log output.",
 		parameters: Type.Object({
 			lines: Type.Optional(
@@ -35,6 +36,7 @@ function readFileHistoryTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorGet } = deps;
 	return {
 		name: "ReadFileHistory",
+		operation: "file.read",
 		description:
 			"Git provenance for a sharedDir file — which agent/turn/commit last touched it.",
 		parameters: Type.Object({
@@ -55,6 +57,7 @@ function readSharedFileTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorGet } = deps;
 	return {
 		name: "ReadSharedFile",
+		operation: "file.read",
 		description:
 			"Read any file (or list a directory) under the mission's shared workspace. File content (not directory listings) is trust-boundary-marked — any teammate can have written it, and it may itself carry content that teammate ingested from outside the mission.",
 		parameters: Type.Object({
@@ -87,6 +90,7 @@ function readAgentWorkdirFileTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorGet } = deps;
 	return {
 		name: "ReadAgentWorkdirFile",
+		operation: "file.read",
 		description:
 			"Read any file (or list a directory) under one teammate's private workspace. File content is trust-boundary-marked, same reasoning as ReadSharedFile.",
 		parameters: Type.Object({
@@ -134,6 +138,7 @@ function listBackgroundJobsTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { sharedDir } = deps;
 	return {
 		name: "ListBackgroundJobs",
+		operation: "job.status",
 		description:
 			"Structured status of async background jobs (jobs/pending|running|status) — a convenience over browsing sharedDir/jobs/ by hand.",
 		parameters: Type.Object({}),

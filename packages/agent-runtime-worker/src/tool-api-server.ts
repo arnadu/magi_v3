@@ -38,7 +38,7 @@ import {
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import type { TeamConfig } from "@magi/agent-config";
+import type { EntryTag, TeamConfig } from "@magi/agent-config";
 import type { Model } from "@mariozechner/pi-ai";
 import type { LlmCallMeter } from "./llm-meter.js";
 import type { MailboxRepository } from "./mailbox.js";
@@ -84,14 +84,17 @@ export interface ToolApiSpend {
 	isBudgetPaused: () => boolean;
 }
 
-/** Tool names (normalised) whose calls reach an LLM. */
-const LLM_TOOLS = new Set([
-	"fetch-url",
-	"fetchurl",
-	"inspect-image",
-	"inspectimage",
-	"research",
-]);
+/** A tool a background job may call through the Tool API. */
+interface ToolApiEntry {
+	/** Accepted names, lower-case; the first is the documented one. */
+	names: readonly string[];
+	/** The operation the tool serves (ADR-0036). */
+	operation: EntryTag;
+	/** Its calls reach an LLM, so the spend cap's pause refuses them. */
+	callsLlm?: boolean;
+	/** A fresh, stateless tool for this token's context; null when not configured. */
+	build: (ctx: TokenContext, meter: () => LlmCallMeter) => MagiTool | null;
+}
 
 export class ToolApiServer {
 	private readonly tokens = new Map<string, TokenContext>();
@@ -202,7 +205,8 @@ export class ToolApiServer {
 		}
 
 		// The cap's pause stops jobs' LLM spend as it stops the agents'.
-		if (LLM_TOOLS.has(toolName.toLowerCase()) && this.spend.isBudgetPaused()) {
+		const entry = this.entryFor(toolName);
+		if (entry?.callsLlm && this.spend.isBudgetPaused()) {
 			res.writeHead(503, { "Content-Type": "application/json" });
 			res.end(
 				JSON.stringify({
@@ -213,7 +217,8 @@ export class ToolApiServer {
 		}
 
 		// Build the requested tool for this token's context.
-		const tool = this.buildTool(toolName, ctx);
+		const tool =
+			entry?.build(ctx, () => this.spend.meterFor(ctx.acl.agentId)) ?? null;
 		if (!tool) {
 			res.writeHead(404, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: `unknown tool: ${toolName}` }));
@@ -278,61 +283,83 @@ export class ToolApiServer {
 	}
 
 	// ---------------------------------------------------------------------------
-	// Tool factory — creates a fresh stateless tool instance per request
+	// The tools jobs may call — each built fresh per request, its LLM calls
+	// logged and charged to the job's agent through `meter`
 	// ---------------------------------------------------------------------------
 
-	private buildTool(name: string, ctx: TokenContext): MagiTool | null {
-		const normalised = name.toLowerCase();
-		// Every LLM call a job makes is logged and charged to its agent.
-		const meter = () => this.spend.meterFor(ctx.acl.agentId);
-
-		if (normalised === "fetch-url" || normalised === "fetchurl") {
-			return createFetchUrlTool(this.visionModel, this.sharedDir, [], {
-				meter: meter(),
-			});
-		}
-
-		if (normalised === "inspect-image" || normalised === "inspectimage") {
-			return createInspectImageTool(
-				ctx.identity.workdir,
-				this.visionModel,
-				[],
-				meter(),
-			);
-		}
-
-		if (normalised === "research") {
-			return createResearchTool(this.model, this.sharedDir, ctx.acl, {
-				visionModel: this.visionModel,
-				onSubLoopLlmCall: meter(),
-			});
-		}
-
-		if (normalised === "search-web" || normalised === "searchweb") {
-			const tool = tryCreateSearchWebTool();
-			return tool ?? null;
-		}
-
-		if (normalised === "post-message" || normalised === "postmessage") {
-			// PostMessage is the first tool returned by createMailboxTools.
-			const tools = createMailboxTools(
-				this.mailboxRepo,
-				this.teamConfig,
-				// As the agent, like its own PostMessage — not as its OS user,
-				// which differs under the legacy linuxUser override (TA3).
-				ctx.acl.agentId,
-			);
-			return tools[0]; // PostMessage
-		}
-
+	private readonly entries: readonly ToolApiEntry[] = [
+		{
+			names: ["fetch-url", "fetchurl"],
+			operation: "web.read",
+			callsLlm: true,
+			build: (_ctx, meter) =>
+				createFetchUrlTool(this.visionModel, this.sharedDir, [], {
+					meter: meter(),
+				}),
+		},
+		{
+			names: ["inspect-image", "inspectimage"],
+			operation: "web.read",
+			callsLlm: true,
+			build: (ctx, meter) =>
+				createInspectImageTool(
+					ctx.identity.workdir,
+					this.visionModel,
+					[],
+					meter(),
+				),
+		},
+		{
+			names: ["research"],
+			operation: "web.read",
+			callsLlm: true,
+			build: (ctx, meter) =>
+				createResearchTool(this.model, this.sharedDir, ctx.acl, {
+					visionModel: this.visionModel,
+					onSubLoopLlmCall: meter(),
+				}),
+		},
+		{
+			names: ["search-web", "searchweb"],
+			operation: "web.read",
+			build: () => tryCreateSearchWebTool() ?? null,
+		},
+		{
+			names: ["post-message", "postmessage"],
+			operation: "message.send",
+			// PostMessage is the first tool returned by createMailboxTools; it
+			// posts as the agent, like its own PostMessage — not as its OS
+			// user, which differs under the legacy linuxUser override (TA3).
+			build: (ctx) =>
+				createMailboxTools(
+					this.mailboxRepo,
+					this.teamConfig,
+					ctx.acl.agentId,
+				)[0],
+		},
 		// CR-04 (job-env half): internal, not agent-facing — only the
-		// data-factory Python adapters call these, via the loopback ToolApiServer
-		// they already use, instead of holding the real provider key themselves.
-		if (normalised === "data-fred") return tryCreateDataFredTool();
-		if (normalised === "data-fmp") return tryCreateDataFmpTool();
-		if (normalised === "data-newsapi") return tryCreateDataNewsapiTool();
+		// data-factory Python adapters call these, instead of holding the real
+		// provider key themselves.
+		{
+			names: ["data-fred"],
+			operation: "data.query",
+			build: () => tryCreateDataFredTool(),
+		},
+		{
+			names: ["data-fmp"],
+			operation: "data.query",
+			build: () => tryCreateDataFmpTool(),
+		},
+		{
+			names: ["data-newsapi"],
+			operation: "data.query",
+			build: () => tryCreateDataNewsapiTool(),
+		},
+	];
 
-		return null;
+	private entryFor(name: string): ToolApiEntry | undefined {
+		const normalised = name.toLowerCase();
+		return this.entries.find((e) => e.names.includes(normalised));
 	}
 }
 

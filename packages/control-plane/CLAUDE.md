@@ -54,6 +54,10 @@ Full list: [`docs/env.md`](../../docs/env.md). The ones that change behaviour:
 
 - Every route handler goes through `asyncRoutes` (tripwire T7); routes are grouped in
   `mission-routes-*.ts` modules over `MissionRouteDeps`.
+- Every route names its operation: `routes.get("/x", "<operation>", h)` through `asyncRoutes`,
+  `operation("<operation>")` as the first handler on a bare router; a copilot action's
+  operation is in `ACTION_OPERATIONS`; a timer's callback is wrapped in `entryTrigger`
+  ([traceability](../../docs/practices/traceability.md)).
 - Mission machines are reached through `monitorUrl()` with `monitorAuthHeaders()`; never build
   the URL by hand.
 - Anything a copilot proposes that writes outside its own sandbox is a pending action
