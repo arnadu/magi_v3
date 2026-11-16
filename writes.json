@@ -1,0 +1,2051 @@
+[
+ {
+  "file": "packages/agent-runtime-worker/src/llm-call-log.ts",
+  "line": 214,
+  "function": "append",
+  "method": "insertOne",
+  "collection": "llmCallLog",
+  "docType": "LlmCallLogEntry",
+  "fn": "packages/agent-runtime-worker/src/llm-call-log.ts:213:3",
+  "component": "mm-agent-loop",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/agent-stats.ts",
+  "line": 158,
+  "function": "reconcileStaleTurns",
+  "method": "findOneAndUpdate",
+  "collection": "agentTurnStats",
+  "docType": "AgentTurnStats",
+  "status": {
+   "to": [
+    "aborted"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "eq",
+    "values": [
+     "running"
+    ],
+    "via": "literal"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/agent-stats.ts:142:1",
+  "component": "mm-agent-loop",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "running"
+   ],
+   "to": [
+    "aborted"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/agent-stats.ts",
+  "line": 210,
+  "function": "upsertTurn",
+  "method": "updateOne",
+  "collection": "agentTurnStats",
+  "docType": "AgentTurnStats",
+  "fn": "packages/agent-runtime-worker/src/agent-stats.ts:208:3",
+  "component": "mm-agent-loop",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/agent-stats.ts",
+  "line": 219,
+  "function": "incrementMission",
+  "method": "findOneAndUpdate",
+  "collection": "missionStats",
+  "docType": "MissionStats",
+  "fn": "packages/agent-runtime-worker/src/agent-stats.ts:217:3",
+  "component": "mm-agent-loop",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/agent-stats.ts",
+  "line": 259,
+  "function": "incrementLifetimeCostOnly",
+  "method": "findOneAndUpdate",
+  "collection": "missionStats",
+  "docType": "MissionStats",
+  "fn": "packages/agent-runtime-worker/src/agent-stats.ts:257:3",
+  "component": "mm-agent-loop",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/mailbox.ts",
+  "line": 119,
+  "function": "post",
+  "method": "insertOne",
+  "collection": "mailbox",
+  "docType": "MailboxMessage",
+  "fn": "packages/agent-runtime-worker/src/mailbox.ts:112:3",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/mailbox.ts",
+  "line": 131,
+  "function": "markRead",
+  "method": "updateMany",
+  "collection": "mailbox",
+  "docType": "MailboxMessage",
+  "fn": "packages/agent-runtime-worker/src/mailbox.ts:130:3",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/objectives/repository.ts",
+  "line": 152,
+  "function": "appendEvent",
+  "method": "insertOne",
+  "collection": "objectivesEvents",
+  "docType": "EventDoc<\"task\", { id: string; at: string; by: string; title?: string | undefined; objective?: string | null | undefined; assignee?: string | null | undefined; status?: \"open\" | \"in-progress\" | ... 4 more ... | undefined; ... 4 more ...; note?: string | undefined; }> | EventDoc<...> | EventDoc<...> | EventDoc<...>",
+  "fn": "packages/agent-runtime-worker/src/objectives/repository.ts:147:2",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/objectives/repository.ts",
+  "line": 183,
+  "function": "saveGoals",
+  "method": "updateOne",
+  "collection": "objectivesGoals",
+  "docType": "GoalsDoc",
+  "fn": "packages/agent-runtime-worker/src/objectives/repository.ts:181:3",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/anomaly.ts",
+  "line": 223,
+  "function": "record",
+  "method": "insertOne",
+  "collection": "missionAnomalies",
+  "docType": "MissionAnomaly",
+  "fn": "packages/agent-runtime-worker/src/anomaly.ts:220:3",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/conversation-repository.ts",
+  "line": 228,
+  "function": "append",
+  "method": "insertOne",
+  "collection": "conversationMessages",
+  "docType": "ConversationDoc",
+  "fn": "packages/agent-runtime-worker/src/conversation-repository.ts:206:3",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/conversation-repository.ts",
+  "line": 256,
+  "function": "compact",
+  "method": "updateMany",
+  "collection": "conversationMessages",
+  "docType": "ConversationDoc",
+  "fn": "packages/agent-runtime-worker/src/conversation-repository.ts:255:3",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/mission-config-revisions.ts",
+  "line": 103,
+  "function": "write",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/agent-runtime-worker/src/mission-config-revisions.ts:80:3",
+  "component": "mm-state",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/mission-config-revisions.ts",
+  "line": 121,
+  "function": "write",
+  "method": "insertOne",
+  "collection": "missionConfigRevisions",
+  "docType": "MissionConfigRevisionDoc",
+  "fn": "packages/agent-runtime-worker/src/mission-config-revisions.ts:80:3",
+  "component": "mm-state",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/resource-alert-state.ts",
+  "line": 150,
+  "function": "put",
+  "method": "updateOne",
+  "collection": "resourceAlertState",
+  "docType": "__type",
+  "fn": "packages/agent-runtime-worker/src/resource-alert-state.ts:149:3",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/resource-alert-state.ts",
+  "line": 157,
+  "function": "clear",
+  "method": "deleteOne",
+  "collection": "resourceAlertState",
+  "docType": "__type",
+  "fn": "packages/agent-runtime-worker/src/resource-alert-state.ts:156:3",
+  "component": "mm-state",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/atlas-usage.ts",
+  "line": 184,
+  "function": "checkAtlasStorage",
+  "method": "updateOne",
+  "collection": "platformResources",
+  "docType": "AtlasUsageDoc",
+  "fn": "packages/control-plane/src/atlas-usage.ts:178:8",
+  "component": "cp-oversight",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/users.ts",
+  "line": 36,
+  "function": "syncFirebaseUser",
+  "method": "updateOne",
+  "collection": "users",
+  "docType": "UserDoc",
+  "fn": "packages/control-plane/src/users.ts:29:8",
+  "component": "cp-edge",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/users.ts",
+  "line": 69,
+  "function": "setCopilotModel",
+  "method": "updateOne",
+  "collection": "users",
+  "docType": "UserDoc",
+  "fn": "packages/control-plane/src/users.ts:64:8",
+  "component": "cp-edge",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/users.ts",
+  "line": 97,
+  "function": "setCopilotSpendCap",
+  "method": "updateOne",
+  "collection": "users",
+  "docType": "UserDoc",
+  "fn": "packages/control-plane/src/users.ts:92:8",
+  "component": "cp-edge",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/pending-actions.ts",
+  "line": 55,
+  "function": "add",
+  "method": "insertOne",
+  "collection": "copilotPendingActions",
+  "docType": "StoredAction",
+  "fn": "packages/control-plane/src/pending-actions.ts:54:2",
+  "component": "cp-copilot",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/pending-actions.ts",
+  "line": 64,
+  "function": "take",
+  "method": "findOneAndDelete",
+  "collection": "copilotPendingActions",
+  "docType": "StoredAction",
+  "fn": "packages/control-plane/src/pending-actions.ts:63:2",
+  "component": "cp-copilot",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/pending-actions.ts",
+  "line": 69,
+  "function": "delete",
+  "method": "deleteOne",
+  "collection": "copilotPendingActions",
+  "docType": "StoredAction",
+  "fn": "packages/control-plane/src/pending-actions.ts:68:2",
+  "component": "cp-copilot",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-segments.ts",
+  "line": 81,
+  "function": "enforceOneOpenSegment",
+  "method": "updateOne",
+  "collection": "machineSegments",
+  "docType": "MachineSegment",
+  "fn": "packages/control-plane/src/machine-segments.ts:70:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-segments.ts",
+  "line": 88,
+  "function": "enforceOneOpenSegment",
+  "method": "updateOne",
+  "collection": "machineSegments",
+  "docType": "MachineSegment",
+  "fn": "packages/control-plane/src/machine-segments.ts:70:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-segments.ts",
+  "line": 194,
+  "function": "closePrevious",
+  "method": "updateMany",
+  "collection": "machineSegments",
+  "docType": "MachineSegment",
+  "fn": "packages/control-plane/src/machine-segments.ts:193:24",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-segments.ts",
+  "line": 215,
+  "function": "openSegment",
+  "method": "insertOne",
+  "collection": "machineSegments",
+  "docType": "MachineSegment",
+  "fn": "packages/control-plane/src/machine-segments.ts:188:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-segments.ts",
+  "line": 221,
+  "function": "openSegment",
+  "method": "insertOne",
+  "collection": "machineSegments",
+  "docType": "MachineSegment",
+  "fn": "packages/control-plane/src/machine-segments.ts:188:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-segments.ts",
+  "line": 231,
+  "function": "closeOpenSegments",
+  "method": "updateMany",
+  "collection": "machineSegments",
+  "docType": "MachineSegment",
+  "fn": "packages/control-plane/src/machine-segments.ts:226:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-segments.ts",
+  "line": 244,
+  "function": "setPlannedEnd",
+  "method": "updateOne",
+  "collection": "machineSegments",
+  "docType": "MachineSegment",
+  "fn": "packages/control-plane/src/machine-segments.ts:239:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/spend-policy.ts",
+  "line": 51,
+  "function": "ensureMissionSpendCap",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/spend-policy.ts:47:8",
+  "component": "cp-mission-ops",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/spend-policy.ts",
+  "line": 64,
+  "function": "backfillMissionCaps",
+  "method": "updateMany",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/spend-policy.ts:63:8",
+  "component": "cp-mission-ops",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/spend-policy.ts",
+  "line": 165,
+  "function": "backfillMissionCeilings",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/spend-policy.ts:143:8",
+  "component": "cp-mission-ops",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-lifecycle.ts",
+  "line": 165,
+  "function": "wakeTracked",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "running"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/machine-lifecycle.ts:145:8",
+  "component": "cp-machines",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "running"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/machine-lifecycle.ts",
+  "line": 186,
+  "function": "wakeTracked",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "running"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/machine-lifecycle.ts:145:8",
+  "component": "cp-machines",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "running"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/machine-lifecycle.ts",
+  "line": 293,
+  "function": "provisionOnVolumeTracked",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/machine-lifecycle.ts:271:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/machine-lifecycle.ts",
+  "line": 368,
+  "function": "recordMachine",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/machine-lifecycle.ts:360:1",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/copilot-launch-actions.ts",
+  "line": 41,
+  "function": "executeLaunchMission",
+  "method": "insertOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "provisioning"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "none"
+   }
+  },
+  "fn": "packages/control-plane/src/copilot-launch-actions.ts:19:8",
+  "component": "cp-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "∅"
+   ],
+   "to": [
+    "provisioning"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/control-plane/src/copilot-launch-actions.ts",
+  "line": 65,
+  "function": "onVolumeCreated",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/copilot-launch-actions.ts:64:21",
+  "component": "cp-copilot",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/copilot-launch-actions.ts",
+  "line": 68,
+  "function": "executeLaunchMission",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "running"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/copilot-launch-actions.ts:19:8",
+  "component": "cp-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "running"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/copilot-launch-actions.ts",
+  "line": 83,
+  "function": "executeLaunchMission",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "error"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/copilot-launch-actions.ts:19:8",
+  "component": "cp-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "error"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/copilot-schedule-actions.ts",
+  "line": 30,
+  "function": "executeCancelSchedule",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "cancelled"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "eq",
+    "values": [
+     "pending"
+    ],
+    "via": "literal"
+   }
+  },
+  "fn": "packages/control-plane/src/copilot-schedule-actions.ts:16:8",
+  "component": "cp-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "pending"
+   ],
+   "to": [
+    "cancelled"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/control-plane/src/copilot-schedule-actions.ts",
+  "line": 75,
+  "function": "executeCreateSchedule",
+  "method": "insertOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "pending"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "none"
+   }
+  },
+  "fn": "packages/control-plane/src/copilot-schedule-actions.ts:51:8",
+  "component": "cp-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "∅"
+   ],
+   "to": [
+    "pending"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-limits.ts",
+  "line": 206,
+  "function": "writeMissionCostCeiling",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/mission-limits.ts:188:8",
+  "component": "cp-mission-ops",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-config.ts",
+  "line": 158,
+  "function": "applyMentalMapEdits",
+  "method": "updateOne",
+  "collection": "conversationMessages",
+  "docType": "ConversationDoc",
+  "fn": "packages/control-plane/src/mission-routes-config.ts:148:1",
+  "component": "cp-api",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-config.ts",
+  "line": 257,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/mission-routes-config.ts:174:9",
+  "component": "cp-api",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-config.ts",
+  "line": 326,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/mission-routes-config.ts:275:9",
+  "component": "cp-api",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-launch.ts",
+  "line": 68,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/mission-routes-launch.ts:25:9",
+  "component": "cp-api",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-launch.ts",
+  "line": 80,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "error"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-routes-launch.ts:25:9",
+  "component": "cp-api",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "error"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-drafts.ts",
+  "line": 90,
+  "function": "createDraftMission",
+  "method": "insertOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "draft"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "none"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-drafts.ts:34:8",
+  "component": "cp-api",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "∅"
+   ],
+   "to": [
+    "draft"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
+  "line": 173,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/mission-routes-lifecycle.ts:90:9",
+  "component": "cp-api",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
+  "line": 185,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "error"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-routes-lifecycle.ts:90:9",
+  "component": "cp-api",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "error"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-read.ts",
+  "line": 91,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "error",
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "destroyed"
+   ],
+   "toVia": "type",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-routes-read.ts:62:9",
+  "component": "cp-api",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "error",
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "destroyed"
+   ],
+   "undeclared": [
+    "draft → error",
+    "draft → draft",
+    "draft → running",
+    "draft → suspended",
+    "draft → destroyed",
+    "provisioning → draft",
+    "provisioning → provisioning",
+    "provisioning → suspended",
+    "provisioning → destroyed",
+    "running → draft",
+    "running → provisioning",
+    "running → destroyed",
+    "suspended → error",
+    "suspended → draft",
+    "suspended → provisioning",
+    "suspended → suspended",
+    "suspended → destroyed",
+    "error → error",
+    "error → draft",
+    "error → provisioning",
+    "error → suspended",
+    "error → destroyed",
+    "archived → error",
+    "archived → draft",
+    "archived → provisioning",
+    "archived → running",
+    "archived → suspended",
+    "archived → destroyed"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-routes-read.ts",
+  "line": 223,
+  "function": "(anonymous)",
+  "method": "updateMany",
+  "collection": "mailbox",
+  "docType": "MailboxMessage",
+  "fn": "packages/control-plane/src/mission-routes-read.ts:208:9",
+  "component": "cp-api",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/missions.ts",
+  "line": 299,
+  "function": "writeUpgradedRuntimeReset",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/missions.ts:289:8",
+  "component": "cp-api",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/mission-claims.ts",
+  "line": 25,
+  "function": "claimStatus",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "provisioning"
+   ],
+   "toVia": "callers",
+   "from": {
+    "op": "eq",
+    "values": [
+     "draft",
+     "error",
+     "suspended",
+     "destroyed"
+    ],
+    "via": "callers"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-claims.ts:19:8",
+  "component": "cp-mission-ops",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "error",
+    "suspended",
+    "destroyed"
+   ],
+   "to": [
+    "provisioning"
+   ],
+   "undeclared": [
+    "error → provisioning",
+    "suspended → provisioning",
+    "destroyed → provisioning"
+   ],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-claims.ts",
+  "line": 38,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/mission-claims.ts:37:9",
+  "component": "cp-mission-ops",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/mission-claims.ts",
+  "line": 56,
+  "function": "insertMissionOrConflict",
+  "method": "insertOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/mission-claims.ts:50:8",
+  "component": "cp-mission-ops",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade-notify.ts",
+  "line": 142,
+  "function": "scheduleReminder",
+  "method": "insertOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "pending"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "none"
+   }
+  },
+  "fn": "packages/control-plane/src/resource-upgrade-notify.ts:124:8",
+  "component": "cp-machines",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "∅"
+   ],
+   "to": [
+    "pending"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade-notify.ts",
+  "line": 166,
+  "function": "cancelReminder",
+  "method": "deleteOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "fn": "packages/control-plane/src/resource-upgrade-notify.ts:160:8",
+  "component": "cp-machines",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade-claim.ts",
+  "line": 39,
+  "function": "claim",
+  "method": "findOneAndUpdate",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/resource-upgrade-claim.ts:34:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade-claim.ts",
+  "line": 76,
+  "function": "failResize",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/resource-upgrade-claim.ts:65:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade-claim.ts",
+  "line": 86,
+  "function": "failResize",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "error"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/resource-upgrade-claim.ts:65:8",
+  "component": "cp-machines",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "error"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade-claim.ts",
+  "line": 161,
+  "function": "restore",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "running"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/resource-upgrade-claim.ts:146:1",
+  "component": "cp-machines",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "running"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade.ts",
+  "line": 167,
+  "function": "applyUpgrade",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/resource-upgrade.ts:142:1",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade.ts",
+  "line": 293,
+  "function": "renew",
+  "method": "findOneAndUpdate",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/resource-upgrade.ts:256:1",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade.ts",
+  "line": 321,
+  "function": "renew",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/resource-upgrade.ts:256:1",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade.ts",
+  "line": 394,
+  "function": "revertUpgrade",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/resource-upgrade.ts:355:8",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/resource-upgrade.ts",
+  "line": 575,
+  "function": "guarded(callback)",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/resource-upgrade.ts:574:48",
+  "component": "cp-machines",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/mission-lifecycle-actions.ts",
+  "line": 44,
+  "function": "suspendMission",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "suspended"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-lifecycle-actions.ts:33:8",
+  "component": "cp-mission-ops",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "suspended"
+   ],
+   "undeclared": [
+    "draft → suspended",
+    "provisioning → suspended",
+    "suspended → suspended",
+    "error → suspended",
+    "archived → suspended"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-lifecycle-actions.ts",
+  "line": 87,
+  "function": "resumeMission",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "running"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-lifecycle-actions.ts:65:8",
+  "component": "cp-mission-ops",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "running"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-lifecycle-actions.ts",
+  "line": 130,
+  "function": "restartOnVolume",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "running"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-lifecycle-actions.ts:105:1",
+  "component": "cp-mission-ops",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "running"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/mission-lifecycle-actions.ts",
+  "line": 160,
+  "function": "recordResumeFailure",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "error"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/mission-lifecycle-actions.ts:150:1",
+  "component": "cp-mission-ops",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "error"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/copilot-action-handlers.ts",
+  "line": 136,
+  "function": "launchDraft",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "running"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/copilot-action-handlers.ts:116:1",
+  "component": "cp-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "running"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/copilot-action-handlers.ts",
+  "line": 154,
+  "function": "launchDraft",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "status": {
+   "to": [
+    "error"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/copilot-action-handlers.ts:116:1",
+  "component": "cp-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "draft",
+    "provisioning",
+    "running",
+    "suspended",
+    "error",
+    "archived"
+   ],
+   "to": [
+    "error"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/copilot-action-handlers.ts",
+  "line": 224,
+  "function": "fixMissionVolume",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/copilot-action-handlers.ts:186:1",
+  "component": "cp-copilot",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/copilot-action-handlers.ts",
+  "line": 295,
+  "function": "saveSessionConfig",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/copilot-action-handlers.ts:260:1",
+  "component": "cp-copilot",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/copilot-action-handlers.ts",
+  "line": 312,
+  "function": "saveSessionConfig",
+  "method": "updateOne",
+  "collection": "conversationMessages",
+  "docType": "ConversationDoc",
+  "fn": "packages/control-plane/src/copilot-action-handlers.ts:260:1",
+  "component": "cp-copilot",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/copilot-draft-tools.ts",
+  "line": 220,
+  "function": "execute",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/control-plane/src/copilot-draft-tools.ts:158:3",
+  "component": "cp-copilot",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/fly-orphans.ts",
+  "line": 159,
+  "function": "checkOrphanMachines",
+  "method": "updateOne",
+  "collection": "platformResources",
+  "docType": "FlyMachinesSampleDoc",
+  "fn": "packages/control-plane/src/fly-orphans.ts:102:8",
+  "component": "cp-machines",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/resource-report.ts",
+  "line": 231,
+  "function": "claimAndPersistSnapshot",
+  "method": "updateOne",
+  "collection": "resourceSnapshots",
+  "docType": "ResourceSnapshotDoc & { _id?: unknown; }",
+  "fn": "packages/control-plane/src/resource-report.ts:219:1",
+  "component": "cp-oversight",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/resource-report.ts",
+  "line": 279,
+  "function": "sendDailyReportIfNeeded",
+  "method": "deleteOne",
+  "collection": "resourceSnapshots",
+  "docType": "ResourceSnapshotDoc & { _id?: unknown; }",
+  "fn": "packages/control-plane/src/resource-report.ts:259:1",
+  "component": "cp-oversight",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 141,
+  "function": "reopenStaleLeases",
+  "method": "updateMany",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "pending"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "eq",
+    "values": [
+     "delivering"
+    ],
+    "via": "literal"
+   }
+  },
+  "fn": "packages/control-plane/src/scheduler.ts:137:1",
+  "component": "cp-scheduler",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "delivering"
+   ],
+   "to": [
+    "pending"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 177,
+  "function": "deliverAll",
+  "method": "findOneAndUpdate",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "delivering"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "eq",
+    "values": [
+     "pending"
+    ],
+    "via": "literal"
+   }
+  },
+  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "component": "cp-scheduler",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "pending"
+   ],
+   "to": [
+    "delivering"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 188,
+  "function": "deliverAll",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "component": "cp-scheduler",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 203,
+  "function": "deliverAll",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "delivered"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "component": "cp-scheduler",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "pending",
+    "delivering",
+    "delivered",
+    "failed",
+    "cancelled"
+   ],
+   "to": [
+    "delivered"
+   ],
+   "undeclared": [
+    "pending → delivered",
+    "delivered → delivered",
+    "failed → delivered",
+    "cancelled → delivered"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 214,
+  "function": "deliverAll",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "failed"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "component": "cp-scheduler",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "pending",
+    "delivering",
+    "delivered",
+    "failed",
+    "cancelled"
+   ],
+   "to": [
+    "failed"
+   ],
+   "undeclared": [
+    "pending → failed",
+    "delivered → failed",
+    "failed → failed",
+    "cancelled → failed"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 241,
+  "function": "deliverAll",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "pending"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "component": "cp-scheduler",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "pending",
+    "delivering",
+    "delivered",
+    "failed",
+    "cancelled"
+   ],
+   "to": [
+    "pending"
+   ],
+   "undeclared": [
+    "pending → pending",
+    "delivered → pending",
+    "failed → pending",
+    "cancelled → pending"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 262,
+  "function": "deliverAll",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "pending"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "component": "cp-scheduler",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "pending",
+    "delivering",
+    "delivered",
+    "failed",
+    "cancelled"
+   ],
+   "to": [
+    "pending"
+   ],
+   "undeclared": [
+    "pending → pending",
+    "delivered → pending",
+    "failed → pending",
+    "cancelled → pending"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 309,
+  "function": "pruneOldLogEntries",
+  "method": "updateMany",
+  "collection": "llmCallLog",
+  "docType": "LlmCallLogEntry",
+  "fn": "packages/control-plane/src/scheduler.ts:305:8",
+  "component": "cp-scheduler",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 319,
+  "function": "pruneOldLogEntries",
+  "method": "deleteMany",
+  "collection": "llmCallLog",
+  "docType": "LlmCallLogEntry",
+  "fn": "packages/control-plane/src/scheduler.ts:305:8",
+  "component": "cp-scheduler",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 324,
+  "function": "pruneOldLogEntries",
+  "method": "deleteMany",
+  "collection": "llmCallLog",
+  "docType": "LlmCallLogEntry",
+  "fn": "packages/control-plane/src/scheduler.ts:305:8",
+  "component": "cp-scheduler",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/cli-reset.ts",
+  "line": 111,
+  "function": "PER_MISSION_COLLECTIONS.map(callback)",
+  "method": "deleteMany",
+  "collection": null,
+  "docType": "Document",
+  "fn": "packages/agent-runtime-worker/src/cli-reset.ts:110:32",
+  "component": "mm-cli"
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/cli-reset.ts",
+  "line": 115,
+  "function": "main",
+  "method": "deleteMany",
+  "collection": "resourceAlertState",
+  "docType": "__type",
+  "fn": "packages/agent-runtime-worker/src/cli-reset.ts:51:1",
+  "component": "mm-cli",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts",
+  "line": 199,
+  "function": "execute",
+  "method": "updateOne",
+  "collection": "missions",
+  "docType": "MissionDoc",
+  "fn": "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:139:3",
+  "component": "mm-mission-copilot",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
+  "line": 416,
+  "function": "upsertSchedule",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:405:1",
+  "component": "mm-jobs",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
+  "line": 442,
+  "function": "upsertSchedule",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "pending"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:405:1",
+  "component": "mm-jobs",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "pending",
+    "delivering",
+    "delivered",
+    "failed",
+    "cancelled"
+   ],
+   "to": [
+    "pending"
+   ],
+   "undeclared": [
+    "pending → pending",
+    "delivered → pending",
+    "failed → pending",
+    "cancelled → pending"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
+  "line": 482,
+  "function": "ingestSchedules",
+  "method": "updateMany",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "cancelled"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "eq",
+    "values": [
+     "pending"
+    ],
+    "via": "literal"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:455:1",
+  "component": "mm-jobs",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "pending"
+   ],
+   "to": [
+    "cancelled"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
+  "line": 494,
+  "function": "ingestSchedules",
+  "method": "updateMany",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:455:1",
+  "component": "mm-jobs",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
+  "line": 529,
+  "function": "ack",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:528:15",
+  "component": "mm-jobs",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts",
+  "line": 72,
+  "function": "execute",
+  "method": "insertOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "pending"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "none"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:56:3",
+  "component": "mm-mission-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "∅"
+   ],
+   "to": [
+    "pending"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts",
+  "line": 140,
+  "function": "execute",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "cancelled"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:107:3",
+  "component": "mm-mission-copilot",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "pending",
+    "delivering",
+    "delivered",
+    "failed",
+    "cancelled"
+   ],
+   "to": [
+    "cancelled"
+   ],
+   "undeclared": [
+    "delivering → cancelled",
+    "delivered → cancelled",
+    "failed → cancelled",
+    "cancelled → cancelled"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts",
+  "line": 145,
+  "function": "execute",
+  "method": "deleteOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "fn": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:107:3",
+  "component": "mm-mission-copilot",
+  "ownerOk": false
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/daemon-boot/monitor-tool-servers.ts",
+  "line": 96,
+  "function": "(anonymous)",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "status": {
+   "to": [
+    "cancelled"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "any"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/daemon-boot/monitor-tool-servers.ts:89:3",
+  "component": "mm-daemon",
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "pending",
+    "delivering",
+    "delivered",
+    "failed",
+    "cancelled"
+   ],
+   "to": [
+    "cancelled"
+   ],
+   "undeclared": [
+    "delivering → cancelled",
+    "delivered → cancelled",
+    "failed → cancelled",
+    "cancelled → cancelled"
+   ],
+   "filterChecksStatus": false
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/resource-sampler.ts",
+  "line": 134,
+  "function": "sampleDiskUsage",
+  "method": "updateOne",
+  "collection": "missionResources",
+  "docType": "MissionResourceSample",
+  "fn": "packages/agent-runtime-worker/src/resource-sampler.ts:122:8",
+  "component": "mm-state",
+  "ownerOk": true
+ }
+]

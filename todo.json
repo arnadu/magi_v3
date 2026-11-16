@@ -1,0 +1,3590 @@
+{
+ "meta": {
+  "commit": "b552063",
+  "time": "2026-11-16T20:42:34Z"
+ },
+ "findings": [
+  {
+   "key": "1239e7e88dee",
+   "kind": "op.home-not-reached",
+   "about": "mission.edit-draft",
+   "text": "None of the 2 entry point(s) of mission.edit-draft reaches code in its home, cp-mission-ops: tool EditDraftConfig; route PUT /:id/draft.",
+   "where": [
+    "packages/control-plane/src/copilot-draft-tools.ts:142",
+    "packages/control-plane/src/mission-routes-config.ts:341"
+   ],
+   "entryPoints": [
+    {
+     "name": "tool EditDraftConfig",
+     "where": "packages/control-plane/src/copilot-draft-tools.ts:142",
+     "components": [
+      "config",
+      "cp-copilot",
+      "mm-state"
+     ],
+     "unresolved": [
+      "collection",
+      "createIndex",
+      "has"
+     ]
+    },
+    {
+     "name": "route PUT /:id/draft",
+     "where": "packages/control-plane/src/mission-routes-config.ts:341",
+     "components": [
+      "config",
+      "cp-api",
+      "mm-state"
+     ],
+     "unresolved": [
+      "collection",
+      "createIndex"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "306d33a0be25",
+   "kind": "op.divergent-writes",
+   "about": "mission.edit-draft",
+   "text": "Entry points of mission.edit-draft reach different database writes: tool EditDraftConfig lacks 1; route PUT /:id/draft lacks 1.",
+   "where": [
+    "packages/control-plane/src/copilot-draft-tools.ts:142",
+    "packages/control-plane/src/mission-routes-config.ts:341"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "tool EditDraftConfig",
+     "where": "packages/control-plane/src/copilot-draft-tools.ts:142",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:326"
+     ]
+    },
+    {
+     "entryPoint": "route PUT /:id/draft",
+     "where": "packages/control-plane/src/mission-routes-config.ts:341",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/copilot-draft-tools.ts:220"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "8f0b6c0c1f41",
+   "kind": "op.divergent-writes",
+   "about": "mission.launch",
+   "text": "Entry points of mission.launch reach different database writes: copilot-action launch_draft lacks 4; route POST /:id/launch lacks 2.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:154",
+    "packages/control-plane/src/mission-routes-launch.ts:93"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "copilot-action launch_draft",
+     "where": "packages/control-plane/src/copilot-actions.ts:154",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:68",
+      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:80",
+      "missions.updateOne@packages/control-plane/src/mission-claims.ts:25",
+      "missions.updateOne@packages/control-plane/src/mission-claims.ts:38"
+     ]
+    },
+    {
+     "entryPoint": "route POST /:id/launch",
+     "where": "packages/control-plane/src/mission-routes-launch.ts:93",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:136",
+      "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:154"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "eb7aff23ec90",
+   "kind": "op.divergent-writes",
+   "about": "mission.create",
+   "text": "Entry points of mission.create reach different database writes: copilot-action launch_mission lacks 3; route POST / lacks 4.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:153",
+    "packages/control-plane/src/mission-routes-lifecycle.ts:268"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "copilot-action launch_mission",
+     "where": "packages/control-plane/src/copilot-actions.ts:153",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:173",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:185",
+      "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
+     ]
+    },
+    {
+     "entryPoint": "route POST /",
+     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:268",
+     "writes": [
+      "missions.insertOne@packages/control-plane/src/copilot-launch-actions.ts:41",
+      "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:65",
+      "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:68",
+      "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:83"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "03af60ad4f5b",
+   "kind": "op.divergent-writes",
+   "about": "mission.resume",
+   "text": "Entry points of mission.resume reach different database writes: copilot-action resume_mission lacks 4; route POST /:id/resume lacks 9.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:156",
+    "packages/control-plane/src/mission-routes-lifecycle.ts:271"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "copilot-action resume_mission",
+     "where": "packages/control-plane/src/copilot-actions.ts:156",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/mission-claims.ts:25",
+      "missions.updateOne@packages/control-plane/src/mission-lifecycle-actions.ts:87",
+      "missions.updateOne@packages/control-plane/src/mission-lifecycle-actions.ts:130",
+      "missions.updateOne@packages/control-plane/src/mission-lifecycle-actions.ts:160"
+     ]
+    },
+    {
+     "entryPoint": "route POST /:id/resume",
+     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:271",
+     "writes": [
+      "machineSegments.updateMany@packages/control-plane/src/machine-segments.ts:231",
+      "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:368",
+      "scheduledMessages.deleteOne@packages/control-plane/src/resource-upgrade-notify.ts:166",
+      "missions.findOneAndUpdate@packages/control-plane/src/resource-upgrade-claim.ts:39",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade-claim.ts:76",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade-claim.ts:86",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade-claim.ts:161",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:394",
+      "missions.updateOne@packages/control-plane/src/mission-lifecycle-actions.ts:44"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "8f22c2b50da9",
+   "kind": "op.no-entry-point",
+   "about": "mission.reconcile",
+   "text": "No entry point serves mission.reconcile.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "969ee3d47844",
+   "kind": "op.no-entry-point",
+   "about": "mission.wake",
+   "text": "No entry point serves mission.wake.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "82b95cbcf7b8",
+   "kind": "op.home-not-reached",
+   "about": "mission.change-config",
+   "text": "3 of 4 entry points of mission.change-config reach no code in its home, cp-mission-ops: copilot-action save_session_config; route PUT /:id/config; tool SaveMissionConfig.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:159",
+    "packages/control-plane/src/mission-routes-config.ts:340",
+    "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:131"
+   ],
+   "entryPoints": [
+    {
+     "name": "copilot-action save_session_config",
+     "where": "packages/control-plane/src/copilot-actions.ts:159",
+     "components": [
+      "config",
+      "cp-copilot",
+      "mm-agent-loop",
+      "mm-state"
+     ],
+     "unresolved": [
+      "collection",
+      "createIndex"
+     ]
+    },
+    {
+     "name": "route PUT /:id/config",
+     "where": "packages/control-plane/src/mission-routes-config.ts:340",
+     "components": [
+      "config",
+      "cp-api",
+      "cp-oversight",
+      "mm-agent-loop",
+      "mm-state"
+     ],
+     "unresolved": [
+      "add",
+      "collection",
+      "createIndex",
+      "get",
+      "has",
+      "set"
+     ]
+    },
+    {
+     "name": "tool SaveMissionConfig",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:131",
+     "components": [
+      "config",
+      "mm-agent-loop",
+      "mm-mission-copilot",
+      "mm-state",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection",
+      "createIndex",
+      "error",
+      "write"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "198bc8404a8b",
+   "kind": "op.divergent-writes",
+   "about": "mission.change-config",
+   "text": "Entry points of mission.change-config reach different database writes: copilot-action save_session_config lacks 5; route PUT /:id/config lacks 3; route PATCH /:id/limits/agent/:agentId lacks 5; tool SaveMissionConfig lacks 6.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:159",
+    "packages/control-plane/src/mission-routes-config.ts:340",
+    "packages/control-plane/src/mission-routes-limits.ts:150",
+    "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:131"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "copilot-action save_session_config",
+     "where": "packages/control-plane/src/copilot-actions.ts:159",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257",
+      "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
+     ]
+    },
+    {
+     "entryPoint": "route PUT /:id/config",
+     "where": "packages/control-plane/src/mission-routes-config.ts:340",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:295",
+      "conversationMessages.updateOne@packages/control-plane/src/copilot-action-handlers.ts:312",
+      "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
+     ]
+    },
+    {
+     "entryPoint": "route PATCH /:id/limits/agent/:agentId",
+     "where": "packages/control-plane/src/mission-routes-limits.ts:150",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:295",
+      "conversationMessages.updateOne@packages/control-plane/src/copilot-action-handlers.ts:312",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257",
+      "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
+     ]
+    },
+    {
+     "entryPoint": "tool SaveMissionConfig",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:131",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:295",
+      "conversationMessages.updateOne@packages/control-plane/src/copilot-action-handlers.ts:312",
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "24179aa24d2b",
+   "kind": "op.home-not-reached",
+   "about": "mission.status",
+   "text": "None of the 8 entry point(s) of mission.status reaches code in its home, cp-mission-ops: tool ListMissions; tool GetMissionStatus; route GET /; route GET /:id; route GET /:id/agents; tool ListTeam; monitor-route GET \"/team\"; monitor-route GET \"/status\".",
+   "where": [
+    "packages/control-plane/src/copilot-read-tools.ts:30",
+    "packages/control-plane/src/copilot-read-tools.ts:120",
+    "packages/control-plane/src/mission-routes-read.ts:283",
+    "packages/control-plane/src/mission-routes-read.ts:285",
+    "packages/control-plane/src/mission-routes-read.ts:287",
+    "packages/agent-runtime-worker/src/mailbox.ts:285",
+    "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
+    "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44"
+   ],
+   "entryPoints": [
+    {
+     "name": "tool ListMissions",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:30",
+     "components": [
+      "config",
+      "cp-copilot"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool GetMissionStatus",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:120",
+     "components": [
+      "config",
+      "cp-copilot",
+      "cp-machines",
+      "cp-oversight"
+     ],
+     "unresolved": [
+      "add",
+      "collection",
+      "createIndex",
+      "has"
+     ]
+    },
+    {
+     "name": "route GET /",
+     "where": "packages/control-plane/src/mission-routes-read.ts:283",
+     "components": [
+      "cp-api"
+     ],
+     "unresolved": []
+    },
+    {
+     "name": "route GET /:id",
+     "where": "packages/control-plane/src/mission-routes-read.ts:285",
+     "components": [
+      "cp-api",
+      "cp-machines"
+     ],
+     "unresolved": []
+    },
+    {
+     "name": "route GET /:id/agents",
+     "where": "packages/control-plane/src/mission-routes-read.ts:287",
+     "components": [
+      "cp-api",
+      "cp-edge",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end",
+      "error"
+     ]
+    },
+    {
+     "name": "tool ListTeam",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:285",
+     "components": [
+      "mm-state",
+      "mm-tools"
+     ],
+     "unresolved": []
+    },
+    {
+     "name": "monitor-route GET \"/team\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/status\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "a6c5a159822d",
+   "kind": "op.divergent-writes",
+   "about": "mission.status",
+   "text": "Entry points of mission.status reach different database writes: tool ListMissions lacks 3; tool GetMissionStatus lacks 1; route GET / lacks 3; route GET /:id lacks 2; route GET /:id/agents lacks 3; tool ListTeam lacks 3; monitor-route GET \"/team\" lacks 3; monitor-route GET \"/status\" lacks 3.",
+   "where": [
+    "packages/control-plane/src/copilot-read-tools.ts:30",
+    "packages/control-plane/src/copilot-read-tools.ts:120",
+    "packages/control-plane/src/mission-routes-read.ts:283",
+    "packages/control-plane/src/mission-routes-read.ts:285",
+    "packages/control-plane/src/mission-routes-read.ts:287",
+    "packages/agent-runtime-worker/src/mailbox.ts:285",
+    "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
+    "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "tool ListMissions",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:30",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+     ]
+    },
+    {
+     "entryPoint": "tool GetMissionStatus",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:120",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+     ]
+    },
+    {
+     "entryPoint": "route GET /",
+     "where": "packages/control-plane/src/mission-routes-read.ts:283",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+     ]
+    },
+    {
+     "entryPoint": "route GET /:id",
+     "where": "packages/control-plane/src/mission-routes-read.ts:285",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88"
+     ]
+    },
+    {
+     "entryPoint": "route GET /:id/agents",
+     "where": "packages/control-plane/src/mission-routes-read.ts:287",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+     ]
+    },
+    {
+     "entryPoint": "tool ListTeam",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:285",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route GET \"/team\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route GET \"/status\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "855d23bb256c",
+   "kind": "op.home-not-reached",
+   "about": "mission.config",
+   "text": "2 of 3 entry points of mission.config reach no code in its home, cp-api: tool ReadMissionConfig; tool ReadMissionConfig.",
+   "where": [
+    "packages/control-plane/src/copilot-draft-tools.ts:74",
+    "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:23"
+   ],
+   "entryPoints": [
+    {
+     "name": "tool ReadMissionConfig",
+     "where": "packages/control-plane/src/copilot-draft-tools.ts:74",
+     "components": [
+      "config",
+      "cp-copilot"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool ReadMissionConfig",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:23",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "791b9cb16505",
+   "kind": "op.home-not-reached",
+   "about": "mission.set-spend-cap",
+   "text": "4 of 5 entry points of mission.set-spend-cap reach no code in its home, cp-mission-ops: copilot-action set_mission_budget; tool SetMissionSpendCap; monitor-route POST \"/extend-budget\"; monitor-route POST \"/set-budget\".",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:164",
+    "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:78",
+    "packages/agent-runtime-worker/src/monitor-routes/budget.ts:56",
+    "packages/agent-runtime-worker/src/monitor-routes/budget.ts:103"
+   ],
+   "entryPoints": [
+    {
+     "name": "copilot-action set_mission_budget",
+     "where": "packages/control-plane/src/copilot-actions.ts:164",
+     "components": [
+      "cp-copilot",
+      "cp-edge",
+      "mm-agent-loop",
+      "mm-monitor",
+      "mm-state",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "end",
+      "error",
+      "on",
+      "reject",
+      "resolve"
+     ]
+    },
+    {
+     "name": "tool SetMissionSpendCap",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:78",
+     "components": [
+      "mm-agent-loop",
+      "mm-mission-copilot",
+      "mm-monitor",
+      "mm-state",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "end",
+      "error",
+      "on",
+      "reject",
+      "resolve"
+     ]
+    },
+    {
+     "name": "monitor-route POST \"/extend-budget\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/budget.ts:56",
+     "components": [
+      "mm-agent-loop",
+      "mm-monitor",
+      "mm-state",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "end",
+      "error",
+      "on",
+      "reject",
+      "resolve"
+     ]
+    },
+    {
+     "name": "monitor-route POST \"/set-budget\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/budget.ts:103",
+     "components": [
+      "mm-agent-loop",
+      "mm-monitor",
+      "mm-state",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "end",
+      "error",
+      "on",
+      "reject",
+      "resolve"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "8534a45b5652",
+   "kind": "op.divergent-writes",
+   "about": "mission.set-spend-cap",
+   "text": "Entry points of mission.set-spend-cap reach different database writes: copilot-action set_mission_budget lacks 4; tool SetMissionSpendCap lacks 4; monitor-route POST \"/extend-budget\" lacks 4; monitor-route POST \"/set-budget\" lacks 4.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:164",
+    "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:78",
+    "packages/agent-runtime-worker/src/monitor-routes/budget.ts:56",
+    "packages/agent-runtime-worker/src/monitor-routes/budget.ts:103"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "copilot-action set_mission_budget",
+     "where": "packages/control-plane/src/copilot-actions.ts:164",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+      "missions.updateOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:103",
+      "missionConfigRevisions.insertOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:121"
+     ]
+    },
+    {
+     "entryPoint": "tool SetMissionSpendCap",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:78",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+      "missions.updateOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:103",
+      "missionConfigRevisions.insertOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:121"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route POST \"/extend-budget\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/budget.ts:56",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+      "missions.updateOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:103",
+      "missionConfigRevisions.insertOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:121"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route POST \"/set-budget\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/budget.ts:103",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+      "missions.updateOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:103",
+      "missionConfigRevisions.insertOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:121"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "f7a2a9299323",
+   "kind": "op.actor-missing",
+   "about": "mission.spend",
+   "text": "CC is an actor of mission.spend, but no entry point serves CC.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "96bb757bc578",
+   "kind": "op.home-not-reached",
+   "about": "mission.spend",
+   "text": "7 of 9 entry points of mission.spend reach no code in its home, cp-mission-ops: route GET /:id/machine-runtime; tool ReadAgentUsage; tool ReadMissionCostSeries; tool ReadMissionLifetimeStats; monitor-route GET /^\\/agents\\/([^/]+)\\/usage$/; monitor-route GET \"/mission-stats\"; monitor-route GET \"/cost-series\".",
+   "where": [
+    "packages/control-plane/src/mission-resource-routes.ts:40",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:63",
+    "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:10",
+    "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:51",
+    "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:145",
+    "packages/agent-runtime-worker/src/monitor-routes/trace.ts:17",
+    "packages/agent-runtime-worker/src/monitor-routes/trace.ts:40"
+   ],
+   "entryPoints": [
+    {
+     "name": "route GET /:id/machine-runtime",
+     "where": "packages/control-plane/src/mission-resource-routes.ts:40",
+     "components": [
+      "cp-api",
+      "cp-machines"
+     ],
+     "unresolved": [
+      "add",
+      "collection",
+      "createIndex",
+      "get",
+      "has",
+      "set"
+     ]
+    },
+    {
+     "name": "tool ReadAgentUsage",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:63",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    },
+    {
+     "name": "tool ReadMissionCostSeries",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:10",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool ReadMissionLifetimeStats",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:51",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "monitor-route GET /^\\/agents\\/([^/]+)\\/usage$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:145",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/mission-stats\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:17",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/cost-series\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:40",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "bbd369c8d605",
+   "kind": "op.divergent-writes",
+   "about": "mission.spend",
+   "text": "Entry points of mission.spend reach different database writes: route GET /:id/machine-runtime lacks 4; route GET /stats lacks 6; tool ReadAgentUsage lacks 6; tool ReadMissionCostSeries lacks 6; tool ReadMissionLifetimeStats lacks 6; monitor-route GET /^\\/agents\\/([^/]+)\\/usage$/ lacks 6; monitor-route GET \"/mission-stats\" lacks 6; monitor-route GET \"/cost-series\" lacks 6.",
+   "where": [
+    "packages/control-plane/src/mission-resource-routes.ts:40",
+    "packages/control-plane/src/mission-routes-read.ts:284",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:63",
+    "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:10",
+    "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:51",
+    "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:145",
+    "packages/agent-runtime-worker/src/monitor-routes/trace.ts:17",
+    "packages/agent-runtime-worker/src/monitor-routes/trace.ts:40"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "route GET /:id/machine-runtime",
+     "where": "packages/control-plane/src/mission-resource-routes.ts:40",
+     "writes": [
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    },
+    {
+     "entryPoint": "route GET /stats",
+     "where": "packages/control-plane/src/mission-routes-read.ts:284",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    },
+    {
+     "entryPoint": "tool ReadAgentUsage",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:63",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    },
+    {
+     "entryPoint": "tool ReadMissionCostSeries",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:10",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    },
+    {
+     "entryPoint": "tool ReadMissionLifetimeStats",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:51",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route GET /^\\/agents\\/([^/]+)\\/usage$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:145",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route GET \"/mission-stats\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:17",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route GET \"/cost-series\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:40",
+     "writes": [
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "f1e42aedfaef",
+   "kind": "op.actor-missing",
+   "about": "machine.upgrade",
+   "text": "AG is an actor of machine.upgrade, but no entry point serves AG.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "253c63c970e5",
+   "kind": "op.divergent-writes",
+   "about": "machine.upgrade",
+   "text": "Entry points of machine.upgrade reach different database writes: route POST /resources/upgrade lacks 2; route POST /resources/revert lacks 8; trigger cron * * * * * lacks 7; tool RequestResourceUpgrade lacks 2; tool EndResourceUpgrade lacks 8.",
+   "where": [
+    "packages/control-plane/src/mission-copilot-router.ts:108",
+    "packages/control-plane/src/mission-copilot-router.ts:113",
+    "packages/control-plane/src/scheduler.ts:364",
+    "packages/agent-runtime-worker/src/resource-upgrade-tool.ts:95",
+    "packages/agent-runtime-worker/src/resource-upgrade-tool.ts:154"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "route POST /resources/upgrade",
+     "where": "packages/control-plane/src/mission-copilot-router.ts:108",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:394",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:575"
+     ]
+    },
+    {
+     "entryPoint": "route POST /resources/revert",
+     "where": "packages/control-plane/src/mission-copilot-router.ts:113",
+     "writes": [
+      "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
+      "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:244",
+      "scheduledMessages.insertOne@packages/control-plane/src/resource-upgrade-notify.ts:142",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:167",
+      "missions.findOneAndUpdate@packages/control-plane/src/resource-upgrade.ts:293",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:321",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:575"
+     ]
+    },
+    {
+     "entryPoint": "trigger cron * * * * *",
+     "where": "packages/control-plane/src/scheduler.ts:364",
+     "writes": [
+      "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
+      "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:244",
+      "scheduledMessages.insertOne@packages/control-plane/src/resource-upgrade-notify.ts:142",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:167",
+      "missions.findOneAndUpdate@packages/control-plane/src/resource-upgrade.ts:293",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:321"
+     ]
+    },
+    {
+     "entryPoint": "tool RequestResourceUpgrade",
+     "where": "packages/agent-runtime-worker/src/resource-upgrade-tool.ts:95",
+     "writes": [
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:394",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:575"
+     ]
+    },
+    {
+     "entryPoint": "tool EndResourceUpgrade",
+     "where": "packages/agent-runtime-worker/src/resource-upgrade-tool.ts:154",
+     "writes": [
+      "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
+      "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
+      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:244",
+      "scheduledMessages.insertOne@packages/control-plane/src/resource-upgrade-notify.ts:142",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:167",
+      "missions.findOneAndUpdate@packages/control-plane/src/resource-upgrade.ts:293",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:321",
+      "missions.updateOne@packages/control-plane/src/resource-upgrade.ts:575"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "649b81cd546b",
+   "kind": "op.home-not-reached",
+   "about": "machine.reset-upgrade-allowance",
+   "text": "None of the 1 entry point(s) of machine.reset-upgrade-allowance reaches code in its home, cp-machines: route PATCH /:id/limits/upgrade-reset.",
+   "where": [
+    "packages/control-plane/src/mission-routes-limits.ts:145"
+   ],
+   "entryPoints": [
+    {
+     "name": "route PATCH /:id/limits/upgrade-reset",
+     "where": "packages/control-plane/src/mission-routes-limits.ts:145",
+     "components": [
+      "config",
+      "cp-api",
+      "cp-mission-ops",
+      "cp-oversight",
+      "mm-state"
+     ],
+     "unresolved": [
+      "add",
+      "collection",
+      "createIndex",
+      "has"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "170c80e73748",
+   "kind": "op.no-entry-point",
+   "about": "agent.turn",
+   "text": "No entry point serves agent.turn.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "e3272ea65735",
+   "kind": "op.no-entry-point",
+   "about": "agent.reflect",
+   "text": "No entry point serves agent.reflect.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "caf258c3bc5c",
+   "kind": "op.home-not-reached",
+   "about": "agent.pause",
+   "text": "None of the 3 entry point(s) of agent.pause reaches code in its home, mm-daemon: copilot-action pause_agent; tool PauseAgent; monitor-route POST \"/pause-agent\".",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:162",
+    "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts:13",
+    "packages/agent-runtime-worker/src/monitor-routes/pause-resume.ts:18"
+   ],
+   "entryPoints": [
+    {
+     "name": "copilot-action pause_agent",
+     "where": "packages/control-plane/src/copilot-actions.ts:162",
+     "components": [
+      "cp-copilot",
+      "cp-edge",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "add",
+      "delete",
+      "end",
+      "error"
+     ]
+    },
+    {
+     "name": "tool PauseAgent",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts:13",
+     "components": [
+      "mm-mission-copilot",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "add",
+      "end",
+      "error"
+     ]
+    },
+    {
+     "name": "monitor-route POST \"/pause-agent\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/pause-resume.ts:18",
+     "components": [
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "add",
+      "end",
+      "error"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "10df78115964",
+   "kind": "op.home-not-reached",
+   "about": "agent.resume",
+   "text": "None of the 3 entry point(s) of agent.resume reaches code in its home, mm-daemon: copilot-action resume_agent; tool ResumeAgent; monitor-route POST \"/resume-agent\".",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:163",
+    "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts:39",
+    "packages/agent-runtime-worker/src/monitor-routes/pause-resume.ts:33"
+   ],
+   "entryPoints": [
+    {
+     "name": "copilot-action resume_agent",
+     "where": "packages/control-plane/src/copilot-actions.ts:163",
+     "components": [
+      "cp-copilot",
+      "cp-edge",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "add",
+      "delete",
+      "end",
+      "error"
+     ]
+    },
+    {
+     "name": "tool ResumeAgent",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts:39",
+     "components": [
+      "mm-mission-copilot",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "delete",
+      "end",
+      "error"
+     ]
+    },
+    {
+     "name": "monitor-route POST \"/resume-agent\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/pause-resume.ts:33",
+     "components": [
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "delete",
+      "end",
+      "error"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "14a4fd91cb9f",
+   "kind": "op.home-not-reached",
+   "about": "agent.history",
+   "text": "12 of 16 entry points of agent.history reach no code in its home, cp-records: tool ReadMentalMap; route GET /:id/conversations; tool ReadAgentMentalMap; tool ListAgentSessions; tool ReadAgentSessionDetail; tool ReadAgentLlmCall; tool SearchMissionHistory; monitor-route GET /^\\/agents\\/([^/]+)\\/mental-map$/; monitor-route GET /^\\/agents\\/([^/]+)\\/sessions$/; monitor-route GET /^\\/agents\\/([^/]+)\\/sessions\\/(\\d+)$/; monitor-route GET \"/events\"; tool AnalyzeMemories.",
+   "where": [
+    "packages/control-plane/src/copilot-read-tools.ts:385",
+    "packages/control-plane/src/mission-routes-read.ts:286",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:11",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:33",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:99",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:127",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:278",
+    "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:88",
+    "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:113",
+    "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:124",
+    "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:17",
+    "packages/agent-runtime-worker/src/tools/analyze-memories.ts:22"
+   ],
+   "entryPoints": [
+    {
+     "name": "tool ReadMentalMap",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:385",
+     "components": [
+      "config",
+      "cp-copilot"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "route GET /:id/conversations",
+     "where": "packages/control-plane/src/mission-routes-read.ts:286",
+     "components": [
+      "config",
+      "cp-api"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool ReadAgentMentalMap",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:11",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool ListAgentSessions",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:33",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection",
+      "end",
+      "get",
+      "push",
+      "set"
+     ]
+    },
+    {
+     "name": "tool ReadAgentSessionDetail",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:99",
+     "components": [
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": []
+    },
+    {
+     "name": "tool ReadAgentLlmCall",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:127",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection",
+      "skip"
+     ]
+    },
+    {
+     "name": "tool SearchMissionHistory",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:278",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "monitor-route GET /^\\/agents\\/([^/]+)\\/mental-map$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:88",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    },
+    {
+     "name": "monitor-route GET /^\\/agents\\/([^/]+)\\/sessions$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:113",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end",
+      "get",
+      "push",
+      "set"
+     ]
+    },
+    {
+     "name": "monitor-route GET /^\\/agents\\/([^/]+)\\/sessions\\/(\\d+)$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:124",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/events\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:17",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "add",
+      "delete",
+      "on",
+      "write"
+     ]
+    },
+    {
+     "name": "tool AnalyzeMemories",
+     "where": "packages/agent-runtime-worker/src/tools/analyze-memories.ts:22",
+     "components": [
+      "mm-state",
+      "mm-tools"
+     ],
+     "unresolved": []
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "0e21759d801b",
+   "kind": "op.divergent-writes",
+   "about": "message.send",
+   "text": "Entry points of message.send reach different database writes: tool PostMessage lacks 2; monitor-route POST \"/send-message\" lacks 2; tool-api post-message lacks 2.",
+   "where": [
+    "packages/agent-runtime-worker/src/mailbox.ts:210",
+    "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:48",
+    "packages/agent-runtime-worker/src/tool-api-server.ts:327"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "tool PostMessage",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:210",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route POST \"/send-message\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:48",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
+     ]
+    },
+    {
+     "entryPoint": "tool-api post-message",
+     "where": "packages/agent-runtime-worker/src/tool-api-server.ts:327",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "2ec873f82b9d",
+   "kind": "op.home-not-reached",
+   "about": "message.read",
+   "text": "7 of 9 entry points of message.read reach no code in its home, mm-state: tool ReadMissionMailbox; route POST /:id/messages/read; tool ReadMissionMailboxAll; tool ReadMissionInteractions; monitor-route GET \"/mailbox\"; monitor-route GET \"/interactions\"; monitor-route GET \"/message-events\".",
+   "where": [
+    "packages/control-plane/src/copilot-read-tools.ts:163",
+    "packages/control-plane/src/mission-routes-read.ts:288",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
+    "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:16",
+    "packages/agent-runtime-worker/src/monitor-routes/trace.ts:72",
+    "packages/agent-runtime-worker/src/monitor-routes/trace.ts:102"
+   ],
+   "entryPoints": [
+    {
+     "name": "tool ReadMissionMailbox",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:163",
+     "components": [
+      "config",
+      "cp-copilot"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "route POST /:id/messages/read",
+     "where": "packages/control-plane/src/mission-routes-read.ts:288",
+     "components": [
+      "config",
+      "cp-api"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool ReadMissionMailboxAll",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool ReadMissionInteractions",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/mailbox\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:16",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/interactions\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:72",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/message-events\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:102",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "4223b1072c13",
+   "kind": "op.divergent-writes",
+   "about": "message.read",
+   "text": "Entry points of message.read reach different database writes: tool ReadMissionMailbox lacks 1; tool ListMessages lacks 1; tool ReadMessage lacks 1; tool ReadMissionMailboxAll lacks 1; tool ReadMissionInteractions lacks 1; monitor-route GET \"/mailbox\" lacks 1; monitor-route GET \"/interactions\" lacks 1; monitor-route GET \"/message-events\" lacks 1.",
+   "where": [
+    "packages/control-plane/src/copilot-read-tools.ts:163",
+    "packages/agent-runtime-worker/src/mailbox.ts:302",
+    "packages/agent-runtime-worker/src/mailbox.ts:338",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
+    "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
+    "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:16",
+    "packages/agent-runtime-worker/src/monitor-routes/trace.ts:72",
+    "packages/agent-runtime-worker/src/monitor-routes/trace.ts:102"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "tool ReadMissionMailbox",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:163",
+     "writes": [
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     ]
+    },
+    {
+     "entryPoint": "tool ListMessages",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:302",
+     "writes": [
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     ]
+    },
+    {
+     "entryPoint": "tool ReadMessage",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:338",
+     "writes": [
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     ]
+    },
+    {
+     "entryPoint": "tool ReadMissionMailboxAll",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
+     "writes": [
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     ]
+    },
+    {
+     "entryPoint": "tool ReadMissionInteractions",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
+     "writes": [
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route GET \"/mailbox\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:16",
+     "writes": [
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route GET \"/interactions\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:72",
+     "writes": [
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route GET \"/message-events\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:102",
+     "writes": [
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "2d39873c20c5",
+   "kind": "op.home-not-reached",
+   "about": "file.write",
+   "text": "None of the 7 entry point(s) of file.write reaches code in its home, mm-isolation: copilot-action write_mission_file; monitor-route POST \"/files/shared/write\"; monitor-route POST /^\\/files\\/workdir\\/([^/]+)\\/write$/; monitor-route POST \"/files/shared/edit\"; monitor-route POST \"/upload\"; tool WriteFile; tool EditFile.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:158",
+    "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:72",
+    "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:81",
+    "packages/agent-runtime-worker/src/monitor-routes/file-edit.ts:17",
+    "packages/agent-runtime-worker/src/monitor-routes/upload-download.ts:19",
+    "packages/agent-runtime-worker/src/tools.ts:528",
+    "packages/agent-runtime-worker/src/tools.ts:555"
+   ],
+   "entryPoints": [
+    {
+     "name": "copilot-action write_mission_file",
+     "where": "packages/control-plane/src/copilot-actions.ts:158",
+     "components": [
+      "cp-copilot",
+      "cp-edge",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end",
+      "get",
+      "on",
+      "reject",
+      "resolve"
+     ]
+    },
+    {
+     "name": "monitor-route POST \"/files/shared/write\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:72",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "on",
+      "reject",
+      "resolve"
+     ]
+    },
+    {
+     "name": "monitor-route POST /^\\/files\\/workdir\\/([^/]+)\\/write$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:81",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end",
+      "get",
+      "on",
+      "reject",
+      "resolve"
+     ]
+    },
+    {
+     "name": "monitor-route POST \"/files/shared/edit\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/file-edit.ts:17",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": []
+    },
+    {
+     "name": "monitor-route POST \"/upload\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/upload-download.ts:19",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": []
+    },
+    {
+     "name": "tool WriteFile",
+     "where": "packages/agent-runtime-worker/src/tools.ts:528",
+     "components": [
+      "mm-tools"
+     ],
+     "unresolved": []
+    },
+    {
+     "name": "tool EditFile",
+     "where": "packages/agent-runtime-worker/src/tools.ts:555",
+     "components": [
+      "mm-tools"
+     ],
+     "unresolved": []
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "9d76a549107b",
+   "kind": "op.home-not-reached",
+   "about": "file.read",
+   "text": "None of the 8 entry point(s) of file.read reaches code in its home, mm-isolation: tool ReadMissionFile; tool ReadFileHistory; tool ReadSharedFile; tool ReadAgentWorkdirFile; monitor-route GET \"/files/shared\"; monitor-route GET \"/files/history\"; monitor-route GET /^\\/files\\/workdir\\/([^/]+)$/; monitor-route GET \"/download\".",
+   "where": [
+    "packages/control-plane/src/copilot-read-tools.ts:237",
+    "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:37",
+    "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:58",
+    "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:91",
+    "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:40",
+    "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:50",
+    "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:60",
+    "packages/agent-runtime-worker/src/monitor-routes/upload-download.ts:27"
+   ],
+   "entryPoints": [
+    {
+     "name": "tool ReadMissionFile",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:237",
+     "components": [
+      "config",
+      "cp-copilot",
+      "cp-edge",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end",
+      "get"
+     ]
+    },
+    {
+     "name": "tool ReadFileHistory",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:37",
+     "components": [
+      "mm-mission-copilot",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "get"
+     ]
+    },
+    {
+     "name": "tool ReadSharedFile",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:58",
+     "components": [
+      "mm-mission-copilot",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "get"
+     ]
+    },
+    {
+     "name": "tool ReadAgentWorkdirFile",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:91",
+     "components": [
+      "mm-mission-copilot",
+      "mm-monitor",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "end",
+      "get"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/files/shared\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:40",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "get"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/files/history\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:50",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "get"
+     ]
+    },
+    {
+     "name": "monitor-route GET /^\\/files\\/workdir\\/([^/]+)$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:60",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end",
+      "get"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/download\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/upload-download.ts:27",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": []
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "84ef660602ad",
+   "kind": "op.actor-missing",
+   "about": "schedule.create",
+   "text": "OP is an actor of schedule.create, but no entry point serves OP.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "726af273e796",
+   "kind": "op.actor-missing",
+   "about": "schedule.create",
+   "text": "AG is an actor of schedule.create, but no entry point serves AG.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "48a58907d983",
+   "kind": "op.home-not-reached",
+   "about": "schedule.create",
+   "text": "None of the 2 entry point(s) of schedule.create reaches code in its home, cp-scheduler: copilot-action create_schedule; tool CreateScheduledMessage.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:161",
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34"
+   ],
+   "entryPoints": [
+    {
+     "name": "copilot-action create_schedule",
+     "where": "packages/control-plane/src/copilot-actions.ts:161",
+     "components": [
+      "config",
+      "cp-copilot"
+     ],
+     "unresolved": [
+      "collection",
+      "has"
+     ]
+    },
+    {
+     "name": "tool CreateScheduledMessage",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection",
+      "has"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "cf6645c4870d",
+   "kind": "op.divergent-writes",
+   "about": "schedule.create",
+   "text": "Entry points of schedule.create reach different database writes: copilot-action create_schedule lacks 1; tool CreateScheduledMessage lacks 1.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:161",
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "copilot-action create_schedule",
+     "where": "packages/control-plane/src/copilot-actions.ts:161",
+     "writes": [
+      "scheduledMessages.insertOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:72"
+     ]
+    },
+    {
+     "entryPoint": "tool CreateScheduledMessage",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34",
+     "writes": [
+      "scheduledMessages.insertOne@packages/control-plane/src/copilot-schedule-actions.ts:75"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "ca44398955df",
+   "kind": "op.actor-missing",
+   "about": "schedule.cancel",
+   "text": "AG is an actor of schedule.cancel, but no entry point serves AG.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "ac91aeb42207",
+   "kind": "op.home-not-reached",
+   "about": "schedule.cancel",
+   "text": "None of the 3 entry point(s) of schedule.cancel reaches code in its home, cp-scheduler: copilot-action cancel_schedule; tool CancelScheduledMessage; monitor-route DELETE /^\\/schedule\\/([^/]+)$/.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:160",
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
+    "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:38"
+   ],
+   "entryPoints": [
+    {
+     "name": "copilot-action cancel_schedule",
+     "where": "packages/control-plane/src/copilot-actions.ts:160",
+     "components": [
+      "config",
+      "cp-copilot"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool CancelScheduledMessage",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "monitor-route DELETE /^\\/schedule\\/([^/]+)$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:38",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "874fabd6f55d",
+   "kind": "op.divergent-writes",
+   "about": "schedule.cancel",
+   "text": "Entry points of schedule.cancel reach different database writes: copilot-action cancel_schedule lacks 2; tool CancelScheduledMessage lacks 1; monitor-route DELETE /^\\/schedule\\/([^/]+)$/ lacks 3.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:160",
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
+    "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:38"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "copilot-action cancel_schedule",
+     "where": "packages/control-plane/src/copilot-actions.ts:160",
+     "writes": [
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140",
+      "scheduledMessages.deleteOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:145"
+     ]
+    },
+    {
+     "entryPoint": "tool CancelScheduledMessage",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
+     "writes": [
+      "scheduledMessages.updateOne@packages/control-plane/src/copilot-schedule-actions.ts:30"
+     ]
+    },
+    {
+     "entryPoint": "monitor-route DELETE /^\\/schedule\\/([^/]+)$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:38",
+     "writes": [
+      "scheduledMessages.updateOne@packages/control-plane/src/copilot-schedule-actions.ts:30",
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140",
+      "scheduledMessages.deleteOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:145"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "328fbc47839d",
+   "kind": "op.home-not-reached",
+   "about": "schedule.deliver",
+   "text": "None of the 1 entry point(s) of schedule.deliver reaches code in its home, cp-scheduler: trigger cron * * * * *: tick.",
+   "where": [
+    "packages/control-plane/src/scheduler.ts:360"
+   ],
+   "entryPoints": [
+    {
+     "name": "trigger cron * * * * *: tick",
+     "where": "packages/control-plane/src/scheduler.ts:360",
+     "components": [
+      "config"
+     ],
+     "unresolved": []
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "69058bc29f38",
+   "kind": "op.home-not-reached",
+   "about": "schedule.list",
+   "text": "None of the 3 entry point(s) of schedule.list reaches code in its home, cp-scheduler: tool ListSchedule; tool ListScheduledMessages; monitor-route GET \"/schedule\".",
+   "where": [
+    "packages/control-plane/src/copilot-read-tools.ts:287",
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:160",
+    "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:14"
+   ],
+   "entryPoints": [
+    {
+     "name": "tool ListSchedule",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:287",
+     "components": [
+      "config",
+      "cp-copilot"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "tool ListScheduledMessages",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:160",
+     "components": [
+      "config",
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": [
+      "collection"
+     ]
+    },
+    {
+     "name": "monitor-route GET \"/schedule\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:14",
+     "components": [
+      "config",
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "collection",
+      "end"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "ed95ace7736c",
+   "kind": "op.no-entry-point",
+   "about": "job.submit",
+   "text": "No entry point serves job.submit.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "a70318bd9278",
+   "kind": "op.home-not-reached",
+   "about": "job.run",
+   "text": "None of the 1 entry point(s) of job.run reaches code in its home, mm-jobs: trigger interval: tick.",
+   "where": [
+    "packages/agent-runtime-worker/src/daemon.ts:225"
+   ],
+   "entryPoints": [
+    {
+     "name": "trigger interval: tick",
+     "where": "packages/agent-runtime-worker/src/daemon.ts:225",
+     "components": [
+      "config"
+     ],
+     "unresolved": []
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "9a4ac69d31b2",
+   "kind": "op.home-not-reached",
+   "about": "job.control",
+   "text": "1 of 2 entry points of job.control reach no code in its home, mm-jobs: tool CancelBackgroundJob.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts:62"
+   ],
+   "entryPoints": [
+    {
+     "name": "tool CancelBackgroundJob",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts:62",
+     "components": [
+      "mm-mission-copilot",
+      "mm-tools"
+     ],
+     "unresolved": []
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "fc99e0d4bc2b",
+   "kind": "op.divergent-writes",
+   "about": "objectives.edit",
+   "text": "Entry points of objectives.edit reach different database writes: tool EditObjectiveTree lacks 1.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-copilot-objectives-tools.ts:30"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "tool EditObjectiveTree",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-objectives-tools.ts:30",
+     "writes": [
+      "objectivesGoals.updateOne@packages/agent-runtime-worker/src/objectives/repository.ts:183"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "292c4da7075f",
+   "kind": "op.divergent-writes",
+   "about": "kpi.record",
+   "text": "Entry points of kpi.record reach different database writes: tool RecordKpi lacks 1.",
+   "where": [
+    "packages/agent-runtime-worker/src/objectives/tools.ts:302"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "tool RecordKpi",
+     "where": "packages/agent-runtime-worker/src/objectives/tools.ts:302",
+     "writes": [
+      "objectivesEvents.insertOne@packages/agent-runtime-worker/src/objectives/repository.ts:152"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "874a8f8ff326",
+   "kind": "op.divergent-writes",
+   "about": "objectives.progress",
+   "text": "Entry points of objectives.progress reach different database writes: tool ReviewObjectives lacks 6; tool ReadMissionObjectives lacks 6.",
+   "where": [
+    "packages/control-plane/src/copilot-objective-tools.ts:16",
+    "packages/agent-runtime-worker/src/mission-copilot-objectives-tools.ts:11"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "tool ReviewObjectives",
+     "where": "packages/control-plane/src/copilot-objective-tools.ts:16",
+     "writes": [
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259",
+      "objectivesEvents.insertOne@packages/agent-runtime-worker/src/objectives/repository.ts:152",
+      "objectivesGoals.updateOne@packages/agent-runtime-worker/src/objectives/repository.ts:183"
+     ]
+    },
+    {
+     "entryPoint": "tool ReadMissionObjectives",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-objectives-tools.ts:11",
+     "writes": [
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259",
+      "objectivesEvents.insertOne@packages/agent-runtime-worker/src/objectives/repository.ts:152",
+      "objectivesGoals.updateOne@packages/agent-runtime-worker/src/objectives/repository.ts:183"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "5163010c196b",
+   "kind": "op.divergent-writes",
+   "about": "copilot.ask",
+   "text": "Entry points of copilot.ask reach different database writes: route GET /history lacks 6; route GET /events lacks 6.",
+   "where": [
+    "packages/control-plane/src/copilot-router.ts:189",
+    "packages/control-plane/src/copilot-router.ts:213"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "route GET /history",
+     "where": "packages/control-plane/src/copilot-router.ts:189",
+     "writes": [
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259",
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
+     ]
+    },
+    {
+     "entryPoint": "route GET /events",
+     "where": "packages/control-plane/src/copilot-router.ts:213",
+     "writes": [
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259",
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "1cf0f5cffd1f",
+   "kind": "op.actor-missing",
+   "about": "copilot.propose",
+   "text": "MC is an actor of copilot.propose, but no entry point serves MC.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "12cb14dce5c7",
+   "kind": "op.divergent-writes",
+   "about": "copilot.confirm",
+   "text": "Entry points of copilot.confirm reach different database writes: route GET /pending lacks 3.",
+   "where": [
+    "packages/control-plane/src/copilot-pending-routes.ts:95"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "route GET /pending",
+     "where": "packages/control-plane/src/copilot-pending-routes.ts:95",
+     "writes": [
+      "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+      "copilotPendingActions.findOneAndDelete@packages/control-plane/src/pending-actions.ts:64"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "e7c80d3efca2",
+   "kind": "op.divergent-writes",
+   "about": "copilot.settings",
+   "text": "Entry points of copilot.settings reach different database writes: route GET /settings lacks 1.",
+   "where": [
+    "packages/control-plane/src/copilot-router.ts:111"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "route GET /settings",
+     "where": "packages/control-plane/src/copilot-router.ts:111",
+     "writes": [
+      "users.updateOne@packages/control-plane/src/users.ts:69"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "748c7ba6cd0d",
+   "kind": "op.divergent-writes",
+   "about": "copilot.limits",
+   "text": "Entry points of copilot.limits reach different database writes: route GET /limits lacks 1; route PATCH /limits lacks 4.",
+   "where": [
+    "packages/control-plane/src/copilot-limits-routes.ts:39",
+    "packages/control-plane/src/copilot-limits-routes.ts:64"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "route GET /limits",
+     "where": "packages/control-plane/src/copilot-limits-routes.ts:39",
+     "writes": [
+      "users.updateOne@packages/control-plane/src/users.ts:97"
+     ]
+    },
+    {
+     "entryPoint": "route PATCH /limits",
+     "where": "packages/control-plane/src/copilot-limits-routes.ts:64",
+     "writes": [
+      "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+      "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+      "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "fbfa5b5f8481",
+   "kind": "op.divergent-writes",
+   "about": "issue.track",
+   "text": "Entry points of issue.track reach different database writes: copilot-action GITHUB_ISSUE_ACTION lacks 1; tool ListIssues lacks 1; route GET /github/issues lacks 1; route POST /github/issue lacks 1; tool ListGithubIssues lacks 1; tool ReportGithubIssue lacks 1.",
+   "where": [
+    "packages/control-plane/src/copilot-actions.ts:165",
+    "packages/control-plane/src/copilot-github-tools.ts:13",
+    "packages/control-plane/src/mission-copilot-router.ts:121",
+    "packages/control-plane/src/mission-copilot-router.ts:144",
+    "packages/agent-runtime-worker/src/mission-copilot-github-tools.ts:8",
+    "packages/agent-runtime-worker/src/mission-copilot-github-tools.ts:33"
+   ],
+   "lacks": [
+    {
+     "entryPoint": "copilot-action GITHUB_ISSUE_ACTION",
+     "where": "packages/control-plane/src/copilot-actions.ts:165",
+     "writes": [
+      "copilotPendingActions.insertOne@packages/control-plane/src/pending-actions.ts:55"
+     ]
+    },
+    {
+     "entryPoint": "tool ListIssues",
+     "where": "packages/control-plane/src/copilot-github-tools.ts:13",
+     "writes": [
+      "copilotPendingActions.insertOne@packages/control-plane/src/pending-actions.ts:55"
+     ]
+    },
+    {
+     "entryPoint": "route GET /github/issues",
+     "where": "packages/control-plane/src/mission-copilot-router.ts:121",
+     "writes": [
+      "copilotPendingActions.insertOne@packages/control-plane/src/pending-actions.ts:55"
+     ]
+    },
+    {
+     "entryPoint": "route POST /github/issue",
+     "where": "packages/control-plane/src/mission-copilot-router.ts:144",
+     "writes": [
+      "copilotPendingActions.insertOne@packages/control-plane/src/pending-actions.ts:55"
+     ]
+    },
+    {
+     "entryPoint": "tool ListGithubIssues",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-github-tools.ts:8",
+     "writes": [
+      "copilotPendingActions.insertOne@packages/control-plane/src/pending-actions.ts:55"
+     ]
+    },
+    {
+     "entryPoint": "tool ReportGithubIssue",
+     "where": "packages/agent-runtime-worker/src/mission-copilot-github-tools.ts:33",
+     "writes": [
+      "copilotPendingActions.insertOne@packages/control-plane/src/pending-actions.ts:55"
+     ]
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "6fd64b6aee9b",
+   "kind": "op.home-not-reached",
+   "about": "oversight.alert",
+   "text": "None of the 1 entry point(s) of oversight.alert reaches code in its home, cp-oversight: trigger cron */5 * * * *: tick.",
+   "where": [
+    "packages/control-plane/src/resource-monitor.ts:420"
+   ],
+   "entryPoints": [
+    {
+     "name": "trigger cron */5 * * * *: tick",
+     "where": "packages/control-plane/src/resource-monitor.ts:420",
+     "components": [
+      "config"
+     ],
+     "unresolved": []
+    }
+   ],
+   "new": null
+  },
+  {
+   "key": "78c8e828c8ac",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "mm-state writes missions (updateOne in write); its owner is cp-mission-ops.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-config-revisions.ts:103"
+   ],
+   "new": null
+  },
+  {
+   "key": "f3a1c9f0e570",
+   "kind": "store.foreign-writer",
+   "about": "missionConfigRevisions",
+   "text": "mm-state writes missionConfigRevisions (insertOne in write); its owner is cp-mission-ops.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-config-revisions.ts:121"
+   ],
+   "new": null
+  },
+  {
+   "key": "91bd4ac6f96b",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (insertOne in executeLaunchMission); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-launch-actions.ts:41"
+   ],
+   "new": null
+  },
+  {
+   "key": "d43811f16b18",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (updateOne in onVolumeCreated); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-launch-actions.ts:65"
+   ],
+   "new": null
+  },
+  {
+   "key": "4092be8644d9",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (updateOne in executeLaunchMission); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-launch-actions.ts:68"
+   ],
+   "new": null
+  },
+  {
+   "key": "4092be8644d9",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (updateOne in executeLaunchMission); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-launch-actions.ts:83"
+   ],
+   "new": null
+  },
+  {
+   "key": "232405c334dc",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "cp-copilot writes scheduledMessages (updateOne in executeCancelSchedule); its owner is cp-scheduler.",
+   "where": [
+    "packages/control-plane/src/copilot-schedule-actions.ts:30"
+   ],
+   "new": null
+  },
+  {
+   "key": "36aacfdec840",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "cp-copilot writes scheduledMessages (insertOne in executeCreateSchedule); its owner is cp-scheduler.",
+   "where": [
+    "packages/control-plane/src/copilot-schedule-actions.ts:75"
+   ],
+   "new": null
+  },
+  {
+   "key": "64cef69026e5",
+   "kind": "store.foreign-writer",
+   "about": "conversationMessages",
+   "text": "cp-api writes conversationMessages (updateOne in applyMentalMapEdits); its owner is mm-state.",
+   "where": [
+    "packages/control-plane/src/mission-routes-config.ts:158"
+   ],
+   "new": null
+  },
+  {
+   "key": "5ad67f3d15ab",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/mission-routes-config.ts:257"
+   ],
+   "new": null
+  },
+  {
+   "key": "5ad67f3d15ab",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/mission-routes-config.ts:326"
+   ],
+   "new": null
+  },
+  {
+   "key": "15c286ef37d9",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/mission-routes-launch.ts:68"
+   ],
+   "new": null
+  },
+  {
+   "key": "15c286ef37d9",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/mission-routes-launch.ts:80"
+   ],
+   "new": null
+  },
+  {
+   "key": "fcd46b04422b",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (insertOne in createDraftMission); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/mission-drafts.ts:90"
+   ],
+   "new": null
+  },
+  {
+   "key": "ceaf9292f4a2",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/mission-routes-lifecycle.ts:173"
+   ],
+   "new": null
+  },
+  {
+   "key": "ceaf9292f4a2",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/mission-routes-lifecycle.ts:185"
+   ],
+   "new": null
+  },
+  {
+   "key": "7bf3dca81b40",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/mission-routes-read.ts:91"
+   ],
+   "new": null
+  },
+  {
+   "key": "4e852a61dfdc",
+   "kind": "store.foreign-writer",
+   "about": "mailbox",
+   "text": "cp-api writes mailbox (updateMany in (anonymous)); its owner is mm-state.",
+   "where": [
+    "packages/control-plane/src/mission-routes-read.ts:223"
+   ],
+   "new": null
+  },
+  {
+   "key": "8220a48fabc3",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-api writes missions (updateOne in writeUpgradedRuntimeReset); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/missions.ts:299"
+   ],
+   "new": null
+  },
+  {
+   "key": "46f06be25675",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "cp-machines writes scheduledMessages (insertOne in scheduleReminder); its owner is cp-scheduler.",
+   "where": [
+    "packages/control-plane/src/resource-upgrade-notify.ts:142"
+   ],
+   "new": null
+  },
+  {
+   "key": "94065eef45c6",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "cp-machines writes scheduledMessages (deleteOne in cancelReminder); its owner is cp-scheduler.",
+   "where": [
+    "packages/control-plane/src/resource-upgrade-notify.ts:166"
+   ],
+   "new": null
+  },
+  {
+   "key": "6cfa7d51a284",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (updateOne in launchDraft); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-action-handlers.ts:136"
+   ],
+   "new": null
+  },
+  {
+   "key": "6cfa7d51a284",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (updateOne in launchDraft); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-action-handlers.ts:154"
+   ],
+   "new": null
+  },
+  {
+   "key": "469282116e14",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (updateOne in fixMissionVolume); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-action-handlers.ts:224"
+   ],
+   "new": null
+  },
+  {
+   "key": "f0e41d3f81b4",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (updateOne in saveSessionConfig); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-action-handlers.ts:295"
+   ],
+   "new": null
+  },
+  {
+   "key": "712b65549f0d",
+   "kind": "store.foreign-writer",
+   "about": "conversationMessages",
+   "text": "cp-copilot writes conversationMessages (updateOne in saveSessionConfig); its owner is mm-state.",
+   "where": [
+    "packages/control-plane/src/copilot-action-handlers.ts:312"
+   ],
+   "new": null
+  },
+  {
+   "key": "1dbbaccb1e8d",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "cp-copilot writes missions (updateOne in execute); its owner is cp-mission-ops.",
+   "where": [
+    "packages/control-plane/src/copilot-draft-tools.ts:220"
+   ],
+   "new": null
+  },
+  {
+   "key": "5ef3ca753546",
+   "kind": "store.foreign-writer",
+   "about": "platformResources",
+   "text": "cp-machines writes platformResources (updateOne in checkOrphanMachines); its owner is cp-oversight.",
+   "where": [
+    "packages/control-plane/src/fly-orphans.ts:159"
+   ],
+   "new": null
+  },
+  {
+   "key": "99238650855e",
+   "kind": "store.foreign-writer",
+   "about": "resourceAlertState",
+   "text": "mm-cli writes resourceAlertState (deleteMany in main); its owner is mm-state.",
+   "where": [
+    "packages/agent-runtime-worker/src/cli-reset.ts:115"
+   ],
+   "new": null
+  },
+  {
+   "key": "4abaaed6a76d",
+   "kind": "store.foreign-writer",
+   "about": "missions",
+   "text": "mm-mission-copilot writes missions (updateOne in execute); its owner is cp-mission-ops.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
+   ],
+   "new": null
+  },
+  {
+   "key": "3275b331bcee",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-jobs writes scheduledMessages (updateOne in upsertSchedule); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:416"
+   ],
+   "new": null
+  },
+  {
+   "key": "3275b331bcee",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-jobs writes scheduledMessages (updateOne in upsertSchedule); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
+   ],
+   "new": null
+  },
+  {
+   "key": "7924cab280eb",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-jobs writes scheduledMessages (updateMany in ingestSchedules); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:482"
+   ],
+   "new": null
+  },
+  {
+   "key": "7924cab280eb",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-jobs writes scheduledMessages (updateMany in ingestSchedules); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:494"
+   ],
+   "new": null
+  },
+  {
+   "key": "1710c640c218",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-jobs writes scheduledMessages (updateOne in ack); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:529"
+   ],
+   "new": null
+  },
+  {
+   "key": "692abe07abbb",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-mission-copilot writes scheduledMessages (insertOne in execute); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:72"
+   ],
+   "new": null
+  },
+  {
+   "key": "59b00de528aa",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-mission-copilot writes scheduledMessages (updateOne in execute); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140"
+   ],
+   "new": null
+  },
+  {
+   "key": "38f99caf108f",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-mission-copilot writes scheduledMessages (deleteOne in execute); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:145"
+   ],
+   "new": null
+  },
+  {
+   "key": "05836aa16a1d",
+   "kind": "store.foreign-writer",
+   "about": "scheduledMessages",
+   "text": "mm-daemon writes scheduledMessages (updateOne in (anonymous)); its owner is cp-scheduler.",
+   "where": [
+    "packages/agent-runtime-worker/src/daemon-boot/monitor-tool-servers.ts:96"
+   ],
+   "new": null
+  },
+  {
+   "key": "6cfd5ff98bd4",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "wakeTracked (cp-machines) can change a mission status in ways the catalog does not allow: draft → running, archived → running. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/machine-lifecycle.ts:165"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "new": null
+  },
+  {
+   "key": "6cfd5ff98bd4",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "wakeTracked (cp-machines) can change a mission status in ways the catalog does not allow: draft → running, archived → running. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/machine-lifecycle.ts:186"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "new": null
+  },
+  {
+   "key": "0815d6b2c521",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "executeLaunchMission (cp-copilot) can change a mission status in ways the catalog does not allow: draft → running, archived → running. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/copilot-launch-actions.ts:68"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "new": null
+  },
+  {
+   "key": "d348cc252e0e",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "executeLaunchMission (cp-copilot) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/copilot-launch-actions.ts:83"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "new": null
+  },
+  {
+   "key": "2b45e6bfec5d",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "(anonymous) (cp-api) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/mission-routes-launch.ts:80"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "new": null
+  },
+  {
+   "key": "03f452ab7a0d",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "(anonymous) (cp-api) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/mission-routes-lifecycle.ts:185"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "new": null
+  },
+  {
+   "key": "3596834e1c04",
+   "kind": "status.unknown-state",
+   "about": "mission",
+   "text": "The code uses the mission status \"destroyed\", which is not a state in the catalog.",
+   "where": [
+    "packages/control-plane/src/mission-routes-read.ts:91"
+   ],
+   "new": null
+  },
+  {
+   "key": "2ef7f2ec9f00",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "(anonymous) (cp-api) can change a mission status in ways the catalog does not allow: draft → error, draft → draft, draft → running, draft → suspended, draft → destroyed, provisioning → draft, provisioning → provisioning, provisioning → suspended, provisioning → destroyed, running → draft, running → provisioning, running → destroyed, suspended → error, suspended → draft, suspended → provisioning, suspended → suspended, suspended → destroyed, error → error, error → draft, error → provisioning, error → suspended, error → destroyed, archived → error, archived → draft, archived → provisioning, archived → running, archived → suspended, archived → destroyed. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/mission-routes-read.ts:91"
+   ],
+   "undeclared": [
+    "draft → error",
+    "draft → draft",
+    "draft → running",
+    "draft → suspended",
+    "draft → destroyed",
+    "provisioning → draft",
+    "provisioning → provisioning",
+    "provisioning → suspended",
+    "provisioning → destroyed",
+    "running → draft",
+    "running → provisioning",
+    "running → destroyed",
+    "suspended → error",
+    "suspended → draft",
+    "suspended → provisioning",
+    "suspended → suspended",
+    "suspended → destroyed",
+    "error → error",
+    "error → draft",
+    "error → provisioning",
+    "error → suspended",
+    "error → destroyed",
+    "archived → error",
+    "archived → draft",
+    "archived → provisioning",
+    "archived → running",
+    "archived → suspended",
+    "archived → destroyed"
+   ],
+   "new": null
+  },
+  {
+   "key": "0e1decded787",
+   "kind": "status.unknown-state",
+   "about": "mission",
+   "text": "The code uses the mission status \"destroyed\", which is not a state in the catalog.",
+   "where": [
+    "packages/control-plane/src/mission-claims.ts:25"
+   ],
+   "new": null
+  },
+  {
+   "key": "22030fa83876",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "claimStatus (cp-mission-ops) can change a mission status in ways the catalog does not allow: error → provisioning, suspended → provisioning, destroyed → provisioning.",
+   "where": [
+    "packages/control-plane/src/mission-claims.ts:25"
+   ],
+   "undeclared": [
+    "error → provisioning",
+    "suspended → provisioning",
+    "destroyed → provisioning"
+   ],
+   "new": null
+  },
+  {
+   "key": "edf77ef7fbe0",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "failResize (cp-machines) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/resource-upgrade-claim.ts:86"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "new": null
+  },
+  {
+   "key": "dbceb0c5d228",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "restore (cp-machines) can change a mission status in ways the catalog does not allow: draft → running, archived → running. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/resource-upgrade-claim.ts:161"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "new": null
+  },
+  {
+   "key": "10dd576af488",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "suspendMission (cp-mission-ops) can change a mission status in ways the catalog does not allow: draft → suspended, provisioning → suspended, suspended → suspended, error → suspended, archived → suspended. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/mission-lifecycle-actions.ts:44"
+   ],
+   "undeclared": [
+    "draft → suspended",
+    "provisioning → suspended",
+    "suspended → suspended",
+    "error → suspended",
+    "archived → suspended"
+   ],
+   "new": null
+  },
+  {
+   "key": "8cb7407fa03c",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "resumeMission (cp-mission-ops) can change a mission status in ways the catalog does not allow: draft → running, archived → running. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/mission-lifecycle-actions.ts:87"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "new": null
+  },
+  {
+   "key": "20a58c515493",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "restartOnVolume (cp-mission-ops) can change a mission status in ways the catalog does not allow: draft → running, archived → running. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/mission-lifecycle-actions.ts:130"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "new": null
+  },
+  {
+   "key": "1807327be344",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "recordResumeFailure (cp-mission-ops) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/mission-lifecycle-actions.ts:160"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "new": null
+  },
+  {
+   "key": "82494f81c607",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "launchDraft (cp-copilot) can change a mission status in ways the catalog does not allow: draft → running, archived → running. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/copilot-action-handlers.ts:136"
+   ],
+   "undeclared": [
+    "draft → running",
+    "archived → running"
+   ],
+   "new": null
+  },
+  {
+   "key": "a8c61c9b64d2",
+   "kind": "status.undeclared-transition",
+   "about": "mission",
+   "text": "launchDraft (cp-copilot) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/copilot-action-handlers.ts:154"
+   ],
+   "undeclared": [
+    "draft → error",
+    "suspended → error",
+    "error → error",
+    "archived → error"
+   ],
+   "new": null
+  },
+  {
+   "key": "31c5a9ff7ef0",
+   "kind": "status.undeclared-transition",
+   "about": "schedule",
+   "text": "deliverAll (cp-scheduler) can change a schedule status in ways the catalog does not allow: pending → delivered, delivered → delivered, failed → delivered, cancelled → delivered. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/scheduler.ts:203"
+   ],
+   "undeclared": [
+    "pending → delivered",
+    "delivered → delivered",
+    "failed → delivered",
+    "cancelled → delivered"
+   ],
+   "new": null
+  },
+  {
+   "key": "d7f2f2ddbc43",
+   "kind": "status.undeclared-transition",
+   "about": "schedule",
+   "text": "deliverAll (cp-scheduler) can change a schedule status in ways the catalog does not allow: pending → failed, delivered → failed, failed → failed, cancelled → failed. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/scheduler.ts:214"
+   ],
+   "undeclared": [
+    "pending → failed",
+    "delivered → failed",
+    "failed → failed",
+    "cancelled → failed"
+   ],
+   "new": null
+  },
+  {
+   "key": "ed6fc6b9595d",
+   "kind": "status.undeclared-transition",
+   "about": "schedule",
+   "text": "deliverAll (cp-scheduler) can change a schedule status in ways the catalog does not allow: pending → pending, delivered → pending, failed → pending, cancelled → pending. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/scheduler.ts:241"
+   ],
+   "undeclared": [
+    "pending → pending",
+    "delivered → pending",
+    "failed → pending",
+    "cancelled → pending"
+   ],
+   "new": null
+  },
+  {
+   "key": "ed6fc6b9595d",
+   "kind": "status.undeclared-transition",
+   "about": "schedule",
+   "text": "deliverAll (cp-scheduler) can change a schedule status in ways the catalog does not allow: pending → pending, delivered → pending, failed → pending, cancelled → pending. Its filter does not check the current status.",
+   "where": [
+    "packages/control-plane/src/scheduler.ts:262"
+   ],
+   "undeclared": [
+    "pending → pending",
+    "delivered → pending",
+    "failed → pending",
+    "cancelled → pending"
+   ],
+   "new": null
+  },
+  {
+   "key": "9bb1e96c965e",
+   "kind": "status.undeclared-transition",
+   "about": "schedule",
+   "text": "upsertSchedule (mm-jobs) can change a schedule status in ways the catalog does not allow: pending → pending, delivered → pending, failed → pending, cancelled → pending. Its filter does not check the current status.",
+   "where": [
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
+   ],
+   "undeclared": [
+    "pending → pending",
+    "delivered → pending",
+    "failed → pending",
+    "cancelled → pending"
+   ],
+   "new": null
+  },
+  {
+   "key": "9373ccea1c44",
+   "kind": "status.undeclared-transition",
+   "about": "schedule",
+   "text": "execute (mm-mission-copilot) can change a schedule status in ways the catalog does not allow: delivering → cancelled, delivered → cancelled, failed → cancelled, cancelled → cancelled. Its filter does not check the current status.",
+   "where": [
+    "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140"
+   ],
+   "undeclared": [
+    "delivering → cancelled",
+    "delivered → cancelled",
+    "failed → cancelled",
+    "cancelled → cancelled"
+   ],
+   "new": null
+  },
+  {
+   "key": "8c3f4d69c7cf",
+   "kind": "status.undeclared-transition",
+   "about": "schedule",
+   "text": "(anonymous) (mm-daemon) can change a schedule status in ways the catalog does not allow: delivering → cancelled, delivered → cancelled, failed → cancelled, cancelled → cancelled. Its filter does not check the current status.",
+   "where": [
+    "packages/agent-runtime-worker/src/daemon-boot/monitor-tool-servers.ts:96"
+   ],
+   "undeclared": [
+    "delivering → cancelled",
+    "delivered → cancelled",
+    "failed → cancelled",
+    "cancelled → cancelled"
+   ],
+   "new": null
+  },
+  {
+   "key": "477ef0440e73",
+   "kind": "status.unseen-transition",
+   "about": "mission",
+   "text": "No code writes the mission transition suspended → archived that the catalog allows.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "72d363ca83d7",
+   "kind": "status.unseen-transition",
+   "about": "turn",
+   "text": "No code writes the turn transition (new) → running that the catalog allows.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "3d6fb5792f00",
+   "kind": "status.unseen-transition",
+   "about": "turn",
+   "text": "No code writes the turn transition running → complete that the catalog allows.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "1229001c6034",
+   "kind": "status.unseen-transition",
+   "about": "turn",
+   "text": "No code writes the turn transition running → failed that the catalog allows.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "37b125f047ba",
+   "kind": "layer.against",
+   "about": "cp-machines",
+   "text": "cp-machines (layer 1) imports cp-edge (layer 2) 1 time(s), against the declared layering.",
+   "where": [],
+   "to": "cp-edge",
+   "imports": 1,
+   "new": null
+  },
+  {
+   "key": "ad4c410c2c38",
+   "kind": "layer.against",
+   "about": "cp-machines",
+   "text": "cp-machines (layer 1) imports cp-oversight (layer 1) 2 time(s), against the declared layering.",
+   "where": [],
+   "to": "cp-oversight",
+   "imports": 2,
+   "new": null
+  },
+  {
+   "key": "9a19fa003a79",
+   "kind": "layer.against",
+   "about": "cp-machines",
+   "text": "cp-machines (layer 1) imports cp-mission-ops (layer 2) 1 time(s), against the declared layering.",
+   "where": [],
+   "to": "cp-mission-ops",
+   "imports": 1,
+   "new": null
+  },
+  {
+   "key": "32fb5bb0c2a5",
+   "kind": "layer.against",
+   "about": "cp-mission-ops",
+   "text": "cp-mission-ops (layer 2) imports cp-api (layer 3) 3 time(s), against the declared layering.",
+   "where": [],
+   "to": "cp-api",
+   "imports": 3,
+   "new": null
+  },
+  {
+   "key": "997fe007f97f",
+   "kind": "layer.against",
+   "about": "cp-mission-ops",
+   "text": "cp-mission-ops (layer 2) imports cp-edge (layer 2) 1 time(s), against the declared layering.",
+   "where": [],
+   "to": "cp-edge",
+   "imports": 1,
+   "new": null
+  },
+  {
+   "key": "f41b080c3095",
+   "kind": "layer.against",
+   "about": "cp-edge",
+   "text": "cp-edge (layer 2) imports cp-api (layer 3) 2 time(s), against the declared layering.",
+   "where": [],
+   "to": "cp-api",
+   "imports": 2,
+   "new": null
+  },
+  {
+   "key": "a0650ec0b911",
+   "kind": "layer.against",
+   "about": "cp-oversight",
+   "text": "cp-oversight (layer 1) imports cp-machines (layer 1) 5 time(s), against the declared layering.",
+   "where": [],
+   "to": "cp-machines",
+   "imports": 5,
+   "new": null
+  },
+  {
+   "key": "466e21284c8f",
+   "kind": "layer.against",
+   "about": "mm-agent-loop",
+   "text": "mm-agent-loop (layer 3) imports mm-mission-copilot (layer 4) 2 time(s), against the declared layering.",
+   "where": [],
+   "to": "mm-mission-copilot",
+   "imports": 2,
+   "new": null
+  },
+  {
+   "key": "a591c4b217e5",
+   "kind": "layer.against",
+   "about": "mm-state",
+   "text": "mm-state (layer 1) imports mm-mission-copilot (layer 4) 1 time(s), against the declared layering.",
+   "where": [],
+   "to": "mm-mission-copilot",
+   "imports": 1,
+   "new": null
+  },
+  {
+   "key": "5802bfa5135f",
+   "kind": "layer.against",
+   "about": "mm-tools",
+   "text": "mm-tools (layer 2) imports mm-agent-loop (layer 3) 15 time(s), against the declared layering.",
+   "where": [],
+   "to": "mm-agent-loop",
+   "imports": 15,
+   "new": null
+  },
+  {
+   "key": "a3e96df030e5",
+   "kind": "layer.against",
+   "about": "mm-jobs",
+   "text": "mm-jobs (layer 4) imports mm-mission-copilot (layer 4) 3 time(s), against the declared layering.",
+   "where": [],
+   "to": "mm-mission-copilot",
+   "imports": 3,
+   "new": null
+  },
+  {
+   "key": "655d137db48d",
+   "kind": "layer.against",
+   "about": "mm-state",
+   "text": "mm-state (layer 1) imports mm-tools (layer 2) 4 time(s), against the declared layering.",
+   "where": [],
+   "to": "mm-tools",
+   "imports": 4,
+   "new": null
+  },
+  {
+   "key": "7940ac1cb009",
+   "kind": "layer.against",
+   "about": "mm-mission-copilot",
+   "text": "mm-mission-copilot (layer 4) imports mm-jobs (layer 4) 4 time(s), against the declared layering.",
+   "where": [],
+   "to": "mm-jobs",
+   "imports": 4,
+   "new": null
+  },
+  {
+   "key": "085687850bbd",
+   "kind": "layer.against",
+   "about": "mm-daemon",
+   "text": "mm-daemon (layer 5) imports mm-cli (layer 6) 1 time(s), against the declared layering.",
+   "where": [],
+   "to": "mm-cli",
+   "imports": 1,
+   "new": null
+  },
+  {
+   "key": "a6af42a9f1e5",
+   "kind": "layer.against",
+   "about": "ui-copilot",
+   "text": "ui-copilot (layer 2) imports ui-activity (layer 2) 1 time(s), against the declared layering.",
+   "where": [],
+   "to": "ui-activity",
+   "imports": 1,
+   "new": null
+  },
+  {
+   "key": "748aa405d141",
+   "kind": "layer.against",
+   "about": "ui-api",
+   "text": "ui-api (layer 1) imports ui-activity (layer 2) 3 time(s), against the declared layering.",
+   "where": [],
+   "to": "ui-activity",
+   "imports": 3,
+   "new": null
+  },
+  {
+   "key": "c5ed941339fd",
+   "kind": "inv.unenforced",
+   "about": "mission.capped",
+   "text": "Nothing enforces mission.capped yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "8f4f126db22e",
+   "kind": "inv.unenforced",
+   "about": "mission.way-out",
+   "text": "Nothing enforces mission.way-out yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "5f68cc0d3abd",
+   "kind": "inv.unenforced",
+   "about": "mission.work-kept",
+   "text": "Nothing enforces mission.work-kept yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "97c6c227530f",
+   "kind": "inv.unenforced",
+   "about": "mission.status-follows-machine",
+   "text": "Nothing enforces mission.status-follows-machine yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "8575a2e3affb",
+   "kind": "inv.unenforced",
+   "about": "mission.error-recovery",
+   "text": "Nothing enforces mission.error-recovery yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "b6e439f835af",
+   "kind": "inv.unenforced",
+   "about": "agent.one-turn",
+   "text": "Nothing enforces agent.one-turn yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "a54961c8d3d6",
+   "kind": "inv.unenforced",
+   "about": "agent.turn-ends",
+   "text": "Nothing enforces agent.turn-ends yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "e62e78636544",
+   "kind": "inv.unenforced",
+   "about": "agent.within-budget",
+   "text": "Nothing enforces agent.within-budget yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "9ba9d2a131b7",
+   "kind": "inv.unenforced",
+   "about": "agent.pause-holds",
+   "text": "Nothing enforces agent.pause-holds yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "eef018fe1277",
+   "kind": "inv.unenforced",
+   "about": "agent.no-teammate-control",
+   "text": "Nothing enforces agent.no-teammate-control yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "a140bb738170",
+   "kind": "inv.unenforced",
+   "about": "schedule.min-interval",
+   "text": "Nothing enforces schedule.min-interval yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "9e39940b4031",
+   "kind": "inv.unenforced",
+   "about": "schedule.roster",
+   "text": "Nothing enforces schedule.roster yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "10c01f438e32",
+   "kind": "inv.unenforced",
+   "about": "schedule.job-author",
+   "text": "Nothing enforces schedule.job-author yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "99df83ca58be",
+   "kind": "inv.unenforced",
+   "about": "job.as-author",
+   "text": "Nothing enforces job.as-author yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "619265c00fcc",
+   "kind": "inv.unenforced",
+   "about": "objective.tree",
+   "text": "Nothing enforces objective.tree yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "8be639c9085e",
+   "kind": "inv.unenforced",
+   "about": "task.who-updates",
+   "text": "Nothing enforces task.who-updates yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "d7299b9377d7",
+   "kind": "inv.unenforced",
+   "about": "message.wakes",
+   "text": "Nothing enforces message.wakes yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "2fe5965eab53",
+   "kind": "inv.unenforced",
+   "about": "turn.reconstructible",
+   "text": "Nothing enforces turn.reconstructible yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "b90e46ecfc86",
+   "kind": "inv.unenforced",
+   "about": "turn.persisted-per-step",
+   "text": "Nothing enforces turn.persisted-per-step yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "2c5a468f7bbd",
+   "kind": "inv.unenforced",
+   "about": "turn.no-silent-loss",
+   "text": "Nothing enforces turn.no-silent-loss yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "17fdfdae75dd",
+   "kind": "inv.unenforced",
+   "about": "llm-call.recorded",
+   "text": "Nothing enforces llm-call.recorded yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "7b1457d4d7ff",
+   "kind": "inv.unenforced",
+   "about": "llm-call.bodies-kept",
+   "text": "Nothing enforces llm-call.bodies-kept yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "f2ec4610ca14",
+   "kind": "inv.unenforced",
+   "about": "llm-call.cost-counted",
+   "text": "Nothing enforces llm-call.cost-counted yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "14ad8324cf7f",
+   "kind": "inv.unenforced",
+   "about": "files.attributed",
+   "text": "Nothing enforces files.attributed yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "d319e2dacdce",
+   "kind": "inv.unenforced",
+   "about": "platform.no-memory-only-state",
+   "text": "Nothing enforces platform.no-memory-only-state yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "15f93568c9f2",
+   "kind": "inv.unenforced",
+   "about": "platform.changes-audited",
+   "text": "Nothing enforces platform.changes-audited yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "54e678ec3726",
+   "kind": "inv.unenforced",
+   "about": "platform.failures-surface",
+   "text": "Nothing enforces platform.failures-surface yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "d4cb0d24dc47",
+   "kind": "inv.unenforced",
+   "about": "sec.authenticated",
+   "text": "Nothing enforces sec.authenticated yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "4e0593e73f38",
+   "kind": "inv.unenforced",
+   "about": "sec.authorized",
+   "text": "Nothing enforces sec.authorized yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "d8ad837f54b8",
+   "kind": "inv.unenforced",
+   "about": "sec.tenant-scoped",
+   "text": "Nothing enforces sec.tenant-scoped yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "7fbc3e858e7f",
+   "kind": "inv.unenforced",
+   "about": "sec.no-secrets-to-agents",
+   "text": "Nothing enforces sec.no-secrets-to-agents yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "88d3d6708bbe",
+   "kind": "inv.unenforced",
+   "about": "sec.secrets-not-recorded",
+   "text": "Nothing enforces sec.secrets-not-recorded yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "2f042e248dc3",
+   "kind": "inv.unenforced",
+   "about": "sec.contained-paths",
+   "text": "Nothing enforces sec.contained-paths yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "f794d2b71037",
+   "kind": "inv.unenforced",
+   "about": "sec.safe-egress",
+   "text": "Nothing enforces sec.safe-egress yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "3e68a4dbf621",
+   "kind": "inv.unenforced",
+   "about": "sec.input-validated",
+   "text": "Nothing enforces sec.input-validated yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "eb6d3651b5d6",
+   "kind": "inv.unenforced",
+   "about": "sec.untrusted-text-labelled",
+   "text": "Nothing enforces sec.untrusted-text-labelled yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "4842414068d7",
+   "kind": "inv.unenforced",
+   "about": "sec.output-safe",
+   "text": "Nothing enforces sec.output-safe yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "65841ea2eb0d",
+   "kind": "inv.unenforced",
+   "about": "sec.least-privilege",
+   "text": "Nothing enforces sec.least-privilege yet.",
+   "where": [],
+   "new": null
+  },
+  {
+   "key": "b130fbebf738",
+   "kind": "inv.unenforced",
+   "about": "sec.confirmed-effects",
+   "text": "Nothing enforces sec.confirmed-effects yet.",
+   "where": [],
+   "new": null
+  }
+ ]
+}
