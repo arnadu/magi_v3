@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "b552063",
-  "time": "2026-11-16T20:42:34Z"
+  "commit": "6730970",
+  "time": "2026-11-16T22:59:25Z"
  },
  "findings": [
   {
@@ -42,7 +42,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "306d33a0be25",
@@ -69,7 +69,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "8f0b6c0c1f41",
@@ -100,7 +100,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "eb7aff23ec90",
@@ -132,7 +132,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "03af60ad4f5b",
@@ -170,7 +170,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "8f22c2b50da9",
@@ -178,7 +178,7 @@
    "about": "mission.reconcile",
    "text": "No entry point serves mission.reconcile.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "969ee3d47844",
@@ -186,7 +186,7 @@
    "about": "mission.wake",
    "text": "No entry point serves mission.wake.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "82b95cbcf7b8",
@@ -250,7 +250,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "198bc8404a8b",
@@ -308,7 +308,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "24179aa24d2b",
@@ -413,7 +413,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "a6c5a159822d",
@@ -501,7 +501,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "855d23bb256c",
@@ -537,7 +537,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "791b9cb16505",
@@ -623,7 +623,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "8534a45b5652",
@@ -678,7 +678,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "f7a2a9299323",
@@ -686,7 +686,7 @@
    "about": "mission.spend",
    "text": "CC is an actor of mission.spend, but no entry point serves CC.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "96bb757bc578",
@@ -794,7 +794,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "bbd369c8d605",
@@ -907,7 +907,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "f1e42aedfaef",
@@ -915,7 +915,7 @@
    "about": "machine.upgrade",
    "text": "AG is an actor of machine.upgrade, but no entry point serves AG.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "253c63c970e5",
@@ -988,7 +988,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "649b81cd546b",
@@ -1017,7 +1017,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "170c80e73748",
@@ -1025,7 +1025,7 @@
    "about": "agent.turn",
    "text": "No entry point serves agent.turn.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "e3272ea65735",
@@ -1033,7 +1033,7 @@
    "about": "agent.reflect",
    "text": "No entry point serves agent.reflect.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "caf258c3bc5c",
@@ -1090,7 +1090,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "10df78115964",
@@ -1147,7 +1147,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "14a4fd91cb9f",
@@ -1316,7 +1316,7 @@
      "unresolved": []
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "0e21759d801b",
@@ -1354,7 +1354,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "2ec873f82b9d",
@@ -1454,7 +1454,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "4223b1072c13",
@@ -1529,7 +1529,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "2d39873c20c5",
@@ -1621,7 +1621,7 @@
      "unresolved": []
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "9d76a549107b",
@@ -1731,7 +1731,7 @@
      "unresolved": []
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "84ef660602ad",
@@ -1739,7 +1739,7 @@
    "about": "schedule.create",
    "text": "OP is an actor of schedule.create, but no entry point serves OP.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "726af273e796",
@@ -1747,7 +1747,7 @@
    "about": "schedule.create",
    "text": "AG is an actor of schedule.create, but no entry point serves AG.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "48a58907d983",
@@ -1785,7 +1785,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "cf6645c4870d",
@@ -1812,7 +1812,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "ca44398955df",
@@ -1820,7 +1820,7 @@
    "about": "schedule.cancel",
    "text": "AG is an actor of schedule.cancel, but no entry point serves AG.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "ac91aeb42207",
@@ -1867,7 +1867,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "874fabd6f55d",
@@ -1905,7 +1905,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "328fbc47839d",
@@ -1925,7 +1925,7 @@
      "unresolved": []
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "69058bc29f38",
@@ -1974,7 +1974,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "ed95ace7736c",
@@ -1982,7 +1982,7 @@
    "about": "job.submit",
    "text": "No entry point serves job.submit.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "a70318bd9278",
@@ -2002,7 +2002,7 @@
      "unresolved": []
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "9a4ac69d31b2",
@@ -2023,7 +2023,7 @@
      "unresolved": []
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "fc99e0d4bc2b",
@@ -2042,7 +2042,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "292c4da7075f",
@@ -2061,7 +2061,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "874a8f8ff326",
@@ -2098,7 +2098,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "5163010c196b",
@@ -2135,7 +2135,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "1cf0f5cffd1f",
@@ -2143,7 +2143,7 @@
    "about": "copilot.propose",
    "text": "MC is an actor of copilot.propose, but no entry point serves MC.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "12cb14dce5c7",
@@ -2164,7 +2164,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "e7c80d3efca2",
@@ -2183,7 +2183,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "748c7ba6cd0d",
@@ -2213,7 +2213,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "fbfa5b5f8481",
@@ -2272,7 +2272,7 @@
      ]
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "6fd64b6aee9b",
@@ -2292,7 +2292,7 @@
      "unresolved": []
     }
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "78c8e828c8ac",
@@ -2302,7 +2302,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mission-config-revisions.ts:103"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "f3a1c9f0e570",
@@ -2312,7 +2312,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mission-config-revisions.ts:121"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "91bd4ac6f96b",
@@ -2322,7 +2322,7 @@
    "where": [
     "packages/control-plane/src/copilot-launch-actions.ts:41"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "d43811f16b18",
@@ -2332,7 +2332,7 @@
    "where": [
     "packages/control-plane/src/copilot-launch-actions.ts:65"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "4092be8644d9",
@@ -2342,7 +2342,7 @@
    "where": [
     "packages/control-plane/src/copilot-launch-actions.ts:68"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "4092be8644d9",
@@ -2352,7 +2352,7 @@
    "where": [
     "packages/control-plane/src/copilot-launch-actions.ts:83"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "232405c334dc",
@@ -2362,7 +2362,7 @@
    "where": [
     "packages/control-plane/src/copilot-schedule-actions.ts:30"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "36aacfdec840",
@@ -2372,7 +2372,7 @@
    "where": [
     "packages/control-plane/src/copilot-schedule-actions.ts:75"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "64cef69026e5",
@@ -2382,7 +2382,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-config.ts:158"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "5ad67f3d15ab",
@@ -2392,7 +2392,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-config.ts:257"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "5ad67f3d15ab",
@@ -2402,7 +2402,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-config.ts:326"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "15c286ef37d9",
@@ -2412,7 +2412,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-launch.ts:68"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "15c286ef37d9",
@@ -2422,7 +2422,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-launch.ts:80"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "fcd46b04422b",
@@ -2432,7 +2432,7 @@
    "where": [
     "packages/control-plane/src/mission-drafts.ts:90"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "ceaf9292f4a2",
@@ -2442,7 +2442,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-lifecycle.ts:173"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "ceaf9292f4a2",
@@ -2452,7 +2452,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-lifecycle.ts:185"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "7bf3dca81b40",
@@ -2462,7 +2462,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-read.ts:91"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "4e852a61dfdc",
@@ -2472,7 +2472,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-read.ts:223"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "8220a48fabc3",
@@ -2482,7 +2482,7 @@
    "where": [
     "packages/control-plane/src/missions.ts:299"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "46f06be25675",
@@ -2492,7 +2492,7 @@
    "where": [
     "packages/control-plane/src/resource-upgrade-notify.ts:142"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "94065eef45c6",
@@ -2502,7 +2502,7 @@
    "where": [
     "packages/control-plane/src/resource-upgrade-notify.ts:166"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "6cfa7d51a284",
@@ -2512,7 +2512,7 @@
    "where": [
     "packages/control-plane/src/copilot-action-handlers.ts:136"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "6cfa7d51a284",
@@ -2522,7 +2522,7 @@
    "where": [
     "packages/control-plane/src/copilot-action-handlers.ts:154"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "469282116e14",
@@ -2532,7 +2532,7 @@
    "where": [
     "packages/control-plane/src/copilot-action-handlers.ts:224"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "f0e41d3f81b4",
@@ -2542,7 +2542,7 @@
    "where": [
     "packages/control-plane/src/copilot-action-handlers.ts:295"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "712b65549f0d",
@@ -2552,7 +2552,7 @@
    "where": [
     "packages/control-plane/src/copilot-action-handlers.ts:312"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "1dbbaccb1e8d",
@@ -2562,7 +2562,7 @@
    "where": [
     "packages/control-plane/src/copilot-draft-tools.ts:220"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "5ef3ca753546",
@@ -2572,7 +2572,7 @@
    "where": [
     "packages/control-plane/src/fly-orphans.ts:159"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "99238650855e",
@@ -2582,7 +2582,7 @@
    "where": [
     "packages/agent-runtime-worker/src/cli-reset.ts:115"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "4abaaed6a76d",
@@ -2592,7 +2592,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "3275b331bcee",
@@ -2602,7 +2602,7 @@
    "where": [
     "packages/agent-runtime-worker/src/schedule-ingest.ts:416"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "3275b331bcee",
@@ -2612,7 +2612,7 @@
    "where": [
     "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "7924cab280eb",
@@ -2622,7 +2622,7 @@
    "where": [
     "packages/agent-runtime-worker/src/schedule-ingest.ts:482"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "7924cab280eb",
@@ -2632,7 +2632,7 @@
    "where": [
     "packages/agent-runtime-worker/src/schedule-ingest.ts:494"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "1710c640c218",
@@ -2642,7 +2642,7 @@
    "where": [
     "packages/agent-runtime-worker/src/schedule-ingest.ts:529"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "692abe07abbb",
@@ -2652,7 +2652,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:72"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "59b00de528aa",
@@ -2662,7 +2662,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "38f99caf108f",
@@ -2672,7 +2672,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:145"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "05836aa16a1d",
@@ -2682,7 +2682,7 @@
    "where": [
     "packages/agent-runtime-worker/src/daemon-boot/monitor-tool-servers.ts:96"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "6cfd5ff98bd4",
@@ -2696,7 +2696,7 @@
     "draft → running",
     "archived → running"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "6cfd5ff98bd4",
@@ -2710,7 +2710,7 @@
     "draft → running",
     "archived → running"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "0815d6b2c521",
@@ -2724,7 +2724,7 @@
     "draft → running",
     "archived → running"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "d348cc252e0e",
@@ -2740,7 +2740,7 @@
     "error → error",
     "archived → error"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "2b45e6bfec5d",
@@ -2756,7 +2756,7 @@
     "error → error",
     "archived → error"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "03f452ab7a0d",
@@ -2772,7 +2772,7 @@
     "error → error",
     "archived → error"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "3596834e1c04",
@@ -2782,7 +2782,7 @@
    "where": [
     "packages/control-plane/src/mission-routes-read.ts:91"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "2ef7f2ec9f00",
@@ -2822,7 +2822,7 @@
     "archived → suspended",
     "archived → destroyed"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "0e1decded787",
@@ -2832,7 +2832,7 @@
    "where": [
     "packages/control-plane/src/mission-claims.ts:25"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "22030fa83876",
@@ -2847,7 +2847,7 @@
     "suspended → provisioning",
     "destroyed → provisioning"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "edf77ef7fbe0",
@@ -2863,7 +2863,7 @@
     "error → error",
     "archived → error"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "dbceb0c5d228",
@@ -2877,7 +2877,7 @@
     "draft → running",
     "archived → running"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "10dd576af488",
@@ -2894,7 +2894,7 @@
     "error → suspended",
     "archived → suspended"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "8cb7407fa03c",
@@ -2908,7 +2908,7 @@
     "draft → running",
     "archived → running"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "20a58c515493",
@@ -2922,7 +2922,7 @@
     "draft → running",
     "archived → running"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "1807327be344",
@@ -2938,7 +2938,7 @@
     "error → error",
     "archived → error"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "82494f81c607",
@@ -2952,7 +2952,7 @@
     "draft → running",
     "archived → running"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "a8c61c9b64d2",
@@ -2968,7 +2968,7 @@
     "error → error",
     "archived → error"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "31c5a9ff7ef0",
@@ -2984,7 +2984,7 @@
     "failed → delivered",
     "cancelled → delivered"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "d7f2f2ddbc43",
@@ -3000,7 +3000,7 @@
     "failed → failed",
     "cancelled → failed"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "ed6fc6b9595d",
@@ -3016,7 +3016,7 @@
     "failed → pending",
     "cancelled → pending"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "ed6fc6b9595d",
@@ -3032,7 +3032,7 @@
     "failed → pending",
     "cancelled → pending"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "9bb1e96c965e",
@@ -3048,7 +3048,7 @@
     "failed → pending",
     "cancelled → pending"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "9373ccea1c44",
@@ -3064,7 +3064,7 @@
     "failed → cancelled",
     "cancelled → cancelled"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "8c3f4d69c7cf",
@@ -3080,7 +3080,7 @@
     "failed → cancelled",
     "cancelled → cancelled"
    ],
-   "new": null
+   "new": false
   },
   {
    "key": "477ef0440e73",
@@ -3088,7 +3088,7 @@
    "about": "mission",
    "text": "No code writes the mission transition suspended → archived that the catalog allows.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "72d363ca83d7",
@@ -3096,7 +3096,7 @@
    "about": "turn",
    "text": "No code writes the turn transition (new) → running that the catalog allows.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "3d6fb5792f00",
@@ -3104,7 +3104,7 @@
    "about": "turn",
    "text": "No code writes the turn transition running → complete that the catalog allows.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "1229001c6034",
@@ -3112,7 +3112,7 @@
    "about": "turn",
    "text": "No code writes the turn transition running → failed that the catalog allows.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "37b125f047ba",
@@ -3122,7 +3122,7 @@
    "where": [],
    "to": "cp-edge",
    "imports": 1,
-   "new": null
+   "new": false
   },
   {
    "key": "ad4c410c2c38",
@@ -3132,7 +3132,7 @@
    "where": [],
    "to": "cp-oversight",
    "imports": 2,
-   "new": null
+   "new": false
   },
   {
    "key": "9a19fa003a79",
@@ -3142,7 +3142,7 @@
    "where": [],
    "to": "cp-mission-ops",
    "imports": 1,
-   "new": null
+   "new": false
   },
   {
    "key": "32fb5bb0c2a5",
@@ -3152,7 +3152,7 @@
    "where": [],
    "to": "cp-api",
    "imports": 3,
-   "new": null
+   "new": false
   },
   {
    "key": "997fe007f97f",
@@ -3162,7 +3162,7 @@
    "where": [],
    "to": "cp-edge",
    "imports": 1,
-   "new": null
+   "new": false
   },
   {
    "key": "f41b080c3095",
@@ -3172,7 +3172,7 @@
    "where": [],
    "to": "cp-api",
    "imports": 2,
-   "new": null
+   "new": false
   },
   {
    "key": "a0650ec0b911",
@@ -3182,7 +3182,7 @@
    "where": [],
    "to": "cp-machines",
    "imports": 5,
-   "new": null
+   "new": false
   },
   {
    "key": "466e21284c8f",
@@ -3192,7 +3192,7 @@
    "where": [],
    "to": "mm-mission-copilot",
    "imports": 2,
-   "new": null
+   "new": false
   },
   {
    "key": "a591c4b217e5",
@@ -3202,7 +3202,7 @@
    "where": [],
    "to": "mm-mission-copilot",
    "imports": 1,
-   "new": null
+   "new": false
   },
   {
    "key": "5802bfa5135f",
@@ -3212,7 +3212,7 @@
    "where": [],
    "to": "mm-agent-loop",
    "imports": 15,
-   "new": null
+   "new": false
   },
   {
    "key": "a3e96df030e5",
@@ -3222,7 +3222,7 @@
    "where": [],
    "to": "mm-mission-copilot",
    "imports": 3,
-   "new": null
+   "new": false
   },
   {
    "key": "655d137db48d",
@@ -3232,7 +3232,7 @@
    "where": [],
    "to": "mm-tools",
    "imports": 4,
-   "new": null
+   "new": false
   },
   {
    "key": "7940ac1cb009",
@@ -3242,7 +3242,7 @@
    "where": [],
    "to": "mm-jobs",
    "imports": 4,
-   "new": null
+   "new": false
   },
   {
    "key": "085687850bbd",
@@ -3252,7 +3252,7 @@
    "where": [],
    "to": "mm-cli",
    "imports": 1,
-   "new": null
+   "new": false
   },
   {
    "key": "a6af42a9f1e5",
@@ -3262,7 +3262,7 @@
    "where": [],
    "to": "ui-activity",
    "imports": 1,
-   "new": null
+   "new": false
   },
   {
    "key": "748aa405d141",
@@ -3272,7 +3272,7 @@
    "where": [],
    "to": "ui-activity",
    "imports": 3,
-   "new": null
+   "new": false
   },
   {
    "key": "c5ed941339fd",
@@ -3280,7 +3280,7 @@
    "about": "mission.capped",
    "text": "Nothing enforces mission.capped yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "8f4f126db22e",
@@ -3288,7 +3288,7 @@
    "about": "mission.way-out",
    "text": "Nothing enforces mission.way-out yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "5f68cc0d3abd",
@@ -3296,7 +3296,7 @@
    "about": "mission.work-kept",
    "text": "Nothing enforces mission.work-kept yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "97c6c227530f",
@@ -3304,7 +3304,7 @@
    "about": "mission.status-follows-machine",
    "text": "Nothing enforces mission.status-follows-machine yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "8575a2e3affb",
@@ -3312,7 +3312,7 @@
    "about": "mission.error-recovery",
    "text": "Nothing enforces mission.error-recovery yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "b6e439f835af",
@@ -3320,7 +3320,7 @@
    "about": "agent.one-turn",
    "text": "Nothing enforces agent.one-turn yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "a54961c8d3d6",
@@ -3328,7 +3328,7 @@
    "about": "agent.turn-ends",
    "text": "Nothing enforces agent.turn-ends yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "e62e78636544",
@@ -3336,7 +3336,7 @@
    "about": "agent.within-budget",
    "text": "Nothing enforces agent.within-budget yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "9ba9d2a131b7",
@@ -3344,7 +3344,7 @@
    "about": "agent.pause-holds",
    "text": "Nothing enforces agent.pause-holds yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "eef018fe1277",
@@ -3352,7 +3352,7 @@
    "about": "agent.no-teammate-control",
    "text": "Nothing enforces agent.no-teammate-control yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "a140bb738170",
@@ -3360,7 +3360,7 @@
    "about": "schedule.min-interval",
    "text": "Nothing enforces schedule.min-interval yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "9e39940b4031",
@@ -3368,7 +3368,7 @@
    "about": "schedule.roster",
    "text": "Nothing enforces schedule.roster yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "10c01f438e32",
@@ -3376,7 +3376,7 @@
    "about": "schedule.job-author",
    "text": "Nothing enforces schedule.job-author yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "99df83ca58be",
@@ -3384,7 +3384,7 @@
    "about": "job.as-author",
    "text": "Nothing enforces job.as-author yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "619265c00fcc",
@@ -3392,7 +3392,7 @@
    "about": "objective.tree",
    "text": "Nothing enforces objective.tree yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "8be639c9085e",
@@ -3400,7 +3400,7 @@
    "about": "task.who-updates",
    "text": "Nothing enforces task.who-updates yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "d7299b9377d7",
@@ -3408,7 +3408,7 @@
    "about": "message.wakes",
    "text": "Nothing enforces message.wakes yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "2fe5965eab53",
@@ -3416,7 +3416,7 @@
    "about": "turn.reconstructible",
    "text": "Nothing enforces turn.reconstructible yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "b90e46ecfc86",
@@ -3424,7 +3424,7 @@
    "about": "turn.persisted-per-step",
    "text": "Nothing enforces turn.persisted-per-step yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "2c5a468f7bbd",
@@ -3432,7 +3432,7 @@
    "about": "turn.no-silent-loss",
    "text": "Nothing enforces turn.no-silent-loss yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "17fdfdae75dd",
@@ -3440,7 +3440,7 @@
    "about": "llm-call.recorded",
    "text": "Nothing enforces llm-call.recorded yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "7b1457d4d7ff",
@@ -3448,7 +3448,7 @@
    "about": "llm-call.bodies-kept",
    "text": "Nothing enforces llm-call.bodies-kept yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "f2ec4610ca14",
@@ -3456,7 +3456,7 @@
    "about": "llm-call.cost-counted",
    "text": "Nothing enforces llm-call.cost-counted yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "14ad8324cf7f",
@@ -3464,7 +3464,7 @@
    "about": "files.attributed",
    "text": "Nothing enforces files.attributed yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "d319e2dacdce",
@@ -3472,7 +3472,7 @@
    "about": "platform.no-memory-only-state",
    "text": "Nothing enforces platform.no-memory-only-state yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "15f93568c9f2",
@@ -3480,7 +3480,7 @@
    "about": "platform.changes-audited",
    "text": "Nothing enforces platform.changes-audited yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "54e678ec3726",
@@ -3488,7 +3488,7 @@
    "about": "platform.failures-surface",
    "text": "Nothing enforces platform.failures-surface yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "d4cb0d24dc47",
@@ -3496,7 +3496,7 @@
    "about": "sec.authenticated",
    "text": "Nothing enforces sec.authenticated yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "4e0593e73f38",
@@ -3504,7 +3504,7 @@
    "about": "sec.authorized",
    "text": "Nothing enforces sec.authorized yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "d8ad837f54b8",
@@ -3512,7 +3512,7 @@
    "about": "sec.tenant-scoped",
    "text": "Nothing enforces sec.tenant-scoped yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "7fbc3e858e7f",
@@ -3520,7 +3520,7 @@
    "about": "sec.no-secrets-to-agents",
    "text": "Nothing enforces sec.no-secrets-to-agents yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "88d3d6708bbe",
@@ -3528,7 +3528,7 @@
    "about": "sec.secrets-not-recorded",
    "text": "Nothing enforces sec.secrets-not-recorded yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "2f042e248dc3",
@@ -3536,7 +3536,7 @@
    "about": "sec.contained-paths",
    "text": "Nothing enforces sec.contained-paths yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "f794d2b71037",
@@ -3544,7 +3544,7 @@
    "about": "sec.safe-egress",
    "text": "Nothing enforces sec.safe-egress yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "3e68a4dbf621",
@@ -3552,7 +3552,7 @@
    "about": "sec.input-validated",
    "text": "Nothing enforces sec.input-validated yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "eb6d3651b5d6",
@@ -3560,7 +3560,7 @@
    "about": "sec.untrusted-text-labelled",
    "text": "Nothing enforces sec.untrusted-text-labelled yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "4842414068d7",
@@ -3568,7 +3568,7 @@
    "about": "sec.output-safe",
    "text": "Nothing enforces sec.output-safe yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "65841ea2eb0d",
@@ -3576,7 +3576,7 @@
    "about": "sec.least-privilege",
    "text": "Nothing enforces sec.least-privilege yet.",
    "where": [],
-   "new": null
+   "new": false
   },
   {
    "key": "b130fbebf738",
@@ -3584,7 +3584,7 @@
    "about": "sec.confirmed-effects",
    "text": "Nothing enforces sec.confirmed-effects yet.",
    "where": [],
-   "new": null
+   "new": false
   }
  ]
 }
