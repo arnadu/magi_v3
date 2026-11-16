@@ -37,11 +37,11 @@ A draft is a mission in state `draft`. Budget pause is not a mission state: the 
 | `suspended` | archive | `archived` | OP | Planned |
 
 Invariants:
-- `mission.capped`: A mission never runs without a spend cap, and the cap is never above its ceiling.
-- `mission.way-out`: Every state has a way out that the operator can reach from the cockpit.
-- `mission.work-kept`: A mission's volume (its work) survives every transition. Missions are not deleted: suspend is the end state until archive exists (decision D-6); archive will stop all costs and keep the results readable.
-- `mission.status-follows-machine`: The stored status follows the machine's actual state, kept in step by the platform on a timer (`mission.reconcile`), never by reading a mission.
-- `mission.error-recovery`: A mission in `error` is recovered by the control copilot within a budget the platform enforces; beyond it, the copilot hands over to the operator. See `mission.resume`.
+- `mission.capped`: A mission never runs without a spend cap, and the cap is never above its ceiling. *(not yet enforced; decided in ADR-0034)*
+- `mission.way-out`: Every state has a way out that the operator can reach from the cockpit. *(not yet enforced)*
+- `mission.work-kept`: A mission's volume (its work) survives every transition. Missions are not deleted: suspend is the end state until archive exists (decision D-6); archive will stop all costs and keep the results readable. *(not yet enforced)*
+- `mission.status-follows-machine`: The stored status follows the machine's actual state, kept in step by the platform on a timer (`mission.reconcile`), never by reading a mission. *(not yet enforced)*
+- `mission.error-recovery`: A mission in `error` is recovered by the control copilot within a budget the platform enforces; beyond it, the copilot hands over to the operator. See `mission.resume`. *(not yet enforced)*
 
 ## Agent (within a mission) (`agent`)
 
@@ -70,12 +70,12 @@ The agent loop is the operations `agent.dispatch`, `agent.turn` and `agent.refle
 | `paused` | resume | `idle` | OP, CC, MC |  |
 
 Invariants:
-- `agent.one-turn`: An agent runs at most one turn at a time.
-- `agent.turn-ends`: Every turn ends, within the agent's limits and a wall-clock timeout.
-- `agent.within-budget`: No turn starts once the mission's spend has reached its cap.
-- `agent.pause-holds`: A pause holds until someone resumes the agent, across any restart of the mission (resume, upgrade, crash).
-- `agent.no-teammate-control`: Agents never act on a teammate. A supervisor agent works with the agents it oversees through the mailbox only.
-- `agent.own-identity`: An agent's tools run as its own OS user, with no secrets in their environment.
+- `agent.one-turn`: An agent runs at most one turn at a time. *(not yet enforced)*
+- `agent.turn-ends`: Every turn ends, within the agent's limits and a wall-clock timeout. *(not yet enforced)*
+- `agent.within-budget`: No turn starts once the mission's spend has reached its cap. *(not yet enforced)*
+- `agent.pause-holds`: A pause holds until someone resumes the agent, across any restart of the mission (resume, upgrade, crash). *(not yet enforced)*
+- `agent.no-teammate-control`: Agents never act on a teammate. A supervisor agent works with the agents it oversees through the mailbox only. *(not yet enforced)*
+- `agent.own-identity`: An agent's tools run as its own OS user, with no secrets in their environment. *(not yet enforced)*
 
 ## Schedule (`schedule`)
 
@@ -102,9 +102,9 @@ Either a message to agents or a job to run, one-off or recurring.
 | `pending` | cancel | `cancelled` | OP, CC, MC, AG | AG: its own schedules only |
 
 Invariants:
-- `schedule.min-interval`: A recurring schedule fires at most every 5 minutes, whoever creates it.
-- `schedule.roster`: Recipients are on the mission's roster.
-- `schedule.job-author`: A job schedule runs only as its author.
+- `schedule.min-interval`: A recurring schedule fires at most every 5 minutes, whoever creates it. *(not yet enforced)*
+- `schedule.roster`: Recipients are on the mission's roster. *(not yet enforced)*
+- `schedule.job-author`: A job schedule runs only as its author. *(not yet enforced; decided in ADR-0033)*
 
 ## Pending action (a copilot's proposal) (`pending-action`)
 
@@ -147,7 +147,7 @@ Stored in: Files under `shared/jobs/`; the daemon's private record is authoritat
 | — | restart a failed or cancelled job, as a new job | `pending` | MC | Same script and author as the original |
 
 Invariants:
-- `job.as-author`: A job runs as its author, with no secrets.
+- `job.as-author`: A job runs as its author, with no secrets. *(not yet enforced; decided in ADR-0033)*
 
 ## Objective (`objective`)
 
@@ -163,7 +163,7 @@ The objective tree is edited by CC and MC. Its transitions are not yet specified
 | `abandoned` | Dropped |
 
 Invariants:
-- `objective.tree`: The objective tree has no duplicate ids, unknown parents or cycles.
+- `objective.tree`: The objective tree has no duplicate ids, unknown parents or cycles. *(not yet enforced)*
 
 ## Task (`task`)
 
@@ -181,7 +181,7 @@ Its transitions are not yet specified.
 | `cancelled` | Dropped |
 
 Invariants:
-- `task.who-updates`: A task is updated by its assignee, its creator, the objective's owner, or MC.
+- `task.who-updates`: A task is updated by its assignee, its creator, the objective's owner, or MC. *(not yet enforced)*
 
 ## Message (`message`)
 
@@ -200,4 +200,57 @@ Read or unread per recipient.
 | `unread` | read by the recipient | `read` | AG, MC |  |
 
 Invariants:
-- `message.wakes`: A message wakes its recipient.
+- `message.wakes`: A message wakes its recipient. *(not yet enforced)*
+
+## Turn (one agent's run from dispatch to its end) (`turn`)
+
+Stored as `agentTurnStats` (`AgentTurnStats`).
+
+Its messages are in `conversationMessages`, one per step; its model calls are `llm-call`s.
+
+| State | Meaning |
+|---|---|
+| `running` | Dispatched; its steps are being stored as they happen |
+| `completed` | Ended normally |
+| `failed` | Ended on a model error, a limit or the wall-clock timeout, with the reason recorded |
+| `interrupted` | Cut short by a crash or a restart of the daemon |
+
+| From | Event | To | Who | Note |
+|---|---|---|---|---|
+| — | dispatched | `running` | PLT |  |
+| `running` | ends normally | `completed` | PLT |  |
+| `running` | a model error, a limit or the timeout | `failed` | PLT |  |
+| `running` | the daemon crashes or restarts | `interrupted` | PLT | What happens next is an open decision (`turn.no-silent-loss`) |
+
+Invariants:
+- `turn.reconstructible`: Any turn can be reconstructed from what is stored: the prompt and mental map it started from, every model call, every tool call with its arguments and result, its cost, and how it ended. *(not yet enforced)*
+- `turn.persisted-per-step`: Each step of a turn (a model answer, a tool result) is stored before the next step starts, so a crash loses at most the step in progress. *(not yet enforced)*
+- `turn.no-silent-loss`: An interrupted turn is either resumed from its last stored step or closed with a recorded reason; it is never silently dropped or replayed from the start. *(not yet enforced; **open decision:** Resume from the last stored step (needs tools that are safe to repeat), or close the turn and start a new one)*
+
+## Model call (`llm-call`)
+
+Stored as `llmCallLog` (`LlmCallLogEntry`).
+
+| State | Meaning |
+|---|---|
+| `recorded` | Its row (who, model, tokens, cost, time) and its full input and output are stored |
+| `summarized` | Past the retention period: the full input and output are removed, the row is kept |
+
+| From | Event | To | Who | Note |
+|---|---|---|---|---|
+| — | a model is called | `recorded` | PLT |  |
+| `recorded` | the retention period ends | `summarized` | PLT |  |
+
+Invariants:
+- `llm-call.recorded`: Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time. *(not yet enforced; decided in ADR-0017)*
+- `llm-call.bodies-kept`: The full input and output of each call are kept for the retention period the operator sets. *(not yet enforced; **open decision:** The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full)*
+- `llm-call.cost-counted`: Every recorded call's cost counts against its mission's spend. *(not yet enforced; decided in ADR-0017)*
+
+## Platform-wide invariants
+
+What holds across entities: the record of what happened, and what survives a restart.
+
+- `files.attributed`: Every change to a mission's files is attributed to an agent and a turn. *(not yet enforced)*
+- `platform.no-memory-only-state`: Every piece of state that decides what the platform does next (pauses, holds, cooldowns, claims, queued work) is stored, and rebuilt after a restart. *(not yet enforced)*
+- `platform.changes-audited`: Every change to a mission by the operator, a copilot or the platform (configuration, cap, schedule, pause, machine) is recorded: who, what, when and why. *(not yet enforced)*
+- `platform.failures-surface`: Every failure that stops work (a crashed turn, a timeout, a failed delivery, a failed provisioning) is recorded with its reason and reaches the operator. *(not yet enforced)*

@@ -33,17 +33,69 @@
 | `mm-isolation` | Isolation and mission files | OS users, workspaces, git, safe paths and HTTP; reading and writing the mission's files within their folders | `packages/agent-runtime-worker/src` | `linux-user.ts`, `workspace-*`, `safe-*`, `ssrf.ts`, `remove-if-exists.ts` |
 | `mm-cli` | Developer CLI | Local commands | `packages/agent-runtime-worker/src` | `cli*.ts`, `user-input.ts`, `index.ts` |
 
-## Shared and front end
+## Cockpit (in the browser)
+
+| Id | Component | Responsibility | Root | Paths |
+|---|---|---|---|---|
+| `ui-shell` | Cockpit shell | Sign-in, header, navigation between missions and their tabs, the home view | `packages/cockpit/src` | `main.tsx`, `App.tsx`, `Header.tsx`, `TabBar.tsx`, `HomeView.tsx`, `LoginScreen.tsx`, `SignOutButton.tsx`, `MissionDashboard.tsx`, `auth.ts`, `app-hooks.ts`, `styles.css`, `vite-env.d.ts` |
+| `ui-api` | Cockpit API client | Every call from the cockpit to the control plane, and the polling around them | `packages/cockpit/src` | `api/`, `data.ts`, `use-api-resource.ts`, `use-visible-poll.ts` |
+| `ui-missions` | Missions and drafts | The mission list, templates, creating and editing drafts, launching, suspending and resuming | `packages/cockpit/src` | `MissionsPanel.tsx`, `TemplatesPanel.tsx`, `Draft*.tsx`, `use-draft-*`, `mission-status-action.ts` |
+| `ui-config` | Mission configuration | Editing a mission's settings, agents, skills, tools, image settings and mental maps | `packages/cockpit/src` | `Config*.tsx`, `AgentToggles.tsx`, `MentalMap*.tsx`, `ImageSettingsFields.tsx`, `image-settings.ts`, `mental-map-diff.ts`, `available-skills.ts`, `use-catalog.ts`, `use-mission-config-editor.ts` |
+| `ui-activity` | Mission activity | What the agents did: conversations, transcripts, model calls, the trace timeline, the log, agent errors | `packages/cockpit/src` | `ConversationsPanel.tsx`, `conversations/`, `TranscriptsPanel.tsx`, `transcripts/`, `TracePanel.tsx`, `trace/`, `LogPanel.tsx`, `AgentErrorBanner.tsx`, `call-index.ts`, `llm-call-types.ts` |
+| `ui-files` | Mission files | Browsing, viewing, uploading and editing the mission's files | `packages/cockpit/src` | `FilesPanel.tsx`, `use-file-node.ts` |
+| `ui-objectives` | Objectives | The objective tree, tasks and KPIs, and their progress | `packages/cockpit/src` | `ObjectivesPanel.tsx`, `types.ts` |
+| `ui-limits` | Spend, limits and schedules | Spend against cap and ceiling, agent limits, machine runtime and upgrades, schedules | `packages/cockpit/src` | `LimitsPanel.tsx`, `RuntimePanel.tsx`, `UpgradeLimitsSection.tsx`, `SchedulePanel.tsx`, `mission-spend.ts` |
+| `ui-copilot` | Copilot panel | Talking to the copilot, confirming its proposals, its transcripts, files, limits and settings | `packages/cockpit/src` | `Copilot*.tsx`, `copilot/` |
+| `ui-kit` | Cockpit building blocks | Shared display pieces: Markdown, JSON trees, loading and error states | `packages/cockpit/src` | `Markdown.tsx`, `markdown.ts`, `JsonTree.tsx`, `LoadingView.tsx`, `load-error.tsx` |
+
+## Shared
 
 | Id | Component | Responsibility | Root | Paths |
 |---|---|---|---|---|
 | `config` | Configuration and stored types | Team-config schema, stored document types, collections, model defaults, the env catalogue, the baselines | `packages/agent-config/src` | `**` |
-| `cockpit` | Cockpit | The operator's UI | `packages/cockpit/src` | `**` |
 | `skills` | Platform skills | Skills shipped to every mission | `packages/skills` | `**` |
+
+## Data stores
+
+Each MongoDB collection, what it holds and the one component whose code writes it. A write from any other component is a finding unless it is listed as an exception. The owner is the component, not the process.
+
+| Collection | Holds | Owner | Also written by |
+|---|---|---|---|
+| `missions` | mission | `cp-mission-ops` | `cp-machines` (the machine, volume and machine shape) |
+| `missionConfigRevisions` | Each saved revision of a mission's configuration | `cp-mission-ops` |  |
+| `users` | Signed-in users | `cp-edge` |  |
+| `scheduledMessages` | schedule | `cp-scheduler` |  |
+| `mailbox` | message | `mm-state` |  |
+| `conversationMessages` | turn (its messages, step by step) | `mm-state` |  |
+| `llmCallLog` | llm-call | `mm-agent-loop` | `cp-scheduler` (retention pruning) |
+| `agentTurnStats` | turn (its statistics) | `mm-agent-loop` |  |
+| `missionStats` | Lifetime totals per agent | `mm-agent-loop` |  |
+| `missionAnomalies` | Anomalies: crashes, timeouts, failed deliveries, resource alerts | `mm-state` | `cp-oversight` (anomalies the control plane detects) |
+| `objectivesGoals` | objective | `mm-state` |  |
+| `objectivesEvents` | task (and KPI, cost and allocation events) | `mm-state` |  |
+| `missionResources` | The latest resource sample of each mission | `mm-state` |  |
+| `platformResources` | Platform-wide resource samples (database storage) | `cp-oversight` |  |
+| `resourceAlertState` | Which resource alerts are raised, for de-duplication | `mm-state` |  |
+| `resourceSnapshots` | One daily resource report per user | `cp-oversight` |  |
+| `machineSegments` | Each stretch a mission's machine ran with one shape | `cp-machines` |  |
+| `copilotPendingActions` | pending-action | `cp-copilot` |  |
+
+## External systems
+
+| Id | System | Used for | Reached by |
+|---|---|---|---|
+| `mongodb` | MongoDB Atlas | All persistent state (the data stores above) | `cp-mission-ops`, `cp-machines`, `cp-scheduler`, `cp-oversight`, `cp-records`, `cp-copilot`, `cp-edge`, `cp-api`, `mm-state`, `mm-agent-loop`, `mm-daemon`, `mm-monitor`, `mm-mission-copilot`, `mm-jobs` |
+| `fly` | Fly.io Machines API | Mission machines and volumes | `cp-machines` |
+| `llm-providers` | Anthropic and OpenRouter | Model calls and image generation | `mm-agent-loop`, `mm-tools`, `cp-copilot` |
+| `github` | GitHub API | Issues about MAGI | `cp-copilot` |
+| `firebase` | Firebase Authentication | Signing operators in | `cp-edge`, `ui-shell` |
+| `web` | The web (Brave Search and any page an agent opens) | Agents' research | `mm-tools` |
+| `data-providers` | FRED, FMP and NewsAPI | Market and economic data for background jobs | `mm-tools` |
 
 ## Dependency rules
 
 Prose until dependency-cruiser enforces them.
 
-- `dep.cockpit`: The cockpit depends only on `config` types and on the control plane's HTTP API.
+- `dep.cockpit`: The cockpit's components (`ui-*`) depend only on `config` types and on each other; they reach the platform only over the control plane's HTTP API.
+- `dep.ui-api`: Only `ui-api` calls the control plane; every other cockpit component goes through it.
 - `dep.through-home`: Entry points (`cp-api`, `cp-copilot`, `cp-mc-gateway`, `mm-monitor`, `mm-mission-copilot`) reach mission state changes through their operation's home, never by writing the collection directly.

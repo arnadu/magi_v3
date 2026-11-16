@@ -20,10 +20,10 @@ catalog, not the tables.** This README is the only hand-written page.
 | Document | Defines | Ids |
 |---|---|---|
 | [actors.md](actors.md) | Who can ask MAGI for something, and how they reach it | `OP`, `CC`, `MC`, … |
-| [entities.md](entities.md) | What they work with; where each is stored, its states, allowed transitions and invariants | `mission`, `schedule`, …; invariants `mission.capped`, … |
+| [entities.md](entities.md) | What they work with; where each is stored, its states, allowed transitions and invariants; the platform-wide invariants | `mission`, `turn`, …; invariants `mission.capped`, `platform.no-memory-only-state`, … |
 | [operations.md](operations.md) | What each actor can ask for, the rules that hold whoever asks, and the component meant to hold its one implementation; the entry classes for entry points that serve no operation | `mission.launch`, …; `infrastructure`, … |
 | [journeys.md](journeys.md) | The operator journeys, as sequences of operations | `J-01`, … |
-| [../architecture/components.md](../architecture/components.md) | The components and the source paths each owns; dependency rules | `cp-api`, `mm-state`, … |
+| [../architecture/components.md](../architecture/components.md) | The components and the source paths each owns; the data stores and the one component that writes each; the external systems; dependency rules | `cp-api`, `mm-state`, `ui-files`, … |
 
 ## How it is used
 
@@ -35,6 +35,9 @@ catalog, not the tables.** This README is the only hand-written page.
   transitions. They report where code and baseline disagree.
 - **Reviewer agents** read these documents for intent and the scans for facts, and judge each
   disagreement: a finding against the code, or a question for the product owner.
+- **Invariants** say what must always be true. Each lists what enforces it (a test titled with
+  its id, a scan, a runtime check, or review) and, when adopting it was a choice between
+  alternatives, the ADR that made it. The trace reports the ones nothing enforces yet.
 - **ADRs** add the design rules the code must keep. Their front matter names the baseline ids
   each governs and how each rule is enforced (ADR-0036, decision 10).
 - **The product owner** approves every change to the catalog.
@@ -53,4 +56,11 @@ catalog, not the tables.** This README is the only hand-written page.
 
 ## Open questions
 
+- **Open decisions on invariants**, to be settled in one ADR on the durable record and crash
+  recovery: how long the full input and output of model calls are kept, and where
+  (`llm-call.bodies-kept`); whether an interrupted turn is resumed or closed
+  (`turn.no-silent-loss`).
+- **Decision D-6** (missions are not deleted), behind `mission.work-kept`, has no ADR.
+- **Drafted 2026-11-16, to review:** the cockpit's ten components, the owner of each data store,
+  the external systems.
 - **Transitions of objectives and tasks** are not yet specified.

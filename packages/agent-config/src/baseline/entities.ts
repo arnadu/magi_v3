@@ -1,27 +1,5 @@
-import type { ActorId } from "./actors.js";
-import type {
-	Entity,
-	EntityState,
-	EntityStore,
-	Invariant,
-	Transition,
-} from "./types.js";
-
-/**
- * States are inferred from `states` only; a transition naming a state not
- * declared there fails `tsc`.
- */
-function defineEntity<const E extends string, const S extends string>(e: {
-	id: E;
-	name: string;
-	store: EntityStore;
-	states: readonly EntityState<S>[];
-	transitions: readonly Transition<NoInfer<S>, ActorId>[];
-	invariants: readonly Invariant[];
-	notes?: string;
-}): Entity<E, S, ActorId> {
-	return e;
-}
+import { defineEntity } from "./define-entity.js";
+import { LLM_CALL, TURN } from "./entities-record.js";
 
 const mission = defineEntity({
 	id: "mission",
@@ -144,22 +122,28 @@ const mission = defineEntity({
 		{
 			id: "mission.capped",
 			text: "A mission never runs without a spend cap, and the cap is never above its ceiling.",
+			enforcedBy: [],
+			decidedBy: "ADR-0034",
 		},
 		{
 			id: "mission.way-out",
 			text: "Every state has a way out that the operator can reach from the cockpit.",
+			enforcedBy: [],
 		},
 		{
 			id: "mission.work-kept",
 			text: "A mission's volume (its work) survives every transition. Missions are not deleted: suspend is the end state until archive exists (decision D-6); archive will stop all costs and keep the results readable.",
+			enforcedBy: [],
 		},
 		{
 			id: "mission.status-follows-machine",
 			text: "The stored status follows the machine's actual state, kept in step by the platform on a timer (`mission.reconcile`), never by reading a mission.",
+			enforcedBy: [],
 		},
 		{
 			id: "mission.error-recovery",
 			text: "A mission in `error` is recovered by the control copilot within a budget the platform enforces; beyond it, the copilot hands over to the operator. See `mission.resume`.",
+			enforcedBy: [],
 		},
 	],
 	notes:
@@ -250,26 +234,32 @@ const agent = defineEntity({
 		{
 			id: "agent.one-turn",
 			text: "An agent runs at most one turn at a time.",
+			enforcedBy: [],
 		},
 		{
 			id: "agent.turn-ends",
 			text: "Every turn ends, within the agent's limits and a wall-clock timeout.",
+			enforcedBy: [],
 		},
 		{
 			id: "agent.within-budget",
 			text: "No turn starts once the mission's spend has reached its cap.",
+			enforcedBy: [],
 		},
 		{
 			id: "agent.pause-holds",
 			text: "A pause holds until someone resumes the agent, across any restart of the mission (resume, upgrade, crash).",
+			enforcedBy: [],
 		},
 		{
 			id: "agent.no-teammate-control",
 			text: "Agents never act on a teammate. A supervisor agent works with the agents it oversees through the mailbox only.",
+			enforcedBy: [],
 		},
 		{
 			id: "agent.own-identity",
 			text: "An agent's tools run as its own OS user, with no secrets in their environment.",
+			enforcedBy: [],
 		},
 	],
 	notes:
@@ -339,11 +329,18 @@ const schedule = defineEntity({
 		{
 			id: "schedule.min-interval",
 			text: "A recurring schedule fires at most every 5 minutes, whoever creates it.",
+			enforcedBy: [],
 		},
-		{ id: "schedule.roster", text: "Recipients are on the mission's roster." },
+		{
+			id: "schedule.roster",
+			text: "Recipients are on the mission's roster.",
+			enforcedBy: [],
+		},
 		{
 			id: "schedule.job-author",
 			text: "A job schedule runs only as its author.",
+			enforcedBy: [],
+			decidedBy: "ADR-0033",
 		},
 	],
 	notes: "Either a message to agents or a job to run, one-off or recurring.",
@@ -462,7 +459,12 @@ const job = defineEntity({
 		},
 	],
 	invariants: [
-		{ id: "job.as-author", text: "A job runs as its author, with no secrets." },
+		{
+			id: "job.as-author",
+			text: "A job runs as its author, with no secrets.",
+			enforcedBy: [],
+			decidedBy: "ADR-0033",
+		},
 	],
 });
 
@@ -485,6 +487,7 @@ const objective = defineEntity({
 		{
 			id: "objective.tree",
 			text: "The objective tree has no duplicate ids, unknown parents or cycles.",
+			enforcedBy: [],
 		},
 	],
 	notes:
@@ -512,6 +515,7 @@ const task = defineEntity({
 		{
 			id: "task.who-updates",
 			text: "A task is updated by its assignee, its creator, the objective's owner, or MC.",
+			enforcedBy: [],
 		},
 	],
 	notes: "Its transitions are not yet specified.",
@@ -540,7 +544,13 @@ const message = defineEntity({
 			actors: ["AG", "MC"],
 		},
 	],
-	invariants: [{ id: "message.wakes", text: "A message wakes its recipient." }],
+	invariants: [
+		{
+			id: "message.wakes",
+			text: "A message wakes its recipient.",
+			enforcedBy: [],
+		},
+	],
 	notes: "Read or unread per recipient.",
 });
 
@@ -554,6 +564,8 @@ export const ENTITIES = [
 	objective,
 	task,
 	message,
+	TURN,
+	LLM_CALL,
 ] as const;
 
 export type EntityId = (typeof ENTITIES)[number]["id"];

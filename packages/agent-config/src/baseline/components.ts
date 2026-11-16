@@ -2,6 +2,7 @@ import type { Component, DependencyRule } from "./types.js";
 
 const CP = "packages/control-plane/src";
 const MM = "packages/agent-runtime-worker/src";
+const UI = "packages/cockpit/src";
 
 export const COMPONENT_IDS = [
 	"cp-api",
@@ -23,8 +24,17 @@ export const COMPONENT_IDS = [
 	"mm-state",
 	"mm-isolation",
 	"mm-cli",
+	"ui-shell",
+	"ui-api",
+	"ui-missions",
+	"ui-config",
+	"ui-activity",
+	"ui-files",
+	"ui-objectives",
+	"ui-limits",
+	"ui-copilot",
+	"ui-kit",
 	"config",
-	"cockpit",
 	"skills",
 ] as const;
 export type ComponentId = (typeof COMPONENT_IDS)[number];
@@ -283,7 +293,149 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		root: MM,
 		paths: ["cli*.ts", "user-input.ts", "index.ts"],
 	},
-	// ── Shared and front end ────────────────────────────────────────────────
+	// ── Cockpit (the operator's UI, in the browser) ─────────────────────────
+	{
+		id: "ui-shell",
+		plane: "browser",
+		name: "Cockpit shell",
+		responsibility:
+			"Sign-in, header, navigation between missions and their tabs, the home view",
+		root: UI,
+		paths: [
+			"main.tsx",
+			"App.tsx",
+			"Header.tsx",
+			"TabBar.tsx",
+			"HomeView.tsx",
+			"LoginScreen.tsx",
+			"SignOutButton.tsx",
+			"MissionDashboard.tsx",
+			"auth.ts",
+			"app-hooks.ts",
+			"styles.css",
+			"vite-env.d.ts",
+		],
+	},
+	{
+		id: "ui-api",
+		plane: "browser",
+		name: "Cockpit API client",
+		responsibility:
+			"Every call from the cockpit to the control plane, and the polling around them",
+		root: UI,
+		paths: ["api/", "data.ts", "use-api-resource.ts", "use-visible-poll.ts"],
+	},
+	{
+		id: "ui-missions",
+		plane: "browser",
+		name: "Missions and drafts",
+		responsibility:
+			"The mission list, templates, creating and editing drafts, launching, suspending and resuming",
+		root: UI,
+		paths: [
+			"MissionsPanel.tsx",
+			"TemplatesPanel.tsx",
+			"Draft*.tsx",
+			"use-draft-*",
+			"mission-status-action.ts",
+		],
+	},
+	{
+		id: "ui-config",
+		plane: "browser",
+		name: "Mission configuration",
+		responsibility:
+			"Editing a mission's settings, agents, skills, tools, image settings and mental maps",
+		root: UI,
+		paths: [
+			"Config*.tsx",
+			"AgentToggles.tsx",
+			"MentalMap*.tsx",
+			"ImageSettingsFields.tsx",
+			"image-settings.ts",
+			"mental-map-diff.ts",
+			"available-skills.ts",
+			"use-catalog.ts",
+			"use-mission-config-editor.ts",
+		],
+	},
+	{
+		id: "ui-activity",
+		plane: "browser",
+		name: "Mission activity",
+		responsibility:
+			"What the agents did: conversations, transcripts, model calls, the trace timeline, the log, agent errors",
+		root: UI,
+		paths: [
+			"ConversationsPanel.tsx",
+			"conversations/",
+			"TranscriptsPanel.tsx",
+			"transcripts/",
+			"TracePanel.tsx",
+			"trace/",
+			"LogPanel.tsx",
+			"AgentErrorBanner.tsx",
+			"call-index.ts",
+			"llm-call-types.ts",
+		],
+	},
+	{
+		id: "ui-files",
+		plane: "browser",
+		name: "Mission files",
+		responsibility:
+			"Browsing, viewing, uploading and editing the mission's files",
+		root: UI,
+		paths: ["FilesPanel.tsx", "use-file-node.ts"],
+	},
+	{
+		id: "ui-objectives",
+		plane: "browser",
+		name: "Objectives",
+		responsibility: "The objective tree, tasks and KPIs, and their progress",
+		root: UI,
+		paths: ["ObjectivesPanel.tsx", "types.ts"],
+	},
+	{
+		id: "ui-limits",
+		plane: "browser",
+		name: "Spend, limits and schedules",
+		responsibility:
+			"Spend against cap and ceiling, agent limits, machine runtime and upgrades, schedules",
+		root: UI,
+		paths: [
+			"LimitsPanel.tsx",
+			"RuntimePanel.tsx",
+			"UpgradeLimitsSection.tsx",
+			"SchedulePanel.tsx",
+			"mission-spend.ts",
+		],
+	},
+	{
+		id: "ui-copilot",
+		plane: "browser",
+		name: "Copilot panel",
+		responsibility:
+			"Talking to the copilot, confirming its proposals, its transcripts, files, limits and settings",
+		root: UI,
+		paths: ["Copilot*.tsx", "copilot/"],
+	},
+	{
+		id: "ui-kit",
+		plane: "browser",
+		name: "Cockpit building blocks",
+		responsibility:
+			"Shared display pieces: Markdown, JSON trees, loading and error states",
+		root: UI,
+		paths: [
+			"Markdown.tsx",
+			"markdown.ts",
+			"JsonTree.tsx",
+			"LoadingView.tsx",
+			"load-error.tsx",
+		],
+	},
+	// ── Shared ──────────────────────────────────────────────────────────────
 	{
 		id: "config",
 		plane: "shared",
@@ -291,14 +443,6 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		responsibility:
 			"Team-config schema, stored document types, collections, model defaults, the env catalogue, the baselines",
 		root: "packages/agent-config/src",
-		paths: ["**"],
-	},
-	{
-		id: "cockpit",
-		plane: "shared",
-		name: "Cockpit",
-		responsibility: "The operator's UI",
-		root: "packages/cockpit/src",
 		paths: ["**"],
 	},
 	{
@@ -315,7 +459,11 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 export const DEPENDENCY_RULES: readonly DependencyRule[] = [
 	{
 		id: "dep.cockpit",
-		text: "The cockpit depends only on `config` types and on the control plane's HTTP API.",
+		text: "The cockpit's components (`ui-*`) depend only on `config` types and on each other; they reach the platform only over the control plane's HTTP API.",
+	},
+	{
+		id: "dep.ui-api",
+		text: "Only `ui-api` calls the control plane; every other cockpit component goes through it.",
 	},
 	{
 		id: "dep.through-home",

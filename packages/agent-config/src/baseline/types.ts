@@ -18,7 +18,7 @@ export interface Actor<A extends string = string> {
 	reachesThrough: string;
 }
 
-export type Plane = "control-plane" | "mission-machine" | "shared";
+export type Plane = "control-plane" | "mission-machine" | "browser" | "shared";
 
 export interface Component<C extends string = string> {
 	id: C;
@@ -37,10 +37,30 @@ export interface Component<C extends string = string> {
 	paths: readonly string[];
 }
 
+/**
+ * How an invariant is kept true. `test`: a test whose title starts with the
+ * invariant's id. `scan`: a query in `scripts/trace/ql/`. `runtime`: a check
+ * the platform runs while it operates. `review`: judged by a reviewer.
+ */
+export type Enforcement =
+	| { kind: "test" }
+	| { kind: "scan"; query: string }
+	| { kind: "runtime"; where: string }
+	| { kind: "review" };
+
+/** An ADR id, `ADR-NNNN`. */
+export type AdrId = `ADR-${number}`;
+
 export interface Invariant {
 	/** Stable id, `<entity>.<name>`; a test or check that enforces it names it. */
 	id: string;
 	text: string;
+	/** Empty until something enforces it; the trace lists the unenforced. */
+	enforcedBy: readonly Enforcement[];
+	/** The ADR that chose it, when adopting it was a choice between alternatives. */
+	decidedBy?: AdrId;
+	/** A decision still to make before it can be enforced. */
+	open?: string;
 }
 
 /** Where an entity's state is kept: the join with the code for status-write scans. */
@@ -139,6 +159,26 @@ export interface Journey<
 	actors: readonly A[];
 	operations: readonly O[];
 	note?: string;
+}
+
+/** A MongoDB collection and the one component allowed to write it. */
+export interface DataStore<C extends string = string> {
+	collection: CollectionKey;
+	/** The entity it holds, or what it holds when that is not an entity. */
+	holds: string;
+	/** The component whose code writes it; every other component reads only. */
+	owner: C;
+	/** Deliberate exceptions: another component that writes part of it. */
+	alsoWrittenBy?: readonly { component: C; what: string }[];
+}
+
+/** A service outside MAGI that MAGI depends on. */
+export interface ExternalSystem<C extends string = string> {
+	id: string;
+	name: string;
+	usedFor: string;
+	/** The components that call it. */
+	reachedBy: readonly C[];
 }
 
 export interface DependencyRule {

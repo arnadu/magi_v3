@@ -10,7 +10,15 @@ import { ENTITIES } from "./entities.js";
 import { ENTRY_CLASSES } from "./entry-classes.js";
 import { JOURNEYS } from "./journeys.js";
 import { OPERATIONS } from "./operations.js";
-import type { BaselineStatus, OperationGroup, Plane } from "./types.js";
+import { PLATFORM_INVARIANTS } from "./platform-invariants.js";
+import { DATA_STORES, EXTERNAL_SYSTEMS } from "./stores.js";
+import type {
+	BaselineStatus,
+	Enforcement,
+	Invariant,
+	OperationGroup,
+	Plane,
+} from "./types.js";
 
 export const BASELINE_STATUS: { status: BaselineStatus; since: string } = {
 	status: "draft",
@@ -45,6 +53,30 @@ function header(title: string, intro: string): string {
 		`${status} ${intro}`,
 		"",
 	].join("\n");
+}
+
+function enforcement(e: Enforcement): string {
+	switch (e.kind) {
+		case "test":
+			return "a test";
+		case "scan":
+			return `scan ${code(e.query)}`;
+		case "runtime":
+			return `runtime check in ${e.where}`;
+		case "review":
+			return "review";
+	}
+}
+
+function invariantLine(i: Invariant): string {
+	const facts = [
+		i.enforcedBy.length > 0
+			? `enforced by ${i.enforcedBy.map(enforcement).join(", ")}`
+			: "not yet enforced",
+		...(i.decidedBy ? [`decided in ${i.decidedBy}`] : []),
+		...(i.open ? [`**open decision:** ${i.open}`] : []),
+	];
+	return `- ${code(i.id)}: ${i.text} *(${facts.join("; ")})*`;
 }
 
 function renderActors(): string {
@@ -104,13 +136,17 @@ function renderEntities(): string {
 			);
 		}
 		if (e.invariants.length > 0) {
-			parts.push(
-				"Invariants:",
-				...e.invariants.map((i) => `- ${code(i.id)}: ${i.text}`),
-				"",
-			);
+			parts.push("Invariants:", ...e.invariants.map(invariantLine), "");
 		}
 	}
+	parts.push(
+		"## Platform-wide invariants",
+		"",
+		"What holds across entities: the record of what happened, and what survives a restart.",
+		"",
+		...PLATFORM_INVARIANTS.map(invariantLine),
+		"",
+	);
 	return parts.join("\n");
 }
 
@@ -195,7 +231,8 @@ function renderJourneys(): string {
 const PLANE_TITLES: Record<Plane, string> = {
 	"control-plane": "Control plane",
 	"mission-machine": "Mission machine",
-	shared: "Shared and front end",
+	browser: "Cockpit (in the browser)",
+	shared: "Shared",
 };
 
 function renderComponents(): string {
@@ -224,6 +261,34 @@ function renderComponents(): string {
 		);
 	}
 	parts.push(
+		"## Data stores",
+		"",
+		"Each MongoDB collection, what it holds and the one component whose code writes it. A write from any other component is a finding unless it is listed as an exception. The owner is the component, not the process.",
+		"",
+		table(
+			["Collection", "Holds", "Owner", "Also written by"],
+			DATA_STORES.map((d) => [
+				code(d.collection),
+				d.holds,
+				code(d.owner),
+				(d.alsoWrittenBy ?? [])
+					.map((x) => `${code(x.component)} (${x.what})`)
+					.join("; "),
+			]),
+		),
+		"",
+		"## External systems",
+		"",
+		table(
+			["Id", "System", "Used for", "Reached by"],
+			EXTERNAL_SYSTEMS.map((x) => [
+				code(x.id),
+				x.name,
+				x.usedFor,
+				x.reachedBy.map(code).join(", "),
+			]),
+		),
+		"",
 		"## Dependency rules",
 		"",
 		"Prose until dependency-cruiser enforces them.",

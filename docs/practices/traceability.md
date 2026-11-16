@@ -44,6 +44,27 @@ not in the catalog, and checks the scan itself against planted examples.
 - **A timer or stream that only feeds an open route's response** is `feed`; the route declares
   the operation.
 
+## Invariants
+
+An invariant is what must be true at every moment, whoever acts and whatever fails (an
+operation's rules hold when someone asks; an invariant holds always). Each one in the catalog
+says how it is kept true, in `enforcedBy`:
+
+- **a test** whose title starts with the invariant's id (`it("mission.capped: …")`), at the
+  home of the operations that could break it;
+- **a scan** (a query in `scripts/trace/ql/`), for "only X writes Y" and allowed transitions;
+- **a runtime check** the platform runs, for what only shows while it operates;
+- **review**, when nothing else can judge it.
+
+A catalog test fails when a cited test or query does not exist; the trace lists the invariants
+nothing enforces yet.
+
+**When an invariant needs an ADR.** Its catalog entry is its record, unless adopting it was a
+choice: there were real alternatives, it costs something notable (storage, latency, money,
+complexity), or how it is enforced is itself a design choice. Then an ADR records the decision,
+the invariant names it in `decidedBy`, and the ADR lists the invariant in `governs`. Related
+invariants share one ADR. A decision not yet made is written in the invariant's `open`.
+
 ## Changing intent
 
 - A change to what MAGI should do is a change to the catalog first, approved by the product

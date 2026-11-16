@@ -1,0 +1,122 @@
+import { defineEntity } from "./define-entity.js";
+
+/** One agent's turn: from dispatch to its end, every step stored as it happens. */
+export const TURN = defineEntity({
+	id: "turn",
+	name: "Turn (one agent's run from dispatch to its end)",
+	store: {
+		kind: "collection",
+		collection: "agentTurnStats",
+		type: "AgentTurnStats",
+	},
+	states: [
+		{
+			id: "running",
+			meaning: "Dispatched; its steps are being stored as they happen",
+		},
+		{ id: "completed", meaning: "Ended normally" },
+		{
+			id: "failed",
+			meaning:
+				"Ended on a model error, a limit or the wall-clock timeout, with the reason recorded",
+		},
+		{
+			id: "interrupted",
+			meaning: "Cut short by a crash or a restart of the daemon",
+		},
+	],
+	transitions: [
+		{ from: null, event: "dispatched", to: "running", actors: ["PLT"] },
+		{
+			from: "running",
+			event: "ends normally",
+			to: "completed",
+			actors: ["PLT"],
+		},
+		{
+			from: "running",
+			event: "a model error, a limit or the timeout",
+			to: "failed",
+			actors: ["PLT"],
+		},
+		{
+			from: "running",
+			event: "the daemon crashes or restarts",
+			to: "interrupted",
+			actors: ["PLT"],
+			note: "What happens next is an open decision (`turn.no-silent-loss`)",
+		},
+	],
+	invariants: [
+		{
+			id: "turn.reconstructible",
+			text: "Any turn can be reconstructed from what is stored: the prompt and mental map it started from, every model call, every tool call with its arguments and result, its cost, and how it ended.",
+			enforcedBy: [],
+		},
+		{
+			id: "turn.persisted-per-step",
+			text: "Each step of a turn (a model answer, a tool result) is stored before the next step starts, so a crash loses at most the step in progress.",
+			enforcedBy: [],
+		},
+		{
+			id: "turn.no-silent-loss",
+			text: "An interrupted turn is either resumed from its last stored step or closed with a recorded reason; it is never silently dropped or replayed from the start.",
+			enforcedBy: [],
+			open: "Resume from the last stored step (needs tools that are safe to repeat), or close the turn and start a new one",
+		},
+	],
+	notes:
+		"Its messages are in `conversationMessages`, one per step; its model calls are `llm-call`s.",
+});
+
+/** One call to a model made on a mission's behalf. */
+export const LLM_CALL = defineEntity({
+	id: "llm-call",
+	name: "Model call",
+	store: {
+		kind: "collection",
+		collection: "llmCallLog",
+		type: "LlmCallLogEntry",
+	},
+	states: [
+		{
+			id: "recorded",
+			meaning:
+				"Its row (who, model, tokens, cost, time) and its full input and output are stored",
+		},
+		{
+			id: "summarized",
+			meaning:
+				"Past the retention period: the full input and output are removed, the row is kept",
+		},
+	],
+	transitions: [
+		{ from: null, event: "a model is called", to: "recorded", actors: ["PLT"] },
+		{
+			from: "recorded",
+			event: "the retention period ends",
+			to: "summarized",
+			actors: ["PLT"],
+		},
+	],
+	invariants: [
+		{
+			id: "llm-call.recorded",
+			text: "Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time.",
+			enforcedBy: [],
+			decidedBy: "ADR-0017",
+		},
+		{
+			id: "llm-call.bodies-kept",
+			text: "The full input and output of each call are kept for the retention period the operator sets.",
+			enforcedBy: [],
+			open: "The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full",
+		},
+		{
+			id: "llm-call.cost-counted",
+			text: "Every recorded call's cost counts against its mission's spend.",
+			enforcedBy: [],
+			decidedBy: "ADR-0017",
+		},
+	],
+});

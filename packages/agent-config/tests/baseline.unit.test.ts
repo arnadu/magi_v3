@@ -13,13 +13,16 @@ import {
 	ACTORS,
 	COMPONENTS,
 	componentsOwning,
+	DATA_STORES,
 	ENTITIES,
 	ENTRY_CLASSES,
 	JOURNEYS,
 	OPERATIONS,
+	PLATFORM_INVARIANTS,
 	patternOwns,
 	renderBaselineDocs,
 } from "../src/baseline/index.js";
+import { COLLECTION_NAMES } from "../src/stored/collections.js";
 
 const ROOT = join(__dirname, "..", "..", "..");
 
@@ -32,8 +35,31 @@ function* files(dir: string): Generator<string> {
 	}
 }
 
+function statSafe(p: string): boolean {
+	try {
+		return statSync(p).isFile();
+	} catch {
+		return false;
+	}
+}
+
 const ROOTS = [...new Set(COMPONENTS.map((c) => c.root))];
 const SOURCES = ROOTS.flatMap((r) => [...files(join(ROOT, r))]);
+
+const INVARIANTS = [
+	...ENTITIES.flatMap((e) => e.invariants),
+	...PLATFORM_INVARIANTS,
+];
+
+/** Every test title in the repository's unit and integration tests. */
+const TEST_SOURCES = ROOTS.flatMap((r) => {
+	const tests = join(ROOT, r.replace(/\/src$/, ""), "tests");
+	try {
+		return [...files(tests)].map((f) => readFileSync(join(ROOT, f), "utf8"));
+	} catch {
+		return [];
+	}
+});
 
 function duplicates(ids: readonly string[]): string[] {
 	return ids.filter((id, i) => ids.indexOf(id) !== i);
@@ -52,9 +78,7 @@ describe("baseline catalog", () => {
 				...ENTRY_CLASSES.map((c) => c.id),
 			]),
 		).toEqual([]);
-		expect(
-			duplicates(ENTITIES.flatMap((e) => e.invariants.map((i) => i.id))),
-		).toEqual([]);
+		expect(duplicates(INVARIANTS.map((i) => i.id))).toEqual([]);
 		for (const e of ENTITIES) {
 			expect(duplicates(e.states.map((s) => s.id)), e.id).toEqual([]);
 		}
@@ -93,6 +117,38 @@ describe("baseline catalog", () => {
 			(o) => o.actors.some((a) => operatorSide.has(a)) && !inJourney.has(o.id),
 		).map((o) => o.id);
 		expect(without).toEqual([]);
+	});
+
+	it("gives every collection exactly one data store, with its owner", () => {
+		const listed = DATA_STORES.map((d) => d.collection);
+		expect(duplicates(listed)).toEqual([]);
+		expect([...listed].sort()).toEqual(Object.keys(COLLECTION_NAMES).sort());
+	});
+
+	it("links invariants only to ADRs and enforcements that exist", () => {
+		const adrs = readdirSync(join(ROOT, "docs/adr"));
+		const problems: string[] = [];
+		for (const inv of INVARIANTS) {
+			if (inv.decidedBy) {
+				const n = inv.decidedBy.slice(4);
+				if (!adrs.some((f) => f.startsWith(`${n}-`)))
+					problems.push(`${inv.id}: no ${inv.decidedBy}`);
+			}
+			for (const e of inv.enforcedBy) {
+				if (
+					e.kind === "test" &&
+					!TEST_SOURCES.some((t) => t.includes(`("${inv.id}`))
+				)
+					problems.push(`${inv.id}: no test titled "${inv.id} …"`);
+				if (
+					e.kind === "scan" &&
+					!SOURCES.includes(`scripts/trace/ql/${e.query}.ql`) &&
+					!statSafe(join(ROOT, `scripts/trace/ql/${e.query}.ql`))
+				)
+					problems.push(`${inv.id}: no query ${e.query}`);
+			}
+		}
+		expect(problems).toEqual([]);
 	});
 
 	it("matches path patterns as documented", () => {
