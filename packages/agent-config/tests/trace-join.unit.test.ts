@@ -259,6 +259,7 @@ describe("trace reach", () => {
 			endLine: 5,
 		};
 		const sources: Record<string, string> = {
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture is source text containing a template literal
 			"b.ts": "x\nawait post(`${base}/pause-agent`, body);\nx",
 		};
 		linkHttpHops(graph, [route], (f: string) => sources[f] ?? "");
