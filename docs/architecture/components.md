@@ -2,58 +2,58 @@
 
 # Components
 
-**Draft since 2026-11-14, awaiting the product owner's approval.** The architecture baseline: the components MAGI is built from, each with its responsibility and the source paths it owns. The product baseline ([../product/](../product/README.md)) says what MAGI does; this says how it is built. Each operation's home lies in exactly one component. Every source file under a root belongs to exactly one component (tests excluded): `dir/` owns a directory, `**` the whole root, anything else is a glob on the path under the root.
+**Draft since 2026-11-14, awaiting the product owner's approval.** The architecture baseline: the components MAGI is built from, each with its layer, its responsibility and the source paths it owns. A component builds on components of lower layers in its plane, and on `config`; an import of the same or a higher layer runs against the layering. The product baseline ([../product/](../product/README.md)) says what MAGI does; this says how it is built. Each operation's home lies in exactly one component. Every source file under a root belongs to exactly one component (tests excluded): `dir/` owns a directory, `**` the whole root, anything else is a glob on the path under the root.
 
 ## Control plane
 
-| Id | Component | Responsibility | Root | Paths |
-|---|---|---|---|---|
-| `cp-api` | Mission API | The operator's routes: missions, drafts, config, limits, reads | `packages/control-plane/src` | `mission-routes-*`, `missions.ts`, `mission-drafts.ts`, `mission-scope.ts`, `mission-status.ts`, `mission-resource-routes.ts`, `catalog-routes.ts`, `platform-routes.ts`, `public-routes.ts`, `templates.ts`, `config-version.ts`, `async-handler.ts` |
-| `cp-mission-ops` | Mission operations | The homes of mission operations: lifecycle, launch claims, limits, spend | `packages/control-plane/src` | `mission-lifecycle-actions.ts`, `mission-claims.ts`, `mission-limits.ts`, `mission-spend.ts`, `spend-policy.ts`, `mission-stats-summary.ts` |
-| `cp-machines` | Machine lifecycle | Fly machines and volumes: provision, wake, resize, upgrade, segments | `packages/control-plane/src` | `machine-*`, `fly-*`, `resource-upgrade*` |
-| `cp-scheduler` | Scheduler | Delivering due schedules | `packages/control-plane/src` | `scheduler.ts` |
-| `cp-oversight` | Resource oversight | Sampling, alerts, the daily report, platform relays | `packages/control-plane/src` | `resource-monitor.ts`, `resource-alerts.ts`, `resource-queries.ts`, `resource-report*`, `atlas-usage.ts`, `usage-queries.ts`, `platform-relay.ts`, `mailbox-writer.ts` |
-| `cp-records` | Mission records | Reads of what agents and copilots did (turns, transcripts, model calls), served from the database so they work while a mission's machine is stopped | `packages/control-plane/src` | `transcript-queries.ts` |
-| `cp-copilot` | Control copilot | Its loop, tools, proposals and their execution, visibility | `packages/control-plane/src` | `copilot-*`, `pending-actions.ts`, `github*.ts` |
-| `cp-mc-gateway` | Mission-copilot gateway | What a mission copilot may ask the control plane for | `packages/control-plane/src` | `mission-copilot-router.ts` |
-| `cp-edge` | Edge and identity | Sign-in, sessions, users, security headers, the proxy to mission machines, monitor tokens | `packages/control-plane/src` | `auth*.ts`, `session-routes.ts`, `firebase.ts`, `users.ts`, `security-headers.ts`, `proxy.ts`, `monitor-token.ts` |
-| `cp-host` | Process host | Start-up, database, process guards | `packages/control-plane/src` | `index.ts`, `mongo.ts`, `process-guards.ts`, `types.d.ts` |
+| Id | Component | Layer | Responsibility | Root | Paths |
+|---|---|---|---|---|---|
+| `cp-host` | Process host | 6 | Start-up, database, process guards | `packages/control-plane/src` | `index.ts`, `mongo.ts`, `process-guards.ts`, `types.d.ts` |
+| `cp-mc-gateway` | Mission-copilot gateway | 5 | What a mission copilot may ask the control plane for | `packages/control-plane/src` | `mission-copilot-router.ts` |
+| `cp-copilot` | Control copilot | 4 | Its loop, tools, proposals and their execution, visibility | `packages/control-plane/src` | `copilot-*`, `pending-actions.ts`, `github*.ts` |
+| `cp-api` | Mission API | 3 | The operator's routes: missions, drafts, config, limits, reads | `packages/control-plane/src` | `mission-routes-*`, `missions.ts`, `mission-drafts.ts`, `mission-scope.ts`, `mission-status.ts`, `mission-resource-routes.ts`, `catalog-routes.ts`, `platform-routes.ts`, `public-routes.ts`, `templates.ts`, `config-version.ts`, `async-handler.ts` |
+| `cp-mission-ops` | Mission operations | 2 | The homes of mission operations: lifecycle, launch claims, limits, spend | `packages/control-plane/src` | `mission-lifecycle-actions.ts`, `mission-claims.ts`, `mission-limits.ts`, `mission-spend.ts`, `spend-policy.ts`, `mission-stats-summary.ts` |
+| `cp-scheduler` | Scheduler | 2 | Delivering due schedules | `packages/control-plane/src` | `scheduler.ts` |
+| `cp-edge` | Edge and identity | 2 | Sign-in, sessions, users, security headers, the proxy to mission machines, monitor tokens | `packages/control-plane/src` | `auth*.ts`, `session-routes.ts`, `firebase.ts`, `users.ts`, `security-headers.ts`, `proxy.ts`, `monitor-token.ts` |
+| `cp-machines` | Machine lifecycle | 1 | Fly machines and volumes: provision, wake, resize, upgrade, segments | `packages/control-plane/src` | `machine-*`, `fly-*`, `resource-upgrade*` |
+| `cp-oversight` | Resource oversight | 1 | Sampling, alerts, the daily report, platform relays | `packages/control-plane/src` | `resource-monitor.ts`, `resource-alerts.ts`, `resource-queries.ts`, `resource-report*`, `atlas-usage.ts`, `usage-queries.ts`, `platform-relay.ts`, `mailbox-writer.ts` |
+| `cp-records` | Mission records | 1 | Reads of what agents and copilots did (turns, transcripts, model calls), served from the database so they work while a mission's machine is stopped | `packages/control-plane/src` | `transcript-queries.ts` |
 
 ## Mission machine
 
-| Id | Component | Responsibility | Root | Paths |
-|---|---|---|---|---|
-| `mm-daemon` | Daemon | Boot, orchestration, dispatch | `packages/agent-runtime-worker/src` | `daemon.ts`, `daemon-boot/`, `orchestrator*`, `exit-on-fatal.ts`, `node-polyfill.ts` |
-| `mm-agent-loop` | Agent loop | A turn: prompt, LLM calls, tools, limits, reflection, logging | `packages/agent-runtime-worker/src` | `agent-runner*`, `loop*.ts`, `prompt.ts`, `prompts.ts`, `reflection.ts`, `context-utils.ts`, `limits.ts`, `llm-*`, `models.ts`, `openrouter-pricing.ts`, `retry-backoff.ts`, `agent-stats.ts`, `usage.ts`, `mental-map.ts`, `skills.ts` |
-| `mm-tools` | Agent tools | The tools agents call and their isolated execution | `packages/agent-runtime-worker/src` | `tools/`, `tools.ts`, `tool-catalog.ts`, `tool-args.ts`, `tool-executor.ts`, `images/`, `document-*`, `pdf-*`, `ocr-cap.ts`, `mime-types.ts`, `artifacts.ts` |
-| `mm-mission-copilot` | Mission copilot | Its tools and their checks | `packages/agent-runtime-worker/src` | `mission-copilot*`, `resource-upgrade-tool.ts` |
-| `mm-monitor` | Monitor server | The cockpit-facing routes on the mission machine (port 4000) | `packages/agent-runtime-worker/src` | `monitor-*`, `monitor-routes/` |
-| `mm-jobs` | Jobs and schedules | Background jobs, the Tool API (port 4001), schedule ingestion | `packages/agent-runtime-worker/src` | `job-*`, `tool-api-server.ts`, `schedule-ingest.ts` |
-| `mm-state` | Mission state | Mailbox, conversations, config, objectives, stats, anomalies, resources | `packages/agent-runtime-worker/src` | `mailbox.ts`, `conversation-repository.ts`, `mission-config*`, `objectives/`, `anomaly*`, `resource-alert-state.ts`, `resource-sampler.ts`, `resource-thresholds.ts`, `mongo.ts` |
-| `mm-isolation` | Isolation and mission files | OS users, workspaces, git, safe paths and HTTP; reading and writing the mission's files within their folders | `packages/agent-runtime-worker/src` | `linux-user.ts`, `workspace-*`, `safe-*`, `ssrf.ts`, `remove-if-exists.ts` |
-| `mm-cli` | Developer CLI | Local commands | `packages/agent-runtime-worker/src` | `cli*.ts`, `user-input.ts`, `index.ts` |
+| Id | Component | Layer | Responsibility | Root | Paths |
+|---|---|---|---|---|---|
+| `mm-cli` | Developer CLI | 6 | Local commands | `packages/agent-runtime-worker/src` | `cli*.ts`, `user-input.ts`, `index.ts` |
+| `mm-daemon` | Daemon | 5 | Boot, orchestration, dispatch | `packages/agent-runtime-worker/src` | `daemon.ts`, `daemon-boot/`, `orchestrator*`, `exit-on-fatal.ts`, `node-polyfill.ts` |
+| `mm-mission-copilot` | Mission copilot | 4 | Its tools and their checks | `packages/agent-runtime-worker/src` | `mission-copilot*`, `resource-upgrade-tool.ts` |
+| `mm-monitor` | Monitor server | 4 | The cockpit-facing routes on the mission machine (port 4000) | `packages/agent-runtime-worker/src` | `monitor-*`, `monitor-routes/` |
+| `mm-jobs` | Jobs and schedules | 4 | Background jobs, the Tool API (port 4001), schedule ingestion | `packages/agent-runtime-worker/src` | `job-*`, `tool-api-server.ts`, `schedule-ingest.ts` |
+| `mm-agent-loop` | Agent loop | 3 | A turn: prompt, LLM calls, tools, limits, reflection, logging | `packages/agent-runtime-worker/src` | `agent-runner*`, `loop*.ts`, `prompt.ts`, `prompts.ts`, `reflection.ts`, `context-utils.ts`, `limits.ts`, `llm-*`, `models.ts`, `openrouter-pricing.ts`, `retry-backoff.ts`, `agent-stats.ts`, `usage.ts`, `mental-map.ts`, `skills.ts` |
+| `mm-tools` | Agent tools | 2 | The tools agents call and their isolated execution | `packages/agent-runtime-worker/src` | `tools/`, `tools.ts`, `tool-catalog.ts`, `tool-args.ts`, `tool-executor.ts`, `images/`, `document-*`, `pdf-*`, `ocr-cap.ts`, `mime-types.ts`, `artifacts.ts` |
+| `mm-state` | Mission state | 1 | Mailbox, conversations, config, objectives, stats, anomalies, resources | `packages/agent-runtime-worker/src` | `mailbox.ts`, `conversation-repository.ts`, `mission-config*`, `objectives/`, `anomaly*`, `resource-alert-state.ts`, `resource-sampler.ts`, `resource-thresholds.ts`, `mongo.ts` |
+| `mm-isolation` | Isolation and mission files | 1 | OS users, workspaces, git, safe paths and HTTP; reading and writing the mission's files within their folders | `packages/agent-runtime-worker/src` | `linux-user.ts`, `workspace-*`, `safe-*`, `ssrf.ts`, `remove-if-exists.ts` |
 
 ## Cockpit (in the browser)
 
-| Id | Component | Responsibility | Root | Paths |
-|---|---|---|---|---|
-| `ui-shell` | Cockpit shell | Sign-in, header, navigation between missions and their tabs, the home view | `packages/cockpit/src` | `main.tsx`, `App.tsx`, `Header.tsx`, `TabBar.tsx`, `HomeView.tsx`, `LoginScreen.tsx`, `SignOutButton.tsx`, `MissionDashboard.tsx`, `auth.ts`, `app-hooks.ts`, `styles.css`, `vite-env.d.ts` |
-| `ui-api` | Cockpit API client | Every call from the cockpit to the control plane, and the polling around them | `packages/cockpit/src` | `api/`, `data.ts`, `use-api-resource.ts`, `use-visible-poll.ts` |
-| `ui-missions` | Missions and drafts | The mission list, templates, creating and editing drafts, launching, suspending and resuming | `packages/cockpit/src` | `MissionsPanel.tsx`, `TemplatesPanel.tsx`, `Draft*.tsx`, `use-draft-*`, `mission-status-action.ts` |
-| `ui-config` | Mission configuration | Editing a mission's settings, agents, skills, tools, image settings and mental maps | `packages/cockpit/src` | `Config*.tsx`, `AgentToggles.tsx`, `MentalMap*.tsx`, `ImageSettingsFields.tsx`, `image-settings.ts`, `mental-map-diff.ts`, `available-skills.ts`, `use-catalog.ts`, `use-mission-config-editor.ts` |
-| `ui-activity` | Mission activity | What the agents did: conversations, transcripts, model calls, the trace timeline, the log, agent errors | `packages/cockpit/src` | `ConversationsPanel.tsx`, `conversations/`, `TranscriptsPanel.tsx`, `transcripts/`, `TracePanel.tsx`, `trace/`, `LogPanel.tsx`, `AgentErrorBanner.tsx`, `call-index.ts`, `llm-call-types.ts` |
-| `ui-files` | Mission files | Browsing, viewing, uploading and editing the mission's files | `packages/cockpit/src` | `FilesPanel.tsx`, `use-file-node.ts` |
-| `ui-objectives` | Objectives | The objective tree, tasks and KPIs, and their progress | `packages/cockpit/src` | `ObjectivesPanel.tsx`, `types.ts` |
-| `ui-limits` | Spend, limits and schedules | Spend against cap and ceiling, agent limits, machine runtime and upgrades, schedules | `packages/cockpit/src` | `LimitsPanel.tsx`, `RuntimePanel.tsx`, `UpgradeLimitsSection.tsx`, `SchedulePanel.tsx`, `mission-spend.ts` |
-| `ui-copilot` | Copilot panel | Talking to the copilot, confirming its proposals, its transcripts, files, limits and settings | `packages/cockpit/src` | `Copilot*.tsx`, `copilot/` |
-| `ui-kit` | Cockpit building blocks | Shared display pieces: Markdown, JSON trees, loading and error states | `packages/cockpit/src` | `Markdown.tsx`, `markdown.ts`, `JsonTree.tsx`, `LoadingView.tsx`, `load-error.tsx` |
+| Id | Component | Layer | Responsibility | Root | Paths |
+|---|---|---|---|---|---|
+| `ui-shell` | Cockpit shell | 3 | Sign-in, header, navigation between missions and their tabs, the home view | `packages/cockpit/src` | `main.tsx`, `App.tsx`, `Header.tsx`, `TabBar.tsx`, `HomeView.tsx`, `LoginScreen.tsx`, `SignOutButton.tsx`, `MissionDashboard.tsx`, `auth.ts`, `app-hooks.ts`, `styles.css`, `vite-env.d.ts` |
+| `ui-missions` | Missions and drafts | 2 | The mission list, templates, creating and editing drafts, launching, suspending and resuming | `packages/cockpit/src` | `MissionsPanel.tsx`, `TemplatesPanel.tsx`, `Draft*.tsx`, `use-draft-*`, `mission-status-action.ts` |
+| `ui-config` | Mission configuration | 2 | Editing a mission's settings, agents, skills, tools, image settings and mental maps | `packages/cockpit/src` | `Config*.tsx`, `AgentToggles.tsx`, `MentalMap*.tsx`, `ImageSettingsFields.tsx`, `image-settings.ts`, `mental-map-diff.ts`, `available-skills.ts`, `use-catalog.ts`, `use-mission-config-editor.ts` |
+| `ui-activity` | Mission activity | 2 | What the agents did: conversations, transcripts, model calls, the trace timeline, the log, agent errors | `packages/cockpit/src` | `ConversationsPanel.tsx`, `conversations/`, `TranscriptsPanel.tsx`, `transcripts/`, `TracePanel.tsx`, `trace/`, `LogPanel.tsx`, `AgentErrorBanner.tsx`, `call-index.ts`, `llm-call-types.ts` |
+| `ui-files` | Mission files | 2 | Browsing, viewing, uploading and editing the mission's files | `packages/cockpit/src` | `FilesPanel.tsx`, `use-file-node.ts` |
+| `ui-objectives` | Objectives | 2 | The objective tree, tasks and KPIs, and their progress | `packages/cockpit/src` | `ObjectivesPanel.tsx`, `types.ts` |
+| `ui-limits` | Spend, limits and schedules | 2 | Spend against cap and ceiling, agent limits, machine runtime and upgrades, schedules | `packages/cockpit/src` | `LimitsPanel.tsx`, `RuntimePanel.tsx`, `UpgradeLimitsSection.tsx`, `SchedulePanel.tsx`, `mission-spend.ts` |
+| `ui-copilot` | Copilot panel | 2 | Talking to the copilot, confirming its proposals, its transcripts, files, limits and settings | `packages/cockpit/src` | `Copilot*.tsx`, `copilot/` |
+| `ui-api` | Cockpit API client | 1 | Every call from the cockpit to the control plane, and the polling around them | `packages/cockpit/src` | `api/`, `data.ts`, `use-api-resource.ts`, `use-visible-poll.ts` |
+| `ui-kit` | Cockpit building blocks | 1 | Shared display pieces: Markdown, JSON trees, loading and error states | `packages/cockpit/src` | `Markdown.tsx`, `markdown.ts`, `JsonTree.tsx`, `LoadingView.tsx`, `load-error.tsx` |
 
 ## Shared
 
-| Id | Component | Responsibility | Root | Paths |
-|---|---|---|---|---|
-| `config` | Configuration and stored types | Team-config schema, stored document types, collections, model defaults, the env catalogue, the baselines | `packages/agent-config/src` | `**` |
-| `skills` | Platform skills | Skills shipped to every mission | `packages/skills` | `**` |
+| Id | Component | Layer | Responsibility | Root | Paths |
+|---|---|---|---|---|---|
+| `config` | Configuration and stored types | 0 | Team-config schema, stored document types, collections, model defaults, the env catalogue, the baselines | `packages/agent-config/src` | `**` |
+| `skills` | Platform skills | 0 | Skills shipped to every mission | `packages/skills` | `**` |
 
 ## Data stores
 

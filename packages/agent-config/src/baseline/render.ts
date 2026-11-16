@@ -115,7 +115,13 @@ function renderEntities(): string {
 			table(
 				["State", "Meaning"],
 				e.states.map((s) => [
-					code(s.id) + (s.planned ? " (planned)" : ""),
+					code(s.id) +
+						(s.planned ? " (planned)" : "") +
+						(s.stored === null
+							? " (not stored distinctly)"
+							: s.stored
+								? ` (stored as ${code(s.stored)})`
+								: ""),
 					s.meaning,
 				]),
 			),
@@ -246,7 +252,7 @@ function renderComponents(): string {
 	const parts = [
 		header(
 			"Components",
-			"The architecture baseline: the components MAGI is built from, each with its responsibility and the source paths it owns. The product baseline ([../product/](../product/README.md)) says what MAGI does; this says how it is built. Each operation's home lies in exactly one component. Every source file under a root belongs to exactly one component (tests excluded): `dir/` owns a directory, `**` the whole root, anything else is a glob on the path under the root.",
+			"The architecture baseline: the components MAGI is built from, each with its layer, its responsibility and the source paths it owns. A component builds on components of lower layers in its plane, and on `config`; an import of the same or a higher layer runs against the layering. The product baseline ([../product/](../product/README.md)) says what MAGI does; this says how it is built. Each operation's home lies in exactly one component. Every source file under a root belongs to exactly one component (tests excluded): `dir/` owns a directory, `**` the whole root, anything else is a glob on the path under the root.",
 		),
 	];
 	for (const plane of Object.keys(PLANE_TITLES) as Plane[]) {
@@ -255,14 +261,17 @@ function renderComponents(): string {
 			`## ${PLANE_TITLES[plane]}`,
 			"",
 			table(
-				["Id", "Component", "Responsibility", "Root", "Paths"],
-				comps.map((c) => [
-					code(c.id),
-					c.name,
-					c.responsibility,
-					code(c.root),
-					c.paths.map(code).join(", "),
-				]),
+				["Id", "Component", "Layer", "Responsibility", "Root", "Paths"],
+				[...comps]
+					.sort((x, y) => y.layer - x.layer)
+					.map((c) => [
+						code(c.id),
+						c.name,
+						String(c.layer),
+						c.responsibility,
+						code(c.root),
+						c.paths.map(code).join(", "),
+					]),
 			),
 			"",
 		);

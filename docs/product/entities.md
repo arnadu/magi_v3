@@ -203,16 +203,16 @@ Invariants:
 
 ## Turn (one agent's run from dispatch to its end) (`turn`)
 
-Stored as `agentTurnStats` (`AgentTurnStats`).
+Stored as `agentTurnStats` (`AgentTurnStats`, field `status`).
 
 Its messages are in `conversationMessages`, one per step; its model calls are `llm-call`s.
 
 | State | Meaning |
 |---|---|
 | `running` | Dispatched; its steps are being stored as they happen |
-| `completed` | Ended normally |
+| `completed` (stored as `complete`) | Ended normally |
 | `failed` | Ended on a model error, a limit or the wall-clock timeout, with the reason recorded |
-| `interrupted` | Cut short by a crash or a restart of the daemon |
+| `interrupted` (stored as `aborted`) | Cut short by a crash or a restart of the daemon |
 
 | From | Event | To | Who | Note |
 |---|---|---|---|---|

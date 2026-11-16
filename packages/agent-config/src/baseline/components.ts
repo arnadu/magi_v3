@@ -48,6 +48,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Mission API",
 		responsibility:
 			"The operator's routes: missions, drafts, config, limits, reads",
+		layer: 3,
 		root: CP,
 		paths: [
 			"mission-routes-*",
@@ -70,6 +71,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Mission operations",
 		responsibility:
 			"The homes of mission operations: lifecycle, launch claims, limits, spend",
+		layer: 2,
 		root: CP,
 		paths: [
 			"mission-lifecycle-actions.ts",
@@ -86,6 +88,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Machine lifecycle",
 		responsibility:
 			"Fly machines and volumes: provision, wake, resize, upgrade, segments",
+		layer: 1,
 		root: CP,
 		paths: ["machine-*", "fly-*", "resource-upgrade*"],
 	},
@@ -94,6 +97,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "control-plane",
 		name: "Scheduler",
 		responsibility: "Delivering due schedules",
+		layer: 2,
 		root: CP,
 		paths: ["scheduler.ts"],
 	},
@@ -102,6 +106,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "control-plane",
 		name: "Resource oversight",
 		responsibility: "Sampling, alerts, the daily report, platform relays",
+		layer: 1,
 		root: CP,
 		paths: [
 			"resource-monitor.ts",
@@ -120,6 +125,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Mission records",
 		responsibility:
 			"Reads of what agents and copilots did (turns, transcripts, model calls), served from the database so they work while a mission's machine is stopped",
+		layer: 1,
 		root: CP,
 		paths: ["transcript-queries.ts"],
 	},
@@ -129,6 +135,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Control copilot",
 		responsibility:
 			"Its loop, tools, proposals and their execution, visibility",
+		layer: 4,
 		root: CP,
 		paths: ["copilot-*", "pending-actions.ts", "github*.ts"],
 	},
@@ -137,6 +144,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "control-plane",
 		name: "Mission-copilot gateway",
 		responsibility: "What a mission copilot may ask the control plane for",
+		layer: 5,
 		root: CP,
 		paths: ["mission-copilot-router.ts"],
 	},
@@ -146,6 +154,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Edge and identity",
 		responsibility:
 			"Sign-in, sessions, users, security headers, the proxy to mission machines, monitor tokens",
+		layer: 2,
 		root: CP,
 		paths: [
 			"auth*.ts",
@@ -162,6 +171,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "control-plane",
 		name: "Process host",
 		responsibility: "Start-up, database, process guards",
+		layer: 6,
 		root: CP,
 		paths: ["index.ts", "mongo.ts", "process-guards.ts", "types.d.ts"],
 	},
@@ -171,6 +181,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "mission-machine",
 		name: "Daemon",
 		responsibility: "Boot, orchestration, dispatch",
+		layer: 5,
 		root: MM,
 		paths: [
 			"daemon.ts",
@@ -186,6 +197,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Agent loop",
 		responsibility:
 			"A turn: prompt, LLM calls, tools, limits, reflection, logging",
+		layer: 3,
 		root: MM,
 		paths: [
 			"agent-runner*",
@@ -210,6 +222,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "mission-machine",
 		name: "Agent tools",
 		responsibility: "The tools agents call and their isolated execution",
+		layer: 2,
 		root: MM,
 		paths: [
 			"tools/",
@@ -230,6 +243,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "mission-machine",
 		name: "Mission copilot",
 		responsibility: "Its tools and their checks",
+		layer: 4,
 		root: MM,
 		paths: ["mission-copilot*", "resource-upgrade-tool.ts"],
 	},
@@ -239,6 +253,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Monitor server",
 		responsibility:
 			"The cockpit-facing routes on the mission machine (port 4000)",
+		layer: 4,
 		root: MM,
 		paths: ["monitor-*", "monitor-routes/"],
 	},
@@ -248,6 +263,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Jobs and schedules",
 		responsibility:
 			"Background jobs, the Tool API (port 4001), schedule ingestion",
+		layer: 4,
 		root: MM,
 		paths: ["job-*", "tool-api-server.ts", "schedule-ingest.ts"],
 	},
@@ -257,6 +273,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Mission state",
 		responsibility:
 			"Mailbox, conversations, config, objectives, stats, anomalies, resources",
+		layer: 1,
 		root: MM,
 		paths: [
 			"mailbox.ts",
@@ -276,6 +293,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Isolation and mission files",
 		responsibility:
 			"OS users, workspaces, git, safe paths and HTTP; reading and writing the mission's files within their folders",
+		layer: 1,
 		root: MM,
 		paths: [
 			"linux-user.ts",
@@ -290,6 +308,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "mission-machine",
 		name: "Developer CLI",
 		responsibility: "Local commands",
+		layer: 6,
 		root: MM,
 		paths: ["cli*.ts", "user-input.ts", "index.ts"],
 	},
@@ -300,6 +319,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Cockpit shell",
 		responsibility:
 			"Sign-in, header, navigation between missions and their tabs, the home view",
+		layer: 3,
 		root: UI,
 		paths: [
 			"main.tsx",
@@ -322,6 +342,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Cockpit API client",
 		responsibility:
 			"Every call from the cockpit to the control plane, and the polling around them",
+		layer: 1,
 		root: UI,
 		paths: ["api/", "data.ts", "use-api-resource.ts", "use-visible-poll.ts"],
 	},
@@ -331,6 +352,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Missions and drafts",
 		responsibility:
 			"The mission list, templates, creating and editing drafts, launching, suspending and resuming",
+		layer: 2,
 		root: UI,
 		paths: [
 			"MissionsPanel.tsx",
@@ -346,6 +368,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Mission configuration",
 		responsibility:
 			"Editing a mission's settings, agents, skills, tools, image settings and mental maps",
+		layer: 2,
 		root: UI,
 		paths: [
 			"Config*.tsx",
@@ -365,6 +388,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Mission activity",
 		responsibility:
 			"What the agents did: conversations, transcripts, model calls, the trace timeline, the log, agent errors",
+		layer: 2,
 		root: UI,
 		paths: [
 			"ConversationsPanel.tsx",
@@ -385,6 +409,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Mission files",
 		responsibility:
 			"Browsing, viewing, uploading and editing the mission's files",
+		layer: 2,
 		root: UI,
 		paths: ["FilesPanel.tsx", "use-file-node.ts"],
 	},
@@ -393,6 +418,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "browser",
 		name: "Objectives",
 		responsibility: "The objective tree, tasks and KPIs, and their progress",
+		layer: 2,
 		root: UI,
 		paths: ["ObjectivesPanel.tsx", "types.ts"],
 	},
@@ -402,6 +428,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Spend, limits and schedules",
 		responsibility:
 			"Spend against cap and ceiling, agent limits, machine runtime and upgrades, schedules",
+		layer: 2,
 		root: UI,
 		paths: [
 			"LimitsPanel.tsx",
@@ -417,6 +444,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Copilot panel",
 		responsibility:
 			"Talking to the copilot, confirming its proposals, its transcripts, files, limits and settings",
+		layer: 2,
 		root: UI,
 		paths: ["Copilot*.tsx", "copilot/"],
 	},
@@ -426,6 +454,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Cockpit building blocks",
 		responsibility:
 			"Shared display pieces: Markdown, JSON trees, loading and error states",
+		layer: 1,
 		root: UI,
 		paths: [
 			"Markdown.tsx",
@@ -442,6 +471,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		name: "Configuration and stored types",
 		responsibility:
 			"Team-config schema, stored document types, collections, model defaults, the env catalogue, the baselines",
+		layer: 0,
 		root: "packages/agent-config/src",
 		paths: ["**"],
 	},
@@ -450,6 +480,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "shared",
 		name: "Platform skills",
 		responsibility: "Skills shipped to every mission",
+		layer: 0,
 		root: "packages/skills",
 		paths: ["**"],
 	},

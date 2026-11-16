@@ -1,0 +1,19 @@
+# What the trace's CodeQL database covers: the sources of every package.
+paths:
+  # Each package's manifest and tsconfig let CodeQL map an `@magi/*` import
+  # (whose package.json points at dist/) back to the package's sources.
+  - packages/control-plane/package.json
+  - packages/control-plane/tsconfig.json
+  - packages/agent-runtime-worker/package.json
+  - packages/agent-runtime-worker/tsconfig.json
+  - packages/agent-config/package.json
+  - packages/agent-config/tsconfig.json
+  - tsconfig.base.json
+  - packages/control-plane/src
+  - packages/agent-runtime-worker/src
+  - packages/agent-config/src
+  - packages/cockpit/src
+paths-ignore:
+  - "**/node_modules"
+  - "**/dist"
+  - "**/tests"

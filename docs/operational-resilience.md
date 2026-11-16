@@ -414,6 +414,19 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 
 ---
 
+## Layer 11 — Development tooling: the trace (ADR-0036)
+
+`npm run trace` (`scripts/trace/`) runs in CI on every push (`quality.yml`, job `trace`) and
+locally. It is report-only: no deploy job waits for it.
+
+| Failure | Effect | Handling |
+|---|---|---|
+| The CodeQL download fails, or its checksum does not match | The trace job fails; that commit has no reports | `install-codeql.sh` refuses a mismatched bundle; CI caches the verified install, so only a cold cache downloads. Deploys are unaffected |
+| A scan or the join throws | The job fails, with the step named in the log | Reports from the previous run stay as they were; `index.md` names the commit and time it describes, so stale reports show their age |
+| The call graph misses calls (injected dependencies, dynamic dispatch) | Reach is under-counted; an entry point can look as if it skipped its home | Each entry point lists its unresolved calls; findings are evidence to confirm, not verdicts |
+| The run hangs | The job is killed at 30 minutes | `timeout-minutes: 30` on the job; a full run takes about four |
+| The CodeQL database fills the disk | Local only: `analysis/.codeql-db` is about 30 MB, rebuilt on each run | Not uploaded as an artifact; `analysis/` is ignored by git |
+
 ## Gap summary
 
 | ID | Gap | Severity if triggered | Fix complexity |

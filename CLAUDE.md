@@ -32,6 +32,7 @@ npm test                  # unit tests (no LLM calls, no network)
 npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY and MONGODB_URI in .env
 npm run lint              # Biome check (lint + format); npm run lint:fix to auto-fix
 npm run verify            # what pre-push and CI run: build, lint, tripwires, structure, typecheck, coverage
+npm run trace             # scan the code against the baseline catalog; reports in analysis/ (ADR-0036)
 
 bash scripts/bootstrap.sh # full initial cloud setup; see docs/deployment.md
 ```
@@ -102,6 +103,9 @@ These apply continuously, not at sprint close. Each has a full write-up in
 - Every new entry point (route, tool, copilot action, Tool API name, timer, change stream)
   declares the operation it serves from [docs/product/operations.md](docs/product/operations.md),
   or an entry class; `npm run trace:entry-points` lists them, and a test fails on a missing tag.
+- `npm run trace` reports where the code and the catalog disagree (operations, database writes,
+  status transitions, security); `npm run trace -- callers <file:line>` and its siblings answer
+  one question. A finding is evidence to confirm in the code, never a verdict.
 - Tag by intent; when no operation fits, propose a catalog change for the product owner
   rather than stretching one. A change of intent changes the catalog before the code.
 - A test that walks a journey or enforces an invariant names its id.

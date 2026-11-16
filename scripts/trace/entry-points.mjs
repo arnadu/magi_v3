@@ -109,13 +109,15 @@ function toolActor(file) {
 }
 
 /**
- * Every entry point: `{ kind, actor, file, line, name, tag }`, `tag` null
+ * Every entry point: `{ kind, actor, file, line, endLine, name, tag }`, `tag` null
  * when the entry point declares none. Kinds: `route` (control-plane Express),
  * `monitor-route` (mission machine), `tool`, `copilot-action`, `tool-api`
  * (background jobs), `trigger` (timers, change streams, callbacks).
  */
 export function extractEntryPoints(root = ROOT) {
 	const entries = [];
+	/** Where each copilot action's handler is, from the HANDLERS table. */
+	const handlers = new Map();
 	const files = [CP, MM].flatMap((d) => walk(join(root, d)));
 	for (const abs of files) {
 		const file = relative(root, abs);
@@ -131,6 +133,7 @@ export function extractEntryPoints(root = ROOT) {
 				actor,
 				file,
 				line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
+				endLine: sf.getLineAndCharacterOfPosition(node.getEnd()).line + 1,
 				name,
 				tag: tag ?? null,
 			});
@@ -174,6 +177,7 @@ export function extractEntryPoints(root = ROOT) {
 				const name = strProp(n, "name");
 				if (name && prop(n, "execute"))
 					add("tool", toolActor(file), n, name, strProp(n, "operation"));
+				// The mission copilot is an agent too: it gets every agent tool.
 				// Tool API: { names: [...], operation, build }
 				const names = prop(n, "names");
 				if (
@@ -189,6 +193,26 @@ export function extractEntryPoints(root = ROOT) {
 						first?.text ?? "?",
 						strProp(n, "operation"),
 					);
+				}
+			}
+			// The code each copilot action runs: HANDLERS = { <action>: handler, … }
+			if (
+				ts.isVariableDeclaration(n) &&
+				ts.isIdentifier(n.name) &&
+				n.name.text === "HANDLERS" &&
+				n.initializer &&
+				ts.isObjectLiteralExpression(n.initializer)
+			) {
+				for (const p of n.initializer.properties) {
+					if (!ts.isPropertyAssignment(p)) continue;
+					const key = p.name.getText(sf).replace(/^\[|\]$/g, "");
+					const at = (pos) => sf.getLineAndCharacterOfPosition(pos).line + 1;
+					handlers.set(key, {
+						file,
+						line: at(p.getStart(sf)),
+						endLine: at(p.getEnd()),
+						ref: ts.isIdentifier(p.initializer) ? p.initializer.text : null,
+					});
 				}
 			}
 			// Copilot actions: ACTION_OPERATIONS = { <action>: "<tag>", … }
@@ -246,6 +270,9 @@ export function extractEntryPoints(root = ROOT) {
 		};
 		visit(sf);
 	}
+	for (const e of entries)
+		if (e.kind === "copilot-action" && handlers.has(e.name))
+			e.handler = handlers.get(e.name);
 	return entries;
 }
 

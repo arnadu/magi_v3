@@ -65,6 +65,59 @@ complexity), or how it is enforced is itself a design choice. Then an ADR record
 the invariant names it in `decidedBy`, and the ADR lists the invariant in `governs`. Related
 invariants share one ADR. A decision not yet made is written in the invariant's `open`.
 
+## The trace
+
+`npm run trace` scans the code and joins what it finds to the catalog. It writes to `analysis/`
+(not committed):
+
+| Report | Question it answers |
+|---|---|
+| `index.md` | The headline numbers, and the findings by kind, with what is new since the last run |
+| `operations.md` | For each operation: its entry points, whether each reaches the operation's home, the database writes each reaches, the HTTP routes it crosses into, and where reach may be incomplete |
+| `writes.md` | Every MongoDB write: its collection, whether its component owns that collection, and for a status the changes it can make against the entity's allowed transitions |
+| `security.md` | CodeQL's standard security queries, each result filed under a security invariant |
+| `invariants.md` | Every invariant, what enforces it, the ADR that chose it, its open decision |
+| `components.html` | The component map: each component on its declared layer, the imports between them, those against the layering |
+| `todo.json` | Every finding, with a stable key; `previous/todo.json` is the run before |
+
+Every finding names the baseline id it is about and the `file:line` it rests on. Read a finding
+as evidence to check, not as a verdict: confirm it in the code before acting on it.
+
+**How each part is computed, and its limits.**
+
+- *Entry points*: `scripts/trace/entry-points.mjs`, from the TypeScript syntax tree.
+- *Writes*: `scripts/trace/writes.mjs`, with the TypeScript compiler's types. A write's
+  collection comes from the receiver's type (`Collection<MissionDoc>`) or from where the
+  collection was created. A status value passed in as a parameter is resolved one level up, at
+  the function's call sites. A filter on the status (`status: "draft"`, `$ne`, `$in`, `$nin`)
+  gives the states a write can start from; no filter means any state.
+- *Reach*: CodeQL's call graph (`scripts/trace/ql/`), followed from each entry point's handler.
+  A function nested in a reached function counts as reached. A function that holds the path of a
+  monitor route or of a mission-copilot gateway route crosses into that route (HTTP hops). Calls
+  CodeQL cannot resolve, typically through injected dependencies, are listed with each entry
+  point: reach is a lower bound there.
+- *Security*: CodeQL's `javascript-security-extended` suite. Its results include false
+  positives; each needs triage.
+
+**For one question**, without the full trace (TypeScript language service, seconds):
+
+```bash
+npm run trace -- def claimStatus                                   # where it is declared
+npm run trace -- refs packages/control-plane/src/mission-claims.ts:19     # every reference
+npm run trace -- callers packages/control-plane/src/mission-claims.ts:19 --depth 2
+npm run trace -- reach mission.launch                              # from the last trace
+```
+
+`callers` follows calls only; a handler registered by name in a table (the copilot's `HANDLERS`)
+is found by the full trace, not by `callers`.
+
+**Running it.** `bash scripts/trace/install-codeql.sh` installs the pinned CodeQL release, checked
+against its published SHA-256, into `~/.cache/magi/codeql` (`CODEQL_HOME`). A full run takes
+about four minutes; `--no-security` skips the security suite, and `--reuse-db` keeps the CodeQL
+database for repeated runs on unchanged code. CI runs it on every push (the `trace` job in
+`quality.yml`), report-only: no deploy waits for it, it fails only when the tool breaks, and the
+reports are the run's `trace` artifact, with the headline numbers in the run summary.
+
 ## Changing intent
 
 - A change to what MAGI should do is a change to the catalog first, approved by the product

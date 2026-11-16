@@ -8,13 +8,14 @@ export const TURN = defineEntity({
 		kind: "collection",
 		collection: "agentTurnStats",
 		type: "AgentTurnStats",
+		statusField: "status",
 	},
 	states: [
 		{
 			id: "running",
 			meaning: "Dispatched; its steps are being stored as they happen",
 		},
-		{ id: "completed", meaning: "Ended normally" },
+		{ id: "completed", meaning: "Ended normally", stored: "complete" },
 		{
 			id: "failed",
 			meaning:
@@ -23,6 +24,7 @@ export const TURN = defineEntity({
 		{
 			id: "interrupted",
 			meaning: "Cut short by a crash or a restart of the daemon",
+			stored: "aborted",
 		},
 	],
 	transitions: [

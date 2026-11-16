@@ -25,6 +25,12 @@ export interface Component<C extends string = string> {
 	plane: Plane;
 	name: string;
 	responsibility: string;
+	/**
+	 * Its place in its plane: a component builds on components of a lower
+	 * layer, and an import of a component on the same or a higher layer runs
+	 * against the layering (the trace reports it). `config` and `skills` are 0.
+	 */
+	layer: number;
 	/** Directory the path patterns are relative to, from the repository root. */
 	root: string;
 	/**
@@ -78,6 +84,11 @@ export type EntityStore =
 export interface EntityState<S extends string> {
 	id: S;
 	meaning: string;
+	/**
+	 * The value stored in the status field, when it differs from `id`;
+	 * `null` when the code stores no distinct value for this state.
+	 */
+	stored?: string | null;
 	/** Intended but not built yet. */
 	planned?: boolean;
 }

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAGI component map</title>
+<style>
+:root {
+	--bg: #f5f6f8; --surface: #ffffff; --fg: #1b2330; --muted: #5b6676; --line: #d3d9e1;
+	--cp: #2d5d9b; --cp-fill: #e9eff8; --mm: #2b7a68; --mm-fill: #e4f2ed; --ui: #7a4a8f; --ui-fill: #f3eaf7;
+	--shared: #86671d; --shared-fill: #f4eddb; --against: #c0412b; --in: #7650ad;
+	--font: system-ui, -apple-system, "Segoe UI", sans-serif; --mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #12161c; --surface: #1a2029; --fg: #e3e8ee; --muted: #9aa5b4; --line: #303a47;
+		--cp: #86ace2; --cp-fill: #1c2a3e; --mm: #73c4ae; --mm-fill: #172f29; --ui: #c79be0; --ui-fill: #2a1f33;
+		--shared: #d8b65f; --shared-fill: #2e2716; --against: #f17f68; --in: #bb9ae8; color-scheme: dark;
+	}
+}
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); margin: 0; padding: 24px max(16px, env(safe-area-inset-left, 0px)) 48px; }
+main { max-width: 1400px; margin: 0 auto; display: grid; gap: 24px; }
+h1 { font-size: 1.6rem; margin: 0; } h2 { font-size: 1.1rem; margin: 0 0 8px; }
+p { margin: 0; max-width: 80ch; } .muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 0.86em; }
+.figure { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 0.82rem; color: var(--muted); }
+.scroll { overflow-x: auto; }
+svg.map { display: block; min-width: 1000px; width: 100%; height: auto; }
+.node { cursor: pointer; } .node rect { stroke-width: 1.2; }
+.node.control-plane rect { fill: var(--cp-fill); stroke: var(--cp); }
+.node.mission-machine rect { fill: var(--mm-fill); stroke: var(--mm); }
+.node.browser rect { fill: var(--ui-fill); stroke: var(--ui); }
+.node .id { font: 500 11.5px var(--mono); fill: var(--fg); } .node .nm { font: 10.5px var(--font); fill: var(--muted); }
+.node.sel rect, .node:focus-visible rect { stroke-width: 2.6; } .node:focus { outline: none; } .node.dim { opacity: 0.28; }
+.band rect { fill: var(--shared-fill); stroke: var(--shared); } .band text { font: 500 12px var(--mono); fill: var(--fg); }
+.plane { font: 600 12px var(--font); letter-spacing: 0.06em; text-transform: uppercase; fill: var(--muted); }
+.edge { fill: none; } .edge.against { stroke: var(--against); stroke-width: 1.6; stroke-dasharray: 5 3; }
+.edge.out { stroke: var(--fg); stroke-width: 1.4; } .edge.in { stroke: var(--in); stroke-width: 1.4; stroke-dasharray: 2 3; }
+.count rect { fill: var(--surface); stroke: var(--line); } .count text { font: 500 10px var(--mono); fill: var(--fg); }
+.panel { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+.chip.up { border-color: var(--against); } .chip b { font-weight: 500; color: var(--muted); margin-left: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; } .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); background: var(--bg); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+ul { margin: 0; padding-left: 1.2em; }
+</style>
+</head>
+<body>
+<main>
+	<header>
+		<h1>MAGI component map</h1>
+		<p class="muted" id="meta"></p>
+	</header>
+	<section class="figure">
+		<div class="legend">
+			<span>Each box sits on its declared layer; a component builds on those below it, and all of them on <span class="mono">config</span>.</span>
+			<span style="color:var(--against)">- - - imports against the layering</span>
+			<span>— imports (selected)</span>
+			<span style="color:var(--in)">··· imported by (selected)</span>
+			<span>numbers = import statements</span>
+		</div>
+		<div class="scroll"><svg class="map" id="map" role="img" aria-label="Component map: each component placed by plane and layer, with imports against the layering marked."></svg></div>
+		<div class="panel" id="panel" aria-live="polite"></div>
+	</section>
+	<section>
+		<h2>Imports against the layering</h2>
+		<ul id="against"></ul>
+	</section>
+	<section>
+		<h2>Imports between planes</h2>
+		<ul id="cross"></ul>
+	</section>
+	<section>
+		<h2>All components</h2>
+		<div class="table-wrap"><table>
+			<thead><tr><th>Component</th><th>Plane</th><th>Layer</th><th>Responsibility</th><th style="text-align:right">Lines</th><th style="text-align:right">Imports</th><th style="text-align:right">Imported by</th></tr></thead>
+			<tbody id="rows"></tbody>
+		</table></div>
+	</section>
+</main>
+<script>
+const D = __DATA__;
+const { w: W, h: H } = D.box, G = D.geo;
+const byId = Object.fromEntries(D.comps.map((c) => [c.id, c]));
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("map");
+svg.setAttribute("viewBox", `0 0 ${G.width} ${G.height}`);
+const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+document.getElementById("meta").textContent = `Generated at ${D.meta.time} from commit ${D.meta.commit}. Layers are declared in the catalog (packages/agent-config/src/baseline/components.ts); imports are counted from the sources.`;
+
+const defs = el("defs", {}, svg);
+for (const [id, color] of [["a-against", "var(--against)"], ["a-out", "var(--fg)"], ["a-in", "var(--in)"]]) {
+	const m = el("marker", { id, viewBox: "0 0 8 8", refX: 7, refY: 4, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, defs);
+	el("path", { d: "M0,0 L8,4 L0,8 z", fill: color }, m);
+}
+const TITLES = { "control-plane": "Control plane", "mission-machine": "Mission machine", browser: "Cockpit (browser)" };
+for (const p of G.planes) el("text", { x: p.x, y: 22, class: "plane" }, svg).textContent = TITLES[p.plane];
+const edgeLayer = el("g", {}, svg);
+const band = el("g", { class: "band" }, svg);
+el("rect", { x: G.band.x, y: G.band.y, width: G.band.w, height: G.band.h, rx: 6 }, band);
+el("text", { x: G.band.x + 14, y: G.band.y + 26 }, band).textContent = "config  ·  skills  (shared)";
+
+const nodes = {};
+for (const [id, [x, y]] of Object.entries(G.pos)) {
+	const c = byId[id];
+	if (c.plane === "shared") continue;
+	const g = el("g", { class: `node ${c.plane}`, tabindex: 0, role: "button", "aria-label": `${id}, ${c.name}` }, svg);
+	el("rect", { x, y, width: W, height: H, rx: 6 }, g);
+	el("text", { x: x + 8, y: y + 18, class: "id" }, g).textContent = id;
+	el("text", { x: x + 8, y: y + 33, class: "nm" }, g).textContent = c.name.length > 22 ? `${c.name.slice(0, 21)}…` : c.name;
+	g.addEventListener("click", (e) => { e.stopPropagation(); select(selected === id ? null : id); });
+	g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(selected === id ? null : id); } });
+	nodes[id] = g;
+}
+svg.addEventListener("click", () => select(null));
+
+const inMap = (id) => id in nodes;
+const center = (id) => [G.pos[id][0] + W / 2, G.pos[id][1] + H / 2];
+function clip(id, to) {
+	const [cx, cy] = center(id), dx = to[0] - cx, dy = to[1] - cy;
+	const s = Math.min(Math.abs((W / 2 + 3) / (dx || 1e-9)), Math.abs((H / 2 + 3) / (dy || 1e-9)));
+	return [cx + dx * s, cy + dy * s];
+}
+function draw(from, to, n, cls) {
+	let s, t, c;
+	if (!inMap(to)) { const [cx] = center(from); s = [cx, G.pos[from][1] + H + 3]; t = [cx, G.band.y - 2]; c = [cx, (s[1] + t[1]) / 2]; }
+	else if (!inMap(from)) { const [cx] = center(to); s = [cx, G.band.y - 2]; t = [cx, G.pos[to][1] + H + 3]; c = [cx, (s[1] + t[1]) / 2]; }
+	else {
+		const a = center(from), b = center(to), same = G.pos[from][1] === G.pos[to][1];
+		const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+		const bow = same ? (Math.abs(dx) > W + 20 ? 46 : 20) : 0.14 * len, flip = from < to ? 1 : -1;
+		c = [mx - (dy / len) * bow * flip, my + (dx / len) * bow * flip]; s = clip(from, c); t = clip(to, c);
+	}
+	el("path", { d: `M${s[0]},${s[1]} Q${c[0]},${c[1]} ${t[0]},${t[1]}`, class: `edge ${cls}`, "marker-end": `url(#a-${cls})` }, edgeLayer);
+	const lx = 0.25 * s[0] + 0.5 * c[0] + 0.25 * t[0], ly = 0.25 * s[1] + 0.5 * c[1] + 0.25 * t[1];
+	const g = el("g", { class: "count" }, edgeLayer), label = String(n), w = 8 + label.length * 6.5;
+	el("rect", { x: lx - w / 2, y: ly - 8, width: w, height: 16, rx: 8 }, g);
+	el("text", { x: lx, y: ly + 3.5, "text-anchor": "middle" }, g).textContent = label;
+}
+const againstSet = new Set(D.against.map(([a, b]) => `${a}>${b}`));
+let selected = null;
+function chips(list, pick) {
+	if (!list.length) return '<span class="muted">none</span>';
+	return '<div class="chips">' + list.slice().sort((x, y) => y[2] - x[2]).map((e) => `<span class="chip${againstSet.has(`${e[0]}>${e[1]}`) ? " up" : ""}">${pick(e)}<b>${e[2]}</b></span>`).join("") + "</div>";
+}
+function select(id) {
+	selected = id;
+	edgeLayer.replaceChildren();
+	for (const [nid, g] of Object.entries(nodes)) { g.classList.toggle("sel", nid === id); g.classList.remove("dim"); }
+	const panel = document.getElementById("panel");
+	if (!id) {
+		for (const [a, b, n] of D.against) if (inMap(a) && inMap(b)) draw(a, b, n, "against");
+		panel.innerHTML = `<p class="muted">The dashed arrows are the ${D.against.length} imports against the layering. Select a component to see its imports.</p>`;
+		return;
+	}
+	const outs = D.edges.filter(([a]) => a === id), ins = D.edges.filter(([, b]) => b === id);
+	const related = new Set([id, ...outs.map((e) => e[1]), ...ins.map((e) => e[0])]);
+	for (const [nid, g] of Object.entries(nodes)) g.classList.toggle("dim", !related.has(nid));
+	if (inMap(id)) { for (const [a, b, n] of ins) if (inMap(a)) draw(a, b, n, "in"); for (const [a, b, n] of outs) draw(a, b, n, "out"); }
+	const c = byId[id];
+	panel.innerHTML = `<p><b class="mono">${id}</b> ${c.name} — ${c.resp}. Layer ${c.layer}, ${c.lines.toLocaleString()} lines.</p><p class="muted">Imports from</p>${chips(outs, (e) => e[1])}<p class="muted">Imported by</p>${chips(ins, (e) => e[0])}`;
+}
+document.getElementById("against").innerHTML = D.against.length
+	? D.against.slice().sort((x, y) => y[2] - x[2]).map(([a, b, n]) => `<li><span class="mono">${a}</span> (layer ${byId[a].layer}) imports <span class="mono">${b}</span> (layer ${byId[b].layer}): ${n}</li>`).join("")
+	: "<li>None.</li>";
+document.getElementById("cross").innerHTML = Object.entries(D.cross).map(([k, n]) => `<li>${k}: ${n} imports</li>`).join("") || "<li>None.</li>";
+const tbody = document.getElementById("rows");
+for (const c of D.comps.slice().sort((x, y) => x.plane.localeCompare(y.plane) || y.layer - x.layer)) {
+	const outN = new Set(D.edges.filter(([a]) => a === c.id).map((e) => e[1])).size, inN = new Set(D.edges.filter(([, b]) => b === c.id).map((e) => e[0])).size;
+	const tr = document.createElement("tr");
+	tr.innerHTML = `<td><span class="mono">${c.id}</span><br>${c.name}</td><td>${c.plane}</td><td class="num">${c.layer}</td><td>${c.resp}</td><td class="num">${c.lines.toLocaleString()}</td><td class="num">${outN}</td><td class="num">${inN}</td>`;
+	tr.addEventListener("click", () => select(c.id));
+	tbody.appendChild(tr);
+}
+select(null);
+</script>
+</body>
+</html>

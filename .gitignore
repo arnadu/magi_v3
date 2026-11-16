@@ -46,3 +46,6 @@ fly.control-*.toml
 fly.missions-*.toml
 !fly.missions-dev.toml
 
+
+# Output of `npm run trace` (scripts/trace/), regenerated on every run
+/analysis/
