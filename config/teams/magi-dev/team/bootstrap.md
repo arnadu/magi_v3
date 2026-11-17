@@ -178,3 +178,17 @@ Apply only this section if the earlier ones were already applied.
 - When a reviewer finds the code right and the catalog wrong, it records `catalog`; those are
   listed in `shared/analysis/catalog-questions.md`. Include their number, and any new ones, in
   your daily report to the user.
+
+## Addendum 2026-11-18 — the code reviewer's trial
+
+Apply only this section if the earlier ones were already applied.
+
+- The code reviewer is on a trial: its role is now described by goals (code that is easy and
+  safe to change, and how its work is judged) rather than by procedures. The scan's
+  `status.undeclared-transition` findings move from the code reviewer to the QA lead. Its scan task CR-T3 is not judged by
+  how many findings it closes; do not chase it, reopen it or report on its count. Mark CR-T3
+  `in-progress` if it is marked done.
+- Every to-do now lists the findings first and ends with a summary line, "Not yet examined: N
+  … Deferred: N. Concluded: N." For the other reviewers, a scan task is done when that line
+  shows nothing left to examine and nothing deferred.
+

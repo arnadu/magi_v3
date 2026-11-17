@@ -1,12 +1,14 @@
 {
-	"about": "Which findings of the trace each reviewer owns: a finding kind, optionally narrowed to baseline ids starting with a prefix (kind:prefix). Read by scripts/trace/todo.mjs to build shared/analysis/todo-<agent>.md.",
+	"about": "Which findings of the trace each reviewer owns: a finding kind, optionally narrowed to baseline ids starting with a prefix (kind:prefix). Read by scripts/trace/todo.mjs to build shared/analysis/todo-<agent>.md. \"since\" sets aside an agent's decisions recorded before that time (a fresh start).",
 	"agents": {
-		"appsec": ["sec.result", "inv.unenforced:sec."],
+		"appsec": [
+			"sec.result",
+			"inv.unenforced:sec."
+		],
 		"code-reviewer": [
 			"op.home-not-reached",
 			"op.divergent-writes",
 			"store.foreign-writer",
-			"status.undeclared-transition",
 			"layer.against"
 		],
 		"documenter": [
@@ -15,6 +17,14 @@
 			"op.actor-extra",
 			"op.no-entry-point"
 		],
-		"qa-lead": ["op.actor-missing", "op.no-entry-point", "inv.unenforced"]
+		"qa-lead": [
+			"op.actor-missing",
+			"op.no-entry-point",
+			"inv.unenforced",
+			"status.undeclared-transition"
+		]
+	},
+	"since": {
+		"code-reviewer": "2026-11-17T21:30:41Z"
 	}
 }

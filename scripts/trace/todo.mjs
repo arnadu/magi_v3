@@ -17,7 +17,8 @@
 //
 // coverage.json: { "agents": { "<agent id>": ["<kind>", "<kind>:<about prefix>", …] } }
 // selects, per agent, the findings it owns: by kind, optionally narrowed to
-// the baseline ids starting with a prefix ("inv.unenforced:sec.").
+// the baseline ids starting with a prefix ("inv.unenforced:sec."). An optional
+// "since": { "<agent id>": "<ISO time>" } sets aside that agent's earlier decisions.
 
 import {
 	appendFileSync,
@@ -118,12 +119,22 @@ export function covers(selectors, f) {
 	});
 }
 
+const short = (loc) => loc.replace(/(^|@)packages\//, "$1");
 const line = (f) => {
 	const text = f.text.length > 220 ? `${f.text.slice(0, 217)}…` : f.text;
 	const where = f.where?.length
-		? ` (${f.where.slice(0, 2).join(", ")}${f.where.length > 2 ? ", …" : ""})`
+		? ` (${f.where.slice(0, 2).map(short).join(", ")}${f.where.length > 2 ? ", …" : ""})`
 		: "";
-	return `- \`${f.key}\` ${f.kind} · ${f.about}: ${text}${where}`;
+	// For a difference between entry points, what each one does not reach is
+	// the substance of the finding: shown here, not only in todo.json.
+	const lacks = (f.lacks ?? []).map(
+		(l) =>
+			`\n    ${l.entryPoint} does not reach: ${l.writes
+				.slice(0, 4)
+				.map(short)
+				.join(", ")}${l.writes.length > 4 ? ", …" : ""}`,
+	);
+	return `- \`${f.key}\` ${f.kind} · ${f.about}: ${text}${where}${lacks.join("")}`;
 };
 
 /**
@@ -144,18 +155,19 @@ export function renderTodo(agent, meta, findings, latest, maxBytes) {
 	const head = [
 		`# Scan to-do: ${agent}`,
 		"",
-		`Scan of commit ${meta.commit} at ${meta.time}. Full reports in shared/analysis/: index.md, operations.md, writes.md, invariants.md, components.html.`,
-		`Open: ${open.length} (new since the last scan: ${fresh.length}); deferred: ${deferred.length}; decided: ${decided.length}.`,
-		`By kind: ${
+		`Places where the code may not do what the catalog intends (scan of commit ${meta.commit} at ${meta.time}). For each one you examine: find out whether it is so, and what could go wrong if it is.`,
+		"",
+	];
+	const foot = [
+		"",
+		`Not yet examined: ${open.length} (new since the last scan: ${fresh.length}). Deferred: ${deferred.length}. Concluded: ${decided.length}. By kind: ${
 			Object.entries(byKind)
 				.map(([k, n]) => `${k} ${n}`)
 				.join(", ") || "none"
 		}.`,
-		"",
-		"A finding is evidence to check, not a verdict. Verify each one in the code, then record what you decided; a decision cites the file:line that establishes it. When the code is right and the catalog is not, record catalog: it goes to the user as a question.",
-		'node <your clone>/scripts/trace/todo.mjs dispose "$SHARED_DIR/analysis" <key> finding|dismissed|catalog|deferred|reopen "<reason with file:line>"',
-		"",
-	];
+		"Details of each finding: todo.json and the reports in shared/analysis/. Record a conclusion with:",
+		'node <your clone>/scripts/trace/todo.mjs dispose "$SHARED_DIR/analysis" <key> finding|dismissed|catalog|deferred|reopen "<what you found, with file:line>"',
+	].join("\n");
 	const note = (f) => {
 		const r = rec(f);
 		if (!r || r.disposition === "deferred" || decides(r, f)) return "";
@@ -166,7 +178,7 @@ export function renderTodo(agent, meta, findings, latest, maxBytes) {
 	const tail = [];
 	const sections = [
 		["## New since the last scan", fresh],
-		["## Other open findings", rest],
+		["## To examine", rest],
 		["## Deferred", deferred],
 	];
 	let text = head.join("\n");
@@ -176,7 +188,7 @@ export function renderTodo(agent, meta, findings, latest, maxBytes) {
 		let shown = 0;
 		for (const f of list) {
 			const l = `${line(f)}${note(f)}\n`;
-			if (Buffer.byteLength(text + l) > maxBytes - 200) break;
+			if (Buffer.byteLength(text + l + foot) > maxBytes - 120) break;
 			text += l;
 			shown++;
 		}
@@ -186,7 +198,7 @@ export function renderTodo(agent, meta, findings, latest, maxBytes) {
 			);
 	}
 	if (tail.length) text += `\n${tail.join(" ")}\n`;
-	return text;
+	return `${text}${foot}\n`;
 }
 
 /**
@@ -245,8 +257,14 @@ export function build(dir, coveragePath, maxBytes = 6000, previousPath = null) {
 		readFileSync(join(dir, "todo.json"), "utf8"),
 	);
 	const findings = markNewSince(all, previousPath);
-	const coverage = JSON.parse(readFileSync(coveragePath, "utf8")).agents;
-	const dispositions = readDispositions(dir);
+	const { agents: coverage, since = {} } = JSON.parse(
+		readFileSync(coveragePath, "utf8"),
+	);
+	// An agent's decisions before its `since` date are set aside: they no
+	// longer count, so its findings come back to be examined afresh.
+	const dispositions = readDispositions(dir).filter(
+		(d) => !since[d.agent] || d.at >= since[d.agent],
+	);
 	const written = [];
 	for (const [agent, selectors] of Object.entries(coverage)) {
 		const mine = findings.filter((f) => covers(selectors, f));

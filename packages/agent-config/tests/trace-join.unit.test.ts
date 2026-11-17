@@ -336,9 +336,9 @@ describe("trace to-do lists", () => {
 		);
 		expect(text).not.toContain("cccccccccccc");
 		expect(text).toContain(
-			"Open: 202 (new since the last scan: 1); deferred: 0; decided: 1.",
+			"Not yet examined: 202 (new since the last scan: 1). Deferred: 0. Concluded: 1.",
 		);
-		expect(text).toMatch(/\d+ more under "Other open findings"/);
+		expect(text).toMatch(/\d+ more under "To examine"/);
 	});
 
 	function analysis() {
@@ -371,14 +371,16 @@ describe("trace to-do lists", () => {
 		expect(() =>
 			dispose(dir, "bbbbbbbbbbbb", "dismissed", "guarded at a.ts:3", "cr"),
 		).toThrow(/same reason/);
-		expect(todo(dir)).toContain("Open: 1 (new since the last scan: 0)");
+		expect(todo(dir)).toContain(
+			"Not yet examined: 1 (new since the last scan: 0)",
+		);
 		expect(todo(dir)).not.toContain("aaaaaaaaaaaa");
 	});
 
 	it("keeps a deferred finding on the to-do, and a reopened one open", () => {
 		const dir = analysis();
 		dispose(dir, "aaaaaaaaaaaa", "deferred", "needs the owner's answer", "cr");
-		expect(todo(dir)).toContain("deferred: 1");
+		expect(todo(dir)).toContain("Deferred: 1.");
 		expect(todo(dir)).toMatch(/## Deferred\n\n- `aaaaaaaaaaaa`/);
 		dispose(dir, "bbbbbbbbbbbb", "finding", "CR-9 at a.ts:1", "cr");
 		dispose(dir, "bbbbbbbbbbbb", "reopen", "wrong line", "cr");
@@ -418,7 +420,25 @@ describe("trace to-do lists", () => {
 		dispose(dir, "aaaaaaaaaaaa", "catalog", "a.ts:1 is a second owner", "cr");
 		const q = readFileSync(join(dir, "catalog-questions.md"), "utf8");
 		expect(q).toContain("`x.one` (op.divergent-writes, `aaaaaaaaaaaa`, cr");
-		expect(todo(dir)).toContain("decided: 1");
+		expect(todo(dir)).toContain("Concluded: 1.");
+	});
+
+	it("shows the findings before the counts, and sets aside decisions before an agent's since date", () => {
+		const dir = analysis();
+		dispose(dir, "aaaaaaaaaaaa", "finding", "CR-1 at a.ts:1", "cr");
+		expect(todo(dir)).not.toContain("`aaaaaaaaaaaa`");
+		expect(todo(dir).indexOf("`bbbbbbbbbbbb`")).toBeLessThan(
+			todo(dir).indexOf("Not yet examined"),
+		);
+		writeFileSync(
+			join(dir, "coverage.json"),
+			JSON.stringify({
+				agents: { cr: ["op.divergent-writes"] },
+				since: { cr: "2999-01-01T00:00:00Z" },
+			}),
+		);
+		build(dir, join(dir, "coverage.json"));
+		expect(todo(dir)).toContain("`aaaaaaaaaaaa`");
 	});
 
 	it("does not count an earlier decision recorded without evidence", () => {
