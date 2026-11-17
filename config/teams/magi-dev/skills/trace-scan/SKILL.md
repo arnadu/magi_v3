@@ -45,7 +45,11 @@ repository ("The trace"). Read that section once before you rely on a finding.
    ```
    A finding or a dismissal is a claim about the code, so it leaves your open list only with
    the `file:line` you read for *that* finding; the same reason for two findings is refused, as
-   is "same pattern as another one". Deferring does not close anything: a deferred finding stays
+   is "same pattern as another one". A dismissal must address what the finding names: cite one
+   of its locations (for a difference between entry points, one of the writes an entry point
+   does not reach) and say what you found there. "The scan cannot follow this call" is a claim
+   too: check it against the entry point's row in `operations.md`, which lists what was reached
+   and the calls that were not. Deferring does not close anything: a deferred finding stays
    on your to-do under "Deferred" until you decide it. Your to-do is rebuilt after each record;
    your latest record per finding counts. A finding whose text changes gets a new key and comes
    back.

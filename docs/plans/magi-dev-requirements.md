@@ -1875,6 +1875,18 @@ dismissals above come back), and the to-do is rebuilt after each record. To scor
 decisions now carry per-finding evidence, the share of real findings dismissed, and the cost
 per decided finding (`agentTurnStats`).
 
+Second pass (2026-11-17, scan of `6730970`). The code reviewer re-recorded 110 findings with a
+location each and no repeated reason, $0.53 for the first 69. All 110 were dismissals. The last
+41 were written in ten seconds, each a reworded "the trace cannot follow the dispatch", citing
+the entry point rather than the writes the finding says it lacks; the trace had in fact
+followed those calls. Nine others cited a write some lines away from the one the finding names:
+reasons attached to the wrong finding. Catalog disagreements (48) were dismissed rather than
+raised with the user. Fix: a dismissal must cite one of the locations the finding names (for
+a difference between entry points, a write that one of them does not reach); 30 of the code
+reviewer's dismissals no longer count. Still to address: a separate disposition for a question
+about the catalog, so it reaches the user; and a task counted done only when the rebuilt to-do
+has nothing open.
+
 ## Phasing
 
 | Phase | Scope | Needs |

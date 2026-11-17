@@ -18,6 +18,7 @@ import {
 	build,
 	covers,
 	dispose,
+	insufficient,
 	renderTodo,
 } from "../../../scripts/trace/todo.mjs";
 
@@ -324,7 +325,7 @@ describe("trace to-do lists", () => {
 			new Map([
 				[
 					"cccccccccccc",
-					{ disposition: "dismissed", reason: "handled in a.ts:12" },
+					{ disposition: "dismissed", reason: "handled in a.ts:1" },
 				],
 			]),
 			3000,
@@ -366,9 +367,9 @@ describe("trace to-do lists", () => {
 		expect(() =>
 			dispose(dir, "aaaaaaaaaaaa", "dismissed", "same pattern as before", "cr"),
 		).toThrow(/cite the file:line/);
-		dispose(dir, "aaaaaaaaaaaa", "dismissed", "guarded at a.ts:40", "cr");
+		dispose(dir, "aaaaaaaaaaaa", "dismissed", "guarded at a.ts:3", "cr");
 		expect(() =>
-			dispose(dir, "bbbbbbbbbbbb", "dismissed", "guarded at a.ts:40", "cr"),
+			dispose(dir, "bbbbbbbbbbbb", "dismissed", "guarded at a.ts:3", "cr"),
 		).toThrow(/same reason/);
 		expect(todo(dir)).toContain("Open: 1 (new since the last scan: 0)");
 		expect(todo(dir)).not.toContain("aaaaaaaaaaaa");
@@ -379,10 +380,34 @@ describe("trace to-do lists", () => {
 		dispose(dir, "aaaaaaaaaaaa", "deferred", "needs the owner's answer", "cr");
 		expect(todo(dir)).toContain("deferred: 1");
 		expect(todo(dir)).toMatch(/## Deferred\n\n- `aaaaaaaaaaaa`/);
-		dispose(dir, "bbbbbbbbbbbb", "finding", "CR-9 at b.ts:7", "cr");
+		dispose(dir, "bbbbbbbbbbbb", "finding", "CR-9 at a.ts:1", "cr");
 		dispose(dir, "bbbbbbbbbbbb", "reopen", "wrong line", "cr");
 		expect(todo(dir)).toContain("`bbbbbbbbbbbb`");
 		expect(todo(dir)).toContain("[reopened]");
+	});
+
+	it("refuses a dismissal that does not address the places the finding names", () => {
+		const dir = analysis();
+		expect(() =>
+			dispose(dir, "aaaaaaaaaaaa", "dismissed", "fine, see z.ts:90", "cr"),
+		).toThrow(/does not address what the finding names \(a\.ts:1\)/);
+		const gap = {
+			...f("cccccccccccc", "op.divergent-writes", "x.three"),
+			lacks: [
+				{
+					entryPoint: "route POST /x",
+					where: "r.ts:5",
+					writes: ["things.updateOne@claims.ts:25"],
+				},
+			],
+		};
+		const d = (reason: string) => ({ disposition: "dismissed", reason });
+		expect(insufficient(d("dispatch at r.ts:5 is not followed"), gap)).toMatch(
+			/claims\.ts:25/,
+		);
+		expect(
+			insufficient(d("claims.ts:27 is reached through q.ts:4"), gap),
+		).toBeNull();
 	});
 
 	it("does not count an earlier decision recorded without evidence", () => {

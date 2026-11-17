@@ -9,7 +9,8 @@
 //     records what the calling agent ($AGENT_ID) decided about one finding, and
 //     rebuilds that agent's to-do. A finding or a dismissal is a claim about the
 //     code: its reason must cite the file:line that establishes it, and is its
-//     own (the same reason for two findings is refused). A deferred finding stays
+//     own (the same reason for two findings is refused). A dismissal must also
+//     cite one of the places the finding names (subjectLocations). A deferred finding stays
 //     on the to-do, under "Deferred". The latest record per key wins.
 //
 // coverage.json: { "agents": { "<agent id>": ["<kind>", "<kind>:<about prefix>", …] } }
@@ -31,12 +32,51 @@ export const DISPOSITIONS = ["finding", "dismissed", "deferred", "reopen"];
 const CITATION = /[\w./-]+\.[a-z]{1,5}:\d+/;
 const BUILD_SETTINGS = ".todo-build.json";
 
+/**
+ * The places a finding is about, which a dismissal must address: for a
+ * difference between entry points, the writes some of them do not reach;
+ * otherwise where the finding points.
+ */
+export function subjectLocations(f) {
+	if (f.lacks?.length)
+		return f.lacks.flatMap((l) => l.writes.map((w) => w.split("@").pop()));
+	return f.where ?? [];
+}
+
+const NEAR_LINES = 5;
+function citesOneOf(reason, locations) {
+	const cited = [...reason.matchAll(new RegExp(CITATION, "g"))].map((m) => {
+		const [file, line] = m[0].split(/:(?=\d+$)/);
+		return { file, line: Number(line) };
+	});
+	return locations.some((loc) => {
+		const [file, line] = loc.split(/:(?=\d+$)/);
+		return cited.some(
+			(c) =>
+				(file.endsWith(c.file) || c.file.endsWith(file)) &&
+				Math.abs(c.line - Number(line)) <= NEAR_LINES,
+		);
+	});
+}
+
+/** Why a record does not decide finding `f`, or null when it does. */
+export function insufficient(d, f) {
+	if (d.disposition !== "finding" && d.disposition !== "dismissed")
+		return "not a decision";
+	if (!CITATION.test(d.reason)) return "cites no file:line";
+	const subject = subjectLocations(f);
+	if (
+		d.disposition === "dismissed" &&
+		subject.length &&
+		!citesOneOf(d.reason, subject)
+	)
+		return `does not address what the finding names (${subject.slice(0, 3).join(", ")}${subject.length > 3 ? ", …" : ""})`;
+	return null;
+}
+
 /** Does a record decide its finding (take it off the open list)? */
-export function decides(d) {
-	return (
-		(d.disposition === "finding" || d.disposition === "dismissed") &&
-		CITATION.test(d.reason)
-	);
+export function decides(d, f) {
+	return insufficient(d, f) === null;
 }
 
 /** One agent's latest record per finding key. */
@@ -83,7 +123,7 @@ const line = (f) => {
  */
 export function renderTodo(agent, meta, findings, latest, maxBytes) {
 	const rec = (f) => latest.get(f.key);
-	const decided = findings.filter((f) => rec(f) && decides(rec(f)));
+	const decided = findings.filter((f) => rec(f) && decides(rec(f), f));
 	const deferred = findings.filter((f) => rec(f)?.disposition === "deferred");
 	const open = findings.filter(
 		(f) => !decided.includes(f) && !deferred.includes(f),
@@ -109,10 +149,10 @@ export function renderTodo(agent, meta, findings, latest, maxBytes) {
 	];
 	const note = (f) => {
 		const r = rec(f);
-		if (!r || decides(r) || r.disposition === "deferred") return "";
+		if (!r || r.disposition === "deferred" || decides(r, f)) return "";
 		return r.disposition === "reopen"
 			? " [reopened]"
-			: ` [your "${r.disposition}" cites no file:line, so it does not count]`;
+			: ` [your "${r.disposition}" ${insufficient(r, f)}, so it does not count]`;
 	};
 	const tail = [];
 	const sections = [
@@ -168,7 +208,7 @@ export function build(dir, coveragePath, maxBytes = 6000, previousPath = null) {
 			renderTodo(agent, meta, mine, latest, maxBytes),
 		);
 		const decided = mine.filter(
-			(f) => latest.has(f.key) && decides(latest.get(f.key)),
+			(f) => latest.has(f.key) && decides(latest.get(f.key), f),
 		).length;
 		written.push(`${agent}: ${mine.length - decided} open or deferred`);
 	}
@@ -189,12 +229,17 @@ export function dispose(dir, key, disposition, reason, agent) {
 	const why = reason.trim();
 	if (!why) throw new Error("give a reason");
 	const { findings } = JSON.parse(readFileSync(join(dir, "todo.json"), "utf8"));
-	if (!findings.some((f) => f.key === key))
-		throw new Error(`no finding ${key} in the last scan`);
+	const finding = findings.find((f) => f.key === key);
+	if (!finding) throw new Error(`no finding ${key} in the last scan`);
 	if (disposition === "finding" || disposition === "dismissed") {
 		if (!CITATION.test(why))
 			throw new Error(
 				`a ${disposition} is a claim about the code: cite the file:line you read that establishes it for this finding`,
+			);
+		const gap = insufficient({ disposition, reason: why }, finding);
+		if (gap)
+			throw new Error(
+				`this dismissal ${gap}: say what you found at those places`,
 			);
 		const reused = readDispositions(dir).find(
 			(d) => d.agent === agent && d.key !== key && d.reason === why,
