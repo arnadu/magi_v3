@@ -5,12 +5,14 @@
 //     writes todo-<agent>.md into <analysis dir> for every agent in coverage.json,
 //     from <analysis dir>/todo.json and <analysis dir>/dispositions.jsonl
 //
-//   node scripts/trace/todo.mjs dispose <analysis dir> <key> <finding|dismissed|deferred|reopen> <reason…>
+//   node scripts/trace/todo.mjs dispose <analysis dir> <key> <finding|dismissed|catalog|deferred|reopen> <reason…>
 //     records what the calling agent ($AGENT_ID) decided about one finding, and
 //     rebuilds that agent's to-do. A finding or a dismissal is a claim about the
 //     code: its reason must cite the file:line that establishes it, and is its
 //     own (the same reason for two findings is refused). A dismissal must also
-//     cite one of the places the finding names (subjectLocations). A deferred finding stays
+//     cite one of the places the finding names (subjectLocations). "catalog"
+//     says the code is right and the catalog is not: it is held to the same
+//     evidence as a dismissal and listed in catalog-questions.md for the user. A deferred finding stays
 //     on the to-do, under "Deferred". The latest record per key wins.
 //
 // coverage.json: { "agents": { "<agent id>": ["<kind>", "<kind>:<about prefix>", …] } }
@@ -26,7 +28,15 @@ import {
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const DISPOSITIONS = ["finding", "dismissed", "deferred", "reopen"];
+export const DISPOSITIONS = [
+	"finding",
+	"dismissed",
+	"catalog",
+	"deferred",
+	"reopen",
+];
+const DECISIONS = new Set(["finding", "dismissed", "catalog"]);
+const AGAINST_SCAN = new Set(["dismissed", "catalog"]);
 
 /** A `path/file.ext:line` citation: what makes a decision checkable. */
 const CITATION = /[\w./-]+\.[a-z]{1,5}:\d+/;
@@ -61,12 +71,11 @@ function citesOneOf(reason, locations) {
 
 /** Why a record does not decide finding `f`, or null when it does. */
 export function insufficient(d, f) {
-	if (d.disposition !== "finding" && d.disposition !== "dismissed")
-		return "not a decision";
+	if (!DECISIONS.has(d.disposition)) return "not a decision";
 	if (!CITATION.test(d.reason)) return "cites no file:line";
 	const subject = subjectLocations(f);
 	if (
-		d.disposition === "dismissed" &&
+		AGAINST_SCAN.has(d.disposition) &&
 		subject.length &&
 		!citesOneOf(d.reason, subject)
 	)
@@ -143,8 +152,8 @@ export function renderTodo(agent, meta, findings, latest, maxBytes) {
 				.join(", ") || "none"
 		}.`,
 		"",
-		"A finding is evidence to check, not a verdict. Verify each one in the code, then record what you decided; a finding or a dismissal cites the file:line that establishes it:",
-		'node <your clone>/scripts/trace/todo.mjs dispose "$SHARED_DIR/analysis" <key> finding|dismissed|deferred|reopen "<reason with file:line>"',
+		"A finding is evidence to check, not a verdict. Verify each one in the code, then record what you decided; a decision cites the file:line that establishes it. When the code is right and the catalog is not, record catalog: it goes to the user as a question.",
+		'node <your clone>/scripts/trace/todo.mjs dispose "$SHARED_DIR/analysis" <key> finding|dismissed|catalog|deferred|reopen "<reason with file:line>"',
 		"",
 	];
 	const note = (f) => {
@@ -192,6 +201,45 @@ function markNewSince(findings, previousPath) {
 	return findings.map((f) => ({ ...f, new: !before.has(f.key) }));
 }
 
+/**
+ * The reviewers' claims that the catalog, not the code, is wrong: questions
+ * for the product owner, who decides every catalog change.
+ */
+export function renderCatalogQuestions(meta, findings, dispositions) {
+	const byKey = new Map(findings.map((f) => [f.key, f]));
+	const latest = new Map();
+	for (const d of dispositions) latest.set(`${d.agent} ${d.key}`, d);
+	const rows = (pick) =>
+		[...latest.values()]
+			.filter((d) => byKey.has(d.key) && pick(d))
+			.map((d) => {
+				const f = byKey.get(d.key);
+				return `- \`${f.about}\` (${f.kind}, \`${d.key}\`, ${d.agent}, ${d.at.slice(0, 10)}): ${d.reason}`;
+			});
+	const asked = rows(
+		(d) => d.disposition === "catalog" && decides(d, byKey.get(d.key)),
+	);
+	const mentioned = rows(
+		(d) => d.disposition === "dismissed" && /catalog/i.test(d.reason),
+	);
+	return [
+		"# Questions about the catalog",
+		"",
+		`From the reviewers' decisions on the scan of commit ${meta.commit}. Each says the code is right and the baseline catalog is not; the product owner decides every catalog change.`,
+		"",
+		"## Raised as catalog questions",
+		"",
+		...(asked.length ? asked : ["None."]),
+		"",
+		"## Dismissals whose reason mentions the catalog",
+		"",
+		"Recorded as dismissals, so possibly the same kind of question.",
+		"",
+		...(mentioned.length ? mentioned : ["None."]),
+		"",
+	].join("\n");
+}
+
 export function build(dir, coveragePath, maxBytes = 6000, previousPath = null) {
 	const { meta, findings: all } = JSON.parse(
 		readFileSync(join(dir, "todo.json"), "utf8"),
@@ -212,6 +260,10 @@ export function build(dir, coveragePath, maxBytes = 6000, previousPath = null) {
 		).length;
 		written.push(`${agent}: ${mine.length - decided} open or deferred`);
 	}
+	writeFileSync(
+		join(dir, "catalog-questions.md"),
+		renderCatalogQuestions(meta, findings, dispositions),
+	);
 	// What dispose needs to rebuild the to-dos the same way.
 	writeFileSync(
 		join(dir, BUILD_SETTINGS),
@@ -231,7 +283,7 @@ export function dispose(dir, key, disposition, reason, agent) {
 	const { findings } = JSON.parse(readFileSync(join(dir, "todo.json"), "utf8"));
 	const finding = findings.find((f) => f.key === key);
 	if (!finding) throw new Error(`no finding ${key} in the last scan`);
-	if (disposition === "finding" || disposition === "dismissed") {
+	if (DECISIONS.has(disposition)) {
 		if (!CITATION.test(why))
 			throw new Error(
 				`a ${disposition} is a claim about the code: cite the file:line you read that establishes it for this finding`,
@@ -239,7 +291,7 @@ export function dispose(dir, key, disposition, reason, agent) {
 		const gap = insufficient({ disposition, reason: why }, finding);
 		if (gap)
 			throw new Error(
-				`this dismissal ${gap}: say what you found at those places`,
+				`this ${disposition} ${gap}: say what you found at those places`,
 			);
 		const reused = readDispositions(dir).find(
 			(d) => d.agent === agent && d.key !== key && d.reason === why,

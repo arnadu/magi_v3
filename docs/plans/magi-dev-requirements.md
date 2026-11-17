@@ -1883,9 +1883,10 @@ followed those calls. Nine others cited a write some lines away from the one the
 reasons attached to the wrong finding. Catalog disagreements (48) were dismissed rather than
 raised with the user. Fix: a dismissal must cite one of the locations the finding names (for
 a difference between entry points, a write that one of them does not reach); 30 of the code
-reviewer's dismissals no longer count. Still to address: a separate disposition for a question
-about the catalog, so it reaches the user; and a task counted done only when the rebuilt to-do
-has nothing open.
+reviewer's dismissals no longer count. Then: a `catalog` disposition, held to a dismissal's evidence and listed in
+`analysis/catalog-questions.md` for the user (dismissals mentioning the catalog are listed
+there too); and a scan task counted done only when the assignee's rebuilt to-do shows nothing
+open or deferred, checked by the mission copilot in that file rather than the agent's notes.
 
 ## Phasing
 

@@ -410,6 +410,17 @@ describe("trace to-do lists", () => {
 		).toBeNull();
 	});
 
+	it("lists catalog questions for the product owner, held to a dismissal's evidence", () => {
+		const dir = analysis();
+		expect(() =>
+			dispose(dir, "aaaaaaaaaaaa", "catalog", "fine, see z.ts:90", "cr"),
+		).toThrow(/does not address/);
+		dispose(dir, "aaaaaaaaaaaa", "catalog", "a.ts:1 is a second owner", "cr");
+		const q = readFileSync(join(dir, "catalog-questions.md"), "utf8");
+		expect(q).toContain("`x.one` (op.divergent-writes, `aaaaaaaaaaaa`, cr");
+		expect(todo(dir)).toContain("decided: 1");
+	});
+
 	it("does not count an earlier decision recorded without evidence", () => {
 		const dir = analysis();
 		writeFileSync(

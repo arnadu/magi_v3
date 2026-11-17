@@ -40,6 +40,7 @@ repository ("The trace"). Read that section once before you rely on a finding.
    ```bash
    node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> finding "<your finding id; the file:line that shows it>"
    node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> dismissed "<why it is not a defect; the file:line that shows it>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> catalog "<why the code is right and the catalog is not; the file:line that shows it>"
    node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> deferred "<what it waits for>"
    node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> reopen "<why>"
    ```
@@ -54,7 +55,10 @@ repository ("The trace"). Read that section once before you rely on a finding.
    your latest record per finding counts. A finding whose text changes gets a new key and comes
    back.
 4. **When the code and the catalog disagree**, decide which is wrong: a finding against the code,
-   or a question for the user about the catalog. Never treat the catalog as automatically right.
+   or `catalog` when the code is right and the catalog is not. A `catalog` record is a question
+   for the user, who approves every catalog change; it is listed in
+   `$SHARED_DIR/analysis/catalog-questions.md`. A dismissal is for a finding that is simply
+   wrong. Never treat the catalog as automatically right.
 
 For one question without waiting for a scan, your clone answers directly (TypeScript language
 service, seconds): `npm run trace -- def <name>`, `refs <file:line>`, `callers <file:line> --depth 2`.

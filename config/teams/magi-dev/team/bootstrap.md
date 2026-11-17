@@ -164,3 +164,17 @@ the mapping to the user.
 
 Then PostMessage code-reviewer: "CR-T2 is assigned to you: set up and run the trace-scan job
 now." No schedule to create: the code reviewer creates the scan's own schedule as part of CR-T2.
+
+## Addendum 2026-11-17 — when a scan task is done
+
+Apply only this section if the earlier ones were already applied.
+
+- A scan task (SEC-T2, CR-T3, DC-T2, QA-T2) is done when the assignee's
+  `shared/analysis/todo-<agent>.md` shows `Open: 0` and `deferred: 0`. Read that file to decide;
+  an agent's own notes are not evidence. Reopen any of these tasks marked done whose file still
+  shows open or deferred findings, and tell its assignee why.
+- A decision only counts with evidence for that finding (skill `trace-scan`). The to-do marks a
+  decision that does not count, and says why.
+- When a reviewer finds the code right and the catalog wrong, it records `catalog`; those are
+  listed in `shared/analysis/catalog-questions.md`. Include their number, and any new ones, in
+  your daily report to the user.
