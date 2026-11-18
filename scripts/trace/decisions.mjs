@@ -1,32 +1,30 @@
 #!/usr/bin/env node
-// The reviewers' decisions on the trace's findings, the user's spot checks of
-// those decisions, and each reviewer's view of both.
+// The reviewers' conclusions on the trace's findings, and each reviewer's view
+// of its share of them.
 //
 //   node scripts/trace/decisions.mjs build <analysis dir> <coverage.json> [--max-bytes N] [--previous <findings.json>]
 //     writes findings-<agent>.md for every agent in coverage.json, and
-//     catalog-questions.md, from <analysis dir>/findings.json,
-//     dispositions.jsonl and spot-checks.jsonl
+//     catalog-questions.md, from <analysis dir>/findings.json and
+//     dispositions.jsonl
 //
 //   node scripts/trace/decisions.mjs about <analysis dir> <file or baseline id> [--all]
-//     the findings whose locations or subject match, with every decision and
-//     spot check recorded on them; the calling agent's ($AGENT_ID) share
-//     unless --all
+//     the findings whose locations or subject match, with the calling agent's
+//     ($AGENT_ID) own conclusion on each; its share of the findings unless
+//     --all. Another reviewer's conclusion is not shown: it is not evidence.
 //
-//   node scripts/trace/decisions.mjs dispose <analysis dir> <key> <finding|dismissed|catalog|reopen> <reason…>
-//     records what the calling agent ($AGENT_ID) concluded about one finding
+//   node scripts/trace/decisions.mjs record <analysis dir> <key> <finding|dismissed|catalog|reopen> <reason…>
+//     records what the calling agent concluded about one finding
 //
-//   node scripts/trace/decisions.mjs sample <analysis dir> <n> [--seed S]
-//     n dismissals not yet spot-checked, chosen at random, for the user to check
-//
-//   node scripts/trace/decisions.mjs check <analysis dir> <agent> <key> <upheld|wrong> <reason…>
-//     records a spot check of that agent's dismissal (by $CHECKED_BY, default "user")
+//   node scripts/trace/decisions.mjs sample <analysis dir> <n> [--seed S] [--checked <file>]
+//     n standing dismissals, chosen at random, for the user to check against
+//     the code; --checked lists "<agent> <key>" already checked (kept outside
+//     the mission)
 //
 // The view is a reference, not a queue: no count of what is left to examine.
 // A reviewer's output is the findings and catalog questions it raises; a
-// dismissal says the trace is wrong, and stands until a spot check finds
-// otherwise, which reopens the finding for that reviewer.
+// dismissal says the trace is wrong about the code.
 //
-// A decision is a claim about the code: its reason must cite the file:line
+// A conclusion is a claim about the code: its reason must cite the file:line
 // that establishes it, and is its own (the same reason for two findings is
 // refused). A dismissal or a catalog question must also cite one of the
 // places the finding names (subjectLocations).
@@ -35,7 +33,7 @@
 // selects, per agent, the findings in its area: by kind, optionally narrowed
 // to the baseline ids starting with a prefix ("inv.unenforced:sec."). An
 // optional "since": { "<agent id>": "<ISO time>" } sets aside that agent's
-// earlier decisions.
+// earlier conclusions.
 
 import {
 	appendFileSync,
@@ -49,7 +47,6 @@ import { fileURLToPath } from "node:url";
 export const DISPOSITIONS = ["finding", "dismissed", "catalog", "reopen"];
 const DECISIONS = new Set(["finding", "dismissed", "catalog"]);
 const AGAINST_SCAN = new Set(["dismissed", "catalog"]);
-export const CHECK_RESULTS = ["upheld", "wrong"];
 
 /** A `path/file.ext:line` citation: what makes a decision checkable. */
 const CITATION = /[\w./-]+\.[a-z]{1,5}:\d+/;
@@ -121,24 +118,18 @@ export function covers(selectors, f) {
 }
 
 /**
- * Where one agent stands on each finding: its latest record, and whether a
- * later spot check found that record wrong.
- * status: "finding" | "catalog" | "dismissed" | "wrong" (a dismissal a spot
- * check refuted) | "unsupported" (recorded without evidence) | "none".
+ * Where one agent stands on each finding: its latest record.
+ * status: "finding" | "catalog" | "dismissed" | "unsupported" (recorded
+ * without evidence) | "none".
  */
-export function standing(f, agent, dispositions, checks) {
+export function standing(f, agent, dispositions) {
 	let rec = null;
 	for (const d of dispositions)
 		if (d.agent === agent && d.key === f.key) rec = d;
 	if (!rec || rec.disposition === "reopen") return { status: "none", rec };
 	const gap = insufficient(rec, f);
 	if (gap) return { status: "unsupported", rec, gap };
-	let check = null;
-	for (const c of checks)
-		if (c.agent === agent && c.key === f.key && c.at >= rec.at) check = c;
-	if (rec.disposition === "dismissed" && check?.result === "wrong")
-		return { status: "wrong", rec, check };
-	return { status: rec.disposition, rec, check };
+	return { status: rec.disposition, rec };
 }
 
 const short = (loc) => loc.replace(/(^|@)packages\//, "$1");
@@ -169,23 +160,14 @@ function filesOf(f) {
 
 /**
  * One agent's view of its share of the findings, at most `maxBytes` long:
- * spot checks that found its dismissals wrong, what is new, where the
- * findings are, and its record.
+ * what is new, where the findings are, and what it has concluded.
  */
-export function renderView(
-	agent,
-	meta,
-	findings,
-	dispositions,
-	checks,
-	maxBytes,
-) {
+export function renderView(agent, meta, findings, dispositions, maxBytes) {
 	const st = new Map(
-		findings.map((f) => [f.key, standing(f, agent, dispositions, checks)]),
+		findings.map((f) => [f.key, standing(f, agent, dispositions)]),
 	);
 	const count = (s) =>
 		findings.filter((f) => st.get(f.key).status === s).length;
-	const wrong = findings.filter((f) => st.get(f.key).status === "wrong");
 	const fresh = findings.filter(
 		(f) => f.new && st.get(f.key).status === "none",
 	);
@@ -194,31 +176,20 @@ export function renderView(
 		for (const file of filesOf(f))
 			byFile.set(file, (byFile.get(file) ?? 0) + 1);
 	const files = [...byFile.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
-	const checked = findings.filter((f) => {
-		const s = st.get(f.key);
-		return s.check && (s.status === "dismissed" || s.status === "wrong");
-	}).length;
 
 	const head = [
 		`# Trace findings: ${agent}`,
 		"",
-		`Places in your area where the code may not do what the catalog intends (scan of commit ${meta.commit} at ${meta.time}). A finding is a question to answer when you review the code it touches, not an item to clear: one nobody has examined costs nothing, a wrong conclusion does. Findings on a file, with what has been decided about them:`,
+		`Places in your area where the code may not do what the catalog intends (scan of commit ${meta.commit} at ${meta.time}). A finding is a question to answer when you review the code it touches, not an item to clear: one nobody has examined costs nothing, a wrong conclusion does. Findings on a file, with your conclusions on them:`,
 		'`node <your clone>/scripts/trace/decisions.mjs about "$SHARED_DIR/analysis" <file or baseline id>`',
 		"",
 	].join("\n");
 	const foot = [
 		"",
-		`Your record on this scan: ${count("finding")} findings raised, ${count("catalog")} catalog questions; ${count("dismissed") + wrong.length} dismissed, ${checked} of them spot-checked by the user, ${wrong.length} found wrong.`,
+		`Your conclusions on this scan: ${count("finding")} findings raised, ${count("catalog")} catalog questions, ${count("dismissed")} dismissed.`,
 	].join("\n");
 
 	const sections = [
-		[
-			"## Dismissals a spot check found wrong",
-			wrong.map((f) => {
-				const s = st.get(f.key);
-				return `${line(f)}\n    The user: ${s.check.reason}`;
-			}),
-		],
 		[
 			"## New since the last scan (look at them with the change that introduced them)",
 			fresh.map(line),
@@ -248,12 +219,11 @@ export function renderView(
 
 /**
  * The findings matching `query` (a file path fragment or a baseline id),
- * with every agent's latest decision and the spot checks on each.
+ * with `agent`'s own conclusion on each.
  */
 export function about(dir, query, agent, coverage = null) {
 	const { meta, findings } = readFindings(dir);
 	const dispositions = currentDispositions(dir);
-	const checks = readJsonl(dir, "spot-checks.jsonl");
 	const mine = coverage
 		? findings.filter((f) => covers(coverage, f))
 		: findings;
@@ -268,22 +238,11 @@ export function about(dir, query, agent, coverage = null) {
 	];
 	for (const f of hits) {
 		out.push(line(f));
-		const agents = [
-			...new Set(
-				dispositions.filter((d) => d.key === f.key).map((d) => d.agent),
-			),
-		];
-		for (const a of agents) {
-			const s = standing(f, a, dispositions, checks);
-			if (!s.rec) continue;
+		const s = standing(f, agent, dispositions);
+		if (s.rec)
 			out.push(
-				`    ${a}: ${s.rec.disposition} (${s.rec.at.slice(0, 10)}${s.gap ? `, does not count: ${s.gap}` : ""}): ${s.rec.reason}`,
+				`    your conclusion: ${s.rec.disposition} (${s.rec.at.slice(0, 10)}${s.gap ? `, does not count: ${s.gap}` : ""}): ${s.rec.reason}`,
 			);
-			if (s.check)
-				out.push(
-					`    spot check: ${s.check.result} by ${s.check.by}: ${s.check.reason}`,
-				);
-		}
 	}
 	return out.join("\n");
 }
@@ -356,26 +315,24 @@ export function build(dir, coveragePath, maxBytes = 6000, previousPath = null) {
 	const dispositions = readJsonl(dir, "dispositions.jsonl").filter(
 		(d) => !since[d.agent] || d.at >= since[d.agent],
 	);
-	const checks = readJsonl(dir, "spot-checks.jsonl");
 	const written = [];
 	for (const [agent, selectors] of Object.entries(coverage)) {
 		const mine = findings.filter((f) => covers(selectors, f));
 		writeFileSync(
 			join(dir, `findings-${agent}.md`),
-			renderView(agent, meta, mine, dispositions, checks, maxBytes),
+			renderView(agent, meta, mine, dispositions, maxBytes),
 		);
 		const n = (s) =>
-			mine.filter((f) => standing(f, agent, dispositions, checks).status === s)
-				.length;
+			mine.filter((f) => standing(f, agent, dispositions).status === s).length;
 		written.push(
-			`${agent}: ${mine.length} findings in its area; ${n("finding")} raised, ${n("catalog")} catalog, ${n("dismissed")} dismissed, ${n("wrong")} found wrong`,
+			`${agent}: ${mine.length} findings in its area; ${n("finding")} raised, ${n("catalog")} catalog, ${n("dismissed")} dismissed`,
 		);
 	}
 	writeFileSync(
 		join(dir, "catalog-questions.md"),
 		renderCatalogQuestions(meta, findings, dispositions),
 	);
-	// What dispose and check need to rebuild the views the same way.
+	// What `record` needs to rebuild the views the same way.
 	writeFileSync(
 		join(dir, BUILD_SETTINGS),
 		JSON.stringify({ coveragePath, maxBytes, previousPath }),
@@ -413,7 +370,7 @@ function findingByKey(dir, key) {
 	return finding;
 }
 
-export function dispose(dir, key, disposition, reason, agent) {
+export function record(dir, key, disposition, reason, agent) {
 	if (!DISPOSITIONS.includes(disposition))
 		throw new Error(`disposition must be one of ${DISPOSITIONS.join(", ")}`);
 	if (!agent) throw new Error("AGENT_ID is not set");
@@ -438,19 +395,16 @@ export function dispose(dir, key, disposition, reason, agent) {
 				`the same reason was given for finding ${reused.key}: verify this finding on its own and say what you found for it`,
 			);
 	}
-	const record = {
+	const entry = {
 		key,
 		agent,
 		disposition,
 		reason: why.slice(0, 500),
 		at: new Date().toISOString(),
 	};
-	appendFileSync(
-		join(dir, "dispositions.jsonl"),
-		`${JSON.stringify(record)}\n`,
-	);
+	appendFileSync(join(dir, "dispositions.jsonl"), `${JSON.stringify(entry)}\n`);
 	rebuild(dir);
-	return record;
+	return entry;
 }
 
 /** A small seeded generator, so a sample can be drawn again. */
@@ -464,17 +418,25 @@ function seeded(seed) {
 	};
 }
 
-/** `n` standing dismissals no spot check has looked at yet, at random. */
-export function sample(dir, n, seed = new Date().toISOString()) {
+/**
+ * `n` standing dismissals at random, leaving out those in `checked` (a set
+ * of "<agent> <key>" the user has already checked).
+ */
+export function sample(
+	dir,
+	n,
+	seed = new Date().toISOString(),
+	checked = new Set(),
+) {
 	const { findings } = readFindings(dir);
 	const dispositions = currentDispositions(dir);
-	const checks = readJsonl(dir, "spot-checks.jsonl");
 	const agents = [...new Set(dispositions.map((d) => d.agent))];
 	const pool = [];
 	for (const f of findings)
 		for (const agent of agents) {
-			const s = standing(f, agent, dispositions, checks);
-			if (s.status === "dismissed" && !s.check) pool.push({ f, agent, s });
+			const s = standing(f, agent, dispositions);
+			if (s.status === "dismissed" && !checked.has(`${agent} ${f.key}`))
+				pool.push({ f, agent, s });
 		}
 	const rand = seeded(seed);
 	for (let i = pool.length - 1; i > 0; i--) {
@@ -488,36 +450,6 @@ export function sample(dir, n, seed = new Date().toISOString()) {
 		reason: s.rec.reason,
 		at: s.rec.at,
 	}));
-}
-
-export function check(dir, agent, key, result, reason, by = "user") {
-	if (!CHECK_RESULTS.includes(result))
-		throw new Error(`result must be one of ${CHECK_RESULTS.join(", ")}`);
-	const why = reason.trim();
-	if (!CITATION.test(why))
-		throw new Error(
-			"a spot check is a claim about the code: cite the file:line",
-		);
-	const f = findingByKey(dir, key);
-	const s = standing(
-		f,
-		agent,
-		currentDispositions(dir),
-		readJsonl(dir, "spot-checks.jsonl"),
-	);
-	if (s.status !== "dismissed" && s.status !== "wrong")
-		throw new Error(`${agent} has no standing dismissal of ${key}`);
-	const record = {
-		key,
-		agent,
-		result,
-		reason: why.slice(0, 500),
-		by,
-		at: new Date().toISOString(),
-	};
-	appendFileSync(join(dir, "spot-checks.jsonl"), `${JSON.stringify(record)}\n`);
-	rebuild(dir);
-	return record;
 }
 
 function coverageOf(dir, agent) {
@@ -548,41 +480,28 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 			const agent = process.env.AGENT_ID;
 			const coverage = a.includes("--all") ? null : coverageOf(a[0], agent);
 			console.log(about(a[0], a[1], agent, coverage));
-		} else if (cmd === "dispose") {
+		} else if (cmd === "record") {
 			const [dir, key, disposition, ...reason] = a;
 			console.log(
 				JSON.stringify(
-					dispose(
-						dir,
-						key,
-						disposition,
-						reason.join(" "),
-						process.env.AGENT_ID,
-					),
+					record(dir, key, disposition, reason.join(" "), process.env.AGENT_ID),
 				),
 			);
 		} else if (cmd === "sample") {
-			for (const s of sample(a[0], Number(a[1]), flag("--seed")))
+			// --checked: a file of "<agent> <key>" lines already checked.
+			const listed = flag("--checked");
+			const checked = new Set(
+				listed && existsSync(listed)
+					? readFileSync(listed, "utf8").split("\n").filter(Boolean)
+					: [],
+			);
+			for (const s of sample(a[0], Number(a[1]), flag("--seed"), checked))
 				console.log(
 					`${s.agent} ${s.key} (${s.at.slice(0, 16)})\n${s.finding}\n    dismissed: ${s.reason}\n`,
 				);
-		} else if (cmd === "check") {
-			const [dir, agent, key, result, ...reason] = a;
-			console.log(
-				JSON.stringify(
-					check(
-						dir,
-						agent,
-						key,
-						result,
-						reason.join(" "),
-						process.env.CHECKED_BY || "user",
-					),
-				),
-			);
 		} else {
 			throw new Error(
-				"usage: decisions.mjs build <dir> <coverage.json> [--max-bytes N] [--previous <findings.json>] | about <dir> <file|id> [--all] | dispose <dir> <key> <disposition> <reason> | sample <dir> <n> [--seed S] | check <dir> <agent> <key> upheld|wrong <reason>",
+				"usage: decisions.mjs build <dir> <coverage.json> [--max-bytes N] [--previous <findings.json>] | about <dir> <file|id> [--all] | record <dir> <key> <disposition> <reason> | sample <dir> <n> [--seed S] [--checked <file>]",
 			);
 		}
 	} catch (e) {

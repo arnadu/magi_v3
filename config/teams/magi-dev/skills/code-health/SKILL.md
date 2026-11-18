@@ -49,7 +49,7 @@ node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" about "$SHARED_DIR/ana
 Record your conclusion on a finding you examined, so that the user and your teammates can see it:
 
 ```bash
-node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> <decision> "<what you found, with file:line>"
+node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" record "$SHARED_DIR/analysis" <key> <decision> "<what you found, with file:line>"
 ```
 
 | Decision | When |
@@ -60,8 +60,10 @@ node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/a
 | `reopen` | An earlier decision of yours was wrong |
 
 A finding you have not examined needs no record. The tool refuses a `finding`, `dismissed` or
-`catalog` without a location from the finding, and a reason reused from another finding. The
-user checks a sample of dismissals; one found wrong comes back in your "Trace findings" region.
+`catalog` without a location from the finding, and a reason reused from another finding. Each
+finding is its own question: having checked others of its kind, or another reviewer's
+conclusion, is not evidence for this one. The user checks a sample of dismissals against the
+code.
 
 ## CI and the cursor
 

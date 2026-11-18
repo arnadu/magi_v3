@@ -83,14 +83,14 @@ invariants share one ADR. A decision not yet made is written in the invariant's 
 Every finding names the baseline id it is about and the `file:line` it rests on. Read a finding
 as evidence to check, not as a verdict: confirm it in the code before acting on it.
 `scripts/trace/decisions.mjs` keeps the reviewers' conclusions on findings. `about <file or
-id>` lists the findings on a subject with every conclusion recorded on them; `dispose` records a
+id>` lists the findings on a subject with the caller's own conclusion on each; `record` records a
 reviewer's conclusion on one finding (`finding`, `catalog`, `dismissed`, `reopen`). A conclusion
 must cite the `file:line` that establishes it, at one of the places the finding names, and
 cannot reuse another finding's reason. Findings are leads, not a list to empty: nothing counts
-the ones left unexamined. `sample <n>` draws dismissals no one has checked, and `check` records
-the user's verdict on one; a dismissal found wrong is shown to its reviewer until it records a
-new conclusion. Any agent can write the mission's shared folder, so an agent could also
-write a false spot-check record there: the file feeds the agents' view, and is not a control.
+the ones left unexamined. Another reviewer's conclusion is not shown: a reviewer that sees one
+tends to adopt it without reading the code. `sample <n>` draws dismissals for the user to check
+against the code; the user's checks stay outside the mission, and a wrong one is taken up with
+the reviewer by message, asking what led to it.
 
 **How each part is computed, and its limits.**
 

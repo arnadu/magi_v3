@@ -218,13 +218,13 @@ A "no" is a finding against the code or a question for the product owner.
   by the agent; the view stays a map (about 1,500 tokens).
 - **The platform feeds the scans into the mental map.** A scheduled job runs `npm run trace` into
   the mission's `shared/analysis/`. A managed region, re-rendered every turn as "My objectives"
-  is today, shows what is new in the agent's area and how its conclusions held up.
+  is today, shows what is new in the agent's area and what it has concluded.
 - **Findings are leads, and conclusions are checked.** Each scan emits findings that need
   judgment (an entry point without an operation, an operation reached through two
   implementations, an unexpected status write). The agent looks up the findings on what it is
   reviewing and records what it concluded on each one it examined: a finding against the code,
   a question about the catalog, or a dismissal with the evidence. The product owner checks a
-  sample of dismissals against the code; one found wrong goes back to the agent. The findings
+  sample of dismissals against the code and asks the agent what led to a wrong one. The findings
   are not a list the agent must empty: in the first runs (2026-11, requirements doc) agents
   given such a list emptied it with dismissals they had not verified, and kept doing so as each
   evidence rule was added.

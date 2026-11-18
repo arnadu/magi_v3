@@ -4,6 +4,7 @@
  * the real catalog and of CodeQL.
  */
 
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,10 +12,9 @@ import { describe, expect, it } from "vitest";
 import {
 	about,
 	build,
-	check,
 	covers,
-	dispose,
 	insufficient,
+	record,
 	renderView,
 	sample,
 } from "../../../scripts/trace/decisions.mjs";
@@ -224,9 +224,19 @@ describe("trace join", () => {
 		};
 		const { security, findings } = computeFindings(baseline(), [], [], sarif);
 		expect(security[0].invariant).toBe("sec.contained-paths");
-		expect(
-			findings.filter((f) => f.kind === "inv.unenforced").map((f) => f.about),
-		).toEqual(["sec.contained-paths"]);
+		const unenforced = findings.filter((f) => f.kind === "inv.unenforced");
+		expect(unenforced.map((f) => f.about)).toEqual(["sec.contained-paths"]);
+		// The finding is about the catalog, and its key predates this wording,
+		// so the reviewers' decisions on it still apply.
+		expect(unenforced[0].text).toMatch(/^The catalog names nothing/);
+		expect(unenforced[0].key).toBe(
+			createHash("sha1")
+				.update(
+					"inv.unenforced|sec.contained-paths|Nothing enforces sec.contained-paths yet.",
+				)
+				.digest("hex")
+				.slice(0, 12),
+		);
 	});
 
 	it("marks what is new since the previous run", () => {
@@ -327,7 +337,6 @@ describe("reviewers' decisions on the trace's findings", () => {
 			{ commit: "abc1234", time: "2026-11-16T12:00:00Z" },
 			fs,
 			[],
-			[],
 			3000,
 		);
 		expect(Buffer.byteLength(text)).toBeLessThanOrEqual(3000);
@@ -363,24 +372,24 @@ describe("reviewers' decisions on the trace's findings", () => {
 	it("records a decision only with a cited, finding-specific reason", () => {
 		const dir = analysis();
 		expect(() =>
-			dispose(dir, "aaaaaaaaaaaa", "dismissed", "same pattern as before", "cr"),
+			record(dir, "aaaaaaaaaaaa", "dismissed", "same pattern as before", "cr"),
 		).toThrow(/cite the file:line/);
-		dispose(dir, "aaaaaaaaaaaa", "dismissed", "guarded at a.ts:3", "cr");
+		record(dir, "aaaaaaaaaaaa", "dismissed", "guarded at a.ts:3", "cr");
 		expect(() =>
-			dispose(dir, "bbbbbbbbbbbb", "dismissed", "guarded at a.ts:3", "cr"),
+			record(dir, "bbbbbbbbbbbb", "dismissed", "guarded at a.ts:3", "cr"),
 		).toThrow(/same reason/);
 		expect(() =>
-			dispose(dir, "bbbbbbbbbbbb", "deferred", "later", "cr"),
+			record(dir, "bbbbbbbbbbbb", "deferred", "later", "cr"),
 		).toThrow(/must be one of/);
 		expect(view(dir)).toContain(
-			"0 findings raised, 0 catalog questions; 1 dismissed, 0 of them spot-checked",
+			"0 findings raised, 0 catalog questions, 1 dismissed.",
 		);
 	});
 
 	it("refuses a dismissal that does not address the places the finding names", () => {
 		const dir = analysis();
 		expect(() =>
-			dispose(dir, "aaaaaaaaaaaa", "dismissed", "fine, see z.ts:90", "cr"),
+			record(dir, "aaaaaaaaaaaa", "dismissed", "fine, see z.ts:90", "cr"),
 		).toThrow(/does not address what the finding names \(packages\/a\.ts:1\)/);
 		const gap = {
 			...f("cccccccccccc", "op.divergent-writes", "x.three"),
@@ -404,42 +413,32 @@ describe("reviewers' decisions on the trace's findings", () => {
 	it("lists catalog questions for the product owner, held to a dismissal's evidence", () => {
 		const dir = analysis();
 		expect(() =>
-			dispose(dir, "aaaaaaaaaaaa", "catalog", "fine, see z.ts:90", "cr"),
+			record(dir, "aaaaaaaaaaaa", "catalog", "fine, see z.ts:90", "cr"),
 		).toThrow(/does not address/);
-		dispose(dir, "aaaaaaaaaaaa", "catalog", "a.ts:1 is a second owner", "cr");
+		record(dir, "aaaaaaaaaaaa", "catalog", "a.ts:1 is a second owner", "cr");
 		const q = readFileSync(join(dir, "catalog-questions.md"), "utf8");
 		expect(q).toContain("`x.one` (op.divergent-writes, `aaaaaaaaaaaa`, cr");
-		expect(view(dir)).toContain("0 findings raised, 1 catalog questions");
-	});
-
-	it("samples dismissals not yet checked, and a wrong one comes back to its reviewer with the reason", () => {
-		const dir = analysis();
-		dispose(dir, "aaaaaaaaaaaa", "dismissed", "guarded at a.ts:2", "cr");
-		dispose(dir, "bbbbbbbbbbbb", "finding", "CR-1 at a.ts:1", "cr");
-		const drawn = sample(dir, 5, "seed");
-		expect(drawn.map((s) => s.key)).toEqual(["aaaaaaaaaaaa"]);
-		expect(() =>
-			check(dir, "cr", "bbbbbbbbbbbb", "wrong", "see a.ts:1", "user"),
-		).toThrow(/no standing dismissal/);
-		check(dir, "cr", "aaaaaaaaaaaa", "wrong", "a.ts:1 is not guarded", "user");
-		expect(view(dir)).toMatch(
-			/## Dismissals a spot check found wrong\n\n- `aaaaaaaaaaaa`[\s\S]*The user: a\.ts:1 is not guarded/,
-		);
 		expect(view(dir)).toContain(
-			"1 dismissed, 1 of them spot-checked by the user, 1 found wrong",
+			"0 findings raised, 1 catalog questions, 0 dismissed.",
 		);
-		expect(sample(dir, 5, "seed")).toEqual([]);
-		// A new decision after the check is the reviewer's answer to it.
-		dispose(dir, "aaaaaaaaaaaa", "finding", "CR-2 at a.ts:1", "cr");
-		expect(view(dir)).not.toContain("## Dismissals a spot check found wrong");
 	});
 
-	it("looks up findings by file or baseline id, with each reviewer's decision", () => {
+	it("samples standing dismissals, leaving out those already checked", () => {
 		const dir = analysis();
-		dispose(dir, "aaaaaaaaaaaa", "finding", "CR-1 at a.ts:1", "cr");
+		record(dir, "aaaaaaaaaaaa", "dismissed", "guarded at a.ts:2", "cr");
+		record(dir, "bbbbbbbbbbbb", "finding", "CR-1 at a.ts:1", "cr");
+		expect(sample(dir, 5, "seed").map((s) => s.key)).toEqual(["aaaaaaaaaaaa"]);
+		expect(sample(dir, 5, "seed", new Set(["cr aaaaaaaaaaaa"]))).toEqual([]);
+	});
+
+	it("looks up findings by file or baseline id, with only the caller's own conclusion", () => {
+		const dir = analysis();
+		record(dir, "aaaaaaaaaaaa", "finding", "CR-1 at a.ts:1", "cr");
+		record(dir, "bbbbbbbbbbbb", "dismissed", "guarded at a.ts:4", "qa");
 		const byFile = about(dir, "a.ts", "cr", ["op.divergent-writes"]);
 		expect(byFile).toContain("2 finding(s)");
-		expect(byFile).toContain("cr: finding");
+		expect(byFile).toContain("your conclusion: finding");
+		expect(byFile).not.toContain("guarded at a.ts:4");
 		expect(about(dir, "x.two", "cr", null)).toContain("1 finding(s)");
 		expect(about(dir, "a.ts", "qa", ["inv.unenforced"])).toContain(
 			"0 finding(s)",
@@ -466,7 +465,7 @@ describe("reviewers' decisions on the trace's findings", () => {
 		);
 		build(dir, join(dir, "coverage.json"));
 		expect(view(dir)).toContain("0 findings raised");
-		expect(about(dir, "x.one", "cr", null)).not.toContain("cr: finding");
+		expect(about(dir, "x.one", "cr", null)).not.toContain("your conclusion");
 		expect(sample(dir, 5, "seed")).toEqual([]);
 	});
 });

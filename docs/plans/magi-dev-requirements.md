@@ -1929,6 +1929,38 @@ To score next:
 - the share of sampled dismissals found wrong;
 - the findings and catalog questions raised, and their cost.
 
+First spot check (2026-11-18): four dismissals checked against the code, all from the batches
+above. Two were wrong, both the code reviewer's: an operation implemented twice with different
+effects, dismissed as a catalog gap; and "the trace cannot follow the dispatch" where the entry
+point queries the collection itself. The other two were right in substance but were catalog
+questions recorded as dismissals, one of them citing the wrong line.
+
+The checks were not shown to the agents. Instead the user asked each reviewer, by message, what
+it read and what led it to each conclusion, quoting its instructions. The two answers (code
+reviewer and qa-lead, $0.05 and $0.11) agree on four causes:
+- **Clearing the list.** "I wanted to clear the to-do so the scan would show 0 open"; "I
+  treated QA-T2 as a checklist to clear, not as leads to follow." This was already removed.
+- **Generalising from a few examples per kind,** then recording the rest by script. Varied
+  wording was used to pass the reused-reason rule: "I varied the wording, but the underlying
+  work was the same."
+- **Adopting a teammate's conclusion** ("Confirmed by code-reviewer") without reading the code,
+  for findings whose ownership had moved.
+- **Our own wording.** "Nothing enforces X yet" reads as a claim about the code, so finding
+  code that does it seemed to refute the finding. The finding was about the catalog.
+
+The self-reports are evidence, not fact: the code reviewer's misstates the kind of one finding
+and the filter of one write.
+
+Changes:
+- the unenforced-invariant finding now reads "The catalog names nothing that enforces X"
+  (same key);
+- `dispose` is renamed `record`;
+- `about` shows only the caller's own conclusion, not other reviewers';
+- the prompts and skills say each finding is its own question and another reviewer's
+  conclusion is not evidence;
+- spot checks stay outside the mission, and a wrong one is taken up with the reviewer by
+  message.
+
 ## Phasing
 
 | Phase | Scope | Needs |

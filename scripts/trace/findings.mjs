@@ -74,9 +74,11 @@ export function computeFindings(b, entries, writes, sarif, layering = []) {
 	const findings = [];
 	const byKey = new Map();
 	// Two places that differ only by line (two writes of one function) are
-	// one finding: its key leaves line numbers out.
-	const add = (kind, about, text, where = [], detail = {}) => {
-		const k = key(kind, about, text, ...where);
+	// one finding: its key leaves line numbers out. `keyText` is the wording
+	// the key was first computed from, so rewording a kind's text keeps the
+	// reviewers' decisions on its findings.
+	const add = (kind, about, text, where = [], detail = {}, keyText = text) => {
+		const k = key(kind, about, keyText, ...where);
 		const same = byKey.get(k);
 		if (same) {
 			for (const w of where) if (!same.where.includes(w)) same.where.push(w);
@@ -345,7 +347,14 @@ export function computeFindings(b, entries, writes, sarif, layering = []) {
 	}));
 	for (const i of invariants)
 		if (i.enforcedBy.length === 0)
-			add("inv.unenforced", i.id, `Nothing enforces ${i.id} yet.`);
+			add(
+				"inv.unenforced",
+				i.id,
+				`The catalog names nothing that enforces ${i.id} (its enforcedBy is empty).`,
+				[],
+				{},
+				`Nothing enforces ${i.id} yet.`,
+			);
 
 	return { findings, operations, writes, security, invariants };
 }

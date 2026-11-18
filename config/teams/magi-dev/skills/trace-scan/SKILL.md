@@ -20,7 +20,7 @@ mission fetches the latest of them into `$SHARED_DIR/analysis/`:
 | `invariants.md` | Every invariant and what enforces it |
 | `components.html` | The component map |
 | `findings.json` | Every finding, with a stable `key` |
-| `findings-<agent>.md` | Your area's findings: what is new since this mission's previous fetch, where they are, how your conclusions held up; it is also the "Trace findings" region of your mental map |
+| `findings-<agent>.md` | Your area's findings: what is new since this mission's previous fetch, where they are, what you have concluded; it is also the "Trace findings" region of your mental map |
 | `catalog-questions.md` | The reviewers' `catalog` decisions, for the user |
 
 CodeQL's security results are not here: they describe possible vulnerabilities, so they go only
@@ -50,10 +50,10 @@ one to be examined, and one left alone costs nothing. A wrong conclusion does.
    the report row, as with any evidence (`working-agreements`).
 4. **Record what you concluded** on a finding you examined:
    ```bash
-   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> finding "<your finding id; the file:line that shows it>"
-   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> catalog "<why the code is right and the catalog is not; the file:line that shows it>"
-   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> dismissed "<why the trace is wrong; the file:line that shows it>"
-   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> reopen "<why your earlier conclusion was wrong>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" record "$SHARED_DIR/analysis" <key> finding "<your finding id; the file:line that shows it>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" record "$SHARED_DIR/analysis" <key> catalog "<why the code is right and the catalog is not; the file:line that shows it>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" record "$SHARED_DIR/analysis" <key> dismissed "<why the trace is wrong; the file:line that shows it>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" record "$SHARED_DIR/analysis" <key> reopen "<why your earlier conclusion was wrong>"
    ```
    Each conclusion names the `file:line` you read for *that* finding, at one of the places it
    names (for a difference between entry points, a write one of them does not reach); the same
@@ -64,8 +64,9 @@ one to be examined, and one left alone costs nothing. A wrong conclusion does.
    question for the user, who approves every catalog change. A dismissal is for a finding that
    is simply wrong. Never treat the catalog as automatically right.
 
-The user checks a sample of dismissals against the code. One found wrong comes back to its
-reviewer, with the reason, in the "Trace findings" region; answer it with a new record.
+Each finding is its own question. Having checked others of the same kind is not evidence for
+this one, and neither is another reviewer's conclusion: read the code it points to. The user
+checks a sample of dismissals against the code.
 
 For one question without waiting for a scan, your clone answers directly (TypeScript language
 service, seconds): `npm run trace -- def <name>`, `refs <file:line>`, `callers <file:line> --depth 2`.

@@ -110,7 +110,7 @@ meaning: a real function cited for the wrong behaviour still passes, so read the
 
 The trace's reports and findings (`trace-scan`) are evidence, not verdicts. Before a
 report relies on a finding, open the `file:line` it cites at the scanned commit and confirm it;
-cite the finding's key with the row you used. Record what you decided with `decisions.mjs dispose`,
+cite the finding's key with the row you used. Record what you decided with `decisions.mjs record`,
 one finding at a time: a finding or a dismissal names the `file:line` that establishes it for
 that finding. Having checked a similar finding is not evidence for this one. A scan that says
 nothing about a question is not an all-clear: say what you read.
