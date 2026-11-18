@@ -267,7 +267,7 @@
   "enforcedBy": [],
   "decidedBy": null,
   "open": null,
-  "findings": 3
+  "findings": 1
  },
  {
   "id": "sec.no-secrets-to-agents",
@@ -294,7 +294,7 @@
   "enforcedBy": [],
   "decidedBy": null,
   "open": null,
-  "findings": 14
+  "findings": 6
  },
  {
   "id": "sec.safe-egress",
@@ -330,7 +330,7 @@
   "enforcedBy": [],
   "decidedBy": null,
   "open": null,
-  "findings": 2
+  "findings": 1
  },
  {
   "id": "sec.least-privilege",

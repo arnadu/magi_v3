@@ -1850,7 +1850,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "mental_map_update",
-    "where": "packages/agent-runtime-worker/src/mental-map.ts:237",
+    "where": "packages/agent-runtime-worker/src/mental-map.ts:255",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -1864,7 +1864,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "mental_map_add",
-    "where": "packages/agent-runtime-worker/src/mental-map.ts:273",
+    "where": "packages/agent-runtime-worker/src/mental-map.ts:291",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -1878,7 +1878,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "mental_map_remove",
-    "where": "packages/agent-runtime-worker/src/mental-map.ts:312",
+    "where": "packages/agent-runtime-worker/src/mental-map.ts:330",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
