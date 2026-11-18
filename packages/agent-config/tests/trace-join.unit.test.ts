@@ -466,5 +466,7 @@ describe("reviewers' decisions on the trace's findings", () => {
 		);
 		build(dir, join(dir, "coverage.json"));
 		expect(view(dir)).toContain("0 findings raised");
+		expect(about(dir, "x.one", "cr", null)).not.toContain("cr: finding");
+		expect(sample(dir, 5, "seed")).toEqual([]);
 	});
 });

@@ -252,7 +252,7 @@ export function renderView(
  */
 export function about(dir, query, agent, coverage = null) {
 	const { meta, findings } = readFindings(dir);
-	const dispositions = readJsonl(dir, "dispositions.jsonl");
+	const dispositions = currentDispositions(dir);
 	const checks = readJsonl(dir, "spot-checks.jsonl");
 	const mine = coverage
 		? findings.filter((f) => covers(coverage, f))
@@ -383,6 +383,21 @@ export function build(dir, coveragePath, maxBytes = 6000, previousPath = null) {
 	return written;
 }
 
+/**
+ * The decisions that count: an agent's decisions before its `since` date (in
+ * the coverage file the last build used) are set aside.
+ */
+function currentDispositions(dir) {
+	const settings = join(dir, BUILD_SETTINGS);
+	const since = existsSync(settings)
+		? readCoverage(JSON.parse(readFileSync(settings, "utf8")).coveragePath)
+				.since
+		: {};
+	return readJsonl(dir, "dispositions.jsonl").filter(
+		(d) => !since[d.agent] || d.at >= since[d.agent],
+	);
+}
+
 function rebuild(dir) {
 	const settings = join(dir, BUILD_SETTINGS);
 	if (!existsSync(settings)) return;
@@ -452,7 +467,7 @@ function seeded(seed) {
 /** `n` standing dismissals no spot check has looked at yet, at random. */
 export function sample(dir, n, seed = new Date().toISOString()) {
 	const { findings } = readFindings(dir);
-	const dispositions = readJsonl(dir, "dispositions.jsonl");
+	const dispositions = currentDispositions(dir);
 	const checks = readJsonl(dir, "spot-checks.jsonl");
 	const agents = [...new Set(dispositions.map((d) => d.agent))];
 	const pool = [];
@@ -487,7 +502,7 @@ export function check(dir, agent, key, result, reason, by = "user") {
 	const s = standing(
 		f,
 		agent,
-		readJsonl(dir, "dispositions.jsonl"),
+		currentDispositions(dir),
 		readJsonl(dir, "spot-checks.jsonl"),
 	);
 	if (s.status !== "dismissed" && s.status !== "wrong")
