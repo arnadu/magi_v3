@@ -1,1 +1,7 @@
-{}
+{
+	"1247710": {
+		"active": true,
+		"expiry": "2027-01-17",
+		"notes": "picomatch ReDoS (GHSA-fc5q-39xc-vjpf), no fixed release (<= 4.0.7). In production it is reached only through http-proxy-middleware's micromatch, which matches a configured glob pathFilter; proxy.ts sets no pathFilter, so matching is the plain-prefix default (path-filter.js matchSingleStringPath) and micromatch is never called. Remove when picomatch publishes a fix."
+	}
+}
