@@ -19,8 +19,9 @@ mission fetches the latest of them into `$SHARED_DIR/analysis/`:
 | `writes.md` | Every database write, the component that owns its collection, the status changes it can make |
 | `invariants.md` | Every invariant and what enforces it |
 | `components.html` | The component map |
-| `todo.json` | Every finding, with a stable `key` |
-| `todo-<agent>.md` | Your share of the findings, the open ones, new ones (since this mission's previous fetch) first; it is also the "Scan to-do" region of your mental map |
+| `findings.json` | Every finding, with a stable `key` |
+| `findings-<agent>.md` | Your area's findings: what is new since this mission's previous fetch, where they are, how your conclusions held up; it is also the "Trace findings" region of your mental map |
+| `catalog-questions.md` | The reviewers' `catalog` decisions, for the user |
 
 CodeQL's security results are not here: they describe possible vulnerabilities, so they go only
 to the repository's code scanning, which only maintainers see. Ask the user for them when a
@@ -31,34 +32,40 @@ repository ("The trace"). Read that section once before you rely on a finding.
 
 ## How to use a finding
 
-1. **It is evidence, not a verdict.** Open the `file:line` it cites in your clone, at the
-   scanned commit, and confirm what it says. Reach can be incomplete where the report lists
-   unresolved calls.
-2. **Quote the row you used.** A report that relies on the scan cites the finding's `key` and the
-   report row, as with any evidence (`working-agreements`).
-3. **Record what you decided**, one finding at a time:
+A finding is a lead for the review you are doing, not an item on a list: nobody expects every
+one to be examined, and one left alone costs nothing. A wrong conclusion does.
+
+1. **Look up what concerns your subject.** Before you conclude about a file, an operation or a
+   baseline id, ask the trace what it found there:
    ```bash
-   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> finding "<your finding id; the file:line that shows it>"
-   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> dismissed "<why it is not a defect; the file:line that shows it>"
-   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> catalog "<why the code is right and the catalog is not; the file:line that shows it>"
-   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> deferred "<what it waits for>"
-   node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> reopen "<why>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" about "$SHARED_DIR/analysis" <file path or baseline id>
    ```
-   A finding or a dismissal is a claim about the code, so it leaves your open list only with
-   the `file:line` you read for *that* finding; the same reason for two findings is refused, as
-   is "same pattern as another one". A dismissal must address what the finding names: cite one
-   of its locations (for a difference between entry points, one of the writes an entry point
-   does not reach) and say what you found there. "The scan cannot follow this call" is a claim
-   too: check it against the entry point's row in `operations.md`, which lists what was reached
-   and the calls that were not. Deferring does not close anything: a deferred finding stays
-   on your to-do under "Deferred" until you decide it. Your to-do is rebuilt after each record;
-   your latest record per finding counts. A finding whose text changes gets a new key and comes
-   back.
-4. **When the code and the catalog disagree**, decide which is wrong: a finding against the code,
-   or `catalog` when the code is right and the catalog is not. A `catalog` record is a question
-   for the user, who approves every catalog change; it is listed in
-   `$SHARED_DIR/analysis/catalog-questions.md`. A dismissal is for a finding that is simply
-   wrong. Never treat the catalog as automatically right.
+   It lists the findings in your area that touch it, and what any reviewer has concluded about
+   them (`--all` for every area).
+2. **It is evidence, not a verdict.** Open the `file:line` it cites in your clone, at the
+   scanned commit, and confirm what it says. Reach can be incomplete where the report lists
+   unresolved calls; "the trace cannot follow this call" is a claim too, to check against the
+   entry point's row in `operations.md`.
+3. **Quote the row you used.** A report that relies on the trace cites the finding's `key` and
+   the report row, as with any evidence (`working-agreements`).
+4. **Record what you concluded** on a finding you examined:
+   ```bash
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> finding "<your finding id; the file:line that shows it>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> catalog "<why the code is right and the catalog is not; the file:line that shows it>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> dismissed "<why the trace is wrong; the file:line that shows it>"
+   node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> reopen "<why your earlier conclusion was wrong>"
+   ```
+   Each conclusion names the `file:line` you read for *that* finding, at one of the places it
+   names (for a difference between entry points, a write one of them does not reach); the same
+   reason for two findings is refused. Your latest record per finding counts. A finding whose
+   text changes gets a new key.
+5. **When the code and the catalog disagree**, decide which is wrong: a finding against the
+   code, or `catalog` when the code is right and the catalog is not. A `catalog` record is a
+   question for the user, who approves every catalog change. A dismissal is for a finding that
+   is simply wrong. Never treat the catalog as automatically right.
+
+The user checks a sample of dismissals against the code. One found wrong comes back to its
+reviewer, with the reason, in the "Trace findings" region; answer it with a new record.
 
 For one question without waiting for a scan, your clone answers directly (TypeScript language
 service, seconds): `npm run trace -- def <name>`, `refs <file:line>`, `callers <file:line> --depth 2`.

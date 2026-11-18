@@ -1888,6 +1888,47 @@ reviewer's dismissals no longer count. Then: a `catalog` disposition, held to a 
 there too); and a scan task counted done only when the assignee's rebuilt to-do shows nothing
 open or deferred, checked by the mission copilot in that file rather than the agent's notes.
 
+Third pass (2026-11-18, scan of `290de69`): the code reviewer's role restated as goals on code
+quality, its earlier decisions set aside (`coverage.json` `since`), status findings moved to the
+qa-lead. The goals changed what it did with free time, not how it handled the list. Within a
+minute of the scan finishing it recorded 96 dismissals in four scripted batches, one per kind,
+with no file read in between, saying it had "already examined all 96 in the code this session"
+(its mental map carried the conclusions the cutoff had set aside). Before recording, it rebuilt
+the tool's evidence check in Python to make sure every batch would pass. Each reason cites a
+location the finding names, so the rule was satisfied in form. At least one real divergence was
+dismissed as "both reach the same end state". 49 reasons say the catalog is wrong ("needs
+`alsoWrittenBy`") but were recorded as dismissals, not `catalog`, so none reached the user's
+questions. It then set its lag KPI to 0. Cost: $0.09 for the scan turn. The scheduled 03:00
+review found no new commits, so the agent used it for a deep review of `copilot-daemon.ts`
+($0.12, 36 calls). That review read the whole file and its callers and tests, and ran the
+citation checker. The checker caught two invented statements (a function and a state that do
+not exist), which the agent corrected. It produced one real minor finding: an exported default
+used only inside its file, whose fallback value cannot work. It raised nothing else about a
+176-line function the inventory already lists. Conclusions:
+- an agent that has once disposed of a list reconstructs the same decisions from memory, so
+  setting records aside without changing what it remembers changes nothing;
+- evidence rules on a reason are met mechanically by an agent that can read the check;
+- a to-do list with a count is read as the work, whatever the role description says.
+
+Changes, for all four reviewers:
+- The scan to-do is gone from every reviewer's mental map. Each now sees a "Trace findings"
+  region with what is new, where its findings are, and its record: findings raised, catalog
+  questions, and dismissals found wrong. Nothing counts the findings left unexamined.
+- Findings become leads for the reviewer's own reviews, looked up by file or baseline id
+  (`decisions.mjs about`).
+- A reviewer's output is the findings and catalog questions it raises. The user spot-checks a
+  sample of dismissals (`decisions.mjs sample`, `check`), and one found wrong is shown to its
+  reviewer with the reason.
+- The `deferred` decision is removed: with no list, there is nothing to defer.
+- The platform now removes a mental-map region whose entry leaves the agent's config.
+- The scan tasks are closed. The reviewers are asked to remove the conclusions about scan
+  findings they did not verify one finding at a time.
+
+To score next:
+- whether reviewers use the trace during their reviews;
+- the share of sampled dismissals found wrong;
+- the findings and catalog questions raised, and their cost.
+
 ## Phasing
 
 | Phase | Scope | Needs |

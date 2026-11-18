@@ -72,15 +72,20 @@ const at = (file, line) => `${file}:${line}`;
  */
 export function computeFindings(b, entries, writes, sarif, layering = []) {
 	const findings = [];
-	const add = (kind, about, text, where = [], detail = {}) =>
-		findings.push({
-			key: key(kind, about, text, ...where),
-			kind,
-			about,
-			text,
-			where,
-			...detail,
-		});
+	const byKey = new Map();
+	// Two places that differ only by line (two writes of one function) are
+	// one finding: its key leaves line numbers out.
+	const add = (kind, about, text, where = [], detail = {}) => {
+		const k = key(kind, about, text, ...where);
+		const same = byKey.get(k);
+		if (same) {
+			for (const w of where) if (!same.where.includes(w)) same.where.push(w);
+			return;
+		}
+		const f = { key: k, kind, about, text, where: [...where], ...detail };
+		byKey.set(k, f);
+		findings.push(f);
+	};
 	const opById = new Map(b.OPERATIONS.map((o) => [o.id, o]));
 	const component = (file) => b.componentsOwning(file)[0] ?? "(none)";
 	const writeId = (w) =>

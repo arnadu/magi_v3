@@ -78,13 +78,19 @@ invariants share one ADR. A decision not yet made is written in the invariant's 
 | `security.md` | CodeQL's standard security queries, each result filed under a security invariant |
 | `invariants.md` | Every invariant, what enforces it, the ADR that chose it, its open decision |
 | `components.html` | The component map: each component on its declared layer, the imports between them, those against the layering |
-| `todo.json` | Every finding, with a stable key; `previous/todo.json` is the run before |
+| `findings.json` | Every finding, with a stable key; `previous/findings.json` is the run before |
 
 Every finding names the baseline id it is about and the `file:line` it rests on. Read a finding
 as evidence to check, not as a verdict: confirm it in the code before acting on it.
-`node scripts/trace/todo.mjs dispose` records a reviewer's decision on one finding. A finding
-or a dismissal must cite the `file:line` that establishes it and cannot reuse another
-finding's reason; a deferred finding stays on the reviewer's to-do.
+`scripts/trace/decisions.mjs` keeps the reviewers' conclusions on findings. `about <file or
+id>` lists the findings on a subject with every conclusion recorded on them; `dispose` records a
+reviewer's conclusion on one finding (`finding`, `catalog`, `dismissed`, `reopen`). A conclusion
+must cite the `file:line` that establishes it, at one of the places the finding names, and
+cannot reuse another finding's reason. Findings are leads, not a list to empty: nothing counts
+the ones left unexamined. `sample <n>` draws dismissals no one has checked, and `check` records
+the user's verdict on one; a dismissal found wrong is shown to its reviewer until it records a
+new conclusion. Any agent can write the mission's shared folder, so an agent could also
+write a false spot-check record there: the file feeds the agents' view, and is not a control.
 
 **How each part is computed, and its limits.**
 

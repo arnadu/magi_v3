@@ -181,7 +181,8 @@ the other in four steps:
    - `analysis/status-writes.md`: per entity, every write and its transition;
    - `analysis/decisions.md`: per component, its rules and their results;
    - `analysis/index.md`: when each report ran, at which commit, with headline numbers;
-   - `analysis/todo.json`: the rows that differ from intent and are **new since the last run**.
+   - `analysis/findings.json`: the rows that differ from intent, those **new since the last run**
+     marked.
 
    Every row carries `file:line` and the call path. An agent can therefore copy a row into a
    report (the citation check passes), or re-run one question on its own:
@@ -217,15 +218,20 @@ A "no" is a finding against the code or a question for the product owner.
   by the agent; the view stays a map (about 1,500 tokens).
 - **The platform feeds the scans into the mental map.** A scheduled job runs `npm run trace` into
   the mission's `shared/analysis/`. A managed region, re-rendered every turn as "My objectives"
-  is today, shows the index of results and the agent's to-do list.
-- **A to-do list the agent cannot ignore.** Each scan emits items that need judgment (an entry
-  point without an operation, an operation reached through two implementations, an unexpected
-  status write, a stale view). The agent disposes of each as a finding, dismissed with a reason,
-  or deferred to a date; nothing disappears unhandled, and dismissals are reviewed.
+  is today, shows what is new in the agent's area and how its conclusions held up.
+- **Findings are leads, and conclusions are checked.** Each scan emits findings that need
+  judgment (an entry point without an operation, an operation reached through two
+  implementations, an unexpected status write). The agent looks up the findings on what it is
+  reviewing and records what it concluded on each one it examined: a finding against the code,
+  a question about the catalog, or a dismissal with the evidence. The product owner checks a
+  sample of dismissals against the code; one found wrong goes back to the agent. The findings
+  are not a list the agent must empty: in the first runs (2026-11, requirements doc) agents
+  given such a list emptied it with dismissals they had not verified, and kept doing so as each
+  evidence rule was added.
 - **Evidence.** Every name a report cites must resolve in the code (the citation check), and every
   "pass" cites what established it (the `working-agreements` skill).
 - **Design rules come with the scans.** For the parts an agent covers, its view includes the ADR
-  rules that govern them (decision 10). A broken rule is a to-do item, and a `review` rule is
+  rules that govern them (decision 10). A broken rule is a finding, and a `review` rule is
   checked whenever the code it governs changes.
 - **Agents never edit the baseline or an ADR.** A missing or ambiguous requirement, or a
   decision that no longer fits, is a finding for the product owner.
@@ -431,17 +437,17 @@ archived mission, `mission.wake` starts its machine, and the mission costs money
 of the archive feature shows this, because the archive code is correct. It appears only as a
 status write that the intended state machine does not allow.
 
-Because the row is new, `analysis/todo.json` gets an item for the reviewers who cover the mission
+Because the row is new, it is a new finding in the area of the reviewers who cover the mission
 entity. CI reports it too (decision 9).
 
 ### 4. Review: the QA lead's view and judgment
 
-The QA lead's managed region (decision 7) shows the latest analysis and its to-do list:
+The QA lead's managed region (decision 7) shows the latest analysis and what is new in its area:
 
 ```
 Analysis at 1a2b3c4 (2026-12-01 06:00): operations 33, 0 without an entry point, 2 known
   differences; status writes 41, 1 new difference; rules 58: 3 review-only for changed code.
-To do (1):
+New since the last scan (1):
   [status-write] mission: archived → running, not intended
     wakeMachine machine-wake.ts:88, reached from mission.wake (scheduler tick). New at 1a2b3c4.
 ```
@@ -471,7 +477,7 @@ Then it judges the item against the baseline:
 
 So this is a **finding against the code**, not a question about the baseline. Its report quotes
 the row and the call path, so every name resolves, and cites the transition and the invariant.
-It disposes of the to-do item as a finding linked to the report, and updates its map entry:
+It records its conclusion on the scan's finding as a finding linked to the report, and updates its map entry:
 "archive: 1 open finding (a due schedule revives an archived mission)".
 
 ### 5. Fix and release gate
@@ -479,7 +485,7 @@ It disposes of the to-do item as a finding linked to the report, and updates its
 The fix goes where the rule belongs: in the home of `mission.wake`, which every caller goes
 through ("One operation, one home"), not in the scheduler. The coding agent adds the test
 `mission.archived-is-final: a due schedule does not wake an archived mission`. On the next trace
-the row reads "suspended → running: intended" and nothing else. The to-do item closes, and the
+the row reads "suspended → running: intended" and nothing else. The finding is gone, and the
 release gate's reported checks are clear.
 
 ### 6. Support: when the baseline itself is wrong
@@ -516,7 +522,7 @@ From then on, `analysis/decisions.md` carries the rule for every component it go
 ```
 
 Months later, someone adds volume clean-up to the resize path to save money. The row changes to
-"broken: 2 calls; also reached from machine.upgrade". That becomes a to-do item for the code
+"broken: 2 calls; also reached from machine.upgrade". That becomes a new finding for the code
 reviewer, with the rule, the ADR that set it and the call path, before the change reaches a
 mission's data.
 
@@ -526,8 +532,8 @@ mission's data.
 |---|---|---|---|
 | Intent | Product owner, coding agent | The catalog entries | Ids and references (`tsc`), rendered documents (test) |
 | Build | Coding agent | The home, the tags, the test names; reading the governing rules | Tags valid and present, files placed |
-| Scans | Platform | — | CodeQL rows joined to the catalog and the ADR rules: homes, status writes against transitions, rule checks; new differences become to-do items |
-| Review | Reviewer agent | The judgment: finding or question; verifying the scan | Citations resolve; the to-do item cannot vanish |
+| Scans | Platform | — | CodeQL rows joined to the catalog and the ADR rules: homes, status writes against transitions, rule checks; new differences become findings |
+| Review | Reviewer agent | The judgment: finding or question; verifying the scan | Citations resolve; a decision cites the finding's places; sampled dismissals are checked |
 | Fix, release | Coding agent | The fix in the operation's home | The next scan is clean; the gate |
 | Support | Support agent, product owner | The question; the decision; the ADR and its rules | Cost figures; the rule check on every later commit |
 
@@ -573,4 +579,4 @@ mission's data.
    cited ADRs; the rule-check queries; `CLAUDE.md` and the practices updated as in decision 8.
 5. MAGI DEV: the larger machine, the scan job, the managed region fed from the analysis index,
    the four-part prompts and mental-map templates, a re-onboarding turn.
-6. The to-do list with dispositions, and freshness flags on mental-map entries.
+6. Decisions on findings, spot checks of dismissals, and freshness flags on mental-map entries.

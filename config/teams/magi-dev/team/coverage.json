@@ -1,5 +1,5 @@
 {
-	"about": "Which findings of the trace each reviewer owns: a finding kind, optionally narrowed to baseline ids starting with a prefix (kind:prefix). Read by scripts/trace/todo.mjs to build shared/analysis/todo-<agent>.md. \"since\" sets aside an agent's decisions recorded before that time (a fresh start).",
+	"about": "Which findings of the trace are in each reviewer's area: a finding kind, optionally narrowed to baseline ids starting with a prefix (kind:prefix). Read by scripts/trace/decisions.mjs to build shared/analysis/findings-<agent>.md and to scope its `about` lookup. \"since\" sets aside an agent's decisions recorded before that time (a fresh start).",
 	"agents": {
 		"appsec": [
 			"sec.result",

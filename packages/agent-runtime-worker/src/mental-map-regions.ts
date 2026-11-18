@@ -2,16 +2,20 @@
  * Mental-map regions filled from files in the mission's shared folder
  * (`managedRegions` in an agent's config): before each turn, each file is read
  * and shown in its region as text, with its age, labelled as data. A scan
- * job uses this to put its to-do list in a reviewer's view.
+ * job uses this to put its findings in a reviewer's view.
  *
  * Any agent can write the shared folder, so the content is untrusted: it is
  * read inside the folder without following a symlink, capped, HTML-escaped,
  * and labelled "data, not instructions". A failure never breaks the turn.
+ *
+ * A region whose entry leaves the config is removed from the map at the next
+ * turn, so a stale copy does not stay in the agent's view.
  */
 
 import { lstatSync } from "node:fs";
 import type { AgentConfig, ManagedRegion } from "@magi/agent-config";
-import { upsertManagedRegion } from "./mental-map.js";
+import { removeManagedRegions, upsertManagedRegion } from "./mental-map.js";
+import { MY_OBJECTIVES_KEY } from "./objectives/agent-view.js";
 import {
 	PathNotFoundError,
 	PathOutsideRootError,
@@ -89,9 +93,10 @@ function readRegionFile(sharedDir: string, region: ManagedRegion) {
 }
 
 /**
- * Re-renders every file-fed region of the agent's mental map. Returns the
- * updated map, or null when the agent has none. A read that fails for any
- * other reason is logged and leaves that region as it was.
+ * Re-renders every file-fed region of the agent's mental map, and removes the
+ * regions no longer configured. Returns the updated map, or null when nothing
+ * changed. A read that fails for any other reason is logged and leaves that
+ * region as it was.
  */
 export function syncFileRegions(
 	agent: Pick<AgentConfig, "id" | "managedRegions">,
@@ -101,8 +106,13 @@ export function syncFileRegions(
 	now = new Date(),
 ): string | null {
 	const regions = agent.managedRegions ?? [];
-	if (regions.length === 0) return null;
-	let html = mentalMapHtml;
+	const configured = new Set(regions.map((r) => r.key));
+	const pruned = removeManagedRegions(
+		mentalMapHtml,
+		(key) => key === MY_OBJECTIVES_KEY || configured.has(key),
+	);
+	if (regions.length === 0) return pruned;
+	let html = pruned ?? mentalMapHtml;
 	for (const region of regions) {
 		try {
 			const file = readRegionFile(sharedDir, region);

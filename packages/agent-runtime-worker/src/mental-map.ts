@@ -172,6 +172,24 @@ export function managedRegionKeys(html: string): Set<string> {
 }
 
 /**
+ * Remove the daemon-managed regions whose key `keep` rejects. Returns the new
+ * HTML, or null when nothing was removed.
+ */
+export function removeManagedRegions(
+	html: string,
+	keep: (key: string) => boolean,
+): string | null {
+	const dom = new JSDOM(html);
+	const doc = dom.window.document;
+	const gone = Array.from(doc.querySelectorAll("[data-managed]")).filter(
+		(el) => !keep(el.getAttribute("data-managed") ?? ""),
+	);
+	if (gone.length === 0) return null;
+	for (const el of gone) el.remove();
+	return doc.body.innerHTML;
+}
+
+/**
  * Insert-or-replace a daemon-managed region, addressed by a `data-managed`
  * attribute (never an `id`). The region is created at the top of the body if
  * absent, so it can be synced into any agent's mental map without the template

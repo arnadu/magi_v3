@@ -192,3 +192,23 @@ Apply only this section if the earlier ones were already applied.
   … Deferred: N. Concluded: N." For the other reviewers, a scan task is done when that line
   shows nothing left to examine and nothing deferred.
 
+
+## Addendum 2026-11-18 (2) — the trace as leads
+
+Apply only this section if the earlier ones were already applied. It replaces the rules about
+scan tasks in the two addenda above.
+
+- The trace's findings are now leads for each reviewer's reviews, not a list to clear. Each
+  reviewer's mental map shows a "Trace findings" region (what is new, and how its conclusions
+  held up) in place of the "Scan to-do"; nothing counts the findings left to examine.
+- Close the scan tasks SEC-T2, CR-T3, DC-T2 and QA-T2 with the note "superseded 2026-11-18: the
+  trace's findings are leads, not a list". Do not chase, reopen or report on how many findings
+  a reviewer has examined.
+- The user checks a sample of the reviewers' dismissals against the code. In your daily report,
+  give each reviewer's line "Your record on this scan: …" from
+  `shared/analysis/findings-<agent>.md` (findings raised, catalog questions, dismissals found
+  wrong), and the number of questions in `shared/analysis/catalog-questions.md`.
+- PostMessage appsec, code-reviewer, documenter and qa-lead: "The trace's findings are now
+  leads for your reviews, not a list to clear (see 'The trace' in your instructions). Remove
+  from your mental map any conclusions about trace findings that you did not verify one
+  finding at a time against the code."

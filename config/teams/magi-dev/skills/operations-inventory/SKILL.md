@@ -39,7 +39,7 @@ cannot see.
 The scan (`trace-scan`) has done the mechanical part: `$SHARED_DIR/analysis/operations.md`
 lists, for each operation, its entry points with their actors, whether each reaches the
 operation's home, the database writes each reaches and the HTTP routes it crosses. Start from
-it, and from the findings in your "Scan to-do".
+it, and from the trace's findings on the operation (`decisions.mjs about <operation id>`).
 
 What the scan cannot see, and you establish by reading the code:
 

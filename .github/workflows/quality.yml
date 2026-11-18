@@ -173,7 +173,7 @@ jobs:
         run: |
           mkdir -p analysis
           if git fetch --quiet --depth=1 origin trace; then
-            git show FETCH_HEAD:todo.json > analysis/todo.json || rm -f analysis/todo.json
+            git show FETCH_HEAD:findings.json > analysis/findings.json || rm -f analysis/findings.json
           fi
       - name: Trace
         run: npm run trace
@@ -191,8 +191,8 @@ jobs:
         if: always()
         run: |
           rm -f analysis/security.md analysis/security.json analysis/security.sarif
-          if [ -f analysis/todo.json ]; then
-            node -e 'const f="analysis/todo.json",fs=require("fs"),t=JSON.parse(fs.readFileSync(f));t.findings=t.findings.filter(x=>x.kind!=="sec.result");fs.writeFileSync(f,JSON.stringify(t,null,1))'
+          if [ -f analysis/findings.json ]; then
+            node -e 'const f="analysis/findings.json",fs=require("fs"),t=JSON.parse(fs.readFileSync(f));t.findings=t.findings.filter(x=>x.kind!=="sec.result");fs.writeFileSync(f,JSON.stringify(t,null,1))'
           fi
       - name: Upload the reports
         if: always()

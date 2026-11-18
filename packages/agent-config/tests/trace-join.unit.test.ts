@@ -8,19 +8,22 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+	about,
+	build,
+	check,
+	covers,
+	dispose,
+	insufficient,
+	renderView,
+	sample,
+} from "../../../scripts/trace/decisions.mjs";
 import { computeFindings, markNew } from "../../../scripts/trace/findings.mjs";
 import {
 	callGraph,
 	entryReach,
 	linkHttpHops,
 } from "../../../scripts/trace/reach.mjs";
-import {
-	build,
-	covers,
-	dispose,
-	insufficient,
-	renderTodo,
-} from "../../../scripts/trace/todo.mjs";
 
 const fn = (
 	id: string,
@@ -157,13 +160,15 @@ describe("trace join", () => {
 			write("home-c/a.ts", "w1"),
 			write("helper-c/b.ts", "w2"),
 			write("rogue-c/c.ts", "w3"),
+			{ ...write("rogue-c/c.ts", "w3"), line: 24 },
 		];
 		const { findings } = computeFindings(baseline(), [], writes, null);
+		// Two writes of one function are one finding, at both places.
 		expect(
 			findings
 				.filter((f) => f.kind === "store.foreign-writer")
-				.map((f) => f.where[0]),
-		).toEqual(["rogue-c/c.ts:10"]);
+				.map((f) => f.where),
+		).toEqual([["rogue-c/c.ts:10", "rogue-c/c.ts:24"]]);
 	});
 
 	it("compares the entry points of one operation", () => {
@@ -281,13 +286,13 @@ describe("trace reach", () => {
 	});
 });
 
-describe("trace to-do lists", () => {
+describe("reviewers' decisions on the trace's findings", () => {
 	const f = (key: string, kind: string, about: string, isNew = false) => ({
 		key,
 		kind,
 		about,
 		text: `${kind} about ${about}`,
-		where: ["a.ts:1"],
+		where: ["packages/a.ts:1"],
 		new: isNew,
 	});
 
@@ -309,42 +314,34 @@ describe("trace to-do lists", () => {
 		).toBe(false);
 	});
 
-	it("lists new findings first, leaves out disposed ones, and stays within its size", () => {
+	it("shows a reviewer where its findings are and what is new, with no count left to clear, within its size", () => {
 		const fs = [
 			f("aaaaaaaaaaaa", "op.home-not-reached", "mission.launch", true),
-			f("bbbbbbbbbbbb", "op.home-not-reached", "mission.suspend"),
-			f("cccccccccccc", "op.home-not-reached", "mission.resume"),
-			...Array.from({ length: 200 }, (_, i) =>
-				f(i.toString(16).padStart(12, "0"), "store.foreign-writer", `c${i}`),
-			),
+			...Array.from({ length: 200 }, (_, i) => ({
+				...f(i.toString(16).padStart(12, "0"), "store.foreign-writer", `c${i}`),
+				where: [`packages/b${i % 3}.ts:${i}`],
+			})),
 		];
-		const text = renderTodo(
+		const text = renderView(
 			"code-reviewer",
 			{ commit: "abc1234", time: "2026-11-16T12:00:00Z" },
 			fs,
-			new Map([
-				[
-					"cccccccccccc",
-					{ disposition: "dismissed", reason: "handled in a.ts:1" },
-				],
-			]),
+			[],
+			[],
 			3000,
 		);
 		expect(Buffer.byteLength(text)).toBeLessThanOrEqual(3000);
-		expect(text.indexOf("aaaaaaaaaaaa")).toBeLessThan(
-			text.indexOf("bbbbbbbbbbbb"),
-		);
-		expect(text).not.toContain("cccccccccccc");
-		expect(text).toContain(
-			"Not yet examined: 202 (new since the last scan: 1). Deferred: 0. Concluded: 1.",
-		);
-		expect(text).toMatch(/\d+ more under "To examine"/);
+		expect(text).toContain("## New since the last scan");
+		expect(text).toMatch(/- `aaaaaaaaaaaa` op\.home-not-reached/);
+		expect(text).toContain("- b0.ts: 67");
+		expect(text).not.toMatch(/not yet examined|open:/i);
+		expect(text).not.toContain("`00000000000a`");
 	});
 
 	function analysis() {
-		const dir = mkdtempSync(join(tmpdir(), "todo-"));
+		const dir = mkdtempSync(join(tmpdir(), "decisions-"));
 		writeFileSync(
-			join(dir, "todo.json"),
+			join(dir, "findings.json"),
 			JSON.stringify({
 				meta: { commit: "abc1234", time: "t" },
 				findings: [
@@ -360,9 +357,10 @@ describe("trace to-do lists", () => {
 		build(dir, join(dir, "coverage.json"));
 		return dir;
 	}
-	const todo = (dir: string) => readFileSync(join(dir, "todo-cr.md"), "utf8");
+	const view = (dir: string) =>
+		readFileSync(join(dir, "findings-cr.md"), "utf8");
 
-	it("takes a finding off only with a cited, finding-specific reason, and rebuilds the to-do", () => {
+	it("records a decision only with a cited, finding-specific reason", () => {
 		const dir = analysis();
 		expect(() =>
 			dispose(dir, "aaaaaaaaaaaa", "dismissed", "same pattern as before", "cr"),
@@ -371,28 +369,19 @@ describe("trace to-do lists", () => {
 		expect(() =>
 			dispose(dir, "bbbbbbbbbbbb", "dismissed", "guarded at a.ts:3", "cr"),
 		).toThrow(/same reason/);
-		expect(todo(dir)).toContain(
-			"Not yet examined: 1 (new since the last scan: 0)",
+		expect(() =>
+			dispose(dir, "bbbbbbbbbbbb", "deferred", "later", "cr"),
+		).toThrow(/must be one of/);
+		expect(view(dir)).toContain(
+			"0 findings raised, 0 catalog questions; 1 dismissed, 0 of them spot-checked",
 		);
-		expect(todo(dir)).not.toContain("aaaaaaaaaaaa");
-	});
-
-	it("keeps a deferred finding on the to-do, and a reopened one open", () => {
-		const dir = analysis();
-		dispose(dir, "aaaaaaaaaaaa", "deferred", "needs the owner's answer", "cr");
-		expect(todo(dir)).toContain("Deferred: 1.");
-		expect(todo(dir)).toMatch(/## Deferred\n\n- `aaaaaaaaaaaa`/);
-		dispose(dir, "bbbbbbbbbbbb", "finding", "CR-9 at a.ts:1", "cr");
-		dispose(dir, "bbbbbbbbbbbb", "reopen", "wrong line", "cr");
-		expect(todo(dir)).toContain("`bbbbbbbbbbbb`");
-		expect(todo(dir)).toContain("[reopened]");
 	});
 
 	it("refuses a dismissal that does not address the places the finding names", () => {
 		const dir = analysis();
 		expect(() =>
 			dispose(dir, "aaaaaaaaaaaa", "dismissed", "fine, see z.ts:90", "cr"),
-		).toThrow(/does not address what the finding names \(a\.ts:1\)/);
+		).toThrow(/does not address what the finding names \(packages\/a\.ts:1\)/);
 		const gap = {
 			...f("cccccccccccc", "op.divergent-writes", "x.three"),
 			lacks: [
@@ -420,15 +409,53 @@ describe("trace to-do lists", () => {
 		dispose(dir, "aaaaaaaaaaaa", "catalog", "a.ts:1 is a second owner", "cr");
 		const q = readFileSync(join(dir, "catalog-questions.md"), "utf8");
 		expect(q).toContain("`x.one` (op.divergent-writes, `aaaaaaaaaaaa`, cr");
-		expect(todo(dir)).toContain("Concluded: 1.");
+		expect(view(dir)).toContain("0 findings raised, 1 catalog questions");
 	});
 
-	it("shows the findings before the counts, and sets aside decisions before an agent's since date", () => {
+	it("samples dismissals not yet checked, and a wrong one comes back to its reviewer with the reason", () => {
+		const dir = analysis();
+		dispose(dir, "aaaaaaaaaaaa", "dismissed", "guarded at a.ts:2", "cr");
+		dispose(dir, "bbbbbbbbbbbb", "finding", "CR-1 at a.ts:1", "cr");
+		const drawn = sample(dir, 5, "seed");
+		expect(drawn.map((s) => s.key)).toEqual(["aaaaaaaaaaaa"]);
+		expect(() =>
+			check(dir, "cr", "bbbbbbbbbbbb", "wrong", "see a.ts:1", "user"),
+		).toThrow(/no standing dismissal/);
+		check(dir, "cr", "aaaaaaaaaaaa", "wrong", "a.ts:1 is not guarded", "user");
+		expect(view(dir)).toMatch(
+			/## Dismissals a spot check found wrong\n\n- `aaaaaaaaaaaa`[\s\S]*The user: a\.ts:1 is not guarded/,
+		);
+		expect(view(dir)).toContain(
+			"1 dismissed, 1 of them spot-checked by the user, 1 found wrong",
+		);
+		expect(sample(dir, 5, "seed")).toEqual([]);
+		// A new decision after the check is the reviewer's answer to it.
+		dispose(dir, "aaaaaaaaaaaa", "finding", "CR-2 at a.ts:1", "cr");
+		expect(view(dir)).not.toContain("## Dismissals a spot check found wrong");
+	});
+
+	it("looks up findings by file or baseline id, with each reviewer's decision", () => {
 		const dir = analysis();
 		dispose(dir, "aaaaaaaaaaaa", "finding", "CR-1 at a.ts:1", "cr");
-		expect(todo(dir)).not.toContain("`aaaaaaaaaaaa`");
-		expect(todo(dir).indexOf("`bbbbbbbbbbbb`")).toBeLessThan(
-			todo(dir).indexOf("Not yet examined"),
+		const byFile = about(dir, "a.ts", "cr", ["op.divergent-writes"]);
+		expect(byFile).toContain("2 finding(s)");
+		expect(byFile).toContain("cr: finding");
+		expect(about(dir, "x.two", "cr", null)).toContain("1 finding(s)");
+		expect(about(dir, "a.ts", "qa", ["inv.unenforced"])).toContain(
+			"0 finding(s)",
+		);
+	});
+
+	it("sets aside decisions before an agent's since date, and marks one recorded without evidence", () => {
+		const dir = analysis();
+		writeFileSync(
+			join(dir, "dispositions.jsonl"),
+			`${JSON.stringify({ key: "aaaaaaaaaaaa", agent: "cr", disposition: "finding", reason: "CR-1 at a.ts:1", at: "2026-01-01" })}\n${JSON.stringify({ key: "bbbbbbbbbbbb", agent: "cr", disposition: "dismissed", reason: "by analogy", at: "2026-01-01" })}\n`,
+		);
+		build(dir, join(dir, "coverage.json"));
+		expect(view(dir)).toContain("1 findings raised");
+		expect(about(dir, "x.two", "cr", null)).toContain(
+			"does not count: cites no file:line",
 		);
 		writeFileSync(
 			join(dir, "coverage.json"),
@@ -438,16 +465,6 @@ describe("trace to-do lists", () => {
 			}),
 		);
 		build(dir, join(dir, "coverage.json"));
-		expect(todo(dir)).toContain("`aaaaaaaaaaaa`");
-	});
-
-	it("does not count an earlier decision recorded without evidence", () => {
-		const dir = analysis();
-		writeFileSync(
-			join(dir, "dispositions.jsonl"),
-			`${JSON.stringify({ key: "aaaaaaaaaaaa", agent: "cr", disposition: "dismissed", reason: "by analogy", at: "t" })}\n`,
-		);
-		build(dir, join(dir, "coverage.json"));
-		expect(todo(dir)).toContain("cites no file:line, so it does not count");
+		expect(view(dir)).toContain("0 findings raised");
 	});
 });

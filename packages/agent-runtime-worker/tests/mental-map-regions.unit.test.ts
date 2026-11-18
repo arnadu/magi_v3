@@ -130,6 +130,28 @@ describe("file-fed mental-map regions", () => {
 		expect(region(twice)).toContain("second");
 	});
 
+	it("removes a region whose entry left the config, keeping the objectives region", () => {
+		write("analysis/todo.md", "old list");
+		const withRegion = syncFileRegions(
+			agent([{ key: "trace-todo", file: "analysis/todo.md" }]),
+			"m",
+			shared,
+			`<section data-managed="my-objectives"><p>goals</p></section>${MAP}`,
+			NOW,
+		) as string;
+		expect(region(withRegion)).toContain("old list");
+		const without = syncFileRegions(
+			{ id: "code-reviewer" },
+			"m",
+			shared,
+			withRegion,
+			NOW,
+		) as string;
+		expect(region(without)).toBeNull();
+		expect(without).toContain('data-managed="my-objectives"');
+		expect(without).toContain('<section id="notes">');
+	});
+
 	it("rejects a region that could escape the shared folder or take the objectives key", () => {
 		expect(() =>
 			ManagedRegionSchema.parse({ key: "x", file: "../workdir/a.md" }),

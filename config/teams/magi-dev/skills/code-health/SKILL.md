@@ -38,12 +38,18 @@ trace", explains how each is computed and where it can be wrong):
 | `writes.md` | Every database write, the component that owns its collection, the status changes it can make |
 | `invariants.md` | Every invariant and what enforces it |
 | `components.html` | The component map |
-| `todo.json` | Every finding with its key, locations and, for a difference between entry points, the writes each one lacks |
+| `findings.json` | Every finding with its key, locations and, for a difference between entry points, the writes each one lacks |
 
-Record your conclusion on a finding, so that the user and your teammates can see it:
+What the trace found on a file or an operation, and what anyone has concluded about it:
 
 ```bash
-node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analysis" <key> <decision> "<what you found, with file:line>"
+node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" about "$SHARED_DIR/analysis" <file path or baseline id>
+```
+
+Record your conclusion on a finding you examined, so that the user and your teammates can see it:
+
+```bash
+node "$WORKDIR/repos/magi_v3/scripts/trace/decisions.mjs" dispose "$SHARED_DIR/analysis" <key> <decision> "<what you found, with file:line>"
 ```
 
 | Decision | When |
@@ -51,11 +57,11 @@ node "$WORKDIR/repos/magi_v3/scripts/trace/todo.mjs" dispose "$SHARED_DIR/analys
 | `finding` | The code should change; give the report and `CR-NNN` |
 | `dismissed` | The finding is mistaken; say what in the code shows it, at the places the finding names |
 | `catalog` | The code is right and the catalog is not; the user decides catalog changes and reads these as questions |
-| `deferred` | You need something first; say what |
 | `reopen` | An earlier decision of yours was wrong |
 
 A finding you have not examined needs no record. The tool refuses a `finding`, `dismissed` or
-`catalog` without a location from the finding, and a reason reused from another finding.
+`catalog` without a location from the finding, and a reason reused from another finding. The
+user checks a sample of dismissals; one found wrong comes back in your "Trace findings" region.
 
 ## CI and the cursor
 

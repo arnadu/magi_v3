@@ -2,8 +2,8 @@
 // `npm run trace`: scans the code and joins what it finds to the baseline
 // catalog (ADR-0036). Writes its reports to analysis/ (or --out <dir>):
 // index.md, operations.md, writes.md, security.md, invariants.md,
-// components.html, their JSON, and todo.json, every finding with a stable key;
-// the previous run's todo.json is kept in previous/ so new findings are marked.
+// components.html, their JSON, and findings.json, every finding with a stable key;
+// the previous run's findings.json is kept in previous/ so new findings are marked.
 //
 // `npm run trace -- def|refs|callers|reach <argument>` answers one question
 // instead (query.mjs).
@@ -89,9 +89,11 @@ const meta = {
 
 mkdirSync(join(OUT, "previous"), { recursive: true });
 let previous = null;
-if (existsSync(join(OUT, "todo.json"))) {
-	copyFileSync(join(OUT, "todo.json"), join(OUT, "previous/todo.json"));
-	previous = JSON.parse(readFileSync(join(OUT, "todo.json"), "utf8")).findings;
+if (existsSync(join(OUT, "findings.json"))) {
+	copyFileSync(join(OUT, "findings.json"), join(OUT, "previous/findings.json"));
+	previous = JSON.parse(
+		readFileSync(join(OUT, "findings.json"), "utf8"),
+	).findings;
 }
 
 step("entry points");
@@ -154,7 +156,7 @@ json("operations.json", result.operations);
 json("writes.json", result.writes);
 json("security.json", result.security);
 json("invariants.json", result.invariants);
-json("todo.json", { meta, findings: result.findings });
+json("findings.json", { meta, findings: result.findings });
 writeFileSync(
 	join(OUT, "operations.md"),
 	renderOperations(meta, result.operations, result.findings),

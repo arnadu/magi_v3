@@ -234,7 +234,7 @@ export function renderIndex(meta, counts, findings, previousRan) {
 		header(
 			"Trace",
 			meta,
-			"What the code does, joined to what the catalog says it should do. Reports in this folder; `todo.json` lists every finding with a stable key.",
+			"What the code does, joined to what the catalog says it should do. Reports in this folder; `findings.json` lists every finding with a stable key.",
 		),
 		table(
 			["Measure", "Count"],
