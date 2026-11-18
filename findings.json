@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "1cd2c85",
-  "time": "2026-11-18T13:09:03Z"
+  "commit": "36b35f9",
+  "time": "2026-11-18T15:14:12Z"
  },
  "findings": [
   {
@@ -3187,7 +3187,7 @@
    "key": "c5ed941339fd",
    "kind": "inv.unenforced",
    "about": "mission.capped",
-   "text": "Nothing enforces mission.capped yet.",
+   "text": "The catalog names nothing that enforces mission.capped (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3195,7 +3195,7 @@
    "key": "8f4f126db22e",
    "kind": "inv.unenforced",
    "about": "mission.way-out",
-   "text": "Nothing enforces mission.way-out yet.",
+   "text": "The catalog names nothing that enforces mission.way-out (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3203,7 +3203,7 @@
    "key": "5f68cc0d3abd",
    "kind": "inv.unenforced",
    "about": "mission.work-kept",
-   "text": "Nothing enforces mission.work-kept yet.",
+   "text": "The catalog names nothing that enforces mission.work-kept (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3211,7 +3211,7 @@
    "key": "97c6c227530f",
    "kind": "inv.unenforced",
    "about": "mission.status-follows-machine",
-   "text": "Nothing enforces mission.status-follows-machine yet.",
+   "text": "The catalog names nothing that enforces mission.status-follows-machine (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3219,7 +3219,7 @@
    "key": "8575a2e3affb",
    "kind": "inv.unenforced",
    "about": "mission.error-recovery",
-   "text": "Nothing enforces mission.error-recovery yet.",
+   "text": "The catalog names nothing that enforces mission.error-recovery (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3227,7 +3227,7 @@
    "key": "b6e439f835af",
    "kind": "inv.unenforced",
    "about": "agent.one-turn",
-   "text": "Nothing enforces agent.one-turn yet.",
+   "text": "The catalog names nothing that enforces agent.one-turn (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3235,7 +3235,7 @@
    "key": "a54961c8d3d6",
    "kind": "inv.unenforced",
    "about": "agent.turn-ends",
-   "text": "Nothing enforces agent.turn-ends yet.",
+   "text": "The catalog names nothing that enforces agent.turn-ends (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3243,7 +3243,7 @@
    "key": "e62e78636544",
    "kind": "inv.unenforced",
    "about": "agent.within-budget",
-   "text": "Nothing enforces agent.within-budget yet.",
+   "text": "The catalog names nothing that enforces agent.within-budget (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3251,7 +3251,7 @@
    "key": "9ba9d2a131b7",
    "kind": "inv.unenforced",
    "about": "agent.pause-holds",
-   "text": "Nothing enforces agent.pause-holds yet.",
+   "text": "The catalog names nothing that enforces agent.pause-holds (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3259,7 +3259,7 @@
    "key": "eef018fe1277",
    "kind": "inv.unenforced",
    "about": "agent.no-teammate-control",
-   "text": "Nothing enforces agent.no-teammate-control yet.",
+   "text": "The catalog names nothing that enforces agent.no-teammate-control (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3267,7 +3267,7 @@
    "key": "a140bb738170",
    "kind": "inv.unenforced",
    "about": "schedule.min-interval",
-   "text": "Nothing enforces schedule.min-interval yet.",
+   "text": "The catalog names nothing that enforces schedule.min-interval (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3275,7 +3275,7 @@
    "key": "9e39940b4031",
    "kind": "inv.unenforced",
    "about": "schedule.roster",
-   "text": "Nothing enforces schedule.roster yet.",
+   "text": "The catalog names nothing that enforces schedule.roster (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3283,7 +3283,7 @@
    "key": "10c01f438e32",
    "kind": "inv.unenforced",
    "about": "schedule.job-author",
-   "text": "Nothing enforces schedule.job-author yet.",
+   "text": "The catalog names nothing that enforces schedule.job-author (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3291,7 +3291,7 @@
    "key": "99df83ca58be",
    "kind": "inv.unenforced",
    "about": "job.as-author",
-   "text": "Nothing enforces job.as-author yet.",
+   "text": "The catalog names nothing that enforces job.as-author (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3299,7 +3299,7 @@
    "key": "619265c00fcc",
    "kind": "inv.unenforced",
    "about": "objective.tree",
-   "text": "Nothing enforces objective.tree yet.",
+   "text": "The catalog names nothing that enforces objective.tree (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3307,7 +3307,7 @@
    "key": "8be639c9085e",
    "kind": "inv.unenforced",
    "about": "task.who-updates",
-   "text": "Nothing enforces task.who-updates yet.",
+   "text": "The catalog names nothing that enforces task.who-updates (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3315,7 +3315,7 @@
    "key": "d7299b9377d7",
    "kind": "inv.unenforced",
    "about": "message.wakes",
-   "text": "Nothing enforces message.wakes yet.",
+   "text": "The catalog names nothing that enforces message.wakes (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3323,7 +3323,7 @@
    "key": "2fe5965eab53",
    "kind": "inv.unenforced",
    "about": "turn.reconstructible",
-   "text": "Nothing enforces turn.reconstructible yet.",
+   "text": "The catalog names nothing that enforces turn.reconstructible (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3331,7 +3331,7 @@
    "key": "b90e46ecfc86",
    "kind": "inv.unenforced",
    "about": "turn.persisted-per-step",
-   "text": "Nothing enforces turn.persisted-per-step yet.",
+   "text": "The catalog names nothing that enforces turn.persisted-per-step (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3339,7 +3339,7 @@
    "key": "2c5a468f7bbd",
    "kind": "inv.unenforced",
    "about": "turn.no-silent-loss",
-   "text": "Nothing enforces turn.no-silent-loss yet.",
+   "text": "The catalog names nothing that enforces turn.no-silent-loss (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3347,7 +3347,7 @@
    "key": "17fdfdae75dd",
    "kind": "inv.unenforced",
    "about": "llm-call.recorded",
-   "text": "Nothing enforces llm-call.recorded yet.",
+   "text": "The catalog names nothing that enforces llm-call.recorded (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3355,7 +3355,7 @@
    "key": "7b1457d4d7ff",
    "kind": "inv.unenforced",
    "about": "llm-call.bodies-kept",
-   "text": "Nothing enforces llm-call.bodies-kept yet.",
+   "text": "The catalog names nothing that enforces llm-call.bodies-kept (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3363,7 +3363,7 @@
    "key": "f2ec4610ca14",
    "kind": "inv.unenforced",
    "about": "llm-call.cost-counted",
-   "text": "Nothing enforces llm-call.cost-counted yet.",
+   "text": "The catalog names nothing that enforces llm-call.cost-counted (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3371,7 +3371,7 @@
    "key": "14ad8324cf7f",
    "kind": "inv.unenforced",
    "about": "files.attributed",
-   "text": "Nothing enforces files.attributed yet.",
+   "text": "The catalog names nothing that enforces files.attributed (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3379,7 +3379,7 @@
    "key": "d319e2dacdce",
    "kind": "inv.unenforced",
    "about": "platform.no-memory-only-state",
-   "text": "Nothing enforces platform.no-memory-only-state yet.",
+   "text": "The catalog names nothing that enforces platform.no-memory-only-state (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3387,7 +3387,7 @@
    "key": "15f93568c9f2",
    "kind": "inv.unenforced",
    "about": "platform.changes-audited",
-   "text": "Nothing enforces platform.changes-audited yet.",
+   "text": "The catalog names nothing that enforces platform.changes-audited (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3395,7 +3395,7 @@
    "key": "54e678ec3726",
    "kind": "inv.unenforced",
    "about": "platform.failures-surface",
-   "text": "Nothing enforces platform.failures-surface yet.",
+   "text": "The catalog names nothing that enforces platform.failures-surface (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3403,7 +3403,7 @@
    "key": "d4cb0d24dc47",
    "kind": "inv.unenforced",
    "about": "sec.authenticated",
-   "text": "Nothing enforces sec.authenticated yet.",
+   "text": "The catalog names nothing that enforces sec.authenticated (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3411,7 +3411,7 @@
    "key": "4e0593e73f38",
    "kind": "inv.unenforced",
    "about": "sec.authorized",
-   "text": "Nothing enforces sec.authorized yet.",
+   "text": "The catalog names nothing that enforces sec.authorized (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3419,7 +3419,7 @@
    "key": "d8ad837f54b8",
    "kind": "inv.unenforced",
    "about": "sec.tenant-scoped",
-   "text": "Nothing enforces sec.tenant-scoped yet.",
+   "text": "The catalog names nothing that enforces sec.tenant-scoped (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3427,7 +3427,7 @@
    "key": "7fbc3e858e7f",
    "kind": "inv.unenforced",
    "about": "sec.no-secrets-to-agents",
-   "text": "Nothing enforces sec.no-secrets-to-agents yet.",
+   "text": "The catalog names nothing that enforces sec.no-secrets-to-agents (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3435,7 +3435,7 @@
    "key": "88d3d6708bbe",
    "kind": "inv.unenforced",
    "about": "sec.secrets-not-recorded",
-   "text": "Nothing enforces sec.secrets-not-recorded yet.",
+   "text": "The catalog names nothing that enforces sec.secrets-not-recorded (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3443,7 +3443,7 @@
    "key": "2f042e248dc3",
    "kind": "inv.unenforced",
    "about": "sec.contained-paths",
-   "text": "Nothing enforces sec.contained-paths yet.",
+   "text": "The catalog names nothing that enforces sec.contained-paths (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3451,7 +3451,7 @@
    "key": "f794d2b71037",
    "kind": "inv.unenforced",
    "about": "sec.safe-egress",
-   "text": "Nothing enforces sec.safe-egress yet.",
+   "text": "The catalog names nothing that enforces sec.safe-egress (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3459,7 +3459,7 @@
    "key": "3e68a4dbf621",
    "kind": "inv.unenforced",
    "about": "sec.input-validated",
-   "text": "Nothing enforces sec.input-validated yet.",
+   "text": "The catalog names nothing that enforces sec.input-validated (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3467,7 +3467,7 @@
    "key": "eb6d3651b5d6",
    "kind": "inv.unenforced",
    "about": "sec.untrusted-text-labelled",
-   "text": "Nothing enforces sec.untrusted-text-labelled yet.",
+   "text": "The catalog names nothing that enforces sec.untrusted-text-labelled (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3475,7 +3475,7 @@
    "key": "4842414068d7",
    "kind": "inv.unenforced",
    "about": "sec.output-safe",
-   "text": "Nothing enforces sec.output-safe yet.",
+   "text": "The catalog names nothing that enforces sec.output-safe (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3483,7 +3483,7 @@
    "key": "65841ea2eb0d",
    "kind": "inv.unenforced",
    "about": "sec.least-privilege",
-   "text": "Nothing enforces sec.least-privilege yet.",
+   "text": "The catalog names nothing that enforces sec.least-privilege (its enforcedBy is empty).",
    "where": [],
    "new": false
   },
@@ -3491,7 +3491,7 @@
    "key": "b130fbebf738",
    "kind": "inv.unenforced",
    "about": "sec.confirmed-effects",
-   "text": "Nothing enforces sec.confirmed-effects yet.",
+   "text": "The catalog names nothing that enforces sec.confirmed-effects (its enforcedBy is empty).",
    "where": [],
    "new": false
   }
