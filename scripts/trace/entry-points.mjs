@@ -101,7 +101,7 @@ function triggerName(call, sf) {
 
 function toolActor(file) {
 	if (file.startsWith(CP)) return "CC";
-	if (file.endsWith("image-agent-tools.ts")) return "sub-agent";
+	if (file.endsWith("image-agent-tools.ts")) return "SUB";
 	// Reached only through the Tool API, by background jobs.
 	if (file.endsWith("data-provider-proxy.ts")) return "JOB";
 	if (/\/mission-copilot|\/resource-upgrade-tool\.ts$/.test(file)) return "MC";
@@ -112,7 +112,9 @@ function toolActor(file) {
  * Every entry point: `{ kind, actor, file, line, endLine, name, tag }`, `tag` null
  * when the entry point declares none. Kinds: `route` (control-plane Express),
  * `monitor-route` (mission machine), `tool`, `copilot-action`, `tool-api`
- * (background jobs), `trigger` (timers, change streams, callbacks).
+ * (background jobs), `trigger` (timers, change streams, callbacks),
+ * `file-request` (a directory where an agent asks by writing a file, declared
+ * with `entryFile`; one entry per operation it serves).
  */
 export function extractEntryPoints(root = ROOT) {
 	const entries = [];
@@ -264,7 +266,27 @@ export function extractEntryPoints(root = ROOT) {
 							: "change stream";
 					if (!own && !inScope) add("trigger", "PLT", n, label, null);
 				}
-				if (tag !== null) add("trigger", "PLT", n, triggerName(n, sf), tag);
+				if (tag !== null) {
+					add("trigger", "PLT", n, triggerName(n, sf), tag);
+					// A handler passed by name is defined elsewhere in the file.
+					const fnArg = n.arguments[1];
+					if (fnArg && ts.isIdentifier(fnArg))
+						entries[entries.length - 1].ref = fnArg.text;
+				}
+				if (
+					ts.isIdentifier(callee) &&
+					fn === "entryFile" &&
+					n.arguments.length === 2
+				) {
+					const [tags, dir] = n.arguments;
+					const list = ts.isArrayLiteralExpression(tags)
+						? tags.elements.filter(isStr).map((t) => t.text)
+						: isStr(tags)
+							? [tags.text]
+							: [];
+					for (const t of list)
+						add("file-request", "AG", n, `files in ${dir.getText(sf)}`, t);
+				}
 			}
 			ts.forEachChild(n, visit);
 		};

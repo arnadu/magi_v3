@@ -30,18 +30,14 @@ export function registerCopilotVisibilityRoutes(
 	// exists for "copilot-{userId}", so there's no ownership lookup to do; the
 	// userId is already the whole scope. See transcript-queries.ts.
 
-	routes.get(
-		"/turns",
-		"copilot.history",
-		async (req: Request, res: Response) => {
-			const missionId = `copilot-${req.userId}`;
-			res.json(await queryTurns(db, missionId, COPILOT_AGENT_ID));
-		},
-	);
+	routes.get("/turns", "agent.history", async (req: Request, res: Response) => {
+		const missionId = `copilot-${req.userId}`;
+		res.json(await queryTurns(db, missionId, COPILOT_AGENT_ID));
+	});
 
 	routes.get(
 		"/transcript",
-		"copilot.history",
+		"agent.history",
 		async (req: Request, res: Response) => {
 			const missionId = `copilot-${req.userId}`;
 			const turn = Number(req.query.turn);
@@ -55,7 +51,7 @@ export function registerCopilotVisibilityRoutes(
 
 	routes.get(
 		"/llm-calls",
-		"copilot.history",
+		"agent.history",
 		async (req: Request, res: Response) => {
 			const missionId = `copilot-${req.userId}`;
 			const turn = Number(req.query.turn);
@@ -69,7 +65,7 @@ export function registerCopilotVisibilityRoutes(
 
 	routes.get(
 		"/llm-call",
-		"copilot.history",
+		"agent.history",
 		async (req: Request, res: Response) => {
 			const missionId = `copilot-${req.userId}`;
 			const turn = Number(req.query.turn);
@@ -103,7 +99,7 @@ export function registerCopilotVisibilityRoutes(
 	// subdirectories existed reachable to someone.
 	router.get(
 		"/files",
-		operation("copilot.history"),
+		operation("agent.history"),
 		(req: Request, res: Response) => {
 			const userPath = (req.query.path as string | undefined) ?? "";
 			const root = req.isAdmin

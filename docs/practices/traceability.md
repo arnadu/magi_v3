@@ -13,10 +13,13 @@ are joined by ids, put in by hand at a few places and checked by machine; everyt
 ## Every entry point declares what it serves
 
 An entry point is anything an actor or the platform starts work through: a route, a tool, a
-copilot action, a name in the background jobs' Tool API, a timer or change stream. Each one
-declares the **operation** it serves (`mission.launch`, `agent.dispatch`, …), or, when it serves
-no product operation, an **entry class** (`infrastructure`, `developer`, `sub-agent`, `feed`,
-`housekeeping`, `retired`). Both lists are in [operations.md](../product/operations.md).
+copilot action, a name in the background jobs' Tool API, a timer or change stream, and a
+directory where an agent asks by writing a file (jobs, schedules). Each one declares the
+**operation** it serves (`mission.launch`, `agent.dispatch`, …), or, when it serves no product
+operation, an **entry class** (`infrastructure`, `developer`, `proposal`, `feed`,
+`housekeeping`, `retired`). Both lists, and the definitions D1–D10 the catalog is kept by, are
+in [operations.md](../product/operations.md). An operation that only another operation starts
+names it (`startedBy`) and has no entry point of its own.
 
 | Entry point | Where the tag goes | Checked by |
 |---|---|---|
@@ -27,6 +30,7 @@ no product operation, an **entry class** (`infrastructure`, `developer`, `sub-ag
 | Control-copilot action | `ACTION_OPERATIONS` in `copilot-actions.ts` | `tsc` (exhaustive record) |
 | Tool API name | `operation:` on its entry in `tool-api-server.ts` | `tsc` |
 | Cron, interval, change stream, cooldown | wrap the callback: `schedule("* * * * *", entryTrigger("schedule.deliver", tick))` | the entry-point test |
+| File request (a directory an agent writes requests into) | wrap the directory where it is read: `readdirSync(entryFile("job.submit", dirs.pending))`; one directory may serve several operations (`entryFile(["schedule.create", "schedule.cancel"], dir)`) | the entry-point test |
 
 The tag is a type (`EntryTag` from `@magi/agent-config`): a misspelt id fails `tsc`.
 `npm run trace:entry-points` lists every entry point with its tag;

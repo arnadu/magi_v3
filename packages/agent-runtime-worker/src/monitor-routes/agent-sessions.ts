@@ -145,7 +145,7 @@ export function createAgentSessionsRoutes(
 		{
 			method: "GET",
 			path: /^\/agents\/([^/]+)\/usage$/,
-			operation: "mission.spend",
+			operation: "spend.report",
 			async handler({ res }, agentId) {
 				const docs = await storedCollection(deps.db, "llmCallLog")
 					.find(

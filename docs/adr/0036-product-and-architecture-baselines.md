@@ -1,7 +1,9 @@
 # ADR-0036: Traceability between intent and code for an autonomous development team
 
-**Status:** Proposed (2026-11-15). The baselines' format is in place; their content is a draft
-awaiting the product owner's approval. The other parts are built in the order given at the end.
+**Status:** Proposed (2026-11-15). The baselines' format is in place. Their content was
+approved by the product owner on 2026-11-19, with the definitions D1–D10 the catalog is kept by
+(review and decisions: [catalog-review.md](../plans/catalog-review.md); the definitions are on
+the rendered operations page). The other parts are built in the order given at the end.
 **Relates to:** [magi-dev-requirements.md](../plans/magi-dev-requirements.md) ("The application
 model"), the code-structure practice ("One operation, one home"), ADR-0003 (the mental map)
 

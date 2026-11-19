@@ -17,7 +17,7 @@ function proposeActionTool(deps: CopilotToolDeps): MagiTool {
 	const { db, pushEvent, pending, userId } = deps;
 	return {
 		name: "ProposeAction",
-		operation: "copilot.propose",
+		operation: "proposal",
 		description:
 			"Propose a mutating action for operator confirmation. " +
 			"The action is shown to the operator in the chat UI as a confirmation card with its " +

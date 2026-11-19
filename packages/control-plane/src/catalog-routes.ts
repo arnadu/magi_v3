@@ -56,7 +56,7 @@ export function readCatalog(repoRoot: string): Catalog {
 export function createCatalogRouter(repoRoot: string): Router {
 	const catalog = readCatalog(repoRoot);
 	const router = express.Router();
-	router.get("/", operation("platform.catalog"), (_req, res) => {
+	router.get("/", operation("platform.offerings"), (_req, res) => {
 		res.json(catalog);
 	});
 	return router;

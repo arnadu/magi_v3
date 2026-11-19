@@ -130,7 +130,7 @@ export function registerMissionLimitsRoutes(
 	routes: AsyncRoutes,
 	deps: MissionRouteDeps,
 ): void {
-	routes.get("/:id/limits", "mission.spend", getLimits(deps));
+	routes.get("/:id/limits", "spend.report", getLimits(deps));
 	routes.get("/:id/objectives", "objectives.progress", getObjectives(deps));
 	routes.patch(
 		"/:id/limits/mission",

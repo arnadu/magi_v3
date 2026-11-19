@@ -129,7 +129,7 @@ export function startCopilotWaker(
 		stream = opened;
 		opened.on(
 			"change",
-			entryTrigger("copilot.wake", (change) => {
+			entryTrigger("agent.dispatch", (change) => {
 				consecutiveFailures = 0;
 				const userId = userIdFromCopilotMissionId(insertedMissionId(change));
 				if (!userId) return;
@@ -150,7 +150,7 @@ export function startCopilotWaker(
 	open();
 	void scan();
 	const scanTimer = setInterval(
-		entryTrigger("copilot.wake", () => void scan()),
+		entryTrigger("agent.dispatch", () => void scan()),
 		opts.scanIntervalMs ?? SCAN_INTERVAL_MS,
 	);
 	scanTimer.unref();

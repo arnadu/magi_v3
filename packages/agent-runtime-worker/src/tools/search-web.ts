@@ -50,7 +50,7 @@ function toolErr(text: string): ToolResult {
 export function createSearchWebTool(apiKey: string | undefined): MagiTool {
 	return {
 		name: "SearchWeb",
-		operation: "web.read",
+		operation: "web.search",
 		description:
 			"Search the web using the Brave Search API and return the top results " +
 			"(title, URL, and snippet). Use FetchUrl to retrieve the full content of " +

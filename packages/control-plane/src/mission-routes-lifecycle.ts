@@ -265,7 +265,7 @@ export function registerMissionLifecycleRoutes(
 	routes: AsyncRoutes,
 	deps: MissionRouteDeps,
 ): void {
-	routes.post("/", "mission.create", createMission(deps));
+	routes.post("/", "mission.launch", createMission(deps));
 	routes.post("/draft", "mission.create-draft", postDraft(deps));
 	routes.post("/:id/suspend", "mission.suspend", postSuspend(deps));
 	routes.post("/:id/resume", "mission.resume", postResume(deps));

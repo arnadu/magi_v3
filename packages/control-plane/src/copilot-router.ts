@@ -110,7 +110,7 @@ function registerChatRoutes(
 
 	routes.get(
 		"/settings",
-		"copilot.settings",
+		"mission.change-config",
 		async (req: Request, res: Response) => {
 			const model = await getCopilotModel(db, req.userId);
 			res.json({
@@ -122,7 +122,7 @@ function registerChatRoutes(
 
 	routes.post(
 		"/settings",
-		"copilot.settings",
+		"mission.change-config",
 		async (req: Request, res: Response) => {
 			const { model } = req.body as { model?: string | null };
 			if (model !== null && model !== undefined && typeof model !== "string") {
@@ -171,14 +171,10 @@ function registerHistoryRoutes(
 	const { eventBus } = runtime;
 	// ── GET /api/copilot/usage ───────────────────────────────────────────────
 
-	routes.get(
-		"/usage",
-		"copilot.history",
-		async (req: Request, res: Response) => {
-			const missionId = `copilot-${req.userId}`;
-			res.json(await lifetimeUsage(db, missionId));
-		},
-	);
+	routes.get("/usage", "agent.history", async (req: Request, res: Response) => {
+		const missionId = `copilot-${req.userId}`;
+		res.json(await lifetimeUsage(db, missionId));
+	});
 
 	// ── GET /api/copilot/history ──────────────────────────────────────────────
 	// The mailbox already stores both sides of the conversation:

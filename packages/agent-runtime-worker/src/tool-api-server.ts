@@ -290,7 +290,7 @@ export class ToolApiServer {
 	private readonly entries: readonly ToolApiEntry[] = [
 		{
 			names: ["fetch-url", "fetchurl"],
-			operation: "web.read",
+			operation: "web.fetch",
 			callsLlm: true,
 			build: (_ctx, meter) =>
 				createFetchUrlTool(this.visionModel, this.sharedDir, [], {
@@ -299,7 +299,7 @@ export class ToolApiServer {
 		},
 		{
 			names: ["inspect-image", "inspectimage"],
-			operation: "web.read",
+			operation: "web.fetch",
 			callsLlm: true,
 			build: (ctx, meter) =>
 				createInspectImageTool(
@@ -311,7 +311,7 @@ export class ToolApiServer {
 		},
 		{
 			names: ["research"],
-			operation: "web.read",
+			operation: "web.research",
 			callsLlm: true,
 			build: (ctx, meter) =>
 				createResearchTool(this.model, this.sharedDir, ctx.acl, {
@@ -321,7 +321,7 @@ export class ToolApiServer {
 		},
 		{
 			names: ["search-web", "searchweb"],
-			operation: "web.read",
+			operation: "web.search",
 			build: () => tryCreateSearchWebTool() ?? null,
 		},
 		{

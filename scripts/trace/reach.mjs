@@ -156,8 +156,13 @@ export function linkHttpHops(graph, entries, readSource) {
 /** Reach of every entry point, keyed by its index in `entries`. */
 export function entryReach(graph, entries) {
 	return entries.map((e) => {
-		const span = e.handler ?? e;
-		const names = e.handler?.ref ? [e.handler.ref] : [];
+		// A file request is read inside the function that processes the files:
+		// that function is where the request starts.
+		const reader =
+			e.kind === "file-request" ? graph.functionAt(e.file, e.line) : null;
+		const span = e.handler ?? reader ?? e;
+		const ref = e.handler?.ref ?? e.ref;
+		const names = ref ? [ref] : [];
 		return graph.reach(graph.roots(span, names));
 	});
 }

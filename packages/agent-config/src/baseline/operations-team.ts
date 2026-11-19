@@ -6,7 +6,8 @@ export const TEAM_OPERATIONS = defineOperations([
 	{
 		id: "agent.dispatch",
 		group: "agents",
-		intent: "Decide which agent runs next, and start its turn",
+		intent:
+			"Decide which agent or copilot runs next, and start its turn when it has news",
 		actors: ["PLT"],
 		home: "mm-daemon",
 		rules: [
@@ -15,13 +16,14 @@ export const TEAM_OPERATIONS = defineOperations([
 			"Nothing while the mission's spend has reached its cap",
 			"One turn per agent at a time",
 			"New mail during a turn is picked up after it",
+			"CC: within the copilot's own limits",
 		],
 	},
 	{
 		id: "agent.turn",
 		group: "agents",
 		intent:
-			"Run one turn: build the prompt, call the model, run the tools, record cost, report to the supervisor",
+			"Run one turn: build the prompt, call the model, run the tools, record cost",
 		actors: ["PLT"],
 		home: "mm-agent-loop",
 		rules: [
@@ -29,7 +31,9 @@ export const TEAM_OPERATIONS = defineOperations([
 			"Every turn ends, within the agent's limits and a wall-clock timeout",
 			"Spend counts against the mission",
 			"Tool arguments are checked against the tool's schema",
+			"When the supervisor's message started the turn and the agent did not answer it, the supervisor is told",
 		],
+		startedBy: "agent.dispatch",
 	},
 	{
 		id: "agent.reflect",
@@ -42,6 +46,7 @@ export const TEAM_OPERATIONS = defineOperations([
 			"Keeps the mental map and the conversation's history readable",
 			"Spend counts against the mission",
 		],
+		startedBy: "agent.turn",
 	},
 	{
 		id: "agent.remember",
@@ -58,22 +63,55 @@ export const TEAM_OPERATIONS = defineOperations([
 		id: "agent.shell",
 		group: "agents",
 		intent: "Run a command in one's own workspace",
-		actors: ["AG"],
+		actors: ["AG", "MC", "CC", "SUB"],
 		home: "mm-tools",
 		rules: [
 			"As the agent's own OS user, with no secrets in its environment",
 			"Bounded in time and output",
+			"CC: in its own folder only, until the copilots' shell privileges are designed",
+			"SUB: the Research loop runs shell commands today; whether a sub-agent that reads web pages should is undecided",
 		],
 	},
 	{
-		id: "web.read",
+		id: "web.search",
 		group: "agents",
-		intent: "Search, fetch, browse and research the web; inspect images",
-		actors: ["AG", "JOB"],
+		intent: "Search the web",
+		actors: ["AG", "SUB", "JOB"],
+		home: "mm-tools",
+		rules: ["Bounded in size and time", "Spend counts against the mission"],
+	},
+	{
+		id: "web.fetch",
+		group: "agents",
+		intent: "Fetch a page or a document, or inspect an image",
+		actors: ["AG", "SUB", "JOB"],
 		home: "mm-tools",
 		rules: [
 			"Never reaches an internal address, at any redirect",
 			"Bounded in size and time",
+			"Spend counts against the mission",
+		],
+	},
+	{
+		id: "web.browse",
+		group: "agents",
+		intent: "Drive a browser through a site",
+		actors: ["AG", "SUB"],
+		home: "mm-tools",
+		rules: [
+			"Through the egress proxy; never an internal address",
+			"Bounded in time; the browser is closed",
+			"Spend counts against the mission",
+		],
+	},
+	{
+		id: "web.research",
+		group: "agents",
+		intent: "Research a question with a sub-agent",
+		actors: ["AG", "JOB"],
+		home: "mm-tools",
+		rules: [
+			"The sub-agent acts with the agent's identity and budget",
 			"Spend counts against the mission",
 		],
 	},
@@ -112,7 +150,7 @@ export const TEAM_OPERATIONS = defineOperations([
 			"What an agent did and why: its turns, transcripts, model calls, mental map and memories",
 		actors: ["OP", "CC", "MC", "AG"],
 		home: "cp-records",
-		rules: ["AG: its own memories only"],
+		rules: ["AG: its own memories only", "OP: their own control copilot only"],
 		read: true,
 	},
 	// ── Messages ────────────────────────────────────────────────────────────
@@ -122,7 +160,11 @@ export const TEAM_OPERATIONS = defineOperations([
 		intent: "Give an agent work or information",
 		actors: ["OP", "MC", "AG", "JOB"],
 		home: "mm-state",
-		rules: ["Recipients on the roster", "Wakes the recipient"],
+		rules: [
+			"Recipients on the roster",
+			"Wakes the recipient",
+			"May carry a file the operator uploaded",
+		],
 	},
 	{
 		id: "message.read",
@@ -138,7 +180,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		id: "file.write",
 		group: "files",
 		intent:
-			"Put a file in the mission's shared folder, or in an agent's workdir",
+			"Write or edit a file in the mission's shared folder, or in an agent's workdir",
 		actors: ["OP", "CC", "AG"],
 		home: "mm-isolation",
 		rules: [
@@ -150,7 +192,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		id: "file.read",
 		group: "files",
 		intent:
-			"Read the mission's shared files and their history, or an agent's workdir",
+			"Browse and read the mission's shared files and their history, or an agent's workdir",
 		actors: ["OP", "CC", "MC"],
 		home: "mm-isolation",
 		rules: [
@@ -159,15 +201,36 @@ export const TEAM_OPERATIONS = defineOperations([
 		],
 		read: true,
 	},
+	{
+		id: "file.upload",
+		group: "files",
+		intent: "Put a file into the mission for the agents",
+		actors: ["OP"],
+		home: "mm-isolation",
+		rules: ["Contained in the shared folder", "Bounded in size"],
+	},
+	{
+		id: "file.download",
+		group: "files",
+		intent: "Download a file or a folder from the mission",
+		actors: ["OP"],
+		home: "mm-isolation",
+		rules: [
+			"Contained in the shared folder or the workdir; no symlink escapes",
+			"Bounded in size",
+		],
+		read: true,
+	},
 	// ── Schedules ───────────────────────────────────────────────────────────
 	{
 		id: "schedule.create",
 		group: "schedules",
 		intent: "Have a message or job delivered later or repeatedly",
-		actors: ["OP", "CC", "MC", "AG"],
+		actors: ["CC", "MC", "AG"],
 		home: "cp-scheduler",
 		rules: [
-			"OP in the cockpit or through CC",
+			"OP asks through CC only",
+			"AG: by writing a schedule file; its author is the file's owner",
 			"The schedule invariants hold (see the schedule entity)",
 		],
 	},
@@ -178,7 +241,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		actors: ["OP", "CC", "MC", "AG"],
 		home: "cp-scheduler",
 		rules: [
-			"AG: its own schedules only",
+			"AG: its own schedules only, by removing the schedule file",
 			"A cancelled file-backed schedule stays cancelled until its file is removed",
 		],
 	},
@@ -299,7 +362,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		id: "image.create",
 		group: "images",
 		intent: "Make images for the mission's work",
-		actors: ["AG"],
+		actors: ["AG", "SUB"],
 		home: "mm-tools",
 		rules: ["Within the per-call budget", "Spend counts against the mission"],
 	},

@@ -281,7 +281,7 @@ export function registerMissionReadRoutes(
 	deps: MissionRouteDeps,
 ): void {
 	routes.get("/", "mission.status", listMissions(deps));
-	routes.get("/stats", "mission.spend", getStats(deps));
+	routes.get("/stats", "spend.report", getStats(deps));
 	routes.get("/:id", "mission.status", getMission(deps));
 	routes.get("/:id/conversations", "agent.history", getConversations(deps));
 	routes.get("/:id/agents", "mission.status", getAgents(deps));

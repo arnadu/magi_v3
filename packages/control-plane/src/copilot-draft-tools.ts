@@ -73,7 +73,7 @@ function readMissionConfigTool(deps: CopilotToolDeps): MagiTool {
 	const { db, userId } = deps;
 	return {
 		name: "ReadMissionConfig",
-		operation: "mission.config",
+		operation: "mission.read-config",
 		description:
 			"Read a mission's stored config — draft, running or suspended: mission settings, " +
 			"every agent (prompt, initial mental map, supervisor, limits, disabled tools and " +

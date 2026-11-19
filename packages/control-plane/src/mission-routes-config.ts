@@ -336,7 +336,7 @@ export function registerMissionConfigRoutes(
 	routes: AsyncRoutes,
 	deps: MissionRouteDeps,
 ): void {
-	routes.get("/:id/config", "mission.config", getConfig(deps));
+	routes.get("/:id/config", "mission.read-config", getConfig(deps));
 	routes.put("/:id/config", "mission.change-config", putConfig(deps));
 	routes.put("/:id/draft", "mission.edit-draft", putDraft(deps));
 }

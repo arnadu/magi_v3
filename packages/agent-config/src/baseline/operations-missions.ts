@@ -9,7 +9,11 @@ export const MISSION_OPERATIONS = defineOperations([
 		intent: "Start a mission as an editable draft",
 		actors: ["OP", "CC"],
 		home: "cp-mission-ops",
-		rules: ["Valid id, owned by the requester", "Nothing runs"],
+		rules: [
+			"Valid id, owned by the requester",
+			"Nothing runs",
+			"Replaced by `template.create` when editable templates ship",
+		],
 	},
 	{
 		id: "mission.edit-draft",
@@ -20,29 +24,21 @@ export const MISSION_OPERATIONS = defineOperations([
 		rules: [
 			"Validated as a launch would validate it",
 			"A write based on an outdated version is refused",
+			"Replaced by `template.edit` when editable templates ship",
 		],
 	},
 	{
 		id: "mission.launch",
 		group: "missions",
-		intent: "Start a draft running",
+		intent: "Start a mission from a draft or a template",
 		actors: ["OP", "CC"],
 		home: "cp-mission-ops",
 		rules: [
-			"Only a draft",
+			"Only a draft, or a template: a draft is then created first, with `mission.create-draft`'s checks",
 			"Only once, even if asked twice at the same moment",
 			"Capped before any machine starts",
 			"A failure leaves the mission in `error` with its reason, and no orphaned resources",
-		],
-	},
-	{
-		id: "mission.create",
-		group: "missions",
-		intent: "Create from a template and launch at once",
-		actors: ["OP", "CC"],
-		home: "cp-mission-ops",
-		rules: [
-			"The same checks as `mission.create-draft` followed by `mission.launch`",
+			"CC: a proposal the operator confirms",
 		],
 	},
 	{
@@ -78,6 +74,7 @@ export const MISSION_OPERATIONS = defineOperations([
 			"Never during a resize or another claimed transition",
 			"Reading a mission never changes it",
 		],
+		planned: true,
 	},
 	{
 		id: "mission.wake",
@@ -86,22 +83,26 @@ export const MISSION_OPERATIONS = defineOperations([
 		actors: ["PLT"],
 		home: "cp-machines",
 		rules: [
+			"Starts the machine as it is; never moves the mission to a new image or config (that is `mission.resume`)",
 			"Wakes a suspended mission too; it stays running",
 			"The operator is told what woke it",
 		],
+		startedBy: "schedule.deliver",
 	},
 	{
 		id: "mission.change-config",
 		group: "missions",
 		intent:
-			"Change a mission's agents, prompts, models, settings, files or limits",
+			"Change a mission's agents, prompts, models, settings, files or limits; or the control copilot's model and limits",
 		actors: ["OP", "CC", "MC"],
 		home: "cp-mission-ops",
 		rules: [
 			"Applied while the mission runs; suspension is a last resort, only for a change that needs all activity stopped (a change of machine size or of the agents roster)",
+			"A change to an agent's mental map waits until that agent is paused; nothing else is stopped",
 			"Validated as a launch",
 			"A write based on an outdated version is refused",
 			"The operator is told what changed",
+			"OP: their own control copilot's model and limits (it belongs to no mission)",
 		],
 	},
 	{
@@ -114,7 +115,7 @@ export const MISSION_OPERATIONS = defineOperations([
 		rules: [
 			"Ids are taken from the provider, never from the request",
 			"Never creates or deletes a machine or a volume",
-			"A proposal the operator confirms",
+			"CC: a proposal the operator confirms",
 		],
 	},
 	{
@@ -140,7 +141,7 @@ export const MISSION_OPERATIONS = defineOperations([
 		read: true,
 	},
 	{
-		id: "mission.config",
+		id: "mission.read-config",
 		group: "missions",
 		intent: "A mission's stored configuration",
 		actors: ["OP", "CC", "MC"],
@@ -156,6 +157,44 @@ export const MISSION_OPERATIONS = defineOperations([
 		home: "mm-monitor",
 		rules: ["No secret values", "Bounded in size"],
 		read: true,
+	},
+	// ── Templates (planned: editable templates, roadmap) ────────────────────
+	{
+		id: "template.browse",
+		group: "missions",
+		intent: "The templates on offer and everything each holds",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: ["Every template is visible to every operator"],
+		read: true,
+		planned: true,
+	},
+	{
+		id: "template.create",
+		group: "missions",
+		intent: "A new template: blank, cloned from a template, or from a mission",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: [
+			"A unique name",
+			"From a mission: its configuration, team files and agents' mental maps, never its conversations; only a mission the requester owns",
+			"Presets come from files in the repository, loaded at install",
+		],
+		planned: true,
+	},
+	{
+		id: "template.edit",
+		group: "missions",
+		intent:
+			"Change any part of a template, including copying skills from any template or mission",
+		actors: ["OP", "CC"],
+		home: "cp-mission-ops",
+		rules: [
+			"Validated as a launch would validate it",
+			"A write based on an outdated version is refused",
+			"Presets are read-only: clone one to change it",
+		],
+		planned: true,
 	},
 	// ── Spend and machine ───────────────────────────────────────────────────
 	{
@@ -175,7 +214,7 @@ export const MISSION_OPERATIONS = defineOperations([
 		id: "mission.set-ceiling",
 		group: "spend",
 		intent: "Set the most anyone may set the cap to",
-		actors: ["OP", "ADM"],
+		actors: ["OP"],
 		home: "cp-mission-ops",
 		rules: [
 			"OP up to the platform maximum; ADM above it",
@@ -183,31 +222,24 @@ export const MISSION_OPERATIONS = defineOperations([
 		],
 	},
 	{
-		id: "mission.spend",
+		id: "spend.report",
 		group: "spend",
 		intent:
-			"Spend against cap and ceiling: in total, per agent, over time, and runtime by machine shape",
+			"Spend against cap and ceiling: in total, per agent, over time, and runtime by machine shape; for one mission or all of one's missions",
 		actors: ["OP", "CC", "MC"],
 		home: "cp-mission-ops",
 		rules: [
-			"Shown in the header, Limits, Objectives and both copilots, always the same figure",
+			"Scope: one mission, or all of one's own missions; ADM: all missions; MC: its own mission only",
+			"One calculation behind every figure shown, always the same figure",
+			"Both copilots receive regular cost reports",
 		],
-		read: true,
-	},
-	{
-		id: "account.usage",
-		group: "spend",
-		intent: "Spend across all of one's missions",
-		actors: ["OP", "ADM"],
-		home: "cp-oversight",
-		rules: ["OP: their own missions; ADM: all"],
 		read: true,
 	},
 	{
 		id: "machine.upgrade",
 		group: "spend",
 		intent: "Run on a bigger machine for a while, then go back",
-		actors: ["AG", "MC", "PLT"],
+		actors: ["MC", "PLT"],
 		home: "cp-machines",
 		rules: [
 			"AG asks through MC",

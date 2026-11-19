@@ -201,6 +201,52 @@ describe("trace join", () => {
 		]);
 	});
 
+	it("counts an agent tool for the copilots, and a parent's reach for a step it starts", () => {
+		const reached = [{ id: "f", file: "home-c/a.ts" }];
+		const ops = {
+			OPERATIONS: [
+				{
+					id: "thing.change",
+					intent: "",
+					actors: ["OP", "CC"],
+					home: "home-c",
+				},
+				{
+					id: "thing.step",
+					intent: "",
+					actors: ["PLT"],
+					home: "home-c",
+					startedBy: "thing.change",
+				},
+				{
+					id: "thing.late",
+					intent: "",
+					actors: ["PLT"],
+					home: "else-c",
+					startedBy: "thing.step",
+				},
+			],
+		};
+		const entries = [
+			entry("POST /thing", "OP", "route", reached),
+			entry("Tool", "AG", "tool", reached),
+		];
+		const kinds = (disabled: string[]) =>
+			computeFindings(baseline(ops), entries, [], null, [], {
+				copilotDisabledTools: disabled,
+			})
+				.findings.map((f) => `${f.kind} ${f.about}`)
+				.filter((k) => k.startsWith("op."))
+				.sort();
+		// thing.step reaches through thing.change; thing.late through the
+		// chain, whose entry points never reach else-c.
+		expect(kinds([])).toEqual([
+			"op.actor-extra thing.change",
+			"op.not-started thing.late",
+		]);
+		expect(kinds(["Tool"])).toContain("op.actor-missing thing.change");
+	});
+
 	it("files security results under their invariant and lists unenforced invariants", () => {
 		const sarif = {
 			runs: [

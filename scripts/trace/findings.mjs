@@ -51,7 +51,15 @@ export const ACTOR_OF_KIND = {
 	"tool-api": "JOB",
 	trigger: "PLT",
 	"copilot-action": "CC",
+	"file-request": "AG",
 };
+
+/**
+ * The agent tools the Research sub-agent's loop is given
+ * (`packages/agent-runtime-worker/src/tools/research.ts`): an entry point of
+ * one of them serves SUB as well as AG.
+ */
+const SUB_AGENT_TOOLS = new Set(["SearchWeb", "FetchUrl", "BrowseWeb", "Bash"]);
 
 /**
  * A finding's stable key: its kind, subject, text and files, without line
@@ -70,7 +78,15 @@ const at = (file, line) => `${file}:${line}`;
  * @param {object[]} writes MongoDB writes from writes.mjs, with `fn` (function id) attached
  * @param {object|null} sarif the security suite's SARIF, or null when it was not run
  */
-export function computeFindings(b, entries, writes, sarif, layering = []) {
+export function computeFindings(
+	b,
+	entries,
+	writes,
+	sarif,
+	layering = [],
+	{ copilotDisabledTools = [] } = {},
+) {
+	const copilotLacks = new Set(copilotDisabledTools);
 	const findings = [];
 	const byKey = new Map();
 	// Two places that differ only by line (two writes of one function) are
@@ -117,16 +133,25 @@ export function computeFindings(b, entries, writes, sarif, layering = []) {
 				httpHops: e.reach.httpHops ?? [],
 			};
 		});
-		if (eps.length === 0 && !op.planned)
+		if (eps.length === 0 && !op.planned && !op.startedBy)
 			add("op.no-entry-point", op.id, `No entry point serves ${op.id}.`);
-		// The mission copilot gets every agent tool on top of its own.
+		// The copilots are agents: the mission copilot gets every agent tool on
+		// top of its own, the control copilot all but the ones its config
+		// disables, and the Research sub-agent some of them.
 		const seenActors = new Set(
 			rows.flatMap((r) =>
-				r.actor === "AG" && r.kind === "tool" ? ["AG", "MC"] : [r.actor],
+				r.actor === "AG" && r.kind === "tool"
+					? [
+							"AG",
+							"MC",
+							...(copilotLacks.has(r.name) ? [] : ["CC"]),
+							...(SUB_AGENT_TOOLS.has(r.name) ? ["SUB"] : []),
+						]
+					: [r.actor],
 			),
 		);
 		for (const a of op.actors) {
-			const has = a === "ADM" ? seenActors.has("OP") : seenActors.has(a);
+			const has = seenActors.has(a);
 			if (!has && eps.length > 0)
 				add(
 					"op.actor-missing",
@@ -135,7 +160,7 @@ export function computeFindings(b, entries, writes, sarif, layering = []) {
 				);
 		}
 		for (const a of new Set(rows.map((r) => r.actor)))
-			if (!op.actors.includes(a) && !(a === "OP" && op.actors.includes("ADM")))
+			if (!op.actors.includes(a))
 				add(
 					"op.actor-extra",
 					op.id,
@@ -190,9 +215,31 @@ export function computeFindings(b, entries, writes, sarif, layering = []) {
 			home: op.home,
 			actors: op.actors,
 			planned: !!op.planned,
+			startedBy: op.startedBy ?? null,
 			entryPoints: rows,
 		};
 	});
+	// A step another operation starts is reached through its parent's entry points (D8).
+	const rowsOf = new Map(operations.map((o) => [o.id, o.entryPoints]));
+	// A parent that is itself started by another reaches through that one's entry points.
+	const parentRows = (id, seen = new Set()) => {
+		const own = rowsOf.get(id) ?? [];
+		const up = opById.get(id)?.startedBy;
+		return own.length > 0 || !up || seen.has(up)
+			? own
+			: parentRows(up, seen.add(id));
+	};
+	for (const op of b.OPERATIONS) {
+		if (!op.startedBy) continue;
+		const parent = parentRows(op.startedBy);
+		if (!parent.some((r) => r.components.includes(op.home)))
+			add(
+				"op.not-started",
+				op.id,
+				`${op.id} is started by ${op.startedBy}, but no entry point of ${op.startedBy} reaches code in its home, ${op.home}.`,
+				parent.map((r) => r.where),
+			);
+	}
 
 	// ── Data stores ───────────────────────────────────────────────────────
 	const storeOf = new Map(b.DATA_STORES.map((d) => [d.collection, d]));

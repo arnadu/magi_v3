@@ -335,7 +335,7 @@ function listScheduleTool(deps: CopilotToolDeps): MagiTool {
 function listTemplatesTool(_deps: CopilotToolDeps): MagiTool {
 	return {
 		name: "ListTemplates",
-		operation: "platform.catalog",
+		operation: "platform.offerings",
 		description:
 			"List available mission team config templates. Templates are immutable " +
 			"(disk-authored, ADR-0021) — there is no version history to browse.",
@@ -351,7 +351,7 @@ function listTemplatesTool(_deps: CopilotToolDeps): MagiTool {
 function getTemplateTool(_deps: CopilotToolDeps): MagiTool {
 	return {
 		name: "GetTemplate",
-		operation: "platform.catalog",
+		operation: "platform.offerings",
 		description:
 			"Get the full config and associated files for a team config template.",
 		parameters: Type.Object({

@@ -22,7 +22,7 @@ function readMissionConfigTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadMissionConfig",
-		operation: "mission.config",
+		operation: "mission.read-config",
 		description:
 			"Read this mission's current team configuration — mission name/model, every agent's role/system prompt/skills — and its attached team files. Use before proposing any change.",
 		parameters: Type.Object({}),

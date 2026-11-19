@@ -15,18 +15,6 @@ export const PLATFORM_OPERATIONS = defineOperations([
 		],
 	},
 	{
-		id: "copilot.propose",
-		group: "copilot",
-		intent: "Propose a change for the operator to confirm",
-		actors: ["CC", "MC"],
-		home: "cp-copilot",
-		rules: [
-			"Validated against the action's schema when proposed and again when carried out",
-			"The label the operator sees is written by the server from the validated proposal",
-			"MC: issues and resource requests",
-		],
-	},
-	{
 		id: "copilot.confirm",
 		group: "copilot",
 		intent: "Accept a copilot's proposal",
@@ -34,6 +22,7 @@ export const PLATFORM_OPERATIONS = defineOperations([
 		home: "cp-copilot",
 		rules: [
 			"Carried out once, even if confirmed twice",
+			"Validated against the action's schema when proposed and again when carried out; the label the operator sees is written by the server",
 			"Carried out with the proposer's rights, never more",
 			"The proposer is told the outcome",
 		],
@@ -45,40 +34,6 @@ export const PLATFORM_OPERATIONS = defineOperations([
 		actors: ["OP"],
 		home: "cp-copilot",
 		rules: ["The proposer is told"],
-	},
-	{
-		id: "copilot.settings",
-		group: "copilot",
-		intent: "Configure one's own copilot",
-		actors: ["OP"],
-		home: "cp-copilot",
-		rules: [],
-	},
-	{
-		id: "copilot.limits",
-		group: "copilot",
-		intent: "Set one's own copilot's limits",
-		actors: ["OP"],
-		home: "cp-copilot",
-		rules: [],
-	},
-	{
-		id: "copilot.history",
-		group: "copilot",
-		intent:
-			"What one's copilot did: its turns, transcripts, model calls, files and usage",
-		actors: ["OP"],
-		home: "cp-copilot",
-		rules: ["One's own copilot only"],
-		read: true,
-	},
-	{
-		id: "copilot.wake",
-		group: "copilot",
-		intent: "Run a copilot when its mailbox has news",
-		actors: ["PLT"],
-		home: "cp-copilot",
-		rules: ["Within the copilot's limits", "One turn per copilot at a time"],
 	},
 	// ── Platform and account ────────────────────────────────────────────────
 	{
@@ -101,10 +56,11 @@ export const PLATFORM_OPERATIONS = defineOperations([
 		rules: [
 			"An alert is raised once per episode, not on every sample",
 			"One report per user per day, even across restarts",
+			"CC receives the platform's reports and alerts; MC those about its mission",
 		],
 	},
 	{
-		id: "platform.catalog",
+		id: "platform.offerings",
 		group: "platform",
 		intent: "Templates, models and tools on offer",
 		actors: ["OP", "CC"],

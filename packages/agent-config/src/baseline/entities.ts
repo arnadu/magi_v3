@@ -1,5 +1,6 @@
 import { defineEntity } from "./define-entity.js";
 import { LLM_CALL, TURN } from "./entities-record.js";
+import { RESOURCE_ENTITIES } from "./entities-resources.js";
 
 const mission = defineEntity({
 	id: "mission",
@@ -127,7 +128,7 @@ const mission = defineEntity({
 		},
 		{
 			id: "mission.way-out",
-			text: "Every state has a way out that the operator can reach from the cockpit.",
+			text: "Whatever state a mission is in, the operator can get it out of that state from the cockpit: no state is a dead end.",
 			enforcedBy: [],
 		},
 		{
@@ -137,22 +138,17 @@ const mission = defineEntity({
 		},
 		{
 			id: "mission.status-follows-machine",
-			text: "The stored status follows the machine's actual state, kept in step by the platform on a timer (`mission.reconcile`), never by reading a mission.",
-			enforcedBy: [],
-		},
-		{
-			id: "mission.error-recovery",
-			text: "A mission in `error` is recovered by the control copilot within a budget the platform enforces; beyond it, the copilot hands over to the operator. See `mission.resume`.",
+			text: "The status the cockpit shows is the machine's real state: when a machine stops or fails on its own, the platform notices on a timer and updates the status (`mission.reconcile`). Looking at a mission never changes it.",
 			enforcedBy: [],
 		},
 	],
 	notes:
-		"A draft is a mission in state `draft`. Budget pause is not a mission state: the mission keeps running and dispatches nothing until the cap is raised above the spend (see `mission.set-spend-cap`).",
+		"A draft is a mission in state `draft`, until editable templates replace drafts: a mission will then start at `provisioning`. Budget pause is not a mission state: the mission keeps running and dispatches nothing until the cap is raised above the spend (see `mission.set-spend-cap`).",
 });
 
 const agent = defineEntity({
 	id: "agent",
-	name: "Agent (within a mission)",
+	name: "Agent (within a mission), and the copilots",
 	store: {
 		kind: "other",
 		where:
@@ -258,7 +254,7 @@ const agent = defineEntity({
 		},
 	],
 	notes:
-		"The agent loop is the operations `agent.dispatch`, `agent.turn` and `agent.reflect`. A turn's work is the agent's tool calls, each an operation of its own.",
+		"The agent loop is the operations `agent.dispatch`, `agent.turn` and `agent.reflect`. A turn's work is the agent's tool calls, each an operation of its own. The copilots are agents with privileged access; the control copilot belongs to no mission, runs on the control plane and is stored there.",
 });
 
 const schedule = defineEntity({
@@ -330,12 +326,6 @@ const schedule = defineEntity({
 			id: "schedule.roster",
 			text: "Recipients are on the mission's roster.",
 			enforcedBy: [],
-		},
-		{
-			id: "schedule.job-author",
-			text: "A job schedule runs only as its author.",
-			enforcedBy: [],
-			decidedBy: "ADR-0033",
 		},
 	],
 	notes: "Either a message to agents or a job to run, one-off or recurring.",
@@ -456,7 +446,7 @@ const job = defineEntity({
 	invariants: [
 		{
 			id: "job.as-author",
-			text: "A job runs as its author, with no secrets.",
+			text: "A job runs as its author, with no secrets, whether its author submitted it or scheduled it; a job schedule names only its author.",
 			enforcedBy: [],
 			decidedBy: "ADR-0033",
 		},
@@ -480,8 +470,8 @@ const objective = defineEntity({
 	transitions: [],
 	invariants: [
 		{
-			id: "objective.tree",
-			text: "The objective tree has no duplicate ids, unknown parents or cycles.",
+			id: "objective.well-formed",
+			text: "Objectives and their tasks form one tree (no duplicate ids, unknown parents or cycles), and each is changed only by those entitled to: the objective tree by the copilots; a task by its assignee, its creator, the objective's owner or the mission copilot.",
 			enforcedBy: [],
 		},
 	],
@@ -506,14 +496,9 @@ const task = defineEntity({
 		{ id: "cancelled", meaning: "Dropped" },
 	],
 	transitions: [],
-	invariants: [
-		{
-			id: "task.who-updates",
-			text: "A task is updated by its assignee, its creator, the objective's owner, or MC.",
-			enforcedBy: [],
-		},
-	],
-	notes: "Its transitions are not yet specified.",
+	invariants: [],
+	notes:
+		"A piece of work under an objective, with an assignee and a status; agents create and update tasks with their objectives tools. `objective.well-formed` covers who may change it. Its transitions are not yet specified.",
 });
 
 const message = defineEntity({
@@ -561,6 +546,7 @@ export const ENTITIES = [
 	message,
 	TURN,
 	LLM_CALL,
+	...RESOURCE_ENTITIES,
 ] as const;
 
 export type EntityId = (typeof ENTITIES)[number]["id"];

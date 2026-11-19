@@ -22,9 +22,9 @@ export const ENTRY_CLASSES = defineEntryClasses([
 		why: "Local development only; the cockpit does not use them",
 	},
 	{
-		id: "sub-agent",
-		what: "Tools inside a sub-agent that an agent's tool call starts",
-		why: "They act within the calling operation, on the agent's behalf and within its budget",
+		id: "proposal",
+		what: "The copilot tool that carries a proposed action to the operator",
+		why: "Each action it carries is an entry point of its own, tagged with the operation it asks for (D6)",
 	},
 	{
 		id: "feed",

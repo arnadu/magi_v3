@@ -39,7 +39,7 @@ export function createMissionResourceRoutes(db: Db): Router {
 
 	routes.get(
 		"/:id/machine-runtime",
-		"mission.spend",
+		"spend.report",
 		async (req: Request, res: Response) => {
 			const missionId = req.params.id;
 			const mission = await missions.findOne({

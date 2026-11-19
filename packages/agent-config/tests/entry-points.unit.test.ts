@@ -31,6 +31,7 @@ describe("entry points", () => {
 		expect([...kinds].sort()).toEqual(
 			[
 				"copilot-action",
+				"file-request",
 				"monitor-route",
 				"route",
 				"tool",
@@ -73,8 +74,9 @@ describe("the entry-point scan", () => {
 			'schedule("* * * * *", tick);',
 			'schedule("*/5 * * * *", entryTrigger("oversight.alert", tick));',
 			"setInterval(() => sweep(), 1000);",
-			"function open() { const s = col.watch([]); s.on('change', entryTrigger('copilot.wake', f)); }",
+			"function open() { const s = col.watch([]); s.on('change', entryTrigger('agent.dispatch', f)); }",
 			"function bare() { col.watch([]).on('change', f); }",
+			'readdirSync(entryFile(["schedule.create", "schedule.cancel"], dirs.schedules));',
 		].join("\n"),
 	);
 	writeFileSync(
@@ -92,7 +94,15 @@ describe("the entry-point scan", () => {
 		expect(tagOf("GET /tagged")).toBe("mission.status");
 		expect(tagOf("POST /marked")).toBe("mission.launch");
 		expect(tagOf("cron */5 * * * *: tick")).toBe("oversight.alert");
-		expect(tagOf("change event")).toBe("copilot.wake");
+		expect(tagOf("change event")).toBe("agent.dispatch");
+		expect(
+			found
+				.filter((e) => e.kind === "file-request")
+				.map((e) => `${e.actor} ${e.name} ${e.tag}`),
+		).toEqual([
+			"AG files in dirs.schedules schedule.create",
+			"AG files in dirs.schedules schedule.cancel",
+		]);
 		expect(tagOf("Tagged")).toBe("agent.shell");
 	});
 

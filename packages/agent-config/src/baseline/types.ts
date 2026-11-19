@@ -147,6 +147,12 @@ export interface Operation<
 	/** A figure shown to its actors: it must agree wherever it is shown, and reading it never changes it. */
 	read?: boolean;
 	planned?: boolean;
+	/**
+	 * The operation that starts this one, when no actor asks for it directly
+	 * (D8): it needs no entry point of its own, and the trace checks that the
+	 * parent's entry points reach its home.
+	 */
+	startedBy?: O;
 }
 
 /**

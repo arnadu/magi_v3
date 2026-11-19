@@ -22,8 +22,8 @@ import type {
 } from "./types.js";
 
 export const BASELINE_STATUS: { status: BaselineStatus; since: string } = {
-	status: "draft",
-	since: "2026-11-14",
+	status: "approved",
+	since: "2026-11-19",
 };
 
 function cell(text: string): string {
@@ -177,6 +177,20 @@ const GROUP_TITLES: Record<OperationGroup, string> = {
 	platform: "Platform and account",
 };
 
+/** The definitions the catalog is kept by (approved 2026-11-19, docs/plans/catalog-review.md). */
+const DEFINITIONS = [
+	"**D1. Operation.** Something an actor can ask MAGI to do, or a figure it can ask to see (read). Requests with the same rules are one operation, whatever their entry point; different rules make different operations, even on the same data. Each operation has one home: the code every entry point serving it calls.",
+	'**D2. Rule.** A requirement on how an operation behaves, which its home enforces whoever asks: who may ask, what must be true first, what it does, or what happens on failure. A rule for one actor only starts with that actor ("AG: its own schedules only"). A reviewer checks the home against the rules, and a test that enforces one names it.',
+	"**D3. Actor.** Whoever reaches an entry point directly and decides for itself what to ask ([actors.md](actors.md)). An operation lists only the actors that can ask for it.",
+	'**D4. Asking through someone else** does not make an actor: the one who reaches the entry point is the actor, and a rule records the path ("AG asks through MC").',
+	'**D5. Wider authority is a rule, not an actor** ("ADM: all missions").',
+	'**D6. Confirmation is a rule, not an operation** ("CC: a proposal the operator confirms"). A copilot\'s proposal serves the operation it asks for.',
+	"**D7. Entry point.** Every place a request enters MAGI: a route, a tool, a copilot action, a Tool API name, a timer or event, and a file the daemon reads as a request (a job in `shared/jobs/pending/`, a schedule in `shared/schedules/`). Each declares the operation it serves, or an entry class; for a file request, the code that reads the file declares it.",
+	"**D8. A step started only by another operation** names it (started by) and needs no entry point of its own; the trace checks that the parent's entry points reach it.",
+	"**D9. Planned.** An operation the product needs and the code does not provide yet; the deviations the trace reports for it are expected until it is built.",
+	"**D10. Journeys** are an actor's goals end to end, the operator's and the agents' ([journeys.md](journeys.md)). Every operation an operator, a copilot or an agent asks for appears in at least one; only the platform's own may have none.",
+];
+
 const READ_RULE =
 	"The same figure wherever it is shown; reading never changes it";
 
@@ -184,8 +198,11 @@ function renderOperations(): string {
 	const parts = [
 		header(
 			"Operations",
-			'What actors can ask MAGI to do. An operation is defined by its intent; its rules hold whoever asks. **One operation per intent whose rules differ** (who may ask, what is checked, what it costs, what it changes): requests with the same rules are one operation whatever their entry point, and different rules make different operations even on the same data. Each operation has **one** implementation in the code (its home), in the component named here, and every entry point that serves it calls that home, adding only who may ask and how the result is shown ([code-structure practice](../practices/code-structure.md), "One operation, one home"). Every entry point declares the operation id it serves, or an entry class (end of this page). "(read)" marks a figure shown to its actors. Actors: [actors.md](actors.md); "CC" means a proposal the operator confirms.',
+			'What actors can ask MAGI to do, kept by hand: the catalog states what MAGI is meant to do, and every push is reconciled against it, each deviation resolved as a code fix or a catalog edit the product owner approves. Each operation has **one** implementation in the code (its home), in the component named here, and every entry point that serves it calls that home, adding only who may ask and how the result is shown ([code-structure practice](../practices/code-structure.md), "One operation, one home"). "(read)" marks a figure shown to its actors, "(planned)" one not built yet.',
 		),
+		"## Definitions",
+		"",
+		...DEFINITIONS.flatMap((d) => [d, ""]),
 	];
 	for (const group of Object.keys(GROUP_TITLES) as OperationGroup[]) {
 		const ops = OPERATIONS.filter((o) => o.group === group);
@@ -198,7 +215,7 @@ function renderOperations(): string {
 					code(o.id) +
 						(o.read ? " (read)" : "") +
 						(o.planned ? " (planned)" : ""),
-					o.intent,
+					o.intent + (o.startedBy ? ` Started by ${code(o.startedBy)}.` : ""),
 					list(o.actors),
 					code(o.home),
 					[...(o.read ? [READ_RULE] : []), ...o.rules].join("; "),
@@ -224,8 +241,8 @@ function renderOperations(): string {
 function renderJourneys(): string {
 	return [
 		header(
-			"Operator journeys",
-			"The journeys MAGI must support, the actors expected to complete each one, and the operations they use. A journey is verified by walking it for every expected actor: each step reachable, each hand-off reported back, the same result whoever asks. Each journey should have an end-to-end test or scenario that names its id.",
+			"Journeys",
+			"The journeys MAGI must support: the operator's (`J-`), with the copilots, and the agents' (`A-`); the actors expected to complete each one, and the operations they use. A journey is verified by walking it for every expected actor: each step reachable, each hand-off reported back, the same result whoever asks. Each journey should have an end-to-end test or scenario that names its id.",
 		),
 		table(
 			["Id", "Journey", "Actors", "Operations", "Note"],

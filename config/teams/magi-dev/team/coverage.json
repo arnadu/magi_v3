@@ -1,15 +1,13 @@
 {
 	"about": "Which findings of the trace are in each reviewer's area: a finding kind, optionally narrowed to baseline ids starting with a prefix (kind:prefix). Read by scripts/trace/decisions.mjs to build shared/analysis/findings-<agent>.md and to scope its `about` lookup. \"since\" sets aside an agent's decisions recorded before that time (a fresh start).",
 	"agents": {
-		"appsec": [
-			"sec.result",
-			"inv.unenforced:sec."
-		],
+		"appsec": ["sec.result", "inv.unenforced:sec."],
 		"code-reviewer": [
 			"op.home-not-reached",
 			"op.divergent-writes",
 			"store.foreign-writer",
-			"layer.against"
+			"layer.against",
+			"op.not-started"
 		],
 		"documenter": [
 			"status.unknown-state",

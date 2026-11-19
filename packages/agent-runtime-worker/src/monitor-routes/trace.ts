@@ -17,7 +17,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/mission-stats",
-			operation: "mission.spend",
+			operation: "spend.report",
 			async handler({ res }) {
 				const docs = await storedCollection(deps.db, "missionStats")
 					.find(
@@ -40,7 +40,7 @@ export function createTraceRoutes(deps: TraceRoutesDeps): RouteEntry[] {
 		{
 			method: "GET",
 			path: "/cost-series",
-			operation: "mission.spend",
+			operation: "spend.report",
 			// Per-agent per-turn stats, for the cost-over-time chart and its
 			// turn/file/anomaly markers — only finalized turns have a settled
 			// cost and duration.

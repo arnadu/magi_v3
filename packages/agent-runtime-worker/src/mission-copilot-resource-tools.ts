@@ -9,7 +9,7 @@ function readMissionCostSeriesTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadMissionCostSeries",
-		operation: "mission.spend",
+		operation: "spend.report",
 		description:
 			"Per-turn cost series for the mission, optionally filtered to one agent — the same data backing the cockpit's Trace chart. Also the spend side of the alignment-review cost-vs-progress cross-check. Defaults to the most recent 100 turns across the mission, not its entire lifetime.",
 		parameters: Type.Object({
@@ -50,7 +50,7 @@ function readMissionLifetimeStatsTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { db, missionId } = deps;
 	return {
 		name: "ReadMissionLifetimeStats",
-		operation: "mission.spend",
+		operation: "spend.report",
 		description: "Lifetime cost/call/turn totals per agent.",
 		parameters: Type.Object({}),
 		async execute() {

@@ -63,7 +63,7 @@ export function createPlatformRoutes(db: Db): Router {
 	const router = createRouter();
 	const appRoutes = asyncRoutes(router);
 	// Per-user LLM usage summary (admin sees all missions).
-	appRoutes.get("/api/usage", "account.usage", async (req, res) => {
+	appRoutes.get("/api/usage", "spend.report", async (req, res) => {
 		const filter = req.isAdmin ? {} : { userId: req.userId };
 		const missions = await storedCollection(db, "missions")
 			.find(filter, {
@@ -83,7 +83,7 @@ export function createPlatformRoutes(db: Db): Router {
 		);
 	});
 
-	appRoutes.get("/api/models", "platform.catalog", async (_req, res) => {
+	appRoutes.get("/api/models", "platform.offerings", async (_req, res) => {
 		const openrouter = await fetchOpenRouterCatalog();
 		res.json({ anthropic: ANTHROPIC_MODELS, openrouter });
 	});

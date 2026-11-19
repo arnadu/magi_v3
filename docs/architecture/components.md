@@ -2,7 +2,7 @@
 
 # Components
 
-**Draft since 2026-11-14, awaiting the product owner's approval.** The architecture baseline: the components MAGI is built from, each with its layer, its responsibility and the source paths it owns. A component builds on components of lower layers in its plane, and on `config`; an import of the same or a higher layer runs against the layering. The product baseline ([../product/](../product/README.md)) says what MAGI does; this says how it is built. Each operation's home lies in exactly one component. Every source file under a root belongs to exactly one component (tests excluded): `dir/` owns a directory, `**` the whole root, anything else is a glob on the path under the root.
+**Approved 2026-11-19.** The architecture baseline: the components MAGI is built from, each with its layer, its responsibility and the source paths it owns. A component builds on components of lower layers in its plane, and on `config`; an import of the same or a higher layer runs against the layering. The product baseline ([../product/](../product/README.md)) says what MAGI does; this says how it is built. Each operation's home lies in exactly one component. Every source file under a root belongs to exactly one component (tests excluded): `dir/` owns a directory, `**` the whole root, anything else is a glob on the path under the root.
 
 ## Control plane
 

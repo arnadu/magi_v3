@@ -104,14 +104,9 @@ export const LLM_CALL = defineEntity({
 	invariants: [
 		{
 			id: "llm-call.recorded",
-			text: "Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time.",
+			text: "Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time, and its full input and output are kept for the retention period the operator sets.",
 			enforcedBy: [],
 			decidedBy: "ADR-0017",
-		},
-		{
-			id: "llm-call.bodies-kept",
-			text: "The full input and output of each call are kept for the retention period the operator sets.",
-			enforcedBy: [],
 			open: "The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full",
 		},
 		{

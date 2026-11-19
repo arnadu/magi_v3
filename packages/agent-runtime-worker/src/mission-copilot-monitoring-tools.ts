@@ -62,7 +62,7 @@ function readAgentUsageTool(deps: MissionCopilotToolDeps): MagiTool {
 	const { monitorGet } = deps;
 	return {
 		name: "ReadAgentUsage",
-		operation: "mission.spend",
+		operation: "spend.report",
 		description:
 			'Lightweight per-call summary for one agent — model, token counts, and cost for the last 90 days; which tool names were offered only for the last day (older calls show "toolNames" absent, not empty — the call body has aged out of retention). Not the tool call bodies or message content. Use this before reaching for ReadAgentSessionDetail/ReadAgentLlmCall, not instead of them. Optionally scoped to one turn.',
 		parameters: Type.Object({

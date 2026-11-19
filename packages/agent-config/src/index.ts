@@ -4,7 +4,11 @@ export type {
 	LlmCallSummary,
 	TranscriptEntry,
 } from "./api/transcripts.js";
-export { type EntryTag, entryTrigger } from "./baseline/entry-tag.js";
+export {
+	type EntryTag,
+	entryFile,
+	entryTrigger,
+} from "./baseline/entry-tag.js";
 export * as baseline from "./baseline/index.js";
 export { applyTeamConfigPatch, type TeamConfigPatch } from "./config-patch.js";
 export {

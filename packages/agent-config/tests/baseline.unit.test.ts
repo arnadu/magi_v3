@@ -109,16 +109,26 @@ describe("baseline catalog", () => {
 		expect(dead).toEqual([]);
 	});
 
-	it("puts every operation the operator or a copilot can ask for in a journey", () => {
-		// Operations asked only by agents, jobs or the platform are steps
-		// inside the team's own work; the journeys that depend on them cover
-		// them.
-		const operatorSide = new Set(["OP", "ADM", "CC", "MC"]);
+	it("puts every operation an actor asks for in a journey (D10)", () => {
+		// Only the platform's own operations (timers, events, steps another
+		// operation starts) may have no journey; their rules check them.
 		const inJourney = new Set<string>(JOURNEYS.flatMap((j) => j.operations));
 		const without = OPERATIONS.filter(
-			(o) => o.actors.some((a) => operatorSide.has(a)) && !inJourney.has(o.id),
+			(o) => o.actors.some((a) => a !== "PLT") && !inJourney.has(o.id),
 		).map((o) => o.id);
 		expect(without).toEqual([]);
+	});
+
+	it("names an existing parent for a step another operation starts (D8)", () => {
+		const ids = new Set<string>(OPERATIONS.map((o) => o.id));
+		const wrong = OPERATIONS.filter(
+			(o) =>
+				o.startedBy !== undefined &&
+				(!ids.has(o.startedBy) ||
+					o.startedBy === o.id ||
+					o.actors.some((a) => a !== "PLT")),
+		).map((o) => o.id);
+		expect(wrong).toEqual([]);
 	});
 
 	it("gives every collection exactly one data store, with its owner", () => {

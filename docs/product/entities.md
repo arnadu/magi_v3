@@ -2,13 +2,13 @@
 
 # Entities and their states
 
-**Draft since 2026-11-14, awaiting the product owner's approval.** What actors work with, each one's states, and the transitions the product intends. "Stored as" is the join with the code. A status write the code makes that is not a transition below is a finding, and so is a transition below that no code makes.
+**Approved 2026-11-19.** What actors work with, each one's states, and the transitions the product intends. "Stored as" is the join with the code. A status write the code makes that is not a transition below is a finding, and so is a transition below that no code makes.
 
 ## Mission (`mission`)
 
 Stored as `missions` (`MissionDoc`, field `status`).
 
-A draft is a mission in state `draft`. Budget pause is not a mission state: the mission keeps running and dispatches nothing until the cap is raised above the spend (see `mission.set-spend-cap`).
+A draft is a mission in state `draft`, until editable templates replace drafts: a mission will then start at `provisioning`. Budget pause is not a mission state: the mission keeps running and dispatches nothing until the cap is raised above the spend (see `mission.set-spend-cap`).
 
 | State | Meaning |
 |---|---|
@@ -38,16 +38,15 @@ A draft is a mission in state `draft`. Budget pause is not a mission state: the 
 
 Invariants:
 - `mission.capped`: A mission never runs without a spend cap, and the cap is never above its ceiling. *(not yet enforced; decided in ADR-0034)*
-- `mission.way-out`: Every state has a way out that the operator can reach from the cockpit. *(not yet enforced)*
+- `mission.way-out`: Whatever state a mission is in, the operator can get it out of that state from the cockpit: no state is a dead end. *(not yet enforced)*
 - `mission.work-kept`: A mission's volume (its work) survives every transition. Missions are not deleted: suspend is the end state until archive exists (decision D-6); archive will stop all costs and keep the results readable. *(not yet enforced)*
-- `mission.status-follows-machine`: The stored status follows the machine's actual state, kept in step by the platform on a timer (`mission.reconcile`), never by reading a mission. *(not yet enforced)*
-- `mission.error-recovery`: A mission in `error` is recovered by the control copilot within a budget the platform enforces; beyond it, the copilot hands over to the operator. See `mission.resume`. *(not yet enforced)*
+- `mission.status-follows-machine`: The status the cockpit shows is the machine's real state: when a machine stops or fails on its own, the platform notices on a timer and updates the status (`mission.reconcile`). Looking at a mission never changes it. *(not yet enforced)*
 
-## Agent (within a mission) (`agent`)
+## Agent (within a mission), and the copilots (`agent`)
 
 Stored in: The mission's configuration (`agents`, the roster) and the daemon's dispatch state.
 
-The agent loop is the operations `agent.dispatch`, `agent.turn` and `agent.reflect`. A turn's work is the agent's tool calls, each an operation of its own.
+The agent loop is the operations `agent.dispatch`, `agent.turn` and `agent.reflect`. A turn's work is the agent's tool calls, each an operation of its own. The copilots are agents with privileged access; the control copilot belongs to no mission, runs on the control plane and is stored there.
 
 | State | Meaning |
 |---|---|
@@ -103,7 +102,6 @@ Either a message to agents or a job to run, one-off or recurring.
 Invariants:
 - `schedule.min-interval`: A recurring schedule fires at most every 5 minutes, whoever creates it. *(not yet enforced)*
 - `schedule.roster`: Recipients are on the mission's roster. *(not yet enforced)*
-- `schedule.job-author`: A job schedule runs only as its author. *(not yet enforced; decided in ADR-0033)*
 
 ## Pending action (a copilot's proposal) (`pending-action`)
 
@@ -146,7 +144,7 @@ Stored in: Files under `shared/jobs/`; the daemon's private record is authoritat
 | — | restart a failed or cancelled job, as a new job | `pending` | MC | Same script and author as the original |
 
 Invariants:
-- `job.as-author`: A job runs as its author, with no secrets. *(not yet enforced; decided in ADR-0033)*
+- `job.as-author`: A job runs as its author, with no secrets, whether its author submitted it or scheduled it; a job schedule names only its author. *(not yet enforced; decided in ADR-0033)*
 
 ## Objective (`objective`)
 
@@ -162,13 +160,13 @@ The objective tree is edited by CC and MC. Its transitions are not yet specified
 | `abandoned` | Dropped |
 
 Invariants:
-- `objective.tree`: The objective tree has no duplicate ids, unknown parents or cycles. *(not yet enforced)*
+- `objective.well-formed`: Objectives and their tasks form one tree (no duplicate ids, unknown parents or cycles), and each is changed only by those entitled to: the objective tree by the copilots; a task by its assignee, its creator, the objective's owner or the mission copilot. *(not yet enforced)*
 
 ## Task (`task`)
 
 Stored as `objectivesEvents` (`TaskEvent`).
 
-Its transitions are not yet specified.
+A piece of work under an objective, with an assignee and a status; agents create and update tasks with their objectives tools. `objective.well-formed` covers who may change it. Its transitions are not yet specified.
 
 | State | Meaning |
 |---|---|
@@ -178,9 +176,6 @@ Its transitions are not yet specified.
 | `completed` | Done |
 | `deferred` | Postponed |
 | `cancelled` | Dropped |
-
-Invariants:
-- `task.who-updates`: A task is updated by its assignee, its creator, the objective's owner, or MC. *(not yet enforced)*
 
 ## Message (`message`)
 
@@ -241,9 +236,81 @@ Stored as `llmCallLog` (`LlmCallLogEntry`).
 | `recorded` | the retention period ends | `summarized` | PLT |  |
 
 Invariants:
-- `llm-call.recorded`: Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time. *(not yet enforced; decided in ADR-0017)*
-- `llm-call.bodies-kept`: The full input and output of each call are kept for the retention period the operator sets. *(not yet enforced; **open decision:** The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full)*
+- `llm-call.recorded`: Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time, and its full input and output are kept for the retention period the operator sets. *(not yet enforced; decided in ADR-0017; **open decision:** The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full)*
 - `llm-call.cost-counted`: Every recorded call's cost counts against its mission's spend. *(not yet enforced; decided in ADR-0017)*
+
+## Template (planned: editable templates, on the roadmap) (`template`)
+
+Stored in: Today: read-only files in `config/teams/` (ADR-0021). Planned: a database collection, with the preset templates loaded into it at install.
+
+Everything needed to start a mission: its parameters, the roster, the objective tree, and each agent's prompt, tasks, initial mental map, tools and skills. Every template is visible to every operator.
+
+| State | Meaning |
+|---|---|
+
+Invariants:
+- `template.decoupled`: Once launched, a mission is independent of its template: a change to either never reaches the other. *(not yet enforced)*
+
+## Mission machine (`machine`)
+
+Stored as `machineSegments` (`MachineSegment`).
+
+One stored segment per stretch the machine ran with one size; the runtime by size and the allowance are computed from them.
+
+| State | Meaning |
+|---|---|
+| `default` | Running on the mission's own size |
+| `upgraded` | Running bigger for a while |
+
+| From | Event | To | Who | Note |
+|---|---|---|---|---|
+| `default` | upgrade | `upgraded` | MC |  |
+| `upgraded` | revert on time | `default` | PLT |  |
+
+Invariants:
+- `machine.upgrade-bounded`: An upgrade reverts on time, and a mission's upgrades stay within the daily allowance until the operator resets it. *(not yet enforced; decided in ADR-0031)*
+
+## Mental map (`mental-map`)
+
+Stored in: Saved with the agent's conversation (`conversationMessages`).
+
+An agent's working memory, in its prompt every turn.
+
+| State | Meaning |
+|---|---|
+
+Invariants:
+- `mental-map.platform-regions`: The regions the platform manages are written by the platform only; the agent edits its own sections. *(not yet enforced)*
+- `mental-map.edit-between-turns`: An operator's or a copilot's edit to an agent's mental map never lands during that agent's turn. *(not yet enforced)*
+
+## Mission file (`file`)
+
+Stored in: The mission's volume: the shared folder and each agent's workdir, with the history of each file.
+
+Who changed a file and when is the platform invariant `files.attributed`.
+
+| State | Meaning |
+|---|---|
+
+## Resource alert (`alert`)
+
+Stored as `resourceAlertState` (`AlertState`).
+
+One per mission (or the platform) and category. The control copilot receives the platform's alerts and reports; the mission copilot those about its mission.
+
+| State | Meaning |
+|---|---|
+| `raised` | The condition holds; its recipients were told |
+| `cleared` | The condition no longer holds |
+
+| From | Event | To | Who | Note |
+|---|---|---|---|---|
+| — | condition met | `raised` | PLT |  |
+| `raised` | condition gone | `cleared` | PLT |  |
+| `cleared` | condition met again | `raised` | PLT |  |
+
+Invariants:
+- `alert.once-per-episode`: An alert is raised once per episode, not on every sample, and the daily report is sent once per user per day, even across restarts. *(not yet enforced; decided in ADR-0032)*
 
 ## Platform-wide invariants
 

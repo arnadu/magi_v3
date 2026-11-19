@@ -38,7 +38,7 @@ export function registerCopilotLimitsRoutes(
 ): void {
 	routes.get(
 		"/limits",
-		"copilot.limits",
+		"mission.change-config",
 		async (req: Request, res: Response) => {
 			const missionId = `copilot-${req.userId}`;
 			const [cap, spentUsd] = await Promise.all([
@@ -63,7 +63,7 @@ export function registerCopilotLimitsRoutes(
 	// remove it (CST-3), and above the platform ceiling only an admin may go.
 	routes.patch(
 		"/limits",
-		"copilot.limits",
+		"mission.change-config",
 		async (req: Request, res: Response) => {
 			const { capUsd } = req.body as { capUsd?: number | null };
 			if (

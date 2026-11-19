@@ -21,6 +21,7 @@ import {
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildDatabase, codeqlPath, runPack, runSecurity } from "./codeql.mjs";
@@ -130,12 +131,20 @@ if (!flag("--no-security")) {
 
 step("join");
 const imports = componentImports(b, ROOT);
+// The control copilot runs as an agent with every agent tool but these.
+const { parse: parseYaml } = createRequire(
+	join(ROOT, "packages/agent-config/package.json"),
+)("yaml");
+const copilotConfig = parseYaml(
+	readFileSync(join(ROOT, "config/teams/copilot.yaml"), "utf8"),
+);
 const result = computeFindings(
 	b,
 	entries,
 	writes,
 	sarif,
 	againstLayering(b, imports.edges),
+	{ copilotDisabledTools: copilotConfig.agents?.[0]?.disabledTools ?? [] },
 );
 markNew(result.findings, previous);
 

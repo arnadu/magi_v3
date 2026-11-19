@@ -150,7 +150,7 @@ type OperationId = baseline.OperationId;
 
 /** The operation each action serves (ADR-0036); every action names one. */
 export const ACTION_OPERATIONS: Record<ActionType, OperationId> = {
-	launch_mission: "mission.create",
+	launch_mission: "mission.launch",
 	launch_draft: "mission.launch",
 	suspend_mission: "mission.suspend",
 	resume_mission: "mission.resume",

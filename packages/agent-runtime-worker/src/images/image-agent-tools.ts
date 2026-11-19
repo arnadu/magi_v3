@@ -180,7 +180,7 @@ function generateTool(run: JobRun): MagiTool {
 	const generate = deps.generate ?? ((r) => generateImage(r));
 	return {
 		name: "generate_image",
-		operation: "sub-agent",
+		operation: "image.create",
 		description:
 			"Generate one image with a menu model. Refused once the job's image count or budget is reached.",
 		parameters: GENERATE_PARAMS,
@@ -308,7 +308,7 @@ function critiqueTool(run: JobRun): MagiTool {
 	const { deps, req, job } = run;
 	return {
 		name: "critique_candidates",
-		operation: "sub-agent",
+		operation: "image.create",
 		description:
 			"Look at candidates side by side and get a critique against the brief: defects, scores, and a refinement instruction.",
 		parameters: CRITIQUE_PARAMS,
@@ -389,7 +389,7 @@ function finishTool(run: JobRun): MagiTool {
 	const m = run.job.manifest;
 	return {
 		name: "finish",
-		operation: "sub-agent",
+		operation: "image.create",
 		description:
 			"End the job: record the summary, the recommended candidates and a note per candidate.",
 		parameters: FINISH_PARAMS,

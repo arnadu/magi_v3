@@ -45,6 +45,7 @@ import {
 } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import {
+	entryFile,
 	SCHEDULE_ORIGIN,
 	type ScheduledJobSpec,
 	type ScheduledMessageDoc,
@@ -463,7 +464,10 @@ async function ingestSchedules(ctx: IngestContext): Promise<IngestSummary> {
 	ctx.collect = (file, reason) => summary.rejected.push({ file, reason });
 	const seen: string[] = [];
 	try {
-		for (const file of readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+		const files = readdirSync(
+			entryFile(["schedule.create", "schedule.cancel"], dir),
+		);
+		for (const file of files.filter((f) => f.endsWith(".json"))) {
 			const read = readScheduleFile(ctx, dir, file);
 			if (!read) continue;
 			seen.push(read.label);

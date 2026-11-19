@@ -35,7 +35,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import type { TeamConfig } from "@magi/agent-config";
+import { entryFile, type TeamConfig } from "@magi/agent-config";
 import {
 	killJobGroup,
 	registerRunningJob,
@@ -299,8 +299,8 @@ export async function runPendingJobs(deps: JobRunnerDeps): Promise<void> {
 
 	const candidates: Array<() => Claimed | null> = [];
 	try {
-		for (const f of readdirSync(dirs.pending).filter((f) =>
-			f.endsWith(".json"),
+		for (const f of readdirSync(entryFile("job.submit", dirs.pending)).filter(
+			(f) => f.endsWith(".json"),
 		)) {
 			candidates.push(() => claimPending(f, deps, dirs));
 		}

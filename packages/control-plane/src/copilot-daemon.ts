@@ -440,7 +440,7 @@ function waitForMailboxInsert(
 		signal.addEventListener("abort", onAbort, { once: true });
 		stream.once(
 			"change",
-			entryTrigger("copilot.wake", () => {
+			entryTrigger("agent.dispatch", () => {
 				signal.removeEventListener("abort", onAbort);
 				stream.close().catch(() => {});
 				resolve();
