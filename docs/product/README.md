@@ -1,6 +1,8 @@
 # MAGI product baseline
 
-**Status: draft since 2026-11-14,** awaiting the product owner's review.
+**Status: approved 2026-11-19** by the product owner, after two rounds of review
+([catalog-review.md](../plans/catalog-review.md): the definitions the catalog is kept by, and each
+decision).
 
 This folder says what MAGI is meant to do: who uses it, what they work with, what they can ask
 for, and the journeys they take. It is the **intended** model. The code is the **as-built**
@@ -22,7 +24,7 @@ catalog, not the tables.** This README is the only hand-written page.
 | [actors.md](actors.md) | Who can ask MAGI for something, and how they reach it | `OP`, `CC`, `MC`, … |
 | [entities.md](entities.md) | What they work with; where each is stored, its states, allowed transitions and invariants; the platform-wide and security invariants | `mission`, `turn`, …; invariants `mission.capped`, `platform.no-memory-only-state`, `sec.authenticated`, … |
 | [operations.md](operations.md) | What each actor can ask for, the rules that hold whoever asks, and the component meant to hold its one implementation; the entry classes for entry points that serve no operation | `mission.launch`, …; `infrastructure`, … |
-| [journeys.md](journeys.md) | The operator journeys, as sequences of operations | `J-01`, … |
+| [journeys.md](journeys.md) | The operator's journeys (with the copilots) and the agents' own, as sequences of operations | `J-01`, …; `A-01`, … |
 | [../architecture/components.md](../architecture/components.md) | The components and the source paths each owns; the data stores and the one component that writes each; the external systems; dependency rules | `cp-api`, `mm-state`, `ui-files`, … |
 
 ## How it is used
@@ -58,11 +60,10 @@ catalog, not the tables.** This README is the only hand-written page.
 
 - **Open decisions on invariants**, to be settled in one ADR on the durable record and crash
   recovery: how long the full input and output of model calls are kept, and where
-  (`llm-call.bodies-kept`); whether an interrupted turn is resumed or closed
+  (`llm-call.recorded`); whether an interrupted turn is resumed or closed
   (`turn.no-silent-loss`).
 - **Decision D-6** (missions are not deleted), behind `mission.work-kept`, has no ADR.
-- **Drafted 2026-11-16, to review:** the cockpit's ten components, the owner of each data store,
-  the external systems, the security invariants.
+- **Where the code falls short of the catalog:** the roadmap's "Backlog: catalog gaps".
 - **The threat model and the trust-boundaries table** still state their guards in their own
   words; they will cite the security invariants by id.
 - **Transitions of objectives and tasks** are not yet specified.

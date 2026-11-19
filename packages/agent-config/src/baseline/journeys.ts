@@ -31,7 +31,7 @@ export const JOURNEYS = defineJourneys([
 		note: "Only a unique mission name is asked for (decision 6); `template.browse` when editable templates ship",
 	},
 	{
-		id: "J-03",
+		id: "J-21",
 		title: "Design a template with the control copilot, then launch it",
 		actors: ["OP", "CC"],
 		operations: [

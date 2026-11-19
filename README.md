@@ -341,6 +341,37 @@ npm run lint
 
 ---
 
+## Traceability: intent and code
+
+What MAGI is meant to do is written down as a catalog, approved by the product owner on
+2026-11-19: the actors, the entities and their states, the operations each actor can ask for
+with the rules that hold whoever asks, the operator's and the agents' journeys, and the
+components that own the code. Its source is typed data in
+[`packages/agent-config/src/baseline/`](packages/agent-config/src/baseline/); the pages in
+[docs/product/](docs/product/README.md) and
+[docs/architecture/components.md](docs/architecture/components.md) are rendered from it by
+`npm run docs:baseline`, and a test fails when they are stale.
+
+- **Every entry point names its operation:** each route, tool, copilot action, Tool API name,
+  timer, and directory agents write job or schedule files into declares the operation it
+  serves, or an entry class when it serves none. The compiler and a test reject a missing or
+  unknown tag.
+- **`npm run trace` compares the code with the catalog** (TypeScript compiler and CodeQL):
+  entry points that never reach their operation's implementation, database writes by a
+  component that does not own the collection, status changes the catalog does not allow,
+  invariants nothing is named to enforce, and security results. Reports go to `analysis/`
+  (not committed). CI runs it on every push, report-only: it never blocks a deploy.
+- **Each deviation is resolved** as a code fix or a catalog change the product owner approves.
+  The [MAGI DEV](docs/plans/magi-dev-requirements.md) reviewer agents receive the findings in
+  their area and use them as leads for their reviews.
+
+More: [ADR-0036](docs/adr/0036-product-and-architecture-baselines.md) (the design),
+[docs/practices/traceability.md](docs/practices/traceability.md) (how to tag an entry point and
+run the trace), [docs/plans/catalog-review.md](docs/plans/catalog-review.md) (the definitions
+and the decisions behind the catalog).
+
+---
+
 ## Repository layout
 
 ```

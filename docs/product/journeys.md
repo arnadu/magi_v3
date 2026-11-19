@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | J-01 | Sign in, see my missions, sign out | OP | `session.sign-in`, `mission.status`, `session.sign-out` |  |
 | J-02 | Launch a mission from a template | OP | `platform.offerings`, `template.browse`, `mission.launch` | Only a unique mission name is asked for (decision 6); `template.browse` when editable templates ship |
-| J-03 | Design a template with the control copilot, then launch it | OP, CC | `platform.offerings`, `template.browse`, `template.create`, `template.edit`, `mission.create-draft`, `mission.edit-draft`, `objectives.edit`, `copilot.ask`, `copilot.confirm`, `mission.launch` | Blank, cloned from a template, or from a running mission. Until editable templates ship, a draft stands for the template |
+| J-21 | Design a template with the control copilot, then launch it | OP, CC | `platform.offerings`, `template.browse`, `template.create`, `template.edit`, `mission.create-draft`, `mission.edit-draft`, `objectives.edit`, `copilot.ask`, `copilot.confirm`, `mission.launch` | Blank, cloned from a template, or from a running mission. Until editable templates ship, a draft stands for the template |
 | J-04 | Change a running mission, with the copilots | OP, CC, MC | `mission.read-config`, `mission.change-config`, `mission.set-spend-cap`, `agent.pause`, `agent.resume`, `mission.suspend`, `mission.resume` | `mission.change-config` while it runs; suspend and resume only for a change that needs all activity stopped |
 | J-06 | Schedule recurring work | OP, CC, MC, AG | `schedule.create`, `schedule.list`, `schedule.cancel`, `mission.wake` |  |
 | J-07 | Browse a mission's files and results, and download them | OP, CC, MC | `file.read`, `file.download`, `message.read`, `objectives.progress` | Where the mission's work is rendered |

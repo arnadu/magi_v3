@@ -14,7 +14,7 @@ Actors: **O** the operator in the cockpit · **CC** the control-plane copilot (o
 |---|---|---|---|
 | J-01 | Sign in, see my missions, sign out | O | Google sign-in, missions list with status, sign out |
 | J-02 | Launch a mission from a template | O | Browse the templates and what each holds; launch one with only a mission name; it runs |
-| J-03 | Design a template with the control copilot, then launch it | O, CC | Describe the goal; a template (today a draft) is made blank, cloned or from a mission; the copilot and the operator edit it; launched; first run checked |
+| J-21 | Design a template with the control copilot, then launch it | O, CC | Describe the goal; a template (today a draft) is made blank, cloned or from a mission; the copilot and the operator edit it; launched; first run checked |
 | J-04 | Change a running mission, with the copilots | O, CC, MC | Change agents, prompts, model, cap or settings while it runs; only an agent whose mental map changes is paused; changes take effect and the operator is told |
 | J-06 | Schedule recurring work | O (through CC), CC, MC, A | A recurring duty fires on time, reaches the right agent, survives a suspend |
 | J-07 | Browse a mission's files and results, and download them | O, CC, MC | Find the deliverables, rendered; the agents' messages; the objectives' progress; download |
