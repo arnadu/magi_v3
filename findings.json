@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "c6bb0a2",
-  "time": "2026-11-19T13:30:02Z"
+  "commit": "8996cee",
+  "time": "2026-11-19T17:22:52Z"
  },
  "findings": [
   {
@@ -147,7 +147,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "03af60ad4f5b",
@@ -273,7 +273,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "0f3c2b0bb146",
@@ -437,7 +437,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "24179aa24d2b",
@@ -666,7 +666,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "791b9cb16505",
@@ -815,7 +815,7 @@
    "about": "spend.report",
    "text": "CC is an actor of spend.report, but no entry point serves CC.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "0ff808638479",
@@ -938,7 +938,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "2e3b8b11f58f",
@@ -1064,7 +1064,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "253c63c970e5",
@@ -1215,7 +1215,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "caf258c3bc5c",
@@ -1524,7 +1524,7 @@
      "unresolved": []
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "0e21759d801b",
@@ -1820,7 +1820,7 @@
      "unresolved": []
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "97df0c6f99f8",
@@ -1921,7 +1921,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "067ca5ada4bc",
@@ -1941,7 +1941,7 @@
      "unresolved": []
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "a54b96582b6f",
@@ -1961,7 +1961,7 @@
      "unresolved": []
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "ea5b815b0414",
@@ -2020,7 +2020,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "a4533dcec820",
@@ -2064,7 +2064,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "e2f9361914c6",
@@ -2132,7 +2132,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "c2b2c118fa21",
@@ -2192,7 +2192,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "69058bc29f38",
@@ -3447,7 +3447,7 @@
    "about": "objective.well-formed",
    "text": "The catalog names nothing that enforces objective.well-formed (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "d7299b9377d7",
@@ -3503,7 +3503,7 @@
    "about": "template.decoupled",
    "text": "The catalog names nothing that enforces template.decoupled (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "f95ae210dfa4",
@@ -3511,7 +3511,7 @@
    "about": "machine.upgrade-bounded",
    "text": "The catalog names nothing that enforces machine.upgrade-bounded (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "68f32e1d645f",
@@ -3519,7 +3519,7 @@
    "about": "mental-map.platform-regions",
    "text": "The catalog names nothing that enforces mental-map.platform-regions (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "d025596dd6d5",
@@ -3527,7 +3527,7 @@
    "about": "mental-map.edit-between-turns",
    "text": "The catalog names nothing that enforces mental-map.edit-between-turns (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "e102fb60b998",
@@ -3535,7 +3535,7 @@
    "about": "alert.once-per-episode",
    "text": "The catalog names nothing that enforces alert.once-per-episode (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "14ad8324cf7f",
@@ -3570,98 +3570,10 @@
    "new": false
   },
   {
-   "key": "d4cb0d24dc47",
-   "kind": "inv.unenforced",
-   "about": "sec.authenticated",
-   "text": "The catalog names nothing that enforces sec.authenticated (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "4e0593e73f38",
-   "kind": "inv.unenforced",
-   "about": "sec.authorized",
-   "text": "The catalog names nothing that enforces sec.authorized (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "d8ad837f54b8",
-   "kind": "inv.unenforced",
-   "about": "sec.tenant-scoped",
-   "text": "The catalog names nothing that enforces sec.tenant-scoped (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "7fbc3e858e7f",
-   "kind": "inv.unenforced",
-   "about": "sec.no-secrets-to-agents",
-   "text": "The catalog names nothing that enforces sec.no-secrets-to-agents (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
    "key": "88d3d6708bbe",
    "kind": "inv.unenforced",
    "about": "sec.secrets-not-recorded",
    "text": "The catalog names nothing that enforces sec.secrets-not-recorded (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "2f042e248dc3",
-   "kind": "inv.unenforced",
-   "about": "sec.contained-paths",
-   "text": "The catalog names nothing that enforces sec.contained-paths (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "f794d2b71037",
-   "kind": "inv.unenforced",
-   "about": "sec.safe-egress",
-   "text": "The catalog names nothing that enforces sec.safe-egress (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "3e68a4dbf621",
-   "kind": "inv.unenforced",
-   "about": "sec.input-validated",
-   "text": "The catalog names nothing that enforces sec.input-validated (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "eb6d3651b5d6",
-   "kind": "inv.unenforced",
-   "about": "sec.untrusted-text-labelled",
-   "text": "The catalog names nothing that enforces sec.untrusted-text-labelled (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "4842414068d7",
-   "kind": "inv.unenforced",
-   "about": "sec.output-safe",
-   "text": "The catalog names nothing that enforces sec.output-safe (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "65841ea2eb0d",
-   "kind": "inv.unenforced",
-   "about": "sec.least-privilege",
-   "text": "The catalog names nothing that enforces sec.least-privilege (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "b130fbebf738",
-   "kind": "inv.unenforced",
-   "about": "sec.confirmed-effects",
-   "text": "The catalog names nothing that enforces sec.confirmed-effects (its enforcedBy is empty).",
    "where": [],
    "new": false
   }
