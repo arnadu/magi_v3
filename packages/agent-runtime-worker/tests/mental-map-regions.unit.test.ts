@@ -46,7 +46,7 @@ describe("file-fed mental-map regions", () => {
 		expect(syncFileRegions({ id: "a" }, "m", shared, MAP, NOW)).toBeNull();
 	});
 
-	it("shows the file as escaped text, labelled as data, keeping the agent's sections", () => {
+	it("sec.untrusted-text-labelled: shows the file as escaped text, labelled as data, keeping the agent's sections", () => {
 		write("analysis/todo.md", "- fix <script>alert(1)</script> & more");
 		const html = syncFileRegions(
 			agent([

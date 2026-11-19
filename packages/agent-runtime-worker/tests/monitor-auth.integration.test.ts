@@ -126,7 +126,7 @@ describe("MONITOR_TOKEN set", () => {
 		await cleanup(client, missionId);
 	});
 
-	it("every registered route — GETs and SSE included — returns 401 without the token", async () => {
+	it("sec.authenticated: every registered route — GETs and SSE included — returns 401 without the token", async () => {
 		// Enumerates the live route table so a route added later cannot be
 		// unauthenticated by omission. Regex routes get a dummy segment; the
 		// body/params do not matter because the gate runs before any handler.

@@ -100,7 +100,7 @@ describe("safeGet", () => {
 		expect(r.finalUrl.pathname).toBe("/ok");
 	});
 
-	it("refuses a redirect to an address that is not vetted (loopback not on the allowlist)", async () => {
+	it("sec.safe-egress: refuses a redirect to an address that is not vetted (loopback not on the allowlist)", async () => {
 		await expect(
 			safeGet(`${base}/to-internal`, { maxBytes: 1024, allowedHosts: ALLOW }),
 		).rejects.toBeInstanceOf(SsrfBlockedError);

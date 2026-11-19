@@ -93,7 +93,7 @@ describe("resolveInside", () => {
 		);
 	});
 
-	it("sees through a symlink at the final component that points outside", () => {
+	it("sec.contained-paths: sees through a symlink at the final component that points outside", () => {
 		symlinkSync(join(outside, "secret.txt"), join(root, "leaf"));
 		expect(() => resolveInside(root, "leaf")).toThrow(PathOutsideRootError);
 	});

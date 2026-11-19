@@ -12,7 +12,7 @@ const writeTool = {
 };
 
 describe("checkToolArguments (LP2)", () => {
-	it("rejects a missing required field, naming it", () => {
+	it("sec.input-validated: rejects a missing required field, naming it", () => {
 		const r = checkToolArguments(writeTool, {
 			id: "c1",
 			name: "WriteFile",

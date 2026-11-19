@@ -163,7 +163,7 @@ describe("executeAction: resume_mission and suspend_mission are the cockpit's op
 		).rejects.toThrow(/mission\.volumeId in MongoDB has likely drifted/);
 	});
 
-	it("never hands another user's mission to the lifecycle code", async () => {
+	it("sec.authorized: never hands another user's mission to the lifecycle code", async () => {
 		mockedResume.mockResolvedValue({
 			ok: false,
 			status: 404,

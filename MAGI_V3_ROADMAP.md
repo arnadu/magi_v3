@@ -130,6 +130,25 @@ Left from the October 2026 audit and the sprint-28f whole-repo audit, not schedu
 
 ---
 
+## Backlog: catalog gaps (found in the catalog review, 2026-11-19)
+
+Places where the code does not yet do what the approved catalog says ([catalog-review.md](docs/plans/catalog-review.md), [operations.md](docs/product/operations.md)). The trace reports each one until it is fixed, unless it is marked `planned`.
+
+| Gap | Catalog | What is missing |
+|---|---|---|
+| **Spend for the copilots** | `spend.report` | The control copilot has no tool to see or explore a mission's spend (the trace's one open actor gap); neither copilot receives regular cost reports. One cost calculation behind every figure (header, Limits, Objectives, both copilots, account usage) |
+| **Configuration changes while the mission runs** | `mission.change-config`, invariant `mental-map.edit-between-turns` | `PUT /api/missions/:id/config` refuses unless the mission is suspended, for every change. Intended: applied while it runs; only an agent whose mental map changes waits until it is paused |
+| **Cockpit controls** | `agent.pause`, `agent.resume`, `file.read`, `spend.report` | No cockpit control to pause or resume an agent, to view an agent's workdir, or to see spend across all of one's missions (`GET /api/usage` has no caller). `GET /api/models` and the monitor's `GET /mailbox` have no caller either: remove them or give them one |
+| **Narrow the proxy** | `sec.authenticated`, `sec.authorized` | The proxy forwards every monitor route to the mission's owner, including routes that exist only for the copilots' tools and the control plane (`/pause-agent`, `/set-budget`, `/team`, `/agents/*`, workdir reads and writes). Forward only the routes the cockpit uses; the rest become internal |
+| **Keep the status in step with the machine** | `mission.reconcile` (planned), invariant `mission.status-follows-machine` | No timer reconciles a mission's stored status with its machine; only `scripts/reconcile-mission-state.mjs`, by hand |
+| **One home for mission ownership** | `sec.authorized` | `mission-resource-routes.ts` keeps its own copy of `userFilter` (`mission-scope.ts`) |
+| **Secrets kept out of records** | `sec.secrets-not-recorded` | Nothing redacts secrets before logs, conversations or model-call records are written |
+| **Untrusted text in the copilots' inboxes** | `sec.untrusted-text-labelled` | Anomaly text relayed to the copilots is not marked as data (AN1) |
+| **Editable templates** | `template.*` (planned) | See near-term candidates below |
+| **The copilots' shells** | `agent.shell` (CC and MC rules) | An ADR and a threat-model update on what each copilot's shell may reach, the identity it runs as and the credential it holds, before any code (decision 7) |
+
+---
+
 ## Near-term candidates (not yet sequenced)
 
 Sized up but not yet assigned a sprint number — candidates for right after 28f/28h, ahead of the

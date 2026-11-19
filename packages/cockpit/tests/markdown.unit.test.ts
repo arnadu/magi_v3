@@ -28,7 +28,7 @@ describe("renderMarkdown", () => {
 		expect(renderMarkdown("[x](mailto:a@b.com)")).toContain("<a href=");
 	});
 
-	it("does not turn a javascript: URL into a link", () => {
+	it("sec.output-safe: does not turn a javascript: URL into a link", () => {
 		const html = renderMarkdown("[x](javascript:alert(1))");
 		expect(html).not.toContain("<a ");
 		expect(html).toContain("javascript:alert(1)");

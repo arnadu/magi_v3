@@ -160,7 +160,7 @@ const spec = (over: Partial<JobSpec> = {}): JobSpec => ({
 });
 
 describe("runPendingJobs — agent-submitted specs", () => {
-	it("runs a spec as the agent that owns the file, with a token issued only then", async () => {
+	it("sec.least-privilege: runs a spec as the agent that owns the file, with a token issued only then", async () => {
 		const d = deps();
 		pending(d, spec({ scriptPath: script() }), UID_A1);
 		await runPendingJobs(d);
