@@ -343,32 +343,49 @@ npm run lint
 
 ## Traceability: intent and code
 
-What MAGI is meant to do is written down as a catalog, approved by the product owner on
-2026-11-19: the actors, the entities and their states, the operations each actor can ask for
-with the rules that hold whoever asks, the operator's and the agents' journeys, and the
-components that own the code. Its source is typed data in
-[`packages/agent-config/src/baseline/`](packages/agent-config/src/baseline/); the pages in
-[docs/product/](docs/product/README.md) and
-[docs/architecture/components.md](docs/architecture/components.md) are rendered from it by
-`npm run docs:baseline`, and a test fails when they are stale.
+**Why.** MAGI is meant to be developed and maintained by its own agent teams, starting with
+[MAGI DEV](docs/plans/magi-dev-requirements.md), whose reviewers compare what MAGI is meant to
+do with what the code does. Their first runs showed they could not do this reliably: what MAGI
+should do was spread across the SPEC, ADRs, plans and conversations, much of it implicit, so
+code that was wrong looked like the requirement; and reviewers recalled facts about the code
+instead of tracing them. Reviews of single changes miss the same kind of defect: the October
+2026 audit found about 150 issues they had missed, because defects are patterns across the
+repository, not in one change.
+And an operation implemented twice drifts: on 2026-11-13 the copilot's copy of "resume a
+mission" failed for seven hours on a mission the cockpit's copy restored at once. The answer
+chosen is structural
+([ADR-0036](docs/adr/0036-product-and-architecture-baselines.md)): write the intent down, keep
+it under the product owner's approval, link the code to it by ids, and let tools find where the
+two may disagree.
 
-- **Every entry point names its operation:** each route, tool, copilot action, Tool API name,
-  timer, and directory agents write job or schedule files into declares the operation it
-  serves, or an entry class when it serves none. The compiler and a test reject a missing or
-  unknown tag.
-- **`npm run trace` compares the code with the catalog** (TypeScript compiler and CodeQL):
-  entry points that never reach their operation's implementation, database writes by a
-  component that does not own the collection, status changes the catalog does not allow,
-  invariants nothing is named to enforce, and security results. Reports go to `analysis/`
-  (not committed). CI runs it on every push, report-only: it never blocks a deploy.
-- **Each deviation is resolved** as a code fix or a catalog change the product owner approves.
-  The [MAGI DEV](docs/plans/magi-dev-requirements.md) reviewer agents receive the findings in
-  their area and use them as leads for their reviews.
+**What exists.**
+
+- **A catalog of intent**, approved by the product owner on 2026-11-19: the actors, the
+  entities and their states, the operations each actor can ask for with the rules that hold
+  whoever asks, the operator's and the agents' journeys, and the components that own the code.
+  Its source is typed data in
+  [`packages/agent-config/src/baseline/`](packages/agent-config/src/baseline/); the pages in
+  [docs/product/](docs/product/README.md) are rendered from it.
+- **Ids in the code:** every entry point (route, tool, copilot action, Tool API name, timer, and
+  directory agents write job or schedule files into) declares the operation it serves; the
+  compiler and a test reject a missing or unknown tag.
+- **`npm run trace`**, run by CI on every push (report-only, never blocking a deploy), joins
+  what the TypeScript compiler and CodeQL find in the code to the catalog. Every difference
+  goes to a person or a reviewer agent, who resolves it as a code fix or a catalog change the
+  product owner approves.
+
+**What the trace can and cannot tell you.** Its findings are leads, not verdicts. It reliably
+attributes database writes to the component that makes them, and it lists the invariants for
+which the catalog names nothing that enforces them. Whether an entry point reaches its
+operation's implementation is often undecidable for it (calls through injected dependencies are
+not followed), and status changes are read only where the code writes a literal value. It never
+checks that an invariant holds or that an operation's rules are kept: that remains the work of
+tests and reviews.
 
 More: [ADR-0036](docs/adr/0036-product-and-architecture-baselines.md) (the design),
-[docs/practices/traceability.md](docs/practices/traceability.md) (how to tag an entry point and
-run the trace), [docs/plans/catalog-review.md](docs/plans/catalog-review.md) (the definitions
-and the decisions behind the catalog).
+[docs/practices/traceability.md](docs/practices/traceability.md) (tagging and running the
+trace), [docs/plans/catalog-review.md](docs/plans/catalog-review.md) (the definitions and
+decisions behind the catalog).
 
 ---
 
