@@ -11,7 +11,7 @@
  {
   "id": "mission.way-out",
   "scope": "mission",
-  "text": "Every state has a way out that the operator can reach from the cockpit.",
+  "text": "Whatever state a mission is in, the operator can get it out of that state from the cockpit: no state is a dead end.",
   "enforcedBy": [],
   "decidedBy": null,
   "open": null,
@@ -29,16 +29,7 @@
  {
   "id": "mission.status-follows-machine",
   "scope": "mission",
-  "text": "The stored status follows the machine's actual state, kept in step by the platform on a timer (`mission.reconcile`), never by reading a mission.",
-  "enforcedBy": [],
-  "decidedBy": null,
-  "open": null,
-  "findings": 0
- },
- {
-  "id": "mission.error-recovery",
-  "scope": "mission",
-  "text": "A mission in `error` is recovered by the control copilot within a budget the platform enforces; beyond it, the copilot hands over to the operator. See `mission.resume`.",
+  "text": "The status the cockpit shows is the machine's real state: when a machine stops or fails on its own, the platform notices on a timer and updates the status (`mission.reconcile`). Looking at a mission never changes it.",
   "enforcedBy": [],
   "decidedBy": null,
   "open": null,
@@ -108,36 +99,18 @@
   "findings": 0
  },
  {
-  "id": "schedule.job-author",
-  "scope": "schedule",
-  "text": "A job schedule runs only as its author.",
-  "enforcedBy": [],
-  "decidedBy": "ADR-0033",
-  "open": null,
-  "findings": 0
- },
- {
   "id": "job.as-author",
   "scope": "job",
-  "text": "A job runs as its author, with no secrets.",
+  "text": "A job runs as its author, with no secrets, whether its author submitted it or scheduled it; a job schedule names only its author.",
   "enforcedBy": [],
   "decidedBy": "ADR-0033",
   "open": null,
   "findings": 0
  },
  {
-  "id": "objective.tree",
+  "id": "objective.well-formed",
   "scope": "objective",
-  "text": "The objective tree has no duplicate ids, unknown parents or cycles.",
-  "enforcedBy": [],
-  "decidedBy": null,
-  "open": null,
-  "findings": 0
- },
- {
-  "id": "task.who-updates",
-  "scope": "task",
-  "text": "A task is updated by its assignee, its creator, the objective's owner, or MC.",
+  "text": "Objectives and their tasks form one tree (no duplicate ids, unknown parents or cycles), and each is changed only by those entitled to: the objective tree by the copilots; a task by its assignee, its creator, the objective's owner or the mission copilot.",
   "enforcedBy": [],
   "decidedBy": null,
   "open": null,
@@ -182,18 +155,9 @@
  {
   "id": "llm-call.recorded",
   "scope": "llm-call",
-  "text": "Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time.",
+  "text": "Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time, and its full input and output are kept for the retention period the operator sets.",
   "enforcedBy": [],
   "decidedBy": "ADR-0017",
-  "open": null,
-  "findings": 0
- },
- {
-  "id": "llm-call.bodies-kept",
-  "scope": "llm-call",
-  "text": "The full input and output of each call are kept for the retention period the operator sets.",
-  "enforcedBy": [],
-  "decidedBy": null,
   "open": "The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full",
   "findings": 0
  },
@@ -203,6 +167,51 @@
   "text": "Every recorded call's cost counts against its mission's spend.",
   "enforcedBy": [],
   "decidedBy": "ADR-0017",
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "template.decoupled",
+  "scope": "template",
+  "text": "Once launched, a mission is independent of its template: a change to either never reaches the other.",
+  "enforcedBy": [],
+  "decidedBy": null,
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "machine.upgrade-bounded",
+  "scope": "machine",
+  "text": "An upgrade reverts on time, and a mission's upgrades stay within the daily allowance until the operator resets it.",
+  "enforcedBy": [],
+  "decidedBy": "ADR-0031",
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "mental-map.platform-regions",
+  "scope": "mental-map",
+  "text": "The regions the platform manages are written by the platform only; the agent edits its own sections.",
+  "enforcedBy": [],
+  "decidedBy": null,
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "mental-map.edit-between-turns",
+  "scope": "mental-map",
+  "text": "An operator's or a copilot's edit to an agent's mental map never lands during that agent's turn.",
+  "enforcedBy": [],
+  "decidedBy": null,
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "alert.once-per-episode",
+  "scope": "alert",
+  "text": "An alert is raised once per episode, not on every sample, and the daily report is sent once per user per day, even across restarts.",
+  "enforcedBy": [],
+  "decidedBy": "ADR-0032",
   "open": null,
   "findings": 0
  },

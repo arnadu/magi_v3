@@ -8,6 +8,7 @@
    "CC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -60,6 +61,7 @@
    "CC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -110,14 +112,52 @@
  },
  {
   "id": "mission.launch",
-  "intent": "Start a draft running",
+  "intent": "Start a mission from a draft or a template",
   "home": "cp-mission-ops",
   "actors": [
    "OP",
    "CC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
+   {
+    "kind": "copilot-action",
+    "actor": "CC",
+    "name": "launch_mission",
+    "where": "packages/control-plane/src/copilot-actions.ts:153",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-api",
+     "cp-copilot",
+     "cp-edge",
+     "cp-machines",
+     "cp-mission-ops",
+     "mm-tools"
+    ],
+    "writes": [
+     "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+     "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+     "machineSegments.updateMany@packages/control-plane/src/machine-segments.ts:194",
+     "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:215",
+     "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:221",
+     "missions.updateOne@packages/control-plane/src/spend-policy.ts:51",
+     "missions.insertOne@packages/control-plane/src/copilot-launch-actions.ts:41",
+     "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:65",
+     "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:68",
+     "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:83"
+    ],
+    "unresolved": [
+     "add",
+     "collection",
+     "createIndex",
+     "error",
+     "get",
+     "has"
+    ],
+    "httpHops": []
+   },
    {
     "kind": "copilot-action",
     "actor": "CC",
@@ -187,55 +227,6 @@
      "has"
     ],
     "httpHops": []
-   }
-  ]
- },
- {
-  "id": "mission.create",
-  "intent": "Create from a template and launch at once",
-  "home": "cp-mission-ops",
-  "actors": [
-   "OP",
-   "CC"
-  ],
-  "planned": false,
-  "entryPoints": [
-   {
-    "kind": "copilot-action",
-    "actor": "CC",
-    "name": "launch_mission",
-    "where": "packages/control-plane/src/copilot-actions.ts:153",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-api",
-     "cp-copilot",
-     "cp-edge",
-     "cp-machines",
-     "cp-mission-ops",
-     "mm-tools"
-    ],
-    "writes": [
-     "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
-     "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
-     "machineSegments.updateMany@packages/control-plane/src/machine-segments.ts:194",
-     "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:215",
-     "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:221",
-     "missions.updateOne@packages/control-plane/src/spend-policy.ts:51",
-     "missions.insertOne@packages/control-plane/src/copilot-launch-actions.ts:41",
-     "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:65",
-     "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:68",
-     "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:83"
-    ],
-    "unresolved": [
-     "add",
-     "collection",
-     "createIndex",
-     "error",
-     "get",
-     "has"
-    ],
-    "httpHops": []
    },
    {
     "kind": "route",
@@ -284,6 +275,7 @@
    "CC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -406,6 +398,7 @@
    "CC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -519,7 +512,8 @@
   "actors": [
    "PLT"
   ],
-  "planned": false,
+  "planned": true,
+  "startedBy": null,
   "entryPoints": []
  },
  {
@@ -530,11 +524,12 @@
    "PLT"
   ],
   "planned": false,
+  "startedBy": "schedule.deliver",
   "entryPoints": []
  },
  {
   "id": "mission.change-config",
-  "intent": "Change a mission's agents, prompts, models, settings, files or limits",
+  "intent": "Change a mission's agents, prompts, models, settings, files or limits; or the control copilot's model and limits",
   "home": "cp-mission-ops",
   "actors": [
    "OP",
@@ -542,6 +537,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -564,6 +560,88 @@
     "unresolved": [
      "collection",
      "createIndex"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /limits",
+    "where": "packages/control-plane/src/copilot-limits-routes.ts:39",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-edge",
+     "cp-mission-ops",
+     "mm-agent-loop"
+    ],
+    "writes": [
+     "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+     "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+     "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+     "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
+    ],
+    "unresolved": [
+     "collection",
+     "createIndex",
+     "get",
+     "has",
+     "set"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "PATCH /limits",
+    "where": "packages/control-plane/src/copilot-limits-routes.ts:64",
+    "reachesHome": true,
+    "components": [
+     "cp-copilot",
+     "cp-edge",
+     "cp-mission-ops"
+    ],
+    "writes": [
+     "users.updateOne@packages/control-plane/src/users.ts:97"
+    ],
+    "unresolved": [
+     "collection",
+     "has"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /settings",
+    "where": "packages/control-plane/src/copilot-router.ts:111",
+    "reachesHome": false,
+    "components": [
+     "cp-copilot",
+     "cp-edge"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "POST /settings",
+    "where": "packages/control-plane/src/copilot-router.ts:123",
+    "reachesHome": false,
+    "components": [
+     "cp-copilot",
+     "cp-edge"
+    ],
+    "writes": [
+     "users.updateOne@packages/control-plane/src/users.ts:69"
+    ],
+    "unresolved": [
+     "collection"
     ],
     "httpHops": []
    },
@@ -661,6 +739,7 @@
    "CC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -690,6 +769,7 @@
    "OP"
   ],
   "planned": true,
+  "startedBy": null,
   "entryPoints": []
  },
  {
@@ -703,6 +783,7 @@
    "AG"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -840,7 +921,7 @@
   ]
  },
  {
-  "id": "mission.config",
+  "id": "mission.read-config",
   "intent": "A mission's stored configuration",
   "home": "cp-api",
   "actors": [
@@ -849,6 +930,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -915,6 +997,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -977,6 +1060,42 @@
   ]
  },
  {
+  "id": "template.browse",
+  "intent": "The templates on offer and everything each holds",
+  "home": "cp-mission-ops",
+  "actors": [
+   "OP",
+   "CC"
+  ],
+  "planned": true,
+  "startedBy": null,
+  "entryPoints": []
+ },
+ {
+  "id": "template.create",
+  "intent": "A new template: blank, cloned from a template, or from a mission",
+  "home": "cp-mission-ops",
+  "actors": [
+   "OP",
+   "CC"
+  ],
+  "planned": true,
+  "startedBy": null,
+  "entryPoints": []
+ },
+ {
+  "id": "template.edit",
+  "intent": "Change any part of a template, including copying skills from any template or mission",
+  "home": "cp-mission-ops",
+  "actors": [
+   "OP",
+   "CC"
+  ],
+  "planned": true,
+  "startedBy": null,
+  "entryPoints": []
+ },
+ {
   "id": "mission.set-spend-cap",
   "intent": "Set the most a mission may spend",
   "home": "cp-mission-ops",
@@ -986,6 +1105,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -1127,10 +1247,10 @@
   "intent": "Set the most anyone may set the cap to",
   "home": "cp-mission-ops",
   "actors": [
-   "OP",
-   "ADM"
+   "OP"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -1161,8 +1281,8 @@
   ]
  },
  {
-  "id": "mission.spend",
-  "intent": "Spend against cap and ceiling: in total, per agent, over time, and runtime by machine shape",
+  "id": "spend.report",
+  "intent": "Spend against cap and ceiling: in total, per agent, over time, and runtime by machine shape; for one mission or all of one's missions",
   "home": "cp-mission-ops",
   "actors": [
    "OP",
@@ -1170,6 +1290,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -1246,6 +1367,25 @@
     "writes": [],
     "unresolved": [
      "collection"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /api/usage",
+    "where": "packages/control-plane/src/platform-routes.ts:66",
+    "reachesHome": false,
+    "components": [
+     "config",
+     "cp-api",
+     "cp-oversight"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection",
+     "get",
+     "set"
     ],
     "httpHops": []
    },
@@ -1358,46 +1498,15 @@
   ]
  },
  {
-  "id": "account.usage",
-  "intent": "Spend across all of one's missions",
-  "home": "cp-oversight",
-  "actors": [
-   "OP",
-   "ADM"
-  ],
-  "planned": false,
-  "entryPoints": [
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /api/usage",
-    "where": "packages/control-plane/src/platform-routes.ts:66",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-api",
-     "cp-oversight"
-    ],
-    "writes": [],
-    "unresolved": [
-     "collection",
-     "get",
-     "set"
-    ],
-    "httpHops": []
-   }
-  ]
- },
- {
   "id": "machine.upgrade",
   "intent": "Run on a bigger machine for a while, then go back",
   "home": "cp-machines",
   "actors": [
-   "AG",
    "MC",
    "PLT"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -1702,6 +1811,7 @@
    "OP"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -1733,13 +1843,64 @@
  },
  {
   "id": "agent.dispatch",
-  "intent": "Decide which agent runs next, and start its turn",
+  "intent": "Decide which agent or copilot runs next, and start its turn when it has news",
   "home": "mm-daemon",
   "actors": [
    "PLT"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
+   {
+    "kind": "trigger",
+    "actor": "PLT",
+    "name": "change event",
+    "where": "packages/control-plane/src/copilot-daemon.ts:443",
+    "reachesHome": false,
+    "components": [
+     "config",
+     "cp-copilot"
+    ],
+    "writes": [],
+    "unresolved": [
+     "close",
+     "resolve"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "trigger",
+    "actor": "PLT",
+    "name": "change event",
+    "where": "packages/control-plane/src/copilot-waker.ts:132",
+    "reachesHome": false,
+    "components": [
+     "config",
+     "cp-copilot"
+    ],
+    "writes": [],
+    "unresolved": [
+     "error"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "trigger",
+    "actor": "PLT",
+    "name": "interval",
+    "where": "packages/control-plane/src/copilot-waker.ts:153",
+    "reachesHome": false,
+    "components": [
+     "config",
+     "cp-copilot"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection",
+     "error"
+    ],
+    "httpHops": []
+   },
    {
     "kind": "trigger",
     "actor": "PLT",
@@ -1819,12 +1980,13 @@
  },
  {
   "id": "agent.turn",
-  "intent": "Run one turn: build the prompt, call the model, run the tools, record cost, report to the supervisor",
+  "intent": "Run one turn: build the prompt, call the model, run the tools, record cost",
   "home": "mm-agent-loop",
   "actors": [
    "PLT"
   ],
   "planned": false,
+  "startedBy": "agent.dispatch",
   "entryPoints": []
  },
  {
@@ -1835,6 +1997,7 @@
    "PLT"
   ],
   "planned": false,
+  "startedBy": "agent.turn",
   "entryPoints": []
  },
  {
@@ -1845,6 +2008,7 @@
    "AG"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -1895,9 +2059,13 @@
   "intent": "Run a command in one's own workspace",
   "home": "mm-tools",
   "actors": [
-   "AG"
+   "AG",
+   "MC",
+   "CC",
+   "SUB"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -1915,14 +2083,63 @@
   ]
  },
  {
-  "id": "web.read",
-  "intent": "Search, fetch, browse and research the web; inspect images",
+  "id": "web.search",
+  "intent": "Search the web",
   "home": "mm-tools",
   "actors": [
    "AG",
+   "SUB",
    "JOB"
   ],
   "planned": false,
+  "startedBy": null,
+  "entryPoints": [
+   {
+    "kind": "tool-api",
+    "actor": "JOB",
+    "name": "search-web",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:322",
+    "reachesHome": true,
+    "components": [
+     "mm-jobs",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "push",
+     "set"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "tool",
+    "actor": "AG",
+    "name": "SearchWeb",
+    "where": "packages/agent-runtime-worker/src/tools/search-web.ts:51",
+    "reachesHome": true,
+    "components": [
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "push",
+     "set"
+    ],
+    "httpHops": []
+   }
+  ]
+ },
+ {
+  "id": "web.fetch",
+  "intent": "Fetch a page or a document, or inspect an image",
+  "home": "mm-tools",
+  "actors": [
+   "AG",
+   "SUB",
+   "JOB"
+  ],
+  "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool-api",
@@ -1973,94 +2190,6 @@
     "httpHops": []
    },
    {
-    "kind": "tool-api",
-    "actor": "JOB",
-    "name": "research",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:312",
-    "reachesHome": true,
-    "components": [
-     "mm-agent-loop",
-     "mm-isolation",
-     "mm-jobs",
-     "mm-tools"
-    ],
-    "writes": [],
-    "unresolved": [
-     "add",
-     "agent",
-     "clear",
-     "close",
-     "delete",
-     "end",
-     "error",
-     "execute",
-     "get",
-     "has",
-     "listen",
-     "load",
-     "lookup",
-     "meter",
-     "on",
-     "push",
-     "reject",
-     "resolve",
-     "set",
-     "write"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "tool-api",
-    "actor": "JOB",
-    "name": "search-web",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:322",
-    "reachesHome": true,
-    "components": [
-     "mm-jobs",
-     "mm-tools"
-    ],
-    "writes": [],
-    "unresolved": [
-     "push",
-     "set"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "tool",
-    "actor": "AG",
-    "name": "BrowseWeb",
-    "where": "packages/agent-runtime-worker/src/tools/browse-web.ts:361",
-    "reachesHome": true,
-    "components": [
-     "mm-agent-loop",
-     "mm-isolation",
-     "mm-tools"
-    ],
-    "writes": [],
-    "unresolved": [
-     "add",
-     "agent",
-     "clear",
-     "close",
-     "delete",
-     "end",
-     "error",
-     "execute",
-     "get",
-     "has",
-     "listen",
-     "lookup",
-     "on",
-     "push",
-     "reject",
-     "resolve",
-     "set",
-     "write"
-    ],
-    "httpHops": []
-   },
-   {
     "kind": "tool",
     "actor": "AG",
     "name": "FetchUrl",
@@ -2103,6 +2232,103 @@
      "resolve"
     ],
     "httpHops": []
+   }
+  ]
+ },
+ {
+  "id": "web.browse",
+  "intent": "Drive a browser through a site",
+  "home": "mm-tools",
+  "actors": [
+   "AG",
+   "SUB"
+  ],
+  "planned": false,
+  "startedBy": null,
+  "entryPoints": [
+   {
+    "kind": "tool",
+    "actor": "AG",
+    "name": "BrowseWeb",
+    "where": "packages/agent-runtime-worker/src/tools/browse-web.ts:361",
+    "reachesHome": true,
+    "components": [
+     "mm-agent-loop",
+     "mm-isolation",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "add",
+     "agent",
+     "clear",
+     "close",
+     "delete",
+     "end",
+     "error",
+     "execute",
+     "get",
+     "has",
+     "listen",
+     "lookup",
+     "on",
+     "push",
+     "reject",
+     "resolve",
+     "set",
+     "write"
+    ],
+    "httpHops": []
+   }
+  ]
+ },
+ {
+  "id": "web.research",
+  "intent": "Research a question with a sub-agent",
+  "home": "mm-tools",
+  "actors": [
+   "AG",
+   "JOB"
+  ],
+  "planned": false,
+  "startedBy": null,
+  "entryPoints": [
+   {
+    "kind": "tool-api",
+    "actor": "JOB",
+    "name": "research",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:312",
+    "reachesHome": true,
+    "components": [
+     "mm-agent-loop",
+     "mm-isolation",
+     "mm-jobs",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "add",
+     "agent",
+     "clear",
+     "close",
+     "delete",
+     "end",
+     "error",
+     "execute",
+     "get",
+     "has",
+     "listen",
+     "load",
+     "lookup",
+     "meter",
+     "on",
+     "push",
+     "reject",
+     "resolve",
+     "set",
+     "write"
+    ],
+    "httpHops": []
    },
    {
     "kind": "tool",
@@ -2137,22 +2363,6 @@
      "write"
     ],
     "httpHops": []
-   },
-   {
-    "kind": "tool",
-    "actor": "AG",
-    "name": "SearchWeb",
-    "where": "packages/agent-runtime-worker/src/tools/search-web.ts:51",
-    "reachesHome": true,
-    "components": [
-     "mm-tools"
-    ],
-    "writes": [],
-    "unresolved": [
-     "push",
-     "set"
-    ],
-    "httpHops": []
    }
   ]
  },
@@ -2164,6 +2374,7 @@
    "JOB"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool-api",
@@ -2324,6 +2535,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -2400,6 +2612,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -2477,6 +2690,7 @@
    "AG"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -2491,6 +2705,109 @@
     "writes": [],
     "unresolved": [
      "collection"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /usage",
+    "where": "packages/control-plane/src/copilot-router.ts:174",
+    "reachesHome": false,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-oversight"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /turns",
+    "where": "packages/control-plane/src/copilot-visibility-routes.ts:33",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-records"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /transcript",
+    "where": "packages/control-plane/src/copilot-visibility-routes.ts:38",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-records"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /llm-calls",
+    "where": "packages/control-plane/src/copilot-visibility-routes.ts:52",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-records"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /llm-call",
+    "where": "packages/control-plane/src/copilot-visibility-routes.ts:66",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-records"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection",
+     "skip"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /files",
+    "where": "packages/control-plane/src/copilot-visibility-routes.ts:100",
+    "reachesHome": false,
+    "components": [
+     "cp-api",
+     "cp-copilot"
+    ],
+    "writes": [],
+    "unresolved": [
+     "has",
+     "resolve"
     ],
     "httpHops": []
    },
@@ -2768,6 +3085,7 @@
    "JOB"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -2858,6 +3176,7 @@
    "AG"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3010,7 +3329,7 @@
  },
  {
   "id": "file.write",
-  "intent": "Put a file in the mission's shared folder, or in an agent's workdir",
+  "intent": "Write or edit a file in the mission's shared folder, or in an agent's workdir",
   "home": "mm-isolation",
   "actors": [
    "OP",
@@ -3018,6 +3337,7 @@
    "AG"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -3093,19 +3413,6 @@
     "httpHops": []
    },
    {
-    "kind": "monitor-route",
-    "actor": "OP",
-    "name": "POST \"/upload\"",
-    "where": "packages/agent-runtime-worker/src/monitor-routes/upload-download.ts:19",
-    "reachesHome": false,
-    "components": [
-     "mm-monitor"
-    ],
-    "writes": [],
-    "unresolved": [],
-    "httpHops": []
-   },
-   {
     "kind": "tool",
     "actor": "AG",
     "name": "WriteFile",
@@ -3135,7 +3442,7 @@
  },
  {
   "id": "file.read",
-  "intent": "Read the mission's shared files and their history, or an agent's workdir",
+  "intent": "Browse and read the mission's shared files and their history, or an agent's workdir",
   "home": "mm-isolation",
   "actors": [
    "OP",
@@ -3143,6 +3450,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3270,7 +3578,44 @@
      "get"
     ],
     "httpHops": []
-   },
+   }
+  ]
+ },
+ {
+  "id": "file.upload",
+  "intent": "Put a file into the mission for the agents",
+  "home": "mm-isolation",
+  "actors": [
+   "OP"
+  ],
+  "planned": false,
+  "startedBy": null,
+  "entryPoints": [
+   {
+    "kind": "monitor-route",
+    "actor": "OP",
+    "name": "POST \"/upload\"",
+    "where": "packages/agent-runtime-worker/src/monitor-routes/upload-download.ts:19",
+    "reachesHome": false,
+    "components": [
+     "mm-monitor"
+    ],
+    "writes": [],
+    "unresolved": [],
+    "httpHops": []
+   }
+  ]
+ },
+ {
+  "id": "file.download",
+  "intent": "Download a file or a folder from the mission",
+  "home": "mm-isolation",
+  "actors": [
+   "OP"
+  ],
+  "planned": false,
+  "startedBy": null,
+  "entryPoints": [
    {
     "kind": "monitor-route",
     "actor": "OP",
@@ -3291,12 +3636,12 @@
   "intent": "Have a message or job delivered later or repeatedly",
   "home": "cp-scheduler",
   "actors": [
-   "OP",
    "CC",
    "MC",
    "AG"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -3336,6 +3681,36 @@
      "has"
     ],
     "httpHops": []
+   },
+   {
+    "kind": "file-request",
+    "actor": "AG",
+    "name": "files in dir",
+    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:468",
+    "reachesHome": false,
+    "components": [
+     "config",
+     "mm-isolation",
+     "mm-jobs",
+     "mm-mission-copilot",
+     "mm-tools"
+    ],
+    "writes": [
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+    ],
+    "unresolved": [
+     "delete",
+     "error",
+     "get",
+     "has",
+     "push",
+     "resolve",
+     "set"
+    ],
+    "httpHops": []
    }
   ]
  },
@@ -3350,6 +3725,7 @@
    "AG"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -3403,6 +3779,36 @@
      "end"
     ],
     "httpHops": []
+   },
+   {
+    "kind": "file-request",
+    "actor": "AG",
+    "name": "files in dir",
+    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:468",
+    "reachesHome": false,
+    "components": [
+     "config",
+     "mm-isolation",
+     "mm-jobs",
+     "mm-mission-copilot",
+     "mm-tools"
+    ],
+    "writes": [
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+    ],
+    "unresolved": [
+     "delete",
+     "error",
+     "get",
+     "has",
+     "push",
+     "resolve",
+     "set"
+    ],
+    "httpHops": []
    }
   ]
  },
@@ -3414,19 +3820,61 @@
    "PLT"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "trigger",
     "actor": "PLT",
     "name": "cron * * * * *: tick",
     "where": "packages/control-plane/src/scheduler.ts:360",
-    "reachesHome": false,
+    "reachesHome": true,
     "components": [
-     "config"
+     "config",
+     "cp-edge",
+     "cp-machines",
+     "cp-mission-ops",
+     "cp-oversight",
+     "cp-scheduler",
+     "mm-monitor",
+     "mm-state",
+     "mm-tools"
     ],
-    "writes": [],
-    "unresolved": [],
-    "httpHops": []
+    "writes": [
+     "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+     "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+     "missionAnomalies.insertOne@packages/agent-runtime-worker/src/anomaly.ts:223",
+     "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+     "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+     "machineSegments.updateMany@packages/control-plane/src/machine-segments.ts:194",
+     "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:215",
+     "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:221",
+     "missions.updateOne@packages/control-plane/src/spend-policy.ts:51",
+     "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:165",
+     "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:186",
+     "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:293",
+     "scheduledMessages.updateMany@packages/control-plane/src/scheduler.ts:141",
+     "scheduledMessages.findOneAndUpdate@packages/control-plane/src/scheduler.ts:177",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:188",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:203",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:214",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:241",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:262"
+    ],
+    "unresolved": [
+     "add",
+     "clear",
+     "collection",
+     "createIndex",
+     "delete",
+     "end",
+     "error",
+     "get",
+     "has",
+     "set"
+    ],
+    "httpHops": [
+     "monitor-route POST \"/start\""
+    ]
    }
   ]
  },
@@ -3440,6 +3888,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3501,7 +3950,37 @@
    "AG"
   ],
   "planned": false,
-  "entryPoints": []
+  "startedBy": null,
+  "entryPoints": [
+   {
+    "kind": "file-request",
+    "actor": "AG",
+    "name": "files in dirs.pending",
+    "where": "packages/agent-runtime-worker/src/job-runner.ts:302",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "mm-isolation",
+     "mm-jobs",
+     "mm-state",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "claim",
+     "delete",
+     "end",
+     "error",
+     "get",
+     "has",
+     "on",
+     "push",
+     "resolve",
+     "set"
+    ],
+    "httpHops": []
+   }
+  ]
  },
  {
   "id": "job.run",
@@ -3511,18 +3990,46 @@
    "PLT"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "trigger",
     "actor": "PLT",
     "name": "interval: tick",
     "where": "packages/agent-runtime-worker/src/daemon.ts:225",
-    "reachesHome": false,
+    "reachesHome": true,
     "components": [
-     "config"
+     "config",
+     "mm-daemon",
+     "mm-isolation",
+     "mm-jobs",
+     "mm-mission-copilot",
+     "mm-state",
+     "mm-tools"
     ],
-    "writes": [],
-    "unresolved": [],
+    "writes": [
+     "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
+     "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:533",
+     "missionResources.updateOne@packages/agent-runtime-worker/src/resource-sampler.ts:134"
+    ],
+    "unresolved": [
+     "claim",
+     "collection",
+     "delete",
+     "end",
+     "error",
+     "get",
+     "has",
+     "on",
+     "push",
+     "resolve",
+     "set"
+    ],
     "httpHops": []
    }
   ]
@@ -3535,6 +4042,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3578,6 +4086,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3607,6 +4116,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3653,6 +4163,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3679,6 +4190,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3708,6 +4220,7 @@
    "CC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3754,6 +4267,7 @@
    "AG"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3781,6 +4295,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3858,9 +4373,11 @@
   "intent": "Make images for the mission's work",
   "home": "mm-tools",
   "actors": [
-   "AG"
+   "AG",
+   "SUB"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "tool",
@@ -3885,6 +4402,65 @@
      "set"
     ],
     "httpHops": []
+   },
+   {
+    "kind": "tool",
+    "actor": "SUB",
+    "name": "generate_image",
+    "where": "packages/agent-runtime-worker/src/images/image-agent-tools.ts:181",
+    "reachesHome": true,
+    "components": [
+     "mm-agent-loop",
+     "mm-isolation",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "get",
+     "getModel",
+     "has",
+     "push",
+     "resolve",
+     "set"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "tool",
+    "actor": "SUB",
+    "name": "critique_candidates",
+    "where": "packages/agent-runtime-worker/src/images/image-agent-tools.ts:309",
+    "reachesHome": true,
+    "components": [
+     "mm-agent-loop",
+     "mm-isolation",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "error",
+     "get",
+     "has",
+     "push",
+     "resolve",
+     "set"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "tool",
+    "actor": "SUB",
+    "name": "finish",
+    "where": "packages/agent-runtime-worker/src/images/image-agent-tools.ts:390",
+    "reachesHome": true,
+    "components": [
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "has"
+    ],
+    "httpHops": []
    }
   ]
  },
@@ -3896,6 +4472,7 @@
    "OP"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -3932,7 +4509,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /history",
-    "where": "packages/control-plane/src/copilot-router.ts:189",
+    "where": "packages/control-plane/src/copilot-router.ts:185",
     "reachesHome": true,
     "components": [
      "config",
@@ -3948,7 +4525,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /events",
-    "where": "packages/control-plane/src/copilot-router.ts:213",
+    "where": "packages/control-plane/src/copilot-router.ts:209",
     "reachesHome": true,
     "components": [
      "config",
@@ -3972,37 +4549,6 @@
   ]
  },
  {
-  "id": "copilot.propose",
-  "intent": "Propose a change for the operator to confirm",
-  "home": "cp-copilot",
-  "actors": [
-   "CC",
-   "MC"
-  ],
-  "planned": false,
-  "entryPoints": [
-   {
-    "kind": "tool",
-    "actor": "CC",
-    "name": "ProposeAction",
-    "where": "packages/control-plane/src/copilot-propose-tool.ts:18",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot",
-     "mm-agent-loop"
-    ],
-    "writes": [
-     "copilotPendingActions.insertOne@packages/control-plane/src/pending-actions.ts:55"
-    ],
-    "unresolved": [
-     "collection"
-    ],
-    "httpHops": []
-   }
-  ]
- },
- {
   "id": "copilot.confirm",
   "intent": "Accept a copilot's proposal",
   "home": "cp-copilot",
@@ -4010,6 +4556,7 @@
    "OP"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -4064,6 +4611,7 @@
    "OP"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -4095,285 +4643,6 @@
   ]
  },
  {
-  "id": "copilot.settings",
-  "intent": "Configure one's own copilot",
-  "home": "cp-copilot",
-  "actors": [
-   "OP"
-  ],
-  "planned": false,
-  "entryPoints": [
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /settings",
-    "where": "packages/control-plane/src/copilot-router.ts:111",
-    "reachesHome": true,
-    "components": [
-     "cp-copilot",
-     "cp-edge"
-    ],
-    "writes": [],
-    "unresolved": [
-     "collection"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "POST /settings",
-    "where": "packages/control-plane/src/copilot-router.ts:123",
-    "reachesHome": true,
-    "components": [
-     "cp-copilot",
-     "cp-edge"
-    ],
-    "writes": [
-     "users.updateOne@packages/control-plane/src/users.ts:69"
-    ],
-    "unresolved": [
-     "collection"
-    ],
-    "httpHops": []
-   }
-  ]
- },
- {
-  "id": "copilot.limits",
-  "intent": "Set one's own copilot's limits",
-  "home": "cp-copilot",
-  "actors": [
-   "OP"
-  ],
-  "planned": false,
-  "entryPoints": [
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /limits",
-    "where": "packages/control-plane/src/copilot-limits-routes.ts:39",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot",
-     "cp-edge",
-     "cp-mission-ops",
-     "mm-agent-loop"
-    ],
-    "writes": [
-     "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
-     "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
-     "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
-     "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259"
-    ],
-    "unresolved": [
-     "collection",
-     "createIndex",
-     "get",
-     "has",
-     "set"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "PATCH /limits",
-    "where": "packages/control-plane/src/copilot-limits-routes.ts:64",
-    "reachesHome": true,
-    "components": [
-     "cp-copilot",
-     "cp-edge",
-     "cp-mission-ops"
-    ],
-    "writes": [
-     "users.updateOne@packages/control-plane/src/users.ts:97"
-    ],
-    "unresolved": [
-     "collection",
-     "has"
-    ],
-    "httpHops": []
-   }
-  ]
- },
- {
-  "id": "copilot.history",
-  "intent": "What one's copilot did: its turns, transcripts, model calls, files and usage",
-  "home": "cp-copilot",
-  "actors": [
-   "OP"
-  ],
-  "planned": false,
-  "entryPoints": [
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /usage",
-    "where": "packages/control-plane/src/copilot-router.ts:174",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot",
-     "cp-oversight"
-    ],
-    "writes": [],
-    "unresolved": [
-     "collection"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /turns",
-    "where": "packages/control-plane/src/copilot-visibility-routes.ts:33",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot",
-     "cp-records"
-    ],
-    "writes": [],
-    "unresolved": [
-     "collection"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /transcript",
-    "where": "packages/control-plane/src/copilot-visibility-routes.ts:42",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot",
-     "cp-records"
-    ],
-    "writes": [],
-    "unresolved": [
-     "collection"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /llm-calls",
-    "where": "packages/control-plane/src/copilot-visibility-routes.ts:56",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot",
-     "cp-records"
-    ],
-    "writes": [],
-    "unresolved": [
-     "collection"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /llm-call",
-    "where": "packages/control-plane/src/copilot-visibility-routes.ts:70",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot",
-     "cp-records"
-    ],
-    "writes": [],
-    "unresolved": [
-     "collection",
-     "skip"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "route",
-    "actor": "OP",
-    "name": "GET /files",
-    "where": "packages/control-plane/src/copilot-visibility-routes.ts:104",
-    "reachesHome": true,
-    "components": [
-     "cp-api",
-     "cp-copilot"
-    ],
-    "writes": [],
-    "unresolved": [
-     "has",
-     "resolve"
-    ],
-    "httpHops": []
-   }
-  ]
- },
- {
-  "id": "copilot.wake",
-  "intent": "Run a copilot when its mailbox has news",
-  "home": "cp-copilot",
-  "actors": [
-   "PLT"
-  ],
-  "planned": false,
-  "entryPoints": [
-   {
-    "kind": "trigger",
-    "actor": "PLT",
-    "name": "change event",
-    "where": "packages/control-plane/src/copilot-daemon.ts:443",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot"
-    ],
-    "writes": [],
-    "unresolved": [
-     "close",
-     "resolve"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "trigger",
-    "actor": "PLT",
-    "name": "change event",
-    "where": "packages/control-plane/src/copilot-waker.ts:132",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot"
-    ],
-    "writes": [],
-    "unresolved": [
-     "error"
-    ],
-    "httpHops": []
-   },
-   {
-    "kind": "trigger",
-    "actor": "PLT",
-    "name": "interval",
-    "where": "packages/control-plane/src/copilot-waker.ts:153",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-copilot"
-    ],
-    "writes": [],
-    "unresolved": [
-     "collection",
-     "error"
-    ],
-    "httpHops": []
-   }
-  ]
- },
- {
   "id": "issue.track",
   "intent": "Report and follow bugs and ideas about MAGI",
   "home": "cp-copilot",
@@ -4382,6 +4651,7 @@
    "MC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "copilot-action",
@@ -4548,24 +4818,57 @@
    "PLT"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "trigger",
     "actor": "PLT",
     "name": "cron */5 * * * *: tick",
     "where": "packages/control-plane/src/resource-monitor.ts:420",
-    "reachesHome": false,
+    "reachesHome": true,
     "components": [
-     "config"
+     "config",
+     "cp-machines",
+     "cp-oversight",
+     "mm-agent-loop",
+     "mm-state"
     ],
-    "writes": [],
-    "unresolved": [],
+    "writes": [
+     "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
+     "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
+     "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:219",
+     "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259",
+     "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
+     "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
+     "missionAnomalies.insertOne@packages/agent-runtime-worker/src/anomaly.ts:223",
+     "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
+     "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
+     "platformResources.updateOne@packages/control-plane/src/atlas-usage.ts:184",
+     "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
+     "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+     "platformResources.updateOne@packages/control-plane/src/fly-orphans.ts:159",
+     "resourceSnapshots.updateOne@packages/control-plane/src/resource-report.ts:231",
+     "resourceSnapshots.deleteOne@packages/control-plane/src/resource-report.ts:279"
+    ],
+    "unresolved": [
+     "add",
+     "clear",
+     "collection",
+     "createIndex",
+     "delete",
+     "error",
+     "get",
+     "has",
+     "push",
+     "readMissionSnapshot",
+     "set"
+    ],
     "httpHops": []
    }
   ]
  },
  {
-  "id": "platform.catalog",
+  "id": "platform.offerings",
   "intent": "Templates, models and tools on offer",
   "home": "cp-api",
   "actors": [
@@ -4573,6 +4876,7 @@
    "CC"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -4671,6 +4975,7 @@
    "OP"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
@@ -4712,6 +5017,7 @@
    "OP"
   ],
   "planned": false,
+  "startedBy": null,
   "entryPoints": [
    {
     "kind": "route",
