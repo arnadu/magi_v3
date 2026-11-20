@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "c0d1b36",
-  "time": "2026-11-20T22:02:33Z"
+  "commit": "9da8229",
+  "time": "2026-11-20T22:11:46Z"
  },
  "findings": [
   {
@@ -3535,7 +3535,7 @@
    "about": "app.loopback-only",
    "text": "The catalog names nothing that enforces app.loopback-only (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "6afa1f19f7d9",
@@ -3543,7 +3543,7 @@
    "about": "app.as-owner",
    "text": "The catalog names nothing that enforces app.as-owner (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "29c1c9ace0f3",
@@ -3551,7 +3551,7 @@
    "about": "app.bounded",
    "text": "The catalog names nothing that enforces app.bounded (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "e102fb60b998",
@@ -3607,7 +3607,7 @@
    "about": "sec.served-apart",
    "text": "The catalog names nothing that enforces sec.served-apart (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   }
  ]
 }
