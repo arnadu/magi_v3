@@ -343,36 +343,40 @@ npm run lint
 
 ## Traceability: intent and code
 
-**Why.** MAGI is meant to be developed and maintained by its own agent teams, starting with
-[MAGI DEV](docs/plans/magi-dev-requirements.md), whose reviewers compare what MAGI is meant to
-do with what the code does. Their first runs showed they could not do this reliably: what MAGI
-should do was spread across the SPEC, ADRs, plans and conversations, much of it implicit, so
-code that was wrong looked like the requirement; and reviewers recalled facts about the code
-instead of tracing them. Reviews of single changes miss the same kind of defect: the October
-2026 audit found about 150 issues they had missed, because defects are patterns across the
-repository, not in one change.
-And an operation implemented twice drifts: on 2026-11-13 the copilot's copy of "resume a
-mission" failed for seven hours on a mission the cockpit's copy restored at once. The answer
-chosen is structural
-([ADR-0036](docs/adr/0036-product-and-architecture-baselines.md)): write the intent down, keep
-it under the product owner's approval, link the code to it by ids, and let tools find where the
-two may disagree.
+MAGI V3 was built mostly by "vibe coding": a developer and a coding assistant working in
+conversation. That is powerful, but it leaves no structured record of the requirements and
+design decisions tied to the code, and that record is what autonomous agents need to review
+MAGI for security, documentation, code quality and product behaviour: without it they cannot
+tell code that is wrong from code that is the requirement. The remedy chosen is described in
+[ADR-0036](docs/adr/0036-product-and-architecture-baselines.md). Its key ideas:
 
-**What exists.**
+- **A formal catalog of intent**, kept as a TypeScript library that compiles
+  ([`packages/agent-config/src/baseline/`](packages/agent-config/src/baseline/)): the actors,
+  the entities and their states, the operations each actor can ask for with the rules that hold
+  whoever asks, the journeys, and the components that own the code. The product owner approves
+  every change (approved 2026-11-19); the pages in [docs/product/](docs/product/README.md) are
+  rendered from it.
+- **References to it in the code.** Every entry point (route, tool, copilot action, Tool API
+  name, timer, and directory agents drop job or schedule files into) names the operation it
+  serves. The TypeScript compiler rejects an unknown id, and a test rejects a missing one.
+- **Automated reports from that link.** `npm run trace`, run by CI on every push, joins what
+  the compiler and CodeQL find in the code to the catalog, and writes reports the reviewer
+  agents of [MAGI DEV](docs/plans/magi-dev-requirements.md) work from. A person or an agent
+  resolves each difference: a fix to the code, or a catalog change the product owner approves.
 
-- **A catalog of intent**, approved by the product owner on 2026-11-19: the actors, the
-  entities and their states, the operations each actor can ask for with the rules that hold
-  whoever asks, the operator's and the agents' journeys, and the components that own the code.
-  Its source is typed data in
-  [`packages/agent-config/src/baseline/`](packages/agent-config/src/baseline/); the pages in
-  [docs/product/](docs/product/README.md) are rendered from it.
-- **Ids in the code:** every entry point (route, tool, copilot action, Tool API name, timer, and
-  directory agents write job or schedule files into) declares the operation it serves; the
-  compiler and a test reject a missing or unknown tag.
-- **`npm run trace`**, run by CI on every push (report-only, never blocking a deploy), joins
-  what the TypeScript compiler and CodeQL find in the code to the catalog. Every difference
-  goes to a person or a reviewer agent, who resolves it as a code fix or a catalog change the
-  product owner approves.
+**An example, end to end.** The catalog defines the operation `spend.report`: an operator, the
+control copilot (CC) or the mission copilot asks what a mission has spent. One of its rules
+reads "one calculation behind every figure shown". Ten entry points in the code carry its id:
+cockpit routes in the control plane, monitor routes on the mission machine, mission-copilot tools. The trace
+reports two differences:
+
+- *"CC is an actor of spend.report, but no entry point serves CC"*: the control copilot has
+  no tool for it. A gap in the code, now on the roadmap's "Backlog: catalog gaps".
+- *"8 of 10 entry points of spend.report reach no code in its home, cp-mission-ops"*. The trace
+  cannot say why. A reviewer reads the code: each route and tool reads the stored totals
+  (`missionStats`, `agentTurnStats`) and sums them itself, in two packages. Whether that
+  breaks "one calculation" is the reviewer's judgment. The outcome is a finding (move the
+  calculation into one function) or a question for the product owner.
 
 **What the trace can and cannot tell you.** Its findings are leads, not verdicts. It reliably
 attributes database writes to the component that makes them, and it lists the invariants for
