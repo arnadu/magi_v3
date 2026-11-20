@@ -24,19 +24,26 @@ Work through them with `checklist.py` (`working-agreements`).
    points at. Start a checklist:
    `python3 $SHARED_DIR/skills/_team/working-agreements/scripts/checklist.py start $SHARED_DIR/skills/_team/qa-journeys/checklists/journey-checks.md --out $SHARED_DIR/reports/qa/checklists/YYYY-MM-DD-J-NN.md`
    and write the journey's id and name at the top.
-2. **Walk it from the code, not the documents.** For each actor that can do this journey,
+2. **Map it from the trace.** For each operation of the journey, read its section in
+   `$SHARED_DIR/analysis/operations.md` (skill `trace-scan`, "Answering a question from the
+   reports"): which actors have an entry point, where each is, whether each reaches the
+   operation's home. Then `decisions.mjs about <operation id>` for the findings on it. This
+   is the map of what to walk, and the first evidence for "can this actor do this step".
+3. **Walk it from the code, not the documents.** For each actor that can do this journey,
    write the steps in order: the cockpit screen or button (`packages/cockpit/src/`), the
    route it calls (`packages/control-plane/src/`), the copilot tool or ProposeAction type
    (`copilot-*-tools.ts`, `copilot-actions.ts`, the mission copilot's `mission-copilot-*-tools.ts`),
    what the skills and prompts tell the copilot to do (`config/teams/copilot/`,
    `packages/skills/`, `packages/agent-runtime-worker/prompts/`), and what happens next
-   (who is told, what state changes). Put the walk in the report as a numbered list.
-3. **Answer every row of `journey-checks.md`** with evidence. A step one actor cannot do, a
+   (who is told, what state changes). Confirm in the code each entry point the map shows, and
+   for an actor with no entry point, say where you looked. Put the walk in the report as a
+   numbered list.
+4. **Answer every row of `journey-checks.md`** with evidence. A step one actor cannot do, a
    hand-off nobody hears about, an extra confirmation, a missing test: each is a finding.
-4. **Compare actors.** What can the operator do in the cockpit that the copilot cannot, and
+5. **Compare actors.** What can the operator do in the cockpit that the copilot cannot, and
    the reverse? A gap matters when that actor is expected to do the journey (a copilot is
    expected to set up a mission on request).
-5. **Report** in `$SHARED_DIR/reports/qa/YYYY-MM-DD-journey-J-NN.md`: the walk, the checklist
+6. **Report** in `$SHARED_DIR/reports/qa/YYYY-MM-DD-journey-J-NN.md`: the walk, the checklist
    summary, findings (each with the step, the evidence, the effect on the operator, the
    suggested fix), and an acceptance scenario for the journey if it has no test
    (`acceptance-scenarios`). Hand-off block for the developers' coding assistant.

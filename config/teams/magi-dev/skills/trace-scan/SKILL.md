@@ -30,6 +30,51 @@ review needs them; never describe one anywhere public.
 How each part is computed, and where it can be wrong: `docs/practices/traceability.md` in the
 repository ("The trace"). Read that section once before you rely on a finding.
 
+## Answering a question from the reports
+
+The reports answer most questions about who can do what, and through which code, faster than a
+search of the code. Look there first; then confirm in the code what you will rely on.
+
+| Question | Where to look |
+|---|---|
+| Who can ask for an operation, and through which entry points | `operations.md`, the operation's section: one row per entry point, with its actor |
+| Can a given actor (the control copilot, an agent) do it at all | The same section: no row with that actor means no entry point serves it, and the trace says so under the table |
+| Does every way in reach the operation's one implementation | The "Reaches home" column; "Unresolved calls" says where it may be incomplete |
+| Which database writes a request can lead to | The "Writes reached" column; `writes.md` for every write to one collection |
+| Which status changes the code can make, and whether the catalog allows them | `writes.md`, the "Status" column |
+| What keeps an invariant true | `invariants.md` |
+| What one entry point reaches, function by function | `npm run trace -- reach <operation id or entry point name> --analysis "$SHARED_DIR/analysis"` in your clone |
+
+A section of `operations.md`:
+
+```
+## `mission.create-draft`
+
+Start a mission as an editable draft. Actors: OP, CC. Home: `cp-mission-ops`.
+
+| Entry point | Actor | Where | Reaches home | Writes reached | Via HTTP | Unresolved calls |
+|---|---|---|---|---|---|---|
+| tool `CreateDraft` | CC | `packages/control-plane/src/copilot-draft-tools.ts:26` | yes | `missions.insertOne@packages/control-plane/src/mission-drafts.ts:90` | — | `collection`, `get` |
+| route `POST /draft` | OP | `packages/control-plane/src/mission-routes-lifecycle.ts:269` | yes | `missions.insertOne@packages/control-plane/src/mission-drafts.ts:90` | — | `get` |
+
+None.
+```
+
+- The heading line is the catalog: the operation's intent, the actors who may ask, and its
+  home (the component meant to hold its one implementation).
+- Each row is an entry point the code tags with this operation: its kind and name, the actor
+  that kind serves, and where it is declared. A route or a mission-machine route serves the
+  operator (`OP`), except the mission copilot's own gateway routes (`MC`); a control-copilot
+  tool or action, `CC`; a mission-copilot tool, `MC`; an agent tool or a directory agents
+  write requests into, `AG` (the copilots have most agent tools too); a Tool API name, a
+  background job (`JOB`); a timer or change stream, the platform (`PLT`).
+- "Reaches home": whether the calls from it reach code in the home component. "Writes
+  reached": the database writes those calls lead to. "Via HTTP": the mission-machine routes it
+  calls. "Unresolved calls": calls the scan could not follow, so "no" there may be the scan's
+  limit rather than the code's.
+- Under the table, the trace's findings on the operation, or "None.". Here both ways in reach
+  the same one write, in the home: one implementation, two entry points.
+
 ## How to use a finding
 
 A finding is a lead for the review you are doing, not an item on a list: nobody expects every
@@ -70,6 +115,8 @@ checks a sample of dismissals against the code.
 
 For one question without waiting for a scan, your clone answers directly (TypeScript language
 service, seconds): `npm run trace -- def <name>`, `refs <file:line>`, `callers <file:line> --depth 2`.
+A search of the code (`grep`) confirms what a report says; on its own it rarely shows that
+something is missing, because an entry point can be in any of many files.
 
 ## Setting up the job (code reviewer, once)
 

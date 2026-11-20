@@ -19,6 +19,7 @@ import {
 	sample,
 } from "../../../scripts/trace/decisions.mjs";
 import { computeFindings, markNew } from "../../../scripts/trace/findings.mjs";
+import { reach } from "../../../scripts/trace/query.mjs";
 import {
 	callGraph,
 	entryReach,
@@ -513,5 +514,37 @@ describe("reviewers' decisions on the trace's findings", () => {
 		expect(view(dir)).toContain("0 findings raised");
 		expect(about(dir, "x.one", "cr", null)).not.toContain("your conclusion");
 		expect(sample(dir, 5, "seed")).toEqual([]);
+	});
+});
+
+describe("npm run trace -- reach", () => {
+	it("reads the reports from the directory it is given", () => {
+		const dir = mkdtempSync(join(tmpdir(), "trace-reports-"));
+		writeFileSync(
+			join(dir, "entry-points.json"),
+			JSON.stringify([
+				{
+					kind: "tool",
+					name: "PauseAgent",
+					actor: "MC",
+					file: "src/tools.ts",
+					line: 3,
+					tag: "agent.pause",
+					httpHops: ['POST "/pause-agent"'],
+					reached: ["pauseAgent src/pause.ts:10"],
+					unresolved: ["post"],
+				},
+			]),
+		);
+		expect(reach("agent.pause", dir)).toEqual([
+			"tool PauseAgent (MC) src/tools.ts:3 serves agent.pause",
+			'  via HTTP: POST "/pause-agent"',
+			"  pauseAgent src/pause.ts:10",
+			"  unresolved calls (reach may be incomplete):",
+			"    post",
+		]);
+		expect(() => reach("agent.pause", join(dir, "missing"))).toThrow(
+			/--analysis/,
+		);
 	});
 });

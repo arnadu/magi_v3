@@ -119,6 +119,7 @@ npm run trace -- def claimStatus                                   # where it is
 npm run trace -- refs packages/control-plane/src/mission-claims.ts:19     # every reference
 npm run trace -- callers packages/control-plane/src/mission-claims.ts:19 --depth 2
 npm run trace -- reach mission.launch                              # from the last trace
+npm run trace -- reach mission.launch --analysis <dir>             # from reports fetched elsewhere
 ```
 
 `callers` follows calls only; a handler registered by name in a table (the copilot's `HANDLERS`)

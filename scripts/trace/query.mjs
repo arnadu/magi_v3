@@ -5,8 +5,9 @@
 //   npm run trace -- refs <file:line[:col]> every reference to the symbol there
 //   npm run trace -- callers <file:line[:col]> [--depth N]
 //                                           who calls the function there, N levels up
-//   npm run trace -- reach <operation id or entry point name>
-//                                           what an entry point reaches (from analysis/)
+//   npm run trace -- reach <operation id or entry point name> [--analysis <dir>]
+//                                           what an entry point reaches, from the last
+//                                           trace's reports (default: analysis/)
 //
 // A position is given as a path from the repository root and a 1-based line;
 // without a column, the first identifier on the line is used.
@@ -129,10 +130,17 @@ function callers(spec, depth) {
 	return out;
 }
 
-function reach(what) {
-	const path = join(ROOT, "analysis/entry-points.json");
+/**
+ * What each entry point named or tagged `what` reaches, from the
+ * `entry-points.json` in `dir` (a trace's reports: a local run's `analysis/`,
+ * or reports fetched from elsewhere).
+ */
+export function reach(what, dir = join(ROOT, "analysis")) {
+	const path = join(dir, "entry-points.json");
 	if (!existsSync(path))
-		throw new Error("no analysis/entry-points.json: run `npm run trace` first");
+		throw new Error(
+			`no ${path}: run \`npm run trace\` first, or pass --analysis <dir>`,
+		);
 	const entries = JSON.parse(readFileSync(path, "utf8"));
 	const chosen = entries.filter((e) => e.tag === what || e.name === what);
 	if (chosen.length === 0)
@@ -154,6 +162,9 @@ export function runQuery(args) {
 	const [cmd, arg] = args;
 	const depthIdx = args.indexOf("--depth");
 	const depth = depthIdx >= 0 ? Number(args[depthIdx + 1]) : 1;
+	const analysisIdx = args.indexOf("--analysis");
+	const analysis =
+		analysisIdx >= 0 ? resolve(args[analysisIdx + 1]) : undefined;
 	if (!arg)
 		throw new Error(
 			"usage: npm run trace -- def|refs|callers|reach <argument>",
@@ -165,7 +176,7 @@ export function runQuery(args) {
 				? refs(arg)
 				: cmd === "callers"
 					? callers(arg, depth)
-					: reach(arg);
+					: reach(arg, analysis);
 	console.log(lines.length ? lines.join("\n") : "(nothing found)");
 }
 

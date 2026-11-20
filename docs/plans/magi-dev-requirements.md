@@ -1961,6 +1961,32 @@ Changes:
 - spot checks stay outside the mission, and a wrong one is taken up with the reviewer by
   message.
 
+**The reports as a reference (2026-11-20).** After the catalog's approval the qa-lead rebuilt
+its journey rotation from the catalog ($0.09; it read the file and diffed the two commits). It
+was right on most journeys. It left one finding open ("if the control copilot has a spend tool
+now") although `operations.md` answers it directly ("CC is an actor of spend.report, but no
+entry point serves CC"), a finding in its own area. Asked why, it said it wrote from the
+document, not the code, then settled the question by searching one file of copilot tools, which
+cannot show that a tool is missing: the copilot's tools are in several files, and it has most
+agent tools too. Its count of journeys was also wrong (29 for the 25 it listed), a slip that
+nothing depended on.
+
+Cause: the skills taught how to handle a finding, not how to answer a question from the
+reports. `operations.md` was described in one line; nothing said that its rows answer "who can
+ask for this, and through which entry point". The journey skill did not mention the trace, and
+the `reach` lookup read only a local run's reports, not the ones the mission fetches.
+
+Changes:
+- `trace-scan` has a section "Answering a question from the reports": which report answers
+  which question, one section of `operations.md` with each column explained, and the rule that
+  a search of the code confirms a report but rarely shows that something is missing;
+- `qa-journeys` maps each journey from `operations.md` and `decisions.mjs about` before walking
+  the code, and says where it looked for an actor with no entry point;
+- `npm run trace -- reach … --analysis <dir>` reads the fetched reports.
+
+To score next: whether the next journey reviews (J-21, J-04, J-11) start from `operations.md`,
+and whether they state an actor's missing entry point from the report, confirmed in the code.
+
 ## Phasing
 
 | Phase | Scope | Needs |
