@@ -148,6 +148,7 @@ main {
 	display: flex;
 	align-items: stretch;
 	height: calc(100vh - 41px);
+	height: calc(100dvh - 41px);
 }
 .col-main {
 	flex: 1;
@@ -962,9 +963,7 @@ h2.sec {
 }
 .compose textarea {
 	flex: 1;
-	resize: vertical;
-	min-height: 54px;
-	max-height: 320px;
+	resize: none;
 	background: var(--bg);
 	border: 1px solid var(--line);
 	color: var(--txt);
@@ -1938,6 +1937,8 @@ h2.sec {
 .app-shell {
 	display: flex;
 	height: 100vh;
+	/* The height iPad and phone browsers show between their toolbars. */
+	height: 100dvh;
 	align-items: stretch;
 }
 .app-shell > .app {
@@ -1946,6 +1947,34 @@ h2.sec {
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+}
+/* A page (the missions list, the templates) scrolls inside the shell. */
+.app-shell > .app > main {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+/* The bar above a chat input; dragging it sets the input's height
+   (use-input-resize.ts). Tall enough to grab with a finger. */
+.input-resize-grip {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	height: 14px;
+	margin: -4px 0 2px;
+	cursor: row-resize;
+	flex-shrink: 0;
+	touch-action: none;
+}
+.input-resize-grip > span {
+	width: 36px;
+	height: 4px;
+	border-radius: 2px;
+	background: var(--line);
+}
+.input-resize-grip:hover > span {
+	background: var(--info);
 }
 
 /* Copilot panel — ported from index.html's #copilot-panel, same visual
@@ -2137,10 +2166,8 @@ h2.sec {
 	font-size: 13px;
 	font-family: inherit;
 	padding: 8px 10px;
-	resize: vertical;
+	resize: none;
 	outline: none;
-	min-height: 36px;
-	max-height: 320px;
 }
 .copilot-input-area textarea:focus {
 	border-color: var(--copilot);

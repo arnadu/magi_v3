@@ -453,7 +453,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		plane: "browser",
 		name: "Cockpit building blocks",
 		responsibility:
-			"Shared display pieces: Markdown, JSON trees, loading and error states",
+			"Shared display pieces: Markdown, JSON trees, loading and error states, the resizable message box",
 		layer: 1,
 		root: UI,
 		paths: [
@@ -462,6 +462,8 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 			"JsonTree.tsx",
 			"LoadingView.tsx",
 			"load-error.tsx",
+			"InputResizeGrip.tsx",
+			"use-input-resize.ts",
 		],
 	},
 	// ── Shared ──────────────────────────────────────────────────────────────

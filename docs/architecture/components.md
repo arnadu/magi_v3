@@ -46,7 +46,7 @@
 | `ui-limits` | Spend, limits and schedules | 2 | Spend against cap and ceiling, agent limits, machine runtime and upgrades, schedules | `packages/cockpit/src` | `LimitsPanel.tsx`, `RuntimePanel.tsx`, `UpgradeLimitsSection.tsx`, `SchedulePanel.tsx`, `mission-spend.ts` |
 | `ui-copilot` | Copilot panel | 2 | Talking to the copilot, confirming its proposals, its transcripts, files, limits and settings | `packages/cockpit/src` | `Copilot*.tsx`, `copilot/` |
 | `ui-api` | Cockpit API client | 1 | Every call from the cockpit to the control plane, and the polling around them | `packages/cockpit/src` | `api/`, `data.ts`, `use-api-resource.ts`, `use-visible-poll.ts` |
-| `ui-kit` | Cockpit building blocks | 1 | Shared display pieces: Markdown, JSON trees, loading and error states | `packages/cockpit/src` | `Markdown.tsx`, `markdown.ts`, `JsonTree.tsx`, `LoadingView.tsx`, `load-error.tsx` |
+| `ui-kit` | Cockpit building blocks | 1 | Shared display pieces: Markdown, JSON trees, loading and error states, the resizable message box | `packages/cockpit/src` | `Markdown.tsx`, `markdown.ts`, `JsonTree.tsx`, `LoadingView.tsx`, `load-error.tsx`, `InputResizeGrip.tsx`, `use-input-resize.ts` |
 
 ## Shared
 

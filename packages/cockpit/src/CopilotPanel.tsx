@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CopilotEntryView } from "./copilot/CopilotEntryView";
+import { CopilotInput } from "./copilot/CopilotInput";
 import { CopilotModelPicker } from "./copilot/CopilotModelPicker";
 import { fmtTokens } from "./copilot/copilot-entries";
 import { useCopilotStream } from "./copilot/use-copilot-stream";
@@ -30,7 +31,6 @@ function loadStoredWidth(): number {
 
 export function CopilotPanel() {
 	const [width, setWidth] = useState(loadStoredWidth);
-	const [input, setInput] = useState("");
 	const chat = useCopilotStream();
 
 	// Matches ConversationsPanel's startResize (same closure-over-`last`
@@ -60,10 +60,7 @@ export function CopilotPanel() {
 		document.addEventListener("pointerup", onUp);
 	};
 
-	async function handleSend() {
-		const text = input.trim();
-		if (!text) return;
-		setInput("");
+	async function handleSend(text: string) {
 		chat.push({ kind: "user", text });
 		chat.setThinking(true);
 		chat.scrollBottom();
@@ -126,23 +123,7 @@ export function CopilotPanel() {
 			{chat.thinking && (
 				<div className="copilot-thinking">Copilot is thinking…</div>
 			)}
-			<div className="copilot-input-area">
-				<textarea
-					rows={1}
-					value={input}
-					onChange={(e) => setInput(e.target.value)}
-					onKeyDown={(e) => {
-						if (e.key === "Enter" && !e.shiftKey) {
-							e.preventDefault();
-							void handleSend();
-						}
-					}}
-					placeholder="Message the copilot…"
-				/>
-				<button type="button" className="btn-primary" onClick={handleSend}>
-					Send
-				</button>
-			</div>
+			<CopilotInput onSend={(text) => void handleSend(text)} />
 		</div>
 	);
 }

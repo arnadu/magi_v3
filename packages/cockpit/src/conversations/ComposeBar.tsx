@@ -1,6 +1,39 @@
 import { useState } from "react";
 import { type Agent, sendMessage, uploadAttachment } from "../data";
+import { InputResizeGrip } from "../InputResizeGrip";
 import { LoadError } from "../load-error";
+import { useInputResize } from "../use-input-resize";
+
+/** One chip per agent; the selected ones receive the message. */
+function RecipientChips({
+	roster,
+	active,
+	runningAgents,
+	onToggle,
+}: {
+	roster: Agent[];
+	active: string[];
+	runningAgents: Set<string>;
+	onToggle: (id: string) => void;
+}) {
+	return (
+		<div className="recipients">
+			{roster.map((a) => (
+				<button
+					type="button"
+					key={a.id}
+					className={`chip${active.includes(a.id) ? " on" : ""}`}
+					onClick={() => onToggle(a.id)}
+				>
+					{runningAgents.has(a.id) && (
+						<span className="busy-dot" title="Currently running" />
+					)}
+					{a.name}
+				</button>
+			))}
+		</div>
+	);
+}
 
 /** Recipient chips, an optional attachment and the message box. */
 export function ComposeBar({
@@ -32,6 +65,7 @@ export function ComposeBar({
 	setFile: (file: File | null) => void;
 }) {
 	const [sending, setSending] = useState(false);
+	const inputResize = useInputResize("magi-compose-input-height", 72);
 	const [sendError, setSendError] = useState<string | null>(null);
 
 	const send = async () => {
@@ -59,21 +93,13 @@ export function ComposeBar({
 
 	return (
 		<div className="compose">
-			<div className="recipients">
-				{roster.map((a) => (
-					<button
-						type="button"
-						key={a.id}
-						className={`chip${active.includes(a.id) ? " on" : ""}`}
-						onClick={() => onToggleRecipient(a.id)}
-					>
-						{runningAgents.has(a.id) && (
-							<span className="busy-dot" title="Currently running" />
-						)}
-						{a.name}
-					</button>
-				))}
-			</div>
+			<InputResizeGrip onPointerDown={inputResize.onGripPointerDown} />
+			<RecipientChips
+				roster={roster}
+				active={active}
+				runningAgents={runningAgents}
+				onToggle={onToggleRecipient}
+			/>
 			{file && (
 				<div className="attach-row">
 					📎 {file.name}
@@ -96,6 +122,7 @@ export function ComposeBar({
 					/>
 				</label>
 				<textarea
+					style={{ height: inputResize.height }}
 					value={draft}
 					placeholder={
 						active.length ? `Message ${label(active)}…` : "Pick recipients…"
