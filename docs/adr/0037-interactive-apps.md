@@ -125,6 +125,16 @@ browser ─https─▶ apps host (Fly app) ─6PN─▶ mission machine :4000, m
   stripped: apps serve under `$BASE_PATH`.
 - **WebSockets** are carried at every hop. That is new code in the monitor server and in the
   apps host. The control plane's existing proxy is not involved.
+- **The machine checks that the request is for its own mission.** The apps host names the
+  mission from the session in each forwarded request. The monitor server refuses a request whose
+  mission is not its own `MISSION_ID`, as well as one whose apps token or capability it does not
+  know. Reaching the right machine therefore does not rest on the address alone.
+- **A stale address sends the operator back for a new ticket.** The machine's private address
+  is copied into the session when the app is opened, but it changes when the machine is
+  recreated (a resume onto a new machine, a crash). When the machine cannot be reached, or
+  refuses the mission, token or capability, the apps host does what it does for an expired
+  session: it redirects to the mission cockpit, which issues a new ticket with the current
+  address. A request that lands on another mission's machine is refused there, never served.
 
 ### 5. Apps listen only where they should
 
