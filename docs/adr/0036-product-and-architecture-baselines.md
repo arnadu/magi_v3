@@ -278,7 +278,8 @@ therefore become traceable in the same way as the baseline:
 
 - **Front matter.** Each ADR starts with a YAML block in the format of MADR (Markdown
   Architectural Decision Records, the common ADR template), with two added fields: `governs`,
-  the baseline ids it applies to, and `rules`, the checkable rules it sets.
+  the baseline ids it applies to, and `rules`, the checkable rules it sets. For example, for a
+  future decision on archiving missions:
 
   ```yaml
   ---
@@ -393,16 +394,24 @@ export const COMPONENTS = [
 12  }
 ```
 
-The website's route names the operation it serves as its second argument. The router's
-signature is `post(path: string, operation: OperationId, handler)`:
+The website's route names the operation it serves with `operation(…)`, a marker that takes
+only an id from the catalog:
+
+```ts
+// src/web/router.ts
+export function operation(id: OperationId): OperationTag { … }
+export const routes = {
+  post(path: string, tag: OperationTag, handler: Handler): void { … },   // the tag is required
+};
+```
 
 ```ts
 // src/web/routes.ts
  1  import { renewLoan } from "../loans/renew.js";
- 2  import { routes } from "./router.js";
+ 2  import { operation, routes } from "./router.js";
  3
  4  // A member renews one of their loans.
- 5  routes.post("/loans/:id/renew", "loan.renew", async (req, res) => {
+ 5  routes.post("/loans/:id/renew", operation("loan.renew"), async (req, res) => {
  6    await renewLoan(req.params.id);
  7    res.sendStatus(204);
  8  });
@@ -430,8 +439,23 @@ calling `renewLoan`:
 14  };
 ```
 
-The compiler already catches two mistakes: a typo such as `"loan.renw"` is not an
-`OperationId`, and a command without an `operation` field is not an `AdminCommand`.
+The compiler already catches two mistakes. Suppose the route had a typo in its id:
+
+```ts
+ 5  routes.post("/loans/:id/renew", operation("loan.renw"), async (req, res) => {
+```
+
+The build stops:
+
+```
+$ npx tsc
+src/web/routes.ts(5,43): error TS2345: Argument of type '"loan.renw"' is not assignable to
+parameter of type '"loan.renew" | "loan.borrow" | "loan.return"'.
+```
+
+The same happens for an id that was never in the catalog, or one removed from it later: every
+tag that names it stops compiling. And a route without a tag, or a command without an
+`operation` field, does not match the signature and fails the same way.
 
 **3. The trace reports what the code does, next to what was intended.** `npm run trace` finds
 every entry point and its tag, follows the calls from each one with CodeQL, and finds every
@@ -469,209 +493,6 @@ both entry points would reach the home, and the report would be clean. Only a te
 the rule it checks) or a reviewer reading the rules catches that. The trace finds where the
 code departs from the catalog's structure: who may ask, where the implementation lives, who
 writes what. It does not check that the code keeps the catalog's rules.
-
-## A larger example: archiving a mission
-
-This follows one feature through the whole scheme, in MAGI itself, from the product owner's
-request to production support. Archiving is planned and not built, so the
-code, file names, reports and ADR-0040 below are illustrative: the names are invented, and the
-exact forms of an operation tag and of the reports are settled in build steps 2 and 3.
-
-### 1. Intent: from a conversation to the baseline
-
-The product owner says: *"When a mission is finished, I want it to stop costing money, but I
-still want to read what it produced."*
-
-The coding agent turns that into a proposed change to the catalog (decision 2), and nothing else
-yet:
-
-```ts
-// operations.ts
-{
-  id: "mission.archive",
-  group: "missions",
-  intent: "End a mission: stop all its costs, keep its results readable",
-  actors: ["OP", "CC"],          // CC: as a proposal the operator confirms
-  home: "cp-mission-ops",
-  rules: ["Only a suspended mission", "Final: nothing brings it back to running"],
-},
-
-// entities.ts, in the mission entity
-states:      [ …, { id: "archived", meaning: "Ended: no costs, results readable" } ],
-transitions: [ …, { from: "suspended", event: "archive", to: "archived", actors: ["OP", "CC"] } ],
-invariants:  [ …, { id: "mission.archived-is-final", text: "An archived mission never runs again." } ],
-
-// journeys.ts
-{ id: "J-17", title: "Stop a mission for good", actors: ["OP", "CC"],
-  operations: ["mission.suspend", "mission.archive"] },
-```
-
-`npm run docs:baseline` re-renders `operations.md`, `entities.md` and `journeys.md`. The product
-owner reads the rendered tables in the commit, not the TypeScript, and approves (the requirements
-gate, decision 9). No ADR is needed: nothing was chosen between alternatives.
-
-### 2. Build: the coding agent, held by `CLAUDE.md`
-
-Before writing code, the coding agent reads the ADR index (decision 10) for the components it
-will touch: `cp-mission-ops`, `cp-api` and `cp-copilot`. For instance, it reads the rules on how
-a copilot action is proposed, confirmed and executed. Following decision 8, it then writes the
-operation **once**, in the component the baseline names, and two entry points that call it:
-
-```ts
-// cp-mission-ops: mission-lifecycle-actions.ts — the home
-export async function archiveMission(db, missionId, requester) { /* checks, effects, failure */ }
-
-// cp-api: an operator route
-router.post("/:id/archive", operation("mission.archive"), (req, res) => archiveMission(…));
-
-// cp-copilot: the copilot's action, executed when the operator confirms
-{ name: "archive_mission", operation: "mission.archive", execute: (p) => archiveMission(…) }
-```
-
-It also writes tests that name what they verify (decision 4):
-
-```ts
-it("J-17: the operator suspends, then archives a mission", …);
-it("mission.archived-is-final: resume refuses an archived mission", …);
-```
-
-The machine catches these mistakes at this stage:
-
-- A typo, `operation("mission.archvie")`, fails `tsc`: the id is not an `OperationId`.
-- Forgetting the tag on the copilot action fails the entry-point test (decision 3).
-- A new file outside every component's path patterns fails the baseline test.
-
-### 3. Scans: what CodeQL reports
-
-The commit runs CI. The mission's scheduled `npm run trace` (decision 5) runs at the same commit.
-The query rows are joined to the catalog and come out as reports organized by baseline id.
-
-`analysis/operations.md` answers questions 1 and 2 of decision 6 for the new operation:
-
-```
-## mission.archive  (home in the baseline: cp-mission-ops; actors: OP, CC)
-| Entry point                                      | Actor | Reaches                         | Component      | Verdict     |
-| POST /api/missions/:id/archive  routes.ts:14     | OP    | archiveMission  lifecycle.ts:212 | cp-mission-ops | as intended |
-| archive_mission  copilot-actions.ts:301          | CC    | archiveMission  lifecycle.ts:212 | cp-mission-ops | as intended |
-Actors without an entry point: none.
-```
-
-`analysis/status-writes.md` answers question 3. The `missions.status` section now has a row it
-did not have before:
-
-```
-## mission  (missions.status)
-| Writes | Filter requires        | In                          | Reached from                   | Verdict |
-| archived | suspended            | archiveMission lifecycle.ts:230 | mission.archive (OP, CC)    | suspended → archived: intended |
-| running  | status ≠ running     | wakeMachine machine-wake.ts:88  | mission.wake (PLT, scheduler tick) | suspended → running: intended; archived → running: NOT INTENDED (new at 1a2b3c4) |
-```
-
-The wake code did not change. The filter "status ≠ running" used to allow only states that may
-be woken; a new state widened what it accepts. The join script works this out by expanding the
-filter against the catalog's list of mission states. A recurring schedule still falls due for an
-archived mission, `mission.wake` starts its machine, and the mission costs money again. No test
-of the archive feature shows this, because the archive code is correct. It appears only as a
-status write that the intended state machine does not allow.
-
-Because the row is new, it is a new finding in the area of the reviewers who cover the mission
-entity. CI reports it too (decision 9).
-
-### 4. Review: the QA lead's view and judgment
-
-The QA lead's managed region (decision 7) shows the latest analysis and what is new in its area:
-
-```
-Analysis at 1a2b3c4 (2026-12-01 06:00): operations 33, 0 without an entry point, 2 known
-  differences; status writes 41, 1 new difference; rules 58: 3 review-only for changed code.
-New since the last scan (1):
-  [status-write] mission: archived → running, not intended
-    wakeMachine machine-wake.ts:88, reached from mission.wake (scheduler tick). New at 1a2b3c4.
-```
-
-Its mental map has an entry for the mission entity:
-
-```
-Mission states — checked at 9f8e7d6 against entities.md (mission)
-  Scan: status-writes. Differences: none open. Not yet checked: archive (new).
-```
-
-It checks the scan before trusting it. It follows the reach path back from the write:
-
-```
-$ npm run trace -- callers machine-wake.ts:88
-wakeMachine  machine-wake.ts:88
-  ← deliverDue  scheduler.ts:140  ← scheduler tick (timer, PLT, mission.wake)
-  ← resumeMission  lifecycle.ts:160  ← POST /:id/resume (OP), resume_mission (CC)
-```
-
-Then it judges the item against the baseline:
-
-- `archived` has no way out, and invariant `mission.archived-is-final` says an archived mission
-  never runs again.
-- The rules of `mission.wake` say "wakes a suspended mission". They say nothing about archived
-  missions.
-
-So this is a **finding against the code**, not a question about the baseline. Its report quotes
-the row and the call path, so every name resolves, and cites the transition and the invariant.
-It records its conclusion on the scan's finding as a finding linked to the report, and updates its map entry:
-"archive: 1 open finding (a due schedule revives an archived mission)".
-
-### 5. Fix and release gate
-
-The fix goes where the rule belongs: in the home of `mission.wake`, which every caller goes
-through ("One operation, one home"), not in the scheduler. The coding agent adds the test
-`mission.archived-is-final: a due schedule does not wake an archived mission`. On the next trace
-the row reads "suspended → running: intended" and nothing else. The finding is gone, and the
-release gate's reported checks are clear.
-
-### 6. Support: when the baseline itself is wrong
-
-A month later, the platform's daily resource report shows storage cost on archived missions. The
-production support agent compares this with the baseline:
-
-- the `mission.archive` intent says "stop all its costs";
-- it also says "keep its results readable", and the results live on the mission's volume, which
-  costs money while it exists.
-
-The code does what the baseline says; the baseline contradicts itself. This is not a finding
-against the code, and the agent may not settle it by editing the catalog. It is a **question for
-the product owner**, sent with the evidence: the cost figures and the two rules.
-
-The product owner decides that an archive exports the results to cheaper storage, then deletes
-the volume. That is a choice between alternatives, and deleting a volume is the riskiest thing
-the platform does. So it becomes an ADR with rules (decision 10): ADR-0040, whose front matter is
-the one shown in decision 10.
-- Its rule `ADR-0040.2` ("only `mission.archive` deletes a mission's volume") is enforced by a
-  CodeQL query in the pack, `volume-deletes`. The query lists every call to the Fly API's
-  volume-delete and the entry points that reach it.
-- Its rule `ADR-0040.3` ("export before delete") can only be judged, so it is marked `review`.
-
-The catalog change and the ADR go through the requirements gate together.
-
-From then on, `analysis/decisions.md` carries the rule for every component it governs:
-
-```
-## cp-machines
-| Rule       | Text                                              | Enforced by           | At 4d5e6f7 |
-| ADR-0040.2 | Only mission.archive deletes a mission's volume.  | codeql:volume-deletes | holds: 1 call, deleteVolume fly-volumes.ts:51, reached only from mission.archive |
-| ADR-0040.3 | An archive exports the results before deleting.   | review                | review when archiveMission or fly-volumes.ts changes |
-```
-
-Months later, someone adds volume clean-up to the resize path to save money. The row changes to
-"broken: 2 calls; also reached from machine.upgrade". That becomes a new finding for the code
-reviewer, with the rule, the ADR that set it and the call path, before the change reaches a
-mission's data.
-
-### What the example shows
-
-| Stage | Who | Made by hand | Checked or computed by machine |
-|---|---|---|---|
-| Intent | Product owner, coding agent | The catalog entries | Ids and references (`tsc`), rendered documents (test) |
-| Build | Coding agent | The home, the tags, the test names; reading the governing rules | Tags valid and present, files placed |
-| Scans | Platform | — | CodeQL rows joined to the catalog and the ADR rules: homes, status writes against transitions, rule checks; new differences become findings |
-| Review | Reviewer agent | The judgment: finding or question; verifying the scan | Citations resolve; a decision cites the finding's places; sampled dismissals are checked |
-| Fix, release | Coding agent | The fix in the operation's home | The next scan is clean; the gate |
-| Support | Support agent, product owner | The question; the decision; the ADR and its rules | Cost figures; the rule check on every later commit |
 
 ## Alternatives considered
 
