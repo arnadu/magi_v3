@@ -364,19 +364,38 @@ tell code that is wrong from code that is the requirement. The remedy chosen is 
   agents of [MAGI DEV](docs/plans/magi-dev-requirements.md) work from. A person or an agent
   resolves each difference: a fix to the code, or a catalog change the product owner approves.
 
-**An example, end to end.** The catalog defines the operation `spend.report`: an operator, the
-control copilot (CC) or the mission copilot asks what a mission has spent. One of its rules
-reads "one calculation behind every figure shown". Ten entry points in the code carry its id:
-cockpit routes in the control plane, monitor routes on the mission machine, mission-copilot tools. The trace
-reports two differences:
+**An example.** The catalog says who may pause an agent, and what must hold whoever asks
+(abridged from
+[operations-team.ts](packages/agent-config/src/baseline/operations-team.ts)):
 
-- *"CC is an actor of spend.report, but no entry point serves CC"*: the control copilot has
-  no tool for it. A gap in the code, now on the roadmap's "Backlog: catalog gaps".
-- *"8 of 10 entry points of spend.report reach no code in its home, cp-mission-ops"*. The trace
-  cannot say why. A reviewer reads the code: each route and tool reads the stored totals
-  (`missionStats`, `agentTurnStats`) and sums them itself, in two packages. Whether that
-  breaks "one calculation" is the reviewer's judgment. The outcome is a finding (move the
-  calculation into one function) or a question for the product owner.
+```ts
+{
+  id: "agent.pause",
+  intent: "Stop one agent's dispatch",
+  actors: ["OP", "CC", "MC"],    // the operator, the control copilot, the mission copilot
+  home: "mm-daemon",             // the component meant to hold its one implementation
+  rules: ["Takes effect before the agent's next turn", "Agents never pause a teammate"],
+}
+```
+
+Each way into the code that serves this request names it, one per actor:
+
+```ts
+{ method: "POST", path: "/pause-agent", operation: "agent.pause", handler }  // cockpit (OP)
+pause_agent: "agent.pause",                                    // control copilot action (CC)
+{ name: "PauseAgent", operation: "agent.pause", execute }     // mission copilot tool (MC)
+```
+
+What the tools then catch:
+
+- A typo such as `operation: "agent.paus"` does not compile: the field's type is the list of
+  ids in the catalog.
+- If the mission copilot's tool were deleted, the trace would report *"MC is an actor of
+  agent.pause, but no entry point serves MC."* Either the code lost a capability it is meant to
+  have, or the catalog should change, which the product owner decides.
+- The trace also lists the three entry points side by side, with what each reaches, so a
+  reviewer can check that all three end in the same implementation, and that "agents never
+  pause a teammate" holds on each path.
 
 **What the trace can and cannot tell you.** Its findings are leads, not verdicts. It reliably
 attributes database writes to the component that makes them, and it lists the invariants for
