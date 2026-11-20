@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "b2865e4",
-  "time": "2026-11-20T20:28:12Z"
+  "commit": "c0d1b36",
+  "time": "2026-11-20T22:02:33Z"
  },
  "findings": [
   {
@@ -3530,6 +3530,30 @@
    "new": false
   },
   {
+   "key": "0c99113ab5c8",
+   "kind": "inv.unenforced",
+   "about": "app.loopback-only",
+   "text": "The catalog names nothing that enforces app.loopback-only (its enforcedBy is empty).",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "6afa1f19f7d9",
+   "kind": "inv.unenforced",
+   "about": "app.as-owner",
+   "text": "The catalog names nothing that enforces app.as-owner (its enforcedBy is empty).",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "29c1c9ace0f3",
+   "kind": "inv.unenforced",
+   "about": "app.bounded",
+   "text": "The catalog names nothing that enforces app.bounded (its enforcedBy is empty).",
+   "where": [],
+   "new": true
+  },
+  {
    "key": "e102fb60b998",
    "kind": "inv.unenforced",
    "about": "alert.once-per-episode",
@@ -3576,6 +3600,14 @@
    "text": "The catalog names nothing that enforces sec.secrets-not-recorded (its enforcedBy is empty).",
    "where": [],
    "new": false
+  },
+  {
+   "key": "1d3f1f30e923",
+   "kind": "inv.unenforced",
+   "about": "sec.served-apart",
+   "text": "The catalog names nothing that enforces sec.served-apart (its enforcedBy is empty).",
+   "where": [],
+   "new": true
   }
  ]
 }

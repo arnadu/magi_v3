@@ -4465,6 +4465,65 @@
   ]
  },
  {
+  "id": "app.declare",
+  "intent": "Serve a program for the operator to use in a browser: its name and the command that starts it",
+  "home": "mm-apps",
+  "actors": [
+   "AG"
+  ],
+  "planned": true,
+  "startedBy": null,
+  "entryPoints": []
+ },
+ {
+  "id": "app.run",
+  "intent": "Start declared apps, watch them, and stop them",
+  "home": "mm-apps",
+  "actors": [
+   "PLT"
+  ],
+  "planned": true,
+  "startedBy": null,
+  "entryPoints": []
+ },
+ {
+  "id": "app.control",
+  "intent": "Start or stop an app",
+  "home": "mm-apps",
+  "actors": [
+   "OP",
+   "MC",
+   "AG"
+  ],
+  "planned": true,
+  "startedBy": null,
+  "entryPoints": []
+ },
+ {
+  "id": "app.status",
+  "intent": "A mission's apps: their state, owner, when each was last opened, its CPU and memory",
+  "home": "mm-apps",
+  "actors": [
+   "OP",
+   "MC",
+   "AG"
+  ],
+  "planned": true,
+  "startedBy": null,
+  "entryPoints": []
+ },
+ {
+  "id": "app.open",
+  "intent": "Use an app in the browser",
+  "home": "cp-apps",
+  "actors": [
+   "OP"
+  ],
+  "planned": true,
+  "startedBy": null,
+  "entryPoints": []
+ },
+ {
   "id": "copilot.ask",
   "intent": "Talk to one's copilot",
   "home": "cp-copilot",

@@ -207,6 +207,33 @@
   "findings": 0
  },
  {
+  "id": "app.loopback-only",
+  "scope": "app",
+  "text": "An app is reachable only through the apps host: it never listens on an address another machine can reach.",
+  "enforcedBy": [],
+  "decidedBy": null,
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "app.as-owner",
+  "scope": "app",
+  "text": "An app runs as its owner's OS user, with no secrets.",
+  "enforcedBy": [],
+  "decidedBy": null,
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "app.bounded",
+  "scope": "app",
+  "text": "No app runs while its mission is suspended or after the idle time unopened; no more than the limit run at once; a failing app is not restarted without limit.",
+  "enforcedBy": [],
+  "decidedBy": null,
+  "open": null,
+  "findings": 0
+ },
+ {
   "id": "alert.once-per-episode",
   "scope": "alert",
   "text": "An alert is raised once per episode, not on every sample, and the daily report is sent once per user per day, even across restarts.",
@@ -453,6 +480,15 @@
   "decidedBy": null,
   "open": null,
   "findings": 1
+ },
+ {
+  "id": "sec.served-apart",
+  "scope": "security",
+  "text": "Code an agent serves live runs in the operator's browser from an origin other than the cockpit's, so it never acts with the operator's cockpit session; and one mission's app cannot reach another mission's app through that browser.",
+  "enforcedBy": [],
+  "decidedBy": null,
+  "open": "Planned with interactive apps: the apps host, its sign-in and the secret in each app's path are for the ADR",
+  "findings": 0
  },
  {
   "id": "sec.least-privilege",
