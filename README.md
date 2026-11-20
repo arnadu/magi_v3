@@ -364,38 +364,9 @@ tell code that is wrong from code that is the requirement. The remedy chosen is 
   agents of [MAGI DEV](docs/plans/magi-dev-requirements.md) work from. A person or an agent
   resolves each difference: a fix to the code, or a catalog change the product owner approves.
 
-**An example.** The catalog says who may pause an agent, and what must hold whoever asks
-(abridged from
-[operations-team.ts](packages/agent-config/src/baseline/operations-team.ts)):
-
-```ts
-{
-  id: "agent.pause",
-  intent: "Stop one agent's dispatch",
-  actors: ["OP", "CC", "MC"],    // the operator, the control copilot, the mission copilot
-  home: "mm-daemon",             // the component meant to hold its one implementation
-  rules: ["Takes effect before the agent's next turn", "Agents never pause a teammate"],
-}
-```
-
-Each way into the code that serves this request names it, one per actor:
-
-```ts
-{ method: "POST", path: "/pause-agent", operation: "agent.pause", handler }  // cockpit (OP)
-pause_agent: "agent.pause",                                    // control copilot action (CC)
-{ name: "PauseAgent", operation: "agent.pause", execute }     // mission copilot tool (MC)
-```
-
-What the tools then catch:
-
-- A typo such as `operation: "agent.paus"` does not compile: the field's type is the list of
-  ids in the catalog.
-- If the mission copilot's tool were deleted, the trace would report *"MC is an actor of
-  agent.pause, but no entry point serves MC."* Either the code lost a capability it is meant to
-  have, or the catalog should change, which the product owner decides.
-- The trace also lists the three entry points side by side, with what each reaches, so a
-  reviewer can check that all three end in the same implementation, and that "agents never
-  pause a teammate" holds on each path.
+**An example.** [ADR-0036](docs/adr/0036-product-and-architecture-baselines.md#a-small-example-a-lending-library)
+follows a small made-up program through the scheme: its catalog entry, the tagged code, the
+report the trace writes, and the finding a reviewer draws from it.
 
 **What the trace can and cannot tell you.** Its findings are leads, not verdicts. It reliably
 attributes database writes to the component that makes them, and it lists the invariants for

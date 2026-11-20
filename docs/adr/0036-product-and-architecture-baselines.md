@@ -337,9 +337,143 @@ Each document answers one question and cites the others by id rather than restat
 | Implementation history | What happened |
 | Threat model, resilience document | Trust boundaries and failure modes, expressed in actors and components |
 
-## A worked example: archiving a mission
+## A small example: a lending library
 
-This follows one feature through the whole scheme. Archiving is planned and not built, so the
+This example uses a made-up program, not MAGI, so that every line of it fits on the page. The
+catalog, the tags and the report have the same shape as MAGI's; the program is kept small.
+
+**The program.** A library lends books. Members renew their loans on the website; librarians
+renew them at the desk with an admin command. The code has three folders: `src/loans/` (the
+rules about loans), `src/web/` (the website) and `src/admin/` (the desk commands).
+
+**1. The catalog says what is intended.** It is TypeScript, so the compiler knows every id:
+
+```ts
+// catalog/operations.ts
+export const OPERATIONS = [
+  {
+    id: "loan.renew",
+    intent: "Extend a loan by two weeks",
+    actors: ["MEMBER", "LIBRARIAN"],
+    home: "loans",                 // the component meant to hold the one implementation
+    rules: [
+      "At most two renewals",
+      "Not if another member has reserved the book",
+    ],
+  },
+  // … loan.borrow, loan.return, …
+] as const;
+
+export type OperationId = (typeof OPERATIONS)[number]["id"];   // "loan.renew" | "loan.borrow" | …
+
+// catalog/components.ts: which folder belongs to which component, and who owns each collection
+export const COMPONENTS = [
+  { id: "loans", paths: ["src/loans/**"], owns: ["loans"] },
+  { id: "web",   paths: ["src/web/**"] },
+  { id: "admin", paths: ["src/admin/**"] },
+] as const;
+```
+
+**2. The code names the operation at each way in.** The rules live in one function, in the
+`loans` component:
+
+```ts
+// src/loans/renew.ts
+ 1  import { db } from "../db.js";
+ 2
+ 3  export async function renewLoan(loanId: string): Promise<void> {
+ 4    const loan = await db.loans.findOne({ _id: loanId });
+ 5    if (loan.renewals >= 2) throw new Error("Renewed twice already");
+ 6    if (await db.reservations.findOne({ bookId: loan.bookId }))
+ 7      throw new Error("Another member is waiting for this book");
+ 8    await db.loans.updateOne(
+ 9      { _id: loanId },
+10      { $inc: { renewals: 1 }, $set: { due: inTwoWeeks(loan.due) } },
+11    );
+12  }
+```
+
+The website's route names the operation it serves as its second argument. The router's
+signature is `post(path: string, operation: OperationId, handler)`:
+
+```ts
+// src/web/routes.ts
+ 1  import { renewLoan } from "../loans/renew.js";
+ 2  import { routes } from "./router.js";
+ 3
+ 4  // A member renews one of their loans.
+ 5  routes.post("/loans/:id/renew", "loan.renew", async (req, res) => {
+ 6    await renewLoan(req.params.id);
+ 7    res.sendStatus(204);
+ 8  });
+```
+
+The desk command was written later, in a hurry. It names the operation too (`AdminCommand`
+has a required field `operation: OperationId`), but it updates the loan itself instead of
+calling `renewLoan`:
+
+```ts
+// src/admin/commands.ts
+ 1  import { db } from "../db.js";
+ 2  import type { AdminCommand } from "./types.js";
+ 3
+ 4  // A librarian renews a loan at the desk.
+ 5  export const renew: AdminCommand = {
+ 6    name: "renew",
+ 7    operation: "loan.renew",
+ 8    async run(loanId) {
+ 9      await db.loans.updateOne(
+10        { _id: loanId },
+11        { $inc: { renewals: 1 }, $set: { due: inTwoWeeks() } },
+12      );
+13    },
+14  };
+```
+
+The compiler already catches two mistakes: a typo such as `"loan.renw"` is not an
+`OperationId`, and a command without an `operation` field is not an `AdminCommand`.
+
+**3. The trace reports what the code does, next to what was intended.** `npm run trace` finds
+every entry point and its tag, follows the calls from each one with CodeQL, and finds every
+database write. It then joins all of this to the catalog. Its operations report has a section
+for `loan.renew`:
+
+> ## `loan.renew`
+>
+> Extend a loan by two weeks. Actors: MEMBER, LIBRARIAN. Home: `loans`.
+>
+> | Entry point | Actor | Where | Reaches home | Writes reached | Unresolved calls |
+> |---|---|---|---|---|---|
+> | route `POST /loans/:id/renew` | MEMBER | `src/web/routes.ts:5` | yes | `loans.updateOne@src/loans/renew.ts:8` | — |
+> | command `renew` | LIBRARIAN | `src/admin/commands.ts:5` | **no** | `loans.updateOne@src/admin/commands.ts:9` | — |
+>
+> - 1 of 2 entry points of loan.renew reach no code in its home, loans: command renew. (`src/admin/commands.ts:5`)
+> - Entry points of loan.renew reach different database writes: route POST /loans/:id/renew lacks 1; command renew lacks 1.
+
+Its writes report adds a third finding, from the ownership declared in the catalog:
+
+> - admin writes loans (updateOne in run); its owner is loans.
+
+Each finding also goes on the to-do list of the reviewer agents who cover that part of the
+catalog.
+
+**4. A reviewer judges.** The trace does not know what the desk command does wrong. It only
+knows that two ways into one operation end in two different pieces of code. A reviewer opens
+`src/admin/commands.ts:9`, compares it with the rules of `loan.renew`, and finds that a
+librarian can renew a loan any number of times, and over a reservation. It reports a finding
+against the code, quoting the report's rows. The fix is for the command to call `renewLoan`.
+On the next trace both rows read "yes", and the three findings are gone.
+
+**What the trace could not have found.** If `renewLoan` itself forgot the reservation check,
+both entry points would reach the home, and the report would be clean. Only a test (titled with
+the rule it checks) or a reviewer reading the rules catches that. The trace finds where the
+code departs from the catalog's structure: who may ask, where the implementation lives, who
+writes what. It does not check that the code keeps the catalog's rules.
+
+## A larger example: archiving a mission
+
+This follows one feature through the whole scheme, in MAGI itself, from the product owner's
+request to production support. Archiving is planned and not built, so the
 code, file names, reports and ADR-0040 below are illustrative: the names are invented, and the
 exact forms of an operation tag and of the reports are settled in build steps 2 and 3.
 
