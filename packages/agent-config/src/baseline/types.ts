@@ -46,7 +46,9 @@ export interface Component<C extends string = string> {
 /**
  * How an invariant is kept true. `test`: a test whose title starts with the
  * invariant's id. `scan`: a query in `scripts/trace/ql/`. `runtime`: a check
- * the platform runs while it operates. `review`: judged by a reviewer.
+ * the platform runs while it operates, at `where`: "<package path>: <what>",
+ * where <what> starts with the function names or route path that the
+ * baseline test checks are still in that file. `review`: judged by a reviewer.
  */
 export type Enforcement =
 	| { kind: "test" }

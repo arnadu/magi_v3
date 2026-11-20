@@ -73,6 +73,26 @@ function key(...parts) {
 const at = (file, line) => `${file}:${line}`;
 
 /**
+ * Every kind of finding the trace reports. Reviewers' coverage files
+ * (MAGI DEV's `team/coverage.json`) select findings by these names.
+ */
+export const FINDING_KINDS = [
+	"op.no-entry-point",
+	"op.actor-missing",
+	"op.actor-extra",
+	"op.home-not-reached",
+	"op.divergent-writes",
+	"op.not-started",
+	"store.foreign-writer",
+	"status.unknown-state",
+	"status.undeclared-transition",
+	"status.unseen-transition",
+	"inv.unenforced",
+	"sec.result",
+	"layer.against",
+];
+
+/**
  * @param {object} b the baseline module (`@magi/agent-config` baseline)
  * @param {object[]} entries entry points with `reach` attached
  * @param {object[]} writes MongoDB writes from writes.mjs, with `fn` (function id) attached
@@ -94,6 +114,8 @@ export function computeFindings(
 	// the key was first computed from, so rewording a kind's text keeps the
 	// reviewers' decisions on its findings.
 	const add = (kind, about, text, where = [], detail = {}, keyText = text) => {
+		if (!FINDING_KINDS.includes(kind))
+			throw new Error(`findings: unknown finding kind ${kind}`);
 		const k = key(kind, about, keyText, ...where);
 		const same = byKey.get(k);
 		if (same) {

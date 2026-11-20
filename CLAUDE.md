@@ -100,8 +100,8 @@ These apply continuously, not at sprint close. Each has a full write-up in
   the operation, for every caller — find them before changing it, under incident pressure too.
 
 **Traceability** ([detail](docs/practices/traceability.md), [ADR-0036](docs/adr/0036-product-and-architecture-baselines.md))
-- Every new entry point (route, tool, copilot action, Tool API name, timer, change stream)
-  declares the operation it serves from [docs/product/operations.md](docs/product/operations.md),
+- Every new entry point (route, tool, copilot action, Tool API name, timer, change stream,
+  directory agents write requests into) declares the operation it serves from [docs/product/operations.md](docs/product/operations.md),
   or an entry class; `npm run trace:entry-points` lists them, and a test fails on a missing tag.
 - `npm run trace` reports where the code and the catalog disagree (operations, database writes,
   status transitions, security); `npm run trace -- callers <file:line>` and its siblings answer
@@ -109,6 +109,14 @@ These apply continuously, not at sprint close. Each has a full write-up in
 - Tag by intent; when no operation fits, propose a catalog change for the product owner
   rather than stretching one. A change of intent changes the catalog before the code.
 - A test that walks a journey or enforces an invariant names its id.
+- A change can make the catalog wrong without failing a test: an operation's implementation
+  moved to another component (its `home`), a new database write or status value, a renamed
+  function the catalog names, a catalog gap closed (the roadmap's "Backlog: catalog gaps"), a
+  planned operation built. Propose the catalog change in the same commit and say so; never
+  edit the catalog quietly. [What each change means](docs/practices/traceability.md#what-each-change-means-for-the-catalog).
+- Before committing such a change, run `npm run trace -- --no-security` and read "new since the
+  last run" in `analysis/index.md`: each new finding is a fix, a catalog question, or a lead
+  you checked and set aside, with the reason.
 
 **Security** ([detail](docs/security/CLAUDE.md)) — pause at each of these:
 - New external HTTP call: user-influenced URL? `ssrf.ts`/`safe-http.ts` used? Secrets sent? Response parsed safely?

@@ -9,6 +9,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { FINDING_KINDS } from "../../../scripts/trace/findings.mjs";
 import {
 	ACTORS,
 	COMPONENTS,
@@ -62,6 +63,63 @@ const TEST_SOURCES = ROOTS.flatMap((r) => {
 		return [];
 	}
 });
+
+/**
+ * What is wrong with a runtime enforcement's `where`: "<package path>: <what>",
+ * several joined by "; " (a bare file name is in the previous one's folder).
+ * <what> starts with the function names (camelCase, comma-separated) or a
+ * route path ("/confirm"); each must still be in that file. A description in
+ * words ("the team config schema") names no symbol to check.
+ */
+function runtimeLocationProblems(where: string): string[] {
+	const problems: string[] = [];
+	let dir = "";
+	for (const part of where.split("; ")) {
+		const m = /^([\w./-]+\.tsx?): (.*)$/.exec(part);
+		if (!m) {
+			problems.push(`"${part}" is not "<file>: <what>"`);
+			continue;
+		}
+		const file = m[1].includes("/") ? m[1] : `${dir}/${m[1]}`;
+		dir = file.slice(0, file.lastIndexOf("/"));
+		const path = join(ROOT, "packages", file);
+		if (!statSafe(path)) {
+			problems.push(`no file packages/${file}`);
+			continue;
+		}
+		const text = readFileSync(path, "utf8");
+		const names = /^((?:[a-z]+[A-Z]\w*)(?:, [a-z]+[A-Z]\w*)*)/.exec(m[2]);
+		for (const name of names ? names[1].split(", ") : [])
+			if (!new RegExp(`\\b${name}\\b`).test(text))
+				problems.push(`no ${name} in packages/${file}`);
+		const route = /^(\/[\w/-]+)/.exec(m[2]);
+		if (route && !text.includes(`"${route[1]}"`))
+			problems.push(`no route "${route[1]}" in packages/${file}`);
+	}
+	return problems;
+}
+
+/** What is missing for one way an invariant is enforced. */
+function enforcementProblems(
+	id: string,
+	e: (typeof INVARIANTS)[number]["enforcedBy"][number],
+): string[] {
+	switch (e.kind) {
+		case "test":
+			return TEST_SOURCES.some((t) => t.includes(`("${id}`))
+				? []
+				: [`no test titled "${id} …"`];
+		case "scan":
+			return SOURCES.includes(`scripts/trace/ql/${e.query}.ql`) ||
+				statSafe(join(ROOT, `scripts/trace/ql/${e.query}.ql`))
+				? []
+				: [`no query ${e.query}`];
+		case "runtime":
+			return runtimeLocationProblems(e.where);
+		default:
+			return [];
+	}
+}
 
 function duplicates(ids: readonly string[]): string[] {
 	return ids.filter((id, i) => ids.indexOf(id) !== i);
@@ -146,19 +204,9 @@ describe("baseline catalog", () => {
 				if (!adrs.some((f) => f.startsWith(`${n}-`)))
 					problems.push(`${inv.id}: no ${inv.decidedBy}`);
 			}
-			for (const e of inv.enforcedBy) {
-				if (
-					e.kind === "test" &&
-					!TEST_SOURCES.some((t) => t.includes(`("${inv.id}`))
-				)
-					problems.push(`${inv.id}: no test titled "${inv.id} …"`);
-				if (
-					e.kind === "scan" &&
-					!SOURCES.includes(`scripts/trace/ql/${e.query}.ql`) &&
-					!statSafe(join(ROOT, `scripts/trace/ql/${e.query}.ql`))
-				)
-					problems.push(`${inv.id}: no query ${e.query}`);
-			}
+			for (const e of inv.enforcedBy)
+				for (const p of enforcementProblems(inv.id, e))
+					problems.push(`${inv.id}: ${p}`);
 		}
 		expect(problems).toEqual([]);
 	});
@@ -183,5 +231,51 @@ describe("baseline catalog", () => {
 			if (process.env.UPDATE_BASELINE_DOC === "1") writeFileSync(abs, rendered);
 			expect(readFileSync(abs, "utf8"), path).toBe(rendered);
 		}
+	});
+});
+
+describe("catalog ids used outside the catalog", () => {
+	const MAGI_DEV = [
+		"config/teams/magi-dev.yaml",
+		...files(join(ROOT, "config/teams/magi-dev")),
+	];
+
+	it("names only journeys that exist in MAGI DEV's template", () => {
+		const journeys = new Set(JOURNEYS.map((j) => j.id));
+		const unknown = MAGI_DEV.flatMap((f) =>
+			[...readFileSync(join(ROOT, f), "utf8").matchAll(/\b[JA]-\d{2}[a-z]?\b/g)]
+				.map((m) => m[0])
+				.filter((id) => !journeys.has(id))
+				.map((id) => `${f}: ${id}`),
+		);
+		expect(unknown).toEqual([]);
+	});
+
+	it("covers only finding kinds the trace reports, about ids that exist", () => {
+		const coverage = JSON.parse(
+			readFileSync(
+				join(ROOT, "config/teams/magi-dev/team/coverage.json"),
+				"utf8",
+			),
+		) as { agents: Record<string, string[]> };
+		const ids = [
+			...ACTORS.map((a) => a.id),
+			...COMPONENTS.map((c) => c.id),
+			...ENTITIES.map((e) => e.id),
+			...OPERATIONS.map((o) => o.id),
+			...INVARIANTS.map((i) => i.id),
+		];
+		const problems = Object.entries(coverage.agents).flatMap(
+			([agent, selectors]) =>
+				selectors.flatMap((s) => {
+					const [kind, prefix] = s.split(":");
+					if (!(FINDING_KINDS as readonly string[]).includes(kind))
+						return [`${agent}: no finding kind ${kind}`];
+					if (prefix && !ids.some((id) => id.startsWith(prefix)))
+						return [`${agent}: no catalog id starts with ${prefix}`];
+					return [];
+				}),
+		);
+		expect(problems).toEqual([]);
 	});
 });

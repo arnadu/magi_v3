@@ -139,6 +139,37 @@ run's `trace` artifact and summary carry only their counts. On a push to `main`,
 `trace-scan`): the analysis runs on GitHub's machines, not on a mission's shared CPUs, where
 CodeQL is throttled into the job's time limit.
 
+## What each change means for the catalog
+
+Some changes are caught by a test or the compiler; the others only show in the trace, or
+nowhere. The catalog change is proposed in the same commit as the code, and the product owner
+approves it.
+
+| Change | What to do | Caught by |
+|---|---|---|
+| New entry point | Tag it with its operation or entry class | `tsc`, the entry-point test |
+| New intent (a feature) | Catalog first: operation, entity states, journey; then the code | review |
+| New source file | Falls under exactly one component's path patterns | baseline test |
+| New collection | A data store with its one owning component | baseline test |
+| Implementation moved to another component | Change the operation's `home` | trace (`op.home-not-reached`) |
+| New database write from another component | Move it to the owner, or change the owner | trace (`store.foreign-writer`) |
+| New status value or transition | Add the state and the transition to the entity | trace (`status.*`) |
+| Function the catalog names renamed or moved | Update the invariant's `runtime` location | baseline test |
+| Journey or operation id renamed | Also in MAGI DEV's template (`config/teams/magi-dev/`) | baseline test (journeys, coverage) |
+| Catalog gap closed | Update or remove its row in the roadmap's "Backlog: catalog gaps" | nothing: by hand |
+| Planned operation built | Remove `planned` | nothing: by hand |
+| New invariant enforced | Name the test, scan or runtime check in `enforcedBy` | baseline test (that it exists) |
+
+**Read the trace before committing** any change in the rows the trace catches:
+`npm run trace -- --no-security` (a few minutes), then "new since the last run" in
+`analysis/index.md`. CI runs the trace too, but it blocks nothing and nobody reads
+it for you.
+
+A runtime location is written `<package path>: <what>`, several joined by `; ` (a bare file
+name is in the previous one's folder). When `<what>` starts with function names (camelCase,
+comma-separated) or a route path (`/confirm`), the baseline test checks each is still in that
+file.
+
 ## Changing intent
 
 - A change to what MAGI should do is a change to the catalog first, approved by the product

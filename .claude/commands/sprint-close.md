@@ -100,7 +100,20 @@ Scan the sprint diff for significant architectural decisions:
 For each candidate: check whether an ADR exists in `docs/adr/`. If not, suggest a title and the key decision/alternatives.
 If a superseded design was removed: check whether the relevant ADR is marked SUPERSEDED.
 
-## Check 7 — Sprint status (roadmap)
+## Check 7 — Catalog currency (traceability)
+
+Run `npm run trace` (install CodeQL first with `bash scripts/trace/install-codeql.sh` if
+needed). In `analysis/findings.json`, take the findings whose places are in files the sprint
+changed. Each should already have been examined while coding (CLAUDE.md, "Traceability"):
+fixed, raised as a catalog question for the product owner, or set aside with a reason.
+Also confirm that catalog gaps the sprint closed are updated in the roadmap's "Backlog:
+catalog gaps", and that operations the sprint built are no longer `planned`.
+
+If examined: "✅ Catalog is current"
+If not: "⚠️ PROCESS GAP — N trace findings on this sprint's changes were not examined", listed
+with their `file:line`.
+
+## Check 8 — Sprint status (roadmap)
 
 Read the sprint table in MAGI_V3_ROADMAP.md (the only place sprint status is kept). Identify the highest-numbered sprint not yet marked `✅ Done`. Confirm whether it should now be marked done based on the diff, and give the one-line summary to use.
 
@@ -109,4 +122,4 @@ Read the sprint table in MAGI_V3_ROADMAP.md (the only place sprint status is kep
 Print a concise punch list:
 - ✅ items already done (most items should be here)
 - ⚠️ PROCESS GAP items that need catch-up work, with the exact command or file to update
-- For each gap: note which habit (lint discipline, security trigger, threat model trigger, code structure trigger, ADR discipline) should have caught it earlier
+- For each gap: note which habit (lint discipline, security trigger, threat model trigger, code structure trigger, ADR discipline, traceability trigger) should have caught it earlier
