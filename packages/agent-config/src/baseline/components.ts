@@ -13,6 +13,7 @@ export const COMPONENT_IDS = [
 	"cp-records",
 	"cp-copilot",
 	"cp-mc-gateway",
+	"cp-apps",
 	"cp-edge",
 	"cp-host",
 	"mm-daemon",
@@ -21,6 +22,7 @@ export const COMPONENT_IDS = [
 	"mm-mission-copilot",
 	"mm-monitor",
 	"mm-jobs",
+	"mm-apps",
 	"mm-state",
 	"mm-isolation",
 	"mm-cli",
@@ -33,6 +35,7 @@ export const COMPONENT_IDS = [
 	"ui-objectives",
 	"ui-limits",
 	"ui-copilot",
+	"ui-apps",
 	"ui-kit",
 	"config",
 	"skills",
@@ -167,6 +170,16 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		],
 	},
 	{
+		id: "cp-apps",
+		plane: "control-plane",
+		name: "Apps host (planned)",
+		responsibility:
+			"The apps host: the ticket from the cockpit, the app sign-in, the proxy to mission machines' apps",
+		layer: 2,
+		root: CP,
+		paths: [],
+	},
+	{
 		id: "cp-host",
 		plane: "control-plane",
 		name: "Process host",
@@ -266,6 +279,16 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		layer: 4,
 		root: MM,
 		paths: ["job-*", "tool-api-server.ts", "schedule-ingest.ts"],
+	},
+	{
+		id: "mm-apps",
+		plane: "mission-machine",
+		name: "Interactive apps (planned)",
+		responsibility:
+			"App declarations, starting and watching apps, the hop from the monitor server to each app",
+		layer: 4,
+		root: MM,
+		paths: [],
 	},
 	{
 		id: "mm-state",
@@ -447,6 +470,16 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		layer: 2,
 		root: UI,
 		paths: ["Copilot*.tsx", "copilot/"],
+	},
+	{
+		id: "ui-apps",
+		plane: "browser",
+		name: "Apps (planned)",
+		responsibility:
+			"The Apps tab: a mission's apps, their state, Open, copy the URL, start and stop",
+		layer: 2,
+		root: UI,
+		paths: [],
 	},
 	{
 		id: "ui-kit",

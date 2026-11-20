@@ -129,6 +129,7 @@ export type OperationGroup =
 	| "jobs"
 	| "objectives"
 	| "images"
+	| "apps"
 	| "copilot"
 	| "platform";
 

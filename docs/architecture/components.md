@@ -15,6 +15,7 @@
 | `cp-mission-ops` | Mission operations | 2 | The homes of mission operations: lifecycle, launch claims, limits, spend | `packages/control-plane/src` | `mission-lifecycle-actions.ts`, `mission-claims.ts`, `mission-limits.ts`, `mission-spend.ts`, `spend-policy.ts`, `mission-stats-summary.ts` |
 | `cp-scheduler` | Scheduler | 2 | Delivering due schedules | `packages/control-plane/src` | `scheduler.ts` |
 | `cp-edge` | Edge and identity | 2 | Sign-in, sessions, users, security headers, the proxy to mission machines, monitor tokens | `packages/control-plane/src` | `auth*.ts`, `session-routes.ts`, `firebase.ts`, `users.ts`, `security-headers.ts`, `proxy.ts`, `monitor-token.ts` |
+| `cp-apps` | Apps host (planned) | 2 | The apps host: the ticket from the cockpit, the app sign-in, the proxy to mission machines' apps | `packages/control-plane/src` |  |
 | `cp-machines` | Machine lifecycle | 1 | Fly machines and volumes: provision, wake, resize, upgrade, segments | `packages/control-plane/src` | `machine-*`, `fly-*`, `resource-upgrade*` |
 | `cp-oversight` | Resource oversight | 1 | Sampling, alerts, the daily report, platform relays | `packages/control-plane/src` | `resource-monitor.ts`, `resource-alerts.ts`, `resource-queries.ts`, `resource-report*`, `atlas-usage.ts`, `usage-queries.ts`, `platform-relay.ts`, `mailbox-writer.ts` |
 | `cp-records` | Mission records | 1 | Reads of what agents and copilots did (turns, transcripts, model calls), served from the database so they work while a mission's machine is stopped | `packages/control-plane/src` | `transcript-queries.ts` |
@@ -28,6 +29,7 @@
 | `mm-mission-copilot` | Mission copilot | 4 | Its tools and their checks | `packages/agent-runtime-worker/src` | `mission-copilot*`, `resource-upgrade-tool.ts` |
 | `mm-monitor` | Monitor server | 4 | The cockpit-facing routes on the mission machine (port 4000) | `packages/agent-runtime-worker/src` | `monitor-*`, `monitor-routes/` |
 | `mm-jobs` | Jobs and schedules | 4 | Background jobs, the Tool API (port 4001), schedule ingestion | `packages/agent-runtime-worker/src` | `job-*`, `tool-api-server.ts`, `schedule-ingest.ts` |
+| `mm-apps` | Interactive apps (planned) | 4 | App declarations, starting and watching apps, the hop from the monitor server to each app | `packages/agent-runtime-worker/src` |  |
 | `mm-agent-loop` | Agent loop | 3 | A turn: prompt, LLM calls, tools, limits, reflection, logging | `packages/agent-runtime-worker/src` | `agent-runner*`, `loop*.ts`, `prompt.ts`, `prompts.ts`, `reflection.ts`, `context-utils.ts`, `limits.ts`, `llm-*`, `models.ts`, `openrouter-pricing.ts`, `retry-backoff.ts`, `agent-stats.ts`, `usage.ts`, `mental-map*`, `skills.ts` |
 | `mm-tools` | Agent tools | 2 | The tools agents call and their isolated execution | `packages/agent-runtime-worker/src` | `tools/`, `tools.ts`, `tool-catalog.ts`, `tool-args.ts`, `tool-executor.ts`, `images/`, `document-*`, `pdf-*`, `ocr-cap.ts`, `mime-types.ts`, `artifacts.ts` |
 | `mm-state` | Mission state | 1 | Mailbox, conversations, config, objectives, stats, anomalies, resources | `packages/agent-runtime-worker/src` | `mailbox.ts`, `conversation-repository.ts`, `mission-config*`, `objectives/`, `anomaly*`, `resource-alert-state.ts`, `resource-sampler.ts`, `resource-thresholds.ts`, `mongo.ts` |
@@ -45,6 +47,7 @@
 | `ui-objectives` | Objectives | 2 | The objective tree, tasks and KPIs, and their progress | `packages/cockpit/src` | `ObjectivesPanel.tsx`, `types.ts` |
 | `ui-limits` | Spend, limits and schedules | 2 | Spend against cap and ceiling, agent limits, machine runtime and upgrades, schedules | `packages/cockpit/src` | `LimitsPanel.tsx`, `RuntimePanel.tsx`, `UpgradeLimitsSection.tsx`, `SchedulePanel.tsx`, `mission-spend.ts` |
 | `ui-copilot` | Copilot panel | 2 | Talking to the copilot, confirming its proposals, its transcripts, files, limits and settings | `packages/cockpit/src` | `Copilot*.tsx`, `copilot/` |
+| `ui-apps` | Apps (planned) | 2 | The Apps tab: a mission's apps, their state, Open, copy the URL, start and stop | `packages/cockpit/src` |  |
 | `ui-api` | Cockpit API client | 1 | Every call from the cockpit to the control plane, and the polling around them | `packages/cockpit/src` | `api/`, `data.ts`, `use-api-resource.ts`, `use-visible-poll.ts` |
 | `ui-kit` | Cockpit building blocks | 1 | Shared display pieces: Markdown, JSON trees, loading and error states, the resizable message box | `packages/cockpit/src` | `Markdown.tsx`, `markdown.ts`, `JsonTree.tsx`, `LoadingView.tsx`, `load-error.tsx`, `InputResizeGrip.tsx`, `use-input-resize.ts` |
 

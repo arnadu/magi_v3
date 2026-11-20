@@ -22,6 +22,7 @@
 | J-16 | Upload a file for the agents | OP | `file.upload`, `file.write`, `message.send` |  |
 | J-17 | Stop a mission for good | OP, CC | `mission.suspend`, `mission.archive` | `mission.suspend` today; `mission.archive` when built |
 | J-20 | Track progress against objectives | OP, CC, MC | `objectives.progress`, `task.update`, `kpi.record` | CC records the KPIs assessed by judgement; MC updates tasks |
+| J-22 | Use a mission's interactive app | OP, MC | `app.status`, `app.open`, `app.control`, `message.send` | Planned. Open it from the mission cockpit, or from a copied URL in another tab; ask the team by message to change it |
 | A-01 | Act on a message: read it, do the work, answer | AG | `message.read`, `agent.remember`, `file.write`, `message.send`, `task.update` | The loop of every turn; `agent.dispatch`, `agent.turn` and `agent.reflect` run underneath |
 | A-02 | Research a question | AG, SUB | `web.search`, `web.fetch`, `web.browse`, `web.research`, `agent.shell`, `file.write`, `message.send` |  |
 | A-03 | Produce and publish a deliverable | AG, SUB | `file.write`, `image.create`, `agent.shell`, `message.send`, `task.update`, `kpi.record` | Publishing is writing it to the shared folder and telling its readers |
@@ -31,3 +32,4 @@
 | A-07 | Lead a team: hand out work and follow it up | AG | `message.send`, `message.read`, `task.create`, `task.update`, `mission.status` | For an agent that supervises others |
 | A-08 | Ask for more resources | AG, MC | `message.send`, `machine.upgrade` | The agent asks the mission copilot, which decides |
 | A-09 | Keep its memory useful | AG | `agent.remember`, `agent.history` | Its mental map and its own past turns |
+| A-10 | Publish an interactive app for the operator | AG | `file.write`, `app.declare`, `app.run`, `app.status`, `message.send`, `app.control` | Planned. The agent writes the app, declares it, sees it answer, and tells the operator where to find it |

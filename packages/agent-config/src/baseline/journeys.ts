@@ -186,6 +186,13 @@ export const JOURNEYS = defineJourneys([
 		note: "CC records the KPIs assessed by judgement; MC updates tasks",
 	},
 	{
+		id: "J-22",
+		title: "Use a mission's interactive app",
+		actors: ["OP", "MC"],
+		operations: ["app.status", "app.open", "app.control", "message.send"],
+		note: "Planned. Open it from the mission cockpit, or from a copied URL in another tab; ask the team by message to change it",
+	},
+	{
 		id: "A-01",
 		title: "Act on a message: read it, do the work, answer",
 		actors: ["AG"],
@@ -280,6 +287,20 @@ export const JOURNEYS = defineJourneys([
 		actors: ["AG"],
 		operations: ["agent.remember", "agent.history"],
 		note: "Its mental map and its own past turns",
+	},
+	{
+		id: "A-10",
+		title: "Publish an interactive app for the operator",
+		actors: ["AG"],
+		operations: [
+			"file.write",
+			"app.declare",
+			"app.run",
+			"app.status",
+			"message.send",
+			"app.control",
+		],
+		note: "Planned. The agent writes the app, declares it, sees it answer, and tells the operator where to find it",
 	},
 ]);
 

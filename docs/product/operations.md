@@ -126,6 +126,16 @@
 |---|---|---|---|---|
 | `image.create` | Make images for the mission's work | AG, SUB | `mm-tools` | Within the per-call budget; Spend counts against the mission |
 
+## Interactive apps
+
+| Id | Intent | Actors | Home | Rules that hold for every actor |
+|---|---|---|---|---|
+| `app.declare` (planned) | Serve a program for the operator to use in a browser: its name and the command that starts it | AG | `mm-apps` | Declared by writing an app file; its owner is the file's owner, as for jobs; Re-declaring one's own app replaces it; another agent's app is refused |
+| `app.run` (planned) | Start declared apps, watch them, and stop them | PLT | `mm-apps` | An app runs as its owner, with no secrets, like a job; The platform gives it its port (`$PORT`) and its path (`$BASE_PATH`); It listens on 127.0.0.1 only; one found listening on another address is stopped, and its owner told; Watched by its process and by a regular check that it answers: one that exits or stops answering is restarted, at most a few times an hour, then `failed`, and its owner told; Stopped when the mission is suspended, when the daemon restarts, and after the idle time unopened; nothing restarts by itself |
+| `app.control` (planned) | Start or stop an app | OP, MC, AG | `mm-apps` | AG: its own apps only; At most a few apps of a mission run at once; starting one more is refused, with the running ones named; The owner is told when someone else stops its app |
+| `app.status` (read) (planned) | A mission's apps: their state, owner, when each was last opened, its CPU and memory | OP, MC, AG | `mm-apps` | The same figure wherever it is shown; reading never changes it |
+| `app.open` (planned) | Use an app in the browser | OP | `cp-apps` | Served from the apps host, never from the cockpit's address; Only the mission's owner gets in, checked on every request, WebSockets included; Opening a stopped app starts it, within the limit on apps running at once; A link in the mission cockpit, or a URL to copy: it works for the mission's owner in another tab; anyone else is sent to sign in |
+
 ## Copilot
 
 | Id | Intent | Actors | Home | Rules that hold for every actor |

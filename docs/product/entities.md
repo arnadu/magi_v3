@@ -292,6 +292,35 @@ Who changed a file and when is the platform invariant `files.attributed`.
 | State | Meaning |
 |---|---|
 
+## Interactive app (planned) (`app`)
+
+Stored in: Declared by files under `shared/apps/`; the daemon's private record is authoritative.
+
+A long-running program an agent serves on the mission machine for the operator to use in a browser: a notebook, a Streamlit or Gradio app, a static site. Withdrawing the declaration stops the app and removes it.
+
+| State | Meaning |
+|---|---|
+| `starting` | Declared or started; the platform is launching it and waiting for it to answer |
+| `running` | Answering on its port |
+| `stopped` | Stopped on request, when the mission was suspended or the daemon restarted, or after the idle time unopened; still declared |
+| `failed` | Exited, or stopped answering, more often than the restart limit allows |
+
+| From | Event | To | Who | Note |
+|---|---|---|---|---|
+| — | declare | `starting` | AG |  |
+| `starting` | answers on its port | `running` | PLT |  |
+| `starting` | exits or never answers, past the restart limit | `failed` | PLT | Its owner is told |
+| `running` | exits or stops answering, past the restart limit | `failed` | PLT | Its owner is told |
+| `running` | stop | `stopped` | OP, MC, AG | AG: its own apps; its owner is told when someone else stops it |
+| `running` | mission suspended, daemon restarted, or unopened past the idle time | `stopped` | PLT |  |
+| `stopped` | start, or the operator opens it | `starting` | OP, MC, AG | AG: its own apps |
+| `failed` | start, or the operator opens it | `starting` | OP, MC, AG | AG: its own apps |
+
+Invariants:
+- `app.loopback-only`: An app is reachable only through the apps host: it never listens on an address another machine can reach. *(not yet enforced)*
+- `app.as-owner`: An app runs as its owner's OS user, with no secrets. *(not yet enforced)*
+- `app.bounded`: No app runs while its mission is suspended or after the idle time unopened; no more than the limit run at once; a failing app is not restarted without limit. *(not yet enforced)*
+
 ## Resource alert (`alert`)
 
 Stored as `resourceAlertState` (`AlertState`).
@@ -335,5 +364,6 @@ What must always hold for MAGI to be safe. The threats and trust boundaries they
 - `sec.input-validated`: Every input from outside a component's trust boundary is checked against a schema before it is used. *(enforced by runtime check in agent-runtime-worker/src/tool-args.ts: checkToolArguments (every tool call and Tool API request), runtime check in control-plane/src/copilot-actions.ts: parseActionPayload (every copilot action), runtime check in agent-config/src/loader.ts: the team config schema, a test)*
 - `sec.untrusted-text-labelled`: Text written by agents or taken from the web, when placed in a more privileged actor's context, is marked as data, not instructions. *(enforced by runtime check in agent-runtime-worker/src/mental-map-regions.ts: file-fed regions labelled as data, runtime check in agent-runtime-worker/src/tools/fetch-url.ts: the banner on fetched content, a test; **open decision:** Anomaly text relayed into the copilots' inboxes is not yet marked (AN1, trust-boundaries.md))*
 - `sec.output-safe`: Content written by agents or taken from the web is escaped or sandboxed wherever the cockpit shows it. *(enforced by runtime check in cockpit/src/markdown.ts: renderMarkdown (escapes text, allow-lists link schemes), runtime check in agent-runtime-worker/src/monitor-files.ts: handleDownload (SVG and HTML as attachments under a sandbox CSP), a test)*
+- `sec.served-apart`: Code an agent serves live runs in the operator's browser from an origin other than the cockpit's, so it never acts with the operator's cockpit session; and one mission's app cannot reach another mission's app through that browser. *(not yet enforced; **open decision:** Planned with interactive apps: the apps host, its sign-in and the secret in each app's path are for the ADR)*
 - `sec.least-privilege`: Each agent's tools and jobs run as its own OS user. Only the daemon may use `sudo`, only to become an agent's user, with a minimal environment. *(enforced by runtime check in agent-runtime-worker/src/tools.ts: runIsolatedToolCall (sudo -u the agent's user), runtime check in agent-runtime-worker/src/job-runner.ts: startJob (sudo -u the file owner's user), a test)*
 - `sec.confirmed-effects`: Every change the control copilot makes, and every GitHub write from either copilot, is a proposal the operator confirms. The mission copilot changes only its own mission, within its ceilings, and reports each change to the operator. *(enforced by runtime check in control-plane/src/copilot-pending-routes.ts: /confirm (claims the action once, runs it as the proposer), runtime check in control-plane/src/copilot-actions.ts: parseActionPayload (validated when proposed and again when carried out), review)*

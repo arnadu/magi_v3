@@ -366,4 +366,71 @@ export const TEAM_OPERATIONS = defineOperations([
 		home: "mm-tools",
 		rules: ["Within the per-call budget", "Spend counts against the mission"],
 	},
+	// ── Interactive apps (planned) ──────────────────────────────────────────
+	{
+		id: "app.declare",
+		group: "apps",
+		intent:
+			"Serve a program for the operator to use in a browser: its name and the command that starts it",
+		actors: ["AG"],
+		home: "mm-apps",
+		rules: [
+			"Declared by writing an app file; its owner is the file's owner, as for jobs",
+			"Re-declaring one's own app replaces it; another agent's app is refused",
+		],
+		planned: true,
+	},
+	{
+		id: "app.run",
+		group: "apps",
+		intent: "Start declared apps, watch them, and stop them",
+		actors: ["PLT"],
+		home: "mm-apps",
+		rules: [
+			"An app runs as its owner, with no secrets, like a job",
+			"The platform gives it its port (`$PORT`) and its path (`$BASE_PATH`)",
+			"It listens on 127.0.0.1 only; one found listening on another address is stopped, and its owner told",
+			"Watched by its process and by a regular check that it answers: one that exits or stops answering is restarted, at most a few times an hour, then `failed`, and its owner told",
+			"Stopped when the mission is suspended, when the daemon restarts, and after the idle time unopened; nothing restarts by itself",
+		],
+		planned: true,
+	},
+	{
+		id: "app.control",
+		group: "apps",
+		intent: "Start or stop an app",
+		actors: ["OP", "MC", "AG"],
+		home: "mm-apps",
+		rules: [
+			"AG: its own apps only",
+			"At most a few apps of a mission run at once; starting one more is refused, with the running ones named",
+			"The owner is told when someone else stops its app",
+		],
+		planned: true,
+	},
+	{
+		id: "app.status",
+		group: "apps",
+		intent:
+			"A mission's apps: their state, owner, when each was last opened, its CPU and memory",
+		actors: ["OP", "MC", "AG"],
+		home: "mm-apps",
+		rules: [],
+		read: true,
+		planned: true,
+	},
+	{
+		id: "app.open",
+		group: "apps",
+		intent: "Use an app in the browser",
+		actors: ["OP"],
+		home: "cp-apps",
+		rules: [
+			"Served from the apps host, never from the cockpit's address",
+			"Only the mission's owner gets in, checked on every request, WebSockets included",
+			"Opening a stopped app starts it, within the limit on apps running at once",
+			"A link in the mission cockpit, or a URL to copy: it works for the mission's owner in another tab; anyone else is sent to sign in",
+		],
+		planned: true,
+	},
 ]);

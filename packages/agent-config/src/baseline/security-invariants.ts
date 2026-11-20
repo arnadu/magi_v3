@@ -177,6 +177,12 @@ export const SECURITY_INVARIANTS: readonly Invariant[] = [
 		],
 	},
 	{
+		id: "sec.served-apart",
+		text: "Code an agent serves live runs in the operator's browser from an origin other than the cockpit's, so it never acts with the operator's cockpit session; and one mission's app cannot reach another mission's app through that browser.",
+		enforcedBy: [],
+		open: "Planned with interactive apps: the apps host, its sign-in and the secret in each app's path are for the ADR",
+	},
+	{
 		id: "sec.least-privilege",
 		text: "Each agent's tools and jobs run as its own OS user. Only the daemon may use `sudo`, only to become an agent's user, with a minimal environment.",
 		enforcedBy: [

@@ -173,6 +173,7 @@ const GROUP_TITLES: Record<OperationGroup, string> = {
 	jobs: "Background jobs",
 	objectives: "Objectives",
 	images: "Images",
+	apps: "Interactive apps",
 	copilot: "Copilot",
 	platform: "Platform and account",
 };

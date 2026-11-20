@@ -94,6 +94,104 @@ const missionFile = defineEntity({
 		"Who changed a file and when is the platform invariant `files.attributed`.",
 });
 
+const app = defineEntity({
+	id: "app",
+	name: "Interactive app (planned)",
+	store: {
+		kind: "other",
+		where:
+			"Declared by files under `shared/apps/`; the daemon's private record is authoritative",
+	},
+	states: [
+		{
+			id: "starting",
+			meaning:
+				"Declared or started; the platform is launching it and waiting for it to answer",
+		},
+		{ id: "running", meaning: "Answering on its port" },
+		{
+			id: "stopped",
+			meaning:
+				"Stopped on request, when the mission was suspended or the daemon restarted, or after the idle time unopened; still declared",
+		},
+		{
+			id: "failed",
+			meaning:
+				"Exited, or stopped answering, more often than the restart limit allows",
+		},
+	],
+	transitions: [
+		{ from: null, event: "declare", to: "starting", actors: ["AG"] },
+		{
+			from: "starting",
+			event: "answers on its port",
+			to: "running",
+			actors: ["PLT"],
+		},
+		{
+			from: "starting",
+			event: "exits or never answers, past the restart limit",
+			to: "failed",
+			actors: ["PLT"],
+			note: "Its owner is told",
+		},
+		{
+			from: "running",
+			event: "exits or stops answering, past the restart limit",
+			to: "failed",
+			actors: ["PLT"],
+			note: "Its owner is told",
+		},
+		{
+			from: "running",
+			event: "stop",
+			to: "stopped",
+			actors: ["OP", "MC", "AG"],
+			note: "AG: its own apps; its owner is told when someone else stops it",
+		},
+		{
+			from: "running",
+			event:
+				"mission suspended, daemon restarted, or unopened past the idle time",
+			to: "stopped",
+			actors: ["PLT"],
+		},
+		{
+			from: "stopped",
+			event: "start, or the operator opens it",
+			to: "starting",
+			actors: ["OP", "MC", "AG"],
+			note: "AG: its own apps",
+		},
+		{
+			from: "failed",
+			event: "start, or the operator opens it",
+			to: "starting",
+			actors: ["OP", "MC", "AG"],
+			note: "AG: its own apps",
+		},
+	],
+	invariants: [
+		{
+			id: "app.loopback-only",
+			text: "An app is reachable only through the apps host: it never listens on an address another machine can reach.",
+			enforcedBy: [],
+		},
+		{
+			id: "app.as-owner",
+			text: "An app runs as its owner's OS user, with no secrets.",
+			enforcedBy: [],
+		},
+		{
+			id: "app.bounded",
+			text: "No app runs while its mission is suspended or after the idle time unopened; no more than the limit run at once; a failing app is not restarted without limit.",
+			enforcedBy: [],
+		},
+	],
+	notes:
+		"A long-running program an agent serves on the mission machine for the operator to use in a browser: a notebook, a Streamlit or Gradio app, a static site. Withdrawing the declaration stops the app and removes it.",
+});
+
 const alert = defineEntity({
 	id: "alert",
 	name: "Resource alert",
@@ -133,5 +231,6 @@ export const RESOURCE_ENTITIES = [
 	machine,
 	mentalMap,
 	missionFile,
+	app,
 	alert,
 ] as const;
