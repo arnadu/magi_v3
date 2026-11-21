@@ -2,8 +2,9 @@
 
 **Status:** Proposed (2026-11-20). Reviewed by appsec on 2026-11-20 (approved with conditions,
 folded in below). Product owner's decisions of 2026-11-21 folded in: Gradio rather than
-Streamlit, declaration by request files, three kinds, records in `missionApps`. Accepted once
-the spike ("Before building") confirms it
+Streamlit, declaration by request files, three kinds, records in `missionApps`. Spike done
+2026-11-21 ("Spike results"); one choice reopened by it (separate origins per app) is with the
+product owner
 **Relates to:** issue #42; the catalog's planned entity `app`, operations `app.*`, journeys
 J-22 and A-10, invariants `app.loopback-only`, `app.as-owner`, `app.bounded` and
 `sec.served-apart`; ADR-0033 (jobs run as their author); F-042 (the monitor server is reachable
@@ -166,18 +167,20 @@ browser ─https─▶ apps host (Fly app) ─6PN─▶ mission machine :4000, m
 
 Two network rules on the mission machine, set by the platform, not left to agents:
 
-- **Inbound from the private network: deny all, except the monitor server's port.** This
+- **Inbound from the private network: deny all, except the monitor server's port and Fly's
+  SSH (22).** This
   closes the exposure described in Context for apps and for anything an agent starts with
   Bash. It enforces `app.loopback-only` whatever address an app binds to.
 - **Loopback app ports: only the daemon, and the app's owner.** When the daemon starts an app,
   it allows connections to that port from its own user (the monitor server's hop) and from the
   app's owner, so the agent can test its own app. Every other OS user is refused, so other
-  agents cannot reach the app. This takes a firewall rule keyed on the connecting user (an
-  `iptables` owner match).
+  agents cannot reach the app. This takes a firewall rule keyed on the connecting user
+  (nftables' `meta skuid`; iptables' owner match is not available on Fly's kernel).
 - **A port's rule lives exactly as long as its app.** Ports are reused, so a rule left behind
   would let the previous owner reach the next app on that port. The daemon revokes the rule
   whenever the app's process ends (stop, crash, removal), before the port is handed out again;
-  `allow` replaces whatever rule the port had; `init`, at boot, removes every rule in the range.
+  `allow` replaces whatever rule the port had; `init`, at every boot (a restart resets the
+  rules), removes every rule in the range.
 
 The daemon runs as `magi-operator`, not root (the image switches user before starting it), so
 both rules go through one new `sudo` rule. It allows a single fixed helper,
@@ -371,3 +374,61 @@ mission data or the app's own URL in the browser's storage (decision 2).
    another app's storage, load another app's path, and register a service worker outside its
    own path; on the machine it tries to listen beyond loopback and to connect to another
    agent's app port. Each must fail.
+
+## Spike results (2026-11-21)
+
+Run locally (JupyterLab 4.6.6, `jupyter-collaboration` 5.0.4, Gradio 6.32.0, a static site;
+a two-hop prototype on `http-proxy-middleware` 4.2.0; Chromium through Playwright) and on a
+throwaway Fly app (`magi-spike-apps`, two machines from the mission image
+`magi-missions-dev:c0d1b36`, Debian 12, Python 3.11, kernel 6.12-fly).
+
+**Through both hops, all three kinds work.** A notebook cell ran over the kernel's WebSocket
+(output `42`) with collaboration's WebSockets connected; the Gradio app answered with the
+prefix removed (`GRADIO_ROOT_PATH`); the site's relative links resolved under the path.
+
+**Changes the spike forces:**
+- **The firewall uses nftables, not iptables.** Fly's kernel lacks the iptables owner match
+  ("Extension owner revision 0 not supported"); nftables' `meta skuid` works: on loopback, the
+  owner and the daemon's user reached the app's port, another agent and root were refused.
+  The inbound rule worked as designed: a server an agent started on all interfaces answered
+  another machine before the rule (recorded as F-081) and not after; the monitor port still
+  answered; DNS (including `.internal` names) and outbound HTTPS still worked.
+- **The inbound rule also allows Fly's SSH (port 22).** Without it, `fly ssh console` to a
+  mission machine stops working. Fly authenticates those sessions with organization
+  certificates.
+- **Rules and installed packages do not survive a machine restart** (the root filesystem is
+  reset). `nftables` and the helper are in the image; `init` runs at every boot, before any app.
+- **One upgrade handler per server, and the path rewritten explicitly.** With `ws: true`,
+  each `http-proxy-middleware` instance subscribes itself to the server's `upgrade` event
+  after its first request, with a filter that matches everything, so several app proxies
+  answered each WebSocket and it dropped within seconds. The monitor route and the apps host
+  set `ws: false`, call `upgrade` from their own single handler, and rewrite `req.url`
+  themselves; the library did not apply `pathRewrite` to upgrades at the second hop.
+- **Gradio stores its own path, capability included, in `localStorage`:** its "run history"
+  keeps the page path and every call's inputs and outputs. `GRADIO_RUN_HISTORY=False` turns it
+  off, and with it set no capability was found in any storage of the three kinds (JupyterLab
+  keeps only UI state and an anonymous collaborator name). An app's own code can still turn
+  it back on, so this is a default, not a guarantee: see the open choice below.
+- **The ticket is redeemed by a page, not a redirect.** A `SameSite=Strict` cookie set during a
+  redirect chain that began on another site (the cockpit) is not sent with the redirected
+  request. The apps host answers the ticket with a small page that sets the session and moves
+  to the app on the same site. (Design consequence; checked by the build's tests.)
+
+**Sizes:**
+
+| | Memory (local, idle after one use) |
+|---|---|
+| JupyterLab server, with collaboration | ~130 MB |
+| a notebook kernel | ~60 MB |
+| a Gradio app | ~165 MB |
+| the site script | ~20 MB |
+
+The three packages take ~550 MB installed; the image grows by about that much. On the default
+1 GB machine, with the daemon at ~600 MB, one notebook or one Gradio app fits, three do not:
+the skill tells agents to ask for a bigger machine (ADR-0031) before serving more than one.
+
+**Open choice, reopened by the spike (product owner):** whether to give each running app its
+own origin now (a port per app on the apps host), which would make shared browser storage
+harmless whatever an app stores, or to keep one origin with Gradio's run history off and the
+skill's rule, and revisit when there is a domain.
+
