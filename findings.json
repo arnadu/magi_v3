@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "a7eb233",
-  "time": "2026-11-21T20:39:18Z"
+  "commit": "6da8698",
+  "time": "2026-11-21T20:43:46Z"
  },
  "findings": [
   {
@@ -2353,7 +2353,7 @@
    "about": "app.control",
    "text": "OP is an actor of app.control, but no entry point serves OP.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "12707cb9b2d5",
@@ -2361,7 +2361,7 @@
    "about": "app.control",
    "text": "MC is an actor of app.control, but no entry point serves MC.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "5163010c196b",
