@@ -32,7 +32,10 @@ export type AnomalyCategory =
 	| "resume-failure"
 	// A machine could not be placed on its volume's full server, so the volume
 	// was forked to another zone and the mission moved to the fork (#103).
-	| "volume-forked";
+	| "volume-forked"
+	// The machine firewall (`magi-net init`) could not be set at boot
+	// (ADR-0037): inbound private-network traffic is unfiltered, apps disabled.
+	| "firewall-failure";
 
 export type AnomalySeverity = "hard" | "soft";
 

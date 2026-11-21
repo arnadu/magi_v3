@@ -1,0 +1,105 @@
+#!/bin/sh
+# magi-net — the mission machine's firewall (ADR-0037 decision 5; F-081).
+#
+# Installed root-owned at /usr/local/sbin/magi-net. Only the daemon
+# (magi-operator) may run it, through one sudo rule; sudo resets the
+# environment, and nothing here reads it.
+#
+#   magi-net init                 at every boot: replace the whole ruleset
+#   magi-net allow <port> <uid>   the app on <port> is reachable by the daemon and <uid> only
+#   magi-net revoke <port>        the app on <port> is gone: no one reaches the port
+#
+# nftables, not iptables: iptables' owner match is missing on Fly's kernel,
+# nftables' `meta skuid` works (spike, 2026-11-21).
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+# The monitor server's port on every mission machine; the control plane calls
+# it there (monitorUrl). Fly's SSH (22) stays open: Fly authenticates it with
+# the organization's certificates, and without it `fly ssh console` fails.
+MONITOR_PORT=4000
+SSH_PORT=22
+FIRST_APP_PORT=20000
+LAST_APP_PORT=20099
+
+fail() {
+	echo "magi-net: $*" >&2
+	exit 2
+}
+
+daemon_uid() { id -u magi-operator 2>/dev/null || fail "no magi-operator user"; }
+
+check_port() {
+	case "$1" in '' | *[!0-9]*) fail "port must be a number" ;; esac
+	[ "$1" -ge "$FIRST_APP_PORT" ] && [ "$1" -le "$LAST_APP_PORT" ] ||
+		fail "port $1 is outside $FIRST_APP_PORT-$LAST_APP_PORT"
+}
+
+# An agent's user: a member of magi-shared, never root or the daemon.
+check_uid() {
+	case "$1" in '' | *[!0-9]*) fail "uid must be a number" ;; esac
+	[ "$1" -ne 0 ] || fail "uid 0 is refused"
+	name=$(getent passwd "$1" | cut -d: -f1)
+	[ -n "$name" ] || fail "uid $1 has no user"
+	d=$(daemon_uid)
+	[ "$1" -ne "$d" ] || fail "the daemon's uid is refused"
+	id -nG "$name" | tr ' ' '\n' | grep -qx magi-shared ||
+		fail "uid $1 is not an agent's user"
+}
+
+# Remove every element of the app-access set for one port.
+revoke_port() {
+	nft list set inet magi app_access |
+		tr ',{}' '\n\n\n' |
+		sed -n "s/^[[:space:]]*\($1 \. [0-9][0-9]*\)[[:space:]]*$/\1/p" |
+		while read -r element; do
+			nft delete element inet magi app_access "{ $element }"
+		done
+}
+
+case "${1:-}" in
+init)
+	[ $# -eq 1 ] || fail "usage: magi-net init"
+	nft add table inet magi
+	nft delete table inet magi
+	nft -f - <<EOF
+table inet magi {
+	set app_access {
+		typeof tcp dport . meta skuid
+	}
+	chain input {
+		type filter hook input priority filter; policy accept;
+		iif lo accept
+		ct state established,related accept
+		meta l4proto { icmp, ipv6-icmp } accept
+		tcp dport { $SSH_PORT, $MONITOR_PORT } accept
+		drop
+	}
+	chain output {
+		type filter hook output priority filter; policy accept;
+		oif lo tcp dport $FIRST_APP_PORT-$LAST_APP_PORT jump apps
+	}
+	chain apps {
+		tcp dport . meta skuid @app_access accept
+		reject with tcp reset
+	}
+}
+EOF
+	;;
+allow)
+	[ $# -eq 3 ] || fail "usage: magi-net allow <port> <uid>"
+	check_port "$2"
+	check_uid "$3"
+	revoke_port "$2"
+	d=$(daemon_uid)
+	nft add element inet magi app_access "{ $2 . $d, $2 . $3 }"
+	;;
+revoke)
+	[ $# -eq 2 ] || fail "usage: magi-net revoke <port>"
+	check_port "$2"
+	revoke_port "$2"
+	;;
+*)
+	fail "usage: magi-net init | allow <port> <uid> | revoke <port>"
+	;;
+esac

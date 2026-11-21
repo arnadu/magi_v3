@@ -5,6 +5,7 @@ import type { StatsCollector } from "../agent-stats.js";
 import type { AnomalyRecorder } from "../anomaly.js";
 import type { ConversationRepository } from "../conversation-repository.js";
 import type { LlmCallLogRepository } from "../llm-call-log.js";
+import type { MachineFirewall } from "../machine-firewall.js";
 import type { MailboxRepository } from "../mailbox.js";
 import type { MissionConfigRepository } from "../mission-config.js";
 import type { MonitorServer } from "../monitor-server.js";
@@ -54,6 +55,8 @@ export interface BootContext {
 	monitor: MonitorServer;
 	toolApiServer: ToolApiServer;
 	stopJobRunner: () => void;
+	/** The machine's firewall, set at boot; apps need it on. */
+	firewall: MachineFirewall;
 	waitForMail: () => Promise<void>;
 	missionCopilotTools: MagiTool[] | undefined;
 }

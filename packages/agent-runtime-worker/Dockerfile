@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     zstd \
     ca-certificates \
+    nftables \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chromium for BrowseWeb (Playwright). Adds ~400 MB but required for
@@ -143,7 +144,15 @@ RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL
     echo "magi-operator ALL=(root) NOPASSWD: /usr/local/bin/magi-create-user" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
+    echo "magi-operator ALL=(root) NOPASSWD: /usr/local/sbin/magi-net" >> /etc/sudoers.d/magi && \
     chmod 440 /etc/sudoers.d/magi
+
+# magi-net — the machine firewall (ADR-0037 decision 5, F-081): inbound only
+# Fly SSH and the monitor port; on loopback, an app's port only for the daemon
+# and the app's owner. Root-owned, run by the daemon through the sudo rule
+# above; it validates its own arguments and reads no environment.
+COPY packages/agent-runtime-worker/scripts/magi-net /usr/local/sbin/magi-net
+RUN chown root:root /usr/local/sbin/magi-net && chmod 755 /usr/local/sbin/magi-net
 
 # magi-node wrapper — exec's the real Node binary at a stable path.
 # Avoids the nvm PATH problem (nvm not in sudo PATH).

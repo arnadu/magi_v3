@@ -323,6 +323,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 			"workspace-*",
 			"safe-*",
 			"ssrf.ts",
+			"machine-firewall.ts",
 			"remove-if-exists.ts",
 		],
 	},

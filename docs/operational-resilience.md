@@ -431,6 +431,21 @@ locally. It is report-only: no deploy job waits for it.
 | Two pushes close together publish out of order | The `trace` branch can end on the older commit's scan until the next push | Publishes are serialized (`concurrency: trace-publish`); `index.md` names the scanned commit, so a reviewer sees which commit it reads |
 | The CodeQL database fills the disk | Local only: `analysis/.codeql-db` is about 30 MB, rebuilt on each run | Not uploaded as an artifact; `analysis/` is ignored by git |
 
+---
+
+## Layer 12 — Interactive apps (ADR-0037)
+
+Built in slices; this layer grows with them. Slice a: the machine firewall.
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| `magi-net init` fails at boot (nftables missing from the image, the sudo rule broken, the kernel refusing a rule) | Inbound private-network traffic is not filtered (F-081 open again on that machine); app ports cannot be opened | 🟠 | Hard `firewall-failure` anomaly to both copilots, with the helper's error; `allow`/`revoke` refuse unless the firewall is on, so no app starts unprotected; the daemon otherwise runs normally | Fixed only by a restart with a working firewall; no retry during the run |
+| The helper hangs | Boot waits on it | 🟡 | 15 s timeout on every call; a timeout counts as a failure (row above) | None |
+| The machine restarts | Rules are gone with the root filesystem | 🟡 | `init` runs at every boot, before the monitor server starts | None |
+| A rule blocks Fly's own access | `fly ssh console` or the control plane's calls fail | 🟠 | The inbound rule keeps 22 and 4000 open; checked on Fly with DNS and outbound HTTPS | A future change of the monitor port must change the helper too (it is fixed at 4000) |
+
+---
+
 ## Gap summary
 
 | ID | Gap | Severity if triggered | Fix complexity |

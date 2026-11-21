@@ -33,7 +33,7 @@
 | `mm-agent-loop` | Agent loop | 3 | A turn: prompt, LLM calls, tools, limits, reflection, logging | `packages/agent-runtime-worker/src` | `agent-runner*`, `loop*.ts`, `prompt.ts`, `prompts.ts`, `reflection.ts`, `context-utils.ts`, `limits.ts`, `llm-*`, `models.ts`, `openrouter-pricing.ts`, `retry-backoff.ts`, `agent-stats.ts`, `usage.ts`, `mental-map*`, `skills.ts` |
 | `mm-tools` | Agent tools | 2 | The tools agents call and their isolated execution | `packages/agent-runtime-worker/src` | `tools/`, `tools.ts`, `tool-catalog.ts`, `tool-args.ts`, `tool-executor.ts`, `images/`, `document-*`, `pdf-*`, `ocr-cap.ts`, `mime-types.ts`, `artifacts.ts` |
 | `mm-state` | Mission state | 1 | Mailbox, conversations, config, objectives, stats, anomalies, resources | `packages/agent-runtime-worker/src` | `mailbox.ts`, `conversation-repository.ts`, `mission-config*`, `objectives/`, `anomaly*`, `resource-alert-state.ts`, `resource-sampler.ts`, `resource-thresholds.ts`, `mongo.ts` |
-| `mm-isolation` | Isolation and mission files | 1 | OS users, workspaces, git, safe paths and HTTP; reading and writing the mission's files within their folders | `packages/agent-runtime-worker/src` | `linux-user.ts`, `workspace-*`, `safe-*`, `ssrf.ts`, `remove-if-exists.ts` |
+| `mm-isolation` | Isolation and mission files | 1 | OS users, workspaces, git, safe paths and HTTP; reading and writing the mission's files within their folders | `packages/agent-runtime-worker/src` | `linux-user.ts`, `workspace-*`, `safe-*`, `ssrf.ts`, `machine-firewall.ts`, `remove-if-exists.ts` |
 
 ## Cockpit (in the browser)
 

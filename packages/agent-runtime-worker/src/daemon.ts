@@ -47,6 +47,7 @@ import {
 	type TeamConfig,
 } from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
+import { initMachineFirewall } from "./machine-firewall.js";
 import { removeIfExists } from "./remove-if-exists.js";
 
 const REPO_ROOT = join(
@@ -322,6 +323,11 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 	const { ac, signal } = wireAbortSignal();
 	const { pidFile } = lockPidFile({ workdir, missionId, anomalyRecorder });
 	const { usageAccumulator, maxCostUsd } = resolveUsageAndCap({ teamConfig });
+	const firewall = await initMachineFirewall({
+		missionId,
+		onFly: Boolean(process.env.FLY_APP_NAME),
+		anomalyRecorder,
+	});
 
 	const { monitorPort, toolPort, sharedDir, workspaceGit, monitor } =
 		await startMonitorServer({
@@ -409,6 +415,7 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		monitor,
 		toolApiServer,
 		stopJobRunner,
+		firewall,
 		waitForMail,
 		missionCopilotTools,
 	};
