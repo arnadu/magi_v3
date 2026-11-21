@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "1c742d1",
-  "time": "2026-11-21T21:20:56Z"
+  "commit": "95e23fa",
+  "time": "2026-11-21T21:36:47Z"
  },
  "findings": [
   {
@@ -38,7 +38,8 @@
      ],
      "unresolved": [
       "collection",
-      "createIndex"
+      "createIndex",
+      "json"
      ]
     }
    ],
@@ -222,7 +223,8 @@
       "cp-edge"
      ],
      "unresolved": [
-      "collection"
+      "collection",
+      "json"
      ]
     },
     {
@@ -233,7 +235,8 @@
       "cp-edge"
      ],
      "unresolved": [
-      "collection"
+      "collection",
+      "json"
      ]
     },
     {
@@ -252,6 +255,7 @@
       "createIndex",
       "get",
       "has",
+      "json",
       "set"
      ]
     },
@@ -479,7 +483,8 @@
       "add",
       "collection",
       "createIndex",
-      "has"
+      "has",
+      "json"
      ]
     },
     {
@@ -488,7 +493,9 @@
      "components": [
       "cp-api"
      ],
-     "unresolved": []
+     "unresolved": [
+      "json"
+     ]
     },
     {
      "name": "route GET /:id",
@@ -497,7 +504,9 @@
       "cp-api",
       "cp-machines"
      ],
-     "unresolved": []
+     "unresolved": [
+      "json"
+     ]
     },
     {
      "name": "route GET /:id/agents",
@@ -510,6 +519,7 @@
      "unresolved": [
       "end",
       "error",
+      "json",
       "update"
      ]
     },
@@ -848,6 +858,7 @@
       "createIndex",
       "get",
       "has",
+      "json",
       "set"
      ]
     },
@@ -862,6 +873,7 @@
      "unresolved": [
       "collection",
       "get",
+      "json",
       "set"
      ]
     },
@@ -1164,7 +1176,8 @@
       "add",
       "collection",
       "createIndex",
-      "has"
+      "has",
+      "json"
      ]
     }
    ],
@@ -1377,7 +1390,8 @@
       "cp-oversight"
      ],
      "unresolved": [
-      "collection"
+      "collection",
+      "json"
      ]
     },
     {
@@ -1389,6 +1403,7 @@
      ],
      "unresolved": [
       "has",
+      "json",
       "resolve"
      ]
     },
@@ -1400,7 +1415,8 @@
       "cp-api"
      ],
      "unresolved": [
-      "collection"
+      "collection",
+      "json"
      ]
     },
     {
@@ -1602,7 +1618,8 @@
       "cp-api"
      ],
      "unresolved": [
-      "collection"
+      "collection",
+      "json"
      ]
     },
     {
@@ -2348,12 +2365,27 @@
    "new": false
   },
   {
-   "key": "2692ba4cede5",
-   "kind": "op.actor-missing",
-   "about": "app.control",
-   "text": "OP is an actor of app.control, but no entry point serves OP.",
-   "where": [],
-   "new": false
+   "key": "da25358bb605",
+   "kind": "op.home-not-reached",
+   "about": "app.run",
+   "text": "None of the 1 entry point(s) of app.run reaches code in its home, mm-apps: trigger interval.",
+   "where": [
+    "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:152"
+   ],
+   "entryPoints": [
+    {
+     "name": "trigger interval",
+     "where": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:152",
+     "components": [
+      "config",
+      "mm-daemon"
+     ],
+     "unresolved": [
+      "error"
+     ]
+    }
+   ],
+   "new": true
   },
   {
    "key": "12707cb9b2d5",
@@ -2362,6 +2394,84 @@
    "text": "MC is an actor of app.control, but no entry point serves MC.",
    "where": [],
    "new": false
+  },
+  {
+   "key": "610d25eaadc8",
+   "kind": "op.home-not-reached",
+   "about": "app.control",
+   "text": "1 of 2 entry points of app.control reach no code in its home, mm-apps: monitor-route POST /^\\/apps\\/([a-z][a-z0-9-]{0,39})\\/(start|stop|remove)$/.",
+   "where": [
+    "packages/agent-runtime-worker/src/monitor-routes/apps.ts:44"
+   ],
+   "entryPoints": [
+    {
+     "name": "monitor-route POST /^\\/apps\\/([a-z][a-z0-9-]{0,39})\\/(start|stop|remove)$/",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/apps.ts:44",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end"
+     ]
+    }
+   ],
+   "new": true
+  },
+  {
+   "key": "2d57a4a71f87",
+   "kind": "op.actor-missing",
+   "about": "app.status",
+   "text": "MC is an actor of app.status, but no entry point serves MC.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "e403c099fb03",
+   "kind": "op.actor-missing",
+   "about": "app.status",
+   "text": "AG is an actor of app.status, but no entry point serves AG.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "caac56b909eb",
+   "kind": "op.home-not-reached",
+   "about": "app.status",
+   "text": "None of the 1 entry point(s) of app.status reaches code in its home, mm-apps: monitor-route GET \"/apps\".",
+   "where": [
+    "packages/agent-runtime-worker/src/monitor-routes/apps.ts:35"
+   ],
+   "entryPoints": [
+    {
+     "name": "monitor-route GET \"/apps\"",
+     "where": "packages/agent-runtime-worker/src/monitor-routes/apps.ts:35",
+     "components": [
+      "mm-monitor"
+     ],
+     "unresolved": [
+      "end"
+     ]
+    }
+   ],
+   "new": true
+  },
+  {
+   "key": "48ccd127ec55",
+   "kind": "op.home-not-reached",
+   "about": "app.open",
+   "text": "None of the 1 entry point(s) of app.open reaches code in its home, cp-apps: monitor-route * HOP_PATH.",
+   "where": [
+    "packages/agent-runtime-worker/src/app-hop.ts:164"
+   ],
+   "entryPoints": [
+    {
+     "name": "monitor-route * HOP_PATH",
+     "where": "packages/agent-runtime-worker/src/app-hop.ts:164",
+     "components": [],
+     "unresolved": []
+    }
+   ],
+   "new": true
   },
   {
    "key": "5163010c196b",
