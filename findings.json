@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "027acfa",
-  "time": "2026-11-21T17:41:39Z"
+  "commit": "350ad01",
+  "time": "2026-11-21T17:58:14Z"
  },
  "findings": [
   {
@@ -3191,7 +3191,7 @@
    "about": "app",
    "text": "No code writes the app transition (new) → starting that the catalog allows.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "bd4be7f3e189",
@@ -3199,7 +3199,7 @@
    "about": "app",
    "text": "No code writes the app transition starting → running that the catalog allows.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "b3e86a04e43e",
@@ -3207,7 +3207,7 @@
    "about": "app",
    "text": "No code writes the app transition starting → failed that the catalog allows.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "22de4a65ea1b",
@@ -3215,7 +3215,7 @@
    "about": "app",
    "text": "No code writes the app transition starting → stopped that the catalog allows.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "efdb90960339",
@@ -3223,7 +3223,7 @@
    "about": "app",
    "text": "No code writes the app transition running → failed that the catalog allows.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "125627972529",
@@ -3231,7 +3231,7 @@
    "about": "app",
    "text": "No code writes the app transition running → stopped that the catalog allows.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "e7d050e34dee",
@@ -3239,7 +3239,7 @@
    "about": "app",
    "text": "No code writes the app transition stopped → starting that the catalog allows.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "8d8ad0ffded6",
@@ -3247,7 +3247,7 @@
    "about": "app",
    "text": "No code writes the app transition failed → starting that the catalog allows.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "37b125f047ba",
