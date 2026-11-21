@@ -292,7 +292,7 @@ Who changed a file and when is the platform invariant `files.attributed`.
 | State | Meaning |
 |---|---|
 
-## Interactive app (planned) (`app`)
+## Interactive app (`app`)
 
 Stored as `missionApps` (`MissionAppDoc`, field `status`).
 

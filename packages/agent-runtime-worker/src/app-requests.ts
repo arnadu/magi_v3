@@ -26,6 +26,7 @@ import {
 	entryFile,
 	type MissionAppDoc,
 } from "@magi/agent-config";
+import { controlApp } from "./app-control.js";
 import type { AppDeclaration } from "./app-store.js";
 import type { AppSupervisor, Outcome } from "./app-supervisor.js";
 import { type OwnerCheckDeps, ownerOfRequestFile } from "./safe-owned-file.js";
@@ -177,23 +178,7 @@ async function act(
 ): Promise<Outcome> {
 	if (!c.ok) return c;
 	if (c.action === "declare") return deps.supervisor.declare(c.declaration);
-	const app = await deps.store.get(c.name);
-	if (!app) return { ok: false, message: `no app named ${c.name}` };
-	if (app.owner !== owner && !deps.actsOnAny.has(owner))
-		return { ok: false, message: `app ${c.name} belongs to ${app.owner}` };
-	const r =
-		c.action === "start"
-			? await deps.supervisor.start(c.name)
-			: c.action === "stop"
-				? await deps.supervisor.stop(c.name, `stopped by ${owner}`)
-				: await deps.supervisor.remove(c.name);
-	if (r.ok && c.action !== "start" && app.owner !== owner)
-		await deps.notify(
-			app.owner,
-			`App ${c.name} ${c.action === "stop" ? "stopped" : "removed"}`,
-			`${owner} ${c.action === "stop" ? "stopped" : "removed"} your app ${c.name}.`,
-		);
-	return r;
+	return controlApp(deps, c.name, c.action, { kind: "agent", id: owner });
 }
 
 /** One pass over the request directory; then the status files are rewritten. */

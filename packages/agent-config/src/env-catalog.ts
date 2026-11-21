@@ -123,6 +123,13 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 			"Per-mission token required on every MonitorServer route, derived from MONITOR_SIGNING_KEY and injected at machine creation. Mandatory when FLY_APP_NAME is set; empty means no auth, for a local developer daemon only.",
 	},
 	{
+		name: "APPS_TOKEN",
+		planes: ["execution"],
+		secret: true,
+		description:
+			"Per-mission token the apps host sends on every request it forwards to the monitor server's app hop (`/a/<capability>/`), derived from APPS_SIGNING_KEY and injected at machine creation (ADR-0037). Opens apps only; the monitor token does not open them. Empty on a Fly machine means no app can be opened; empty off Fly means no check (local developer daemon).",
+	},
+	{
 		name: "APPS_ALLOW_NO_FIREWALL",
 		planes: ["execution"],
 		default: "false",

@@ -387,6 +387,7 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		teamConfig,
 		mailboxRepo,
 		firewall,
+		monitor,
 	});
 
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.

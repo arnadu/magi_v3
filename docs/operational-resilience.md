@@ -448,6 +448,9 @@ Built in slices; this layer grows with them. Slice a: the machine firewall.
 | The daemon restarts or the machine is recreated | Every app stops; links stop working | 🟡 | `markAllStopped` at boot, so no record claims to run; nothing restarts by itself; the operator or the owner starts it again | None — by design (`app.run`) |
 | A kill through sudo fails | An app keeps running after a stop | 🟡 | Logged with the process group; SIGKILL after 10 s of SIGTERM; the machine's next restart ends it | The port rule is revoked anyway, so the app cannot be reached |
 | A request poll or health check throws | One pass is skipped | 🟢 | Caught and logged; the next timer tick retries; a pass never overlaps the previous one | None |
+| The app behind the hop is down or restarting | The operator's request fails | 🟡 | The hop answers 404 for no running app and 502 when the app does not answer; the apps host turns both into "open it again from the cockpit" | None |
+| The machine has no `APPS_TOKEN` (created before it existed) | No app can be opened | 🟡 | Logged at boot; every hop request refused (401); a suspend and resume recreates the machine with the token | None |
+| The monitor server stops | Every open app connection, WebSockets included, is cut | 🟡 | The daemon is stopping too, and stops every app | None |
 
 ---
 

@@ -1,7 +1,13 @@
 import { join } from "node:path";
 import { entryTrigger } from "@magi/agent-config";
+import { controlApp } from "../app-control.js";
+import { appsTokenFromEnv, createAppHop } from "../app-hop.js";
 import { appProcesses } from "../app-processes.js";
-import { ensureAppDirs, processAppRequests } from "../app-requests.js";
+import {
+	ensureAppDirs,
+	processAppRequests,
+	publicStatus,
+} from "../app-requests.js";
 import { createMongoAppStore, ensureAppIndexes } from "../app-store.js";
 import { type AppSupervisor, createAppSupervisor } from "../app-supervisor.js";
 import { buildUidToAgentId, resolveLinuxUsers, uidOf } from "../linux-user.js";
@@ -29,6 +35,7 @@ export async function startApps(
 		| "teamConfig"
 		| "mailboxRepo"
 		| "firewall"
+		| "monitor"
 	>,
 ): Promise<{ apps: AppSupervisor; stopApps: () => Promise<void> }> {
 	const { db, missionId, sharedDir, workdir, teamConfig } = ctx;
@@ -90,46 +97,40 @@ export async function startApps(
 		notify,
 	});
 
-	const requestDeps = {
-		sharedDir,
+	const controlDeps = {
 		supervisor: apps,
 		store,
-		workdirOf,
 		actsOnAny: new Set([MISSION_COPILOT_AGENT_ID]),
 		notify,
+	};
+	const requestDeps = {
+		...controlDeps,
+		sharedDir,
+		workdirOf,
 		uidToAgentId: buildUidToAgentId(teamConfig.agents),
 		daemonUid: process.getuid?.() ?? -1,
 	};
-	let busy = false;
-	const poll = entryTrigger("app.run", async () => {
-		if (busy) return;
-		busy = true;
-		try {
-			await processAppRequests(requestDeps);
-		} catch (e) {
-			console.error(
-				`[apps] processing app requests failed: ${(e as Error).message}; retried in ${REQUEST_POLL_MS / 1000} s`,
-			);
-		} finally {
-			busy = false;
-		}
-	});
-	let checking = false;
-	const check = entryTrigger("app.run", async () => {
-		if (checking) return;
-		checking = true;
-		try {
-			await apps.tick();
-		} catch (e) {
-			console.error(
-				`[apps] app health check failed: ${(e as Error).message}; retried in ${HEALTH_CHECK_MS / 1000} s`,
-			);
-		} finally {
-			checking = false;
-		}
-	});
-	const pollTimer = setInterval(poll, REQUEST_POLL_MS);
-	const checkTimer = setInterval(check, HEALTH_CHECK_MS);
+	ctx.monitor.apps = {
+		hop: createAppHop({
+			missionId,
+			appsToken: appsTokenFromEnv(),
+			route: (cap) => apps.route(cap),
+			touch: (name) => apps.touch(name),
+		}),
+		list: async () => (await store.list()).map(publicStatus),
+		control: (name, action) =>
+			controlApp(controlDeps, name, action, { kind: "operator" }),
+	};
+	const pollTimer = everyNonOverlapping(
+		REQUEST_POLL_MS,
+		"processing app requests",
+		() => processAppRequests(requestDeps),
+	);
+	const checkTimer = everyNonOverlapping(
+		HEALTH_CHECK_MS,
+		"the app health check",
+		() => apps.tick(),
+	);
 	return {
 		apps,
 		async stopApps() {
@@ -138,4 +139,29 @@ export async function startApps(
 			await apps.stopAll("the daemon is stopping");
 		},
 	};
+}
+
+/** Run `fn` every `ms`, skipping a tick while the previous run is still going; a failure is logged and retried next tick. */
+function everyNonOverlapping(
+	ms: number,
+	what: string,
+	fn: () => Promise<unknown>,
+): ReturnType<typeof setInterval> {
+	let running = false;
+	return setInterval(
+		entryTrigger("app.run", async () => {
+			if (running) return;
+			running = true;
+			try {
+				await fn();
+			} catch (e) {
+				console.error(
+					`[apps] ${what} failed: ${(e as Error).message}; retried in ${ms / 1000} s`,
+				);
+			} finally {
+				running = false;
+			}
+		}),
+		ms,
+	);
 }

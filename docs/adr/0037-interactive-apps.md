@@ -146,14 +146,14 @@ ownership lookup.
 
 ```
 browser ─https─▶ apps host (Fly app) ─6PN─▶ mission machine :4000, monitor server
-         cookie + /a/<cap>/…                  /apps/<cap>/…, apps token, HTTP and WebSocket
+         cookie + /a/<cap>/…                  /a/<cap>/…, apps token, HTTP and WebSocket
                                               ─▶ 127.0.0.1:$PORT, the app (as its owner's user)
 ```
 
 - **Apps host to monitor server:** over the private network, with a per-mission **apps token**.
   The token is derived from `APPS_SIGNING_KEY` the same way the monitor token is derived. The
   control plane injects it into the machine at creation, as it does `MONITOR_TOKEN`. The monitor
-  server accepts it on `/apps/*` only, and accepts nothing else there. The cockpit's monitor
+  server accepts it on `/a/*` only (the path the browser sees, so JupyterLab gets it unchanged; `/apps` is the cockpit's list and controls, behind the monitor token), and accepts nothing else there. The cockpit's monitor
   token does not open apps, and the apps token opens nothing else.
 - **Monitor server to app:** a new route forwards HTTP and WebSocket upgrades to the app's
   loopback port. It records when each app was last opened, for the idle stop. Whether the

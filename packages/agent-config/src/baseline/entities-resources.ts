@@ -96,7 +96,7 @@ const missionFile = defineEntity({
 
 const app = defineEntity({
 	id: "app",
-	name: "Interactive app (planned)",
+	name: "Interactive app",
 	store: {
 		kind: "collection",
 		collection: "missionApps",

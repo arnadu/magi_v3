@@ -31,6 +31,7 @@ import {
 	touchesGitMetadata,
 } from "./monitor-files.js";
 import { createAgentSessionsRoutes } from "./monitor-routes/agent-sessions.js";
+import { createAppRoutes, type MonitorApps } from "./monitor-routes/apps.js";
 import { createBudgetRoutes } from "./monitor-routes/budget.js";
 import { createDashboardShellRoutes } from "./monitor-routes/dashboard-shell.js";
 import { createFileBrowsingRoutes } from "./monitor-routes/file-browsing.js";
@@ -214,6 +215,9 @@ export class MonitorServer {
 		return this.pausedAgents.has(agentId);
 	}
 
+	/** Interactive apps (ADR-0037), set by the daemon once they start. */
+	apps?: MonitorApps;
+
 	// Agent workdir map (populated by daemon after workspace provision)
 	private agentWorkdirs = new Map<string, string>();
 
@@ -322,6 +326,7 @@ export class MonitorServer {
 				push: (type, payload) => this.push(type, payload),
 				onStop: () => this.onStop(),
 			}),
+			...createAppRoutes(() => this.apps),
 			...createUploadDownloadRoutes({
 				handleUpload: (req, res) => this.handleUpload(req, res),
 				handleDownload: (rawUrl, res) =>
@@ -333,6 +338,9 @@ export class MonitorServer {
 				console.error("[monitor] Request error:", e);
 				if (!res.headersSent) res.writeHead(500).end();
 			}),
+		);
+		this.server.on("upgrade", (q, sock, head) =>
+			this.apps ? this.apps.hop.upgrade(q, sock, head) : sock.destroy(),
 		);
 	}
 
@@ -505,23 +513,20 @@ export class MonitorServer {
 	): Promise<void> {
 		const rawUrl = req.url ?? "/";
 		const url = rawUrl.split("?")[0];
+		if (this.apps?.hop.owns(url)) return this.apps.hop.http(req, res);
 		res.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1");
 		res.setHeader("Vary", "Origin");
 
-		// Every route requires the mission's token, GETs included: this server
-		// binds `::` and is reachable from every other machine in the Fly app
-		// over 6PN (verified live 2026-10-17 — one mission's machine read
-		// another's /status and /files/shared), and an agent's Bash can resolve
-		// `<app>.internal`. Transcripts, mail and files are not read-only in the
-		// sense that matters. The control-plane proxy injects the header on every
-		// forwarded request, SSE included; the mission copilot's own calls send it.
+		// Every route requires the mission's token, GETs included: port 4000 is
+		// reachable from every machine of the organization over 6PN (F-042).
+		// The control-plane proxy injects the header on every forwarded request,
+		// SSE included; the mission copilot's own calls send it.
 		if (!this.tokenOk(req)) {
 			res.writeHead(401, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "Unauthorized" }));
 			return;
 		}
 
-		// Route table (Sprint 28c, issue #32).
 		for (const route of this.routes) {
 			if (route.method !== req.method) continue;
 			const ctx = { req, res, rawUrl, url };
