@@ -58,13 +58,13 @@
    "platformMaxCostCeilingUsd packages/control-plane/src/spend-policy.ts:21",
    "provisionMission packages/control-plane/src/fly-machines.ts:276",
    "provisionTracked packages/control-plane/src/machine-lifecycle.ts:65",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "validateNewMissionId packages/agent-config/src/mission-id.ts:28",
    "withDefaultSpendCap packages/control-plane/src/spend-policy.ts:32"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/control-plane/src/templates.ts:161",
    "error packages/control-plane/src/machine-lifecycle.ts:50",
    "collection packages/control-plane/src/machine-segments.ts:45",
@@ -128,7 +128,7 @@
    "provisionMission packages/control-plane/src/fly-machines.ts:276",
    "provisionTracked packages/control-plane/src/machine-lifecycle.ts:65",
    "registeredOpenRouterModel packages/agent-runtime-worker/src/models.ts:158",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "unknownModelFields packages/agent-runtime-worker/src/models.ts:233",
    "validateDraftForLaunch packages/control-plane/src/copilot-action-preflight.ts:22",
@@ -147,7 +147,7 @@
    "add packages/control-plane/src/machine-segments.ts:87",
    "createIndex packages/control-plane/src/machine-segments.ts:90",
    "error packages/agent-runtime-worker/src/tool-executor.ts:17",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -272,7 +272,7 @@
    "revertUpgrade packages/control-plane/src/resource-upgrade.ts:355",
    "runLifecycle packages/control-plane/src/copilot-action-handlers.ts:165",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/copilot-action-handlers.ts:178",
    "suspendMission packages/control-plane/src/fly-machines.ts:339",
    "suspendMission packages/control-plane/src/mission-lifecycle-actions.ts:33",
@@ -300,7 +300,7 @@
    "error packages/agent-runtime-worker/src/tool-executor.ts:17",
    "error packages/control-plane/src/resource-upgrade-claim.ts:130",
    "error packages/control-plane/src/resource-upgrade-notify.ts:77",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -448,7 +448,7 @@
    "revertUpgrade packages/control-plane/src/resource-upgrade.ts:355",
    "runLifecycle packages/control-plane/src/copilot-action-handlers.ts:165",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/fly-machines.ts:339",
    "suspendMission packages/control-plane/src/mission-lifecycle-actions.ts:33",
    "suspendMissionMachine packages/control-plane/src/resource-upgrade.ts:439",
@@ -475,7 +475,7 @@
    "error packages/agent-runtime-worker/src/tool-executor.ts:17",
    "error packages/control-plane/src/resource-upgrade-claim.ts:130",
    "error packages/control-plane/src/resource-upgrade-notify.ts:77",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -607,7 +607,7 @@
    "parseTeamConfig packages/agent-config/src/loader.ts:314",
    "registeredOpenRouterModel packages/agent-runtime-worker/src/models.ts:158",
    "saveSessionConfig packages/control-plane/src/copilot-action-handlers.ts:260",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "unknownModelFields packages/agent-runtime-worker/src/models.ts:233",
    "validateSessionConfigPatch packages/control-plane/src/copilot-action-preflight.ts:39",
    "validateTeamFilePath packages/agent-config/src/team-files.ts:31",
@@ -618,7 +618,7 @@
   "unresolved": [
    "collection packages/agent-runtime-worker/src/mission-config-revisions.ts:65",
    "createIndex packages/agent-runtime-worker/src/mission-config-revisions.ts:70",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -639,10 +639,10 @@
   "reached": [
    "cancel_schedule packages/control-plane/src/copilot-action-handlers.ts:76",
    "executeCancelSchedule packages/control-plane/src/copilot-schedule-actions.ts:16",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -665,10 +665,10 @@
    "(anonymous) packages/control-plane/src/copilot-schedule-actions.ts:63",
    "create_schedule packages/control-plane/src/copilot-action-handlers.ts:82",
    "executeCreateSchedule packages/control-plane/src/copilot-schedule-actions.ts:51",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/control-plane/src/copilot-schedule-actions.ts:63"
   ],
   "httpHops": []
@@ -869,12 +869,12 @@
    "getTemplate packages/control-plane/src/templates.ts:160",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
    "platformMaxCostCeilingUsd packages/control-plane/src/spend-policy.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "validateNewMissionId packages/agent-config/src/mission-id.ts:28",
    "withDefaultSpendCap packages/control-plane/src/spend-policy.ts:32"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/control-plane/src/templates.ts:161"
   ],
   "httpHops": []
@@ -892,10 +892,10 @@
    "err packages/control-plane/src/copilot-tool-deps.ts:25",
    "execute packages/control-plane/src/copilot-draft-tools.ts:85",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -918,14 +918,14 @@
    "err packages/control-plane/src/copilot-tool-deps.ts:25",
    "execute packages/control-plane/src/copilot-draft-tools.ts:158",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "validateTeamFilePath packages/agent-config/src/team-files.ts:31",
    "validateTeamFiles packages/agent-config/src/team-files.ts:57",
    "write packages/agent-runtime-worker/src/mission-config-revisions.ts:56",
    "write packages/agent-runtime-worker/src/mission-config-revisions.ts:80"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "collection packages/agent-runtime-worker/src/mission-config-revisions.ts:65",
    "createIndex packages/agent-runtime-worker/src/mission-config-revisions.ts:70",
    "has packages/control-plane/src/copilot-draft-tools.ts:198",
@@ -1071,7 +1071,7 @@
    "readMissionSnapshot packages/agent-runtime-worker/src/agent-stats.ts:543",
    "reconcileStaleRunning packages/agent-runtime-worker/src/agent-stats.ts:321",
    "reconcileStaleTurns packages/agent-runtime-worker/src/agent-stats.ts:142",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "upsertTurn packages/agent-runtime-worker/src/agent-stats.ts:208"
   ],
   "unresolved": [
@@ -1079,7 +1079,7 @@
    "createIndex packages/agent-runtime-worker/src/agent-stats.ts:180",
    "createIndex packages/agent-runtime-worker/src/agent-stats.ts:190",
    "createIndex packages/agent-runtime-worker/src/agent-stats.ts:198",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "set packages/agent-runtime-worker/src/agent-stats.ts:297",
    "get packages/agent-runtime-worker/src/agent-stats.ts:299",
    "get packages/agent-runtime-worker/src/agent-stats.ts:310",
@@ -1144,12 +1144,12 @@
    "readTree packages/agent-runtime-worker/src/objectives/repository.ts:160",
    "readTree packages/agent-runtime-worker/src/objectives/repository.ts:41",
    "rollUp packages/agent-runtime-worker/src/objectives/store.ts:197",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "subtreeTasks packages/agent-runtime-worker/src/objectives/store.ts:213",
    "valueNeedsAttention packages/agent-runtime-worker/src/objectives/store.ts:50"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "set packages/agent-runtime-worker/src/objectives/store.ts:153",
    "set packages/agent-runtime-worker/src/objectives/store.ts:158",
    "get packages/agent-runtime-worker/src/objectives/store.ts:176",
@@ -1196,10 +1196,10 @@
    "err packages/control-plane/src/copilot-tool-deps.ts:25",
    "execute packages/control-plane/src/copilot-objective-tools.ts:66",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1217,10 +1217,10 @@
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
    "saveGoals packages/agent-runtime-worker/src/objectives/repository.ts:181",
    "saveGoals packages/agent-runtime-worker/src/objectives/repository.ts:48",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1251,7 +1251,7 @@
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
    "push packages/control-plane/src/copilot-runtime.ts:35",
    "reportActionOutcome packages/control-plane/src/copilot-action-outcome.ts:55",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "strip packages/control-plane/src/pending-actions.ts:82",
    "take packages/control-plane/src/pending-actions.ts:26",
    "take packages/control-plane/src/pending-actions.ts:63"
@@ -1261,7 +1261,7 @@
    "write packages/control-plane/src/copilot-runtime.ts:40",
    "delete packages/control-plane/src/copilot-runtime.ts:42",
    "error packages/control-plane/src/copilot-action-outcome.ts:70",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89"
@@ -1324,12 +1324,12 @@
    "post packages/agent-runtime-worker/src/mailbox.ts:40",
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
    "reportActionOutcome packages/control-plane/src/copilot-action-outcome.ts:55",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "strip packages/control-plane/src/pending-actions.ts:82"
   ],
   "unresolved": [
    "error packages/control-plane/src/copilot-action-outcome.ts:70",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89"
@@ -1377,7 +1377,7 @@
    "preflightAction packages/control-plane/src/copilot-action-preflight.ts:80",
    "proposeGithubIssue packages/control-plane/src/copilot-github-tools.ts:58",
    "registeredOpenRouterModel packages/agent-runtime-worker/src/models.ts:158",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "str packages/control-plane/src/github-issues.ts:39",
    "unknownModelFields packages/agent-runtime-worker/src/models.ts:233",
    "validateDraftForLaunch packages/control-plane/src/copilot-action-preflight.ts:22",
@@ -1386,7 +1386,7 @@
    "validateTeamFiles packages/agent-config/src/team-files.ts:57"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1402,10 +1402,10 @@
    "(anonymous) packages/control-plane/src/copilot-read-tools.ts:41",
    "execute packages/control-plane/src/copilot-read-tools.ts:35",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1441,14 +1441,14 @@
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
    "overlapMs packages/control-plane/src/machine-segments.ts:112",
    "runtimeLines packages/control-plane/src/copilot-read-tools.ts:60",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "upgradedMs packages/control-plane/src/machine-segments.ts:126",
    "upgradedMsSince packages/control-plane/src/machine-segments.ts:273",
    "verifiedVolumeLine packages/control-plane/src/copilot-read-tools.ts:104",
    "volumeExists packages/control-plane/src/fly-machines.ts:436"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "collection packages/control-plane/src/machine-segments.ts:45",
    "has packages/control-plane/src/machine-segments.ts:46",
    "add packages/control-plane/src/machine-segments.ts:47",
@@ -1473,10 +1473,10 @@
    "err packages/control-plane/src/copilot-tool-deps.ts:25",
    "execute packages/control-plane/src/copilot-read-tools.ts:173",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1497,10 +1497,10 @@
    "monitorFetch packages/control-plane/src/copilot-tool-deps.ts:30",
    "monitorUrl packages/control-plane/src/monitor-token.ts:34",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/agent-runtime-worker/src/monitor-routes/log.ts:20",
    "end packages/agent-runtime-worker/src/monitor-routes/log.ts:32"
   ],
@@ -1529,10 +1529,10 @@
    "monitorFetch packages/control-plane/src/copilot-tool-deps.ts:30",
    "monitorUrl packages/control-plane/src/monitor-token.ts:34",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:68",
    "get packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:25",
    "end packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts:28",
@@ -1557,10 +1557,10 @@
    "err packages/control-plane/src/copilot-tool-deps.ts:25",
    "execute packages/control-plane/src/copilot-read-tools.ts:296",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1615,10 +1615,10 @@
    "err packages/control-plane/src/copilot-tool-deps.ts:25",
    "execute packages/control-plane/src/copilot-read-tools.ts:394",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1668,11 +1668,11 @@
    "readMissionSnapshot packages/agent-runtime-worker/src/agent-stats.ts:543",
    "reconcileStaleRunning packages/agent-runtime-worker/src/agent-stats.ts:321",
    "reconcileStaleTurns packages/agent-runtime-worker/src/agent-stats.ts:142",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "upsertTurn packages/agent-runtime-worker/src/agent-stats.ts:208"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -1736,10 +1736,10 @@
    "(anonymous) packages/agent-config/src/stored/paths.ts:46",
    "(anonymous) packages/control-plane/src/copilot-router.ts:174",
    "lifetimeUsage packages/control-plane/src/usage-queries.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1754,10 +1754,10 @@
   "reached": [
    "(anonymous) packages/control-plane/src/copilot-router.ts:185",
    "(anonymous) packages/control-plane/src/copilot-router.ts:196",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1824,10 +1824,10 @@
    "(anonymous) packages/control-plane/src/copilot-visibility-routes.ts:33",
    "(anonymous) packages/control-plane/src/transcript-queries.ts:46",
    "queryTurns packages/control-plane/src/transcript-queries.ts:37",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1843,10 +1843,10 @@
    "(anonymous) packages/control-plane/src/copilot-visibility-routes.ts:41",
    "(anonymous) packages/control-plane/src/transcript-queries.ts:69",
    "queryTranscript packages/control-plane/src/transcript-queries.ts:59",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1863,10 +1863,10 @@
    "(anonymous) packages/control-plane/src/transcript-queries.ts:125",
    "callUsageOf packages/control-plane/src/transcript-queries.ts:81",
    "queryLlmCalls packages/control-plane/src/transcript-queries.ts:98",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1882,11 +1882,11 @@
    "(anonymous) packages/control-plane/src/copilot-visibility-routes.ts:69",
    "callUsageOf packages/control-plane/src/transcript-queries.ts:81",
    "queryLlmCall packages/control-plane/src/transcript-queries.ts:143",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "skip packages/control-plane/src/transcript-queries.ts:151",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -1951,13 +1951,13 @@
    "(anonymous) packages/control-plane/src/copilot-waker.ts:86",
    "entryTrigger packages/agent-config/src/baseline/entry-tag.ts:31",
    "scan packages/control-plane/src/copilot-waker.ts:85",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userIdFromCopilotMissionId packages/control-plane/src/copilot-waker.ts:28",
    "wakeStrandedCopilots packages/control-plane/src/copilot-waker.ts:36"
   ],
   "unresolved": [
    "error packages/control-plane/src/copilot-waker.ts:87",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "error packages/control-plane/src/copilot-waker.ts:59"
   ],
   "httpHops": []
@@ -2131,7 +2131,7 @@
    "scheduleReminder packages/control-plane/src/resource-upgrade-notify.ts:124",
    "setPlannedEnd packages/control-plane/src/machine-segments.ts:239",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/fly-machines.ts:339",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "time packages/agent-runtime-worker/src/anomaly-digest.ts:23",
@@ -2146,7 +2146,7 @@
   ],
   "unresolved": [
    "error packages/control-plane/src/resource-upgrade-notify.ts:77",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -2315,7 +2315,7 @@
    "resumeTracked packages/control-plane/src/machine-lifecycle.ts:105",
    "revertUpgrade packages/control-plane/src/resource-upgrade.ts:355",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/fly-machines.ts:339",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "time packages/agent-runtime-worker/src/anomaly-digest.ts:23",
@@ -2327,7 +2327,7 @@
   "unresolved": [
    "error packages/control-plane/src/resource-upgrade-claim.ts:130",
    "error packages/control-plane/src/resource-upgrade-notify.ts:77",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -2406,11 +2406,11 @@
    "issueNumber packages/control-plane/src/github-issues.ts:51",
    "parseGithubIssuePayload packages/control-plane/src/github-issues.ts:61",
    "proposeIssueForMissionOwner packages/control-plane/src/github-issues.ts:259",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "str packages/control-plane/src/github-issues.ts:39"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": [
    "route POST /github/issue"
@@ -2475,11 +2475,11 @@
    "initialMentalMap packages/agent-runtime-worker/src/mission-copilot.ts:73",
    "loadPrompt packages/agent-runtime-worker/src/prompts.ts:55",
    "readPrompt packages/agent-runtime-worker/src/prompts.ts:36",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/agent-runtime-worker/src/prompts.ts:37",
    "set packages/agent-runtime-worker/src/prompts.ts:41"
   ],
@@ -2526,7 +2526,7 @@
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
    "putConfig packages/control-plane/src/mission-routes-config.ts:173",
    "registeredOpenRouterModel packages/agent-runtime-worker/src/models.ts:158",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "unknownModelFields packages/agent-runtime-worker/src/models.ts:233",
    "userFilter packages/control-plane/src/mission-scope.ts:8",
    "validateTeamFilePath packages/agent-config/src/team-files.ts:31",
@@ -2540,7 +2540,7 @@
    "get packages/control-plane/src/mission-routes-config.ts:156",
    "collection packages/agent-runtime-worker/src/mission-config-revisions.ts:65",
    "createIndex packages/agent-runtime-worker/src/mission-config-revisions.ts:70",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -2566,7 +2566,7 @@
    "constructor packages/agent-config/src/spend.ts:12",
    "createMongoMissionConfigWriter packages/agent-runtime-worker/src/mission-config-revisions.ts:63",
    "putDraft packages/control-plane/src/mission-routes-config.ts:274",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8",
    "validateTeamFilePath packages/agent-config/src/team-files.ts:31",
    "validateTeamFiles packages/agent-config/src/team-files.ts:57",
@@ -2577,7 +2577,7 @@
   "unresolved": [
    "collection packages/agent-runtime-worker/src/mission-config-revisions.ts:65",
    "createIndex packages/agent-runtime-worker/src/mission-config-revisions.ts:70",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -2630,7 +2630,7 @@
    "provisionTracked packages/control-plane/src/machine-lifecycle.ts:65",
    "registeredOpenRouterModel packages/agent-runtime-worker/src/models.ts:158",
    "runningPatch packages/control-plane/src/mission-claims.ts:84",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "unknownModelFields packages/agent-runtime-worker/src/models.ts:233",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
@@ -2647,7 +2647,7 @@
    "add packages/control-plane/src/machine-segments.ts:87",
    "createIndex packages/control-plane/src/machine-segments.ts:90",
    "error packages/agent-runtime-worker/src/tool-executor.ts:17",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -2701,7 +2701,7 @@
    "registeredOpenRouterModel packages/agent-runtime-worker/src/models.ts:158",
    "resolveCreateConfig packages/control-plane/src/mission-routes-lifecycle.ts:41",
    "runningPatch packages/control-plane/src/mission-claims.ts:84",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "unknownModelFields packages/agent-runtime-worker/src/models.ts:233",
    "validateNewMissionId packages/agent-config/src/mission-id.ts:28",
@@ -2721,7 +2721,7 @@
    "add packages/control-plane/src/machine-segments.ts:87",
    "createIndex packages/control-plane/src/machine-segments.ts:90",
    "error packages/agent-runtime-worker/src/tool-executor.ts:17",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/control-plane/src/templates.ts:161"
   ],
   "httpHops": []
@@ -2866,7 +2866,7 @@
    "revertUpgrade packages/control-plane/src/resource-upgrade.ts:355",
    "sendLifecycle packages/control-plane/src/mission-routes-lifecycle.ts:222",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/fly-machines.ts:339",
    "suspendMission packages/control-plane/src/mission-lifecycle-actions.ts:33",
    "suspendMissionMachine packages/control-plane/src/resource-upgrade.ts:439",
@@ -2894,7 +2894,7 @@
    "error packages/agent-runtime-worker/src/tool-executor.ts:17",
    "error packages/control-plane/src/resource-upgrade-claim.ts:130",
    "error packages/control-plane/src/resource-upgrade-notify.ts:77",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -3010,7 +3010,7 @@
    "resumeMission packages/control-plane/src/mission-lifecycle-actions.ts:65",
    "resumeTracked packages/control-plane/src/machine-lifecycle.ts:105",
    "sendLifecycle packages/control-plane/src/mission-routes-lifecycle.ts:222",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "time packages/agent-runtime-worker/src/anomaly-digest.ts:23",
    "updateMachine packages/control-plane/src/fly-machines.ts:224",
@@ -3025,7 +3025,7 @@
    "get packages/agent-runtime-worker/src/anomaly.ts:236",
    "error packages/control-plane/src/mission-lifecycle-actions.ts:172",
    "createIndex packages/agent-runtime-worker/src/anomaly.ts:210",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -3121,7 +3121,7 @@
    "readMissionSnapshot packages/agent-runtime-worker/src/agent-stats.ts:290",
    "reconcileStaleRunning packages/agent-runtime-worker/src/agent-stats.ts:321",
    "reconcileStaleTurns packages/agent-runtime-worker/src/agent-stats.ts:142",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "upgradedMs packages/control-plane/src/machine-segments.ts:126",
    "upgradedMsSince packages/control-plane/src/machine-segments.ts:273",
    "upsertTurn packages/agent-runtime-worker/src/agent-stats.ts:208",
@@ -3132,7 +3132,7 @@
    "push packages/control-plane/src/missions.ts:198",
    "get packages/control-plane/src/missions.ts:203",
    "has packages/control-plane/src/spend-policy.ts:128",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "createIndex packages/agent-runtime-worker/src/agent-stats.ts:180",
    "createIndex packages/agent-runtime-worker/src/agent-stats.ts:190",
    "createIndex packages/agent-runtime-worker/src/agent-stats.ts:198",
@@ -3220,7 +3220,7 @@
    "reconcileStaleTurns packages/agent-runtime-worker/src/agent-stats.ts:142",
    "rollUp packages/agent-runtime-worker/src/objectives/store.ts:197",
    "saveGoals packages/agent-runtime-worker/src/objectives/repository.ts:181",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "subtreeTasks packages/agent-runtime-worker/src/objectives/store.ts:213",
    "upsertTurn packages/agent-runtime-worker/src/agent-stats.ts:208",
    "userFilter packages/control-plane/src/mission-scope.ts:8",
@@ -3235,7 +3235,7 @@
    "set packages/agent-runtime-worker/src/agent-stats.ts:297",
    "get packages/agent-runtime-worker/src/agent-stats.ts:299",
    "get packages/agent-runtime-worker/src/agent-stats.ts:310",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "set packages/agent-runtime-worker/src/objectives/store.ts:153",
    "set packages/agent-runtime-worker/src/objectives/store.ts:158",
    "get packages/agent-runtime-worker/src/objectives/store.ts:176",
@@ -3313,7 +3313,7 @@
    "readBody packages/agent-runtime-worker/src/monitor-server.ts:1063",
    "readMissionSnapshot packages/agent-runtime-worker/src/agent-stats.ts:108",
    "readMissionSnapshot packages/agent-runtime-worker/src/agent-stats.ts:543",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8",
    "write packages/agent-runtime-worker/src/mission-config-revisions.ts:56",
    "write packages/agent-runtime-worker/src/mission-config-revisions.ts:80",
@@ -3333,7 +3333,7 @@
    "on packages/agent-runtime-worker/src/monitor-server.ts:1080",
    "reject packages/agent-runtime-worker/src/monitor-server.ts:1074",
    "resolve packages/agent-runtime-worker/src/monitor-server.ts:1079",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89"
@@ -3371,13 +3371,13 @@
    "post packages/agent-runtime-worker/src/mailbox.ts:40",
    "postLimitsAudit packages/control-plane/src/mission-limits.ts:68",
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8",
    "writeMissionCostCeiling packages/control-plane/src/mission-limits.ts:188"
   ],
   "unresolved": [
    "has packages/control-plane/src/spend-policy.ts:128",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89"
@@ -3407,12 +3407,12 @@
    "post packages/agent-runtime-worker/src/mailbox.ts:40",
    "postLimitsAudit packages/control-plane/src/mission-limits.ts:68",
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8",
    "writeUpgradedRuntimeReset packages/control-plane/src/missions.ts:289"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89"
@@ -3450,7 +3450,7 @@
    "post packages/agent-runtime-worker/src/mailbox.ts:40",
    "postLimitsAudit packages/control-plane/src/mission-limits.ts:68",
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8",
    "write packages/agent-runtime-worker/src/mission-config-revisions.ts:56",
    "write packages/agent-runtime-worker/src/mission-config-revisions.ts:80",
@@ -3459,7 +3459,7 @@
   "unresolved": [
    "collection packages/agent-runtime-worker/src/mission-config-revisions.ts:65",
    "createIndex packages/agent-runtime-worker/src/mission-config-revisions.ts:70",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89"
@@ -3497,13 +3497,13 @@
    "foldSnippets packages/control-plane/src/mission-stats-summary.ts:132",
    "foldTurns packages/control-plane/src/mission-stats-summary.ts:115",
    "getStats packages/control-plane/src/mission-routes-read.ts:43",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "summarizeMissions packages/control-plane/src/mission-stats-summary.ts:37",
    "userFilter packages/control-plane/src/mission-scope.ts:8",
    "utcDayStart packages/control-plane/src/mission-stats-summary.ts:31"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -3541,11 +3541,11 @@
    "(anonymous) packages/control-plane/src/mission-routes-read.ts:109",
    "(anonymous) packages/control-plane/src/mission-routes-read.ts:137",
    "getConversations packages/control-plane/src/mission-routes-read.ts:108",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -3589,11 +3589,11 @@
    "(anonymous) packages/control-plane/src/mission-routes-read.ts:208",
    "(anonymous) packages/control-plane/src/mission-routes-read.ts:220",
    "postMessagesRead packages/control-plane/src/mission-routes-read.ts:207",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -3622,12 +3622,12 @@
    "post packages/agent-runtime-worker/src/mailbox.ts:40",
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
    "postMessagesSend packages/control-plane/src/mission-routes-read.ts:234",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
   ],
   "unresolved": [
    "has packages/control-plane/src/mission-routes-read.ts:260",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89"
@@ -3647,11 +3647,11 @@
    "(anonymous) packages/control-plane/src/transcript-queries.ts:46",
    "getTurns packages/control-plane/src/mission-routes-transcript.ts:18",
    "queryTurns packages/control-plane/src/transcript-queries.ts:37",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -3668,11 +3668,11 @@
    "(anonymous) packages/control-plane/src/transcript-queries.ts:69",
    "getTranscript packages/control-plane/src/mission-routes-transcript.ts:39",
    "queryTranscript packages/control-plane/src/transcript-queries.ts:59",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -3690,11 +3690,11 @@
    "callUsageOf packages/control-plane/src/transcript-queries.ts:81",
    "getLlmCalls packages/control-plane/src/mission-routes-transcript.ts:60",
    "queryLlmCalls packages/control-plane/src/transcript-queries.ts:98",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -3711,12 +3711,12 @@
    "callUsageOf packages/control-plane/src/transcript-queries.ts:81",
    "getLlmCall packages/control-plane/src/mission-routes-transcript.ts:83",
    "queryLlmCall packages/control-plane/src/transcript-queries.ts:143",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "userFilter packages/control-plane/src/mission-scope.ts:8"
   ],
   "unresolved": [
    "skip packages/control-plane/src/transcript-queries.ts:151",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -3733,10 +3733,10 @@
    "(anonymous) packages/control-plane/src/platform-routes.ts:73",
    "(anonymous) packages/control-plane/src/platform-routes.ts:76",
    "lifetimeCostByMission packages/control-plane/src/usage-queries.ts:50",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/control-plane/src/usage-queries.ts:59",
    "set packages/control-plane/src/usage-queries.ts:62",
    "get packages/control-plane/src/platform-routes.ts:78"
@@ -3968,7 +3968,7 @@
    "now packages/control-plane/src/resource-monitor.ts:384",
    "openWindow packages/agent-runtime-worker/src/anomaly.ts:187",
    "overlapMs packages/control-plane/src/machine-segments.ts:112",
-   "platformResourceCollection packages/agent-config/src/stored/collections.ts:103",
+   "platformResourceCollection packages/agent-config/src/stored/collections.ts:107",
    "post packages/agent-runtime-worker/src/mailbox.ts:112",
    "post packages/agent-runtime-worker/src/mailbox.ts:40",
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
@@ -3995,7 +3995,7 @@
    "spendCapRatio packages/control-plane/src/resource-alerts.ts:15",
    "spendFlag packages/control-plane/src/resource-report-flags.ts:76",
    "spendSpikeRatio packages/control-plane/src/resource-alerts.ts:30",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "sumTurnCostUsd packages/control-plane/src/resource-queries.ts:14",
    "tick packages/control-plane/src/resource-monitor.ts:402",
    "time packages/agent-runtime-worker/src/anomaly-digest.ts:23",
@@ -4024,7 +4024,7 @@
    "error packages/control-plane/src/resource-monitor.ts:365",
    "error packages/control-plane/src/resource-monitor.ts:371",
    "error packages/control-plane/src/resource-monitor.ts:386",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "error packages/control-plane/src/resource-report.ts:286",
    "error packages/control-plane/src/resource-report.ts:334",
    "collection packages/control-plane/src/resource-report.ts:196",
@@ -4053,7 +4053,7 @@
    "has packages/control-plane/src/machine-segments.ts:80",
    "add packages/control-plane/src/machine-segments.ts:87",
    "createIndex packages/control-plane/src/machine-segments.ts:90",
-   "collection packages/agent-config/src/stored/collections.ts:106",
+   "collection packages/agent-config/src/stored/collections.ts:110",
    "set packages/agent-runtime-worker/src/agent-stats.ts:297",
    "get packages/agent-runtime-worker/src/agent-stats.ts:299",
    "get packages/agent-runtime-worker/src/agent-stats.ts:310",
@@ -4185,7 +4185,7 @@
    "reopenStaleLeases packages/control-plane/src/scheduler.ts:137",
    "resumeMission packages/control-plane/src/fly-machines.ts:377",
    "resumeTracked packages/control-plane/src/machine-lifecycle.ts:105",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "tick packages/control-plane/src/scheduler.ts:340",
    "time packages/agent-runtime-worker/src/anomaly-digest.ts:23",
@@ -4198,7 +4198,7 @@
    "error packages/control-plane/src/scheduler.ts:341",
    "error packages/control-plane/src/scheduler.ts:210",
    "error packages/control-plane/src/scheduler.ts:273",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "error packages/agent-runtime-worker/src/tool-executor.ts:17",
    "error packages/control-plane/src/scheduler.ts:226",
    "createIndex packages/agent-runtime-worker/src/anomaly.ts:210",
@@ -4352,7 +4352,7 @@
    "resumeTracked packages/control-plane/src/machine-lifecycle.ts:105",
    "revertUpgrade packages/control-plane/src/resource-upgrade.ts:355",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/fly-machines.ts:339",
    "sweepUpgrades packages/control-plane/src/resource-upgrade.ts:504",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
@@ -4366,7 +4366,7 @@
    "error packages/control-plane/src/resource-upgrade.ts:484",
    "error packages/agent-runtime-worker/src/tool-executor.ts:17",
    "error packages/control-plane/src/resource-upgrade.ts:518",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "error packages/control-plane/src/resource-upgrade-notify.ts:169",
    "collection packages/control-plane/src/machine-segments.ts:45",
    "has packages/control-plane/src/machine-segments.ts:46",
@@ -4420,12 +4420,12 @@
    "log packages/agent-runtime-worker/src/tool-executor.ts:17",
    "prune packages/control-plane/src/scheduler.ts:343",
    "pruneOldLogEntries packages/control-plane/src/scheduler.ts:305",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "error packages/control-plane/src/scheduler.ts:320",
    "error packages/control-plane/src/scheduler.ts:345",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "error packages/agent-runtime-worker/src/tool-executor.ts:17"
   ],
   "httpHops": []
@@ -4682,7 +4682,7 @@
    "sampleDiskUsage packages/agent-runtime-worker/src/resource-sampler.ts:122",
    "specHashOf packages/agent-runtime-worker/src/schedule-ingest.ts:256",
    "startJob packages/agent-runtime-worker/src/job-runner.ts:365",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "tick packages/agent-runtime-worker/src/daemon.ts:176",
    "unregisterRunningJob packages/agent-runtime-worker/src/job-processes.ts:20",
    "upsertSchedule packages/agent-runtime-worker/src/schedule-ingest.ts:406",
@@ -4747,7 +4747,7 @@
    "error packages/agent-runtime-worker/src/schedule-ingest.ts:301",
    "collection packages/agent-runtime-worker/src/resource-alert-state.ts:136",
    "error packages/agent-runtime-worker/src/resource-sampler.ts:104",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "error packages/agent-runtime-worker/src/resource-alert-state.ts:69",
    "push packages/agent-runtime-worker/src/resource-sampler.ts:89",
    "error packages/agent-runtime-worker/src/resource-sampler.ts:194",
@@ -5398,12 +5398,12 @@
    "execute packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:29",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172",
    "wrapTrustBoundary packages/agent-runtime-worker/src/mission-copilot-tool-text.ts:9"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -5442,7 +5442,7 @@
    "readMaxCostCeiling packages/agent-runtime-worker/src/mission-config.ts:89",
    "readTeamConfig packages/agent-runtime-worker/src/mission-config.ts:69",
    "registeredOpenRouterModel packages/agent-runtime-worker/src/models.ts:158",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172",
    "unknownModelFields packages/agent-runtime-worker/src/models.ts:233",
    "validateTeamFilePath packages/agent-config/src/team-files.ts:31",
@@ -5453,7 +5453,7 @@
   ],
   "unresolved": [
    "write packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:184",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "collection packages/agent-runtime-worker/src/mission-config-revisions.ts:65",
    "createIndex packages/agent-runtime-worker/src/mission-config-revisions.ts:70",
    "error packages/agent-runtime-worker/src/mission-config.ts:82"
@@ -5637,12 +5637,12 @@
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "parseGithubIssuePayload packages/control-plane/src/github-issues.ts:61",
    "proposeIssueForMissionOwner packages/control-plane/src/github-issues.ts:259",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "str packages/control-plane/src/github-issues.ts:39",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": [
    "route POST /github/issue"
@@ -5771,12 +5771,12 @@
   "reached": [
    "execute packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:19",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172",
    "wrapTrustBoundary packages/agent-runtime-worker/src/mission-copilot-tool-text.ts:9"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -5799,7 +5799,7 @@
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
    "sessionSummaries packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:11",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
@@ -5807,7 +5807,7 @@
    "get packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:30",
    "push packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:31",
    "set packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:32",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:71"
   ],
   "httpHops": [
@@ -5830,12 +5830,12 @@
    "monitorGet packages/agent-runtime-worker/src/mission-copilot-tool-deps.ts:42",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:167",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": [
    "monitor-route GET /^\\/agents\\/([^/]+)\\/usage$/"
@@ -5871,13 +5871,13 @@
    "err packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:9",
    "execute packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:140",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172",
    "wrapTrustBoundary packages/agent-runtime-worker/src/mission-copilot-tool-text.ts:9"
   ],
   "unresolved": [
    "skip packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:146",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -5893,12 +5893,12 @@
    "(anonymous) packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:201",
    "execute packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:194",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172",
    "wrapTrustBoundary packages/agent-runtime-worker/src/mission-copilot-tool-text.ts:9"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -5915,11 +5915,11 @@
    "execute packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:226",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -5938,12 +5938,12 @@
    "execute packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:289",
    "matchExcerpt packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:254",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172",
    "wrapTrustBoundary packages/agent-runtime-worker/src/mission-copilot-tool-text.ts:9"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -5998,11 +5998,11 @@
    "execute packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:23",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6018,11 +6018,11 @@
    "execute packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:56",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6092,11 +6092,11 @@
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
    "resolveDeliverAt packages/agent-runtime-worker/src/mission-copilot-schedule-input.ts:58",
    "scheduleInputProblem packages/agent-runtime-worker/src/mission-copilot-schedule-input.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mission-copilot-schedule-input.ts:45"
   ],
   "httpHops": []
@@ -6115,11 +6115,11 @@
    "execute packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:107",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6136,11 +6136,11 @@
    "execute packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:165",
    "ok packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:6",
    "okJson packages/agent-runtime-worker/src/mission-copilot-tool-result.ts:12",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "truncate packages/agent-runtime-worker/src/tools.ts:172"
   ],
   "unresolved": [
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6170,11 +6170,11 @@
   "tag": "agent.history",
   "reached": [
    "handler packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:92",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:105",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6193,14 +6193,14 @@
    "(anonymous) packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:56",
    "handler packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:117",
    "sessionSummaries packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:11",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:121",
    "get packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:30",
    "push packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:31",
    "set packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:32",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "get packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:71"
   ],
   "httpHops": []
@@ -6215,11 +6215,11 @@
   "tag": "agent.history",
   "reached": [
    "handler packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:128",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:142",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6234,11 +6234,11 @@
   "reached": [
    "(anonymous) packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:169",
    "handler packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:149",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts:167",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6547,11 +6547,11 @@
   "reached": [
    "(anonymous) packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:32",
    "handler packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:20",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:45",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6713,11 +6713,11 @@
   "reached": [
    "(anonymous) packages/agent-runtime-worker/src/monitor-routes/schedule.ts:27",
    "handler packages/agent-runtime-worker/src/monitor-routes/schedule.ts:18",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/schedule.ts:25",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6750,11 +6750,11 @@
   "tag": "spend.report",
   "reached": [
    "handler packages/agent-runtime-worker/src/monitor-routes/trace.ts:21",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/trace.ts:37",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6768,11 +6768,11 @@
   "tag": "spend.report",
   "reached": [
    "handler packages/agent-runtime-worker/src/monitor-routes/trace.ts:47",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/trace.ts:69",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6787,11 +6787,11 @@
   "reached": [
    "(anonymous) packages/agent-runtime-worker/src/monitor-routes/trace.ts:93",
    "handler packages/agent-runtime-worker/src/monitor-routes/trace.ts:77",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/trace.ts:91",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -6805,11 +6805,11 @@
   "tag": "message.read",
   "reached": [
    "handler packages/agent-runtime-worker/src/monitor-routes/trace.ts:112",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91"
+   "storedCollection packages/agent-config/src/stored/collections.ts:95"
   ],
   "unresolved": [
    "end packages/agent-runtime-worker/src/monitor-routes/trace.ts:129",
-   "collection packages/agent-config/src/stored/collections.ts:95"
+   "collection packages/agent-config/src/stored/collections.ts:99"
   ],
   "httpHops": []
  },
@@ -8117,7 +8117,7 @@
    "scheduleReminder packages/control-plane/src/resource-upgrade-notify.ts:124",
    "setPlannedEnd packages/control-plane/src/machine-segments.ts:239",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/fly-machines.ts:339",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "time packages/agent-runtime-worker/src/anomaly-digest.ts:23",
@@ -8133,7 +8133,7 @@
   ],
   "unresolved": [
    "error packages/control-plane/src/resource-upgrade-notify.ts:77",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",
@@ -8308,7 +8308,7 @@
    "resumeTracked packages/control-plane/src/machine-lifecycle.ts:105",
    "revertUpgrade packages/control-plane/src/resource-upgrade.ts:355",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
-   "storedCollection packages/agent-config/src/stored/collections.ts:91",
+   "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/fly-machines.ts:339",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "time packages/agent-runtime-worker/src/anomaly-digest.ts:23",
@@ -8321,7 +8321,7 @@
   "unresolved": [
    "error packages/control-plane/src/resource-upgrade-claim.ts:130",
    "error packages/control-plane/src/resource-upgrade-notify.ts:77",
-   "collection packages/agent-config/src/stored/collections.ts:95",
+   "collection packages/agent-config/src/stored/collections.ts:99",
    "has packages/agent-runtime-worker/src/mailbox.ts:80",
    "add packages/agent-runtime-worker/src/mailbox.ts:81",
    "createIndex packages/agent-runtime-worker/src/mailbox.ts:89",

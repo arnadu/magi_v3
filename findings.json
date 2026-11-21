@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "7baa4fe",
-  "time": "2026-11-21T16:02:12Z"
+  "commit": "027acfa",
+  "time": "2026-11-21T17:41:39Z"
  },
  "findings": [
   {
@@ -3184,6 +3184,70 @@
    "text": "No code writes the turn transition running → failed that the catalog allows.",
    "where": [],
    "new": false
+  },
+  {
+   "key": "7479fccfcee6",
+   "kind": "status.unseen-transition",
+   "about": "app",
+   "text": "No code writes the app transition (new) → starting that the catalog allows.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "bd4be7f3e189",
+   "kind": "status.unseen-transition",
+   "about": "app",
+   "text": "No code writes the app transition starting → running that the catalog allows.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "b3e86a04e43e",
+   "kind": "status.unseen-transition",
+   "about": "app",
+   "text": "No code writes the app transition starting → failed that the catalog allows.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "22de4a65ea1b",
+   "kind": "status.unseen-transition",
+   "about": "app",
+   "text": "No code writes the app transition starting → stopped that the catalog allows.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "efdb90960339",
+   "kind": "status.unseen-transition",
+   "about": "app",
+   "text": "No code writes the app transition running → failed that the catalog allows.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "125627972529",
+   "kind": "status.unseen-transition",
+   "about": "app",
+   "text": "No code writes the app transition running → stopped that the catalog allows.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "e7d050e34dee",
+   "kind": "status.unseen-transition",
+   "about": "app",
+   "text": "No code writes the app transition stopped → starting that the catalog allows.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "8d8ad0ffded6",
+   "kind": "status.unseen-transition",
+   "about": "app",
+   "text": "No code writes the app transition failed → starting that the catalog allows.",
+   "where": [],
+   "new": true
   },
   {
    "key": "37b125f047ba",

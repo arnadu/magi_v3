@@ -4466,7 +4466,7 @@
  },
  {
   "id": "app.declare",
-  "intent": "Serve a program for the operator to use in a browser: its name and the command that starts it",
+  "intent": "Serve a program for the operator to use in a browser: its name, its kind (a notebook, a Gradio app, a site) and its files",
   "home": "mm-apps",
   "actors": [
    "AG"
@@ -4501,7 +4501,7 @@
  },
  {
   "id": "app.status",
-  "intent": "A mission's apps: their state, owner, when each was last opened, its CPU and memory",
+  "intent": "A mission's apps: their state, owner, when each was last opened, its memory",
   "home": "mm-apps",
   "actors": [
    "OP",
