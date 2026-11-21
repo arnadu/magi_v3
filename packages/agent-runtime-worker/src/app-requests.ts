@@ -251,7 +251,7 @@ export async function processAppRequests(deps: AppRequestDeps): Promise<void> {
 	pruneAnswers(deps);
 }
 
-/** What agents may see of an app: everything but its capability and slot. */
+/** What agents may see of an app: everything but its capability and slot (its port on the apps host). */
 export function publicStatus(a: MissionAppDoc) {
 	return {
 		name: a.name,
@@ -260,6 +260,8 @@ export function publicStatus(a: MissionAppDoc) {
 		path: a.path,
 		description: a.description,
 		status: a.status,
+		// Not secret: only the daemon and the owner can reach it (the firewall).
+		port: a.port,
 		lastError: a.lastError,
 		lastOpenedAt: a.lastOpenedAt,
 		rssMb: a.rssMb,
