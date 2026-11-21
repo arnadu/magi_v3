@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "95e23fa",
-  "time": "2026-11-21T21:36:47Z"
+  "commit": "0c612ae",
+  "time": "2026-11-21T21:49:42Z"
  },
  "findings": [
   {
@@ -2365,29 +2365,6 @@
    "new": false
   },
   {
-   "key": "da25358bb605",
-   "kind": "op.home-not-reached",
-   "about": "app.run",
-   "text": "None of the 1 entry point(s) of app.run reaches code in its home, mm-apps: trigger interval.",
-   "where": [
-    "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:152"
-   ],
-   "entryPoints": [
-    {
-     "name": "trigger interval",
-     "where": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:152",
-     "components": [
-      "config",
-      "mm-daemon"
-     ],
-     "unresolved": [
-      "error"
-     ]
-    }
-   ],
-   "new": true
-  },
-  {
    "key": "12707cb9b2d5",
    "kind": "op.actor-missing",
    "about": "app.control",
@@ -2415,7 +2392,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "2d57a4a71f87",
@@ -2423,7 +2400,7 @@
    "about": "app.status",
    "text": "MC is an actor of app.status, but no entry point serves MC.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "e403c099fb03",
@@ -2431,7 +2408,7 @@
    "about": "app.status",
    "text": "AG is an actor of app.status, but no entry point serves AG.",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "caac56b909eb",
@@ -2453,7 +2430,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "48ccd127ec55",
@@ -2471,7 +2448,7 @@
      "unresolved": []
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "5163010c196b",

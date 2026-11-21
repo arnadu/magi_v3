@@ -4605,15 +4605,52 @@
     "kind": "trigger",
     "actor": "PLT",
     "name": "interval",
-    "where": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:152",
-    "reachesHome": false,
+    "where": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:142",
+    "reachesHome": true,
     "components": [
      "config",
-     "mm-daemon"
+     "mm-apps",
+     "mm-daemon",
+     "mm-isolation",
+     "mm-tools"
     ],
     "writes": [],
     "unresolved": [
-     "error"
+     "allow",
+     "declare",
+     "delete",
+     "error",
+     "get",
+     "has",
+     "on",
+     "resolve",
+     "revoke",
+     "set"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "trigger",
+    "actor": "PLT",
+    "name": "interval",
+    "where": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:159",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "mm-apps",
+     "mm-daemon",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "allow",
+     "delete",
+     "error",
+     "get",
+     "has",
+     "on",
+     "revoke",
+     "set"
     ],
     "httpHops": []
    }
@@ -4628,7 +4665,7 @@
    "MC",
    "AG"
   ],
-  "planned": true,
+  "planned": false,
   "startedBy": null,
   "entryPoints": [
    {
@@ -4684,7 +4721,7 @@
    "MC",
    "AG"
   ],
-  "planned": true,
+  "planned": false,
   "startedBy": null,
   "entryPoints": [
    {
