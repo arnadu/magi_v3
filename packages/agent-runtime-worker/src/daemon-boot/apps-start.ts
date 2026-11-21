@@ -121,16 +121,7 @@ export async function startApps(
 		control: (name, action) =>
 			controlApp(controlDeps, name, action, { kind: "operator" }),
 	};
-	const pollTimer = everyNonOverlapping(
-		REQUEST_POLL_MS,
-		"processing app requests",
-		() => processAppRequests(requestDeps),
-	);
-	const checkTimer = everyNonOverlapping(
-		HEALTH_CHECK_MS,
-		"the app health check",
-		() => apps.tick(),
-	);
+	const { pollTimer, checkTimer } = startAppTimers(requestDeps, apps);
 	return {
 		apps,
 		async stopApps() {
@@ -141,27 +132,44 @@ export async function startApps(
 	};
 }
 
-/** Run `fn` every `ms`, skipping a tick while the previous run is still going; a failure is logged and retried next tick. */
-function everyNonOverlapping(
-	ms: number,
-	what: string,
-	fn: () => Promise<unknown>,
-): ReturnType<typeof setInterval> {
-	let running = false;
-	return setInterval(
+/** The request poll and the health check, each skipping a tick while its previous run is still going. */
+function startAppTimers(
+	requestDeps: Parameters<typeof processAppRequests>[0],
+	apps: AppSupervisor,
+) {
+	let polling = false;
+	const pollTimer = setInterval(
 		entryTrigger("app.run", async () => {
-			if (running) return;
-			running = true;
+			if (polling) return;
+			polling = true;
 			try {
-				await fn();
+				await processAppRequests(requestDeps);
 			} catch (e) {
 				console.error(
-					`[apps] ${what} failed: ${(e as Error).message}; retried in ${ms / 1000} s`,
+					`[apps] processing app requests failed: ${(e as Error).message}; retried in ${REQUEST_POLL_MS / 1000} s`,
 				);
 			} finally {
-				running = false;
+				polling = false;
 			}
 		}),
-		ms,
+		REQUEST_POLL_MS,
 	);
+	let checking = false;
+	const checkTimer = setInterval(
+		entryTrigger("app.run", async () => {
+			if (checking) return;
+			checking = true;
+			try {
+				await apps.tick();
+			} catch (e) {
+				console.error(
+					`[apps] the app health check failed: ${(e as Error).message}; retried in ${HEALTH_CHECK_MS / 1000} s`,
+				);
+			} finally {
+				checking = false;
+			}
+		}),
+		HEALTH_CHECK_MS,
+	);
+	return { pollTimer, checkTimer };
 }

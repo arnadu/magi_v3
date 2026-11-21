@@ -405,7 +405,6 @@ export const TEAM_OPERATIONS = defineOperations([
 			"At most a few apps of a mission run at once; starting one more is refused, with the running ones named",
 			"The owner is told when someone else stops its app",
 		],
-		planned: true,
 	},
 	{
 		id: "app.status",
@@ -416,7 +415,6 @@ export const TEAM_OPERATIONS = defineOperations([
 		home: "mm-apps",
 		rules: [],
 		read: true,
-		planned: true,
 	},
 	{
 		id: "app.open",
