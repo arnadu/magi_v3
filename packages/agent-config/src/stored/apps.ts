@@ -1,7 +1,8 @@
 /**
  * Interactive apps (ADR-0037): one document per declared app of a mission,
- * keyed `{missionId, name}`. Written only by the daemon's app supervisor
- * (`mm-apps`); the control plane reads it to open an app.
+ * keyed `{missionId, name}`. Written by the daemon's app supervisor
+ * (`mm-apps`), except `slot` and `slotUsedAt`, which the control plane sets
+ * when it opens an app. Each writer updates only its own fields.
  */
 
 /** What the platform knows how to run; it builds each command line itself. */
@@ -33,6 +34,14 @@ export interface MissionAppDoc {
 	restarts: Date[];
 	lastError?: string;
 	lastOpenedAt?: Date;
+	/**
+	 * The app's port on the apps host (its origin), assigned by the control
+	 * plane on first open and unique across all missions. The control plane
+	 * writes only this field and `slotUsedAt`.
+	 */
+	slot?: number;
+	/** When the control plane last issued a ticket for it: a slot unused for longer than a session can pass to another app. */
+	slotUsedAt?: Date;
 	rssMb?: number;
 	declaredAt: Date;
 	statusChangedAt: Date;

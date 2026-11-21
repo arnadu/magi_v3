@@ -75,6 +75,12 @@ export const DATA_STORES: readonly DataStore<ComponentId>[] = [
 		collection: "missionApps",
 		holds: "app",
 		owner: "mm-apps",
+		alsoWrittenBy: [
+			{
+				component: "cp-apps",
+				what: "the app's port on the apps host and when it was last opened",
+			},
+		],
 	},
 	{
 		collection: "platformResources",

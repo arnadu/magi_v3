@@ -75,11 +75,13 @@ they ignore ports, so the rules below still keep them apart.
 - **Slots.** The apps host listens on 100 public ports, 20000–20099 (a Fly port range with TLS,
   checked in the spike). Fly tells it the port of each request in `Fly-Forwarded-Port`, which
   Fly overwrites; `X-Forwarded-Port` is passed through from the client and is never read. The
-  control plane assigns each app a slot when it is first opened and keeps it for that app
-  (`appSlots`, written only by the apps component of the control plane). A slot passes to
-  another app only when its holder has been removed, or not opened for longer than a session
-  lasts (12 hours), so no live session of the old holder can share the origin with the new
-  one. When all slots are held, opening one more app is refused with that reason.
+  control plane assigns each app a slot when it is first opened and keeps it for that app:
+  two fields of the app's record, `slot` and `slotUsedAt` (when a ticket was last issued),
+  with a unique index on `slot` across all missions, so no two apps can hold one slot. A slot
+  passes to another app only when its holder has been removed (deleting the record frees it),
+  or not opened for longer than a session lasts (12 hours), so no live session of the old
+  holder can share the origin with the new one. When all slots are held, opening one more app
+  is refused with that reason.
 - **Leftovers are cleared.** Redeeming a ticket answers with `Clear-Site-Data: "storage"` for
   that slot's origin, so nothing a previous holder left in this browser survives. The cost:
   an app's own browser storage does not outlive a new Open (JupyterLab forgets its layout).
@@ -361,8 +363,9 @@ mission data or the app's own URL in the browser's storage (decision 2).
     an app;
   - `app.open` reads "checked when the app is opened, then by a signed session of at most 12
     hours on every request, WebSockets included";
-  - a second collection, `appSlots` (which app holds which port of the apps host), written
-    only by `cp-apps` (proposed with the origin per app, for approval);
+  - `missionApps` is also written by `cp-apps`, for two fields only: the app's port on the
+    apps host and when it was last opened (approved 2026-11-21, rather than a second
+    collection);
   - the components `mm-apps`, `cp-apps` and `ui-apps` get their paths when built, with
     `cp-apps` being the new apps host.
 
