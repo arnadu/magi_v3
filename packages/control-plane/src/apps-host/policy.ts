@@ -109,6 +109,17 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
 	"x-content-type-options": "nosniff",
 	"cross-origin-resource-policy": "same-origin",
 };
+/** Set SECURITY_HEADERS on an app's response, each by its literal name. */
+export function setSecurityHeaders(headers: IncomingHttpHeaders): void {
+	headers["referrer-policy"] = SECURITY_HEADERS["referrer-policy"];
+	headers["cross-origin-opener-policy"] =
+		SECURITY_HEADERS["cross-origin-opener-policy"];
+	headers["x-content-type-options"] =
+		SECURITY_HEADERS["x-content-type-options"];
+	headers["cross-origin-resource-policy"] =
+		SECURITY_HEADERS["cross-origin-resource-policy"];
+}
+
 /** Added beside any CSP the app sends (each policy is enforced). */
 export const FRAME_POLICY = "frame-ancestors 'none'";
 

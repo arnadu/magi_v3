@@ -34,6 +34,7 @@ import {
 	SECURITY_HEADERS,
 	sessionCookie,
 	sessionCookies,
+	setSecurityHeaders,
 	slotOf,
 	withoutSessionCookie,
 } from "./policy.js";
@@ -209,8 +210,7 @@ function createAppProxy(
 				if (sc)
 					pres.headers["set-cookie"] = rewriteSetCookies(sc, s.capability);
 				delete pres.headers["service-worker-allowed"];
-				for (const [k, v] of Object.entries(SECURITY_HEADERS))
-					pres.headers[k] = v;
+				setSecurityHeaders(pres.headers);
 				// Comma-separated CSP values are separate policies, each enforced.
 				const csp = pres.headers["content-security-policy"];
 				pres.headers["content-security-policy"] = csp
