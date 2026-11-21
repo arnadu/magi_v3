@@ -1,6 +1,7 @@
 # ADR-0037: Interactive apps on the mission machine, served from a separate apps host
 
-**Status:** Proposed (2026-11-20) — for appsec's design review before any code
+**Status:** Proposed (2026-11-20). Reviewed by appsec on 2026-11-20 (approved with conditions,
+folded in below); not yet accepted by the product owner
 **Relates to:** issue #42; the catalog's planned entity `app`, operations `app.*`, journeys
 J-22 and A-10, invariants `app.loopback-only`, `app.as-owner`, `app.bounded` and
 `sec.served-apart`; ADR-0033 (jobs run as their author); F-042 (the monitor server is reachable
@@ -74,12 +75,23 @@ All apps share one origin, so the browser does not keep them apart. The design d
   a worker's scope is limited to its own app's path.
 - **Every response gets** `Referrer-Policy: no-referrer` (the capability never leaks to another
   site), `Cross-Origin-Opener-Policy: same-origin` (an app cannot script the cockpit's window)
-  and `Content-Security-Policy: frame-ancestors 'none'` (no other site can frame it).
+  `Content-Security-Policy: frame-ancestors 'none'` (no other site can frame it),
+  `X-Content-Type-Options: nosniff` and `Cross-Origin-Resource-Policy: same-origin`.
 
-**Residual risk, for appsec:** storage keyed by origin (`localStorage`, IndexedDB) is shared by
-all apps on the host. An app that stores something sensitive there could expose it to another
-app the operator opens. This affects one operator's own missions only: each operator's browser
-holds only that operator's app sessions. The full fix is a separate origin per app, which needs
+**Residual risk:** everything keyed by origin is shared by all apps on the host: `localStorage`,
+IndexedDB, the Cache API. Two consequences:
+- an app that stores something sensitive there exposes it to another app the operator opens;
+- **a capability stored there is a key to that app.** The browser attaches an app's session
+  cookie to any request for its path, including one made by another app's script on the same
+  origin. The secrecy of the capability is the only barrier between two apps, so a capability
+  that one app writes to origin storage (for example a framework remembering its own URL)
+  gives every other app full use of it.
+
+This affects one operator's own missions only: each operator's browser holds only that
+operator's app sessions. But it crosses missions, and through a notebook it reaches code
+running as another mission's agent. The spike checks what JupyterLab and Streamlit write to
+origin storage ("Before building"), and the `serve-app` skill tells agents never to store
+mission data or URLs there. The full fix is a separate origin per app, which needs
 either a domain of our own or a port per running app on the apps host. Both are deferred, and
 named in "Alternatives considered".
 
@@ -101,9 +113,10 @@ named in "Alternatives considered".
    to the mission cockpit. There, the operator is signed in and is sent back with a new ticket,
    while anyone else is refused at the cockpit.
 
-The 12-hour session means that a mission whose owner changes, or that is deleted, stays
-reachable from an existing session for at most 12 hours. An app on a suspended mission is not
-reachable at all, because its machine is down. The `app.open` rule "checked on every request" is
+Sessions are signed and stateless: the apps host has no database, by design, so it cannot
+look up ownership on each request. Missions have no change of owner today. If one is added, it
+must replace the mission's app capabilities, which ends every session bound to them. An app on
+a suspended mission is not reachable at all, because its machine is down. The `app.open` rule "checked on every request" is
 met by the signed session on every request, WebSocket upgrades included. It is not a fresh
 ownership lookup.
 
@@ -124,7 +137,9 @@ browser ─https─▶ apps host (Fly app) ─6PN─▶ mission machine :4000, m
   loopback port. It records when each app was last opened, for the idle stop. The path is not
   stripped: apps serve under `$BASE_PATH`.
 - **WebSockets** are carried at every hop. That is new code in the monitor server and in the
-  apps host. The control plane's existing proxy is not involved.
+  apps host. The control plane's existing proxy is not involved. The apps host refuses an
+  upgrade whose `Origin` is not its own. This guards against other sites only, in addition to
+  `SameSite=Strict`; it cannot tell one app from another, since they share the origin.
 - **The machine checks that the request is for its own mission.** The apps host names the
   mission from the session in each forwarded request. The monitor server refuses a request whose
   mission is not its own `MISSION_ID`, as well as one whose apps token or capability it does not
@@ -148,11 +163,16 @@ Two network rules on the mission machine, set by the platform, not left to agent
   app's owner, so the agent can test its own app. Every other OS user is refused, so other
   agents cannot reach the app. This takes a firewall rule keyed on the connecting user (an
   `iptables` owner match).
+- **A port's rule lives exactly as long as its app.** Ports are reused, so a rule left behind
+  would let the previous owner reach the next app on that port. The daemon revokes the rule
+  whenever the app's process ends (stop, crash, removal), before the port is handed out again;
+  `allow` replaces whatever rule the port had; `init`, at boot, removes every rule in the range.
 
 The daemon runs as `magi-operator`, not root (the image switches user before starting it), so
 both rules go through one new `sudo` rule. It allows a single fixed helper,
 `/usr/local/sbin/magi-net init|allow <port> <uid>|revoke <port> <uid>`. The helper accepts only
-a port in the apps range and the uid of a current agent user, and sets nothing else. It is a new
+a port in the apps range and the uid of a member of the agents' group (`magi-shared`), never
+root or the daemon's own user, and sets nothing else. It is a new
 boundary in the threat model.
 
 Jupyter's own token stays on as a second layer: the daemon generates it, the monitor server's
@@ -234,7 +254,8 @@ no more.
 - reading its log;
 - telling the operator where to find the app ("open it from the Apps tab").
 
-It also tells agents never to start a server with Bash outside `ServeApp`.
+It also tells agents never to start a server with Bash outside `ServeApp`, and never to keep
+mission data or the app's own URL in the browser's storage (decision 2).
 
 ## Alternatives considered
 
@@ -273,9 +294,17 @@ It also tells agents never to start a server with Bash outside `ServeApp`.
   - a `sudo` rule and its helper;
   - firewall rules at machine boot;
   - JupyterLab, `jupyter-collaboration` and Streamlit in the mission image, which grows it.
-- **Threat model:** new boundaries for the operator's browser and the apps host, the apps host
-  and the monitor server, and the app-port helper. The private-network rule closes a gap that
-  exists today, independent of apps.
+- **Threat model:** four new boundaries: the operator's browser and the apps host; the apps
+  host and the monitor server; the monitor server and an app on loopback; the daemon and the
+  `magi-net` helper. They go into `threat-model.md` and `trust-boundaries.md` before building.
+  The private-network rule closes a gap that exists today, independent of apps.
+- **If the apps host is compromised,** the attacker holds both keys. It can forge sessions and
+  apps tokens for any mission, and so reach any app whose capability it learns. Capabilities are
+  never stored on the apps host; it sees them only in the requests passing through it, so the
+  exposure is the apps used while it is compromised. It reaches nothing of the cockpit: no
+  session, no database, no mission data beyond those apps. On suspicion, rotate
+  `APPS_TICKET_KEY` and `APPS_SIGNING_KEY` (every session ends) and have the daemons replace
+  their apps' capabilities.
 - **Resilience:** new failure modes for the resilience document:
   - an app that eats the machine's memory (the daemon is on the same machine);
   - the apps host down (the cockpit shows the app as running, but Open fails);
@@ -300,4 +329,10 @@ It also tells agents never to start a server with Bash outside `ServeApp`.
    - Streamlit;
    - a static site.
 
-   Measure the image's growth and the memory each needs.
+   Measure the image's growth and the memory each needs. Check what JupyterLab and Streamlit
+   write to origin storage, and whether any of it contains the app's path.
+4. **A cross-site WebSocket upgrade is refused** at the apps host.
+5. **A hostile app,** kept as a test: from its page it tries to call the cockpit's API, read
+   another app's storage, load another app's path, and register a service worker outside its
+   own path; on the machine it tries to listen beyond loopback and to connect to another
+   agent's app port. Each must fail.
