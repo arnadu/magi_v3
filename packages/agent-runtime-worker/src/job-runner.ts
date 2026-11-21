@@ -25,7 +25,6 @@ import { type ChildProcess, spawn } from "node:child_process";
 import {
 	chmodSync,
 	createWriteStream,
-	lstatSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
@@ -46,6 +45,7 @@ import { resolveLinuxUsers } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { removeIfExists } from "./remove-if-exists.js";
+import { ownerOfRequestFile } from "./safe-owned-file.js";
 import { openAppendInside, readInside, writeFileInside } from "./safe-path.js";
 import type { ToolApiServer } from "./tool-api-server.js";
 import type { AclPolicy } from "./tools.js";
@@ -214,21 +214,10 @@ function claimPending(
 	const stem = file.replace(/\.json$/, "");
 	if (!JOB_ID_RE.test(stem)) return reject("file name is not a job id");
 	const path = join(dirs.pending, file);
-	let st: ReturnType<typeof lstatSync>;
-	try {
-		st = lstatSync(path);
-	} catch {
-		return null; // gone between readdir and here
-	}
-	if (st.isSymbolicLink()) return reject("symlink");
-	if (!st.isFile()) return reject("not a regular file");
-	if (st.nlink > 1) return reject("hard link");
-	if (st.size > MAX_SPEC_BYTES) return reject("spec too large");
-	const uid = deps.ownerUidOf ? deps.ownerUidOf(path) : st.uid;
-	if (uid === deps.daemonUid)
-		return reject("owned by the daemon (renamed or planted, not submitted)");
-	const owner = deps.uidToAgentId.get(uid);
-	if (!owner) return reject(`owner uid ${uid} is not an agent of this mission`);
+	const owned = ownerOfRequestFile(path, MAX_SPEC_BYTES, deps);
+	if (owned.kind === "gone") return null;
+	if (owned.kind === "refused") return reject(owned.reason);
+	const owner = owned.owner;
 
 	let spec: JobSpec;
 	try {

@@ -36,13 +36,7 @@
  */
 
 import { createHash } from "node:crypto";
-import {
-	chmodSync,
-	existsSync,
-	lstatSync,
-	mkdirSync,
-	readdirSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import {
 	entryFile,
@@ -58,6 +52,7 @@ import type { JobSpec } from "./job-recovery.js";
 import { enqueuePrivateJob, jobDirs } from "./job-runner.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { resolveDeliverAt } from "./mission-copilot-schedule-input.js";
+import { ownerOfRequestFile } from "./safe-owned-file.js";
 import { readInside } from "./safe-path.js";
 
 /** File stem = label. Lower-case slug so it is safe as a label, a job-id prefix and a path component. */
@@ -303,41 +298,20 @@ function reject(ctx: IngestContext, file: string, reason: string): null {
 	return null;
 }
 
-/** lstat-level refusals shared with the job runner: who wrote it, and is it a plain file. */
+/** Who wrote it, and is it a plain file (`safe-owned-file.ts`, shared with jobs and apps). */
 function fileOwner(
 	ctx: IngestContext,
 	dir: string,
 	file: string,
 ): string | null {
-	const path = join(dir, file);
-	let st: ReturnType<typeof lstatSync>;
-	try {
-		st = lstatSync(path);
-	} catch {
-		return null; // removed between readdir and here
-	}
-	if (st.isSymbolicLink()) return reject(ctx, file, "symlink");
-	if (!st.isFile()) return reject(ctx, file, "not a regular file");
-	if (st.nlink > 1) return reject(ctx, file, "hard link");
-	if (st.size > MAX_SCHEDULE_FILE_BYTES)
-		return reject(ctx, file, "file too large");
-	const uid = ctx.deps.ownerUidOf ? ctx.deps.ownerUidOf(path) : st.uid;
-	if (uid === ctx.deps.daemonUid) {
-		return reject(
-			ctx,
-			file,
-			"owned by the daemon (renamed or planted, not written by an agent)",
-		);
-	}
-	const owner = ctx.deps.uidToAgentId.get(uid);
-	if (!owner) {
-		return reject(
-			ctx,
-			file,
-			`owner uid ${uid} is not an agent of this mission`,
-		);
-	}
-	return owner;
+	const r = ownerOfRequestFile(
+		join(dir, file),
+		MAX_SCHEDULE_FILE_BYTES,
+		ctx.deps,
+	);
+	if (r.kind === "gone") return null;
+	if (r.kind === "refused") return reject(ctx, file, r.reason);
+	return r.owner;
 }
 
 function readScheduleFile(
