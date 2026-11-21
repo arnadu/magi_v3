@@ -17,7 +17,7 @@ import type {
 import { Router as createRouter } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import type { Db } from "mongodb";
-import { asyncRoutes } from "./async-handler.js";
+import { asyncRoutes, routeParam } from "./async-handler.js";
 import { deriveMonitorToken } from "./monitor-token.js";
 
 export function createProxyRouter(db: Db): Router {
@@ -77,7 +77,7 @@ export function createProxyRouter(db: Db): Router {
 	routes.use(
 		"/missions/:id",
 		async (req: Request, res: Response, next: NextFunction) => {
-			const missionId = req.params.id;
+			const missionId = routeParam(req, "id");
 
 			// S2: resolve target from DB — never trust user input.
 			// S9 (F-019): scope lookup to the requesting user so a user cannot proxy

@@ -70,3 +70,15 @@ export function asyncRoutes(
 		use: wrap("use"),
 	};
 }
+
+/**
+ * A named route parameter (`:id`). Express 5 types every parameter as
+ * `string | string[]` (wildcard parameters are arrays); a named one is always
+ * a string, and anything else is refused rather than coerced.
+ */
+export function routeParam(req: Request, name: string): string {
+	const v = req.params[name];
+	if (typeof v !== "string")
+		throw new Error(`route parameter ${name} is not a single value`);
+	return v;
+}

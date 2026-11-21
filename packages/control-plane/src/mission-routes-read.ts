@@ -7,6 +7,7 @@ import { storedCollection } from "@magi/agent-config";
 import { MISSION_COPILOT_AGENT_ID } from "@magi/agent-runtime-worker";
 import type { RequestHandler } from "express";
 import type { AsyncRoutes } from "./async-handler.js";
+import { routeParam } from "./async-handler.js";
 import { getMachineState } from "./fly-machines.js";
 import { postMailbox } from "./mailbox-writer.js";
 import type { MissionRouteDeps } from "./mission-scope.js";
@@ -61,7 +62,7 @@ function getStats({ db, col }: MissionRouteDeps): RequestHandler {
 function getMission({ col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -89,7 +90,7 @@ function getMission({ col }: MissionRouteDeps): RequestHandler {
 				const mapped = liveStateToStatus(liveState);
 				if (mapped !== null && mapped !== mission.status) {
 					await col.updateOne(
-						{ missionId: req.params.id },
+						{ missionId: routeParam(req, "id") },
 						{ $set: { status: mapped, updatedAt: new Date() } },
 					);
 					mission.status = mapped;
@@ -108,7 +109,7 @@ function getMission({ col }: MissionRouteDeps): RequestHandler {
 function getConversations({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -126,7 +127,7 @@ function getConversations({ db, col }: MissionRouteDeps): RequestHandler {
 		const msgs = (
 			await storedCollection(db, "mailbox")
 				.find({
-					missionId: req.params.id,
+					missionId: routeParam(req, "id"),
 					$or: [{ from: "user" }, { to: "user" }],
 				})
 				.sort({ timestamp: -1 })
@@ -153,7 +154,7 @@ function getConversations({ db, col }: MissionRouteDeps): RequestHandler {
 function getAgents({ col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -187,11 +188,11 @@ function getAgents({ col }: MissionRouteDeps): RequestHandler {
 					return;
 				}
 				console.error(
-					`[missions] live /team fetch returned ${liveRes.status} { missionId: "${req.params.id}", privateIp: "${mission.privateIp}" } — falling back to stored config`,
+					`[missions] live /team fetch returned ${liveRes.status} { missionId: "${routeParam(req, "id")}", privateIp: "${mission.privateIp}" } — falling back to stored config`,
 				);
 			} catch (e) {
 				console.error(
-					`[missions] live /team fetch failed { missionId: "${req.params.id}", privateIp: "${mission.privateIp}", error: "${(e as Error).message}" } — falling back to stored config`,
+					`[missions] live /team fetch failed { missionId: "${routeParam(req, "id")}", privateIp: "${mission.privateIp}", error: "${(e as Error).message}" } — falling back to stored config`,
 				);
 			}
 		}
@@ -207,7 +208,7 @@ function getAgents({ col }: MissionRouteDeps): RequestHandler {
 function postMessagesRead({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -221,7 +222,7 @@ function postMessagesRead({ db, col }: MissionRouteDeps): RequestHandler {
 			: [];
 		if (ids.length > 0) {
 			await storedCollection(db, "mailbox").updateMany(
-				{ missionId: req.params.id, to: "user", id: { $in: ids } },
+				{ missionId: routeParam(req, "id"), to: "user", id: { $in: ids } },
 				{ $addToSet: { readBy: "user" } },
 			);
 		}
@@ -234,7 +235,7 @@ function postMessagesRead({ db, col }: MissionRouteDeps): RequestHandler {
 function postMessagesSend({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -265,7 +266,7 @@ function postMessagesSend({ db, col }: MissionRouteDeps): RequestHandler {
 			return;
 		}
 		await postMailbox(db, {
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			from: "user",
 			to,
 			subject:

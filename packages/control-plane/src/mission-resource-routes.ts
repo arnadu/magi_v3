@@ -9,7 +9,7 @@ import { type MissionDoc, storedCollection } from "@magi/agent-config";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
-import { asyncRoutes } from "./async-handler.js";
+import { asyncRoutes, routeParam } from "./async-handler.js";
 import { listSegments, runtimeByConfig } from "./machine-segments.js";
 import { estimateCostPerHourUsd } from "./machine-shapes.js";
 
@@ -41,7 +41,7 @@ export function createMissionResourceRoutes(db: Db): Router {
 		"/:id/machine-runtime",
 		"spend.report",
 		async (req: Request, res: Response) => {
-			const missionId = req.params.id;
+			const missionId = routeParam(req, "id");
 			const mission = await missions.findOne({
 				missionId,
 				...userFilter(req),

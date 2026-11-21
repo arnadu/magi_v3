@@ -65,7 +65,7 @@ export function registerCopilotLimitsRoutes(
 		"/limits",
 		"mission.change-config",
 		async (req: Request, res: Response) => {
-			const { capUsd } = req.body as { capUsd?: number | null };
+			const { capUsd } = (req.body ?? {}) as { capUsd?: number | null };
 			if (
 				capUsd !== null &&
 				(typeof capUsd !== "number" || !Number.isFinite(capUsd))

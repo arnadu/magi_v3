@@ -23,6 +23,7 @@ import {
 import type { RequestHandler, Response } from "express";
 import type { Db, ObjectId } from "mongodb";
 import type { AsyncRoutes } from "./async-handler.js";
+import { routeParam } from "./async-handler.js";
 import { configChangedSince } from "./config-version.js";
 import { postMailbox } from "./mailbox-writer.js";
 import type { MissionRouteDeps } from "./mission-scope.js";
@@ -32,7 +33,7 @@ import { userFilter } from "./mission-scope.js";
 function getConfig({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -173,7 +174,7 @@ async function applyMentalMapEdits(
 function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -194,7 +195,7 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 			teamFiles,
 			mentalMaps,
 			expectedUpdatedAt,
-		} = req.body as {
+		} = (req.body ?? {}) as {
 			mission?: TeamConfig["mission"];
 			agents?: AgentConfig[];
 			missionCopilotLimits?: Limits;
@@ -214,7 +215,7 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 		let validated: TeamConfig;
 		try {
 			validated = parseTeamConfig({
-				mission: { ...nextMission, id: req.params.id },
+				mission: { ...nextMission, id: routeParam(req, "id") },
 				agents,
 				missionCopilotLimits,
 			});
@@ -235,7 +236,11 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 			return;
 		}
 
-		const checked = await checkMentalMapEdits(db, req.params.id, mentalMaps);
+		const checked = await checkMentalMapEdits(
+			db,
+			routeParam(req, "id"),
+			mentalMaps,
+		);
 		if ("error" in checked) {
 			res.status(400).json({ error: checked.error });
 			return;
@@ -244,7 +249,7 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 
 		const written = await writeConfigOrRefuse(res, () =>
 			createMongoMissionConfigWriter(db).write(
-				req.params.id,
+				routeParam(req, "id"),
 				{
 					mission: validated.mission,
 					agents: validated.agents,
@@ -255,11 +260,16 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 		);
 		if (!written) return;
 		await col.updateOne(
-			{ missionId: req.params.id },
+			{ missionId: routeParam(req, "id") },
 			{ $set: { teamFiles: teamFiles ?? [] } },
 		);
 
-		await applyMentalMapEdits(db, req.params.id, mentalMaps, latestByAgent);
+		await applyMentalMapEdits(
+			db,
+			routeParam(req, "id"),
+			mentalMaps,
+			latestByAgent,
+		);
 
 		res.json({ ok: true });
 	};
@@ -274,7 +284,7 @@ function putConfig({ db, col }: MissionRouteDeps): RequestHandler {
 function putDraft({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -291,7 +301,7 @@ function putDraft({ db, col }: MissionRouteDeps): RequestHandler {
 			agents,
 			missionCopilotLimits,
 			teamFiles,
-		} = req.body as {
+		} = (req.body ?? {}) as {
 			mission?: TeamConfig["mission"];
 			agents?: AgentConfig[];
 			missionCopilotLimits?: Limits;
@@ -313,9 +323,9 @@ function putDraft({ db, col }: MissionRouteDeps): RequestHandler {
 
 		const written = await writeConfigOrRefuse(res, () =>
 			createMongoMissionConfigWriter(db).write(
-				req.params.id,
+				routeParam(req, "id"),
 				{
-					mission: { ...nextMission, id: req.params.id },
+					mission: { ...nextMission, id: routeParam(req, "id") },
 					agents,
 					missionCopilotLimits,
 				},
@@ -324,7 +334,7 @@ function putDraft({ db, col }: MissionRouteDeps): RequestHandler {
 		);
 		if (!written) return;
 		await col.updateOne(
-			{ missionId: req.params.id },
+			{ missionId: routeParam(req, "id") },
 			{ $set: { teamFiles: teamFiles ?? [] } },
 		);
 

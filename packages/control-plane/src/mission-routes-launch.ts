@@ -7,6 +7,7 @@ import { parseTeamConfig, type TeamConfig } from "@magi/agent-config";
 import { assertKnownModels } from "@magi/agent-runtime-worker";
 import type { RequestHandler } from "express";
 import type { AsyncRoutes } from "./async-handler.js";
+import { routeParam } from "./async-handler.js";
 import { isLocalExecution, provisionLocal } from "./fly-machines.js";
 import { provisionTracked } from "./machine-lifecycle.js";
 import {
@@ -24,7 +25,7 @@ import { ensureMissionSpendCap } from "./spend-policy.js";
 function postLaunch({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -51,22 +52,26 @@ function postLaunch({ db, col }: MissionRouteDeps): RequestHandler {
 			return;
 		}
 
-		if (!(await claimStatus(col, req.params.id, "draft", "provisioning"))) {
+		if (
+			!(await claimStatus(col, routeParam(req, "id"), "draft", "provisioning"))
+		) {
 			res.status(409).json({ error: "Mission is already being launched" });
 			return;
 		}
 		try {
 			// Also covers a local launch, which skips provisionTracked.
-			await ensureMissionSpendCap(db, req.params.id);
+			await ensureMissionSpendCap(db, routeParam(req, "id"));
 			const handle = isLocalExecution()
-				? provisionLocal(req.params.id, { teamFiles: mission.teamFiles ?? [] })
-				: await provisionTracked(db, req.params.id, {
+				? provisionLocal(routeParam(req, "id"), {
+						teamFiles: mission.teamFiles ?? [],
+					})
+				: await provisionTracked(db, routeParam(req, "id"), {
 						memoryMb: validated.mission.memoryMb,
 						cpus: validated.mission.cpus,
-						onVolumeCreated: persistVolumeId(col, req.params.id),
+						onVolumeCreated: persistVolumeId(col, routeParam(req, "id")),
 					});
 			await col.updateOne(
-				{ missionId: req.params.id },
+				{ missionId: routeParam(req, "id") },
 				{
 					$set: runningPatch(handle),
 				},
@@ -75,10 +80,10 @@ function postLaunch({ db, col }: MissionRouteDeps): RequestHandler {
 		} catch (e) {
 			const errorMessage = (e as Error).message;
 			console.error(
-				`[missions] draft launch failed { missionId: "${req.params.id}", error: "${errorMessage}" }`,
+				`[missions] draft launch failed { missionId: "${routeParam(req, "id")}", error: "${errorMessage}" }`,
 			);
 			await col.updateOne(
-				{ missionId: req.params.id },
+				{ missionId: routeParam(req, "id") },
 				{ $set: { status: "error", errorMessage, updatedAt: new Date() } },
 			);
 			res.status(500).json({ error: errorMessage });

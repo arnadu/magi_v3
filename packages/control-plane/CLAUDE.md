@@ -52,6 +52,10 @@ Full list: [`docs/env.md`](../../docs/env.md). The ones that change behaviour:
 
 ## Conventions in this package
 
+- **Express 5**, the root `node_modules` copy: the image copies only `/app/node_modules`, so a
+  copy nested under this package would make the tests run a different Express from production
+  (`tests/express-version.unit.test.ts` fails if one appears). Named parameters are read with
+  `routeParam(req, "id")`; wildcard routes use Express 5's syntax (`/a/:capability/*rest`).
 - Every route handler goes through `asyncRoutes` (tripwire T7); routes are grouped in
   `mission-routes-*.ts` modules over `MissionRouteDeps`.
 - Every route names its operation: `routes.get("/x", "<operation>", h)` through `asyncRoutes`,

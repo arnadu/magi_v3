@@ -12,7 +12,7 @@ import type { Request, Response } from "express";
 import { Router as createRouter, json } from "express";
 import type { Db } from "mongodb";
 import { type OpenAppDeps, openApp } from "./apps-host/open.js";
-import { asyncRoutes } from "./async-handler.js";
+import { asyncRoutes, routeParam } from "./async-handler.js";
 import { monitorAuthHeaders, monitorUrl } from "./monitor-token.js";
 
 const START_TIMEOUT_MS = 15_000;
@@ -78,8 +78,8 @@ export function createAppOpenRoutes(db: Db) {
 			answer(
 				res,
 				await openApp(deps, caller(req), {
-					missionId: req.params.id,
-					name: req.params.name,
+					missionId: routeParam(req, "id"),
+					name: routeParam(req, "name"),
 				}),
 			);
 		},

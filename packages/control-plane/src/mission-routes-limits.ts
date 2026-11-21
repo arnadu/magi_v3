@@ -5,6 +5,7 @@
 
 import type { RequestHandler } from "express";
 import type { AsyncRoutes } from "./async-handler.js";
+import { routeParam } from "./async-handler.js";
 import {
 	writeAgentLimits,
 	writeMissionCap,
@@ -24,7 +25,12 @@ import {
 
 function getLimits({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
-		const result = await readLimits(col, db, req.params.id, userFilter(req));
+		const result = await readLimits(
+			col,
+			db,
+			routeParam(req, "id"),
+			userFilter(req),
+		);
 		if (result.status === 200) {
 			// So the panel can say how high the ceiling may go for this user.
 			const body = result.body as { mission: Record<string, unknown> };
@@ -42,7 +48,7 @@ function getObjectives({ db, col }: MissionRouteDeps): RequestHandler {
 		const result = await readObjectives(
 			col,
 			db,
-			req.params.id,
+			routeParam(req, "id"),
 			userFilter(req),
 		);
 		res.status(result.status).json(result.body);
@@ -59,7 +65,7 @@ function patchLimitsMission({ db, col }: MissionRouteDeps): RequestHandler {
 		const result = await writeMissionCap(
 			col,
 			db,
-			req.params.id,
+			routeParam(req, "id"),
 			userFilter(req),
 			maxCostUsd,
 		);
@@ -77,7 +83,7 @@ function patchLimitsCeiling({ db, col }: MissionRouteDeps): RequestHandler {
 		const result = await writeMissionCostCeiling(
 			col,
 			db,
-			req.params.id,
+			routeParam(req, "id"),
 			userFilter(req),
 			ceilingUsd,
 			mayExceedPlatformCeiling(req),
@@ -97,7 +103,7 @@ function patchLimitsUpgradeReset({
 		const result = await writeUpgradedRuntimeReset(
 			col,
 			db,
-			req.params.id,
+			routeParam(req, "id"),
 			userFilter(req),
 		);
 		res.status(result.status).json(result.body);
@@ -117,9 +123,9 @@ function patchLimitsAgent({ db, col }: MissionRouteDeps): RequestHandler {
 		const result = await writeAgentLimits(
 			col,
 			db,
-			req.params.id,
+			routeParam(req, "id"),
 			userFilter(req),
-			req.params.agentId,
+			routeParam(req, "agentId"),
 			limits,
 		);
 		res.status(result.status).json(result.body);

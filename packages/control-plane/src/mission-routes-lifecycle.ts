@@ -14,6 +14,7 @@ import {
 import { assertKnownModels } from "@magi/agent-runtime-worker";
 import type { RequestHandler } from "express";
 import type { AsyncRoutes } from "./async-handler.js";
+import { routeParam } from "./async-handler.js";
 import { isLocalExecution, provisionLocal } from "./fly-machines.js";
 import { provisionTracked } from "./machine-lifecycle.js";
 import { insertMissionOrConflict, runningPatch } from "./mission-claims.js";
@@ -96,7 +97,7 @@ function createMission({ db, col }: MissionRouteDeps): RequestHandler {
 			agents: inlineAgents,
 			missionCopilotLimits: inlineMissionCopilotLimits,
 			teamFiles: inlineFiles,
-		} = req.body as {
+		} = (req.body ?? {}) as {
 			missionId?: string;
 			name?: string;
 			teamConfig?: string;
@@ -197,7 +198,7 @@ function createMission({ db, col }: MissionRouteDeps): RequestHandler {
 // (POST /:id/launch), not here, so the operator/copilot can build it up incrementally.
 function postDraft({ col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
-		const { missionId, name, teamConfig } = req.body as {
+		const { missionId, name, teamConfig } = (req.body ?? {}) as {
 			missionId?: string;
 			name?: string;
 			/** Template id to clone from; omit for a blank draft. */
@@ -231,7 +232,7 @@ function sendLifecycle(
 function postSuspend({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		sendLifecycle(res, await suspendMission(db, col, mission), "suspended");
@@ -242,7 +243,7 @@ function postSuspend({ db, col }: MissionRouteDeps): RequestHandler {
 function postResume({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		sendLifecycle(res, await resumeMission(db, col, mission), "running");

@@ -5,6 +5,7 @@
 
 import type { RequestHandler } from "express";
 import type { AsyncRoutes } from "./async-handler.js";
+import { routeParam } from "./async-handler.js";
 import type { MissionRouteDeps } from "./mission-scope.js";
 import { userFilter } from "./mission-scope.js";
 import {
@@ -18,7 +19,7 @@ import {
 function getTurns({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -30,7 +31,7 @@ function getTurns({ db, col }: MissionRouteDeps): RequestHandler {
 			res.status(400).json({ error: "agent query param required" });
 			return;
 		}
-		res.json(await queryTurns(db, req.params.id, agent));
+		res.json(await queryTurns(db, routeParam(req, "id"), agent));
 	};
 }
 
@@ -39,7 +40,7 @@ function getTurns({ db, col }: MissionRouteDeps): RequestHandler {
 function getTranscript({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -52,7 +53,7 @@ function getTranscript({ db, col }: MissionRouteDeps): RequestHandler {
 			res.status(400).json({ error: "agent and turn query params required" });
 			return;
 		}
-		res.json(await queryTranscript(db, req.params.id, agent, turn));
+		res.json(await queryTranscript(db, routeParam(req, "id"), agent, turn));
 	};
 }
 
@@ -60,7 +61,7 @@ function getTranscript({ db, col }: MissionRouteDeps): RequestHandler {
 function getLlmCalls({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -73,7 +74,7 @@ function getLlmCalls({ db, col }: MissionRouteDeps): RequestHandler {
 			res.status(400).json({ error: "agent and turn query params required" });
 			return;
 		}
-		res.json(await queryLlmCalls(db, req.params.id, agent, turn));
+		res.json(await queryLlmCalls(db, routeParam(req, "id"), agent, turn));
 	};
 }
 
@@ -83,7 +84,7 @@ function getLlmCalls({ db, col }: MissionRouteDeps): RequestHandler {
 function getLlmCall({ db, col }: MissionRouteDeps): RequestHandler {
 	return async (req, res) => {
 		const mission = await col.findOne({
-			missionId: req.params.id,
+			missionId: routeParam(req, "id"),
 			...userFilter(req),
 		});
 		if (!mission) {
@@ -99,7 +100,13 @@ function getLlmCall({ db, col }: MissionRouteDeps): RequestHandler {
 				.json({ error: "agent, turn and i query params required" });
 			return;
 		}
-		const detail = await queryLlmCall(db, req.params.id, agent, turn, i);
+		const detail = await queryLlmCall(
+			db,
+			routeParam(req, "id"),
+			agent,
+			turn,
+			i,
+		);
 		if (!detail) {
 			res.status(404).json({ error: "call not found" });
 			return;

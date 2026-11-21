@@ -63,7 +63,7 @@ function registerChatRoutes(
 		"/message",
 		"copilot.ask",
 		async (req: Request, res: Response) => {
-			const { subject, body } = req.body as {
+			const { subject, body } = (req.body ?? {}) as {
 				subject?: string;
 				body?: string;
 			};
@@ -124,7 +124,7 @@ function registerChatRoutes(
 		"/settings",
 		"mission.change-config",
 		async (req: Request, res: Response) => {
-			const { model } = req.body as { model?: string | null };
+			const { model } = (req.body ?? {}) as { model?: string | null };
 			if (model !== null && model !== undefined && typeof model !== "string") {
 				res.status(400).json({ error: "model must be a string or null" });
 				return;

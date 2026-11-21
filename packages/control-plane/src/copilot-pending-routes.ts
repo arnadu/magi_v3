@@ -35,7 +35,9 @@ export function createPendingActionRoutes(
 		"/confirm",
 		"copilot.confirm",
 		async (req: Request, res: Response) => {
-			const { pendingActionId } = req.body as { pendingActionId?: string };
+			const { pendingActionId } = (req.body ?? {}) as {
+				pendingActionId?: string;
+			};
 			if (!pendingActionId) {
 				res.status(400).json({ error: "pendingActionId is required" });
 				return;
@@ -115,7 +117,9 @@ export function createPendingActionRoutes(
 		"/dismiss",
 		operation("copilot.dismiss"),
 		asyncHandler(async (req: Request, res: Response) => {
-			const { pendingActionId } = req.body as { pendingActionId?: string };
+			const { pendingActionId } = (req.body ?? {}) as {
+				pendingActionId?: string;
+			};
 			if (!pendingActionId) {
 				res.status(400).json({ error: "pendingActionId is required" });
 				return;
