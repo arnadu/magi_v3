@@ -239,8 +239,31 @@ What it does:
 4. `flyctl deploy --image registry.fly.io/magi-control-dev:${{ github.sha }}` — deploys the
    **explicit commit-sha tag**, not `:latest`, so the machine is always pinned to a known build
 
+5. **Deploys the apps host** (ADR-0037) from the same image, with `fly.apps-dev.toml`
+   (entry point `dist/apps-host/main.js`). Skipped, with a message, while the `magi-apps-dev`
+   app does not exist.
+
 Control plane deploys take about 60 seconds. The dashboard is briefly unavailable during restart.
 Running missions are unaffected — they operate independently of the control plane.
+
+### The apps host (one-time setup per environment)
+
+Interactive apps are served from a second Fly app, on a different site from the cockpit
+(ADR-0037). It holds three values and none of the control plane's secrets. For dev:
+
+```bash
+flyctl apps create magi-apps-dev --machines
+flyctl ips allocate-v6 -a magi-apps-dev               # dedicated IPv6 (free)
+flyctl ips allocate-v4 --shared -a magi-apps-dev       # shared IPv4 (free)
+# Two keys, generated once; the control plane gets the same two (slice e of ADR-0037):
+APPS_TICKET_KEY=$(openssl rand -hex 32); APPS_SIGNING_KEY=$(openssl rand -hex 32)
+printf 'APPS_TICKET_KEY=%s\nAPPS_SIGNING_KEY=%s\nCOCKPIT_URL=https://magi-control-dev.fly.dev\n' \
+  "$APPS_TICKET_KEY" "$APPS_SIGNING_KEY" | flyctl secrets import -a magi-apps-dev --stage
+```
+
+The next push to `main` that deploys the control plane deploys the apps host too. Its public
+ports are 20000–20099, one per running app; `https://magi-apps-dev.fly.dev:20000/healthz`
+answers `ok`. It stops when idle and starts on the next request.
 
 ### Verifying CI
 

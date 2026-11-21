@@ -60,3 +60,15 @@ jobs:
         run: flyctl deploy --config fly.control-dev.toml --image registry.fly.io/magi-control-dev:${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}
+
+      # The apps host (ADR-0037) runs the same image with its own entry point.
+      # Skipped until the app exists: it is created once, by hand (docs/deployment.md).
+      - name: Deploy the apps host
+        run: |
+          if flyctl status --app magi-apps-dev >/dev/null 2>&1; then
+            flyctl deploy --config fly.apps-dev.toml --image registry.fly.io/magi-control-dev:${{ github.sha }}
+          else
+            echo "magi-apps-dev does not exist yet; the apps host was not deployed"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}

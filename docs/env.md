@@ -10,9 +10,13 @@ Secrets are never logged and never reach agent tool or job subprocesses (those g
 | `AGENT_WORKDIR` | mission daemon, CLI | `cwd` | — | Root of agent home directories and mission folders (`/missions` on Fly). |
 | `ANTHROPIC_API_KEY` | control plane, mission daemon, CLI | — | required, secret | Anthropic API key for agents, the copilots and vision calls. |
 | `APPS_ALLOW_NO_FIREWALL` | mission daemon | `false` | — | Local developer daemon only: "true" lets interactive apps start without the machine firewall (there is no magi-net helper off Fly). Ignored on Fly, where apps need the firewall on (ADR-0037). |
+| `APPS_HOST_PORT` | apps host | `8080` | — | The apps host's internal port; Fly maps the public slots 20000-20099 onto it (fly.apps-dev.toml). |
+| `APPS_SIGNING_KEY` | apps host | — | required, secret | Key the per-mission apps token is derived from (`deriveAppsToken`): the apps host sends that token to a mission's monitor server, and the control plane injects it into the machine as APPS_TOKEN. Never forwarded to mission machines itself. |
+| `APPS_TICKET_KEY` | apps host | — | required, secret | HMAC key of the apps host's tickets and sessions (ADR-0037); the control plane signs tickets with the same key. Generate with `openssl rand -hex 32`. |
 | `APPS_TOKEN` | mission daemon | — | secret | Per-mission token the apps host sends on every request it forwards to the monitor server's app hop (`/a/<capability>/`), derived from APPS_SIGNING_KEY and injected at machine creation (ADR-0037). Opens apps only; the monitor token does not open them. Empty on a Fly machine means no app can be opened; empty off Fly means no check (local developer daemon). |
 | `ATLAS_STORAGE_LIMIT_MB` | control plane | `10240` | — | Shared Atlas cluster storage quota for the atlas-storage-high check (M10 tier; 512 for an M0). |
 | `BRAVE_SEARCH_API_KEY` | mission daemon, CLI | — | secret | Enables the SearchWeb tool (free tier: 2000 requests/month). Without it the tool is absent. |
+| `COCKPIT_URL` | apps host | — | required | The cockpit's address (e.g. https://magi-control-dev.fly.dev): where the apps host sends an operator whose app session is missing, expired or refused, to open the app again. |
 | `CONTROL_API_KEY` | control plane | — | required, secret | Admin key (API and cockpit). Also the only identity that may raise a mission's ceiling above the platform ceiling. |
 | `CONTROL_PLANE_URL` | mission daemon | — | — | Base URL the mission copilot's GitHub-proxy tools call; injected at machine creation. Empty in local dev. |
 | `CSP_ENFORCE` | control plane | `true` | — | The cockpit CSP is enforcing unless this is `false` (report-only: violations logged as `[csp] violation`, nothing blocked). Use `false` only temporarily, e.g. while adding a new source. |
@@ -24,7 +28,7 @@ Secrets are never logged and never reach agent tool or job subprocesses (those g
 | `FIREBASE_PROJECT_ID` | control plane | — | — | Firebase project id when no service-account key is given (local verification). |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | control plane | — | secret | Firebase Admin SDK service-account JSON on one line; required for Google sign-in. |
 | `FLY_API_TOKEN_MACHINES` | control plane | — | secret | Fly Machines API token scoped to the missions app. |
-| `FLY_APP_NAME` | control plane, mission daemon | — | — | Set by Fly on every machine. Its presence means "running on Fly": the daemon requires MONITOR_TOKEN and enables volume alerts. |
+| `FLY_APP_NAME` | control plane, mission daemon, apps host | — | — | Set by Fly on every machine. Its presence means "running on Fly": the daemon requires MONITOR_TOKEN and enables volume alerts. |
 | `FLY_MISSIONS_APP_NAME` | control plane | — | — | The Fly app that hosts mission machines. |
 | `FLY_MISSIONS_IMAGE` | control plane | `registry.fly.io/<missions-app>:latest` | — | Image for new mission machines; pinned to a deployment tag by deploy-missions.sh / CI. |
 | `FLY_REGION` | control plane | `iad` | — | Region for new mission machines and volumes. |

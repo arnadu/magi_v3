@@ -12,7 +12,7 @@
 
 import { DEFAULT_MODEL_ID, DEFAULT_VISION_MODEL_ID } from "./models.js";
 
-export type EnvPlane = "control" | "execution" | "cli" | "job";
+export type EnvPlane = "control" | "execution" | "cli" | "job" | "apps";
 
 export interface EnvVar {
 	name: string;
@@ -123,6 +123,36 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 			"Per-mission token required on every MonitorServer route, derived from MONITOR_SIGNING_KEY and injected at machine creation. Mandatory when FLY_APP_NAME is set; empty means no auth, for a local developer daemon only.",
 	},
 	{
+		name: "APPS_TICKET_KEY",
+		planes: ["apps"],
+		secret: true,
+		required: true,
+		description:
+			"HMAC key of the apps host's tickets and sessions (ADR-0037); the control plane signs tickets with the same key. Generate with `openssl rand -hex 32`.",
+	},
+	{
+		name: "APPS_SIGNING_KEY",
+		planes: ["apps"],
+		secret: true,
+		required: true,
+		description:
+			"Key the per-mission apps token is derived from (`deriveAppsToken`): the apps host sends that token to a mission's monitor server, and the control plane injects it into the machine as APPS_TOKEN. Never forwarded to mission machines itself.",
+	},
+	{
+		name: "COCKPIT_URL",
+		planes: ["apps"],
+		required: true,
+		description:
+			"The cockpit's address (e.g. https://magi-control-dev.fly.dev): where the apps host sends an operator whose app session is missing, expired or refused, to open the app again.",
+	},
+	{
+		name: "APPS_HOST_PORT",
+		planes: ["apps"],
+		default: "8080",
+		description:
+			"The apps host's internal port; Fly maps the public slots 20000-20099 onto it (fly.apps-dev.toml).",
+	},
+	{
 		name: "APPS_TOKEN",
 		planes: ["execution"],
 		secret: true,
@@ -177,7 +207,7 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 	},
 	{
 		name: "FLY_APP_NAME",
-		planes: ["control", "execution"],
+		planes: ["control", "execution", "apps"],
 		description:
 			'Set by Fly on every machine. Its presence means "running on Fly": the daemon requires MONITOR_TOKEN and enables volume alerts.',
 	},
@@ -394,6 +424,7 @@ const PLANE_LABEL: Record<EnvPlane, string> = {
 	execution: "mission daemon",
 	cli: "CLI",
 	job: "background job",
+	apps: "apps host",
 };
 
 /** docs/env.md, rendered from the catalog. */

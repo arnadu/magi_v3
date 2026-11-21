@@ -172,12 +172,12 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 	{
 		id: "cp-apps",
 		plane: "control-plane",
-		name: "Apps host (planned)",
+		name: "Apps host",
 		responsibility:
 			"The apps host: the ticket from the cockpit, the app sign-in, the proxy to mission machines' apps",
 		layer: 2,
 		root: CP,
-		paths: [],
+		paths: ["apps-host/"],
 	},
 	{
 		id: "cp-host",

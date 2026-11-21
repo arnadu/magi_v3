@@ -5,6 +5,18 @@ export type {
 	TranscriptEntry,
 } from "./api/transcripts.js";
 export {
+	APP_SESSION_TTL_MS,
+	APP_TICKET_TTL_MS,
+	type AppGrant,
+	type AppSession,
+	type AppTicket,
+	deriveAppsToken,
+	signAppSession,
+	signAppTicket,
+	verifyAppSession,
+	verifyAppTicket,
+} from "./apps-signing.js";
+export {
 	type EntryTag,
 	entryFile,
 	entryTrigger,

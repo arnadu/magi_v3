@@ -17,7 +17,7 @@ const ts = createRequire(join(ROOT, "package.json"))("typescript");
 
 const CP = "packages/control-plane/src";
 const MM = "packages/agent-runtime-worker/src";
-const VERBS = new Set(["get", "post", "put", "patch", "delete"]);
+const VERBS = new Set(["get", "post", "put", "patch", "delete", "all"]);
 
 function walk(dir) {
 	const out = [];

@@ -15,7 +15,7 @@
 | `cp-mission-ops` | Mission operations | 2 | The homes of mission operations: lifecycle, launch claims, limits, spend | `packages/control-plane/src` | `mission-lifecycle-actions.ts`, `mission-claims.ts`, `mission-limits.ts`, `mission-spend.ts`, `spend-policy.ts`, `mission-stats-summary.ts` |
 | `cp-scheduler` | Scheduler | 2 | Delivering due schedules | `packages/control-plane/src` | `scheduler.ts` |
 | `cp-edge` | Edge and identity | 2 | Sign-in, sessions, users, security headers, the proxy to mission machines, monitor tokens | `packages/control-plane/src` | `auth*.ts`, `session-routes.ts`, `firebase.ts`, `users.ts`, `security-headers.ts`, `proxy.ts`, `monitor-token.ts` |
-| `cp-apps` | Apps host (planned) | 2 | The apps host: the ticket from the cockpit, the app sign-in, the proxy to mission machines' apps | `packages/control-plane/src` |  |
+| `cp-apps` | Apps host | 2 | The apps host: the ticket from the cockpit, the app sign-in, the proxy to mission machines' apps | `packages/control-plane/src` | `apps-host/` |
 | `cp-machines` | Machine lifecycle | 1 | Fly machines and volumes: provision, wake, resize, upgrade, segments | `packages/control-plane/src` | `machine-*`, `fly-*`, `resource-upgrade*` |
 | `cp-oversight` | Resource oversight | 1 | Sampling, alerts, the daily report, platform relays | `packages/control-plane/src` | `resource-monitor.ts`, `resource-alerts.ts`, `resource-queries.ts`, `resource-report*`, `atlas-usage.ts`, `usage-queries.ts`, `platform-relay.ts`, `mailbox-writer.ts` |
 | `cp-records` | Mission records | 1 | Reads of what agents and copilots did (turns, transcripts, model calls), served from the database so they work while a mission's machine is stopped | `packages/control-plane/src` | `transcript-queries.ts` |

@@ -56,6 +56,7 @@ jobs:
               - 'patches/**'
               - 'tsconfig.base.json'
               - 'fly.control-dev.toml'
+              - 'fly.apps-dev.toml'
               - '.github/workflows/deploy-control-plane.yml'
             execution:
               - 'packages/agent-runtime-worker/**'

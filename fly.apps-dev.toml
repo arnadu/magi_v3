@@ -1,0 +1,44 @@
+app = "magi-apps-dev"
+primary_region = "iad"
+
+# The apps host (ADR-0037): the control plane's image, started with its own
+# entry point. Deployed by CI right after the control plane, from the same
+# image (deploy-control-plane.yml). Secrets: APPS_TICKET_KEY, APPS_SIGNING_KEY
+# and COCKPIT_URL only; none of the control plane's.
+
+[build]
+  dockerfile = "packages/control-plane/Dockerfile"
+
+[processes]
+  app = "node dist/apps-host/main.js"
+
+[env]
+  APPS_HOST_PORT = "8080"
+
+# One public port per running app: each app is its own origin (decision 2).
+# Fly passes the port a request arrived on in Fly-Forwarded-Port.
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  processes = ["app"]
+  # One machine: a ticket's single use is remembered in memory.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    start_port = 20000
+    end_port = 20099
+    handlers = ["tls", "http"]
+
+  [[services.http_checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "256mb"

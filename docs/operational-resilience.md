@@ -451,6 +451,8 @@ Built in slices; this layer grows with them. Slice a: the machine firewall.
 | The app behind the hop is down or restarting | The operator's request fails | 🟡 | The hop answers 404 for no running app and 502 when the app does not answer; the apps host turns both into "open it again from the cockpit" | None |
 | The machine has no `APPS_TOKEN` (created before it existed) | No app can be opened | 🟡 | Logged at boot; every hop request refused (401); a suspend and resume recreates the machine with the token | None |
 | The monitor server stops | Every open app connection, WebSockets included, is cut | 🟡 | The daemon is stopping too, and stops every app | None |
+| The apps host is down or stopped | Open fails; open apps stop answering | 🟡 | Fly starts it on the next request (auto-stop, auto-start); stateless but for used tickets, so a restart loses nothing a user needs | A restart forgets used nonces: a ticket under 60 s old could be redeemed twice, in that window only |
+| The mission machine moved (a resume, a crash) | The session's address is stale | 🟢 | A refused or failed page load sends the operator to the cockpit, which issues a ticket with the current address | None |
 
 ---
 
