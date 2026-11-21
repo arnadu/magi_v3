@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "379d89a",
-  "time": "2026-11-21T23:01:43Z"
+  "commit": "ef8dac8",
+  "time": "2026-11-21T23:26:02Z"
  },
  "findings": [
   {
@@ -11,7 +11,7 @@
    "text": "None of the 2 entry point(s) of mission.edit-draft reaches code in its home, cp-mission-ops: tool EditDraftConfig; route PUT /:id/draft.",
    "where": [
     "packages/control-plane/src/copilot-draft-tools.ts:142",
-    "packages/control-plane/src/mission-routes-config.ts:341"
+    "packages/control-plane/src/mission-routes-config.ts:351"
    ],
    "entryPoints": [
     {
@@ -30,7 +30,7 @@
     },
     {
      "name": "route PUT /:id/draft",
-     "where": "packages/control-plane/src/mission-routes-config.ts:341",
+     "where": "packages/control-plane/src/mission-routes-config.ts:351",
      "components": [
       "config",
       "cp-api",
@@ -52,19 +52,19 @@
    "text": "Entry points of mission.edit-draft reach different database writes: tool EditDraftConfig lacks 1; route PUT /:id/draft lacks 1.",
    "where": [
     "packages/control-plane/src/copilot-draft-tools.ts:142",
-    "packages/control-plane/src/mission-routes-config.ts:341"
+    "packages/control-plane/src/mission-routes-config.ts:351"
    ],
    "lacks": [
     {
      "entryPoint": "tool EditDraftConfig",
      "where": "packages/control-plane/src/copilot-draft-tools.ts:142",
      "writes": [
-      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:326"
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:336"
      ]
     },
     {
      "entryPoint": "route PUT /:id/draft",
-     "where": "packages/control-plane/src/mission-routes-config.ts:341",
+     "where": "packages/control-plane/src/mission-routes-config.ts:351",
      "writes": [
       "missions.updateOne@packages/control-plane/src/copilot-draft-tools.ts:220"
      ]
@@ -80,8 +80,8 @@
    "where": [
     "packages/control-plane/src/copilot-actions.ts:153",
     "packages/control-plane/src/copilot-actions.ts:154",
-    "packages/control-plane/src/mission-routes-launch.ts:93",
-    "packages/control-plane/src/mission-routes-lifecycle.ts:268"
+    "packages/control-plane/src/mission-routes-launch.ts:98",
+    "packages/control-plane/src/mission-routes-lifecycle.ts:269"
    ],
    "lacks": [
     {
@@ -90,12 +90,12 @@
      "writes": [
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:136",
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:154",
-      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:68",
-      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:80",
+      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:73",
+      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:85",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:25",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:38",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:173",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:185",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:174",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:186",
       "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
      ]
     },
@@ -107,18 +107,18 @@
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:65",
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:68",
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:83",
-      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:68",
-      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:80",
+      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:73",
+      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:85",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:25",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:38",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:173",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:185",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:174",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:186",
       "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
      ]
     },
     {
      "entryPoint": "route POST /:id/launch",
-     "where": "packages/control-plane/src/mission-routes-launch.ts:93",
+     "where": "packages/control-plane/src/mission-routes-launch.ts:98",
      "writes": [
       "missions.insertOne@packages/control-plane/src/copilot-launch-actions.ts:41",
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:65",
@@ -126,14 +126,14 @@
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:83",
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:136",
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:154",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:173",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:185",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:174",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:186",
       "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
      ]
     },
     {
      "entryPoint": "route POST /",
-     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:268",
+     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:269",
      "writes": [
       "missions.insertOne@packages/control-plane/src/copilot-launch-actions.ts:41",
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:65",
@@ -141,8 +141,8 @@
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:83",
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:136",
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:154",
-      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:68",
-      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:80",
+      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:73",
+      "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:85",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:25",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:38"
      ]
@@ -157,7 +157,7 @@
    "text": "Entry points of mission.resume reach different database writes: copilot-action resume_mission lacks 4; route POST /:id/resume lacks 9.",
    "where": [
     "packages/control-plane/src/copilot-actions.ts:156",
-    "packages/control-plane/src/mission-routes-lifecycle.ts:271"
+    "packages/control-plane/src/mission-routes-lifecycle.ts:272"
    ],
    "lacks": [
     {
@@ -172,7 +172,7 @@
     },
     {
      "entryPoint": "route POST /:id/resume",
-     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:271",
+     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:272",
      "writes": [
       "machineSegments.updateMany@packages/control-plane/src/machine-segments.ts:231",
       "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:368",
@@ -197,7 +197,7 @@
     "packages/control-plane/src/copilot-actions.ts:159",
     "packages/control-plane/src/copilot-router.ts:111",
     "packages/control-plane/src/copilot-router.ts:123",
-    "packages/control-plane/src/mission-routes-config.ts:340",
+    "packages/control-plane/src/mission-routes-config.ts:350",
     "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:131"
    ],
    "entryPoints": [
@@ -241,7 +241,7 @@
     },
     {
      "name": "route PUT /:id/config",
-     "where": "packages/control-plane/src/mission-routes-config.ts:340",
+     "where": "packages/control-plane/src/mission-routes-config.ts:350",
      "components": [
       "config",
       "cp-api",
@@ -290,8 +290,8 @@
     "packages/control-plane/src/copilot-limits-routes.ts:64",
     "packages/control-plane/src/copilot-router.ts:111",
     "packages/control-plane/src/copilot-router.ts:123",
-    "packages/control-plane/src/mission-routes-config.ts:340",
-    "packages/control-plane/src/mission-routes-limits.ts:150",
+    "packages/control-plane/src/mission-routes-config.ts:350",
+    "packages/control-plane/src/mission-routes-limits.ts:156",
     "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:131"
    ],
    "lacks": [
@@ -307,8 +307,8 @@
       "users.updateOne@packages/control-plane/src/users.ts:69",
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
-      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
-      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:159",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:262",
       "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
      ]
     },
@@ -324,8 +324,8 @@
       "users.updateOne@packages/control-plane/src/users.ts:69",
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
-      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
-      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:159",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:262",
       "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
      ]
     },
@@ -344,8 +344,8 @@
       "users.updateOne@packages/control-plane/src/users.ts:69",
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
-      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
-      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:159",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:262",
       "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
      ]
     },
@@ -365,8 +365,8 @@
       "users.updateOne@packages/control-plane/src/users.ts:69",
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
-      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
-      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:159",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:262",
       "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
      ]
     },
@@ -385,14 +385,14 @@
       "users.updateOne@packages/control-plane/src/users.ts:97",
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
-      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
-      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:159",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:262",
       "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
      ]
     },
     {
      "entryPoint": "route PUT /:id/config",
-     "where": "packages/control-plane/src/mission-routes-config.ts:340",
+     "where": "packages/control-plane/src/mission-routes-config.ts:350",
      "writes": [
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:295",
       "conversationMessages.updateOne@packages/control-plane/src/copilot-action-handlers.ts:312",
@@ -407,7 +407,7 @@
     },
     {
      "entryPoint": "route PATCH /:id/limits/agent/:agentId",
-     "where": "packages/control-plane/src/mission-routes-limits.ts:150",
+     "where": "packages/control-plane/src/mission-routes-limits.ts:156",
      "writes": [
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:295",
       "conversationMessages.updateOne@packages/control-plane/src/copilot-action-handlers.ts:312",
@@ -417,8 +417,8 @@
       "missionStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:259",
       "users.updateOne@packages/control-plane/src/users.ts:97",
       "users.updateOne@packages/control-plane/src/users.ts:69",
-      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
-      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257",
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:159",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:262",
       "missions.updateOne@packages/agent-runtime-worker/src/mission-copilot-config-tools.ts:199"
      ]
     },
@@ -436,8 +436,8 @@
       "users.updateOne@packages/control-plane/src/users.ts:69",
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
-      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
-      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257"
+      "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:159",
+      "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:262"
      ]
     }
    ],
@@ -451,9 +451,9 @@
    "where": [
     "packages/control-plane/src/copilot-read-tools.ts:30",
     "packages/control-plane/src/copilot-read-tools.ts:120",
-    "packages/control-plane/src/mission-routes-read.ts:283",
-    "packages/control-plane/src/mission-routes-read.ts:285",
-    "packages/control-plane/src/mission-routes-read.ts:287",
+    "packages/control-plane/src/mission-routes-read.ts:284",
+    "packages/control-plane/src/mission-routes-read.ts:286",
+    "packages/control-plane/src/mission-routes-read.ts:288",
     "packages/agent-runtime-worker/src/mailbox.ts:285",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44"
@@ -489,7 +489,7 @@
     },
     {
      "name": "route GET /",
-     "where": "packages/control-plane/src/mission-routes-read.ts:283",
+     "where": "packages/control-plane/src/mission-routes-read.ts:284",
      "components": [
       "cp-api"
      ],
@@ -499,7 +499,7 @@
     },
     {
      "name": "route GET /:id",
-     "where": "packages/control-plane/src/mission-routes-read.ts:285",
+     "where": "packages/control-plane/src/mission-routes-read.ts:286",
      "components": [
       "cp-api",
       "cp-machines"
@@ -510,7 +510,7 @@
     },
     {
      "name": "route GET /:id/agents",
-     "where": "packages/control-plane/src/mission-routes-read.ts:287",
+     "where": "packages/control-plane/src/mission-routes-read.ts:288",
      "components": [
       "cp-api",
       "cp-edge",
@@ -563,9 +563,9 @@
    "where": [
     "packages/control-plane/src/copilot-read-tools.ts:30",
     "packages/control-plane/src/copilot-read-tools.ts:120",
-    "packages/control-plane/src/mission-routes-read.ts:283",
-    "packages/control-plane/src/mission-routes-read.ts:285",
-    "packages/control-plane/src/mission-routes-read.ts:287",
+    "packages/control-plane/src/mission-routes-read.ts:284",
+    "packages/control-plane/src/mission-routes-read.ts:286",
+    "packages/control-plane/src/mission-routes-read.ts:288",
     "packages/agent-runtime-worker/src/mailbox.ts:285",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44"
@@ -577,28 +577,28 @@
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
-      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
      ]
     },
     {
      "entryPoint": "tool GetMissionStatus",
      "where": "packages/control-plane/src/copilot-read-tools.ts:120",
      "writes": [
-      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
      ]
     },
     {
      "entryPoint": "route GET /",
-     "where": "packages/control-plane/src/mission-routes-read.ts:283",
+     "where": "packages/control-plane/src/mission-routes-read.ts:284",
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
-      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
      ]
     },
     {
      "entryPoint": "route GET /:id",
-     "where": "packages/control-plane/src/mission-routes-read.ts:285",
+     "where": "packages/control-plane/src/mission-routes-read.ts:286",
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88"
@@ -606,11 +606,11 @@
     },
     {
      "entryPoint": "route GET /:id/agents",
-     "where": "packages/control-plane/src/mission-routes-read.ts:287",
+     "where": "packages/control-plane/src/mission-routes-read.ts:288",
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
-      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
      ]
     },
     {
@@ -619,7 +619,7 @@
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
-      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
      ]
     },
     {
@@ -628,7 +628,7 @@
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
-      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
      ]
     },
     {
@@ -637,7 +637,7 @@
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
-      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+      "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
      ]
     }
    ],
@@ -961,7 +961,7 @@
    "text": "Entry points of spend.report reach different database writes: route GET /:id/machine-runtime lacks 4; route GET /stats lacks 6; route GET /api/usage lacks 6; tool ReadAgentUsage lacks 6; tool ReadMissionCostSeries lacks 6; tool ReadMissionLifetimeStats lacks 6; monitor-route GET /^\\/agents\\/([^/]+)\\/usage$/ lacks 6; monitor-route GET \"/mission-stats\" lacks 6; monitor-route GET \"/cost-series\" lacks 6.",
    "where": [
     "packages/control-plane/src/mission-resource-routes.ts:40",
-    "packages/control-plane/src/mission-routes-read.ts:284",
+    "packages/control-plane/src/mission-routes-read.ts:285",
     "packages/control-plane/src/platform-routes.ts:66",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:63",
     "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:10",
@@ -983,7 +983,7 @@
     },
     {
      "entryPoint": "route GET /stats",
-     "where": "packages/control-plane/src/mission-routes-read.ts:284",
+     "where": "packages/control-plane/src/mission-routes-read.ts:285",
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
@@ -1159,12 +1159,12 @@
    "about": "machine.reset-upgrade-allowance",
    "text": "None of the 1 entry point(s) of machine.reset-upgrade-allowance reaches code in its home, cp-machines: route PATCH /:id/limits/upgrade-reset.",
    "where": [
-    "packages/control-plane/src/mission-routes-limits.ts:145"
+    "packages/control-plane/src/mission-routes-limits.ts:151"
    ],
    "entryPoints": [
     {
      "name": "route PATCH /:id/limits/upgrade-reset",
-     "where": "packages/control-plane/src/mission-routes-limits.ts:145",
+     "where": "packages/control-plane/src/mission-routes-limits.ts:151",
      "components": [
       "config",
       "cp-api",
@@ -1357,7 +1357,7 @@
     "packages/control-plane/src/copilot-read-tools.ts:385",
     "packages/control-plane/src/copilot-router.ts:174",
     "packages/control-plane/src/copilot-visibility-routes.ts:100",
-    "packages/control-plane/src/mission-routes-read.ts:286",
+    "packages/control-plane/src/mission-routes-read.ts:287",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:11",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:33",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:99",
@@ -1409,7 +1409,7 @@
     },
     {
      "name": "route GET /:id/conversations",
-     "where": "packages/control-plane/src/mission-routes-read.ts:286",
+     "where": "packages/control-plane/src/mission-routes-read.ts:287",
      "components": [
       "config",
       "cp-api"
@@ -1591,7 +1591,7 @@
    "text": "7 of 9 entry points of message.read reach no code in its home, mm-state: tool ReadMissionMailbox; route POST /:id/messages/read; tool ReadMissionMailboxAll; tool ReadMissionInteractions; monitor-route GET \"/mailbox\"; monitor-route GET \"/interactions\"; monitor-route GET \"/message-events\".",
    "where": [
     "packages/control-plane/src/copilot-read-tools.ts:163",
-    "packages/control-plane/src/mission-routes-read.ts:288",
+    "packages/control-plane/src/mission-routes-read.ts:289",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
     "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:16",
@@ -1612,7 +1612,7 @@
     },
     {
      "name": "route POST /:id/messages/read",
-     "where": "packages/control-plane/src/mission-routes-read.ts:288",
+     "where": "packages/control-plane/src/mission-routes-read.ts:289",
      "components": [
       "config",
       "cp-api"
@@ -1705,56 +1705,56 @@
      "entryPoint": "tool ReadMissionMailbox",
      "where": "packages/control-plane/src/copilot-read-tools.ts:163",
      "writes": [
-      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "tool ListMessages",
      "where": "packages/agent-runtime-worker/src/mailbox.ts:302",
      "writes": [
-      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "tool ReadMessage",
      "where": "packages/agent-runtime-worker/src/mailbox.ts:338",
      "writes": [
-      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "tool ReadMissionMailboxAll",
      "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
      "writes": [
-      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "tool ReadMissionInteractions",
      "where": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
      "writes": [
-      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "monitor-route GET \"/mailbox\"",
      "where": "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:16",
      "writes": [
-      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "monitor-route GET \"/interactions\"",
      "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:72",
      "writes": [
-      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "monitor-route GET \"/message-events\"",
      "where": "packages/agent-runtime-worker/src/monitor-routes/trace.ts:102",
      "writes": [
-      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     }
    ],
@@ -2433,10 +2433,10 @@
    "new": false
   },
   {
-   "key": "0538478b0207",
+   "key": "cdc8959baaa5",
    "kind": "op.home-not-reached",
    "about": "app.open",
-   "text": "1 of 5 entry points of app.open reach no code in its home, cp-apps: monitor-route * HOP_PATH.",
+   "text": "1 of 6 entry points of app.open reach no code in its home, cp-apps: monitor-route * HOP_PATH.",
    "where": [
     "packages/agent-runtime-worker/src/app-hop.ts:164"
    ],
@@ -2451,13 +2451,14 @@
    "new": true
   },
   {
-   "key": "079de52b287e",
+   "key": "7fdd2776f876",
    "kind": "op.divergent-writes",
    "about": "app.open",
-   "text": "Entry points of app.open reach different database writes: route GET /t/:ticket lacks 3; route ALL /a/:capability lacks 3; monitor-route * HOP_PATH lacks 3.",
+   "text": "Entry points of app.open reach different database writes: route GET /t/:ticket lacks 3; route ALL /a/:capability lacks 3; route ALL /a/:capability/*rest lacks 3; monitor-route * HOP_PATH lacks 3.",
    "where": [
     "packages/control-plane/src/apps-host/server.ts:117",
     "packages/control-plane/src/apps-host/server.ts:120",
+    "packages/control-plane/src/apps-host/server.ts:123",
     "packages/agent-runtime-worker/src/app-hop.ts:164"
    ],
    "lacks": [
@@ -2473,6 +2474,15 @@
     {
      "entryPoint": "route ALL /a/:capability",
      "where": "packages/control-plane/src/apps-host/server.ts:120",
+     "writes": [
+      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
+      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:78",
+      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:99"
+     ]
+    },
+    {
+     "entryPoint": "route ALL /a/:capability/*rest",
+     "where": "packages/control-plane/src/apps-host/server.ts:123",
      "writes": [
       "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
       "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:78",
@@ -2534,12 +2544,12 @@
    "about": "copilot.confirm",
    "text": "Entry points of copilot.confirm reach different database writes: route GET /pending lacks 3.",
    "where": [
-    "packages/control-plane/src/copilot-pending-routes.ts:95"
+    "packages/control-plane/src/copilot-pending-routes.ts:97"
    ],
    "lacks": [
     {
      "entryPoint": "route GET /pending",
-     "where": "packages/control-plane/src/copilot-pending-routes.ts:95",
+     "where": "packages/control-plane/src/copilot-pending-routes.ts:97",
      "writes": [
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
@@ -2685,7 +2695,7 @@
    "about": "conversationMessages",
    "text": "cp-api writes conversationMessages (updateOne in applyMentalMapEdits); its owner is mm-state.",
    "where": [
-    "packages/control-plane/src/mission-routes-config.ts:158"
+    "packages/control-plane/src/mission-routes-config.ts:159"
    ],
    "new": false
   },
@@ -2695,8 +2705,8 @@
    "about": "missions",
    "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
    "where": [
-    "packages/control-plane/src/mission-routes-config.ts:257",
-    "packages/control-plane/src/mission-routes-config.ts:326"
+    "packages/control-plane/src/mission-routes-config.ts:262",
+    "packages/control-plane/src/mission-routes-config.ts:336"
    ],
    "new": false
   },
@@ -2706,8 +2716,8 @@
    "about": "missions",
    "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
    "where": [
-    "packages/control-plane/src/mission-routes-launch.ts:68",
-    "packages/control-plane/src/mission-routes-launch.ts:80"
+    "packages/control-plane/src/mission-routes-launch.ts:73",
+    "packages/control-plane/src/mission-routes-launch.ts:85"
    ],
    "new": false
   },
@@ -2727,8 +2737,8 @@
    "about": "missions",
    "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
    "where": [
-    "packages/control-plane/src/mission-routes-lifecycle.ts:173",
-    "packages/control-plane/src/mission-routes-lifecycle.ts:185"
+    "packages/control-plane/src/mission-routes-lifecycle.ts:174",
+    "packages/control-plane/src/mission-routes-lifecycle.ts:186"
    ],
    "new": false
   },
@@ -2738,7 +2748,7 @@
    "about": "missions",
    "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
    "where": [
-    "packages/control-plane/src/mission-routes-read.ts:91"
+    "packages/control-plane/src/mission-routes-read.ts:92"
    ],
    "new": false
   },
@@ -2748,7 +2758,7 @@
    "about": "mailbox",
    "text": "cp-api writes mailbox (updateMany in (anonymous)); its owner is mm-state.",
    "where": [
-    "packages/control-plane/src/mission-routes-read.ts:223"
+    "packages/control-plane/src/mission-routes-read.ts:224"
    ],
    "new": false
   },
@@ -2986,7 +2996,7 @@
    "about": "mission",
    "text": "(anonymous) (cp-api) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
    "where": [
-    "packages/control-plane/src/mission-routes-launch.ts:80"
+    "packages/control-plane/src/mission-routes-launch.ts:85"
    ],
    "undeclared": [
     "draft → error",
@@ -3002,7 +3012,7 @@
    "about": "mission",
    "text": "(anonymous) (cp-api) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
    "where": [
-    "packages/control-plane/src/mission-routes-lifecycle.ts:185"
+    "packages/control-plane/src/mission-routes-lifecycle.ts:186"
    ],
    "undeclared": [
     "draft → error",
@@ -3018,7 +3028,7 @@
    "about": "mission",
    "text": "The code uses the mission status \"destroyed\", which is not a state in the catalog.",
    "where": [
-    "packages/control-plane/src/mission-routes-read.ts:91"
+    "packages/control-plane/src/mission-routes-read.ts:92"
    ],
    "new": false
   },
@@ -3028,7 +3038,7 @@
    "about": "mission",
    "text": "(anonymous) (cp-api) can change a mission status in ways the catalog does not allow: draft → error, draft → draft, draft → running, draft → suspended, draft → destroyed, provisioning → draft, provisioning → provisioning, provisioning → suspended, provisioning → destroyed, running → draft, running → provisioning, running → destroyed, suspended → error, suspended → draft, suspended → provisioning, suspended → suspended, suspended → destroyed, error → error, error → draft, error → provisioning, error → suspended, error → destroyed, archived → error, archived → draft, archived → provisioning, archived → running, archived → suspended, archived → destroyed. Its filter does not check the current status.",
    "where": [
-    "packages/control-plane/src/mission-routes-read.ts:91"
+    "packages/control-plane/src/mission-routes-read.ts:92"
    ],
    "undeclared": [
     "draft → error",

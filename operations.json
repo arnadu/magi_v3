@@ -35,7 +35,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /draft",
-    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:269",
+    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:270",
     "reachesHome": true,
     "components": [
      "config",
@@ -91,7 +91,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "PUT /:id/draft",
-    "where": "packages/control-plane/src/mission-routes-config.ts:341",
+    "where": "packages/control-plane/src/mission-routes-config.ts:351",
     "reachesHome": false,
     "components": [
      "config",
@@ -101,7 +101,7 @@
     "writes": [
      "missions.updateOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:103",
      "missionConfigRevisions.insertOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:121",
-     "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:326"
+     "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:336"
     ],
     "unresolved": [
      "collection",
@@ -202,7 +202,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /:id/launch",
-    "where": "packages/control-plane/src/mission-routes-launch.ts:93",
+    "where": "packages/control-plane/src/mission-routes-launch.ts:98",
     "reachesHome": true,
     "components": [
      "config",
@@ -220,8 +220,8 @@
      "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:215",
      "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:221",
      "missions.updateOne@packages/control-plane/src/spend-policy.ts:51",
-     "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:68",
-     "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:80",
+     "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:73",
+     "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:85",
      "missions.updateOne@packages/control-plane/src/mission-claims.ts:25",
      "missions.updateOne@packages/control-plane/src/mission-claims.ts:38"
     ],
@@ -240,7 +240,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /",
-    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:268",
+    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:269",
     "reachesHome": true,
     "components": [
      "config",
@@ -258,8 +258,8 @@
      "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:215",
      "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:221",
      "missions.updateOne@packages/control-plane/src/spend-policy.ts:51",
-     "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:173",
-     "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:185",
+     "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:174",
+     "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:186",
      "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
     ],
     "unresolved": [
@@ -348,7 +348,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /:id/suspend",
-    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:270",
+    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:271",
     "reachesHome": true,
     "components": [
      "config",
@@ -475,7 +475,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /:id/resume",
-    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:271",
+    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:272",
     "reachesHome": true,
     "components": [
      "config",
@@ -671,7 +671,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "PUT /:id/config",
-    "where": "packages/control-plane/src/mission-routes-config.ts:340",
+    "where": "packages/control-plane/src/mission-routes-config.ts:350",
     "reachesHome": false,
     "components": [
      "config",
@@ -685,8 +685,8 @@
      "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131",
      "missions.updateOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:103",
      "missionConfigRevisions.insertOne@packages/agent-runtime-worker/src/mission-config-revisions.ts:121",
-     "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:158",
-     "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:257"
+     "conversationMessages.updateOne@packages/control-plane/src/mission-routes-config.ts:159",
+     "missions.updateOne@packages/control-plane/src/mission-routes-config.ts:262"
     ],
     "unresolved": [
      "add",
@@ -703,7 +703,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "PATCH /:id/limits/agent/:agentId",
-    "where": "packages/control-plane/src/mission-routes-limits.ts:150",
+    "where": "packages/control-plane/src/mission-routes-limits.ts:156",
     "reachesHome": true,
     "components": [
      "config",
@@ -855,7 +855,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /",
-    "where": "packages/control-plane/src/mission-routes-read.ts:283",
+    "where": "packages/control-plane/src/mission-routes-read.ts:284",
     "reachesHome": false,
     "components": [
      "cp-api"
@@ -870,14 +870,14 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id",
-    "where": "packages/control-plane/src/mission-routes-read.ts:285",
+    "where": "packages/control-plane/src/mission-routes-read.ts:286",
     "reachesHome": false,
     "components": [
      "cp-api",
      "cp-machines"
     ],
     "writes": [
-     "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:91"
+     "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
     ],
     "unresolved": [
      "json"
@@ -888,7 +888,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/agents",
-    "where": "packages/control-plane/src/mission-routes-read.ts:287",
+    "where": "packages/control-plane/src/mission-routes-read.ts:288",
     "reachesHome": false,
     "components": [
      "cp-api",
@@ -984,7 +984,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/config",
-    "where": "packages/control-plane/src/mission-routes-config.ts:339",
+    "where": "packages/control-plane/src/mission-routes-config.ts:349",
     "reachesHome": true,
     "components": [
      "config",
@@ -1172,7 +1172,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "PATCH /:id/limits/mission",
-    "where": "packages/control-plane/src/mission-routes-limits.ts:135",
+    "where": "packages/control-plane/src/mission-routes-limits.ts:141",
     "reachesHome": true,
     "components": [
      "config",
@@ -1293,7 +1293,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "PATCH /:id/limits/ceiling",
-    "where": "packages/control-plane/src/mission-routes-limits.ts:140",
+    "where": "packages/control-plane/src/mission-routes-limits.ts:146",
     "reachesHome": true,
     "components": [
      "config",
@@ -1359,7 +1359,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/limits",
-    "where": "packages/control-plane/src/mission-routes-limits.ts:133",
+    "where": "packages/control-plane/src/mission-routes-limits.ts:139",
     "reachesHome": true,
     "components": [
      "config",
@@ -1398,7 +1398,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /stats",
-    "where": "packages/control-plane/src/mission-routes-read.ts:284",
+    "where": "packages/control-plane/src/mission-routes-read.ts:285",
     "reachesHome": true,
     "components": [
      "config",
@@ -1870,7 +1870,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "PATCH /:id/limits/upgrade-reset",
-    "where": "packages/control-plane/src/mission-routes-limits.ts:145",
+    "where": "packages/control-plane/src/mission-routes-limits.ts:151",
     "reachesHome": false,
     "components": [
      "config",
@@ -2888,7 +2888,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/conversations",
-    "where": "packages/control-plane/src/mission-routes-read.ts:286",
+    "where": "packages/control-plane/src/mission-routes-read.ts:287",
     "reachesHome": false,
     "components": [
      "config",
@@ -2905,7 +2905,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/turns",
-    "where": "packages/control-plane/src/mission-routes-transcript.ts:115",
+    "where": "packages/control-plane/src/mission-routes-transcript.ts:122",
     "reachesHome": true,
     "components": [
      "config",
@@ -2923,7 +2923,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/transcript",
-    "where": "packages/control-plane/src/mission-routes-transcript.ts:116",
+    "where": "packages/control-plane/src/mission-routes-transcript.ts:123",
     "reachesHome": true,
     "components": [
      "config",
@@ -2941,7 +2941,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/llm-calls",
-    "where": "packages/control-plane/src/mission-routes-transcript.ts:117",
+    "where": "packages/control-plane/src/mission-routes-transcript.ts:124",
     "reachesHome": true,
     "components": [
      "config",
@@ -2959,7 +2959,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/llm-call",
-    "where": "packages/control-plane/src/mission-routes-transcript.ts:118",
+    "where": "packages/control-plane/src/mission-routes-transcript.ts:125",
     "reachesHome": true,
     "components": [
      "config",
@@ -3169,7 +3169,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /:id/messages/send",
-    "where": "packages/control-plane/src/mission-routes-read.ts:289",
+    "where": "packages/control-plane/src/mission-routes-read.ts:290",
     "reachesHome": true,
     "components": [
      "config",
@@ -3277,14 +3277,14 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /:id/messages/read",
-    "where": "packages/control-plane/src/mission-routes-read.ts:288",
+    "where": "packages/control-plane/src/mission-routes-read.ts:289",
     "reachesHome": false,
     "components": [
      "config",
      "cp-api"
     ],
     "writes": [
-     "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:223"
+     "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
     ],
     "unresolved": [
      "collection",
@@ -4410,7 +4410,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/objectives",
-    "where": "packages/control-plane/src/mission-routes-limits.ts:134",
+    "where": "packages/control-plane/src/mission-routes-limits.ts:140",
     "reachesHome": true,
     "components": [
      "config",
@@ -4838,6 +4838,24 @@
     "httpHops": []
    },
    {
+    "kind": "route",
+    "actor": "OP",
+    "name": "ALL /a/:capability/*rest",
+    "where": "packages/control-plane/src/apps-host/server.ts:123",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-apps"
+    ],
+    "writes": [],
+    "unresolved": [
+     "push",
+     "send",
+     "update"
+    ],
+    "httpHops": []
+   },
+   {
     "kind": "monitor-route",
     "actor": "OP",
     "name": "* HOP_PATH",
@@ -4980,7 +4998,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /pending",
-    "where": "packages/control-plane/src/copilot-pending-routes.ts:95",
+    "where": "packages/control-plane/src/copilot-pending-routes.ts:97",
     "reachesHome": true,
     "components": [
      "cp-api",
@@ -5008,7 +5026,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /dismiss",
-    "where": "packages/control-plane/src/copilot-pending-routes.ts:114",
+    "where": "packages/control-plane/src/copilot-pending-routes.ts:116",
     "reachesHome": true,
     "components": [
      "config",

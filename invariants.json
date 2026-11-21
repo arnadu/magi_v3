@@ -415,7 +415,7 @@
   ],
   "decidedBy": null,
   "open": null,
-  "findings": 6
+  "findings": 7
  },
  {
   "id": "sec.safe-egress",
@@ -461,7 +461,7 @@
   ],
   "decidedBy": null,
   "open": null,
-  "findings": 7
+  "findings": 13
  },
  {
   "id": "sec.untrusted-text-labelled",
