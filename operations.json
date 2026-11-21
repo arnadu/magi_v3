@@ -4803,7 +4803,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /t/:ticket",
-    "where": "packages/control-plane/src/apps-host/server.ts:116",
+    "where": "packages/control-plane/src/apps-host/server.ts:117",
     "reachesHome": true,
     "components": [
      "config",
@@ -4823,7 +4823,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "ALL /a/:capability",
-    "where": "packages/control-plane/src/apps-host/server.ts:119",
+    "where": "packages/control-plane/src/apps-host/server.ts:120",
     "reachesHome": true,
     "components": [
      "config",
@@ -4841,7 +4841,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "ALL /a/:capability/*",
-    "where": "packages/control-plane/src/apps-host/server.ts:122",
+    "where": "packages/control-plane/src/apps-host/server.ts:123",
     "reachesHome": true,
     "components": [
      "config",
