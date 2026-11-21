@@ -1,10 +1,9 @@
 # ADR-0037: Interactive apps on the mission machine, served from a separate apps host
 
-**Status:** Proposed (2026-11-20). Reviewed by appsec on 2026-11-20 (approved with conditions,
+**Status:** Accepted (2026-11-21); proposed 2026-11-20. Reviewed by appsec on 2026-11-20 (approved with conditions,
 folded in below). Product owner's decisions of 2026-11-21 folded in: Gradio rather than
 Streamlit, declaration by request files, three kinds, records in `missionApps`. Spike done
-2026-11-21 ("Spike results"); one choice reopened by it (separate origins per app) is with the
-product owner
+2026-11-21 ("Spike results"); an origin per app decided after it.
 **Relates to:** issue #42; the catalog's planned entity `app`, operations `app.*`, journeys
 J-22 and A-10, invariants `app.loopback-only`, `app.as-owner`, `app.bounded` and
 `sec.served-apart`; ADR-0033 (jobs run as their author); F-042 (the monitor server is reachable
@@ -65,41 +64,52 @@ it needs to route a request is in the request's signed cookie. Fly can stop it w
 start it on the next request. It runs a single machine, so that a ticket's single use can be
 kept in memory.
 
-### 2. One mission's app cannot reach another's: a secret in each app's path
+### 2. One app cannot reach another's: an origin per app, and a secret in its path
 
-All apps share one origin, so the browser does not keep them apart. The design does:
+Each running app gets its **own origin**: a port on the apps host
+(`https://magi-apps-dev.fly.dev:200NN/`, decided 2026-11-21 after the spike). A browser keeps
+origins apart, so one app's scripts cannot read another's storage (`localStorage`, IndexedDB,
+the Cache API) or script its windows, whatever either app does. Cookies are the exception:
+they ignore ports, so the rules below still keep them apart.
 
-- **Each app gets a capability:** a random 128-bit value, made by the daemon when the app is
-  declared, kept in the app's record (`missionApps`, decision 6), and never shown to agents. The app is served
-  at `https://magi-apps-dev.fly.dev/a/<capability>/`, which is also its `$BASE_PATH`.
-- **Each request needs both** the capability in its path and an app-session cookie for that
-  same capability (decision 3). Mission A's app cannot load mission B's app without B's
-  capability, and a script cannot discover it.
+- **Slots.** The apps host listens on 100 public ports, 20000–20099 (a Fly port range with TLS,
+  checked in the spike). Fly tells it the port of each request in `Fly-Forwarded-Port`, which
+  Fly overwrites; `X-Forwarded-Port` is passed through from the client and is never read. The
+  control plane assigns each app a slot when it is first opened and keeps it for that app
+  (`appSlots`, written only by the apps component of the control plane). A slot passes to
+  another app only when its holder has been removed, or not opened for longer than a session
+  lasts (12 hours), so no live session of the old holder can share the origin with the new
+  one. When all slots are held, opening one more app is refused with that reason.
+- **Leftovers are cleared.** Redeeming a ticket answers with `Clear-Site-Data: "storage"` for
+  that slot's origin, so nothing a previous holder left in this browser survives. The cost:
+  an app's own browser storage does not outlive a new Open (JupyterLab forgets its layout).
+- **Each app also gets a capability:** a random 128-bit value, made by the daemon when the app
+  is declared, kept in the app's record (`missionApps`, decision 6), and never shown to agents.
+  The app is served at `https://magi-apps-dev.fly.dev:<slot>/a/<capability>/`, which is also
+  its `$BASE_PATH`.
+- **Each request needs** the capability in its path, an app-session cookie for that same
+  capability (decision 3), and the slot the session names. A request whose port is not its
+  session's slot is refused: a script cannot use another app's cookie from its own origin.
+- **Requests from another app's origin are refused.** Ports of one host are the same *site*, so
+  the browser sends cookies between them. The apps host refuses any request with
+  `Sec-Fetch-Site: same-site` (another port of the apps host) and any request without
+  `Sec-Fetch-Site` (every supported browser sends it), and accepts `same-origin` and `none`
+  (typed or bookmarked). The ticket's redemption also accepts `cross-site` (it comes from the
+  cockpit) and does nothing but set the session.
 - **The apps host rewrites every `Set-Cookie`** from an app to `Path=/a/<capability>/`, with no
-  `Domain`. A script in A sees only A's cookies, so it cannot read B's.
-- **No service worker can escape its app:** the apps host removes `Service-Worker-Allowed`, so
-  a worker's scope is limited to its own app's path.
+  `Domain`, so a script sees only its own app's cookies.
+- **No service worker can escape its app:** the apps host removes `Service-Worker-Allowed`.
 - **Every response gets** `Referrer-Policy: no-referrer` (the capability never leaks to another
-  site), `Cross-Origin-Opener-Policy: same-origin` (an app cannot script the cockpit's window)
-  `Content-Security-Policy: frame-ancestors 'none'` (no other site can frame it),
-  `X-Content-Type-Options: nosniff` and `Cross-Origin-Resource-Policy: same-origin`.
+  site), `Cross-Origin-Opener-Policy: same-origin`, `Content-Security-Policy:
+  frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and
+  `Cross-Origin-Resource-Policy: same-origin`.
 
-**Residual risk:** everything keyed by origin is shared by all apps on the host: `localStorage`,
-IndexedDB, the Cache API. Two consequences:
-- an app that stores something sensitive there exposes it to another app the operator opens;
-- **a capability stored there is a key to that app.** The browser attaches an app's session
-  cookie to any request for its path, including one made by another app's script on the same
-  origin. The secrecy of the capability is the only barrier between two apps, so a capability
-  that one app writes to origin storage (for example a framework remembering its own URL)
-  gives every other app full use of it.
-
-This affects one operator's own missions only: each operator's browser holds only that
-operator's app sessions. But it crosses missions, and through a notebook it reaches code
-running as another mission's agent. The spike checks what JupyterLab and Gradio write to
-origin storage ("Before building"), and the `serve-app` skill tells agents never to store
-mission data or URLs there. The full fix is a separate origin per app, which needs
-either a domain of our own or a port per running app on the apps host. Both are deferred, and
-named in "Alternatives considered".
+**Residual risk:** with an origin per app, an app's storage is its own. What is left is the
+browser's per-site state shared by the ports (cookies, which the rules above scope and check)
+and the operator's own clicks: a link in one app that the operator follows to another app's
+URL is a navigation from another origin (`same-site`) and is refused, so the operator opens
+apps from the cockpit. Gradio's run history stays off (`GRADIO_RUN_HISTORY=False`): it keeps
+every call's inputs and outputs in the browser, which an operator may not expect.
 
 ### 3. Opening an app: a ticket from the cockpit, then the apps host's own sign-in
 
@@ -114,7 +124,7 @@ named in "Alternatives considered".
 4. The apps host checks the ticket. It sets the app-session cookie: `HttpOnly`, `Secure`,
    `SameSite=Strict`, `Path=/a/<capability>/`, signed, lasting at most 12 hours, and naming
    the same fields as the ticket. It then redirects to the app.
-5. **A copied URL** is `/a/<capability>/`. In another tab of the same browser the cookie is
+5. **A copied URL** is `https://<apps host>:<slot>/a/<capability>/`. In another tab of the same browser the cookie is
    there, and it works. Anywhere else, or after the cookie has expired, the apps host redirects
    to the cockpit page `/?openApp=<capability>`. That navigation comes from another site, so
    the cockpit's `SameSite=Strict` cookie is not sent with it, but the page itself needs none:
@@ -150,8 +160,8 @@ browser ─https─▶ apps host (Fly app) ─6PN─▶ mission machine :4000, m
   prefix removed, as Gradio's guide for running behind a proxy describes.
 - **WebSockets** are carried at every hop. That is new code in the monitor server and in the
   apps host. The control plane's existing proxy is not involved. The apps host refuses an
-  upgrade whose `Origin` is not its own. This guards against other sites only, in addition to
-  `SameSite=Strict`; it cannot tell one app from another, since they share the origin.
+  upgrade whose `Origin` is not the slot's own origin (scheme, host and port), so another
+  app's port is refused as well as another site.
 - **The machine checks that the request is for its own mission.** The apps host names the
   mission from the session in each forwarded request. The monitor server refuses a request whose
   mission is not its own `MISSION_ID`, as well as one whose apps token or capability it does not
@@ -301,10 +311,9 @@ mission data or the app's own URL in the browser's storage (decision 2).
 - **A hostname per mission or per app.** That would give a separate origin, with separate
   storage, and is the best isolation. It needs a domain of our own with a wildcard record and
   certificate. Deferred until there is a domain.
-- **A port per running app on the apps host.** That gives a separate origin and storage
-  without a domain: Fly can expose a range of ports. It means mapping ports to apps, and
-  cookies are still shared across ports, so the path rules stay. A candidate if the residual
-  storage risk is judged too high.
+- **One origin for every app**, with Gradio's run history off and a rule in the skill. Rejected
+  after the spike: the only barrier between two apps would be what each app chooses to keep in
+  the browser's storage, and Gradio kept its own capability there by default.
 - **A tool to declare apps** (`ServeApp`, `ListApps`, `ControlApp`), run in the daemon, which
   knows the caller. Rejected: the owner of a request file is already established safely for
   jobs and schedules, a script can wait for the answer, and a file can be checked as strictly
@@ -319,7 +328,8 @@ mission data or the app's own URL in the browser's storage (decision 2).
 ## Consequences
 
 - **New pieces:**
-  - the apps host (a Fly app, a few dollars a month, stopped when idle);
+  - the apps host (a Fly app, a few dollars a month, stopped when idle), with a public port
+    range 20000–20099;
   - two secrets, `APPS_TICKET_KEY` (control plane and apps host) and `APPS_SIGNING_KEY`
     (control plane and apps host; the per-mission token derived from it goes to the machine);
   - a monitor route with WebSocket forwarding;
@@ -351,6 +361,8 @@ mission data or the app's own URL in the browser's storage (decision 2).
     an app;
   - `app.open` reads "checked when the app is opened, then by a signed session of at most 12
     hours on every request, WebSockets included";
+  - a second collection, `appSlots` (which app holds which port of the apps host), written
+    only by `cp-apps` (proposed with the origin per app, for approval);
   - the components `mm-apps`, `cp-apps` and `ui-apps` get their paths when built, with
     `cp-apps` being the new apps host.
 
@@ -427,8 +439,8 @@ The three packages take ~550 MB installed; the image grows by about that much. O
 1 GB machine, with the daemon at ~600 MB, one notebook or one Gradio app fits, three do not:
 the skill tells agents to ask for a bigger machine (ADR-0031) before serving more than one.
 
-**Open choice, reopened by the spike (product owner):** whether to give each running app its
-own origin now (a port per app on the apps host), which would make shared browser storage
-harmless whatever an app stores, or to keep one origin with Gradio's run history off and the
-skill's rule, and revisit when there is a domain.
+**Decided after the spike (product owner, 2026-11-21): an origin per app**, a port of the apps
+host (decision 2). Checked on the throwaway app: a 100-port range (20000–20099) with TLS on the
+`fly.dev` certificate; `Fly-Forwarded-Port` gives the port and cannot be forged by a client
+(`X-Forwarded-Port` can); a port outside the range is refused.
 
