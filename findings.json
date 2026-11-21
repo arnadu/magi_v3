@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "ef8dac8",
-  "time": "2026-11-21T23:26:02Z"
+  "commit": "ae906bc",
+  "time": "2026-11-21T23:38:55Z"
  },
  "findings": [
   {
@@ -2448,7 +2448,7 @@
      "unresolved": []
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "7fdd2776f876",
@@ -2499,7 +2499,7 @@
      ]
     }
    ],
-   "new": true
+   "new": false
   },
   {
    "key": "5163010c196b",
