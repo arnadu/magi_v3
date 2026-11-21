@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "0c612ae",
-  "time": "2026-11-21T21:49:42Z"
+  "commit": "a4d4610",
+  "time": "2026-11-21T22:07:58Z"
  },
  "findings": [
   {
@@ -2433,10 +2433,10 @@
    "new": false
   },
   {
-   "key": "48ccd127ec55",
+   "key": "0febb77a716f",
    "kind": "op.home-not-reached",
    "about": "app.open",
-   "text": "None of the 1 entry point(s) of app.open reaches code in its home, cp-apps: monitor-route * HOP_PATH.",
+   "text": "1 of 4 entry points of app.open reach no code in its home, cp-apps: monitor-route * HOP_PATH.",
    "where": [
     "packages/agent-runtime-worker/src/app-hop.ts:164"
    ],
@@ -2448,7 +2448,7 @@
      "unresolved": []
     }
    ],
-   "new": false
+   "new": true
   },
   {
    "key": "5163010c196b",

@@ -4752,6 +4752,62 @@
   "startedBy": null,
   "entryPoints": [
    {
+    "kind": "route",
+    "actor": "OP",
+    "name": "GET /t/:ticket",
+    "where": "packages/control-plane/src/apps-host/server.ts:116",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-apps"
+    ],
+    "writes": [],
+    "unresolved": [
+     "delete",
+     "has",
+     "send",
+     "set",
+     "update"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "ALL /a/:capability",
+    "where": "packages/control-plane/src/apps-host/server.ts:119",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-apps"
+    ],
+    "writes": [],
+    "unresolved": [
+     "push",
+     "send",
+     "update"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "ALL /a/:capability/*",
+    "where": "packages/control-plane/src/apps-host/server.ts:122",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-apps"
+    ],
+    "writes": [],
+    "unresolved": [
+     "push",
+     "send",
+     "update"
+    ],
+    "httpHops": []
+   },
+   {
     "kind": "monitor-route",
     "actor": "OP",
     "name": "* HOP_PATH",
