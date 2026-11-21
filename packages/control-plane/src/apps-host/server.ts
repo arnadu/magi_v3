@@ -94,8 +94,8 @@ export function createAppsHost(config: AppsHostConfig) {
 		req: express.Request,
 		res: express.Response,
 		next: express.NextFunction,
+		capability: string,
 	): void {
-		const capability = String(req.params.capability);
 		const a = fetchSiteAllowed(req.headers)
 			? admit(req, capability)
 			: "a request from another site or app";
@@ -118,11 +118,16 @@ export function createAppsHost(config: AppsHostConfig) {
 		redeem(req, res, config, now, usedNonces),
 	);
 	app.all("/a/:capability", operation("app.open"), (req, res, next) =>
-		forward(req, res, next),
+		forward(req, res, next, String(req.params.capability)),
 	);
-	app.all("/a/:capability/*", operation("app.open"), (req, res, next) =>
-		forward(req, res, next),
-	);
+	// Deeper paths: matched here, not with a wildcard route, whose syntax
+	// differs between Express 4 (the package's dependency, and the tests) and
+	// Express 5 (what the image resolves from the root node_modules).
+	app.use((req, res, next) => {
+		const m = req.path.match(/^\/a\/([^/]+)\//);
+		if (!m) return next();
+		forward(req, res, next, m[1]);
+	});
 	app.use((_req, res) => {
 		res.status(404).type("text/plain").send("not found");
 	});
