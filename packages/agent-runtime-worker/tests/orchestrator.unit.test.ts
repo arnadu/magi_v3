@@ -229,18 +229,25 @@ describe("TC-1: two agents run concurrently", () => {
 		const startTimes: Record<string, number> = {};
 		const t0 = Date.now();
 
-		mockRunAgent.mockImplementation(
-			makeMockRunner({
-				durationMs: 100,
-				onStart: (id) => {
-					startTimes[id] = Date.now() - t0;
-				},
-			}),
-		);
+		let active = 0;
+		let maxActive = 0;
+		const run = makeMockRunner({
+			durationMs: 100,
+			onStart: (id) => {
+				startTimes[id] = Date.now() - t0;
+				active++;
+				maxActive = Math.max(maxActive, active);
+			},
+		});
+		mockRunAgent.mockImplementation(async (...args: Parameters<typeof run>) => {
+			try {
+				await run(...args);
+			} finally {
+				active--;
+			}
+		});
 
-		const started = Date.now();
 		await runOrchestrationLoop(buildConfig(tc, repo));
-		const elapsed = Date.now() - started;
 
 		// Both agents must have started — they had different start times
 		expect(startTimes["agent-a"]).toBeDefined();
@@ -250,8 +257,9 @@ describe("TC-1: two agents run concurrently", () => {
 		const gap = Math.abs(startTimes["agent-a"] - startTimes["agent-b"]);
 		expect(gap).toBeLessThan(30);
 
-		// Total elapsed < 150 ms (concurrent, not 200 ms sequential)
-		expect(elapsed).toBeLessThan(160);
+		// Both runs were in flight at the same moment. (A bound on the total
+		// time measured the machine's load more than the loop, and flaked.)
+		expect(maxActive).toBe(2);
 	});
 });
 
