@@ -1,4 +1,6 @@
 import { entryTrigger } from "@magi/agent-config";
+import { createAppOpenRoutes } from "./app-open-routes.js";
+import { ensureSlotIndex } from "./apps-host/slots.js";
 /**
  * Control plane entry point.
  *
@@ -185,6 +187,10 @@ function mountAuthenticatedApi(
 		createMissionsRouter(db),
 	);
 	app.use("/api/missions", createMissionResourceRoutes(db));
+	// Interactive apps (ADR-0037): the Open button and the apps host's "open it again".
+	const appOpen = createAppOpenRoutes(db);
+	app.use("/api/missions", appOpen.missionsRouter);
+	app.use("/api/apps", appOpen.appsRouter);
 
 	// Per-user LLM usage summary and the model-picker catalog.
 	app.use(createPlatformRoutes(db));
@@ -285,6 +291,7 @@ async function main(): Promise<void> {
 	const pendingActions = new MongoPendingActionsStore(db);
 	await pendingActions.ensureIndexes();
 	await ensureMissionIdIndex(db);
+	await ensureSlotIndex(db);
 	await backfillMissionCaps(db);
 	await backfillMissionCeilings(db);
 	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);

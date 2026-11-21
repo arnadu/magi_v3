@@ -452,6 +452,8 @@ Built in slices; this layer grows with them. Slice a: the machine firewall.
 | The machine has no `APPS_TOKEN` (created before it existed) | No app can be opened | 🟡 | Logged at boot; every hop request refused (401); a suspend and resume recreates the machine with the token | None |
 | The monitor server stops | Every open app connection, WebSockets included, is cut | 🟡 | The daemon is stopping too, and stops every app | None |
 | The apps host is down or stopped | Open fails; open apps stop answering | 🟡 | Fly starts it on the next request (auto-stop, auto-start); stateless but for used tickets, so a restart loses nothing a user needs | A restart forgets used nonces: a ticket under 60 s old could be redeemed twice, in that window only |
+| Opening a stopped app | The Open button waits while the app starts | 🟡 | `openApp` starts it through the monitor and waits up to 90 s for it to answer; past that, "still starting, open it again in a moment"; a refused start (the limit) is shown as is | None |
+| All 100 slots held by apps opened in the last 12 hours | Opening one more app is refused | 🟡 | The refusal says so; a slot frees when its app is removed or goes 12 hours unopened | None at one operator's scale |
 | The mission machine moved (a resume, a crash) | The session's address is stale | 🟢 | A refused or failed page load sends the operator to the cockpit, which issues a ticket with the current address | None |
 
 ---

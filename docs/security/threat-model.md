@@ -1,6 +1,7 @@
 # MAGI V3 Threat Model
 
-**Last updated:** 2026-11-21 (interactive apps, ADR-0037, slice d) — new boundary **TB-26**: the operator's browser → the apps host (`magi-apps-<suffix>.fly.dev`, ports 20000–20099), a new public Fly app serving agent-authored code on a different site from the cockpit. It holds `APPS_TICKET_KEY`, `APPS_SIGNING_KEY` and `COCKPIT_URL` only.
+**Last updated:** 2026-11-21 (interactive apps, ADR-0037, slice e) — the control plane's side of TB-26: it now holds `APPS_TICKET_KEY` and `APPS_SIGNING_KEY`, issues tickets (`POST /api/missions/:id/apps/:name/open`, `POST /api/apps/reopen`, owner-scoped, both through `openApp`), assigns each app its slot on the apps host (`missionApps.slot`, unique), and injects each mission's `APPS_TOKEN` at machine creation.
+**Previously:** 2026-11-21 (interactive apps, ADR-0037, slice d) — new boundary **TB-26**: the operator's browser → the apps host (`magi-apps-<suffix>.fly.dev`, ports 20000–20099), a new public Fly app serving agent-authored code on a different site from the cockpit. It holds `APPS_TICKET_KEY`, `APPS_SIGNING_KEY` and `COCKPIT_URL` only.
 **Previously:** 2026-11-21 (interactive apps, ADR-0037, slice c) — new boundary **TB-25**: the monitor server forwards `/a/<capability>/` (HTTP and WebSocket) to an app's loopback port, authenticated by a new per-mission apps token instead of the monitor token. Two cockpit routes behind the monitor token: `GET /apps`, `POST /apps/:name/(start|stop|remove)`.
 **Previously:** 2026-11-21 (interactive apps, ADR-0037, slice b) — new boundary **TB-24**: agents declare and control apps by request files in `shared/apps/requests/`, and the daemon starts each app as its owner through a new `sudo` rule for `/usr/local/bin/magi-app` (runas `%magi-shared`, `env_keep` limited to the app variables). Same owner-uid attribution as jobs and schedules, now one function (`safe-owned-file.ts`).
 **Previously:** 2026-11-21 (interactive apps, ADR-0037, slice a) — new boundary **TB-23**: the daemon → `magi-net`, a root helper behind a new `sudo` rule that sets the machine firewall at every boot. It closes **F-081**: mission machines filtered no inbound private-network traffic, so a server an agent started on all interfaces answered every machine in the Fly organization (confirmed on a throwaway app). Inbound now accepts only loopback, established connections, ICMP, Fly SSH (22) and the monitor port (4000); app ports on loopback (20000–20099) are reachable only by the daemon and an app's owner once allowed. The other apps boundaries (browser → apps host, apps host → monitor, monitor → app) come with their slices.
@@ -496,6 +497,10 @@ graph TB
 - `packages/control-plane/src/apps-host/policy.ts` — `slotOf` (`Fly-Forwarded-Port` only), `fetchSiteAllowed`, `sessionCookies`/`withoutSessionCookie`, `rewriteSetCookies`, `SECURITY_HEADERS`, `expectedOrigin`
 - `packages/agent-config/src/apps-signing.ts` — ticket and session formats (`kind` inside the signed part), `deriveAppsToken` (prefixed, never the monitor token)
 - `fly.apps-dev.toml` — the port range, one machine, auto-stop
+- `packages/control-plane/src/apps-host/open.ts` — `openApp`: the caller must own the mission (404 otherwise, the app's existence not revealed), the mission must be running, a stopped app is started and waited for, then a ticket for the app's slot and the machine's current address
+- `packages/control-plane/src/apps-host/slots.ts` — `assignSlot`: sticky per app, unique across missions (partial unique index), reassigned only after a session's lifetime unopened
+- `packages/control-plane/src/app-open-routes.ts` — the two routes, behind `requireAuth`; the reopen body is a 32-hex capability, nothing else
+- `packages/control-plane/src/fly-machines.ts` — `APPS_TOKEN` derived per mission at machine creation; `APPS_SIGNING_KEY` itself never leaves the control plane and the apps host
 
 ---
 
@@ -651,6 +656,8 @@ graph TB
 | One app reads another's storage or scripts its window | I / E | ✅ | An origin per app (a port each); `Clear-Site-Data: "storage"` on each redemption clears a previous holder's leftovers |
 | One app uses another's session (cookies ignore ports) | S / E | ✅ | The session is bound to its slot and capability (unit test: a session for another slot is refused); requests from another port arrive `same-site` and are refused; WebSockets need the slot's own `Origin` |
 | A copied link opened by someone else | S | ✅ | No session in their browser → sent to the cockpit, which refuses anyone but the owner |
+| Someone learns an app exists by guessing names or capabilities at the control plane | I | ✅ | `openApp` answers the same 404 whether the app does not exist or the caller does not own its mission |
+| Two missions' apps given one slot (one origin) | I | ✅ | A partial unique index on `missionApps.slot`; a lost claim is retried on another slot; reassignment only after 12 hours unopened, when every session of the old holder has expired |
 | A ticket replayed or used on another slot | S | ✅ | Single use (nonce), 60 s, slot checked (unit tests); a second machine would weaken single use — the app runs one |
 | A forged ticket or session, or a ticket used as a session | S | ✅ | HMAC-SHA256 with `kind` inside the signed part; constant-time compare (unit tests) |
 | An app plants a decoy session cookie for another app's path (`document.cookie`) | T / D | ~ | Unsigned values never verify; every value is tried; the worst outcome is a trip back to the cockpit |

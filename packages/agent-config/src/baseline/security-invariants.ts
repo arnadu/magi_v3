@@ -179,8 +179,14 @@ export const SECURITY_INVARIANTS: readonly Invariant[] = [
 	{
 		id: "sec.served-apart",
 		text: "Code an agent serves live runs in the operator's browser from an origin other than the cockpit's, so it never acts with the operator's cockpit session; and one mission's app cannot reach another mission's app through that browser.",
-		enforcedBy: [],
-		open: "Planned with interactive apps: the apps host, its sign-in and the secret in each app's path are for the ADR",
+		enforcedBy: [
+			{
+				kind: "runtime",
+				where:
+					"control-plane/src/apps-host/server.ts: createAppsHost (a separate Fly app, so another site, and a session bound to one app's capability and slot); policy.ts: fetchSiteAllowed (requests from another app's port refused)",
+			},
+			{ kind: "test" },
+		],
 	},
 	{
 		id: "sec.least-privilege",

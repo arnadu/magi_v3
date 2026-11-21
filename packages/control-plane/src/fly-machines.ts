@@ -15,7 +15,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { type CpuKind, DEFAULT_MACHINE } from "./machine-shapes.js";
-import { deriveMonitorToken } from "./monitor-token.js";
+import { deriveAppsTokenFor, deriveMonitorToken } from "./monitor-token.js";
 
 const FLY_API_BASE = "https://api.machines.dev/v1";
 
@@ -180,6 +180,7 @@ function machineConfig(
 			// Per-mission auth token for MonitorServer mutating routes.
 			// Derived from MONITOR_SIGNING_KEY (control plane only) — never stored in MongoDB.
 			MONITOR_TOKEN: deriveMonitorToken(missionId),
+			APPS_TOKEN: deriveAppsTokenFor(missionId),
 			// Where the mission copilot's GitHub proxy tools reach the control
 			// plane (ADR-0016, Phase 5). FLY_APP_NAME is auto-injected by Fly
 			// into *this* (the control plane's own) machine — no bootstrap.sh

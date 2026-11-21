@@ -84,6 +84,18 @@ info "Deploying control plane…"
 flyctl deploy --config "$CONTROL_TOML" --app "$CONTROL_APP"
 success "Control plane deployed: https://${CONTROL_APP}.fly.dev"
 
+# The apps host (ADR-0037): the control plane's image with its own entry point.
+# Optional per environment: only when bootstrap created it (its toml exists).
+APPS_APP="magi-apps-${SUFFIX}"
+APPS_TOML="fly.apps-${SUFFIX}.toml"
+if [[ -f "$APPS_TOML" ]]; then
+  info "Deploying the apps host…"
+  flyctl deploy --config "$APPS_TOML" --app "$APPS_APP"
+  success "Apps host deployed: https://${APPS_APP}.fly.dev:20000/healthz"
+else
+  info "No $APPS_TOML — this environment has no apps host; interactive apps cannot be opened there."
+fi
+
 # Tag only after both deploys succeeded: a tag is the record of what an
 # environment runs, so a deploy that failed halfway must not leave one behind.
 # The tree is clean (checked above), so HEAD is still the commit that shipped.

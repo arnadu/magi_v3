@@ -366,7 +366,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		home: "mm-tools",
 		rules: ["Within the per-call budget", "Spend counts against the mission"],
 	},
-	// ── Interactive apps (planned) ──────────────────────────────────────────
+	// ── Interactive apps ────────────────────────────────────────────────────
 	{
 		id: "app.declare",
 		group: "apps",
@@ -428,6 +428,5 @@ export const TEAM_OPERATIONS = defineOperations([
 			"Opening a stopped app starts it, within the limit on apps running at once",
 			"A link in the mission cockpit, or a URL to copy: it works for the mission's owner in another tab; anyone else is sent to sign in",
 		],
-		planned: true,
 	},
 ]);

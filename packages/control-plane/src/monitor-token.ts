@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { deriveAppsToken } from "@magi/agent-config";
 
 /**
  * Derive a per-mission MONITOR_TOKEN using HMAC-SHA256.
@@ -34,4 +35,13 @@ export function monitorAuthHeaders(missionId: string): Record<string, string> {
 export function monitorUrl(privateIp: string, path: string): string {
 	const host = privateIp.includes(":") ? `[${privateIp}]` : privateIp;
 	return `http://${host}:4000${path}`;
+}
+
+/**
+ * The mission's apps token (ADR-0037), injected into its machine as
+ * APPS_TOKEN: the apps host's credential for that mission's app hop.
+ * APPS_SIGNING_KEY itself never leaves the control plane and the apps host.
+ */
+export function deriveAppsTokenFor(missionId: string): string {
+	return deriveAppsToken(process.env.APPS_SIGNING_KEY ?? "", missionId);
 }

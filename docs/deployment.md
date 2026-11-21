@@ -249,7 +249,8 @@ Running missions are unaffected — they operate independently of the control pl
 ### The apps host (one-time setup per environment)
 
 Interactive apps are served from a second Fly app, on a different site from the cockpit
-(ADR-0037). It holds three values and none of the control plane's secrets. For dev:
+(ADR-0037). It holds three values and none of the control plane's secrets. `bootstrap.sh`
+creates it for a new environment and `promote.sh` deploys it; for dev it was created by hand:
 
 ```bash
 flyctl apps create magi-apps-dev --machines

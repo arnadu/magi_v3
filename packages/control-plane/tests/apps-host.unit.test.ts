@@ -40,7 +40,7 @@ describe("apps host policy", () => {
 		expect(slotOf({ host: "127.0.0.1:20004" }, false)).toBe(20004);
 	});
 
-	it("refuses requests from another app's port (same-site) or with no fetch metadata", () => {
+	it("sec.served-apart: refuses requests from another app's port (same-site) or with no fetch metadata", () => {
 		expect(fetchSiteAllowed({ "sec-fetch-site": "same-origin" })).toBe(true);
 		expect(fetchSiteAllowed({ "sec-fetch-site": "none" })).toBe(true);
 		expect(fetchSiteAllowed({ "sec-fetch-site": "same-site" })).toBe(false);
@@ -231,7 +231,7 @@ describe("apps host", () => {
 		expect(monitor.seen).toEqual([]);
 	});
 
-	it("refuses a session issued for another slot (another app's origin)", async () => {
+	it("sec.served-apart: refuses a session issued for another slot (another app's origin)", async () => {
 		const elsewhere = `magi_app=${signAppSession({ ...grant(), slot: SLOT + 1 }, TICKET_KEY)}`;
 		expect(
 			(

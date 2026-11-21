@@ -124,7 +124,7 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 	},
 	{
 		name: "APPS_TICKET_KEY",
-		planes: ["apps"],
+		planes: ["control", "apps"],
 		secret: true,
 		required: true,
 		description:
@@ -132,11 +132,17 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 	},
 	{
 		name: "APPS_SIGNING_KEY",
-		planes: ["apps"],
+		planes: ["control", "apps"],
 		secret: true,
 		required: true,
 		description:
 			"Key the per-mission apps token is derived from (`deriveAppsToken`): the apps host sends that token to a mission's monitor server, and the control plane injects it into the machine as APPS_TOKEN. Never forwarded to mission machines itself.",
+	},
+	{
+		name: "APPS_HOST_URL",
+		planes: ["control"],
+		description:
+			"The apps host's address without a port (e.g. https://magi-apps-dev.fly.dev): where the control plane sends the operator to open an app, on that app's port (ADR-0037). Unset: interactive apps cannot be opened on this deployment.",
 	},
 	{
 		name: "COCKPIT_URL",

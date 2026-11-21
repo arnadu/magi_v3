@@ -55,6 +55,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		root: CP,
 		paths: [
 			"mission-routes-*",
+			"app-open-routes.ts",
 			"missions.ts",
 			"mission-drafts.ts",
 			"mission-scope.ts",

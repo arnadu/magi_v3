@@ -98,9 +98,12 @@ else
   CONTROL_APP="magi-control"
   MISSIONS_APP="magi-missions"
 fi
+# The apps host (ADR-0037): serves interactive apps on a site of its own.
+APPS_APP="magi-apps${SUFFIX:+-$SUFFIX}"
 
 info "Control plane app : $CONTROL_APP"
 info "Execution plane app: $MISSIONS_APP"
+info "Apps host app      : $APPS_APP"
 echo ""
 
 # ── Load secrets ──────────────────────────────────────────────────────────────
@@ -131,6 +134,14 @@ create_app_if_missing() {
 
 create_app_if_missing "$CONTROL_APP"
 create_app_if_missing "$MISSIONS_APP"
+create_app_if_missing "$APPS_APP"
+
+# The apps host is public: one dedicated IPv6 and a shared IPv4 (both free).
+if [[ "$(flyctl ips list -a "$APPS_APP" --json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" == "0" ]]; then
+  info "Allocating public addresses for $APPS_APP…"
+  flyctl ips allocate-v6 -a "$APPS_APP"
+  flyctl ips allocate-v4 --shared -a "$APPS_APP"
+fi
 
 # ── Auto-generate MONITOR_SIGNING_KEY if not set ──────────────────────────────
 if [[ -z "${MONITOR_SIGNING_KEY:-}" ]]; then
@@ -138,6 +149,15 @@ if [[ -z "${MONITOR_SIGNING_KEY:-}" ]]; then
   MONITOR_SIGNING_KEY="$(openssl rand -hex 32)"
   success "MONITOR_SIGNING_KEY generated (add to $SECRETS_FILE to persist it)."
 fi
+
+# ── Interactive apps keys (ADR-0037): shared by the control plane and the apps host
+for key in APPS_TICKET_KEY APPS_SIGNING_KEY; do
+  if [[ -z "${!key:-}" ]]; then
+    info "$key not set — generating a new one…"
+    printf -v "$key" '%s' "$(openssl rand -hex 32)"
+    success "$key generated (add to $SECRETS_FILE to persist it)."
+  fi
+done
 
 # ── Generate FLY_API_TOKEN_MACHINES ───────────────────────────────────────────
 info "Generating scoped Fly API token for Machines API (1-year expiry)…"
@@ -223,6 +243,11 @@ declare -A CONTROL_SECRETS=(
   [PLATFORM_ADMIN_USER_IDS]="${PLATFORM_ADMIN_USER_IDS:-}"
   [ATLAS_STORAGE_LIMIT_MB]="${ATLAS_STORAGE_LIMIT_MB:-10240}"
   [RESOURCE_REPORT_HOUR_UTC]="${RESOURCE_REPORT_HOUR_UTC:-12}"
+  # Interactive apps (ADR-0037): the control plane signs tickets and derives each
+  # mission's APPS_TOKEN; APPS_HOST_URL is where it sends the operator.
+  [APPS_TICKET_KEY]="${APPS_TICKET_KEY}"
+  [APPS_SIGNING_KEY]="${APPS_SIGNING_KEY}"
+  [APPS_HOST_URL]="https://${APPS_APP}.fly.dev"
 )
 set_secrets_if_needed "$CONTROL_APP" CONTROL_SECRETS MONGODB_URI
 
@@ -238,6 +263,14 @@ declare -A MISSIONS_SECRETS=(
   [OPENROUTER_API_KEY]="${OPENROUTER_API_KEY:-}"
 )
 set_secrets_if_needed "$MISSIONS_APP" MISSIONS_SECRETS ANTHROPIC_API_KEY
+
+# The apps host holds these three values and nothing else.
+declare -A APPS_SECRETS=(
+  [APPS_TICKET_KEY]="${APPS_TICKET_KEY}"
+  [APPS_SIGNING_KEY]="${APPS_SIGNING_KEY}"
+  [COCKPIT_URL]="https://${CONTROL_APP}.fly.dev"
+)
+set_secrets_if_needed "$APPS_APP" APPS_SECRETS APPS_TICKET_KEY
 
 # ── Build and push Docker image ────────────────────────────────────────────────
 IMAGE="registry.fly.io/${MISSIONS_APP}:latest"
@@ -378,6 +411,13 @@ if [[ "$SKIP_DEPLOY" == false ]]; then
   # Kept (not deleted, except the dev one which is already checked in) — useful
   # for a later manual `flyctl deploy --config` against this specific environment.
   [[ "$DEPLOY_TOML" != "fly.control-dev.toml" ]] && info "Generated $DEPLOY_TOML (kept)"
+
+  # The apps host: the same image, its own entry point (fly.apps-dev.toml as the template).
+  APPS_TOML="fly.apps-${SUFFIX:-default}.toml"
+  [[ "$APPS_TOML" != "fly.apps-dev.toml" ]] && sed "s/^app = .*/app = \"${APPS_APP}\"/" fly.apps-dev.toml > "$APPS_TOML"
+  info "Deploying the apps host to $APPS_APP…"
+  flyctl deploy --config "$APPS_TOML" --app "$APPS_APP"
+  success "Apps host deployed: https://${APPS_APP}.fly.dev:20000/healthz"
 
   success "Control plane deployed: https://${CONTROL_APP}.fly.dev"
 else
