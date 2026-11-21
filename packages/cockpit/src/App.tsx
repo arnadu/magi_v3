@@ -7,12 +7,14 @@ import { HomeView } from "./HomeView";
 import { LoadingView } from "./LoadingView";
 import { LoginScreen } from "./LoginScreen";
 import { MissionDashboard } from "./MissionDashboard";
+import { useOpenAppFromUrl } from "./use-open-app-from-url";
 
 /** The cockpit shell: sign-in gate, then the start page, a draft editor or one mission's dashboard. */
 export function App() {
 	const authState = useAuthState();
 	const [refreshKey, setRefreshKey] = useState(0);
 	const view = useView(refreshKey, authState.status);
+	const openingApp = useOpenAppFromUrl(authState.status === "signed-in");
 
 	if (authState.status === "loading") return <LoadingView />;
 
@@ -26,6 +28,23 @@ export function App() {
 					authState.status === "signed-out" ? authState.error : null
 				}
 			/>
+		);
+	}
+
+	if (openingApp.status === "opening") return <LoadingView />;
+	if (openingApp.status === "error") {
+		return (
+			<div className="app">
+				<Header subtitle="app" />
+				<main>
+					<p className="error-msg">
+						Could not open the app: {openingApp.message}
+					</p>
+					<p>
+						<a href="/">Back to the cockpit</a>
+					</p>
+				</main>
+			</div>
 		);
 	}
 

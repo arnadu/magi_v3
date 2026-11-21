@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AgentErrorBanner } from "./AgentErrorBanner";
+import { AppsPanel } from "./AppsPanel";
 import { useMissionStatus, type View } from "./app-hooks";
 import { ConfigPanel } from "./ConfigPanel";
 import { ConversationsPanel } from "./ConversationsPanel";
@@ -17,6 +18,7 @@ import { TranscriptsPanel } from "./TranscriptsPanel";
 type MainTab =
 	| "objectives"
 	| "files"
+	| "apps"
 	| "transcripts"
 	| "trace"
 	| "limits"
@@ -28,6 +30,7 @@ type MainTab =
 const MAIN_TABS = [
 	{ id: "objectives", label: "Objectives" },
 	{ id: "files", label: "Files" },
+	{ id: "apps", label: "Apps" },
 	{ id: "transcripts", label: "Transcripts" },
 	{ id: "trace", label: "Trace" },
 	{ id: "limits", label: "Limits" },
@@ -103,6 +106,7 @@ export function MissionDashboard({
 						{mainTab === "files" && (
 							<FilesPanel missionId={mission} onInspectTurn={inspectTurn} />
 						)}
+						{mainTab === "apps" && <AppsPanel missionId={mission} />}
 						{mainTab === "transcripts" && (
 							<TranscriptsPanel
 								missionId={mission}

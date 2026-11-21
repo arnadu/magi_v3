@@ -476,12 +476,12 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 	{
 		id: "ui-apps",
 		plane: "browser",
-		name: "Apps (planned)",
+		name: "Apps",
 		responsibility:
-			"The Apps tab: a mission's apps, their state, Open, copy the URL, start and stop",
+			"The Apps tab: a mission's apps, their state, Open, copy the URL, start and stop; opening an app again when the apps host sends the operator back",
 		layer: 2,
 		root: UI,
-		paths: [],
+		paths: ["AppsPanel.tsx", "open-app-param.ts", "use-open-app-from-url.ts"],
 	},
 	{
 		id: "ui-kit",

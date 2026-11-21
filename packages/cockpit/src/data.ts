@@ -5,6 +5,8 @@
  * (unreachable while suspended); `/api/missions/:id/*` is control-plane-native
  * and works whatever the mission's state.
  */
+
+export * from "./api/apps";
 export * from "./api/config";
 export * from "./api/conversations";
 export * from "./api/copilot";
