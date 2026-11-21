@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "b6d0c85",
-  "time": "2026-11-21T22:52:50Z"
+  "commit": "379d89a",
+  "time": "2026-11-21T23:01:43Z"
  },
  "findings": [
   {
@@ -2433,10 +2433,10 @@
    "new": false
   },
   {
-   "key": "cdc8959baaa5",
+   "key": "0538478b0207",
    "kind": "op.home-not-reached",
    "about": "app.open",
-   "text": "1 of 6 entry points of app.open reach no code in its home, cp-apps: monitor-route * HOP_PATH.",
+   "text": "1 of 5 entry points of app.open reach no code in its home, cp-apps: monitor-route * HOP_PATH.",
    "where": [
     "packages/agent-runtime-worker/src/app-hop.ts:164"
    ],
@@ -2448,17 +2448,16 @@
      "unresolved": []
     }
    ],
-   "new": false
+   "new": true
   },
   {
-   "key": "d15dd523fdf8",
+   "key": "079de52b287e",
    "kind": "op.divergent-writes",
    "about": "app.open",
-   "text": "Entry points of app.open reach different database writes: route GET /t/:ticket lacks 3; route ALL /a/:capability lacks 3; route ALL /a/:capability/* lacks 3; monitor-route * HOP_PATH lacks 3.",
+   "text": "Entry points of app.open reach different database writes: route GET /t/:ticket lacks 3; route ALL /a/:capability lacks 3; monitor-route * HOP_PATH lacks 3.",
    "where": [
     "packages/control-plane/src/apps-host/server.ts:117",
     "packages/control-plane/src/apps-host/server.ts:120",
-    "packages/control-plane/src/apps-host/server.ts:123",
     "packages/agent-runtime-worker/src/app-hop.ts:164"
    ],
    "lacks": [
@@ -2481,15 +2480,6 @@
      ]
     },
     {
-     "entryPoint": "route ALL /a/:capability/*",
-     "where": "packages/control-plane/src/apps-host/server.ts:123",
-     "writes": [
-      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
-      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:78",
-      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:99"
-     ]
-    },
-    {
      "entryPoint": "monitor-route * HOP_PATH",
      "where": "packages/agent-runtime-worker/src/app-hop.ts:164",
      "writes": [
@@ -2499,7 +2489,7 @@
      ]
     }
    ],
-   "new": false
+   "new": true
   },
   {
    "key": "5163010c196b",

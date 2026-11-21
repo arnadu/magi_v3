@@ -130,13 +130,13 @@
   "tag": "app.open",
   "reached": [
    "(anonymous) packages/control-plane/src/apps-host/server.ts:117",
-   "(anonymous) packages/control-plane/src/apps-host/server.ts:250",
+   "(anonymous) packages/control-plane/src/apps-host/server.ts:255",
    "(anonymous) packages/control-plane/src/apps-host/server.ts:50",
    "b64 packages/agent-config/src/apps-signing.ts:49",
    "grantOf packages/agent-config/src/apps-signing.ts:74",
    "mac packages/agent-config/src/apps-signing.ts:50",
    "operation packages/control-plane/src/apps-host/server.ts:48",
-   "redeem packages/control-plane/src/apps-host/server.ts:246",
+   "redeem packages/control-plane/src/apps-host/server.ts:251",
    "redeemPage packages/control-plane/src/apps-host/policy.ts:142",
    "sessionCookie packages/control-plane/src/apps-host/policy.ts:78",
    "sign packages/agent-config/src/apps-signing.ts:53",
@@ -146,12 +146,12 @@
    "verifyAppTicket packages/agent-config/src/apps-signing.ts:109"
   ],
   "unresolved": [
-   "delete packages/control-plane/src/apps-host/server.ts:255",
-   "has packages/control-plane/src/apps-host/server.ts:256",
-   "send packages/control-plane/src/apps-host/server.ts:257",
-   "set packages/control-plane/src/apps-host/server.ts:265",
-   "set packages/control-plane/src/apps-host/server.ts:268",
-   "send packages/control-plane/src/apps-host/server.ts:279",
+   "delete packages/control-plane/src/apps-host/server.ts:260",
+   "has packages/control-plane/src/apps-host/server.ts:261",
+   "send packages/control-plane/src/apps-host/server.ts:262",
+   "set packages/control-plane/src/apps-host/server.ts:270",
+   "set packages/control-plane/src/apps-host/server.ts:273",
+   "send packages/control-plane/src/apps-host/server.ts:284",
    "update packages/agent-config/src/apps-signing.ts:51"
   ],
   "httpHops": []
@@ -166,38 +166,6 @@
   "tag": "app.open",
   "reached": [
    "(anonymous) packages/control-plane/src/apps-host/server.ts:120",
-   "(anonymous) packages/control-plane/src/apps-host/server.ts:50",
-   "admit packages/control-plane/src/apps-host/server.ts:73",
-   "fetchSiteAllowed packages/control-plane/src/apps-host/policy.ts:44",
-   "forward packages/control-plane/src/apps-host/server.ts:93",
-   "grantOf packages/agent-config/src/apps-signing.ts:74",
-   "isCapability packages/control-plane/src/apps-host/policy.ts:33",
-   "isNavigation packages/control-plane/src/apps-host/policy.ts:50",
-   "mac packages/agent-config/src/apps-signing.ts:50",
-   "operation packages/control-plane/src/apps-host/server.ts:48",
-   "reopenUrl packages/control-plane/src/apps-host/policy.ts:127",
-   "sessionCookies packages/control-plane/src/apps-host/policy.ts:55",
-   "slotOf packages/control-plane/src/apps-host/policy.ts:22",
-   "verify packages/agent-config/src/apps-signing.ts:59",
-   "verifyAppSession packages/agent-config/src/apps-signing.ts:133"
-  ],
-  "unresolved": [
-   "send packages/control-plane/src/apps-host/server.ts:105",
-   "push packages/control-plane/src/apps-host/policy.ts:61",
-   "update packages/agent-config/src/apps-signing.ts:51"
-  ],
-  "httpHops": []
- },
- {
-  "kind": "route",
-  "actor": "OP",
-  "file": "packages/control-plane/src/apps-host/server.ts",
-  "line": 123,
-  "endLine": 125,
-  "name": "ALL /a/:capability/*",
-  "tag": "app.open",
-  "reached": [
-   "(anonymous) packages/control-plane/src/apps-host/server.ts:123",
    "(anonymous) packages/control-plane/src/apps-host/server.ts:50",
    "admit packages/control-plane/src/apps-host/server.ts:73",
    "fetchSiteAllowed packages/control-plane/src/apps-host/policy.ts:44",

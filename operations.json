@@ -4838,24 +4838,6 @@
     "httpHops": []
    },
    {
-    "kind": "route",
-    "actor": "OP",
-    "name": "ALL /a/:capability/*",
-    "where": "packages/control-plane/src/apps-host/server.ts:123",
-    "reachesHome": true,
-    "components": [
-     "config",
-     "cp-apps"
-    ],
-    "writes": [],
-    "unresolved": [
-     "push",
-     "send",
-     "update"
-    ],
-    "httpHops": []
-   },
-   {
     "kind": "monitor-route",
     "actor": "OP",
     "name": "* HOP_PATH",
