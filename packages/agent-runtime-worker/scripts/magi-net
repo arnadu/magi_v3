@@ -11,6 +11,8 @@
 #
 # nftables, not iptables: iptables' owner match is missing on Fly's kernel,
 # nftables' `meta skuid` works (spike, 2026-11-21).
+# Protocols are numbers (1 ICMP, 58 ICMPv6): the image has no /etc/protocols,
+# so nft cannot resolve their names (it failed at boot on 2026-11-21).
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -71,7 +73,7 @@ table inet magi {
 		type filter hook input priority filter; policy accept;
 		iif lo accept
 		ct state established,related accept
-		meta l4proto { icmp, ipv6-icmp } accept
+		meta l4proto { 1, 58 } accept
 		tcp dport { $SSH_PORT, $MONITOR_PORT } accept
 		drop
 	}

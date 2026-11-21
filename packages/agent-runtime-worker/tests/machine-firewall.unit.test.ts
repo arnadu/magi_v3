@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { initMachineFirewall } from "../src/machine-firewall.js";
@@ -59,6 +60,23 @@ describe("initMachineFirewall", () => {
 			}),
 		);
 		await expect(fw.allow(20001, 60001)).rejects.toThrow(/failed/);
+	});
+});
+
+describe("magi-net's ruleset", () => {
+	it("names no protocol or service that needs /etc/protocols or /etc/services (absent from the image)", () => {
+		const helper = readFileSync(
+			fileURLToPath(new URL("../scripts/magi-net", import.meta.url)),
+			"utf8",
+		);
+		const ruleset = helper.slice(
+			helper.indexOf("nft -f - <<EOF"),
+			helper.indexOf("\nEOF\n"),
+		);
+		expect(ruleset).toContain("meta l4proto { 1, 58 } accept");
+		expect(ruleset).not.toMatch(
+			/l4proto[^\n]*[a-z]-?icmp|dport[^\n]*\b(ssh|http|https)\b/,
+		);
 	});
 });
 
