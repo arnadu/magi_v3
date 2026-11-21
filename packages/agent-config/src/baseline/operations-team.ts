@@ -371,11 +371,12 @@ export const TEAM_OPERATIONS = defineOperations([
 		id: "app.declare",
 		group: "apps",
 		intent:
-			"Serve a program for the operator to use in a browser: its name and the command that starts it",
+			"Serve a program for the operator to use in a browser: its name, its kind (a notebook, a Gradio app, a site) and its files",
 		actors: ["AG"],
 		home: "mm-apps",
 		rules: [
-			"Declared by writing an app file; its owner is the file's owner, as for jobs",
+			"Declared by writing a request file into `shared/apps/requests/`; its owner is the file's owner, as for jobs",
+			"The platform builds the command line for each kind; an agent does not supply one",
 			"Re-declaring one's own app replaces it; another agent's app is refused",
 		],
 		planned: true,
@@ -389,7 +390,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		rules: [
 			"An app runs as its owner, with no secrets, like a job",
 			"The platform gives it its port (`$PORT`) and its path (`$BASE_PATH`)",
-			"It listens on 127.0.0.1 only; one found listening on another address is stopped, and its owner told",
+			"It listens on 127.0.0.1 only, and the machine refuses connections to its port from any other machine and from any OS user but the daemon and its owner",
 			"Watched by its process and by a regular check that it answers: one that exits or stops answering is restarted, at most a few times an hour, then `failed`, and its owner told",
 			"Stopped when the mission is suspended, when the daemon restarts, and after the idle time unopened; nothing restarts by itself",
 		],
@@ -412,7 +413,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		id: "app.status",
 		group: "apps",
 		intent:
-			"A mission's apps: their state, owner, when each was last opened, its CPU and memory",
+			"A mission's apps: their state, owner, when each was last opened, its memory",
 		actors: ["OP", "MC", "AG"],
 		home: "mm-apps",
 		rules: [],
@@ -427,7 +428,7 @@ export const TEAM_OPERATIONS = defineOperations([
 		home: "cp-apps",
 		rules: [
 			"Served from the apps host, never from the cockpit's address",
-			"Only the mission's owner gets in, checked on every request, WebSockets included",
+			"Only the mission's owner gets in: checked when the app is opened, then by a signed session of at most 12 hours on every request, WebSockets included",
 			"Opening a stopped app starts it, within the limit on apps running at once",
 			"A link in the mission cockpit, or a URL to copy: it works for the mission's owner in another tab; anyone else is sent to sign in",
 		],

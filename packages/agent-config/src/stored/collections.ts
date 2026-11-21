@@ -11,6 +11,7 @@
 
 import type { Collection, Db, Document } from "mongodb";
 import type { MissionAnomaly } from "./anomalies.js";
+import type { MissionAppDoc } from "./apps.js";
 import type { ConversationDoc } from "./conversation.js";
 import type { LlmCallLogEntry } from "./llm-calls.js";
 import type { MailboxMessage } from "./mailbox.js";
@@ -35,6 +36,7 @@ export const COLLECTION_NAMES = {
 	objectivesGoals: "objectivesGoals",
 	objectivesEvents: "objectivesEvents",
 	missionResources: "missionResources",
+	missionApps: "missionApps",
 	platformResources: "platformResources",
 	resourceAlertState: "resourceAlertState",
 	resourceSnapshots: "resourceSnapshots",
@@ -59,6 +61,7 @@ export interface StoredDocs {
 	objectivesGoals: Document;
 	objectivesEvents: Document;
 	missionResources: MissionResourceSample;
+	missionApps: MissionAppDoc;
 	platformResources: PlatformResourcesDoc;
 	resourceAlertState: Document;
 	resourceSnapshots: Document;
@@ -85,6 +88,7 @@ export const PER_MISSION_COLLECTIONS = [
 	"missionConfigRevisions",
 	"missionAnomalies",
 	"missionResources",
+	"missionApps",
 	"machineSegments",
 ] as const satisfies readonly CollectionKey[];
 

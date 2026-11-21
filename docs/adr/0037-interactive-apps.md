@@ -1,7 +1,9 @@
 # ADR-0037: Interactive apps on the mission machine, served from a separate apps host
 
 **Status:** Proposed (2026-11-20). Reviewed by appsec on 2026-11-20 (approved with conditions,
-folded in below); not yet accepted by the product owner
+folded in below). Product owner's decisions of 2026-11-21 folded in: Gradio rather than
+Streamlit, declaration by request files, three kinds, records in `missionApps`. Accepted once
+the spike ("Before building") confirms it
 **Relates to:** issue #42; the catalog's planned entity `app`, operations `app.*`, journeys
 J-22 and A-10, invariants `app.loopback-only`, `app.as-owner`, `app.bounded` and
 `sec.served-apart`; ADR-0033 (jobs run as their author); F-042 (the monitor server is reachable
@@ -24,7 +26,7 @@ Facts that shape the design:
 
 - **Nothing on the mission machine is reachable from outside except the monitor server**
   (port 4000), through the control plane's proxy. Neither that proxy nor the monitor server
-  carries WebSockets today. Jupyter and Streamlit both need them.
+  carries WebSockets today. JupyterLab needs them, and Gradio may use them.
 - **An app runs code an agent wrote,** in the operator's browser as well as on the machine. A
   prompt-injected agent could write a hostile app, so the design must hold if the app is
   hostile.
@@ -39,10 +41,12 @@ Facts that shape the design:
 - **Loopback is shared by every OS user on the machine.** An app listening on `127.0.0.1` can
   be reached by every agent of the mission, not only its owner. For Jupyter, that would let one
   agent run code as another, which defeats the per-agent OS isolation.
-- **Mission machines do not filter inbound private-network traffic** (to be confirmed, see
-  "Before building"). A server that listens on all interfaces may be reachable from every other
-  machine in the Fly app, other tenants' missions included. Streamlit listens on all interfaces
-  by default, and an agent can start one today with Bash.
+- **Mission machines are not reachable from the internet** (checked 2026-11-21: the missions
+  apps have no public IPs, and no machine declares a public service). **They do not filter
+  inbound private-network traffic** (to be confirmed, see "Before building"). A server that
+  listens on all interfaces may be reachable from every other machine in our Fly organization,
+  other tenants' missions included. Many servers listen on all interfaces by default, and an
+  agent can start one today with Bash.
 - **Background jobs are batch work,** killed after 30 minutes (`job-runner.ts`). An app must
   keep running, so it needs its own lifecycle.
 
@@ -57,14 +61,15 @@ reach the cockpit's session (`sec.served-apart`, first half).
 It holds none of the cockpit's secrets: no database credentials, no Fly API token, no Firebase
 key, no monitor signing key. It holds two keys of its own (decision 3), and it is stateless: all
 it needs to route a request is in the request's signed cookie. Fly can stop it when idle and
-start it on the next request.
+start it on the next request. It runs a single machine, so that a ticket's single use can be
+kept in memory.
 
 ### 2. One mission's app cannot reach another's: a secret in each app's path
 
 All apps share one origin, so the browser does not keep them apart. The design does:
 
 - **Each app gets a capability:** a random 128-bit value, made by the daemon when the app is
-  declared, kept in the daemon's private record, and never shown to agents. The app is served
+  declared, kept in the app's record (`missionApps`, decision 6), and never shown to agents. The app is served
   at `https://magi-apps-dev.fly.dev/a/<capability>/`, which is also its `$BASE_PATH`.
 - **Each request needs both** the capability in its path and an app-session cookie for that
   same capability (decision 3). Mission A's app cannot load mission B's app without B's
@@ -89,7 +94,7 @@ IndexedDB, the Cache API. Two consequences:
 
 This affects one operator's own missions only: each operator's browser holds only that
 operator's app sessions. But it crosses missions, and through a notebook it reaches code
-running as another mission's agent. The spike checks what JupyterLab and Streamlit write to
+running as another mission's agent. The spike checks what JupyterLab and Gradio write to
 origin storage ("Before building"), and the `serve-app` skill tells agents never to store
 mission data or URLs there. The full fix is a separate origin per app, which needs
 either a domain of our own or a port per running app on the apps host. Both are deferred, and
@@ -110,8 +115,12 @@ named in "Alternatives considered".
    the same fields as the ticket. It then redirects to the app.
 5. **A copied URL** is `/a/<capability>/`. In another tab of the same browser the cookie is
    there, and it works. Anywhere else, or after the cookie has expired, the apps host redirects
-   to the mission cockpit. There, the operator is signed in and is sent back with a new ticket,
-   while anyone else is refused at the cockpit.
+   to the cockpit page `/?openApp=<capability>`. That navigation comes from another site, so
+   the cockpit's `SameSite=Strict` cookie is not sent with it, but the page itself needs none:
+   it signs the operator in as usual, then calls `POST /api/apps/reopen` with the capability,
+   on the same site, cookie included. The control plane finds the app by its capability,
+   checks that the caller owns its mission, and returns a new ticket. Anyone else gets "not
+   found".
 
 Sessions are signed and stateless: the apps host has no database, by design, so it cannot
 look up ownership on each request. Missions have no change of owner today. If one is added, it
@@ -134,8 +143,10 @@ browser ─https─▶ apps host (Fly app) ─6PN─▶ mission machine :4000, m
   server accepts it on `/apps/*` only, and accepts nothing else there. The cockpit's monitor
   token does not open apps, and the apps token opens nothing else.
 - **Monitor server to app:** a new route forwards HTTP and WebSocket upgrades to the app's
-  loopback port. It records when each app was last opened, for the idle stop. The path is not
-  stripped: apps serve under `$BASE_PATH`.
+  loopback port. It records when each app was last opened, for the idle stop. Whether the
+  path prefix is kept depends on the kind (decision 7): JupyterLab serves under its base URL
+  and gets the full path; Gradio and the site script serve at `/` and get the path with the
+  prefix removed, as Gradio's guide for running behind a proxy describes.
 - **WebSockets** are carried at every hop. That is new code in the monitor server and in the
   apps host. The control plane's existing proxy is not involved. The apps host refuses an
   upgrade whose `Origin` is not its own. This guards against other sites only, in addition to
@@ -178,23 +189,34 @@ boundary in the threat model.
 Jupyter's own token stays on as a second layer: the daemon generates it, the monitor server's
 hop adds it (`Authorization: token …`), and the browser never sees it.
 
-### 6. Declaring and running apps: tools, and the daemon as supervisor
+### 6. Declaring and running apps: request files, and the daemon as supervisor
 
-**Declaring an app.** The agent calls a new tool, `ServeApp { name, command, directory,
-description }`. The tool runs in the daemon, which knows which agent called it, so the app's
-owner is established without inferring it from a file. `ServeApp` on an existing app of the
-same owner replaces it; another agent's app is refused. Two more tools: `ListApps`
-(`app.status`) and `ControlApp { name, action: start | stop | remove }` (`app.control`; an
-agent may act on its own apps only, the mission copilot on any). This changes one rule in the
-approved catalog: `app.declare` said "declared by writing an app file". The ADR proposes the
-tool, for the reasons in "Alternatives considered"; the product owner approves the change.
+**Declaring an app** works like submitting a job. The `serve-app` skill's script writes a
+request file into `shared/apps/requests/`: `{id, action: declare | start | stop | remove, name,
+kind, path, handlers, description}`. The daemon reads the directory every 5 seconds. The
+request's owner is the file's owner, established by the same checks as for jobs and schedules
+(ADR-0033: no symlink, no hard link, not the daemon's, an agent of this mission). The request
+is checked field by field: the name is a slug, the kind one of three, the path resolved inside
+the owner's workdir or `shared/`. An agent acts on its own apps only; the mission copilot on
+any. Re-declaring one's own app replaces it; another agent's app is refused.
+
+The daemon answers in `shared/apps/status/<name>.json` (read-only to agents, without the
+capability), naming the request it answers. The script writes its request atomically, waits
+for that answer, and prints the app's state, or the error with the last lines of its log. The
+agent gets its answer in the same command, as a tool would give it, without a new tool.
+
+**The record:** each app is a document in `missionApps`, keyed by mission and name, written
+only by the supervisor: owner, kind, path, capability, state, port, restarts, when it was last
+opened. The control plane reads it to open an app; the cockpit lists it.
 
 **Running an app** (`app.run`, the daemon's new `mm-apps` component):
 
-- **Starting:** `sudo -u <owner>` as for jobs, in its own process group, with a minimal
-  environment (`PATH`, `HOME`, `PORT`, `BASE_PATH`, and the Jupyter token when relevant) and no
-  secrets. The working directory must be inside the owner's workdir or `shared/`, checked
-  with `safe-path.ts`. The port comes from a reserved loopback range, 20000–20099.
+- **Starting:** `sudo -u <owner>` through a new wrapper, `/usr/local/bin/magi-app`, in its own
+  process group, with a minimal environment and no secrets: `PATH`, `HOME`, `PORT`,
+  `BASE_PATH`, the kind's settings, and the Jupyter token. The token goes in the environment,
+  never on the command line, which every user can read in `/proc`. The daemon builds the
+  command line for the kind (decision 7); an agent never supplies one. The port comes from a
+  reserved loopback range, 20000–20099.
 - **Watching:**
   - the daemon is told at once when the process exits;
   - it checks every 15 seconds that the port answers;
@@ -215,7 +237,7 @@ tool, for the reasons in "Alternatives considered"; the product owner approves t
 - **The limit:** at most 3 apps of a mission run at once (a mission setting). A start beyond it
   is refused, and the refusal names the apps running.
 - **Logs:** each app's output goes to a file in its owner's workdir, which the owner can read.
-- **Resources:** `app.status` shows each app's CPU and memory. A notebook with a large
+- **Resources:** `app.status` shows each app's memory. A notebook with a large
   dataframe needs a bigger machine, through the existing upgrade path (ADR-0031). No
   per-app memory limit in this version.
 
@@ -227,13 +249,19 @@ them:
 | Case | Supported | How it runs under `$PORT` and `$BASE_PATH` |
 |---|---|---|
 | Notebook with the operator | JupyterLab, with real-time collaboration (`jupyter-collaboration`) | `jupyter lab --ServerApp.ip=127.0.0.1 --ServerApp.port=$PORT --ServerApp.base_url=$BASE_PATH`, terminals disabled |
-| Data app | **Streamlit** | `streamlit run app.py --server.address 127.0.0.1 --server.port $PORT --server.baseUrlPath $BASE_PATH --server.headless true` |
-| Small website | Static files, plus a few endpoints if needed | a platform script, `serve-site`, that serves a folder under `$BASE_PATH`, plus optional handlers from a Python file |
+| Data app | **Gradio** | `python <file>` with `GRADIO_SERVER_NAME=127.0.0.1`, `GRADIO_SERVER_PORT=$PORT`, `GRADIO_ROOT_PATH=$BASE_PATH`, `GRADIO_ANALYTICS_ENABLED=False`; the prefix is removed before the request reaches it |
+| Small website | Static files, plus a few endpoints if needed | a platform script, `serve-site`, that serves a folder at `/` (prefix removed), plus optional handlers from a Python file |
 
-**Streamlit rather than Gradio:** one framework is enough. Streamlit suits the meteorology case
-(controls and charts over a model), and its proxy settings are documented. Gradio is not
-blocked: any server that honours `$PORT` and `$BASE_PATH` works. But the skill and the image
-support Streamlit.
+These are the only three **kinds** an agent can declare (`jupyter`, `gradio`, `site`). The
+platform builds each command line, so binding to loopback and the base path hold by
+construction; a new kind is a new recipe here.
+
+**Gradio rather than Streamlit** (product owner, 2026-11-21): one framework is enough, and
+Gradio's settings for a path behind a proxy are documented. Its version is pinned to one the
+spike has checked: breakage behind custom domains has been reported from 6.4 on. Gradio can
+open a public tunnel of its own (`launch(share=True)`); the skill forbids it, but that is an
+instruction, not a control. Closing it, as for any tunnel an agent could start with Bash, needs
+an outbound firewall, which belongs with the security-testing work.
 
 **The notebook case:**
 - The notebook is a file in the mission's shared folder.
@@ -254,7 +282,8 @@ no more.
 - reading its log;
 - telling the operator where to find the app ("open it from the Apps tab").
 
-It also tells agents never to start a server with Bash outside `ServeApp`, and never to keep
+It also tells agents never to start a server with Bash outside `serve-app`, never to use
+Gradio's `share=True`, and never to keep
 mission data or the app's own URL in the browser's storage (decision 2).
 
 ## Alternatives considered
@@ -262,8 +291,8 @@ mission data or the app's own URL in the browser's storage (decision 2).
 - **Serve apps from the cockpit's address,** under `/missions/<id>/apps/…`. Rejected: an app's
   scripts would act with the operator's session.
 - **A sandboxed iframe in the cockpit,** as for HTML previews (TB-20). Rejected: an opaque
-  origin has no cookies and cannot call back to its own server in the usual way. Jupyter and
-  Streamlit both break.
+  origin has no cookies and cannot call back to its own server in the usual way. JupyterLab and
+  Gradio both break.
 - **The control plane on a second port.** Rejected: a different origin but the same site, so
   the cockpit's `SameSite=Strict` cookie would be sent with requests from apps.
 - **A hostname per mission or per app.** That would give a separate origin, with separate
@@ -273,10 +302,13 @@ mission data or the app's own URL in the browser's storage (decision 2).
   without a domain: Fly can expose a range of ports. It means mapping ports to apps, and
   cookies are still shared across ports, so the path rules stay. A candidate if the residual
   storage risk is judged too high.
-- **Declaring apps by file**, like jobs. A file can be written by a script or a job, and needs
-  no new tool. But the owner must then be inferred from the file's owner, the agent gets no
-  answer (did it start? at which URL?), and arguments are not schema-checked. Proposed against;
-  the tool is simpler and safer for a long-running process.
+- **A tool to declare apps** (`ServeApp`, `ListApps`, `ControlApp`), run in the daemon, which
+  knows the caller. Rejected: the owner of a request file is already established safely for
+  jobs and schedules, a script can wait for the answer, and a file can be checked as strictly
+  as a tool's arguments. One way to hand the platform work, for jobs and apps alike.
+- **Any command line an agent chooses**, with `$PORT` and `$BASE_PATH`. Rejected for now: the
+  platform could not vouch for the flags (loopback, base path, no tunnel), and the firewall
+  would be the only guard. A new kind is added as a recipe instead.
 - **Tunnels** (ngrok, localtunnel). Rejected: unauthenticated, through a third party.
 - **Exposing app ports on the private network** directly to the apps host. Rejected: apps would
   listen beyond loopback, which is what decision 5 forbids.
@@ -288,12 +320,12 @@ mission data or the app's own URL in the browser's storage (decision 2).
   - two secrets, `APPS_TICKET_KEY` (control plane and apps host) and `APPS_SIGNING_KEY`
     (control plane and apps host; the per-mission token derived from it goes to the machine);
   - a monitor route with WebSocket forwarding;
-  - the `mm-apps` supervisor and three agent tools;
+  - the `mm-apps` supervisor, its request directory and the `missionApps` collection;
   - an Apps tab in the cockpit;
   - the `serve-app` skill;
   - a `sudo` rule and its helper;
   - firewall rules at machine boot;
-  - JupyterLab, `jupyter-collaboration` and Streamlit in the mission image, which grows it.
+  - JupyterLab, `jupyter-collaboration` and Gradio in the mission image, which grows it.
 - **Threat model:** four new boundaries: the operator's browser and the apps host; the apps
   host and the monitor server; the monitor server and an app on loopback; the daemon and the
   `magi-net` helper. They go into `threat-model.md` and `trust-boundaries.md` before building.
@@ -309,12 +341,15 @@ mission data or the app's own URL in the browser's storage (decision 2).
   - an app that eats the machine's memory (the daemon is on the same machine);
   - the apps host down (the cockpit shows the app as running, but Open fails);
   - a daemon restart (every app stops).
-- **Catalog:**
-  - `app.declare`'s rule changes from a file to the `ServeApp` tool, if approved;
-  - `app.open`'s "checked on every request" is clarified as "a signed session of at most 12
-    hours, on every request";
-  - the components `mm-apps`, `cp-apps` and `ui-apps` get their paths, with `cp-apps` being
-    the new apps host.
+- **Catalog** (approved 2026-11-21):
+  - the `app` entity is stored in `missionApps`, written only by `mm-apps`;
+  - `app.declare` names the request directory and says the platform builds the command line;
+  - `app.run`'s loopback rule is enforced by the firewall rather than by detecting and stopping
+    an app;
+  - `app.open` reads "checked when the app is opened, then by a signed session of at most 12
+    hours on every request, WebSockets included";
+  - the components `mm-apps`, `cp-apps` and `ui-apps` get their paths when built, with
+    `cp-apps` being the new apps host.
 
 ## Before building
 
@@ -326,10 +361,10 @@ mission data or the app's own URL in the browser's storage (decision 2).
    through `sudo`.
 3. **A spike, through both hops,** with WebSockets and a path prefix:
    - JupyterLab with collaboration;
-   - Streamlit;
+   - Gradio, with the prefix removed;
    - a static site.
 
-   Measure the image's growth and the memory each needs. Check what JupyterLab and Streamlit
+   Measure the image's growth and the memory each needs. Check what JupyterLab and Gradio
    write to origin storage, and whether any of it contains the app's path.
 4. **A cross-site WebSocket upgrade is refused** at the apps host.
 5. **A hostile app,** kept as a test: from its page it tries to call the cockpit's API, read

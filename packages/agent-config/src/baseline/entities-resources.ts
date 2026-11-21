@@ -98,9 +98,10 @@ const app = defineEntity({
 	id: "app",
 	name: "Interactive app (planned)",
 	store: {
-		kind: "other",
-		where:
-			"Declared by files under `shared/apps/`; the daemon's private record is authoritative",
+		kind: "collection",
+		collection: "missionApps",
+		type: "MissionAppDoc",
+		statusField: "status",
 	},
 	states: [
 		{
@@ -134,6 +135,13 @@ const app = defineEntity({
 			to: "failed",
 			actors: ["PLT"],
 			note: "Its owner is told",
+		},
+		{
+			from: "starting",
+			event: "stop, mission suspended, or daemon restarted before it answers",
+			to: "stopped",
+			actors: ["OP", "MC", "AG", "PLT"],
+			note: "AG: its own apps",
 		},
 		{
 			from: "running",
@@ -189,7 +197,7 @@ const app = defineEntity({
 		},
 	],
 	notes:
-		"A long-running program an agent serves on the mission machine for the operator to use in a browser: a notebook, a Streamlit or Gradio app, a static site. Withdrawing the declaration stops the app and removes it.",
+		"A long-running program an agent serves on the mission machine for the operator to use in a browser: a notebook, a Gradio app, a static site. Declared by a request file the agent writes (`shared/apps/requests/`), like a job. Withdrawing the declaration stops the app and removes it.",
 });
 
 const alert = defineEntity({

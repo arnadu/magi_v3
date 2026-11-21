@@ -294,9 +294,9 @@ Who changed a file and when is the platform invariant `files.attributed`.
 
 ## Interactive app (planned) (`app`)
 
-Stored in: Declared by files under `shared/apps/`; the daemon's private record is authoritative.
+Stored as `missionApps` (`MissionAppDoc`, field `status`).
 
-A long-running program an agent serves on the mission machine for the operator to use in a browser: a notebook, a Streamlit or Gradio app, a static site. Withdrawing the declaration stops the app and removes it.
+A long-running program an agent serves on the mission machine for the operator to use in a browser: a notebook, a Gradio app, a static site. Declared by a request file the agent writes (`shared/apps/requests/`), like a job. Withdrawing the declaration stops the app and removes it.
 
 | State | Meaning |
 |---|---|
@@ -310,6 +310,7 @@ A long-running program an agent serves on the mission machine for the operator t
 | — | declare | `starting` | AG |  |
 | `starting` | answers on its port | `running` | PLT |  |
 | `starting` | exits or never answers, past the restart limit | `failed` | PLT | Its owner is told |
+| `starting` | stop, mission suspended, or daemon restarted before it answers | `stopped` | OP, MC, AG, PLT | AG: its own apps |
 | `running` | exits or stops answering, past the restart limit | `failed` | PLT | Its owner is told |
 | `running` | stop | `stopped` | OP, MC, AG | AG: its own apps; its owner is told when someone else stops it |
 | `running` | mission suspended, daemon restarted, or unopened past the idle time | `stopped` | PLT |  |

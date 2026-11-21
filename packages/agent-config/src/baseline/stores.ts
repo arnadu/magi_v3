@@ -72,6 +72,11 @@ export const DATA_STORES: readonly DataStore<ComponentId>[] = [
 		owner: "mm-state",
 	},
 	{
+		collection: "missionApps",
+		holds: "app",
+		owner: "mm-apps",
+	},
+	{
 		collection: "platformResources",
 		holds: "Platform-wide resource samples (database storage)",
 		owner: "cp-oversight",

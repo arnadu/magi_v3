@@ -3,6 +3,7 @@ export type {
 	AnomalySeverity,
 	MissionAnomaly,
 } from "./anomalies.js";
+export type { AppKind, AppStatus, MissionAppDoc } from "./apps.js";
 export {
 	COLLECTION_NAMES,
 	type CollectionKey,

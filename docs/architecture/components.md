@@ -77,6 +77,7 @@ Each MongoDB collection, what it holds and the one component whose code writes i
 | `objectivesGoals` | objective | `mm-state` |  |
 | `objectivesEvents` | task (and KPI, cost and allocation events) | `mm-state` |  |
 | `missionResources` | The latest resource sample of each mission | `mm-state` |  |
+| `missionApps` | app | `mm-apps` |  |
 | `platformResources` | Platform-wide resource samples (database storage) | `cp-oversight` |  |
 | `resourceAlertState` | Which resource alerts are raised, for de-duplication | `mm-state` |  |
 | `resourceSnapshots` | One daily resource report per user | `cp-oversight` |  |
