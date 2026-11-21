@@ -123,6 +123,13 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 			"Per-mission token required on every MonitorServer route, derived from MONITOR_SIGNING_KEY and injected at machine creation. Mandatory when FLY_APP_NAME is set; empty means no auth, for a local developer daemon only.",
 	},
 	{
+		name: "APPS_ALLOW_NO_FIREWALL",
+		planes: ["execution"],
+		default: "false",
+		description:
+			'Local developer daemon only: "true" lets interactive apps start without the machine firewall (there is no magi-net helper off Fly). Ignored on Fly, where apps need the firewall on (ADR-0037).',
+	},
+	{
 		name: "CONTROL_PLANE_URL",
 		planes: ["execution"],
 		description:

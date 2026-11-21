@@ -307,10 +307,11 @@ A long-running program an agent serves on the mission machine for the operator t
 
 | From | Event | To | Who | Note |
 |---|---|---|---|---|
-| — | declare | `starting` | AG |  |
+| — | declare | `stopped` | AG | Started at once (stopped → starting) unless the limit on apps running or the firewall prevents it |
 | `starting` | answers on its port | `running` | PLT |  |
 | `starting` | exits or never answers, past the restart limit | `failed` | PLT | Its owner is told |
 | `starting` | stop, mission suspended, or daemon restarted before it answers | `stopped` | OP, MC, AG, PLT | AG: its own apps |
+| `running` | exits or stops answering, within the restart limit | `starting` | PLT | Restarted at once; the restart is counted |
 | `running` | exits or stops answering, past the restart limit | `failed` | PLT | Its owner is told |
 | `running` | stop | `stopped` | OP, MC, AG | AG: its own apps; its owner is told when someone else stops it |
 | `running` | mission suspended, daemon restarted, or unopened past the idle time | `stopped` | PLT |  |
@@ -318,9 +319,9 @@ A long-running program an agent serves on the mission machine for the operator t
 | `failed` | start, or the operator opens it | `starting` | OP, MC, AG | AG: its own apps |
 
 Invariants:
-- `app.loopback-only`: An app is reachable only through the apps host: it never listens on an address another machine can reach. *(not yet enforced)*
-- `app.as-owner`: An app runs as its owner's OS user, with no secrets. *(not yet enforced)*
-- `app.bounded`: No app runs while its mission is suspended or after the idle time unopened; no more than the limit run at once; a failing app is not restarted without limit. *(not yet enforced)*
+- `app.loopback-only`: An app is reachable only through the apps host: it never listens on an address another machine can reach. *(enforced by runtime check in agent-runtime-worker/src/app-commands.ts: appLaunch (every kind bound to 127.0.0.1); machine-firewall.ts: initMachineFirewall (inbound dropped but for 22 and 4000, loopback app ports only for the daemon and the owner), a test)*
+- `app.as-owner`: An app runs as its owner's OS user, with no secrets. *(enforced by runtime check in agent-runtime-worker/src/app-processes.ts: appProcesses (sudo -u the owner through magi-app, whose rule keeps only the app variables), a test)*
+- `app.bounded`: No app runs while its mission is suspended or after the idle time unopened; no more than the limit run at once; a failing app is not restarted without limit. *(enforced by runtime check in agent-runtime-worker/src/app-supervisor.ts: createAppSupervisor (the limit, the idle stop, three restarts an hour); app-store.ts: markAllStopped (nothing survives a restart), a test)*
 
 ## Resource alert (`alert`)
 

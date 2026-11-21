@@ -283,12 +283,12 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 	{
 		id: "mm-apps",
 		plane: "mission-machine",
-		name: "Interactive apps (planned)",
+		name: "Interactive apps",
 		responsibility:
 			"App declarations, starting and watching apps, the hop from the monitor server to each app",
 		layer: 4,
 		root: MM,
-		paths: [],
+		paths: ["app-*"],
 	},
 	{
 		id: "mm-state",

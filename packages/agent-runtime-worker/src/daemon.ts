@@ -47,6 +47,7 @@ import {
 	type TeamConfig,
 } from "@magi/agent-config";
 import { config as dotenvConfig } from "dotenv";
+import { startApps } from "./daemon-boot/apps-start.js";
 import { initMachineFirewall } from "./machine-firewall.js";
 import { removeIfExists } from "./remove-if-exists.js";
 
@@ -378,6 +379,16 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		startJobRunner,
 	);
 
+	const { apps, stopApps } = await startApps({
+		db,
+		missionId,
+		sharedDir,
+		workdir,
+		teamConfig,
+		mailboxRepo,
+		firewall,
+	});
+
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.
 	const waitForMail = createMailWaiter(
 		storedCollection(db, "mailbox"),
@@ -416,6 +427,8 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		toolApiServer,
 		stopJobRunner,
 		firewall,
+		apps,
+		stopApps,
 		waitForMail,
 		missionCopilotTools,
 	};
@@ -480,6 +493,13 @@ async function runAndShutdown(ctx: RunningMission): Promise<void> {
 		monitor.stop();
 		ctx.toolApiServer.stop();
 		ctx.stopJobRunner();
+		await ctx
+			.stopApps()
+			.catch((e: Error) =>
+				console.error(
+					`[daemon] stopping apps at shutdown failed: ${e.message}; their processes end with the machine`,
+				),
+			);
 		await ctx.client.close();
 		removeIfExists(
 			ctx.pidFile,

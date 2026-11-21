@@ -331,6 +331,19 @@ export function extractWrites() {
 					else if (INSERTS.has(method) || method === "replaceOne")
 						doc = method === "replaceOne" ? n.arguments[1] : n.arguments[0];
 					const statusProp = doc && propOf(objectOf(checker, doc), "status");
+					// An upsert's $setOnInsert creates the document in that status.
+					const onInsert =
+						!statusProp && UPDATES.has(method)
+							? propOf(
+									objectOf(
+										checker,
+										propValue(
+											propOf(objectOf(checker, n.arguments[1]), "$setOnInsert"),
+										),
+									),
+									"status",
+								)
+							: undefined;
 					if (statusProp) {
 						const s = states(checker, propValue(statusProp));
 						row.status = {
@@ -339,6 +352,13 @@ export function extractWrites() {
 							from: INSERTS.has(method)
 								? { op: "none" }
 								: filterOn(checker, n.arguments[0]),
+						};
+					} else if (onInsert) {
+						const s = states(checker, propValue(onInsert));
+						row.status = {
+							to: s.values ?? ["?"],
+							toVia: s.via,
+							from: { op: "none" },
 						};
 					}
 					writes.push(row);

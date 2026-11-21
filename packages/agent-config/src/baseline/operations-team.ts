@@ -379,7 +379,6 @@ export const TEAM_OPERATIONS = defineOperations([
 			"The platform builds the command line for each kind; an agent does not supply one",
 			"Re-declaring one's own app replaces it; another agent's app is refused",
 		],
-		planned: true,
 	},
 	{
 		id: "app.run",
@@ -394,7 +393,6 @@ export const TEAM_OPERATIONS = defineOperations([
 			"Watched by its process and by a regular check that it answers: one that exits or stops answering is restarted, at most a few times an hour, then `failed`, and its owner told",
 			"Stopped when the mission is suspended, when the daemon restarts, and after the idle time unopened; nothing restarts by itself",
 		],
-		planned: true,
 	},
 	{
 		id: "app.control",

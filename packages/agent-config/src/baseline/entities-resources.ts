@@ -122,7 +122,13 @@ const app = defineEntity({
 		},
 	],
 	transitions: [
-		{ from: null, event: "declare", to: "starting", actors: ["AG"] },
+		{
+			from: null,
+			event: "declare",
+			to: "stopped",
+			actors: ["AG"],
+			note: "Started at once (stopped → starting) unless the limit on apps running or the firewall prevents it",
+		},
 		{
 			from: "starting",
 			event: "answers on its port",
@@ -142,6 +148,13 @@ const app = defineEntity({
 			to: "stopped",
 			actors: ["OP", "MC", "AG", "PLT"],
 			note: "AG: its own apps",
+		},
+		{
+			from: "running",
+			event: "exits or stops answering, within the restart limit",
+			to: "starting",
+			actors: ["PLT"],
+			note: "Restarted at once; the restart is counted",
 		},
 		{
 			from: "running",
@@ -183,17 +196,38 @@ const app = defineEntity({
 		{
 			id: "app.loopback-only",
 			text: "An app is reachable only through the apps host: it never listens on an address another machine can reach.",
-			enforcedBy: [],
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/app-commands.ts: appLaunch (every kind bound to 127.0.0.1); machine-firewall.ts: initMachineFirewall (inbound dropped but for 22 and 4000, loopback app ports only for the daemon and the owner)",
+				},
+				{ kind: "test" },
+			],
 		},
 		{
 			id: "app.as-owner",
 			text: "An app runs as its owner's OS user, with no secrets.",
-			enforcedBy: [],
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/app-processes.ts: appProcesses (sudo -u the owner through magi-app, whose rule keeps only the app variables)",
+				},
+				{ kind: "test" },
+			],
 		},
 		{
 			id: "app.bounded",
 			text: "No app runs while its mission is suspended or after the idle time unopened; no more than the limit run at once; a failing app is not restarted without limit.",
-			enforcedBy: [],
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/app-supervisor.ts: createAppSupervisor (the limit, the idle stop, three restarts an hour); app-store.ts: markAllStopped (nothing survives a restart)",
+				},
+				{ kind: "test" },
+			],
 		},
 	],
 	notes:

@@ -9,6 +9,7 @@ Secrets are never logged and never reach agent tool or job subprocesses (those g
 |---|---|---|---|---|
 | `AGENT_WORKDIR` | mission daemon, CLI | `cwd` | — | Root of agent home directories and mission folders (`/missions` on Fly). |
 | `ANTHROPIC_API_KEY` | control plane, mission daemon, CLI | — | required, secret | Anthropic API key for agents, the copilots and vision calls. |
+| `APPS_ALLOW_NO_FIREWALL` | mission daemon | `false` | — | Local developer daemon only: "true" lets interactive apps start without the machine firewall (there is no magi-net helper off Fly). Ignored on Fly, where apps need the firewall on (ADR-0037). |
 | `ATLAS_STORAGE_LIMIT_MB` | control plane | `10240` | — | Shared Atlas cluster storage quota for the atlas-storage-high check (M10 tier; 512 for an M0). |
 | `BRAVE_SEARCH_API_KEY` | mission daemon, CLI | — | secret | Enables the SearchWeb tool (free tier: 2000 requests/month). Without it the tool is absent. |
 | `CONTROL_API_KEY` | control plane | — | required, secret | Admin key (API and cockpit). Also the only identity that may raise a mission's ceiling above the platform ceiling. |

@@ -218,6 +218,17 @@ export const TeamConfigSchema = z.object({
 		memoryMb: z.number().int().positive().max(4096).optional(),
 		/** Fly Machines guest CPU count. Same trust/effect caveats as memoryMb. */
 		cpus: z.number().int().positive().max(4).optional(),
+		/**
+		 * Interactive apps (ADR-0037): how many may run at once, and how long
+		 * one may go unopened before it is stopped. Defaults 3 and 4 hours.
+		 */
+		apps: z
+			.object({
+				maxRunning: z.number().int().min(1).max(10).optional(),
+				idleHours: z.number().min(0.25).max(48).optional(),
+			})
+			.strict()
+			.optional(),
 	}),
 	agents: z.array(AgentSchema).min(1).max(MAX_AGENTS),
 	/**

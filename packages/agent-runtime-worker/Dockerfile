@@ -145,6 +145,8 @@ RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(root) NOPASSWD: /usr/local/sbin/magi-net" >> /etc/sudoers.d/magi && \
+    echo "Defaults!/usr/local/bin/magi-app env_keep += \"PORT BASE_PATH JUPYTER_TOKEN GRADIO_SERVER_NAME GRADIO_SERVER_PORT GRADIO_ROOT_PATH GRADIO_ANALYTICS_ENABLED GRADIO_RUN_HISTORY\"" >> /etc/sudoers.d/magi && \
+    echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-app" >> /etc/sudoers.d/magi && \
     chmod 440 /etc/sudoers.d/magi
 
 # magi-net — the machine firewall (ADR-0037 decision 5, F-081): inbound only
@@ -162,6 +164,12 @@ RUN printf '#!/bin/sh\nexec /usr/local/bin/node "$@"\n' > /usr/local/bin/magi-no
 # magi-job wrapper — runs an arbitrary script as the agent's OS user.
 RUN printf '#!/bin/sh\nexec "$@"\n' > /usr/local/bin/magi-job && \
     chmod +x /usr/local/bin/magi-job
+
+# magi-app wrapper — runs an interactive app as its owner (ADR-0037). Its own
+# sudo rule keeps exactly the app variables the daemon builds (app-commands.ts
+# APP_ENV_KEEP), and nothing else; it also carries the owner-side kill.
+RUN printf '#!/bin/sh\nexec "$@"\n' > /usr/local/bin/magi-app && \
+    chmod +x /usr/local/bin/magi-app
 
 # magi-tool CLI wrapper.
 RUN printf '#!/bin/sh\nexec /usr/local/bin/node /app/packages/agent-runtime-worker/dist/cli-tool.js "$@"\n' \
@@ -213,6 +221,11 @@ RUN chown root:mission-copilot /opt/magi-src && chmod -R 750 /opt/magi-src
 # Install data factory Python dependencies into the shared venv.
 RUN /opt/magi/venv/bin/pip install --no-cache-dir \
     -r /app/packages/skills/data-factory/requirements.txt
+
+# Interactive apps (ADR-0037): JupyterLab with real-time collaboration, Gradio.
+# About 550 MB installed (spike, 2026-11-21).
+RUN /opt/magi/venv/bin/pip install --no-cache-dir \
+    -r /app/packages/skills/serve-app/requirements.txt
 
 # Volume mount point for the Fly.io workspace volume.
 RUN mkdir -p /missions && chown magi-operator:magi-shared /missions

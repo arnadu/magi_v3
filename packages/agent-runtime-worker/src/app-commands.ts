@@ -1,0 +1,119 @@
+/**
+ * The command line and environment for each kind of app (ADR-0037 decision
+ * 7). The platform builds them; an agent supplies only the kind and its
+ * files, so binding to loopback and the base path hold by construction.
+ *
+ * Every app runs through `/usr/local/bin/magi-app` as its owner, whose sudo
+ * rule keeps exactly the variables built here (`env_keep`). The Jupyter token
+ * travels in the environment, never on the command line: `/proc/<pid>/cmdline`
+ * is readable by every user, `/proc/<pid>/environ` only by the owner.
+ */
+
+import { dirname } from "node:path";
+import type { AppKind } from "@magi/agent-config";
+
+export const MAGI_APP = "/usr/local/bin/magi-app";
+const VENV_BIN = "/opt/magi/venv/bin";
+/** Root-owned in the image; not the agent-writable copy under shared/skills. */
+const SERVE_SITE = "/app/packages/skills/serve-app/scripts/serve-site.py";
+
+export interface AppLaunch {
+	/** Arguments after `magi-app`. */
+	argv: string[];
+	/** The working directory of the app. */
+	cwd: string;
+	/** The app's environment, beyond PATH and HOME. */
+	env: Record<string, string>;
+	/** Whether the monitor hop keeps the `/a/<capability>` prefix (JupyterLab) or removes it. */
+	keepPrefix: boolean;
+}
+
+export interface AppLaunchInput {
+	kind: AppKind;
+	/** The folder (jupyter, site) or Python file (gradio), absolute and already contained. */
+	path: string;
+	/** `site` only: an optional handlers file, absolute and already contained. */
+	handlers?: string;
+	port: number;
+	/** `/a/<capability>` as the browser sees it, without a trailing slash. */
+	basePath: string;
+	/** `jupyter` only: the token the monitor hop adds to every request. */
+	jupyterToken?: string;
+}
+
+export function appLaunch(app: AppLaunchInput): AppLaunch {
+	const port = String(app.port);
+	switch (app.kind) {
+		case "jupyter":
+			if (!app.jupyterToken) throw new Error("a jupyter app needs a token");
+			return {
+				argv: [
+					`${VENV_BIN}/jupyter`,
+					"lab",
+					"--no-browser",
+					"--ServerApp.ip=127.0.0.1",
+					`--ServerApp.port=${port}`,
+					"--ServerApp.port_retries=0",
+					`--ServerApp.base_url=${app.basePath}/`,
+					`--ServerApp.root_dir=${app.path}`,
+					"--ServerApp.terminals_enabled=False",
+					// The browser reaches it through the apps host, whose origin
+					// (a port per app) the daemon does not know; the apps host
+					// checks the origin, and the token stays required.
+					"--ServerApp.allow_origin=*",
+					"--ServerApp.allow_remote_access=True",
+					"--YDocExtension.file_poll_interval=1",
+					"--YDocExtension.document_save_delay=1",
+				],
+				cwd: app.path,
+				env: {
+					PORT: port,
+					BASE_PATH: app.basePath,
+					JUPYTER_TOKEN: app.jupyterToken,
+				},
+				keepPrefix: true,
+			};
+		case "gradio":
+			return {
+				argv: [`${VENV_BIN}/python3`, app.path],
+				cwd: dirname(app.path),
+				env: {
+					PORT: port,
+					BASE_PATH: app.basePath,
+					GRADIO_SERVER_NAME: "127.0.0.1",
+					GRADIO_SERVER_PORT: port,
+					GRADIO_ROOT_PATH: app.basePath,
+					GRADIO_ANALYTICS_ENABLED: "False",
+					// Its run history keeps the page path (the capability) and every
+					// call's inputs and outputs in localStorage (spike, 2026-11-21).
+					GRADIO_RUN_HISTORY: "False",
+				},
+				keepPrefix: false,
+			};
+		case "site":
+			return {
+				argv: [
+					`${VENV_BIN}/python3`,
+					SERVE_SITE,
+					"--root",
+					app.path,
+					...(app.handlers ? ["--handlers", app.handlers] : []),
+				],
+				cwd: app.path,
+				env: { PORT: port, BASE_PATH: app.basePath },
+				keepPrefix: false,
+			};
+	}
+}
+
+/** Every variable an app may receive: the `env_keep` list of magi-app's sudo rule. */
+export const APP_ENV_KEEP = [
+	"PORT",
+	"BASE_PATH",
+	"JUPYTER_TOKEN",
+	"GRADIO_SERVER_NAME",
+	"GRADIO_SERVER_PORT",
+	"GRADIO_ROOT_PATH",
+	"GRADIO_ANALYTICS_ENABLED",
+	"GRADIO_RUN_HISTORY",
+] as const;

@@ -443,6 +443,11 @@ Built in slices; this layer grows with them. Slice a: the machine firewall.
 | The helper hangs | Boot waits on it | 🟡 | 15 s timeout on every call; a timeout counts as a failure (row above) | None |
 | The machine restarts | Rules are gone with the root filesystem | 🟡 | `init` runs at every boot, before the monitor server starts | None |
 | A rule blocks Fly's own access | `fly ssh console` or the control plane's calls fail | 🟠 | The inbound rule keeps 22 and 4000 open; checked on Fly with DNS and outbound HTTPS | A future change of the monitor port must change the helper too (it is fixed at 4000) |
+| An app crashes, or stops answering | The operator's page fails | 🟡 | Exit seen at once; a TCP check every 15 s (4 misses, or 2 minutes to first answer, count as a crash); restarted at once, at most 3 times an hour, then `failed` and the owner told with the log's last lines | None |
+| An app eats the machine's memory | The daemon, on the same machine, can be OOM-killed | 🟠 | At most 3 apps at once (mission setting); memory shown per app; the skill tells agents to ask for a bigger machine (ADR-0031) before serving more than one | No per-app memory limit |
+| The daemon restarts or the machine is recreated | Every app stops; links stop working | 🟡 | `markAllStopped` at boot, so no record claims to run; nothing restarts by itself; the operator or the owner starts it again | None — by design (`app.run`) |
+| A kill through sudo fails | An app keeps running after a stop | 🟡 | Logged with the process group; SIGKILL after 10 s of SIGTERM; the machine's next restart ends it | The port rule is revoked anyway, so the app cannot be reached |
+| A request poll or health check throws | One pass is skipped | 🟢 | Caught and logged; the next timer tick retries; a pass never overlaps the previous one | None |
 
 ---
 

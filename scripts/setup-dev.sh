@@ -305,6 +305,17 @@ EOF
 chmod 755 "${JOB_WRAPPER}"
 echo "[setup-dev] Wrote wrapper ${JOB_WRAPPER}"
 
+# magi-app — an interactive app run as its owner (ADR-0037); same shape as magi-job.
+APP_WRAPPER="/usr/local/bin/magi-app"
+cat > "${APP_WRAPPER}" << 'APPEOF'
+#!/bin/sh
+# magi-app — run an interactive app (or signal its process group) as the agent linux user.
+# Called by the MAGI daemon via: sudo -u magi-wN /usr/local/bin/magi-app <command> [args...]
+exec "$@"
+APPEOF
+chmod 755 "${APP_WRAPPER}"
+echo "[setup-dev] Wrote wrapper ${APP_WRAPPER}"
+
 POOL_LIST="$(seq -s, -f 'magi-w%.0f' 1 "${POOL_SIZE}")"
 SUDOERS_FILE="/etc/sudoers.d/magi"
 
@@ -313,6 +324,8 @@ SUDOERS_FILE="/etc/sudoers.d/magi"
 # NOT here — jobs reach FRED/FMP/NewsAPI through the daemon's data-* tools
 # (CR-04), never through a raw key in their environment.
 JOB_ENV_KEEP="MAGI_TOOL_URL MAGI_TOOL_TOKEN"
+# What an app inherits: its port and path, and its kind's settings (app-commands.ts APP_ENV_KEEP).
+APP_ENV_KEEP="PORT BASE_PATH JUPYTER_TOKEN GRADIO_SERVER_NAME GRADIO_SERVER_PORT GRADIO_ROOT_PATH GRADIO_ANALYTICS_ENABLED GRADIO_RUN_HISTORY"
 
 {
     # Allow the orchestrator user to run the node wrapper as any pool user
@@ -333,6 +346,10 @@ JOB_ENV_KEEP="MAGI_TOOL_URL MAGI_TOOL_TOKEN"
     # Preserve MAGI tool IPC env vars when running background jobs.
     # Without env_keep, sudo's env_reset strips these before exec.
     printf 'Defaults!%s env_keep += "%s"\n' "${JOB_WRAPPER}" "${JOB_ENV_KEEP}"
+    # Interactive apps run as their owner through magi-app, keeping only the app variables.
+    printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${POOL_LIST}" "${APP_WRAPPER}"
+    printf '%s ALL = (%s) NOPASSWD: %s\n' "${ORCHESTRATOR}" "${MISSION_COPILOT_USER}" "${APP_WRAPPER}"
+    printf 'Defaults!%s env_keep += "%s"\n' "${APP_WRAPPER}" "${APP_ENV_KEEP}"
     # Prevent sudo from prompting pool workers for a password.
     # Without this, sudo's default is to authenticate via PAM before checking
     # authorization — so a magi-wN user running "sudo anything" would produce

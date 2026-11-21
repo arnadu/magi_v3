@@ -562,6 +562,18 @@ skill (`schedule.sh`, a message) and the `run-background` skill (`schedule-job.s
 control plane keeps the clock, waking the mission's machine on each fire and either mailing the
 message or stamping the document for the daemon to run the job.
 
+**Interactive apps** (ADR-0037; not LLM tools): an agent serves a program for the operator to
+use in a browser, in one of three kinds: `jupyter` (a folder, JupyterLab with real-time
+collaboration), `gradio` (a Python file) or `site` (a folder, with optional request handlers).
+It writes a request file into `sharedDir/apps/requests/` (`declare`, `start`, `stop`,
+`remove`); the daemon attributes it to the file's owner as for jobs, answers in
+`sharedDir/apps/answers/<id>.json`, and keeps each app's state in
+`sharedDir/apps/status/<name>.json`. The daemon builds the command line for the kind and runs
+the app as its owner on a loopback port (20000–20099) that only the daemon and the owner can
+reach (the machine firewall, `magi-net`). At most three apps run at once (`mission.apps`);
+a crashed app is restarted up to three times an hour; an app unopened for four hours is
+stopped; nothing survives a daemon restart. Records live in `missionApps`.
+
 ### ACL enforcement
 
 All file paths are validated by `AclPolicy.checkPath(path, "read"|"write")` before any filesystem

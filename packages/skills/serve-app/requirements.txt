@@ -1,0 +1,6 @@
+# Interactive apps (ADR-0037): the versions checked in the spike, 2026-11-21.
+# Gradio is pinned: breakage behind custom domains was reported from 6.4 on,
+# and its proxy behaviour (root path, run history) changes between releases.
+jupyterlab==4.6.6
+jupyter-collaboration==5.0.4
+gradio==6.32.0

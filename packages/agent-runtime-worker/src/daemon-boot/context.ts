@@ -3,6 +3,7 @@ import type { Model } from "@mariozechner/pi-ai";
 import type { Db, MongoClient } from "mongodb";
 import type { StatsCollector } from "../agent-stats.js";
 import type { AnomalyRecorder } from "../anomaly.js";
+import type { AppSupervisor } from "../app-supervisor.js";
 import type { ConversationRepository } from "../conversation-repository.js";
 import type { LlmCallLogRepository } from "../llm-call-log.js";
 import type { MachineFirewall } from "../machine-firewall.js";
@@ -57,6 +58,10 @@ export interface BootContext {
 	stopJobRunner: () => void;
 	/** The machine's firewall, set at boot; apps need it on. */
 	firewall: MachineFirewall;
+	/** The interactive-apps supervisor (ADR-0037). */
+	apps: AppSupervisor;
+	/** Ends the apps' timers and stops every app. */
+	stopApps: () => Promise<void>;
 	waitForMail: () => Promise<void>;
 	missionCopilotTools: MagiTool[] | undefined;
 }
