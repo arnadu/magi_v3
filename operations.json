@@ -4748,9 +4748,57 @@
   "actors": [
    "OP"
   ],
-  "planned": true,
+  "planned": false,
   "startedBy": null,
   "entryPoints": [
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "POST /:id/apps/:name/open",
+    "where": "packages/control-plane/src/app-open-routes.ts:74",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-api",
+     "cp-apps"
+    ],
+    "writes": [
+     "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
+     "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:78",
+     "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:99"
+    ],
+    "unresolved": [
+     "collection",
+     "has",
+     "json",
+     "update"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "route",
+    "actor": "OP",
+    "name": "POST /reopen",
+    "where": "packages/control-plane/src/app-open-routes.ts:89",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-api",
+     "cp-apps"
+    ],
+    "writes": [
+     "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
+     "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:78",
+     "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:99"
+    ],
+    "unresolved": [
+     "collection",
+     "has",
+     "json",
+     "update"
+    ],
+    "httpHops": []
+   },
    {
     "kind": "route",
     "actor": "OP",

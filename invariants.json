@@ -509,9 +509,17 @@
   "id": "sec.served-apart",
   "scope": "security",
   "text": "Code an agent serves live runs in the operator's browser from an origin other than the cockpit's, so it never acts with the operator's cockpit session; and one mission's app cannot reach another mission's app through that browser.",
-  "enforcedBy": [],
+  "enforcedBy": [
+   {
+    "kind": "runtime",
+    "where": "control-plane/src/apps-host/server.ts: createAppsHost (a separate Fly app, so another site, and a session bound to one app's capability and slot); policy.ts: fetchSiteAllowed (requests from another app's port refused)"
+   },
+   {
+    "kind": "test"
+   }
+  ],
   "decidedBy": null,
-  "open": "Planned with interactive apps: the apps host, its sign-in and the secret in each app's path are for the ADR",
+  "open": null,
   "findings": 0
  },
  {

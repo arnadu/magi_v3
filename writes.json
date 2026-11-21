@@ -1,5 +1,38 @@
 [
  {
+  "file": "packages/control-plane/src/apps-host/slots.ts",
+  "line": 49,
+  "function": "assignSlot",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "fn": "packages/control-plane/src/apps-host/slots.ts:42:8",
+  "component": "cp-apps",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/apps-host/slots.ts",
+  "line": 78,
+  "function": "assignSlot",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "fn": "packages/control-plane/src/apps-host/slots.ts:42:8",
+  "component": "cp-apps",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/apps-host/slots.ts",
+  "line": 99,
+  "function": "claim",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "fn": "packages/control-plane/src/apps-host/slots.ts:92:1",
+  "component": "cp-apps",
+  "ownerOk": true
+ },
+ {
   "file": "packages/agent-runtime-worker/src/llm-call-log.ts",
   "line": 214,
   "function": "append",
