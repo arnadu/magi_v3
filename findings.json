@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "ba9b90b",
-  "time": "2026-11-21T19:19:01Z"
+  "commit": "a7eb233",
+  "time": "2026-11-21T20:39:18Z"
  },
  "findings": [
   {
@@ -509,7 +509,8 @@
      ],
      "unresolved": [
       "end",
-      "error"
+      "error",
+      "update"
      ]
     },
     {
@@ -696,7 +697,8 @@
       "error",
       "on",
       "reject",
-      "resolve"
+      "resolve",
+      "update"
      ]
     },
     {
@@ -1241,7 +1243,8 @@
       "add",
       "delete",
       "end",
-      "error"
+      "error",
+      "update"
      ]
     },
     {
@@ -1298,7 +1301,8 @@
       "add",
       "delete",
       "end",
-      "error"
+      "error",
+      "update"
      ]
     },
     {
@@ -1766,7 +1770,8 @@
       "get",
       "on",
       "reject",
-      "resolve"
+      "resolve",
+      "update"
      ]
     },
     {
@@ -1849,7 +1854,8 @@
      "unresolved": [
       "collection",
       "end",
-      "get"
+      "get",
+      "update"
      ]
     },
     {
@@ -1971,7 +1977,7 @@
    "where": [
     "packages/control-plane/src/copilot-actions.ts:161",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:468"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
    ],
    "entryPoints": [
     {
@@ -2001,7 +2007,7 @@
     },
     {
      "name": "file-request files in dir",
-     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:468",
+     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
      "components": [
       "config",
       "mm-isolation",
@@ -2016,7 +2022,8 @@
       "has",
       "push",
       "resolve",
-      "set"
+      "set",
+      "update"
      ]
     }
    ],
@@ -2030,7 +2037,7 @@
    "where": [
     "packages/control-plane/src/copilot-actions.ts:161",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:468"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
    ],
    "lacks": [
     {
@@ -2038,10 +2045,10 @@
      "where": "packages/control-plane/src/copilot-actions.ts:161",
      "writes": [
       "scheduledMessages.insertOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:72",
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
      ]
     },
     {
@@ -2049,15 +2056,15 @@
      "where": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34",
      "writes": [
       "scheduledMessages.insertOne@packages/control-plane/src/copilot-schedule-actions.ts:75",
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
      ]
     },
     {
      "entryPoint": "file-request files in dir",
-     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:468",
+     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
      "writes": [
       "scheduledMessages.insertOne@packages/control-plane/src/copilot-schedule-actions.ts:75",
       "scheduledMessages.insertOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:72"
@@ -2075,7 +2082,7 @@
     "packages/control-plane/src/copilot-actions.ts:160",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
     "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:38",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:468"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
    ],
    "entryPoints": [
     {
@@ -2113,7 +2120,7 @@
     },
     {
      "name": "file-request files in dir",
-     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:468",
+     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
      "components": [
       "config",
       "mm-isolation",
@@ -2128,7 +2135,8 @@
       "has",
       "push",
       "resolve",
-      "set"
+      "set",
+      "update"
      ]
     }
    ],
@@ -2143,7 +2151,7 @@
     "packages/control-plane/src/copilot-actions.ts:160",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
     "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:38",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:468"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
    ],
    "lacks": [
     {
@@ -2152,10 +2160,10 @@
      "writes": [
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140",
       "scheduledMessages.deleteOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:145",
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
      ]
     },
     {
@@ -2163,10 +2171,10 @@
      "where": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
      "writes": [
       "scheduledMessages.updateOne@packages/control-plane/src/copilot-schedule-actions.ts:30",
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
      ]
     },
     {
@@ -2176,15 +2184,15 @@
       "scheduledMessages.updateOne@packages/control-plane/src/copilot-schedule-actions.ts:30",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140",
       "scheduledMessages.deleteOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:145",
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
      ]
     },
     {
      "entryPoint": "file-request files in dir",
-     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:468",
+     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
      "writes": [
       "scheduledMessages.updateOne@packages/control-plane/src/copilot-schedule-actions.ts:30",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140",
@@ -2338,6 +2346,22 @@
     }
    ],
    "new": false
+  },
+  {
+   "key": "2692ba4cede5",
+   "kind": "op.actor-missing",
+   "about": "app.control",
+   "text": "OP is an actor of app.control, but no entry point serves OP.",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "12707cb9b2d5",
+   "kind": "op.actor-missing",
+   "about": "app.control",
+   "text": "MC is an actor of app.control, but no entry point serves MC.",
+   "where": [],
+   "new": true
   },
   {
    "key": "5163010c196b",
@@ -2717,8 +2741,8 @@
    "about": "scheduledMessages",
    "text": "mm-jobs writes scheduledMessages (updateOne in upsertSchedule); its owner is cp-scheduler.",
    "where": [
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:443"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:391",
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:417"
    ],
    "new": false
   },
@@ -2728,8 +2752,8 @@
    "about": "scheduledMessages",
    "text": "mm-jobs writes scheduledMessages (updateMany in ingestSchedules); its owner is cp-scheduler.",
    "where": [
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:472"
    ],
    "new": false
   },
@@ -2739,7 +2763,7 @@
    "about": "scheduledMessages",
    "text": "mm-jobs writes scheduledMessages (updateOne in ack); its owner is cp-scheduler.",
    "where": [
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:533"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:507"
    ],
    "new": false
   },
@@ -3111,7 +3135,7 @@
    "about": "schedule",
    "text": "upsertSchedule (mm-jobs) can change a schedule status in ways the catalog does not allow: pending → pending, delivered → pending, failed → pending, cancelled → pending. Its filter does not check the current status.",
    "where": [
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:443"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:417"
    ],
    "undeclared": [
     "pending → pending",
@@ -3182,70 +3206,6 @@
    "kind": "status.unseen-transition",
    "about": "turn",
    "text": "No code writes the turn transition running → failed that the catalog allows.",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "7479fccfcee6",
-   "kind": "status.unseen-transition",
-   "about": "app",
-   "text": "No code writes the app transition (new) → starting that the catalog allows.",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "bd4be7f3e189",
-   "kind": "status.unseen-transition",
-   "about": "app",
-   "text": "No code writes the app transition starting → running that the catalog allows.",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "b3e86a04e43e",
-   "kind": "status.unseen-transition",
-   "about": "app",
-   "text": "No code writes the app transition starting → failed that the catalog allows.",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "22de4a65ea1b",
-   "kind": "status.unseen-transition",
-   "about": "app",
-   "text": "No code writes the app transition starting → stopped that the catalog allows.",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "efdb90960339",
-   "kind": "status.unseen-transition",
-   "about": "app",
-   "text": "No code writes the app transition running → failed that the catalog allows.",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "125627972529",
-   "kind": "status.unseen-transition",
-   "about": "app",
-   "text": "No code writes the app transition running → stopped that the catalog allows.",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "e7d050e34dee",
-   "kind": "status.unseen-transition",
-   "about": "app",
-   "text": "No code writes the app transition stopped → starting that the catalog allows.",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "8d8ad0ffded6",
-   "kind": "status.unseen-transition",
-   "about": "app",
-   "text": "No code writes the app transition failed → starting that the catalog allows.",
    "where": [],
    "new": false
   },
@@ -3590,30 +3550,6 @@
    "kind": "inv.unenforced",
    "about": "mental-map.edit-between-turns",
    "text": "The catalog names nothing that enforces mental-map.edit-between-turns (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "0c99113ab5c8",
-   "kind": "inv.unenforced",
-   "about": "app.loopback-only",
-   "text": "The catalog names nothing that enforces app.loopback-only (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "6afa1f19f7d9",
-   "kind": "inv.unenforced",
-   "about": "app.as-owner",
-   "text": "The catalog names nothing that enforces app.as-owner (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "29c1c9ace0f3",
-   "kind": "inv.unenforced",
-   "about": "app.bounded",
-   "text": "The catalog names nothing that enforces app.bounded (its enforcedBy is empty).",
    "where": [],
    "new": false
   },

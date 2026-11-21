@@ -1781,6 +1781,277 @@
   "ownerOk": true
  },
  {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 73,
+  "function": "declare",
+  "method": "findOneAndUpdate",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "status": {
+   "to": [
+    "stopped"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "none"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:64:3",
+  "component": "mm-apps",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "∅"
+   ],
+   "to": [
+    "stopped"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 98,
+  "function": "update",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:97:3",
+  "component": "mm-apps",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 103,
+  "function": "remove",
+  "method": "deleteOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:102:3",
+  "component": "mm-apps",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 107,
+  "function": "markAllStopped",
+  "method": "updateMany",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "status": {
+   "to": [
+    "stopped"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "in",
+    "values": [
+     "starting",
+     "running"
+    ]
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:105:3",
+  "component": "mm-apps",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "starting",
+    "running"
+   ],
+   "to": [
+    "stopped"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 130,
+  "function": "toStarting",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "status": {
+   "to": [
+    "starting"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "in",
+    "values": [
+     "stopped",
+     "failed"
+    ]
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:128:3",
+  "component": "mm-apps",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "stopped",
+    "failed"
+   ],
+   "to": [
+    "starting"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 145,
+  "function": "toRestarting",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "status": {
+   "to": [
+    "starting"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "eq",
+    "values": [
+     "running"
+    ],
+    "via": "literal"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:143:3",
+  "component": "mm-apps",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "running"
+   ],
+   "to": [
+    "starting"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 160,
+  "function": "toRestarting",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:143:3",
+  "component": "mm-apps",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 168,
+  "function": "toRunning",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "status": {
+   "to": [
+    "running"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "eq",
+    "values": [
+     "starting"
+    ],
+    "via": "literal"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:166:3",
+  "component": "mm-apps",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "starting"
+   ],
+   "to": [
+    "running"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 183,
+  "function": "toFailed",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "status": {
+   "to": [
+    "failed"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "in",
+    "values": [
+     "starting",
+     "running"
+    ]
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:181:3",
+  "component": "mm-apps",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "starting",
+    "running"
+   ],
+   "to": [
+    "failed"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
+  "file": "packages/agent-runtime-worker/src/app-store.ts",
+  "line": 199,
+  "function": "toStopped",
+  "method": "updateOne",
+  "collection": "missionApps",
+  "docType": "MissionAppDoc",
+  "status": {
+   "to": [
+    "stopped"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "in",
+    "values": [
+     "starting",
+     "running"
+    ]
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/app-store.ts:197:3",
+  "component": "mm-apps",
+  "ownerOk": true,
+  "statusCheck": {
+   "from": [
+    "starting",
+    "running"
+   ],
+   "to": [
+    "stopped"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
+ },
+ {
   "file": "packages/agent-runtime-worker/src/cli-reset.ts",
   "line": 111,
   "function": "PER_MISSION_COLLECTIONS.map(callback)",
@@ -1814,18 +2085,37 @@
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 417,
+  "line": 391,
   "function": "upsertSchedule",
   "method": "updateOne",
   "collection": "scheduledMessages",
   "docType": "ScheduledMessageDoc",
-  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:406:1",
+  "status": {
+   "to": [
+    "pending"
+   ],
+   "toVia": "literal",
+   "from": {
+    "op": "none"
+   }
+  },
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:380:1",
   "component": "mm-jobs",
-  "ownerOk": false
+  "ownerOk": false,
+  "statusCheck": {
+   "from": [
+    "∅"
+   ],
+   "to": [
+    "pending"
+   ],
+   "undeclared": [],
+   "filterChecksStatus": true
+  }
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 443,
+  "line": 417,
   "function": "upsertSchedule",
   "method": "updateOne",
   "collection": "scheduledMessages",
@@ -1839,7 +2129,7 @@
     "op": "any"
    }
   },
-  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:406:1",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:380:1",
   "component": "mm-jobs",
   "ownerOk": false,
   "statusCheck": {
@@ -1864,7 +2154,7 @@
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 486,
+  "line": 460,
   "function": "ingestSchedules",
   "method": "updateMany",
   "collection": "scheduledMessages",
@@ -1882,7 +2172,7 @@
     "via": "literal"
    }
   },
-  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:456:1",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:430:1",
   "component": "mm-jobs",
   "ownerOk": false,
   "statusCheck": {
@@ -1898,23 +2188,23 @@
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 498,
+  "line": 472,
   "function": "ingestSchedules",
   "method": "updateMany",
   "collection": "scheduledMessages",
   "docType": "ScheduledMessageDoc",
-  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:456:1",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:430:1",
   "component": "mm-jobs",
   "ownerOk": false
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 533,
+  "line": 507,
   "function": "ack",
   "method": "updateOne",
   "collection": "scheduledMessages",
   "docType": "ScheduledMessageDoc",
-  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:532:15",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:506:15",
   "component": "mm-jobs",
   "ownerOk": false
  },

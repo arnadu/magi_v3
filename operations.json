@@ -154,7 +154,8 @@
      "createIndex",
      "error",
      "get",
-     "has"
+     "has",
+     "update"
     ],
     "httpHops": []
    },
@@ -188,7 +189,8 @@
      "collection",
      "createIndex",
      "error",
-     "has"
+     "has",
+     "update"
     ],
     "httpHops": []
    },
@@ -224,7 +226,8 @@
      "collection",
      "createIndex",
      "error",
-     "has"
+     "has",
+     "update"
     ],
     "httpHops": []
    },
@@ -260,7 +263,8 @@
      "createIndex",
      "error",
      "get",
-     "has"
+     "has",
+     "update"
     ],
     "httpHops": []
    }
@@ -325,7 +329,8 @@
      "error",
      "get",
      "has",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\"",
@@ -380,7 +385,8 @@
      "error",
      "get",
      "has",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\"",
@@ -448,7 +454,8 @@
      "error",
      "get",
      "has",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\"",
@@ -497,7 +504,8 @@
      "error",
      "get",
      "has",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\""
@@ -868,7 +876,8 @@
     "writes": [],
     "unresolved": [
      "end",
-     "error"
+     "error",
+     "update"
     ],
     "httpHops": [
      "monitor-route GET \"/team\""
@@ -1015,7 +1024,8 @@
     "unresolved": [
      "collection",
      "end",
-     "get"
+     "get",
+     "update"
     ],
     "httpHops": [
      "monitor-route GET \"/log\""
@@ -1127,7 +1137,8 @@
      "error",
      "on",
      "reject",
-     "resolve"
+     "resolve",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/set-budget\""
@@ -1165,7 +1176,8 @@
      "has",
      "on",
      "reject",
-     "resolve"
+     "resolve",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/set-budget\""
@@ -1347,7 +1359,8 @@
      "get",
      "has",
      "push",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route GET \"/status\""
@@ -1563,7 +1576,8 @@
      "get",
      "has",
      "push",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\"",
@@ -1618,7 +1632,8 @@
      "error",
      "get",
      "has",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\"",
@@ -1673,7 +1688,8 @@
      "error",
      "get",
      "has",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\"",
@@ -1736,7 +1752,8 @@
      "get",
      "has",
      "push",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\"",
@@ -1793,7 +1810,8 @@
      "error",
      "get",
      "has",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\"",
@@ -1968,6 +1986,7 @@
      "recordLlmCall",
      "recordOutOfTurnCost",
      "reject",
+     "remove",
      "request",
      "resolve",
      "route",
@@ -2021,7 +2040,9 @@
      "mm-tools"
     ],
     "writes": [],
-    "unresolved": [],
+    "unresolved": [
+     "remove"
+    ],
     "httpHops": []
    },
    {
@@ -2035,7 +2056,9 @@
      "mm-tools"
     ],
     "writes": [],
-    "unresolved": [],
+    "unresolved": [
+     "remove"
+    ],
     "httpHops": []
    },
    {
@@ -2049,7 +2072,9 @@
      "mm-tools"
     ],
     "writes": [],
-    "unresolved": [],
+    "unresolved": [
+     "remove"
+    ],
     "httpHops": []
    }
   ]
@@ -2554,7 +2579,8 @@
      "add",
      "delete",
      "end",
-     "error"
+     "error",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/pause-agent\"",
@@ -2631,7 +2657,8 @@
      "add",
      "delete",
      "end",
-     "error"
+     "error",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/pause-agent\"",
@@ -3356,7 +3383,8 @@
      "get",
      "on",
      "reject",
-     "resolve"
+     "resolve",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/files/shared/write\"",
@@ -3468,7 +3496,8 @@
     "unresolved": [
      "collection",
      "end",
-     "get"
+     "get",
+     "update"
     ],
     "httpHops": [
      "monitor-route GET \"/files/shared\"",
@@ -3686,7 +3715,7 @@
     "kind": "file-request",
     "actor": "AG",
     "name": "files in dir",
-    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:468",
+    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
     "reachesHome": false,
     "components": [
      "config",
@@ -3696,10 +3725,10 @@
      "mm-tools"
     ],
     "writes": [
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
     ],
     "unresolved": [
      "delete",
@@ -3708,7 +3737,8 @@
      "has",
      "push",
      "resolve",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": []
    }
@@ -3784,7 +3814,7 @@
     "kind": "file-request",
     "actor": "AG",
     "name": "files in dir",
-    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:468",
+    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
     "reachesHome": false,
     "components": [
      "config",
@@ -3794,10 +3824,10 @@
      "mm-tools"
     ],
     "writes": [
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498"
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
     ],
     "unresolved": [
      "delete",
@@ -3806,7 +3836,8 @@
      "has",
      "push",
      "resolve",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": []
    }
@@ -3870,7 +3901,8 @@
      "error",
      "get",
      "has",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": [
      "monitor-route POST \"/start\""
@@ -3956,7 +3988,7 @@
     "kind": "file-request",
     "actor": "AG",
     "name": "files in dirs.pending",
-    "where": "packages/agent-runtime-worker/src/job-runner.ts:302",
+    "where": "packages/agent-runtime-worker/src/job-runner.ts:291",
     "reachesHome": true,
     "components": [
      "config",
@@ -3996,7 +4028,7 @@
     "kind": "trigger",
     "actor": "PLT",
     "name": "interval: tick",
-    "where": "packages/agent-runtime-worker/src/daemon.ts:226",
+    "where": "packages/agent-runtime-worker/src/daemon.ts:227",
     "reachesHome": true,
     "components": [
      "config",
@@ -4010,11 +4042,11 @@
     "writes": [
      "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
      "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:443",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:486",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:498",
-     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:533",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:507",
      "missionResources.updateOne@packages/agent-runtime-worker/src/resource-sampler.ts:134"
     ],
     "unresolved": [
@@ -4028,7 +4060,8 @@
      "on",
      "push",
      "resolve",
-     "set"
+     "set",
+     "update"
     ],
     "httpHops": []
    }
@@ -4471,9 +4504,36 @@
   "actors": [
    "AG"
   ],
-  "planned": true,
+  "planned": false,
   "startedBy": null,
-  "entryPoints": []
+  "entryPoints": [
+   {
+    "kind": "file-request",
+    "actor": "AG",
+    "name": "files in dirs.requests",
+    "where": "packages/agent-runtime-worker/src/app-requests.ts:203",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "mm-apps",
+     "mm-isolation",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "allow",
+     "delete",
+     "error",
+     "get",
+     "has",
+     "on",
+     "resolve",
+     "revoke",
+     "set"
+    ],
+    "httpHops": []
+   }
+  ]
  },
  {
   "id": "app.run",
@@ -4482,9 +4542,62 @@
   "actors": [
    "PLT"
   ],
-  "planned": true,
+  "planned": false,
   "startedBy": null,
-  "entryPoints": []
+  "entryPoints": [
+   {
+    "kind": "trigger",
+    "actor": "PLT",
+    "name": "callback",
+    "where": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:104",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "mm-apps",
+     "mm-daemon",
+     "mm-isolation",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "allow",
+     "delete",
+     "error",
+     "get",
+     "has",
+     "on",
+     "resolve",
+     "revoke",
+     "set"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "trigger",
+    "actor": "PLT",
+    "name": "callback",
+    "where": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts:118",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "mm-apps",
+     "mm-daemon",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "allow",
+     "delete",
+     "error",
+     "get",
+     "has",
+     "on",
+     "revoke",
+     "set"
+    ],
+    "httpHops": []
+   }
+  ]
  },
  {
   "id": "app.control",
@@ -4497,7 +4610,34 @@
   ],
   "planned": true,
   "startedBy": null,
-  "entryPoints": []
+  "entryPoints": [
+   {
+    "kind": "file-request",
+    "actor": "AG",
+    "name": "files in dirs.requests",
+    "where": "packages/agent-runtime-worker/src/app-requests.ts:203",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "mm-apps",
+     "mm-isolation",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "allow",
+     "delete",
+     "error",
+     "get",
+     "has",
+     "on",
+     "resolve",
+     "revoke",
+     "set"
+    ],
+    "httpHops": []
+   }
+  ]
  },
  {
   "id": "app.status",
