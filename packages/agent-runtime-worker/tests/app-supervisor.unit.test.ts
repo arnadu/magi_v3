@@ -257,6 +257,23 @@ describe("app supervisor", () => {
 		expect(firewall.revoke).toHaveBeenCalledWith(20_000);
 	});
 
+	it("records when an app was opened, at most once a minute", async () => {
+		const s = make();
+		await s.declare(declaration("dash"));
+		s.touch("dash");
+		await Promise.resolve();
+		expect(store.docs.get("dash")?.lastOpenedAt).toEqual(new Date(clock));
+		const first = clock;
+		clock += 30_000;
+		s.touch("dash");
+		await Promise.resolve();
+		expect(store.docs.get("dash")?.lastOpenedAt).toEqual(new Date(first));
+		clock += 31_000;
+		s.touch("dash");
+		await Promise.resolve();
+		expect(store.docs.get("dash")?.lastOpenedAt).toEqual(new Date(clock));
+	});
+
 	it("stop and remove: TERM to the group, record stopped, then deleted", async () => {
 		const s = make();
 		await s.declare(declaration("dash"));

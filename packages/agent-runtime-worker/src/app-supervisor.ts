@@ -21,6 +21,7 @@ const START_GRACE_MS = 2 * 60_000;
 const MISSED_CHECKS_FOR_CRASH = 4;
 const RESTARTS_PER_HOUR = 3;
 const TERM_GRACE_MS = 10_000;
+const OPENED_SAVE_MS = 60_000;
 
 export interface AppLimits {
 	maxRunning: number;
@@ -54,6 +55,8 @@ interface Live {
 	startedAt: number;
 	/** When it last answered, or was opened (the idle clock). */
 	lastUsedAt: number;
+	/** When `lastOpenedAt` was last written to its record (at most once a minute). */
+	openedSavedAt?: number;
 	misses: number;
 	answered: boolean;
 	/** Set before a stop we asked for, so the exit is not a crash. */
@@ -309,7 +312,24 @@ export class AppSupervisor {
 	/** The operator opened it: resets the idle clock. */
 	touch(name: string): void {
 		const entry = this.live.get(name);
-		if (entry) entry.lastUsedAt = this.now();
+		if (!entry) return;
+		const now = this.now();
+		entry.lastUsedAt = now;
+		// Every request of an open page passes here: the record is updated at
+		// most once a minute, for the cockpit's "opened" column.
+		if (
+			entry.openedSavedAt !== undefined &&
+			now - entry.openedSavedAt < OPENED_SAVE_MS
+		)
+			return;
+		entry.openedSavedAt = now;
+		this.deps.store
+			.update(name, { lastOpenedAt: new Date(now) })
+			.catch((e: Error) =>
+				console.error(
+					`[apps] recording when app ${name} was opened failed: ${e.message}; the cockpit shows an older time`,
+				),
+			);
 	}
 
 	/** For the monitor hop: the running app with this capability. */

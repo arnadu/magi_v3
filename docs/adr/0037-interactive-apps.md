@@ -1,6 +1,6 @@
 # ADR-0037: Interactive apps on the mission machine, served from a separate apps host
 
-**Status:** Accepted (2026-11-21); proposed 2026-11-20. Reviewed by appsec on 2026-11-20 (approved with conditions,
+**Status:** Implemented on dev (2026-11-21, slices a–g; first app opened live on `houseplant-grand-hotel`); accepted 2026-11-21; proposed 2026-11-20. Reviewed by appsec on 2026-11-20 (approved with conditions,
 folded in below). Product owner's decisions of 2026-11-21 folded in: Gradio rather than
 Streamlit, declaration by request files, three kinds, records in `missionApps`. Spike done
 2026-11-21 ("Spike results"); an origin per app decided after it.
