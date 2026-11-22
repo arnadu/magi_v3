@@ -100,8 +100,11 @@ second or so.
 - **The operator sees only that folder.** Declare the folder that holds the notebook *and* the
   code and data it loads (or put the notebook beside them), and load them by relative paths.
   A module imported from elsewhere still runs, but the operator cannot open or read it.
-- Interactive widgets (`ipywidgets`: `interact`, sliders, buttons) and matplotlib are already
-  installed; don't install your own copy of `ipywidgets` (it would render as a line of text).
+- The notebook's kernel and your Gradio app run in the platform's Python, which has numpy,
+  pandas, scipy, scikit-learn, matplotlib, plotly and widgets (`ipywidgets`: `interact`,
+  sliders, buttons). Packages in a venv of your own are not visible there; don't install your
+  own `ipywidgets` (it would render as a line of text). If your app needs another package, ask
+  the operator.
 - **Before you change a notebook the operator has open, message them first** ("I'm adding a
   cell to analysis.ipynb now"). Edits made at the same moment on both sides can be lost.
 - Code the operator runs in the notebook runs as you, with your files: keep the folder to what
