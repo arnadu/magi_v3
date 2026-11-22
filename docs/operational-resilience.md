@@ -435,7 +435,7 @@ locally. It is report-only: no deploy job waits for it.
 
 ## Layer 12 — Interactive apps (ADR-0037)
 
-Built in slices; this layer grows with them. Slice a: the machine firewall.
+Implemented on dev 2026-11-21 (slices a–g); agents' Python environments added 2026-11-22.
 
 | Failure | Effect | Severity | Current mitigation | Gap |
 |---------|--------|----------|--------------------|-----|
@@ -455,6 +455,10 @@ Built in slices; this layer grows with them. Slice a: the machine firewall.
 | Opening a stopped app | The Open button waits while the app starts | 🟡 | `openApp` starts it through the monitor and waits up to 90 s for it to answer; past that, "still starting, open it again in a moment"; a refused start (the limit) is shown as is | None |
 | All 100 slots held by apps opened in the last 12 hours | Opening one more app is refused | 🟡 | The refusal says so; a slot frees when its app is removed or goes 12 hours unopened | None at one operator's scale |
 | The mission machine moved (a resume, a crash) | The session's address is stale | 🟢 | A refused or failed page load sends the operator to the cockpit, which issues a ticket with the current address | None |
+| An agent's own Python environment is broken (a bad install, a package that shadows a platform one) | Its scripts, its jobs and its apps fail; teammates are unaffected | 🟡 | An app that cannot start is restarted 3 times, then `failed`, and the owner gets the log's last lines; `install` refuses to replace the packages apps are served with (a constraints file); deleting `$WORKDIR/.venv` returns the agent to the platform's environment | None |
+| `pip install` fills the volume | Writes fail for the whole mission | 🟠 | Only extras are installed (the platform's packages are seen, not copied); the disk alert (G-4) warns at 80% and 90% | No per-agent quota |
+| Packages an agent installed under its home folder | Gone at the next resume (the home folder is on the machine's disk) | 🟡 | The `python-env` skill tells agents to install only into `$WORKDIR/.venv`, which is on the volume; found live 2026-11-22 | An agent that ignores the skill loses its packages; its apps fail visibly (row above) |
+| A package or tool an app needs is missing from the image | The app fails to start, or a notebook cell fails to import | 🟡 | The image ships the scientific stack, Jupyter, Gradio and widgets; an agent adds the rest with `python-env` | None |
 
 ---
 

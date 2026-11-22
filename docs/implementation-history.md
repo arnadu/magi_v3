@@ -1702,3 +1702,52 @@ on and is pruned to 1 day; tracked separately as issue #53) — corrected to `mi
 **Not yet built**, per the plan: Phase 6's `6.2` copilot content shipped, but the plan's Phase 7
 close-out (security/operational-resilience/code-structure review passes, beta-promotion decision)
 runs after this history entry.
+
+## Interactive apps (ADR-0037, issue #42) — 2026-11-20 to 2026-11-22
+
+An agent serves a program the operator uses in a browser: a JupyterLab notebook they work on
+together (real-time collaboration), a Gradio app, or a small website. The ADR was reviewed by
+MAGI DEV's appsec before it was built (approved with conditions, 923464a), then checked by a
+spike on a throwaway Fly app, which changed four things: nftables instead of iptables (Fly's
+kernel lacks the owner match), Fly SSH kept open, one WebSocket upgrade handler per server, and
+an origin per app (a port each on the apps host) after the browser-storage check.
+
+Built in seven slices:
+- **(a) The machine firewall** (`scripts/magi-net`, `machine-firewall.ts`): inbound only Fly SSH
+  and the monitor port; an app's loopback port only for its owner and the daemon. Closed F-081,
+  the private-network exposure the spike confirmed (any machine of the app could reach any
+  listener on another).
+- **(b) The supervisor** (`app-supervisor.ts`, `app-requests.ts`, `app-store.ts`,
+  `app-control.ts`): request files in `shared/apps/requests/`, attributed to the file's owner
+  as for jobs (`safe-owned-file.ts`, now shared with jobs and schedules); runs each app as its
+  owner through `magi-app`; health checks, three restarts an hour, idle stop after four hours,
+  at most three running. Records in the new `missionApps` collection.
+- **(c) The monitor hop** (`app-hop.ts`): `/a/<capability>/`, HTTP and WebSocket, with its own
+  per-mission apps token and the mission's id; the monitor token does not open it.
+- **(d) The apps host** (`packages/control-plane/src/apps-host/`, Fly app `magi-apps-dev`): its
+  own site, a port per app (20000–20099, slot from `Fly-Forwarded-Port`), a 60-second
+  single-use ticket redeemed into a 12-hour session cookie scoped to the app's path,
+  `Clear-Site-Data` on redemption, fetch-metadata and WebSocket `Origin` checks.
+- **(e) Opening from the control plane** (`app-open-routes.ts`, `apps-host/open.ts`,
+  `apps-host/slots.ts`): owner-checked tickets, the reopen flow for copied links and stale
+  addresses, sticky slots on the app's record.
+- **(f) The cockpit's Apps tab.**
+- **(g) The `serve-app` platform skill.**
+
+On the way: the control plane ran Express 5 in the image while its tests ran Express 4; aligned
+(ef8dac8, `tests/express-version.unit.test.ts`).
+
+**Live use (2026-11-21/22)**, on three missions: a website (Houseplant), a Gradio app
+(Household Economist), a notebook (météo). The notebook found four problems, each fixed at its
+cause: no widget renderer in the image (ipywidgets added); no scientific stack in the image
+(added); packages an agent installed under its home folder lost at the next resume, and its
+own venv invisible to its apps, which led to **agents' Python environments**: the `python-env`
+skill makes `$WORKDIR/.venv` on the volume, layered on the platform's packages; `magi-python3`,
+background jobs and the agent's apps all run with it. The fourth was the mission's own code: a
+module that sets matplotlib's `Agg` backend on import hides every plot (the skill now says so).
+
+**Verified:** `daemon-apps.integration.test.ts` (a real daemon, no LLM; J-22, A-10,
+`app.as-owner`, `app.bounded`), unit tests per module, and live hostile checks recorded in the
+ADR: from the browser through the real apps host, and on the machine as the agents' users. One
+gap left to the security-testing work: an agent's own server outside the app range is reachable
+by its teammates on the same machine.
