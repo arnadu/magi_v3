@@ -7,8 +7,15 @@
  * format for OpenRouter.
  */
 
+import { getBuiltinModel } from "@mariozechner/pi-ai/providers/all";
 import { describe, expect, it } from "vitest";
-import { DEEPSEEK_V3_2, MINISTRAL_14B, parseModel } from "../src/models.js";
+import {
+	DEEPSEEK_V3_2,
+	isKnownModelId,
+	MINISTRAL_14B,
+	PLATFORM_OPENROUTER_MODELS,
+	parseModel,
+} from "../src/models.js";
 
 describe("OpenRouter models carry sendSessionAffinityHeaders", () => {
 	it("DEEPSEEK_V3_2 (getBuiltinModel-sourced)", () => {
@@ -71,5 +78,28 @@ describe("parseModel: vision-capable fallback for unregistered OpenRouter ids (i
 		// default of true.
 		const model = parseModel("some-new-vendor/text-model-v1");
 		expect(model.input).not.toContain("image");
+	});
+});
+
+describe("OpenRouter models the platform prices itself", () => {
+	it("are accepted in a config and priced from the platform's table", () => {
+		expect(isKnownModelId("tencent/hy4-flash")).toBe(true);
+		const model = parseModel("tencent/hy4-flash");
+		expect(model.cost.input).toBe(0.035);
+		expect(model.contextWindow).toBe(1_048_576);
+		expect(model.compat?.sendSessionAffinityHeaders).toBe(true);
+	});
+
+	it("an id pi-ai's registry does not ship stays refused", () => {
+		expect(isKnownModelId("tencent/no-such-model")).toBe(false);
+		expect(isKnownModelId("constructor/x")).toBe(false);
+	});
+
+	it("an entry pi-ai's registry now ships must be removed from the platform table", () => {
+		const shipped = Object.keys(PLATFORM_OPENROUTER_MODELS).filter(
+			// biome-ignore lint/suspicious/noExplicitAny: getBuiltinModel expects a literal from models.generated
+			(id) => getBuiltinModel("openrouter", id as any) !== undefined,
+		);
+		expect(shipped).toEqual([]);
 	});
 });

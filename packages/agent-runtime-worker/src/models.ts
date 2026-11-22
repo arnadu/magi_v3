@@ -154,10 +154,41 @@ function supportsVisionFallback(id: string): boolean {
  * ($3/$15 per MTok, 128k context) and image support inferred from
  * VISION_CAPABLE_ID_PATTERNS above. Add an explicit constant above to override.
  */
-/** The pre-generated OpenRouter registry entry for an id, if pi-ai ships one. */
+/**
+ * OpenRouter models the platform prices itself: releases newer than pi-ai's
+ * generated registry. Each price is OpenRouter's (`/api/v1/models`) on the
+ * date noted; a test fails once the registry ships the id, so the entry is
+ * removed rather than left to drift. Metered costs come from OpenRouter's own
+ * per-call figure, not from this table (see the pi-ai cost patch).
+ */
+export const PLATFORM_OPENROUTER_MODELS: Readonly<
+	Record<string, Model<"openai-completions">>
+> = {
+	// 2026-11-22: $0.035 / $0.1405 per MTok, cache read $0.0015; tools, reasoning, images.
+	"tencent/hy4-flash": {
+		id: "tencent/hy4-flash",
+		name: "Tencent: Hy4 flash",
+		api: "openai-completions",
+		provider: "openrouter",
+		baseUrl: "https://openrouter.ai/api/v1",
+		reasoning: true,
+		input: ["text", "image"],
+		cost: { input: 0.035, output: 0.1405, cacheRead: 0.0015, cacheWrite: 0 },
+		contextWindow: 1_048_576,
+		maxTokens: 65_536,
+		compat: { thinkingFormat: "openrouter" },
+	},
+};
+
+/** The pi-ai registry entry for an id, else the platform's own (above). */
 function registeredOpenRouterModel(id: string) {
-	// biome-ignore lint/suspicious/noExplicitAny: getBuiltinModel expects a literal from models.generated; arbitrary IDs require the cast
-	return getBuiltinModel("openrouter", id as any) ?? undefined;
+	return (
+		// biome-ignore lint/suspicious/noExplicitAny: getBuiltinModel expects a literal from models.generated; arbitrary IDs require the cast
+		getBuiltinModel("openrouter", id as any) ??
+		(Object.hasOwn(PLATFORM_OPENROUTER_MODELS, id)
+			? PLATFORM_OPENROUTER_MODELS[id]
+			: undefined)
+	);
 }
 
 export function parseModel(id: string): Model<string> {
