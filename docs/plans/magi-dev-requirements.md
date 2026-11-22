@@ -1987,6 +1987,31 @@ Changes:
 To score next: whether the next journey reviews (J-21, J-04, J-11) start from `operations.md`,
 and whether they state an actor's missing entry point from the report, confirmed in the code.
 
+### Review of the interactive apps (2026-11-22)
+
+The four reviewers were asked to review ADR-0037's implementation (`c0d1b36^..16bba51`, 30
+commits), each through its own lens. Our own `/security-review` of the same range had found
+F-082 (a module planted in a served folder runs as the notebook's owner, through `python -m`),
+introduced at `d103c5e`; no reviewer was told.
+
+| Reviewer | Cost | Verified findings | Wrong or invented | Missed |
+|---|---|---|---|---|
+| appsec | $0.14 | 1: stale CSP text (also the documenter's) | 20 test names cited as evidence that do not exist; a `magi-net` sudo rule in `setup-dev.sh` it had searched for and not found; two env vars that do not exist; Jupyter's `allow_origin` misreported | F-082 (APPROVE, "no new findings") |
+| code reviewer | $0.52 | 3 test gaps (crash before the first answer, re-declaration, boot reset) | a replay test reported missing (it exists); two states and a filter that are not in the code | F-082 (also in its batch review of `d103c5e`) |
+| documenter | $1.41 | 2: the ADR's notebook location; the stale CSP text | none found (92 citations, all resolve) | — |
+| qa-lead | $0.13 | 2 gaps (boot reset; daemon stop) | one test name paraphrased; one scenario tests an LLM's choice | the cockpit's existing `open-app-param` test |
+
+**What failed, and the change.** appsec read the code (60-odd `git show` calls) but listed only
+the first few test names of each file, then wrote the rest; it did not run the citation check
+rule 9 requires, which would have flagged 9 citations, and the check did not look at test names.
+`check-citations.py` now checks every double-quoted test name on a line that names its
+`*.test.ts` file (it catches all 20), and rule 9 says to list a test file's names in full before
+citing one. Whether agents run the check is still on trust; a report without its last line is
+the signal to look for.
+
+**Not changed.** No skill hint about interpreters loading code from the working directory: F-082
+is proposed as a known-answer item instead (#96), and a hint would give it away.
+
 ## Phasing
 
 | Phase | Scope | Needs |

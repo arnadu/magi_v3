@@ -12,7 +12,9 @@ and looks each one up in your clone:
   - file.ts / path/to/file.ts, with :NN or :NN-MM
         exists, and has that many lines;
   - `GET /some/path` and other routes in backticks
-        their last fixed segments appear in a quoted string in the code.
+        their last fixed segments appear in a quoted string in the code;
+  - "a test's name", in double quotes on a line that names a *.test.ts file
+        appears in that test file (a test you cite as evidence must exist).
 
 Usage:
   python3 check-citations.py <report.md> <clone>       # exits 1 if anything is not found
@@ -32,6 +34,8 @@ FILE_RE = re.compile(r"(?<![\w/.*-])((?:[\w.-]+/)*[\w][\w.-]*\.(?:tsx|ts|mjs|jso
 TICK_RE = re.compile(r"`([^`\n]{2,120})`")
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\(\))?$")
 ROUTE_RE = re.compile(r"^(?:(GET|POST|PUT|PATCH|DELETE)\s+)?(/[\w/:.\-{}]*)$")
+TEST_FILE_RE = re.compile(r"([\w./-]+\.test\.tsx?)")
+QUOTE_RE = re.compile(r'"([^"\n]{12,200})"')
 PAIR_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?`\s*\(([\w./-]+\.(?:tsx|ts|mjs|js|py))(?::\d+)?\)")
 
 
@@ -121,6 +125,16 @@ def check(report_text, clone):
         else:
             add("file", cite, True)
 
+    for line in report_text.splitlines():
+        test_files = [h for ref in TEST_FILE_RE.findall(line) for h in find_files(files, ref)]
+        if not test_files:
+            continue
+        for q in QUOTE_RE.findall(line):
+            if q.count(" ") < 2 or q.rstrip().endswith((".", "?", "!")):
+                continue  # a word or two, or a quoted sentence, is not a test's name
+            ok = any(q in files[h] for h in test_files)
+            add("test", f'"{q}"', ok, "" if ok else "no such test in " + ", ".join(sorted(set(test_files))))
+
     for m in TICK_RE.finditer(report_text):
         tok = m.group(1).strip()
         r = ROUTE_RE.match(tok)
@@ -151,21 +165,36 @@ def report(results):
 
 
 def selftest(clone):
-    real = "check-citations.py" if find_files(index_clone(clone)[0], "check-citations.py") else None
-    if not real:
+    files = index_clone(clone)[0]
+    if not find_files(files, "check-citations.py"):
         print("selftest: run it with your clone of the repository")
         return 1
+    # A real test and its name, taken from the clone so the selftest outlives any one test.
+    real_test = next(
+        ((os.path.basename(p), m.group(1)) for p in sorted(files) if p.endswith(".test.ts")
+         for m in [re.search(r'\bit\("([^"\n]{12,200})"', files[p])] if m and m.group(1).count(" ") >= 2),
+        None,
+    )
+    if not real_test:
+        print("selftest: no test file with a named test in the clone")
+        return 1
+    test_file, real_name = real_test
     # Built at run time: written literally, they would be found in this very script.
     fake1, fake2 = "invented" + "FunctionXyz", "madeUp" + "HelperQq"
-    text = f"Uses `looks_like_identifier` (check-citations.py) and `{fake1}` (check-citations.py), and `{fake2}`."
+    fake3 = "proves " + "a made-up behaviour holds"
+    text = (
+        f"Uses `looks_like_identifier` (check-citations.py) and `{fake1}` (check-citations.py), and `{fake2}`.\n"
+        f'Tested by {test_file}: "{real_name}" and "{fake3}".\n'
+    )
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as f:
         f.write(text)
     res = check(open(f.name).read(), clone)
     os.unlink(f.name)
     bad = {r[1] for r in res if not r[2]}
-    expect = {f"{fake1} (check-citations.py)", fake2}
-    good = "looks_like_identifier (check-citations.py)" not in bad and expect <= bad
-    print("selftest:", "caught the invented names and passed the real one" if good else f"FAILED: {bad}")
+    expect = {f"{fake1} (check-citations.py)", fake2, f'"{fake3}"'}
+    passed = {"looks_like_identifier (check-citations.py)", f'"{real_name}"'}
+    good = expect <= bad and not (passed & bad)
+    print("selftest:", "caught the invented names and test, and passed the real ones" if good else f"FAILED: {bad}")
     return 0 if good else 1
 
 

@@ -101,7 +101,9 @@ python3 $SHARED_DIR/skills/_team/working-agreements/scripts/check-citations.py <
 ```
 
 It looks up every `identifier`, `identifier` (file.ts), file.ts:NN and route in backticks, and
-exits 1 while any is not found. Fix or remove each one before you hand the report over, and
+every test name in double quotes on a line that names its `*.test.ts` file, and exits 1 while
+any is not found. A test you cite as evidence is quoted exactly as its `it("…")` reads: list a
+test file's names in full (`grep -n 'it("' <file>`, no `head`) before you cite any of them. Fix or remove each one before you hand the report over, and
 include its last line ("N citations checked: …") in the report. It proves existence, not
 meaning: a real function cited for the wrong behaviour still passes, so read the code as well.
 `--selftest <clone>` shows it catching an invented name (rule 2).
