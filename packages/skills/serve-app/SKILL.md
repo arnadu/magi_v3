@@ -105,6 +105,9 @@ second or so.
   code and data it loads (or put the notebook beside them), and load them by relative paths.
   A module imported from elsewhere still runs, but the operator cannot open or read it.
 - Interactive widgets (`ipywidgets`: `interact`, sliders, buttons) are installed.
+- A module the notebook imports must not call `matplotlib.use("Agg")` when it is imported: it
+  switches the notebook to saving files, and every plot silently disappears. Put that call under
+  `if __name__ == "__main__":`, or add `%matplotlib inline` after the imports in the notebook.
 - **Before you change a notebook the operator has open, message them first** ("I'm adding a
   cell to analysis.ipynb now"). Edits made at the same moment on both sides can be lost.
 - Code the operator runs in the notebook runs as you, with your files: keep the folder to what
