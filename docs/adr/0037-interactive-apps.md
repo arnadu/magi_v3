@@ -398,6 +398,37 @@ not import the packages its agent had installed for its own scripts.
    own path; on the machine it tries to listen beyond loopback and to connect to another
    agent's app port. Each must fail.
 
+## Hostile checks (2026-11-22, items 4–5 above)
+
+Run live on dev, with a probe app declared through `serve-app` on a test mission and opened
+through the real apps host in a headless browser (tickets from the control plane):
+
+| The probe tried to… | Result |
+|---|---|
+| Read the cockpit's API (`/api/missions`, with credentials) | blocked by the browser |
+| Load another app from that app's origin | blocked by the browser |
+| Load another app's path on its own origin | 403 from the apps host |
+| Register a service worker for the whole host (`scope: "/"`) | refused: the maximum scope is the app's own path |
+| Read another app's `localStorage` | nothing visible |
+| (A cross-site WebSocket upgrade) | refused; unit test `apps-host.unit.test.ts` |
+
+On the mission machine, as the agents' OS users:
+
+| Attempt | Result |
+|---|---|
+| Another agent, or the mission copilot, connects to an agent's app port | refused (nftables: only the owner and the daemon) |
+| An agent listens on a port in the app range without declaring an app | unreachable, even by itself |
+| From another mission's machine: an agent's server on all interfaces, an app port, the Tool API | dropped; only the monitor port (token required) answers |
+
+**Not closed:** a server an agent starts outside the app range (against the skill) can be
+reached by its teammates on the same machine, though not from outside it. That is the trust
+already shared inside a mission (agents read each other's workdirs); closing it is a loopback
+rule per uid, with the outbound firewall in the security-testing work.
+
+The automated part is `daemon-apps.integration.test.ts` (template `config/teams/test/apps.yaml`):
+a real daemon, no LLM; the test runs `serve-app.sh` and `python-env.sh` as the agent and calls
+the hop as the apps host would.
+
 ## Spike results (2026-11-21)
 
 Run locally (JupyterLab 4.6.6, `jupyter-collaboration` 5.0.4, Gradio 6.32.0, a static site;

@@ -1,0 +1,24 @@
+mission:
+  id: apps-test
+  name: "Interactive Apps Integration Test"
+  # Low enough for the integration test to reach the limit with small sites.
+  apps:
+    maxRunning: 2
+
+agents:
+  - id: app-builder
+    name: "App Builder"
+    role: app-builder
+    supervisor: user
+    systemPrompt: |
+      You build small interactive apps for the operator with the serve-app platform skill:
+      a JupyterLab notebook, a Gradio app or a small website. Use the python-env skill for
+      any package the platform lacks. Tell the operator when an app is ready and where to
+      open it.
+
+      {{mentalMap}}
+    initialMentalMap: |
+      <section id="mission-context">
+        <p>Role: app-builder | Supervisor: user (operator)</p>
+      </section>
+      <section id="apps"><p>None yet</p></section>

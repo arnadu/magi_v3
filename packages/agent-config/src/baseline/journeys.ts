@@ -190,7 +190,7 @@ export const JOURNEYS = defineJourneys([
 		title: "Use a mission's interactive app",
 		actors: ["OP", "MC"],
 		operations: ["app.status", "app.open", "app.control", "message.send"],
-		note: "Planned. Open it from the mission cockpit, or from a copied URL in another tab; ask the team by message to change it",
+		note: "Open it from the mission cockpit, or from a copied URL in another tab; ask the team by message to change it",
 	},
 	{
 		id: "A-01",
@@ -300,7 +300,7 @@ export const JOURNEYS = defineJourneys([
 			"message.send",
 			"app.control",
 		],
-		note: "Planned. The agent writes the app, declares it, sees it answer, and tells the operator where to find it",
+		note: "The agent writes the app, declares it, sees it answer, and tells the operator where to find it",
 	},
 ]);
 

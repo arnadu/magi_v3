@@ -10,6 +10,7 @@
  */
 
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AppKind } from "@magi/agent-config";
 
 export const MAGI_APP = "/usr/local/bin/magi-app";
@@ -18,8 +19,13 @@ export const PLATFORM_VENV = "/opt/magi/venv";
 export const PLATFORM_PYTHON = `${PLATFORM_VENV}/bin/python3`;
 /** An agent's own environment, layered on the platform's (the python-env skill). */
 export const AGENT_VENV = ".venv";
-/** Root-owned in the image; not the agent-writable copy under shared/skills. */
-const SERVE_SITE = "/app/packages/skills/serve-app/scripts/serve-site.py";
+/**
+ * The platform's copy, beside this package (root-owned in the image under
+ * /app/packages), never the agent-writable copy under shared/skills.
+ */
+const SERVE_SITE = fileURLToPath(
+	new URL("../../skills/serve-app/scripts/serve-site.py", import.meta.url),
+);
 
 export interface AppLaunch {
 	/** Arguments after `magi-app`. */
