@@ -99,6 +99,13 @@ export function appLaunch(app: AppLaunchInput): AppLaunch {
 					BASE_PATH: app.basePath,
 					JUPYTER_TOKEN: app.jupyterToken,
 					...JUPYTER_PLATFORM_ENV,
+					// The served folder may be in shared/, writable by every agent:
+					// without this, `python -m jupyterlab` and the kernel's
+					// `-m ipykernel_launcher` would import a module planted there,
+					// as the owner, before anyone runs a cell (F-082). Inherited by
+					// the kernel; a notebook that imports from its folder adds it
+					// to sys.path itself.
+					PYTHONSAFEPATH: "1",
 				},
 				keepPrefix: true,
 			};
@@ -148,4 +155,5 @@ export const APP_ENV_KEEP = [
 	"JUPYTER_PATH",
 	"JUPYTER_CONFIG_PATH",
 	"JUPYTERLAB_DIR",
+	"PYTHONSAFEPATH",
 ] as const;

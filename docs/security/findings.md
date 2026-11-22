@@ -40,6 +40,12 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 
 ## Fixed Findings
 
+### 2026-11-22 interactive apps, sprint-end security review
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-082 | MEDIUM | `packages/agent-runtime-worker/src/app-commands.ts` (the `jupyter` kind) | **A teammate could run code as a notebook's owner by planting a module in the served folder.** JupyterLab starts as `python -m jupyterlab` with the served folder as its working directory, and its kernel as `python -m ipykernel_launcher` in the notebook's folder; `-m` puts the working directory first on `sys.path`. A served folder in `shared/` is writable by every agent (A-001), so a planted `ipykernel_launcher.py` (confirmed locally: it runs) or a module JupyterLab imports would run as the owner when the app or a kernel starts, before anyone runs a cell. Found by the sprint-end `/security-review` of `c0d1b36^..1068471`. Code a notebook imports on purpose from `shared/` remains editable by teammates, as A-001 accepts; `gradio` is the same case (its `app.py` is beside any planted module). | `PYTHONSAFEPATH=1` in the `jupyter` kind's environment (inherited by its kernels; kept by `magi-app`'s `env_keep`): the working directory is no longer on `sys.path` at startup (confirmed locally: the planted launcher no longer runs). The `serve-app` skill tells agents to add the folder to `sys.path` in the first cell when the notebook imports from it. |
+
 ### 2026-11-21 interactive apps (ADR-0037, slice a)
 
 | ID | Severity | Location | Description | Fix applied |

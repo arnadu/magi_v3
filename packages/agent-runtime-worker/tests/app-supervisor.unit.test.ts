@@ -218,6 +218,8 @@ describe("app supervisor", () => {
 			"jupyterlab",
 		]);
 		expect(j.env.JUPYTER_PATH).toBe("/opt/magi/venv/share/jupyter");
+		// F-082: no module planted in the served folder runs at startup.
+		expect(j.env.PYTHONSAFEPATH).toBe("1");
 	});
 
 	it("refuses another agent's app on re-declaration", async () => {

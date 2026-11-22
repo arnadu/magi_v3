@@ -145,7 +145,7 @@ RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(root) NOPASSWD: /usr/local/sbin/magi-net" >> /etc/sudoers.d/magi && \
-    echo "Defaults!/usr/local/bin/magi-app env_keep += \"PORT BASE_PATH JUPYTER_TOKEN GRADIO_SERVER_NAME GRADIO_SERVER_PORT GRADIO_ROOT_PATH GRADIO_ANALYTICS_ENABLED GRADIO_RUN_HISTORY JUPYTER_PATH JUPYTER_CONFIG_PATH JUPYTERLAB_DIR\"" >> /etc/sudoers.d/magi && \
+    echo "Defaults!/usr/local/bin/magi-app env_keep += \"PORT BASE_PATH JUPYTER_TOKEN GRADIO_SERVER_NAME GRADIO_SERVER_PORT GRADIO_ROOT_PATH GRADIO_ANALYTICS_ENABLED GRADIO_RUN_HISTORY JUPYTER_PATH JUPYTER_CONFIG_PATH JUPYTERLAB_DIR PYTHONSAFEPATH\"" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-app" >> /etc/sudoers.d/magi && \
     chmod 440 /etc/sudoers.d/magi
 
