@@ -14,7 +14,7 @@ import { cspReportHandler, securityHeaders } from "./security-headers.js";
 
 /** Mounts the pre-auth surface and returns the static bundle's directory (for the SPA fallback). */
 export function mountPublicSurface(app: express.Express): string {
-	// CSP (report-only until CSP_ENFORCE=true), nosniff, referrer and framing
+	// CSP (enforcing unless CSP_ENFORCE=false), nosniff, referrer and framing
 	// policy on every response — static, API and the SPA fallback alike.
 	app.use(
 		securityHeaders({

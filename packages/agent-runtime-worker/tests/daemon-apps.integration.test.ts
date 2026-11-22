@@ -11,7 +11,9 @@
  *     mission's id; the monitor token does not open it;
  *   - app.as-owner: the app runs with its owner's own Python once it has one;
  *   - app.bounded: a start beyond `mission.apps.maxRunning` is refused,
- *     naming the apps running; stop frees the port; remove deletes the record.
+ *     naming the apps running; stop frees the port; remove deletes the record;
+ *     nothing a previous daemon left "running" is believed at boot, and
+ *     stopping the daemon stops its apps.
  *
  * Runs without the machine firewall (`APPS_ALLOW_NO_FIREWALL`): the firewall
  * is root's on a Fly machine and is checked live.
@@ -137,6 +139,23 @@ describe("integration: interactive apps on the daemon (ADR-0037)", () => {
 		({ client, db } = await connectMongo(MONGODB_URI!));
 		for (const c of ["missionApps", "mailbox", "conversationMessages"])
 			await db.collection(c).deleteMany({ missionId: MISSION_ID });
+		// A record the previous daemon left running: boot must not believe it.
+		const then = new Date(Date.now() - 60_000);
+		await db.collection<MissionAppDoc>("missionApps").insertOne({
+			missionId: MISSION_ID,
+			name: "leftover",
+			owner: AGENT,
+			kind: "site",
+			path: join(AGENT_WORKDIR, "apps", "leftover"),
+			description: "",
+			capability: "f".repeat(32),
+			status: "running",
+			port: 20_099,
+			restarts: [],
+			declaredAt: then,
+			statusChangedAt: then,
+			updatedAt: then,
+		});
 
 		daemon = spawn(
 			"node",
@@ -183,6 +202,12 @@ describe("integration: interactive apps on the daemon (ADR-0037)", () => {
 		await db?.collection("missionApps").deleteMany({ missionId: MISSION_ID });
 		await client?.close();
 	}, 30_000);
+
+	it("app.bounded: a record left running by the previous daemon is stopped at boot", async () => {
+		const doc = await record("leftover");
+		expect(doc?.status).toBe("stopped");
+		expect(doc?.port).toBeUndefined();
+	});
 
 	it("A-10: an agent declares a site; it runs as its owner and its record agrees", async () => {
 		const dir = writeSite("menu", "<h1>Menu of the day</h1>");
@@ -277,4 +302,18 @@ describe("integration: interactive apps on the daemon (ADR-0037)", () => {
 		serveApp("remove specials");
 		expect(await record("specials")).toBeNull();
 	}, 120_000);
+
+	it("app.bounded: stopping the daemon stops its apps", async () => {
+		const port = (await record("menu"))?.port as number;
+		expect(await portOpen(port)).toBe(true);
+		const d = daemon as ChildProcess;
+		const exited = new Promise((r) => d.once("exit", r));
+		d.kill("SIGTERM");
+		await exited;
+		daemon = null;
+		expect((await record("menu"))?.status).toBe("stopped");
+		await waitFor("the app's port to close", async () =>
+			(await portOpen(port)) ? undefined : true,
+		);
+	}, 60_000);
 });

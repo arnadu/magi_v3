@@ -279,7 +279,7 @@ instruction, not a control. Closing it, as for any tunnel an agent could start w
 an outbound firewall, which belongs with the security-testing work.
 
 **The notebook case:**
-- The notebook is a file in the mission's shared folder.
+- The notebook is a file in its owner's workdir or the mission's shared folder.
 - With real-time collaboration, a change the agent writes to the file is picked up by the
   operator's open notebook. The server polls the disk every second (`file_poll_interval`).
 - The operator's edits and outputs are saved to the file within a second

@@ -260,6 +260,30 @@ describe("app supervisor", () => {
 		expect(firewall.revoke).toHaveBeenCalledWith(20_000);
 	});
 
+	it("app.bounded: a crash before the first answer counts against the restart limit", async () => {
+		const s = make();
+		await s.declare(declaration("dash"));
+		expect(status("dash")).toBe("starting");
+		p.exit(1000);
+		await vi.waitFor(() => expect(p.launched).toHaveLength(2));
+		expect(status("dash")).toBe("starting");
+		expect(store.docs.get("dash")?.restarts).toHaveLength(1);
+		expect(store.docs.get("dash")?.lastError).toBeTruthy();
+	});
+
+	it("re-declaring a running app stops the old process before starting the new one", async () => {
+		const s = make();
+		await s.declare(declaration("dash"));
+		p.up.add(20_000);
+		await s.tick();
+		expect(status("dash")).toBe("running");
+		await s.declare({ ...declaration("dash"), path: "/w/dash-v2.py" });
+		expect(p.signals).toEqual(["TERM 1000"]);
+		expect(p.launched).toHaveLength(2);
+		expect(p.launched[1].launch.argv).toContain("/w/dash-v2.py");
+		expect(s.running()).toHaveLength(1);
+	});
+
 	it("app.bounded: an app that never answers within two minutes counts as a crash", async () => {
 		const s = make();
 		await s.declare(declaration("dash"));
