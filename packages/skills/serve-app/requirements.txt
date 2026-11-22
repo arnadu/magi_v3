@@ -4,3 +4,7 @@
 jupyterlab==4.6.6
 jupyter-collaboration==5.0.4
 gradio==6.32.0
+# Widgets in notebooks (`interact`, sliders): the kernel side and JupyterLab's
+# renderer (jupyterlab_widgets) must both be in the server's environment; a copy
+# an agent installs for itself is importable but renders as plain text.
+ipywidgets==8.1.9
