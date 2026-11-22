@@ -140,12 +140,12 @@ RUN printf '%s\n' \
 # FRED/FMP/NewsAPI through the daemon's data-* tools (CR-04), never through a
 # raw key in their environment, so sudo must not be able to pass one through
 # even if the daemon's env ever leaked into a spawn.
-RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL_TOKEN\"" > /etc/sudoers.d/magi && \
+RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL_TOKEN WORKDIR\"" > /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(root) NOPASSWD: /usr/local/bin/magi-create-user" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-node" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-job" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(root) NOPASSWD: /usr/local/sbin/magi-net" >> /etc/sudoers.d/magi && \
-    echo "Defaults!/usr/local/bin/magi-app env_keep += \"PORT BASE_PATH JUPYTER_TOKEN GRADIO_SERVER_NAME GRADIO_SERVER_PORT GRADIO_ROOT_PATH GRADIO_ANALYTICS_ENABLED GRADIO_RUN_HISTORY\"" >> /etc/sudoers.d/magi && \
+    echo "Defaults!/usr/local/bin/magi-app env_keep += \"PORT BASE_PATH JUPYTER_TOKEN GRADIO_SERVER_NAME GRADIO_SERVER_PORT GRADIO_ROOT_PATH GRADIO_ANALYTICS_ENABLED GRADIO_RUN_HISTORY JUPYTER_PATH JUPYTER_CONFIG_PATH JUPYTERLAB_DIR\"" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-app" >> /etc/sudoers.d/magi && \
     chmod 440 /etc/sudoers.d/magi
 
@@ -180,10 +180,11 @@ RUN python3 -m venv /opt/magi/venv && \
     chown -R root:magi-shared /opt/magi && \
     chmod -R g+rx /opt/magi
 
-# magi-python3 wrapper — uses the venv interpreter; NOT a symlink (symlinks
-# break venv path resolution; Python finds site-packages relative to argv[0]).
-RUN printf '#!/bin/sh\nexec /opt/magi/venv/bin/python3 "$@"\n' \
-    > /usr/local/bin/magi-python3 && chmod +x /usr/local/bin/magi-python3
+# magi-python3 wrapper — the agent's own environment ($WORKDIR/.venv, layered
+# on the platform's by the python-env skill) when it has one, else the platform
+# venv. NOT a symlink (Python finds site-packages relative to argv[0]).
+COPY packages/agent-runtime-worker/scripts/magi-python3 /usr/local/bin/magi-python3
+RUN chmod 755 /usr/local/bin/magi-python3
 
 WORKDIR /app
 

@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { entryTrigger } from "@magi/agent-config";
+import { AGENT_VENV, PLATFORM_PYTHON } from "../app-commands.js";
 import { controlApp } from "../app-control.js";
 import { appsTokenFromEnv, createAppHop } from "../app-hop.js";
 import { appProcesses } from "../app-processes.js";
@@ -93,6 +95,11 @@ export async function startApps(
 			} catch (e) {
 				return `(log unreadable: ${(e as Error).message})`;
 			}
+		},
+		pythonOf(owner) {
+			const root = workdirOf(owner);
+			const own = root && join(root, AGENT_VENV, "bin/python3");
+			return own && existsSync(own) ? own : PLATFORM_PYTHON;
 		},
 		notify,
 	});

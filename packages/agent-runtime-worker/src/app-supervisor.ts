@@ -40,6 +40,8 @@ export interface SupervisorDeps {
 	/** An fd appending to the app's log in its owner's workdir. */
 	openLog(owner: string, name: string): number;
 	logTail(owner: string, name: string): string;
+	/** The interpreter an owner's apps run with (its own environment, or the platform's). */
+	pythonOf(owner: string): string;
 	/** Tell an agent something about its app (mail from the platform). */
 	notify(agentId: string, subject: string, body: string): Promise<void>;
 	now?: () => number;
@@ -121,6 +123,7 @@ export class AppSupervisor {
 			port,
 			basePath: `/a/${app.capability}`,
 			jupyterToken,
+			python: this.deps.pythonOf(app.owner),
 		});
 		if (this.deps.firewall.state.kind === "on")
 			await this.deps.firewall.allow(port, this.deps.uidOf(linuxUser));

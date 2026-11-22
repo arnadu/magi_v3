@@ -407,6 +407,8 @@ function startJob(
 				env: {
 					PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
 					HOME: `/home/${linuxUser}`,
+					// Not a secret: lets magi-python3 find the agent's own environment.
+					WORKDIR: agentWorkdir,
 					MAGI_TOOL_URL: `http://127.0.0.1:${deps.toolPort}`,
 					MAGI_TOOL_TOKEN: token,
 				},

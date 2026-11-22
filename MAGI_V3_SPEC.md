@@ -574,6 +574,15 @@ reach (the machine firewall, `magi-net`). At most three apps run at once (`missi
 a crashed app is restarted up to three times an hour; an app unopened for four hours is
 stopped; nothing survives a daemon restart. Records live in `missionApps`.
 
+**Python environments**: agents run Python with `magi-python3`. It uses the agent's own
+environment, `$WORKDIR/.venv` on the mission volume, when the agent has made one with the
+`python-env` skill, and otherwise the platform's (`/opt/magi/venv`, in the image: the scientific
+stack, data-factory, Jupyter, Gradio, widgets). An agent's environment is layered on the
+platform's (a `.pth` line), so it holds only the packages the agent added; installs may not
+replace the packages apps are served with. Background jobs (which receive `WORKDIR`) and the
+agent's apps run with the same interpreter, a notebook's kernel included. Nothing is installed
+under the home folder, which a resume erases; there is no environment in the shared folder.
+
 ### ACL enforcement
 
 All file paths are validated by `AclPolicy.checkPath(path, "read"|"write")` before any filesystem

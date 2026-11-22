@@ -9,11 +9,15 @@
  * is readable by every user, `/proc/<pid>/environ` only by the owner.
  */
 
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type { AppKind } from "@magi/agent-config";
 
 export const MAGI_APP = "/usr/local/bin/magi-app";
-const VENV_BIN = "/opt/magi/venv/bin";
+/** The platform's Python environment, built into the image (read-only to agents). */
+export const PLATFORM_VENV = "/opt/magi/venv";
+export const PLATFORM_PYTHON = `${PLATFORM_VENV}/bin/python3`;
+/** An agent's own environment, layered on the platform's (the python-env skill). */
+export const AGENT_VENV = ".venv";
 /** Root-owned in the image; not the agent-writable copy under shared/skills. */
 const SERVE_SITE = "/app/packages/skills/serve-app/scripts/serve-site.py";
 
@@ -39,7 +43,24 @@ export interface AppLaunchInput {
 	basePath: string;
 	/** `jupyter` only: the token the monitor hop adds to every request. */
 	jupyterToken?: string;
+	/**
+	 * The interpreter: the owner's own environment when it has one, so the app
+	 * (and a notebook's kernel) sees the packages the owner's scripts see;
+	 * otherwise `PLATFORM_PYTHON`.
+	 */
+	python: string;
 }
+
+/**
+ * A JupyterLab started from an agent's environment still finds the platform's
+ * front end, extensions (widgets, collaboration) and their settings, which
+ * live under the platform environment, not under the agent's.
+ */
+const JUPYTER_PLATFORM_ENV = {
+	JUPYTER_PATH: join(PLATFORM_VENV, "share/jupyter"),
+	JUPYTER_CONFIG_PATH: join(PLATFORM_VENV, "etc/jupyter"),
+	JUPYTERLAB_DIR: join(PLATFORM_VENV, "share/jupyter/lab"),
+};
 
 export function appLaunch(app: AppLaunchInput): AppLaunch {
 	const port = String(app.port);
@@ -48,8 +69,9 @@ export function appLaunch(app: AppLaunchInput): AppLaunch {
 			if (!app.jupyterToken) throw new Error("a jupyter app needs a token");
 			return {
 				argv: [
-					`${VENV_BIN}/jupyter`,
-					"lab",
+					app.python,
+					"-m",
+					"jupyterlab",
 					"--no-browser",
 					"--ServerApp.ip=127.0.0.1",
 					`--ServerApp.port=${port}`,
@@ -70,12 +92,13 @@ export function appLaunch(app: AppLaunchInput): AppLaunch {
 					PORT: port,
 					BASE_PATH: app.basePath,
 					JUPYTER_TOKEN: app.jupyterToken,
+					...JUPYTER_PLATFORM_ENV,
 				},
 				keepPrefix: true,
 			};
 		case "gradio":
 			return {
-				argv: [`${VENV_BIN}/python3`, app.path],
+				argv: [app.python, app.path],
 				cwd: dirname(app.path),
 				env: {
 					PORT: port,
@@ -93,7 +116,7 @@ export function appLaunch(app: AppLaunchInput): AppLaunch {
 		case "site":
 			return {
 				argv: [
-					`${VENV_BIN}/python3`,
+					app.python,
 					SERVE_SITE,
 					"--root",
 					app.path,
@@ -116,4 +139,7 @@ export const APP_ENV_KEEP = [
 	"GRADIO_ROOT_PATH",
 	"GRADIO_ANALYTICS_ENABLED",
 	"GRADIO_RUN_HISTORY",
+	"JUPYTER_PATH",
+	"JUPYTER_CONFIG_PATH",
+	"JUPYTERLAB_DIR",
 ] as const;

@@ -1,0 +1,12 @@
+#!/bin/sh
+# magi-python3 — the Python agents' scripts, jobs and apps run with.
+#
+# The agent's own environment ($WORKDIR/.venv, made by the python-env skill and
+# layered on the platform's packages) when it has one; otherwise the platform
+# environment built into the image. Installed as /usr/local/bin/magi-python3
+# (Dockerfile, scripts/setup-dev.sh). Not a symlink: Python finds its
+# site-packages relative to the path it was started by.
+if [ -n "${WORKDIR:-}" ] && [ -x "$WORKDIR/.venv/bin/python3" ]; then
+    exec "$WORKDIR/.venv/bin/python3" "$@"
+fi
+exec /opt/magi/venv/bin/python3 "$@"

@@ -6,6 +6,7 @@ import {
 	APP_ENV_KEEP,
 	type AppLaunch,
 	appLaunch,
+	PLATFORM_PYTHON,
 } from "../src/app-commands.js";
 import type { AppProcesses } from "../src/app-processes.js";
 import type { AppStore } from "../src/app-store.js";
@@ -118,6 +119,8 @@ describe("app supervisor", () => {
 			uidOf: (u) => (u === "magi-w1" ? 60001 : 60002),
 			openLog: () => 1,
 			logTail: () => "Traceback: boom",
+			pythonOf: (owner) =>
+				owner === "writer" ? "/w2/.venv/bin/python3" : PLATFORM_PYTHON,
 			notify,
 			now: () => clock,
 			sleep: async () => {},
@@ -165,6 +168,7 @@ describe("app supervisor", () => {
 				port: 20_001,
 				basePath: "/a/cap",
 				jupyterToken: "t",
+				python: PLATFORM_PYTHON,
 			});
 			for (const k of Object.keys(l.env)) expect(APP_ENV_KEEP).toContain(k);
 		}
@@ -177,6 +181,7 @@ describe("app supervisor", () => {
 			port: 20_001,
 			basePath: "/a/c",
 			jupyterToken: "secret-token-1234",
+			python: PLATFORM_PYTHON,
 		});
 		expect(j.argv).toContain("--ServerApp.ip=127.0.0.1");
 		expect(j.argv.join(" ")).not.toContain("secret-token-1234");
@@ -185,9 +190,34 @@ describe("app supervisor", () => {
 			path: "/w/a.py",
 			port: 20_001,
 			basePath: "/a/c",
+			python: PLATFORM_PYTHON,
 		});
 		expect(g.env.GRADIO_SERVER_NAME).toBe("127.0.0.1");
 		expect(g.env.GRADIO_RUN_HISTORY).toBe("False");
+	});
+
+	it("runs an app with its owner's Python, and JupyterLab with the platform's extensions", async () => {
+		const s = make();
+		await s.declare(declaration("mine", "writer"));
+		await s.declare(declaration("theirs", "analyst"));
+		expect(p.launched.map((l) => l.launch.argv[0])).toEqual([
+			"/w2/.venv/bin/python3",
+			PLATFORM_PYTHON,
+		]);
+		const j = appLaunch({
+			kind: "jupyter",
+			path: "/w",
+			port: 20_001,
+			basePath: "/a/c",
+			jupyterToken: "t",
+			python: "/w2/.venv/bin/python3",
+		});
+		expect(j.argv.slice(0, 3)).toEqual([
+			"/w2/.venv/bin/python3",
+			"-m",
+			"jupyterlab",
+		]);
+		expect(j.env.JUPYTER_PATH).toBe("/opt/magi/venv/share/jupyter");
 	});
 
 	it("refuses another agent's app on re-declaration", async () => {

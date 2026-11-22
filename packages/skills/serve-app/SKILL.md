@@ -46,6 +46,10 @@ What the platform does for you:
 
 Your app's output goes to `$WORKDIR/logs/app-<name>.log`. Read it when something fails.
 
+Your app runs with the same Python as `magi-python3`: the platform's packages, plus any you
+added with the `python-env` skill (a notebook's kernel too). Install what it needs there, then
+start it again.
+
 ## Gradio
 
 Write a normal Gradio app and call `demo.launch()` with **no arguments**: the platform sets the
@@ -100,11 +104,7 @@ second or so.
 - **The operator sees only that folder.** Declare the folder that holds the notebook *and* the
   code and data it loads (or put the notebook beside them), and load them by relative paths.
   A module imported from elsewhere still runs, but the operator cannot open or read it.
-- The notebook's kernel and your Gradio app run in the platform's Python, which has numpy,
-  pandas, scipy, scikit-learn, matplotlib, plotly and widgets (`ipywidgets`: `interact`,
-  sliders, buttons). Packages in a venv of your own are not visible there; don't install your
-  own `ipywidgets` (it would render as a line of text). If your app needs another package, ask
-  the operator.
+- Interactive widgets (`ipywidgets`: `interact`, sliders, buttons) are installed.
 - **Before you change a notebook the operator has open, message them first** ("I'm adding a
   cell to analysis.ipynb now"). Edits made at the same moment on both sides can be lost.
 - Code the operator runs in the notebook runs as you, with your files: keep the folder to what

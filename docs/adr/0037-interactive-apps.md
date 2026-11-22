@@ -301,6 +301,14 @@ It also tells agents never to start a server with Bash outside `serve-app`, neve
 Gradio's `share=True`, and never to keep
 mission data or the app's own URL in the browser's storage (decision 2).
 
+**Which Python an app runs with** (2026-11-22, after the first live notebook): its owner's,
+the same as `magi-python3` gives the owner's scripts: the owner's own environment
+(`$WORKDIR/.venv`, the `python-env` skill) when it has one, otherwise the platform's. JupyterLab
+is started from that interpreter (`python -m jupyterlab`), so its kernel is too, and it is
+pointed at the platform's front end and extensions (`JUPYTER_PATH`, `JUPYTER_CONFIG_PATH`,
+`JUPYTERLAB_DIR`). The first notebook showed why: served with the platform's Python, it could
+not import the packages its agent had installed for its own scripts.
+
 ## Alternatives considered
 
 - **Serve apps from the cockpit's address,** under `/missions/<id>/apps/…`. Rejected: an app's
