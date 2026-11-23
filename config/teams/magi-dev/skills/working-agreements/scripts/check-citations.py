@@ -135,10 +135,14 @@ def check(report_text, clone):
         else:
             add("pair", f"{name} ({ref})", True)
 
+    cited = cited_commits(report_text, clone)
     for m in FILE_RE.finditer(report_text):
         ref, line = m.group(1), m.group(2)
         if "/" not in ref and ref.count(".") < 1:
             continue
+        after = report_text[m.end() : m.end() + 1]
+        if "/" not in ref and (re.fullmatch(r"[A-Z][A-Za-z]*\.js", ref) or after == "("):
+            continue  # a product name (Node.js) or a call (express.json()), not a file
         if is_placeholder_or_mission_path(ref, report_text[max(0, m.start() - 20) : m.start()]):
             continue
         hits = find_files(files, ref)
@@ -149,6 +153,9 @@ def check(report_text, clone):
             continue  # an example ("a planted `json.py`"), not a claim about the repository
         if not hits and ref.endswith(".js"):  # the build output of a TypeScript file
             hits = find_files(files, ref[:-3] + ".ts") or find_files(files, ref.replace("dist/", "src/")[:-3] + ".ts")
+        if not hits and at_cited_paths(clone, cited, ref):
+            add("file", cite, True)
+            continue
         if not hits:
             add("file", cite, False, "file not found")
         elif line and not any(files[h].count("\n") + 1 >= int(line) for h in hits):
@@ -171,7 +178,6 @@ def check(report_text, clone):
             )
             add("test", f'"{q}"', ok, "" if ok else "no such test in " + ", ".join(sorted(set(test_files))))
 
-    cited = cited_commits(report_text, clone)
     for m in TICK_RE.finditer(report_text):
         tok = m.group(1).strip()
         if tok.startswith(SCRATCH_ROOTS):
@@ -196,7 +202,11 @@ def check(report_text, clone):
         elif looks_like_identifier(tok):
             name = tok[:-2] if tok.endswith("()") else tok
             ok = name in words or at_cited_commits(clone, cited, name, word=True)
-            add("name", tok, ok, "" if ok else "appears nowhere in the code")
+            line_start = report_text.rfind("\n", 0, m.start()) + 1
+            negated = re.search(r"\b(?:no|not|never|without|absent|missing|lacks?)\b[^.\n]{0,40}$",
+                                report_text[line_start : m.start()], re.I)
+            add("snippet" if (not ok and negated) else "name", tok, ok,
+                "" if ok else ("named as absent; check it is a real API" if negated else "appears nowhere in the code"))
 
     check_commits(report_text, clone, add)
     check_catalog_ids(report_text, files, add)
@@ -223,6 +233,16 @@ def cited_commits(report_text, clone, limit=6):
                     found.append(h)
     found.sort(key=lambda h: int(git(clone, "log", "-1", "--format=%ct", h) or 0), reverse=True)
     return found[:limit]
+
+
+_trees = {}
+
+
+def at_cited_paths(clone, cited, ref):
+    """A file a report names that the repository had at some point (a review of older code)."""
+    if ref not in _trees:
+        _trees[ref] = bool(git(clone, "log", "--all", "-1", "--format=%h", "--", f"*{ref}" if "/" in ref else f"*/{ref}"))
+    return _trees[ref]
 
 
 def at_cited_commits(clone, cited, text, word=False):
