@@ -182,6 +182,21 @@ Each step is a commit series with its tests and docs, like the interactive-apps 
 About 14–17 days in all. Steps 1–2 pay off whatever else is decided; 3–4 give the coverage
 figure; 6 depends on 1 and 3.
 
+### Progress
+
+- **Step 1, 2026-11-23:** done (`f6f4403`). The gate's checker was measured on the 15 reports of
+  2026-11-12..23: every blocking miss was a real error, and the documenter's reports pass. Written
+  to magi-dev-1 while suspended (46 team files). appsec, code-reviewer and qa-lead are set
+  `active: false` (operator), and their nine schedules were cancelled by the operator; step 6
+  restores what it still needs of them: `appsec-weekly` 6af3075ee4a1ee91f06a4064, `appsec-monthly`
+  6af3075ee4a1ee91f06a4067, `appsec-red-team` 6b039483ec9de27798ebdcb0, `code-review`
+  6af3075ee4a1ee91f06a406a, `code-weekly` 6af49eefa61d0a1d91e5dc76, `code-monthly`
+  6af49eefa61d0a1d91e5dc79, `trace-scan` (job, as code-reviewer) 6afb5d26fdd8cf397851f224,
+  `qa-weekly` 6af641e04906a793dd9ed056, `qa-monthly` 6af641e04906a793dd9ed059. Also owed to
+  step 6: correct what the paused agents now believe (the code reviewer's nonexistent commits
+  and "recipientTags" bug, and the concern it passed to appsec; appsec's TB-30..33 and invented
+  test names).
+
 ## Decisions for the product owner
 
 1. **Approve the direction:** scanners and generated tests decide; agents triage and propose,

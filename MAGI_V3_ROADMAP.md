@@ -149,6 +149,8 @@ Places where the code does not yet do what the approved catalog says ([catalog-r
 
 ---
 
+- **`running → error` is not implemented** (found 2026-11-23): the catalog says a running mission whose machine stopped without a suspend moves to `error` with the reason, and the operator is told. AI News Digest's daemon failed at every boot for two days and the mission stayed `running`. The `machine-down` alert (`fly-events.ts`) now tells the operator; the status transition itself is still missing. Related product question: suspend is woken by the mission's own schedules by design ("a schedule falls due"), so an operator who suspends to hold a mission still gets it woken; a hold that schedules do not wake may be wanted.
+
 ## Near-term candidates (not yet sequenced)
 
 Sized up but not yet assigned a sprint number — candidates for right after 28f/28h, ahead of the
