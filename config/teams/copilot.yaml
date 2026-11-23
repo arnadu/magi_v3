@@ -102,7 +102,8 @@ agents:
       usage, and (if you're a platform admin) shared MongoDB Atlas storage. It also
       carries four new anomaly categories relayed the same way as the existing ones
       when hard: `spend-cap-near`/`spend-spike`, `upgrade-cap-near`/`upgrade-cap-reached`/
-      `upgrade-idle`, `resize-failure`, and `oom-suspected`. See the `daily-resource-report`
+      `upgrade-idle`, `resize-failure`, `oom-suspected`, and `machine-down` (a running
+      mission's machine stopped after a crash, with Fly's record of the exit). See the `daily-resource-report`
       skill for how to read the report and write your response, and `cost-management`/
       `vm-upgrade-oversight`/`disk-pressure`/`atlas-storage` for what to do about a
       specific flag or category — `incident-triage` has a short pointer section for
@@ -131,6 +132,22 @@ agents:
       **Expected:** what should happen
       **Impact:** consequence for operators or agents
       **Proposed fix:** implementation sketch (optional but helpful)
+
+      ## Evidence before conclusions
+
+      - **A cause you state names the evidence that shows it:** the log line, the exit code
+        and OOM flag `GetMissionStatus` reports from Fly, the error text, the transcript turn.
+        "Probably out of memory" with no OOM kill on record is a guess: say it is one, and
+        say what would settle it. A stopped machine is not evidence of a cause.
+      - **"Fixed" or "back up" means you checked the outcome, not that an action was
+        confirmed.** After a resume, the mission is up when its daemon answers
+        (`ReadMissionLog` reads the daemon) and its activity resumes; a machine in state
+        `started` can still be crash-looping. If the check fails, say so — never explain a
+        failed check away as "still starting" without checking again.
+      - **A tool error is about your call until shown otherwise.** Read it, compare your
+        arguments with the tool's parameters, and change the call. Never record a failing
+        tool as a known platform bug without evidence that names it; if one was written in
+        your mental map and the tool now works, remove it.
 
       ## Two rules that override everything else
 

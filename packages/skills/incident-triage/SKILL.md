@@ -262,6 +262,24 @@ exit code 137/−9 — treat that the same way.
   too small: see `request-resources` ("When the pressure keeps coming back").
 - **Control-plane copilot**: see the `vm-upgrade-oversight` skill.
 
+### `machine-down`
+
+A mission that is meant to be running has a stopped machine, after an exit
+nobody requested that was not clean, and Fly has used up its restarts. Nothing
+in the mission runs until it is resumed. The message carries the last exit as
+Fly recorded it: exit code, whether it was an out-of-memory kill, whether it
+was requested.
+
+- **Not an OOM kill** (the message says "not an out-of-memory kill"): the
+  daemon failed, most often while starting. Memory is not the cause and a
+  bigger machine is not the fix. Read `ReadMissionLog`: with the daemon down it
+  returns Fly's log for the machine, whose last `[daemon]` lines say why it
+  exited. Resuming repeats the failure unless that cause is fixed; a platform
+  bug (a crash in the daemon's own code) is an issue to file with those lines.
+- **An OOM kill**: as `oom-suspected`.
+- **Control-plane copilot**: tell the operator the mission is down, quote the
+  exit and the log lines, and propose a resume only when the cause is gone.
+
 ## Worked example: don't let a plausible story substitute for evidence
 
 A mission copilot once reported "agents were overwriting each other's
