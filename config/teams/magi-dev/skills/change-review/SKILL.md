@@ -39,10 +39,19 @@ schedule (every few hours) or when asked.
    delta**: describe the boundary, the suggested rows, and the implementing files, in the
    report's drift section, and queue a refresh of that boundary in your mental map.
 
-5. **What is missing.** For each deep commit, check the rows of
-   `appsec-foundations/checklists/security-controls.md` that its kind of change touches (see
-   `appsec-foundations`): a route without an ownership check or an audit record, a new loop
-   without a cap, a new input without validation. A missing control is a finding.
+5. **What is missing.** Generate the range's work list and fill in every row:
+   ```bash
+   python3 $SHARED_DIR/skills/_team/appsec-foundations/scripts/worklist.py $SHARED_DIR/analysis \
+     --out $SHARED_DIR/reports/security/checklists/YYYY-MM-DD-worklist.md \
+     --changed $WORKDIR/repos/<repo> <cursor>..<last commit reviewed>
+   python3 $SHARED_DIR/skills/_team/working-agreements/scripts/checklist.py summary <that file>
+   ```
+   It lists each entry point whose file changed, crossed with the controls that apply to its
+   kind (a route: authentication, ownership, validation...), and one row per changed shared
+   file. A missing control is a finding. The trace behind it is the latest published one: if
+   it is older than the range (`index.md`), say so and add rows by hand for entry points the
+   range added. Include the summary's first line in the report; a review whose work list is
+   incomplete says which rows are open and why.
 
 6. **Judge.** Each candidate through `security-judgement`: evidence, refutation, severity,
    variants. Check the register and the official tracker for duplicates.
@@ -51,10 +60,16 @@ schedule (every few hours) or when asked.
    reviewed code now contradicts (a mitigation described that no longer exists, a finding marked
    open that the code has fixed, a guard named in the wrong place).
 
-8. **Report** (`security-reporting`): `YYYY-MM-DD-change-review.md` with the range, the depth per
+8. **Queue the attack pass.** A deep commit that adds or changes a trust boundary, a sudo rule
+   or subprocess, authentication or sessions, or a network listener goes on your red-team queue
+   (`$SHARED_DIR/reports/security/red-team-queue.md`: one line each, the commit, the boundary,
+   why). The red-team turn (skill `red-team`) attacks it; this review does not stand in for that
+   turn, and does not approve the change's security beyond what it checked.
+
+9. **Report** (`security-reporting`): `YYYY-MM-DD-change-review.md` with the range, the depth per
    commit, the verdict, findings, drift and the hand-off block. Update the register.
 
-9. **Move the cursor** to the last commit you fully reviewed:
+10. **Move the cursor** to the last commit you fully reviewed:
    `python3 $S/cursor.py set <sha> "change-review <report file>"`. Update the review-state
    section of your mental map and the SEC-1 KPIs (days since the oldest unreviewed commit; share
    reviewed).

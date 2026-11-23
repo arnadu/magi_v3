@@ -2012,6 +2012,30 @@ the signal to look for.
 **Not changed.** No skill hint about interpreters loading code from the working directory: F-082
 is proposed as a known-answer item instead (#96), and a hint would give it away.
 
+**Two mindsets for appsec (decided 2026-11-22).** Both of appsec's failures share a cause: its
+reviews confirm a list of controls from memory, and nothing shows the work was done. Two
+changes, each with a mechanical check:
+- **Coverage, generated rather than remembered.** `appsec-foundations/scripts/worklist.py`
+  crosses the trace's entry points with the rows of the security controls checklist that apply
+  to each kind (a route: authentication, ownership, validation, query safety, error disclosure),
+  for the range a change review covers, with one row per changed shared file rather than one per
+  caller. `checklist.py summary` refuses a row without a verdict and evidence, so a skipped row is
+  visible. Mechanical checks stay with tools (semgrep, gitleaks, npm audit in CI; pip-audit, an
+  image scanner and shellcheck are proposed next); the agent triages their output.
+- **Attack, in its own turn.** The `red-team` skill attacks one trust boundary as each attacker
+  of `trust-boundaries.md` who can reach it, logs every attempt with what stopped it, and backs a
+  claimed break with a reproduction that ran; what could not be run is a hypothesis with the test
+  that would settle it. It reads neither its own earlier verdicts nor the threat model's
+  mitigations before its log is written. It runs twice a week, on a queue the change review fills
+  (new or changed boundaries, sudo, subprocesses, authentication, listeners), else a rotation.
+- **Not a separate agent yet.** A fresh turn gives most of the independence. A red-team agent,
+  possibly on another model, is added only if graded runs show the in-agent pass still missing
+  known answers that a fresh agent finds.
+- **Grading.** SEC-T3, the first pass, attacks the apps boundaries at `16bba51`, a commit that
+  contains F-082. The skill tells the attacker to consider what the target reads from disk and
+  the environment it inherits: a general red-team prompt, but it makes F-082 easier to find, so a
+  hit there is weaker evidence than a hit on an item the skills say nothing about.
+
 ## Phasing
 
 | Phase | Scope | Needs |

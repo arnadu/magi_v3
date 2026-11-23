@@ -74,9 +74,11 @@ never built.
 - **Weekly**, as part of the in-depth duty: one area of the checklist (rotate through the
   areas; keep the rotation in your mental map), every row with evidence. Each `missing` row is
   a finding with a severity like any other.
-- **On a change review**, for each deep commit: which rows does this kind of change touch (a
-  new route: SC-05, SC-10, SC-11, SC-26; a new tool for agents: SC-15, SC-30, SC-31, SC-33; a
-  new dependency: SC-39)? Check those rows for the change.
+- **On a change review**: `scripts/worklist.py` crosses each entry point the range changed with
+  the rows that apply to its kind (`change-review`, step 5). Add by hand the rows the list
+  cannot know about, such as SC-39 for a new dependency or SC-41 for an image change.
+- **For one component in depth**: `worklist.py ... --path <directory>` lists every entry point
+  under it.
 - **On a design review**: every row, against the design.
 
 ## Checking the security documents against the code

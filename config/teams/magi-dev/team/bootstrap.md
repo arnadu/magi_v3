@@ -222,3 +222,25 @@ Apply only this section if the earlier ones were already applied.
   reviewer directly.
 - The command that records a conclusion on a finding is now `decisions.mjs record` (it was
   `dispose`).
+
+## Addendum 2026-11-22 — appsec's work list and red team
+
+Apply only this section if the earlier ones were already applied. appsec's change review now
+fills a generated work list (every changed entry point crossed with the controls that apply to
+it), and a separate weekly turn attacks one trust boundary (skill `red-team`).
+
+**Task.** AddTask, passing the `id` shown; if the id is taken, use the next free one and report
+the mapping to the user.
+
+| id | objective | assignee | title |
+|---|---|---|---|
+| SEC-T3 | SEC-1 | appsec | First red-team pass (skill red-team): the interactive apps boundaries TB-23, TB-24, TB-25 and TB-26 at commit 16bba51, in a worktree, one boundary per red-team turn in that order |
+
+**Schedule.** CreateScheduledMessage (cron in UTC):
+
+| label | to | cron | subject | body |
+|---|---|---|---|---|
+| appsec-red-team | appsec | `0 13 * * 1,4` | Red-team turn | Run red-team on one boundary: SEC-T3's next boundary while it is open, then the oldest line of your red-team queue, otherwise the next boundary in your rotation. Do not mix it with a change review in the same turn. |
+
+Then PostMessage appsec: "SEC-T3 is assigned to you; your first red-team turn is the next
+scheduled one."

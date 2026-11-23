@@ -23,7 +23,7 @@ import re
 import shutil
 import sys
 
-ROW = re.compile(r"^\|\s*([A-Z]{1,3}-\d{1,3})\s*\|")
+ROW = re.compile(r"^\|\s*([A-Z]{1,3}-\d{1,4})\s*\|")
 VERDICTS = ["pass", "fail", "missing", "n/a", "unverifiable"]
 
 
