@@ -1547,7 +1547,18 @@
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 141,
+  "line": 174,
+  "function": "deliverOne",
+  "method": "updateOne",
+  "collection": "scheduledMessages",
+  "docType": "ScheduledMessageDoc",
+  "fn": "packages/control-plane/src/scheduler.ts:165:1",
+  "component": "cp-scheduler",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/scheduler.ts",
+  "line": 215,
   "function": "reopenStaleLeases",
   "method": "updateMany",
   "collection": "scheduledMessages",
@@ -1565,7 +1576,7 @@
     "via": "literal"
    }
   },
-  "fn": "packages/control-plane/src/scheduler.ts:137:1",
+  "fn": "packages/control-plane/src/scheduler.ts:211:1",
   "component": "cp-scheduler",
   "ownerOk": true,
   "statusCheck": {
@@ -1581,7 +1592,7 @@
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 177,
+  "line": 251,
   "function": "deliverAll",
   "method": "findOneAndUpdate",
   "collection": "scheduledMessages",
@@ -1599,7 +1610,7 @@
     "via": "literal"
    }
   },
-  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "fn": "packages/control-plane/src/scheduler.ts:241:1",
   "component": "cp-scheduler",
   "ownerOk": true,
   "statusCheck": {
@@ -1615,18 +1626,7 @@
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 188,
-  "function": "deliverAll",
-  "method": "updateOne",
-  "collection": "scheduledMessages",
-  "docType": "ScheduledMessageDoc",
-  "fn": "packages/control-plane/src/scheduler.ts:167:1",
-  "component": "cp-scheduler",
-  "ownerOk": true
- },
- {
-  "file": "packages/control-plane/src/scheduler.ts",
-  "line": 203,
+  "line": 264,
   "function": "deliverAll",
   "method": "updateOne",
   "collection": "scheduledMessages",
@@ -1640,7 +1640,7 @@
     "op": "any"
    }
   },
-  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "fn": "packages/control-plane/src/scheduler.ts:241:1",
   "component": "cp-scheduler",
   "ownerOk": true,
   "statusCheck": {
@@ -1665,7 +1665,7 @@
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 214,
+  "line": 275,
   "function": "deliverAll",
   "method": "updateOne",
   "collection": "scheduledMessages",
@@ -1679,7 +1679,7 @@
     "op": "any"
    }
   },
-  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "fn": "packages/control-plane/src/scheduler.ts:241:1",
   "component": "cp-scheduler",
   "ownerOk": true,
   "statusCheck": {
@@ -1704,7 +1704,7 @@
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 241,
+  "line": 302,
   "function": "deliverAll",
   "method": "updateOne",
   "collection": "scheduledMessages",
@@ -1718,7 +1718,7 @@
     "op": "any"
    }
   },
-  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "fn": "packages/control-plane/src/scheduler.ts:241:1",
   "component": "cp-scheduler",
   "ownerOk": true,
   "statusCheck": {
@@ -1743,7 +1743,7 @@
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 262,
+  "line": 323,
   "function": "deliverAll",
   "method": "updateOne",
   "collection": "scheduledMessages",
@@ -1757,7 +1757,7 @@
     "op": "any"
    }
   },
-  "fn": "packages/control-plane/src/scheduler.ts:167:1",
+  "fn": "packages/control-plane/src/scheduler.ts:241:1",
   "component": "cp-scheduler",
   "ownerOk": true,
   "statusCheck": {
@@ -1782,34 +1782,34 @@
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 309,
+  "line": 370,
   "function": "pruneOldLogEntries",
   "method": "updateMany",
   "collection": "llmCallLog",
   "docType": "LlmCallLogEntry",
-  "fn": "packages/control-plane/src/scheduler.ts:305:8",
+  "fn": "packages/control-plane/src/scheduler.ts:366:8",
   "component": "cp-scheduler",
   "ownerOk": true
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 319,
+  "line": 380,
   "function": "pruneOldLogEntries",
   "method": "deleteMany",
   "collection": "llmCallLog",
   "docType": "LlmCallLogEntry",
-  "fn": "packages/control-plane/src/scheduler.ts:305:8",
+  "fn": "packages/control-plane/src/scheduler.ts:366:8",
   "component": "cp-scheduler",
   "ownerOk": true
  },
  {
   "file": "packages/control-plane/src/scheduler.ts",
-  "line": 324,
+  "line": 385,
   "function": "pruneOldLogEntries",
   "method": "deleteMany",
   "collection": "llmCallLog",
   "docType": "LlmCallLogEntry",
-  "fn": "packages/control-plane/src/scheduler.ts:305:8",
+  "fn": "packages/control-plane/src/scheduler.ts:366:8",
   "component": "cp-scheduler",
   "ownerOk": true
  },
@@ -2148,7 +2148,7 @@
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 417,
+  "line": 426,
   "function": "upsertSchedule",
   "method": "updateOne",
   "collection": "scheduledMessages",
@@ -2187,7 +2187,7 @@
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 460,
+  "line": 494,
   "function": "ingestSchedules",
   "method": "updateMany",
   "collection": "scheduledMessages",
@@ -2205,7 +2205,7 @@
     "via": "literal"
    }
   },
-  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:430:1",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:461:1",
   "component": "mm-jobs",
   "ownerOk": false,
   "statusCheck": {
@@ -2221,23 +2221,23 @@
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 472,
+  "line": 506,
   "function": "ingestSchedules",
   "method": "updateMany",
   "collection": "scheduledMessages",
   "docType": "ScheduledMessageDoc",
-  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:430:1",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:461:1",
   "component": "mm-jobs",
   "ownerOk": false
  },
  {
   "file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
-  "line": 507,
+  "line": 541,
   "function": "ack",
   "method": "updateOne",
   "collection": "scheduledMessages",
   "docType": "ScheduledMessageDoc",
-  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:506:15",
+  "fn": "packages/agent-runtime-worker/src/schedule-ingest.ts:540:15",
   "component": "mm-jobs",
   "ownerOk": false
  },

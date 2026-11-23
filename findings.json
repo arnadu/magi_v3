@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "1249ec3",
-  "time": "2026-11-23T21:23:17Z"
+  "commit": "422a31f",
+  "time": "2026-11-23T22:18:52Z"
  },
  "findings": [
   {
@@ -1088,7 +1088,7 @@
    "where": [
     "packages/control-plane/src/mission-copilot-router.ts:108",
     "packages/control-plane/src/mission-copilot-router.ts:113",
-    "packages/control-plane/src/scheduler.ts:364",
+    "packages/control-plane/src/scheduler.ts:445",
     "packages/agent-runtime-worker/src/resource-upgrade-tool.ts:95",
     "packages/agent-runtime-worker/src/resource-upgrade-tool.ts:154"
    ],
@@ -1117,7 +1117,7 @@
     },
     {
      "entryPoint": "trigger cron * * * * *",
-     "where": "packages/control-plane/src/scheduler.ts:364",
+     "where": "packages/control-plane/src/scheduler.ts:445",
      "writes": [
       "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
       "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
@@ -1994,7 +1994,7 @@
    "where": [
     "packages/control-plane/src/copilot-actions.ts:161",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:473"
    ],
    "entryPoints": [
     {
@@ -2024,7 +2024,7 @@
     },
     {
      "name": "file-request files in dir",
-     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
+     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:473",
      "components": [
       "config",
       "mm-isolation",
@@ -2054,7 +2054,7 @@
    "where": [
     "packages/control-plane/src/copilot-actions.ts:161",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:34",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:473"
    ],
    "lacks": [
     {
@@ -2063,9 +2063,9 @@
      "writes": [
       "scheduledMessages.insertOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:72",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:426",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:506"
      ]
     },
     {
@@ -2074,14 +2074,14 @@
      "writes": [
       "scheduledMessages.insertOne@packages/control-plane/src/copilot-schedule-actions.ts:75",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:426",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:506"
      ]
     },
     {
      "entryPoint": "file-request files in dir",
-     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
+     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:473",
      "writes": [
       "scheduledMessages.insertOne@packages/control-plane/src/copilot-schedule-actions.ts:75",
       "scheduledMessages.insertOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:72"
@@ -2099,7 +2099,7 @@
     "packages/control-plane/src/copilot-actions.ts:160",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
     "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:38",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:473"
    ],
    "entryPoints": [
     {
@@ -2137,7 +2137,7 @@
     },
     {
      "name": "file-request files in dir",
-     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
+     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:473",
      "components": [
       "config",
       "mm-isolation",
@@ -2168,7 +2168,7 @@
     "packages/control-plane/src/copilot-actions.ts:160",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:97",
     "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:38",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:442"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:473"
    ],
    "lacks": [
     {
@@ -2178,9 +2178,9 @@
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140",
       "scheduledMessages.deleteOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:145",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:426",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:506"
      ]
     },
     {
@@ -2189,9 +2189,9 @@
      "writes": [
       "scheduledMessages.updateOne@packages/control-plane/src/copilot-schedule-actions.ts:30",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:426",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:506"
      ]
     },
     {
@@ -2202,14 +2202,14 @@
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140",
       "scheduledMessages.deleteOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:145",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
+      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:426",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+      "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:506"
      ]
     },
     {
      "entryPoint": "file-request files in dir",
-     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
+     "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:473",
      "writes": [
       "scheduledMessages.updateOne@packages/control-plane/src/copilot-schedule-actions.ts:30",
       "scheduledMessages.updateOne@packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:140",
@@ -2880,7 +2880,7 @@
    "text": "mm-jobs writes scheduledMessages (updateOne in upsertSchedule); its owner is cp-scheduler.",
    "where": [
     "packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:417"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:426"
    ],
    "new": false
   },
@@ -2890,8 +2890,8 @@
    "about": "scheduledMessages",
    "text": "mm-jobs writes scheduledMessages (updateMany in ingestSchedules); its owner is cp-scheduler.",
    "where": [
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:472"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:506"
    ],
    "new": false
   },
@@ -2901,7 +2901,7 @@
    "about": "scheduledMessages",
    "text": "mm-jobs writes scheduledMessages (updateOne in ack); its owner is cp-scheduler.",
    "where": [
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:507"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:541"
    ],
    "new": false
   },
@@ -3224,7 +3224,7 @@
    "about": "schedule",
    "text": "deliverAll (cp-scheduler) can change a schedule status in ways the catalog does not allow: pending → delivered, delivered → delivered, failed → delivered, cancelled → delivered. Its filter does not check the current status.",
    "where": [
-    "packages/control-plane/src/scheduler.ts:203"
+    "packages/control-plane/src/scheduler.ts:264"
    ],
    "undeclared": [
     "pending → delivered",
@@ -3240,7 +3240,7 @@
    "about": "schedule",
    "text": "deliverAll (cp-scheduler) can change a schedule status in ways the catalog does not allow: pending → failed, delivered → failed, failed → failed, cancelled → failed. Its filter does not check the current status.",
    "where": [
-    "packages/control-plane/src/scheduler.ts:214"
+    "packages/control-plane/src/scheduler.ts:275"
    ],
    "undeclared": [
     "pending → failed",
@@ -3256,8 +3256,8 @@
    "about": "schedule",
    "text": "deliverAll (cp-scheduler) can change a schedule status in ways the catalog does not allow: pending → pending, delivered → pending, failed → pending, cancelled → pending. Its filter does not check the current status.",
    "where": [
-    "packages/control-plane/src/scheduler.ts:241",
-    "packages/control-plane/src/scheduler.ts:262"
+    "packages/control-plane/src/scheduler.ts:302",
+    "packages/control-plane/src/scheduler.ts:323"
    ],
    "undeclared": [
     "pending → pending",
@@ -3273,7 +3273,7 @@
    "about": "schedule",
    "text": "upsertSchedule (mm-jobs) can change a schedule status in ways the catalog does not allow: pending → pending, delivered → pending, failed → pending, cancelled → pending. Its filter does not check the current status.",
    "where": [
-    "packages/agent-runtime-worker/src/schedule-ingest.ts:417"
+    "packages/agent-runtime-worker/src/schedule-ingest.ts:426"
    ],
    "undeclared": [
     "pending → pending",

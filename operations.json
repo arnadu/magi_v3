@@ -1678,7 +1678,7 @@
     "kind": "trigger",
     "actor": "PLT",
     "name": "cron * * * * *",
-    "where": "packages/control-plane/src/scheduler.ts:364",
+    "where": "packages/control-plane/src/scheduler.ts:445",
     "reachesHome": true,
     "components": [
      "config",
@@ -3770,7 +3770,7 @@
     "kind": "file-request",
     "actor": "AG",
     "name": "files in dir",
-    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
+    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:473",
     "reachesHome": false,
     "components": [
      "config",
@@ -3781,9 +3781,9 @@
     ],
     "writes": [
      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:426",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:506"
     ],
     "unresolved": [
      "delete",
@@ -3869,7 +3869,7 @@
     "kind": "file-request",
     "actor": "AG",
     "name": "files in dir",
-    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:442",
+    "where": "packages/agent-runtime-worker/src/schedule-ingest.ts:473",
     "reachesHome": false,
     "components": [
      "config",
@@ -3880,9 +3880,9 @@
     ],
     "writes": [
      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472"
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:426",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:506"
     ],
     "unresolved": [
      "delete",
@@ -3912,7 +3912,7 @@
     "kind": "trigger",
     "actor": "PLT",
     "name": "cron * * * * *: tick",
-    "where": "packages/control-plane/src/scheduler.ts:360",
+    "where": "packages/control-plane/src/scheduler.ts:441",
     "reachesHome": true,
     "components": [
      "config",
@@ -3938,13 +3938,13 @@
      "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:165",
      "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:186",
      "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:293",
-     "scheduledMessages.updateMany@packages/control-plane/src/scheduler.ts:141",
-     "scheduledMessages.findOneAndUpdate@packages/control-plane/src/scheduler.ts:177",
-     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:188",
-     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:203",
-     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:214",
-     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:241",
-     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:262"
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:174",
+     "scheduledMessages.updateMany@packages/control-plane/src/scheduler.ts:215",
+     "scheduledMessages.findOneAndUpdate@packages/control-plane/src/scheduler.ts:251",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:264",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:275",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:302",
+     "scheduledMessages.updateOne@packages/control-plane/src/scheduler.ts:323"
     ],
     "unresolved": [
      "add",
@@ -3957,6 +3957,7 @@
      "get",
      "has",
      "json",
+     "reject",
      "set",
      "update"
     ],
@@ -4099,10 +4100,10 @@
      "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
      "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
      "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:391",
-     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:417",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:460",
-     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:472",
-     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:507",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:426",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:494",
+     "scheduledMessages.updateMany@packages/agent-runtime-worker/src/schedule-ingest.ts:506",
+     "scheduledMessages.updateOne@packages/agent-runtime-worker/src/schedule-ingest.ts:541",
      "missionResources.updateOne@packages/agent-runtime-worker/src/resource-sampler.ts:134"
     ],
     "unresolved": [
