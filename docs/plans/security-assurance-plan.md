@@ -78,9 +78,11 @@ exception list), *built* (ours). Every tool's output is a finding to triage, nev
 |---|---|---|---|---|---|
 | Known-vulnerable dependencies | `npm audit` (better-npm-audit, production, high+) | in CI | adapted (exception list) | CVEs in the npm packages we ship | OSV-Scanner: wider database, not worth a migration while this works |
 | | **trivy image** (mission and control-plane images) | step 2 | adapted (threshold, exceptions) | What npm audit cannot see: Debian packages, Chromium/Playwright, the Python venv, Node modules as shipped | Grype: similar, but trivy also does secrets and misconfiguration in one tool; Snyk, Docker Scout: SaaS accounts, code leaves; pip-audit: Python only |
-| | Dependabot alerts | step 2 (a repository setting) | off-the-shelf | Advisories between pushes; alerts only, no pull requests | Renovate: centred on pull requests |
+| | Dependabot alerts | on (2026-11-23) | off-the-shelf | Advisories between pushes; alerts only, no pull requests | Renovate: centred on pull requests |
+| | **trivy on the images that run** (nightly: each machine's image digest from the Machines API) | step 7 | adapted | What CI's scan of the latest build cannot see: an older image still running on a long-lived machine | `flyctl registry vulns / vulnsummary / sbom` (Fly's own scanner, experimental): every call timed out on 2026-11-23, missions and control plane alike; worth retrying as a second opinion, not a base |
 | Secrets exposure | gitleaks (full history) | in CI | off-the-shelf | Keys committed to the repository | TruffleHog: can verify a key is live by calling its provider; not needed (a found key is rotated anyway) and it sends the key out |
 | | **trivy secret** (image layers) | step 2 | off-the-shelf | A key or `.env` baked into an image layer | — |
+| | GitHub secret scanning and push protection | on (found 2026-11-23) | off-the-shelf | Known key formats refused at push | — |
 | Code vulnerabilities | Semgrep `p/default` | in CI | off-the-shelf | Generic injection, unsafe APIs, crypto misuse (TypeScript, Python, shell) | — |
 | | CodeQL `javascript-security-extended` (in the trace) | in CI | adapted (results filed under `sec.*`) | Taint flows from input to dangerous sinks; today nobody triages it, part 5 makes it the agents' queue | SonarQube/SonarCloud, Snyk Code: heavier, SaaS, overlapping |
 | | Tripwires (16 grep checks, planted samples, allow list) | in CI | built | Our own rules: HTML sinks, child-process environments, git outside `safe-git`, raw mailbox inserts… | Kept; the most valuable move to Semgrep |
@@ -222,6 +224,15 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 2, 2026-11-23:** zizmor and trivy's Dockerfile scan gate CI (both clean after fixing
+  zizmor's 12 medium findings: checkout no longer persists the workflow token, and the deploy and
+  image workflows receive only `FLY_API_TOKEN_CI` instead of every secret); the mission image is
+  scanned by trivy between build and push, report-only until a baseline is triaged, results in
+  code scanning only; four Semgrep rules of ours with planted cases (`scripts/security/semgrep/`),
+  each tested before the scan; Dependabot alerts on. Deferred: "every route behind auth" goes to the
+  OpenAPI contract test (step 2b), and `alerts.json` to step 6 (it needs a private route to the
+  mission). The control-plane image is built by Fly's remote builder and not yet scanned: the
+  nightly scan of running images (step 7) covers it.
 
 - **Step 1, 2026-11-23:** done (`f6f4403`). The gate's checker was measured on the 15 reports of
   2026-11-12..23: every blocking miss was a real error, and the documenter's reports pass. Written

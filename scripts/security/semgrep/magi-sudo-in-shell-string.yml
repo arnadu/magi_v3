@@ -1,0 +1,21 @@
+rules:
+  - id: magi-sudo-in-shell-string
+    message: >-
+      sudo inside a shell command string: the arguments are parsed by a shell, so input can
+      change the command. Call sudo through execFile/spawn with an argument array and a
+      fixed helper (magi-sudo-helper).
+    severity: ERROR
+    languages: [typescript]
+    metadata:
+      invariant: sec.least-privilege
+    patterns:
+      - pattern-either:
+          - pattern: exec($CMD, ...)
+          - pattern: execSync($CMD, ...)
+          - pattern: $CP.exec($CMD, ...)
+          - pattern: $CP.execSync($CMD, ...)
+          - pattern: execaCommand($CMD, ...)
+          - pattern: execaCommandSync($CMD, ...)
+      - metavariable-regex:
+          metavariable: $CMD
+          regex: '(^|[;&|\s"`''(])sudo\s'

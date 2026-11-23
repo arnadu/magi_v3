@@ -1,0 +1,35 @@
+rules:
+  - id: magi-path-from-request
+    message: >-
+      A file path built from request input reaches a filesystem call without going through
+      the safe-path helpers (resolveInside and the *Inside readers and writers), which
+      resolve symlinks and refuse anything outside the allowed root.
+    severity: ERROR
+    languages: [typescript]
+    metadata:
+      invariant: sec.contained-paths
+    mode: taint
+    pattern-sources:
+      - pattern: $REQ.query
+      - pattern: $REQ.params
+      - pattern: $REQ.body
+      - pattern: routeParam(...)
+      - pattern: $URL.searchParams.get(...)
+    pattern-sanitizers:
+      - pattern: resolveInside(...)
+      - pattern: $X.resolveInside(...)
+      - pattern: readInside(...)
+      - pattern: writeFileInside(...)
+      - pattern: mkdirInside(...)
+      - pattern: openAppendInside(...)
+      - pattern: appendFileInside(...)
+      - pattern: safeEntryName(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $FN($P, ...)
+              - pattern: $FS.$FN($P, ...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(readFile|readFileSync|writeFile|writeFileSync|appendFile|appendFileSync|createReadStream|createWriteStream|open|openSync|stat|statSync|lstat|lstatSync|readdir|readdirSync|unlink|unlinkSync|rm|rmSync|mkdir|mkdirSync|rename|renameSync|copyFile|copyFileSync|realpath|realpathSync|sendFile)$
+          - focus-metavariable: $P

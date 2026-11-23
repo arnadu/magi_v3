@@ -1,0 +1,30 @@
+rules:
+  - id: magi-mongo-filter-from-body
+    message: >-
+      A request-body value reaches a MongoDB filter without validation. A JSON body can carry
+      an object such as {"$ne": null} where a string was expected, which turns an equality
+      test into an operator (NoSQL injection). Parse the body with its Zod schema, or coerce
+      the value (String(), Number()) before it reaches the query.
+    severity: ERROR
+    languages: [typescript]
+    metadata:
+      invariant: sec.input-validated
+    mode: taint
+    pattern-sources:
+      - pattern: $REQ.body
+    pattern-sanitizers:
+      - pattern: String(...)
+      - pattern: Number(...)
+      - pattern: $SCHEMA.parse(...)
+      - pattern: $SCHEMA.safeParse(...)
+      - pattern: $SCHEMA.parseAsync(...)
+      # Keeping only strings is a guard the analysis cannot follow on its own.
+      - pattern: '$A.filter(($ID): $T => typeof $ID === "string")'
+      - pattern: '$A.filter(($ID) => typeof $ID === "string")'
+    pattern-sinks:
+      - patterns:
+          - pattern: $COL.$METHOD($FILTER, ...)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(find|findOne|findOneAndUpdate|findOneAndDelete|findOneAndReplace|updateOne|updateMany|deleteOne|deleteMany|replaceOne|countDocuments|distinct)$
+          - focus-metavariable: $FILTER

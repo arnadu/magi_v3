@@ -5,7 +5,10 @@ name: Build execution plane image
 # scripts/deploy-missions.sh uses — so no path ever relies on the floating :latest tag.
 
 on:
-  workflow_call: {}
+  workflow_call:
+    secrets:
+      FLY_API_TOKEN_CI:
+        required: true
 
 permissions:
   contents: read
@@ -14,10 +17,15 @@ jobs:
   build-dev:
     name: Build & push (dev)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be # 1.5
@@ -27,13 +35,46 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_CI }}
 
-      - name: Build and push image
+      - name: Build image
         run: |
           docker build \
             -f packages/agent-runtime-worker/Dockerfile \
             -t registry.fly.io/magi-missions-dev:latest \
             -t registry.fly.io/magi-missions-dev:${{ github.sha }} \
             .
+
+      # Vulnerabilities in what ships (Debian packages, Chromium, the Python venv, Node modules)
+      # and secrets baked into a layer. Report-only until a baseline has been triaged: a new
+      # Debian CVE must not block every deploy on day one. Results go to code scanning, never to
+      # an artifact (the repository is public).
+      - name: Scan image (trivy, report-only)
+        continue-on-error: true
+        env:
+          IMAGE: registry.fly.io/magi-missions-dev:${{ github.sha }}
+        run: |
+          TRIVY="$(bash scripts/security/install-trivy.sh)"
+          "$TRIVY" image --quiet --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed \
+            --format json --output trivy-image.json "$IMAGE"
+          "$TRIVY" convert --format sarif --output trivy-image.sarif trivy-image.json
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r = json.load(open("trivy-image.json")).get("Results", [])
+          v = [x for t in r for x in t.get("Vulnerabilities", [])]
+          s = [x for t in r for x in t.get("Secrets", [])]
+          crit = sum(1 for x in v if x["Severity"] == "CRITICAL")
+          print(f"### Mission image scan\n\n{len(v)} fixable high/critical vulnerabilities ({crit} critical), {len(s)} secrets in layers. Details: code scanning (maintainers).")
+          PY
+
+      - name: Scan results to code scanning (maintainers only)
+        if: hashFiles('trivy-image.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-mission-image
+
+      - name: Push image
+        run: |
           docker push registry.fly.io/magi-missions-dev:latest
           docker push registry.fly.io/magi-missions-dev:${{ github.sha }}
         env:

@@ -1,0 +1,19 @@
+rules:
+  - id: magi-sudo-helper
+    message: >-
+      sudo must run a fixed, root-owned helper (/usr/local/bin/magi-* or /usr/local/sbin/magi-*,
+      or one of the constants naming them), never an arbitrary program: the sudoers rules
+      are the boundary, and a call that bypasses a helper either fails there or widens it.
+      See docs/security/threat-model.md (TB-3, TB-23, TB-24).
+    severity: ERROR
+    languages: [typescript]
+    metadata:
+      invariant: sec.least-privilege
+    patterns:
+      - pattern-either:
+          - pattern: $F("sudo", [...], ...)
+          - pattern: $F("sudo", ...)
+      - pattern-not: $F("sudo", [..., "=~/^\/usr\/local\/s?bin\/magi-[a-z0-9-]+$/", ...], ...)
+      - pattern-not: $F("sudo", [..., MAGI_APP, ...], ...)
+      - pattern-not: $F("sudo", [..., MAGI_NET, ...], ...)
+      - pattern-not: $F("sudo", [..., nodeExe, ...], ...)

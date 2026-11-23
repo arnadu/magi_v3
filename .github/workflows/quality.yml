@@ -37,6 +37,8 @@ jobs:
       execution: ${{ steps.filter.outputs.execution }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - id: filter
         # A dispatch has no base to diff against; the deploy jobs use the inputs instead.
         if: github.event_name != 'workflow_dispatch'
@@ -74,6 +76,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
@@ -92,14 +96,25 @@ jobs:
     if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Scan packages/
-        run: semgrep scan --config p/default packages/ --error --quiet
+        with:
+          persist-credentials: false
+      # Our rules (scripts/security/semgrep/): each must still catch its planted cases before
+      # its silence on the code means anything.
+      - name: Our rules catch their planted cases
+        run: |
+          for rule in scripts/security/semgrep/*.yml; do
+            semgrep --test --config "$rule" "${rule%.yml}.ts"
+          done
+      - name: Scan packages/ (registry defaults and our rules)
+        run: semgrep scan --config p/default --config scripts/security/semgrep/ packages/ --error --quiet
 
   dependencies:
     name: Dependency audit (production, high+)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
@@ -113,16 +128,19 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   workflows-and-shell:
-    name: actionlint + shellcheck
+    name: actionlint, zizmor, shellcheck, Dockerfile config
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - name: actionlint
         uses: docker://rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # 1.7.7
         with:
@@ -131,12 +149,26 @@ jobs:
         run: |
           find scripts packages/skills -name '*.sh' -not -path '*/node_modules/*' -print0 \
             | xargs -0 shellcheck -S error
+      - name: zizmor (workflow security, medium and above)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -m pip install --quiet zizmor==1.32.0
+          zizmor --min-severity medium .github/workflows
+      - name: trivy config (Dockerfiles, medium and above)
+        run: |
+          TRIVY="$(bash scripts/security/install-trivy.sh)"
+          for f in packages/agent-runtime-worker/Dockerfile packages/control-plane/Dockerfile; do
+            "$TRIVY" config --quiet --exit-code 1 --severity MEDIUM,HIGH,CRITICAL "$f"
+          done
 
   data-factory-python:
     name: data-factory Python tests (offline)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - name: pytest (network-dependent adapter tests excluded)
         run: |
           python3 -m pip install --quiet pytest==9.1.1
@@ -157,6 +189,8 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
@@ -253,7 +287,8 @@ jobs:
       (github.event_name == 'push' && needs.changes.outputs.control == 'true') ||
       (github.event_name == 'workflow_dispatch' && inputs.deploy_control)
     uses: ./.github/workflows/deploy-control-plane.yml
-    secrets: inherit
+    secrets:
+      FLY_API_TOKEN_CI: ${{ secrets.FLY_API_TOKEN_CI }}
 
   build-execution-image:
     name: Build execution plane image (dev)
@@ -269,5 +304,9 @@ jobs:
       needs.workflows-and-shell.result == 'success' &&
       ((github.event_name == 'push' && needs.changes.outputs.execution == 'true') ||
        (github.event_name == 'workflow_dispatch' && inputs.build_execution))
+    permissions:
+      contents: read
+      security-events: write
     uses: ./.github/workflows/build-execution-image.yml
-    secrets: inherit
+    secrets:
+      FLY_API_TOKEN_CI: ${{ secrets.FLY_API_TOKEN_CI }}
