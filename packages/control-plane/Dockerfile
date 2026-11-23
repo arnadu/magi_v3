@@ -5,7 +5,7 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
 # Base image pinned by digest (multi-arch index for node:22-slim); bump
 # deliberately, keeping the tag comment in step.
-FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS builder
+FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS builder
 
 WORKDIR /app
 
@@ -40,13 +40,20 @@ RUN npx tsc -p packages/agent-config/tsconfig.json
 RUN npx tsc -p packages/agent-runtime-worker/tsconfig.json
 RUN npx tsc -p packages/control-plane/tsconfig.json
 
+# Only production dependencies reach the runtime image: the build and test tools (TypeScript,
+# vitest, esbuild, vite) never run there, and carried most of the image scan's findings
+# (2026-11-23: 30 of 45, all 3 critical).
+RUN npm prune --omit=dev --ignore-scripts
+
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS runtime
+FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 
 WORKDIR /app
 
 # System dependencies for copilot subprocess isolation.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# `apt-get upgrade` keeps the base image's own packages patched at every build (2026-11-23: apt
+# 2.6.1, CVE-2026-109518, fixed in 2.6.2).
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     acl \
     sudo \
     && rm -rf /var/lib/apt/lists/*

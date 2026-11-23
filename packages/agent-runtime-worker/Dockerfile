@@ -2,7 +2,7 @@
 # Base image pinned by digest (multi-arch index for node:22-slim) so a rebuild
 # cannot silently pick up a different base; bump the digest deliberately, with
 # the tag comment kept in step.
-FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS builder
+FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS builder
 
 WORKDIR /app
 
@@ -29,13 +29,20 @@ COPY packages/agent-runtime-worker/ ./packages/agent-runtime-worker/
 RUN npm run build -w packages/agent-config
 RUN npm run build -w packages/agent-runtime-worker
 
+# Only production dependencies reach the runtime image: the build and test tools (TypeScript,
+# vitest, esbuild, vite) never run there, and carried most of the image scan's findings
+# (2026-11-23: 30 of 45, all 3 critical).
+RUN npm prune --omit=dev --ignore-scripts
+
 # Runtime stage.
-FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS runtime
+FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 
 # System dependencies.
 # curl, zstd and ca-certificates: MAGI DEV's trace job installs the pinned CodeQL bundle
 # (a .tar.zst, checksum verified) with the repository's scripts/trace/install-codeql.sh.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# `apt-get upgrade` keeps the base image's own packages patched at every build (2026-11-23: apt
+# 2.6.1, CVE-2026-109518, fixed in 2.6.2).
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     acl \
     sudo \
     git \
@@ -227,6 +234,12 @@ RUN /opt/magi/venv/bin/pip install --no-cache-dir \
 # About 550 MB installed (spike, 2026-11-21).
 RUN /opt/magi/venv/bin/pip install --no-cache-dir \
     -r /app/packages/skills/serve-app/requirements.txt
+
+# Security floor for packages the requirements pull in indirectly or that the venv brings
+# with it (image scan, 2026-11-23): setuptools 66 from Debian's ensurepip (CVE-2024-6345,
+# CVE-2025-47273) and soupsieve 2.10 (CVE-2026-126190, CVE-2026-126191).
+RUN /opt/magi/venv/bin/pip install --no-cache-dir --upgrade \
+    "setuptools>=78.1.1" "soupsieve>=4.0.0"
 
 # Volume mount point for the Fly.io workspace volume.
 RUN mkdir -p /missions && chown magi-operator:magi-shared /missions
