@@ -910,7 +910,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "ListTeam",
-    "where": "packages/agent-runtime-worker/src/mailbox.ts:285",
+    "where": "packages/agent-runtime-worker/src/mailbox.ts:304",
     "reachesHome": false,
     "components": [
      "mm-state",
@@ -3194,7 +3194,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "PostMessage",
-    "where": "packages/agent-runtime-worker/src/mailbox.ts:210",
+    "where": "packages/agent-runtime-worker/src/mailbox.ts:234",
     "reachesHome": true,
     "components": [
      "mm-state",
@@ -3296,7 +3296,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "ListMessages",
-    "where": "packages/agent-runtime-worker/src/mailbox.ts:302",
+    "where": "packages/agent-runtime-worker/src/mailbox.ts:321",
     "reachesHome": true,
     "components": [
      "mm-state",
@@ -3310,7 +3310,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "ReadMessage",
-    "where": "packages/agent-runtime-worker/src/mailbox.ts:338",
+    "where": "packages/agent-runtime-worker/src/mailbox.ts:357",
     "reachesHome": true,
     "components": [
      "mm-state",

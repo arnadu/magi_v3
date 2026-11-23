@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "1cb7169",
-  "time": "2026-11-23T03:46:15Z"
+  "commit": "803571f",
+  "time": "2026-11-23T03:48:37Z"
  },
  "findings": [
   {
@@ -454,7 +454,7 @@
     "packages/control-plane/src/mission-routes-read.ts:284",
     "packages/control-plane/src/mission-routes-read.ts:286",
     "packages/control-plane/src/mission-routes-read.ts:288",
-    "packages/agent-runtime-worker/src/mailbox.ts:285",
+    "packages/agent-runtime-worker/src/mailbox.ts:304",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44"
    ],
@@ -525,7 +525,7 @@
     },
     {
      "name": "tool ListTeam",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:285",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:304",
      "components": [
       "mm-state",
       "mm-tools"
@@ -566,7 +566,7 @@
     "packages/control-plane/src/mission-routes-read.ts:284",
     "packages/control-plane/src/mission-routes-read.ts:286",
     "packages/control-plane/src/mission-routes-read.ts:288",
-    "packages/agent-runtime-worker/src/mailbox.ts:285",
+    "packages/agent-runtime-worker/src/mailbox.ts:304",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44"
    ],
@@ -615,7 +615,7 @@
     },
     {
      "entryPoint": "tool ListTeam",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:285",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:304",
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
@@ -1552,14 +1552,14 @@
    "about": "message.send",
    "text": "Entry points of message.send reach different database writes: tool PostMessage lacks 2; monitor-route POST \"/send-message\" lacks 2; tool-api post-message lacks 2.",
    "where": [
-    "packages/agent-runtime-worker/src/mailbox.ts:210",
+    "packages/agent-runtime-worker/src/mailbox.ts:234",
     "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:48",
     "packages/agent-runtime-worker/src/tool-api-server.ts:327"
    ],
    "lacks": [
     {
      "entryPoint": "tool PostMessage",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:210",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:234",
      "writes": [
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
@@ -1692,8 +1692,8 @@
    "text": "Entry points of message.read reach different database writes: tool ReadMissionMailbox lacks 1; tool ListMessages lacks 1; tool ReadMessage lacks 1; tool ReadMissionMailboxAll lacks 1; tool ReadMissionInteractions lacks 1; monitor-route GET \"/mailbox\" lacks 1; monitor-route GET \"/interactions\" lacks 1; monitor-route GET \"/message-events\" lacks 1.",
    "where": [
     "packages/control-plane/src/copilot-read-tools.ts:163",
-    "packages/agent-runtime-worker/src/mailbox.ts:302",
-    "packages/agent-runtime-worker/src/mailbox.ts:338",
+    "packages/agent-runtime-worker/src/mailbox.ts:321",
+    "packages/agent-runtime-worker/src/mailbox.ts:357",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
     "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:16",
@@ -1710,14 +1710,14 @@
     },
     {
      "entryPoint": "tool ListMessages",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:302",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:321",
      "writes": [
       "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "tool ReadMessage",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:338",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:357",
      "writes": [
       "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
