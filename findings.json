@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "803571f",
-  "time": "2026-11-23T03:48:37Z"
+  "commit": "5ce2508",
+  "time": "2026-11-23T12:56:32Z"
  },
  "findings": [
   {
@@ -449,19 +449,19 @@
    "about": "mission.status",
    "text": "None of the 8 entry point(s) of mission.status reaches code in its home, cp-mission-ops: tool ListMissions; tool GetMissionStatus; route GET /; route GET /:id; route GET /:id/agents; tool ListTeam; monitor-route GET \"/team\"; monitor-route GET \"/status\".",
    "where": [
-    "packages/control-plane/src/copilot-read-tools.ts:30",
-    "packages/control-plane/src/copilot-read-tools.ts:120",
+    "packages/control-plane/src/copilot-read-tools.ts:35",
+    "packages/control-plane/src/copilot-read-tools.ts:131",
     "packages/control-plane/src/mission-routes-read.ts:284",
     "packages/control-plane/src/mission-routes-read.ts:286",
     "packages/control-plane/src/mission-routes-read.ts:288",
-    "packages/agent-runtime-worker/src/mailbox.ts:304",
+    "packages/agent-runtime-worker/src/mailbox.ts:274",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44"
    ],
    "entryPoints": [
     {
      "name": "tool ListMissions",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:30",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:35",
      "components": [
       "config",
       "cp-copilot"
@@ -472,7 +472,7 @@
     },
     {
      "name": "tool GetMissionStatus",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:120",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:131",
      "components": [
       "config",
       "cp-copilot",
@@ -525,7 +525,7 @@
     },
     {
      "name": "tool ListTeam",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:304",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:274",
      "components": [
       "mm-state",
       "mm-tools"
@@ -561,19 +561,19 @@
    "about": "mission.status",
    "text": "Entry points of mission.status reach different database writes: tool ListMissions lacks 3; tool GetMissionStatus lacks 1; route GET / lacks 3; route GET /:id lacks 2; route GET /:id/agents lacks 3; tool ListTeam lacks 3; monitor-route GET \"/team\" lacks 3; monitor-route GET \"/status\" lacks 3.",
    "where": [
-    "packages/control-plane/src/copilot-read-tools.ts:30",
-    "packages/control-plane/src/copilot-read-tools.ts:120",
+    "packages/control-plane/src/copilot-read-tools.ts:35",
+    "packages/control-plane/src/copilot-read-tools.ts:131",
     "packages/control-plane/src/mission-routes-read.ts:284",
     "packages/control-plane/src/mission-routes-read.ts:286",
     "packages/control-plane/src/mission-routes-read.ts:288",
-    "packages/agent-runtime-worker/src/mailbox.ts:304",
+    "packages/agent-runtime-worker/src/mailbox.ts:274",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:35",
     "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts:44"
    ],
    "lacks": [
     {
      "entryPoint": "tool ListMissions",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:30",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:35",
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
@@ -582,7 +582,7 @@
     },
     {
      "entryPoint": "tool GetMissionStatus",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:120",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:131",
      "writes": [
       "missions.updateOne@packages/control-plane/src/mission-routes-read.ts:92"
      ]
@@ -615,7 +615,7 @@
     },
     {
      "entryPoint": "tool ListTeam",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:304",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:274",
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
@@ -1354,7 +1354,7 @@
    "about": "agent.history",
    "text": "14 of 22 entry points of agent.history reach no code in its home, cp-records: tool ReadMentalMap; route GET /usage; route GET /files; route GET /:id/conversations; tool ReadAgentMentalMap; tool ListAgentSessions; tool ReadAgentSessionDetail; tool ReadAgentLlmCall; tool SearchMissionHistory; monitor-route GET /^\\/agents\\/([^/]+)\\/mental-map$/; monitor-route GET /^\\/agents\\/([^/]+)\\/sessions$/; monitor-route GET /^\\/agents\\/([^/]+)\\/sessions\\/(\\d+)$/; monitor-route GET \"/events\"; tool AnalyzeMemories.",
    "where": [
-    "packages/control-plane/src/copilot-read-tools.ts:385",
+    "packages/control-plane/src/copilot-read-tools.ts:417",
     "packages/control-plane/src/copilot-router.ts:174",
     "packages/control-plane/src/copilot-visibility-routes.ts:100",
     "packages/control-plane/src/mission-routes-read.ts:287",
@@ -1372,7 +1372,7 @@
    "entryPoints": [
     {
      "name": "tool ReadMentalMap",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:385",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:417",
      "components": [
       "config",
       "cp-copilot"
@@ -1552,14 +1552,14 @@
    "about": "message.send",
    "text": "Entry points of message.send reach different database writes: tool PostMessage lacks 2; monitor-route POST \"/send-message\" lacks 2; tool-api post-message lacks 2.",
    "where": [
-    "packages/agent-runtime-worker/src/mailbox.ts:234",
+    "packages/agent-runtime-worker/src/mailbox.ts:210",
     "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:48",
     "packages/agent-runtime-worker/src/tool-api-server.ts:327"
    ],
    "lacks": [
     {
      "entryPoint": "tool PostMessage",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:234",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:210",
      "writes": [
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
@@ -1590,7 +1590,7 @@
    "about": "message.read",
    "text": "7 of 9 entry points of message.read reach no code in its home, mm-state: tool ReadMissionMailbox; route POST /:id/messages/read; tool ReadMissionMailboxAll; tool ReadMissionInteractions; monitor-route GET \"/mailbox\"; monitor-route GET \"/interactions\"; monitor-route GET \"/message-events\".",
    "where": [
-    "packages/control-plane/src/copilot-read-tools.ts:163",
+    "packages/control-plane/src/copilot-read-tools.ts:174",
     "packages/control-plane/src/mission-routes-read.ts:289",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
@@ -1601,7 +1601,7 @@
    "entryPoints": [
     {
      "name": "tool ReadMissionMailbox",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:163",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:174",
      "components": [
       "config",
       "cp-copilot"
@@ -1691,9 +1691,9 @@
    "about": "message.read",
    "text": "Entry points of message.read reach different database writes: tool ReadMissionMailbox lacks 1; tool ListMessages lacks 1; tool ReadMessage lacks 1; tool ReadMissionMailboxAll lacks 1; tool ReadMissionInteractions lacks 1; monitor-route GET \"/mailbox\" lacks 1; monitor-route GET \"/interactions\" lacks 1; monitor-route GET \"/message-events\" lacks 1.",
    "where": [
-    "packages/control-plane/src/copilot-read-tools.ts:163",
-    "packages/agent-runtime-worker/src/mailbox.ts:321",
-    "packages/agent-runtime-worker/src/mailbox.ts:357",
+    "packages/control-plane/src/copilot-read-tools.ts:174",
+    "packages/agent-runtime-worker/src/mailbox.ts:291",
+    "packages/agent-runtime-worker/src/mailbox.ts:327",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:184",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:220",
     "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:16",
@@ -1703,21 +1703,21 @@
    "lacks": [
     {
      "entryPoint": "tool ReadMissionMailbox",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:163",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:174",
      "writes": [
       "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "tool ListMessages",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:321",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:291",
      "writes": [
       "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
     },
     {
      "entryPoint": "tool ReadMessage",
-     "where": "packages/agent-runtime-worker/src/mailbox.ts:357",
+     "where": "packages/agent-runtime-worker/src/mailbox.ts:327",
      "writes": [
       "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
      ]
@@ -1850,7 +1850,7 @@
    "about": "file.read",
    "text": "None of the 7 entry point(s) of file.read reaches code in its home, mm-isolation: tool ReadMissionFile; tool ReadFileHistory; tool ReadSharedFile; tool ReadAgentWorkdirFile; monitor-route GET \"/files/shared\"; monitor-route GET \"/files/history\"; monitor-route GET /^\\/files\\/workdir\\/([^/]+)$/.",
    "where": [
-    "packages/control-plane/src/copilot-read-tools.ts:237",
+    "packages/control-plane/src/copilot-read-tools.ts:269",
     "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:37",
     "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:58",
     "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts:91",
@@ -1861,7 +1861,7 @@
    "entryPoints": [
     {
      "name": "tool ReadMissionFile",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:237",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:269",
      "components": [
       "config",
       "cp-copilot",
@@ -2225,14 +2225,14 @@
    "about": "schedule.list",
    "text": "None of the 3 entry point(s) of schedule.list reaches code in its home, cp-scheduler: tool ListSchedule; tool ListScheduledMessages; monitor-route GET \"/schedule\".",
    "where": [
-    "packages/control-plane/src/copilot-read-tools.ts:287",
+    "packages/control-plane/src/copilot-read-tools.ts:319",
     "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts:160",
     "packages/agent-runtime-worker/src/monitor-routes/schedule.ts:14"
    ],
    "entryPoints": [
     {
      "name": "tool ListSchedule",
-     "where": "packages/control-plane/src/copilot-read-tools.ts:287",
+     "where": "packages/control-plane/src/copilot-read-tools.ts:319",
      "components": [
       "config",
       "cp-copilot"

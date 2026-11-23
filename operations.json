@@ -814,7 +814,7 @@
     "kind": "tool",
     "actor": "CC",
     "name": "ListMissions",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:30",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:35",
     "reachesHome": false,
     "components": [
      "config",
@@ -830,7 +830,7 @@
     "kind": "tool",
     "actor": "CC",
     "name": "GetMissionStatus",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:120",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:131",
     "reachesHome": false,
     "components": [
      "config",
@@ -910,7 +910,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "ListTeam",
-    "where": "packages/agent-runtime-worker/src/mailbox.ts:304",
+    "where": "packages/agent-runtime-worker/src/mailbox.ts:274",
     "reachesHome": false,
     "components": [
      "mm-state",
@@ -1036,12 +1036,13 @@
     "kind": "tool",
     "actor": "CC",
     "name": "ReadMissionLog",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:199",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:210",
     "reachesHome": true,
     "components": [
      "config",
      "cp-copilot",
      "cp-edge",
+     "cp-machines",
      "mm-monitor"
     ],
     "writes": [],
@@ -1049,6 +1050,7 @@
      "collection",
      "end",
      "get",
+     "json",
      "update"
     ],
     "httpHops": [
@@ -2763,7 +2765,7 @@
     "kind": "tool",
     "actor": "CC",
     "name": "ReadMentalMap",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:385",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:417",
     "reachesHome": false,
     "components": [
      "config",
@@ -3194,7 +3196,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "PostMessage",
-    "where": "packages/agent-runtime-worker/src/mailbox.ts:234",
+    "where": "packages/agent-runtime-worker/src/mailbox.ts:210",
     "reachesHome": true,
     "components": [
      "mm-state",
@@ -3261,7 +3263,7 @@
     "kind": "tool",
     "actor": "CC",
     "name": "ReadMissionMailbox",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:163",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:174",
     "reachesHome": false,
     "components": [
      "config",
@@ -3296,7 +3298,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "ListMessages",
-    "where": "packages/agent-runtime-worker/src/mailbox.ts:321",
+    "where": "packages/agent-runtime-worker/src/mailbox.ts:291",
     "reachesHome": true,
     "components": [
      "mm-state",
@@ -3310,7 +3312,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "ReadMessage",
-    "where": "packages/agent-runtime-worker/src/mailbox.ts:357",
+    "where": "packages/agent-runtime-worker/src/mailbox.ts:327",
     "reachesHome": true,
     "components": [
      "mm-state",
@@ -3537,7 +3539,7 @@
     "kind": "tool",
     "actor": "CC",
     "name": "ReadMissionFile",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:237",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:269",
     "reachesHome": false,
     "components": [
      "config",
@@ -3980,7 +3982,7 @@
     "kind": "tool",
     "actor": "CC",
     "name": "ListSchedule",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:287",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:319",
     "reachesHome": false,
     "components": [
      "config",
@@ -5314,7 +5316,7 @@
     "kind": "tool",
     "actor": "CC",
     "name": "ListTemplates",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:336",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:368",
     "reachesHome": true,
     "components": [
      "cp-api",
@@ -5328,7 +5330,7 @@
     "kind": "tool",
     "actor": "CC",
     "name": "GetTemplate",
-    "where": "packages/control-plane/src/copilot-read-tools.ts:352",
+    "where": "packages/control-plane/src/copilot-read-tools.ts:384",
     "reachesHome": true,
     "components": [
      "cp-api",
