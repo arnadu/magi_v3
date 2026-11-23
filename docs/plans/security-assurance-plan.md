@@ -69,18 +69,57 @@ KPIs the agents score themselves.
 
 ## The design
 
-### 1. Static scanners in CI (extend)
+### 1. The tool suite, by what it protects against (decided 2026-11-23)
 
-- **Image scan:** trivy on the mission image and the control plane image (OS packages, the
-  Python venv, Node modules as shipped); high+ fails, with the same exception list mechanism as
-  `npm audit`.
-- **Our own Semgrep rules** for invariants that grep cannot express well: a `sudo` spawn names a
-  fixed helper path; a path from input goes through `resolveInside`; a Mongo filter from input is
-  scoped to `missionId`; a route is wrapped in the auth middleware. Each rule has planted samples
-  that it must match (as the tripwires' selftest does).
-- **hadolint** on the Dockerfiles; shellcheck ratcheted to warnings.
-- **One alerts file** per CI run (`analysis/alerts.json`: CodeQL, Semgrep, trivy, with stable
-  ids), kept private as `security.json` is today. It is the agents' triage queue (part 5).
+"Kind": *off-the-shelf* (a public tool with its standard rules), *adapted* (our configuration or
+exception list), *built* (ours). Every tool's output is a finding to triage, never an all-clear.
+
+| Threat | Tool | Status | Kind | Purpose | Alternatives and why not |
+|---|---|---|---|---|---|
+| Known-vulnerable dependencies | `npm audit` (better-npm-audit, production, high+) | in CI | adapted (exception list) | CVEs in the npm packages we ship | OSV-Scanner: wider database, not worth a migration while this works |
+| | **trivy image** (mission and control-plane images) | step 2 | adapted (threshold, exceptions) | What npm audit cannot see: Debian packages, Chromium/Playwright, the Python venv, Node modules as shipped | Grype: similar, but trivy also does secrets and misconfiguration in one tool; Snyk, Docker Scout: SaaS accounts, code leaves; pip-audit: Python only |
+| | Dependabot alerts | step 2 (a repository setting) | off-the-shelf | Advisories between pushes; alerts only, no pull requests | Renovate: centred on pull requests |
+| Secrets exposure | gitleaks (full history) | in CI | off-the-shelf | Keys committed to the repository | TruffleHog: can verify a key is live by calling its provider; not needed (a found key is rotated anyway) and it sends the key out |
+| | **trivy secret** (image layers) | step 2 | off-the-shelf | A key or `.env` baked into an image layer | — |
+| Code vulnerabilities | Semgrep `p/default` | in CI | off-the-shelf | Generic injection, unsafe APIs, crypto misuse (TypeScript, Python, shell) | — |
+| | CodeQL `javascript-security-extended` (in the trace) | in CI | adapted (results filed under `sec.*`) | Taint flows from input to dangerous sinks; today nobody triages it, part 5 makes it the agents' queue | SonarQube/SonarCloud, Snyk Code: heavier, SaaS, overlapping |
+| | Tripwires (16 grep checks, planted samples, allow list) | in CI | built | Our own rules: HTML sinks, child-process environments, git outside `safe-git`, raw mailbox inserts… | Kept; the most valuable move to Semgrep |
+| | **Our Semgrep rules** (with planted samples) | step 2 | built | Invariants grep cannot express: `sudo` only through a fixed helper; paths from input through `resolveInside`; Mongo filters from input scoped to `missionId`; every route behind the auth middleware | CodeQL custom queries: stronger taint tracking, slower to write; later. ESLint security plugins: a second linter beside Biome |
+| Pipeline and build configuration | shellcheck | in CI (errors) | off-the-shelf | Unsafe shell, root helpers included; ratchet to warnings script by script | — |
+| | actionlint | in CI | off-the-shelf | Correctness of the workflows | — |
+| | **zizmor** | step 2 | off-the-shelf | Security of the workflows: script injection, token permissions, unpinned actions | OpenSSF Scorecard: broader, less specific; maybe later |
+| | **trivy config** (Dockerfiles) | step 2 | off-the-shelf | Root user, secrets in build arguments, unpinned bases | hadolint: mostly style; trivy covers the security part with one tool fewer |
+| | Deployed-configuration checks (read-only, Fly API) | step 7 | built | What runs matches what we intend: no public IPs or services on the missions apps, secrets per app, image user and digest | Nothing off-the-shelf knows Fly |
+| Our isolation and authorization guards | **Attack matrix** and its tests | steps 3–4 | built | Part 2 | No scanner knows "another tenant's mission" or "a teammate's workdir" |
+| | **Can-fail check** | step 3 | built | Each test fails with its guard removed | Stryker (full mutation testing): slow and noisy; mutating only our guards is enough |
+| Input handling | **fast-check** properties | step 5 | off-the-shelf library, built properties | Adversarial inputs to our validators and the markdown renderer | Jazzer.js (coverage-guided): heavier; revisit if fast-check finds things |
+| Running application | **Nuclei** | step 5 | adapted: pinned, signed community templates; built: our own templates | (1) exposure and CVE templates on the control plane and the apps host, including JupyterLab and Gradio; (2) fuzzing every route from the OpenAPI files (environment B only); (3) our templates for the matrix's HTTP cells, the oracle written in the template; (4) the Fly private-network probes as network templates (environment D); (5) headless checks of the cockpit (a script in agent output never runs, the CSP holds) | ZAP: overlaps; its remaining strength, crawling a single-page app, is replaced by the OpenAPI files; dropped for now. Burp: commercial, manual. Nikto: dated |
+| The model's own behaviour | (none) | — | — | The platform is tested with the agent assumed compromised (part 2) | garak, promptfoo: measure the model, not our guards, and vary run to run; maybe later for the copilots' confirmation flows |
+| The reviewers' output | Report gate, known-answer benchmark | step 1 done, step 6 | built | Part 5 | — |
+
+**Nuclei guardrails:** templates pinned to a version; unsigned templates refused (`-dut`); code
+templates (which run shell on the scanner) off; no `-ai` template generation (it sends data out) and
+no `-llm` matching (a model's judgement as the oracle again). Fuzzing (`-dast`) runs only in
+environment B. Community templates against dev run at a low rate, and only after Fly has
+acknowledged the testing.
+
+**One alerts file** per CI run (`analysis/alerts.json`: CodeQL, Semgrep, trivy, zizmor, with stable
+ids), kept private as `security.json` is today. It is the agents' triage queue (part 5).
+
+### 1b. The OpenAPI files (decided 2026-11-23)
+
+Three files, one per surface: the public control-plane API, the monitor server (port 4000, behind
+its token) and the Tool API (port 4001, loopback). They are generated, never hand-written: paths,
+methods, path parameters, the catalog operation, the caller and the authentication from the trace's
+route list, and request bodies from the Zod schemas the routes already validate with
+(`zod-to-openapi`), added route by route. Extensions `x-magi-operation`, `x-magi-actor`,
+`x-magi-auth` and `x-magi-tenant-scoped` make the security contract checkable: a test fails on a
+route missing from a file or a file entry with no route, and on a route without authentication or
+tenant scoping that the catalog does not declare public. The baseline catalog stays the product's
+truth; the files are its HTTP view. Uses: the scanners' complete target list, the matrix's HTTP
+cells, and a map of the surface for reviewers. Not chosen: a hand-written spec (about 110 routes,
+it would drift), a decorator framework (a rewrite), runtime validation against the spec (a second
+source of truth beside Zod).
 
 ### 2. The attack matrix, generated from the catalog
 
@@ -109,25 +148,24 @@ figure, by invariant and by component.
   stubbed out (a small list of named guards: `resolveInside`, `userFilter`, `safeEqual`, the
   owner attribution, `checkToolArguments`, …).
 
-### 3. Three environments
+### 3. Test environments
 
-1. **In-process, every push.** Routes with two fake tenants (supertest), tools and validators
-   against temporary directories. Most route and tool cells live here.
-2. **The shipped mission image, in CI.** A job starts the image in Docker (`NET_ADMIN`, a test
-   team, dummy secrets, a test database), then attacks inside it as the agent users
-   (`docker exec -u`): sudoers, ACLs, request folders, `magi-net`, `magi-app`, environment
-   canaries, exactly as shipped. On changes to the runtime or the Dockerfile, and nightly.
-3. **Fly, run by the operator.** What only Fly has: the private network between machines, Fly
-   SSH, the kernel's nftables features. A scripted runbook on a throwaway app in our organization
-   (as for the apps spike), after Fly acknowledges the testing.
+| Environment | What runs | Tests there | Cannot test |
+|---|---|---|---|
+| **A. In-process (vitest), every push** | Routes, tools and validators against temporary folders and a fake database | Most route and tool cells; fast-check properties | OS users, sudo, the firewall |
+| **B. Local stack in CI, nightly** | The control plane and the apps host as processes; a MongoDB service container of Atlas's major version (not Atlas); dummy secrets; missions in local-execution mode; no real model (a scripted one where a turn is needed); two tenants through a **test-only sign-in** that cannot be enabled on Fly | Nuclei (templates, OpenAPI fuzzing, our HTTP cells, headless); cross-tenant cells end to end | Fly specifics |
+| **C. The shipped mission image as a sandbox, on runtime or Dockerfile changes and nightly** | The image CI just built (the digest Fly runs), started with `NET_ADMIN`, a test team, the MongoDB container, dummy keys; attacks run inside as the agent users (`docker exec -u`) | sudoers, ACLs, request folders, `magi-net`, `magi-app`, environment canaries, Tool API tokens | The private network between machines, Fly SSH, Fly's kernel |
+| **D. Fly staging, run by the operator** | A throwaway app in our organization, two machines, our images, after Fly has acknowledged the testing | The private network, Fly SSH, nftables on Fly's kernel, the proxy chain, the apps host's ports (Nuclei network templates) | Nothing automated; agents never run here |
 
-### 4. Fuzzing and an outside-in scan
+No environment holds production data, Atlas, real model keys or real users. The test-only sign-in
+is a new authentication path: it gets its threat-model entry and a tripwire (refused whenever
+`FLY_APP_NAME` is set, like an empty `MONITOR_TOKEN`) in the commit that adds it.
 
-- **Property-based fuzzing** (`fast-check`) of the parsers and validators: team-file paths,
-  `resolveInside`, job and schedule specs, `checkToolArguments`, request-file validation, and the
-  markdown renderer (no script reaches the DOM, checked with jsdom).
-- **OWASP ZAP baseline** against a locally started control plane and apps host in CI: headers,
-  cookies, CSP, and the known routes.
+### 4. Fuzzing
+
+**Property-based fuzzing** (`fast-check`) of the parsers and validators: team-file paths,
+`resolveInside`, job and schedule specs, `checkToolArguments`, request-file validation, and the
+markdown renderer (no script reaches the DOM, checked with jsdom).
 
 ### 5. What the MAGI DEV agents do
 
@@ -172,14 +210,15 @@ Each step is a commit series with its tests and docs, like the interactive-apps 
 | Step | What | Size |
 |---|---|---|
 | 1 | **Acceptance gate and no certificates.** The checker learns commits, subjects and quoted code; it runs as a scheduled job over every new report, outside the agents; the skills drop certificate verdicts; the agents' wrong beliefs from 2026-11-23 are corrected. The documenter can resume on this alone. | 1 day |
-| 2 | **Static scanners:** trivy, hadolint, our Semgrep rules with planted samples, `alerts.json`. | 1–1.5 days |
+| 2 | **Static scanners:** trivy (image, secrets, configuration), zizmor, our Semgrep rules with planted samples, `alerts.json`; Dependabot alerts on. | 1–1.5 days |
+| 2b | **The OpenAPI files**, generated from the trace and the Zod schemas, with the drift and contract test. | 1.5–2 days |
 | 3 | **Attack matrix generator and in-process templates** (routes with two tenants, tools), the can-fail check with historical known answers (F-082 first), coverage counts. The four invariants with no test get theirs here. | 3 days |
 | 4 | **The mission image as a sandbox in CI:** the Docker job, the attack runner as agent users, templates for request folders, helpers and environment canaries. | 3–4 days |
-| 5 | **Fuzzing and ZAP.** | 1.5–2 days |
-| 6 | **MAGI DEV redesign:** fresh-context workers, N runs and a refuter, structured output, coordinator agents, new skills; the known-answer benchmark and the model comparison. | 3 days |
-| 7 | **Fly runbook** for the operator's probes, and the detections list from the security-testing item, with G-5 alerting where needed. | 1–2 days |
+| 5 | **fast-check, and Nuclei** in environment B (with the test-only sign-in and the MongoDB container), and lightly against dev. | 2–3 days |
+| 6 | **MAGI DEV redesign** (the alerts reach the mission privately: the repository is public, so neither the `trace` branch nor a CI artifact may carry them): fresh-context workers, N runs and a refuter, structured output, coordinator agents, new skills; the known-answer benchmark and the model comparison. | 3 days |
+| 7 | **Fly runbook** for the operator's probes (Nuclei network templates) and the deployed-configuration checks, and the detections list from the security-testing item, with G-5 alerting where needed. | 1–2 days |
 
-About 14–17 days in all. Steps 1–2 pay off whatever else is decided; 3–4 give the coverage
+About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 give the coverage
 figure; 6 depends on 1 and 3.
 
 ### Progress
@@ -197,17 +236,20 @@ figure; 6 depends on 1 and 3.
   and "recipientTags" bug, and the concern it passed to appsec; appsec's TB-30..33 and invented
   test names).
 
-## Decisions for the product owner
+## Decisions (product owner, 2026-11-23)
 
-1. **Approve the direction:** scanners and generated tests decide; agents triage and propose,
-   under mechanical acceptance; no certificates.
-2. **How agents' test code reaches the repository.** Proposed: as a patch in the mission's shared
-   folder that has passed the can-fail check; I review and commit it (no pull requests, as today).
-3. **CI time.** Proposed: in-process cells on every push; the image sandbox on runtime or
-   Dockerfile changes and nightly; ZAP nightly.
-4. **Model budget** for the benchmark (a few dollars per configuration per run).
-5. **MAGI DEV until step 6:** proposed, the documenter resumes after step 1; appsec and the code
-   reviewer stay off.
+1. The direction: scanners and generated tests decide; agents triage and propose, under
+   mechanical acceptance; no certificates.
+2. Agents' test code reaches the repository as a patch in the mission's shared folder that has
+   passed the can-fail check; I review and commit it.
+3. CI time: environment A on every push; B and C nightly, and C on runtime or Dockerfile changes.
+4. A small model budget for the benchmark.
+5. MAGI DEV until step 6: the documenter only (appsec, code-reviewer and qa-lead set inactive).
+6. The tool suite of part 1: trivy configuration instead of hadolint; zizmor and Dependabot alerts
+   added; Nuclei the primary dynamic scanner, ZAP dropped for now.
+7. OpenAPI files generated from code (part 1b).
+8. Environment B: a test-only sign-in (threat-model entry and tripwire with it), MongoDB as a
+   service container.
 
 ## Not in this plan
 
