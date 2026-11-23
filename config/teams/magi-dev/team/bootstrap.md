@@ -244,3 +244,30 @@ the mapping to the user.
 
 Then PostMessage appsec: "SEC-T3 is assigned to you; your first red-team turn is the next
 scheduled one."
+
+## Addendum 2026-11-23 — the report gate; appsec, the code reviewer and the QA lead paused
+
+Apply only this section if the earlier ones were already applied. Reports are now checked by a
+scheduled job, `report-gate` (code, not an agent): a report with a reference the repository does
+not have is rejected and sent back to its author (`working-agreements`, rule 9). The security
+review is being redesigned (`docs/plans/security-assurance-plan.md` in the repository): until
+then **appsec, code-reviewer and qa-lead are paused**. The operator has cancelled their
+schedules; do not re-create them, do not message those three, and do not assign them tasks.
+Their open tasks stay as they are.
+
+**The gate's schedule** runs as the documenter, whose clone it uses. PostMessage documenter:
+
+"Please run this once, exactly as written, then reply with its output:
+
+```bash
+bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" \
+  --label report-gate --cron '15 * * * *' \
+  --script "$SHARED_DIR/skills/_team/working-agreements/scripts/report-gate.sh" \
+  --args "$SHARED_DIR $WORKDIR"
+```
+
+It schedules the report gate, which checks every new or changed report hourly. appsec,
+code-reviewer and qa-lead are paused: send anything you would hand to them to the user instead."
+
+When the documenter replies, check with ListScheduledMessages that `report-gate` is pending, and
+tell the user its next run time. The gate's results are in `reports/gate/ledger.md`.

@@ -1,19 +1,24 @@
 ---
 name: working-agreements
-description: Rules every reviewer on this team follows — the evidence behind any "pass", checks proven on a known positive, verifying the facts in your own proposed text, consistency with your earlier reports and your teammates', your own report folder, requests addressed to several agents, checklists, and citations that resolve in the code.
+description: Rules every reviewer on this team follows — findings rather than certificates, checks proven on a known positive, verifying the facts in your own proposed text, consistency with your earlier reports and your teammates', your own report folder, requests addressed to several agents, checklists, and citations that resolve in the code.
 ---
 
 # Working agreements
 
 These apply to every report you write. Each rule exists because an earlier report broke it.
 
-## 1. No evidence means unverified, never compliant
+## 1. Findings, not certificates
 
-Every "pass", "consistent", "no violations", "verified" or "accurate" in a report cites what
-established it: the command and the relevant part of its output, or the `file:line` read. If you
-did not check something, write **unverified** and why; never fill the gap with "no violations
-observed". For a rule or statement that only a reviewer can judge, sample it (5–10 instances,
-listed) or mark it unverified.
+A report lists **findings**, each with the evidence that establishes it (the command and the
+relevant part of its output, or the `file:line` read), and **what you examined**: the files,
+commits, rows or claims you looked at. It does not certify: no "APPROVE", "all controls hold",
+"held against N attacks", "no drift", "compliant" or "no violations". Nobody can check an
+absence, and those words were where invented evidence hid. Having found nothing is written as
+"no finding in what I examined", with the list.
+
+Where a checklist row or a claim needs a verdict, it carries its own evidence (rule 8); anything
+you did not check is **unverified**, with the reason. For a rule or statement only a reviewer can
+judge, sample it (5–10 instances, listed) or mark it unverified.
 
 ## 2. A check is trusted only after it has caught a known positive
 
@@ -86,27 +91,32 @@ your checklist and isn't, propose it in your report.
 The report includes the `summary` output exactly as the script printed it. A table of your own
 in its place — other ids, other rows, all ticked — is not a checklist result.
 
-## 9. Every code reference resolves
+## 9. Every code reference resolves, and the gate checks it
 
-A function, file, line or route you name must exist in the code you reviewed. A plausible name
-written from memory — a handler called what it ought to be called, a route shaped like its
-neighbours — reads like evidence and is the most damaging error a review can contain, because
-nobody re-checks it. Name only what you have read in the clone; when you summarise from
-memory, say so.
+A function, file, line, route, test, commit or id you name must exist in the code you reviewed.
+A plausible name written from memory — a handler called what it ought to be called, a commit
+summarised from what it ought to contain — reads like evidence and is the most damaging error a
+review can contain. Name only what you have read in the clone, in this turn; quote commit
+subjects from `git log`, test names from `grep -n 'it("' <file>` (in full, no `head`), and code
+by copying it.
 
-Before a report is done, run:
+**The report gate** (`report-gate.py`, a scheduled job: code, not an agent) checks every new or
+changed report in `reports/<area>/`: names, files and lines, routes, test names, commit hashes
+and the subjects beside them, `TB-`/`F-`/`SC-`/`sec.*` ids, system paths, and quoted code blocks.
+A report with any reference that does not exist is **rejected**, and you are sent the list. Look
+each one up, then correct it or remove the claim that rests on it; never re-word around it. The
+gate re-checks the report on its next run. A report counts only once `reports/gate/ledger.md`
+shows it `accepted`.
+
+Run the same check yourself before you hand a report over, so it is accepted first time:
 
 ```bash
 python3 $SHARED_DIR/skills/_team/working-agreements/scripts/check-citations.py <report.md> <clone>
 ```
 
-It looks up every `identifier`, `identifier` (file.ts), file.ts:NN and route in backticks, and
-every test name in double quotes on a line that names its `*.test.ts` file, and exits 1 while
-any is not found. A test you cite as evidence is quoted exactly as its `it("…")` reads: list a
-test file's names in full (`grep -n 'it("' <file>`, no `head`) before you cite any of them. Fix or remove each one before you hand the report over, and
-include its last line ("N citations checked: …") in the report. It proves existence, not
-meaning: a real function cited for the wrong behaviour still passes, so read the code as well.
-`--selftest <clone>` shows it catching an invented name (rule 2).
+It proves existence, not meaning: a real function cited for the wrong behaviour still passes, so
+read the code as well. `--selftest <clone>` shows it catching an invented reference of each kind
+(rule 2).
 
 ## 10. Scan findings are evidence to confirm
 

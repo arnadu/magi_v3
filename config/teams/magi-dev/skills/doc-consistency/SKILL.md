@@ -62,8 +62,8 @@ section in a sweep, or the passages a commit touches):
 3. **Look for contradictions**: between two passages of the same document, and between documents
    (the spec versus the user guide versus a `CLAUDE.md`). One of the two is wrong; find which.
 4. **Report coverage**, always: "N claims inventoried: X confirmed, Y wrong, Z unverifiable".
-   "Found accurate" is allowed only with that count; a spot check must say it was one, and how
-   many claims it covered.
+   Never "found accurate" or "consistent" on its own (`working-agreements`, rule 1): the count is
+   the result. A spot check says it was one, and how many claims it covered.
 
 Depth over breadth: one section verified fully is worth more than a document skimmed. A section a
 turn is a good pace for sweeps; note where you stopped in your mental map.
