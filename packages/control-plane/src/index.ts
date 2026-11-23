@@ -210,7 +210,10 @@ function startBackgroundServices(
 	server: Server,
 ): void {
 	// Start scheduled message delivery heartbeat.
-	const stopScheduler = startScheduler(db);
+	const stopScheduler = startScheduler(db, {
+		platformAdminUserIds: resourceMonitorOptionsFromEnv(process.env)
+			.platformAdminUserIds,
+	});
 	// Start a user's copilot daemon whenever mail arrives for it (ADR-0032).
 	const stopCopilotWaker = startCopilotWaker(db, (userId) =>
 		copilotRuntime.ensureCopilotRunning(userId),

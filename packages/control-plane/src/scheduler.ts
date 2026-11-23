@@ -29,6 +29,7 @@ import { schedule } from "node-cron";
 import { getMachineState } from "./fly-machines.js";
 import { wakeTracked } from "./machine-lifecycle.js";
 import { postMailbox } from "./mailbox-writer.js";
+import { relayToPlatformAdmins } from "./platform-relay.js";
 import { createUpgradeSweeper } from "./resource-upgrade.js";
 
 const { parseExpression } = cronParser;
@@ -115,18 +116,91 @@ async function wakeIfNotRunning(db: Db, mission: MissionDoc): Promise<void> {
 // from daemon.ts.
 /** A claim older than this with no outcome belongs to a tick that died mid-delivery; it is re-opened (SCH1). */
 export const DELIVERY_LEASE_MS = 5 * 60_000;
-let deliverInFlight = false;
+/**
+ * One delivery (wake the machine, then post the mail or flag the job) may take
+ * this long; past it, it counts as a failed attempt and is retried next tick.
+ * Without it one hung call held up every mission's schedules: on 2026-11-23 a
+ * delivery loop stalled from about 20:15 to 20:54 UTC.
+ */
+export const DELIVERY_TIMEOUT_MS = 3 * 60_000;
+/** A tick still running after this long is reported as a stall (once per stalled tick). */
+export const DELIVERY_STALL_MS = 5 * 60_000;
+let deliverStartedAt: number | null = null;
+let stallReported = false;
 
-export async function deliver(db: Db): Promise<void> {
+export interface DeliverOptions {
+	/** Told once when a tick has been running longer than DELIVERY_STALL_MS. */
+	onStall?: (runningMs: number) => void;
+	now?: () => number;
+	/** Injected for tests; DELIVERY_TIMEOUT_MS otherwise. */
+	deliveryTimeoutMs?: number;
+}
+
+export async function deliver(
+	db: Db,
+	opts: DeliverOptions = {},
+): Promise<void> {
+	const now = opts.now ?? Date.now;
 	// A slow tick (Fly wake-ups take tens of seconds) used to overlap the next
-	// one and both worked the same queue (SCH5).
-	if (deliverInFlight) return;
-	deliverInFlight = true;
-	try {
-		await deliverAll(db);
-	} finally {
-		deliverInFlight = false;
+	// one and both worked the same queue (SCH5): the next tick is skipped, and a
+	// skip that goes on is a stall, reported.
+	if (deliverStartedAt !== null) {
+		const runningMs = now() - deliverStartedAt;
+		if (runningMs > DELIVERY_STALL_MS && !stallReported) {
+			stallReported = true;
+			opts.onStall?.(runningMs);
+		}
+		return;
 	}
+	deliverStartedAt = now();
+	stallReported = false;
+	try {
+		await deliverAll(db, opts.deliveryTimeoutMs ?? DELIVERY_TIMEOUT_MS);
+	} finally {
+		deliverStartedAt = null;
+	}
+}
+
+/** One claimed entry: wake its mission's machine, then post the mail or flag the job for the daemon. */
+async function deliverOne(
+	db: Db,
+	doc: WithId<ScheduledMessageDoc>,
+): Promise<void> {
+	const mission = await storedCollection(db, "missions").findOne({
+		missionId: doc.missionId,
+	});
+	if (mission) await wakeIfNotRunning(db, mission);
+	if (doc.kind === "job") {
+		await storedCollection(db, "scheduledMessages").updateOne(
+			{ _id: doc._id },
+			{
+				$set: {
+					pendingFire: { dueAt: doc.deliverAt, requestedAt: new Date() },
+				},
+			},
+		);
+		console.log(
+			`[scheduler] Job schedule "${doc.label ?? doc.subject}" due — flagged for the mission daemon (mission ${doc.missionId})`,
+		);
+	} else {
+		await deliverToMailbox(db, doc);
+	}
+}
+
+/** Rejects after `ms`; the work itself is not cancelled, only no longer waited for. */
+function withTimeout<T>(
+	work: Promise<T>,
+	ms: number,
+	what: string,
+): Promise<T> {
+	let timer: NodeJS.Timeout | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() => reject(new Error(`${what} took longer than ${ms / 1000} s`)),
+			ms,
+		);
+	});
+	return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -164,7 +238,7 @@ async function deliverToMailbox(
 	);
 }
 
-async function deliverAll(db: Db): Promise<void> {
+async function deliverAll(db: Db, timeoutMs: number): Promise<void> {
 	const scheduledCol = storedCollection(db, "scheduledMessages");
 	const missionsCol = storedCollection(db, "missions");
 
@@ -181,24 +255,11 @@ async function deliverAll(db: Db): Promise<void> {
 		if (!doc) break;
 
 		try {
-			const mission = await missionsCol.findOne({ missionId: doc.missionId });
-			if (mission) await wakeIfNotRunning(db, mission);
-
-			if (doc.kind === "job") {
-				await scheduledCol.updateOne(
-					{ _id: doc._id },
-					{
-						$set: {
-							pendingFire: { dueAt: doc.deliverAt, requestedAt: new Date() },
-						},
-					},
-				);
-				console.log(
-					`[scheduler] Job schedule "${doc.label ?? doc.subject}" due — flagged for the mission daemon (mission ${doc.missionId})`,
-				);
-			} else {
-				await deliverToMailbox(db, doc);
-			}
+			await withTimeout(
+				deliverOne(db, doc),
+				timeoutMs,
+				`delivering "${doc.label ?? doc.subject}" (mission ${doc.missionId})`,
+			);
 			if (!doc.cron) {
 				await scheduledCol.updateOne(
 					{ _id: doc._id },
@@ -336,9 +397,29 @@ export async function pruneOldLogEntries(db: Db): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /** Start the scheduled delivery heartbeat and log pruner. Returns a stop function. */
-export function startScheduler(db: Db): () => void {
+export function startScheduler(
+	db: Db,
+	opts: { platformAdminUserIds: readonly string[] } = {
+		platformAdminUserIds: [],
+	},
+): () => void {
+	const onStall = (runningMs: number) => {
+		const minutes = Math.round(runningMs / 60_000);
+		const body = `Scheduled delivery has been stuck for ${minutes} min: one tick is still running, so every mission's scheduled messages and jobs are waiting. Each delivery is limited to ${DELIVERY_TIMEOUT_MS / 60_000} min, so a stall this long points at the database or the claim loop itself; see the control plane's [scheduler] log.`;
+		console.error(
+			`[scheduler] Delivery stalled { runningMin: ${minutes} } — ${body}`,
+		);
+		void relayToPlatformAdmins(db, opts.platformAdminUserIds, {
+			category: "scheduler-stall",
+			body,
+		});
+	};
 	const tick = () =>
-		deliver(db).catch((e) => console.error("[scheduler] Delivery error:", e));
+		deliver(db, { onStall }).catch((e) =>
+			console.error(
+				`[scheduler] Delivery tick failed: ${(e as Error).message} — the next tick retries`,
+			),
+		);
 
 	const prune = () =>
 		pruneOldLogEntries(db).catch((e) =>

@@ -105,3 +105,35 @@ describe("deliver — waking the mission's machine", () => {
 		});
 	});
 });
+
+describe("deliver — a delivery that hangs", () => {
+	it("counts as a failed attempt after its time limit, and the entry is retried, not lost", async () => {
+		state.mockReturnValue(new Promise(() => {})); // Fly never answers
+		const { db, data } = scenario({});
+		await deliver(db, { deliveryTimeoutMs: 20 });
+		const doc = data.scheduled_messages[0];
+		expect(doc.status).toBe("pending");
+		expect(doc.deliveryAttempts).toBe(1);
+		expect(data.mailbox ?? []).toHaveLength(0);
+	});
+
+	it("reports a tick that is still running past the stall limit, once", async () => {
+		let release: () => void = () => {};
+		state.mockReturnValue(new Promise((r) => (release = () => r("started"))));
+		const { db } = scenario({});
+		const stalls: number[] = [];
+		let clock = 0;
+		const opts = {
+			onStall: (ms: number) => stalls.push(ms),
+			now: () => clock,
+			deliveryTimeoutMs: 60_000,
+		};
+		const first = deliver(db, opts);
+		clock = 6 * 60_000;
+		await deliver(db, opts); // skipped: the first is still running
+		await deliver(db, opts);
+		expect(stalls).toEqual([6 * 60_000]);
+		release();
+		await first;
+	});
+});

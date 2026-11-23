@@ -504,3 +504,54 @@ describe("claimJobFires", () => {
 		expect(anomalies[0].message).toContain("nightly.refresh");
 	});
 });
+
+describe("re-arming a job schedule at its due time (2026-11-23)", () => {
+	const due = new Date("2026-11-23T20:15:00Z");
+	const gate = {
+		cron: "15 * * * *",
+		jobSpec: { agentId: "a1", scriptPath: "/x/gate.sh", args: ["a"] },
+	};
+
+	async function rearmAt(at: Date, before: Partial<ScheduledMessageDoc>) {
+		const { db, docs } = fakeDb();
+		let now = new Date("2026-11-23T19:54:13Z");
+		const deps = makeDeps(db, { now: () => now });
+		writeSchedule("report-gate", gate, UID_A1);
+		const ing = createScheduleIngestor(deps);
+		await ing.ingest();
+		expect(docs[0].deliverAt).toEqual(due);
+		Object.assign(docs[0], before);
+		now = at;
+		await ing.ingest();
+		return { doc: docs[0], lines: deps.lines };
+	}
+
+	it("keeps the occurrence that came due and never fired, and says why it re-armed", async () => {
+		const { doc, lines } = await rearmAt(new Date("2026-11-23T20:15:13Z"), {
+			status: "cancelled",
+		});
+		expect(doc.status).toBe("pending");
+		expect(doc.deliverAt).toEqual(due);
+		expect(lines.join("\n")).toMatch(
+			/Re-armed report-gate: was cancelled, due 2026-11-23T20:15:00.000Z → next at 2026-11-23T20:15:00.000Z \(the overdue occurrence, never fired, is kept\)/,
+		);
+	});
+
+	it("moves to the next slot when the occurrence already fired, is over an hour old, or failed", async () => {
+		const next = new Date("2026-11-23T21:15:00Z");
+		const fired = await rearmAt(new Date("2026-11-23T20:15:13Z"), {
+			status: "cancelled",
+			lastFiredAt: new Date("2026-11-23T20:15:05Z"),
+		} as Partial<ScheduledMessageDoc>);
+		expect(fired.doc.deliverAt).toEqual(next);
+		const old = await rearmAt(new Date("2026-11-23T21:14:00Z"), {
+			status: "cancelled",
+			deliverAt: new Date("2026-11-23T20:05:00Z"),
+		});
+		expect(old.doc.deliverAt).toEqual(next);
+		const failed = await rearmAt(new Date("2026-11-23T20:15:13Z"), {
+			status: "failed",
+		});
+		expect(failed.doc.deliverAt).toEqual(next);
+	});
+});

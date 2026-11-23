@@ -408,23 +408,54 @@ async function upsertSchedule(
 	// An operator's cancel outlasts edits to the file (SCH-1): only removing
 	// the file, which clears the mark below, lets the label be scheduled again.
 	if (existing.cancelledBy === "operator") return "unchanged";
+	const specChanged = existing.specHash !== fields.specHash;
 	const rearm =
-		existing.specHash !== fields.specHash ||
+		specChanged ||
 		existing.status === "cancelled" ||
 		existing.status === "failed" ||
 		existing.status === "delivered";
 	if (!rearm) return "unchanged";
+	const deliverAt = keptOccurrence(existing, at) ?? parsed.deliverAt;
+	// The state this re-arm replaces is gone from the document afterwards; the
+	// log is the only record of why it happened.
+	const lastFired =
+		existing.kind === "job" && existing.lastFiredAt
+			? `, last fired ${existing.lastFiredAt.toISOString()}`
+			: "";
+	const why = `was ${existing.status}${specChanged ? ", spec changed" : ""}, due ${existing.deliverAt.toISOString()}${lastFired}`;
 	await ctx.col.updateOne(filter, {
 		$set: {
 			...fields,
-			deliverAt: parsed.deliverAt,
+			deliverAt,
 			status: "pending",
 			deliveryAttempts: 0,
 			updatedAt: at,
 		},
 		$unset: { pendingFire: "", claimedAt: "", cancelledAt: "" },
 	});
+	ctx.log(
+		`[daemon:scheduler] Re-armed ${label}: ${why} → next at ${deliverAt.toISOString()}${deliverAt === parsed.deliverAt ? "" : " (the overdue occurrence, never fired, is kept)"}`,
+	);
 	return "updated";
+}
+
+/** How long after its due time an occurrence that never fired is still worth firing on a re-arm. */
+export const KEEP_OVERDUE_MS = 60 * 60_000;
+
+/**
+ * A job occurrence that came due and never fired is kept when its schedule is
+ * re-armed, instead of moving to the next slot: on 2026-11-23 a delivery stall
+ * and a re-arm at the due minute silently skipped jobs, hour after hour. Not
+ * after a delivery failure (that would retry in a loop), and not long after the
+ * fact: past KEEP_OVERDUE_MS the next slot is better than a stale run.
+ */
+function keptOccurrence(existing: ScheduledMessageDoc, now: Date): Date | null {
+	if (existing.kind !== "job" || existing.status === "failed") return null;
+	const due = existing.deliverAt;
+	const overdueMs = now.getTime() - due.getTime();
+	if (overdueMs < 0 || overdueMs > KEEP_OVERDUE_MS) return null;
+	const fired = existing.lastFiredAt && existing.lastFiredAt >= due;
+	return fired ? null : due;
 }
 
 async function ingestSchedules(ctx: IngestContext): Promise<IngestSummary> {
@@ -453,9 +484,12 @@ async function ingestSchedules(ctx: IngestContext): Promise<IngestSummary> {
 			);
 			if (outcome === "unchanged") continue;
 			summary[outcome].push(read.label);
-			ctx.log(
-				`[daemon:scheduler] Schedule ${outcome}: ${read.label} → next at ${read.parsed.deliverAt.toISOString()}`,
-			);
+			// A re-arm logs its own line, with its reason.
+			if (outcome === "imported") {
+				ctx.log(
+					`[daemon:scheduler] Schedule imported: ${read.label} → next at ${read.parsed.deliverAt.toISOString()}`,
+				);
+			}
 		}
 		const gone = await ctx.col.updateMany(
 			{ ...ctx.base, status: "pending", label: { $nin: seen } },
