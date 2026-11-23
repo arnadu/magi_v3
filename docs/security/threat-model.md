@@ -1,6 +1,7 @@
 # MAGI V3 Threat Model
 
-**Last updated:** 2026-11-22 (F-082) — a notebook app runs with `PYTHONSAFEPATH=1`, kept by `magi-app`'s `env_keep`: a module a teammate plants in a served folder in `shared/` no longer runs as the owner at startup (TB-24).
+**Last updated:** 2026-11-23 (machine diagnostics) — the control plane also reads a mission machine's exit events and its log buffer from Fly (`fly-machine-diagnostics.ts`, TB-10): `GetMissionStatus` reports the last exit and `ReadMissionLog` falls back to Fly's log when the daemon does not answer. The logs call goes to the fixed host `api.fly.io` with the same app-scoped `FLY_API_TOKEN_MACHINES`; the app name is from the environment and the machine id from the mission document, read only after the caller's ownership check. Fly's log lines are agent-influenced text reaching the copilot's context, as the daemon's own `/log` already was. No new boundary.
+**Previously:** 2026-11-22 (F-082) — a notebook app runs with `PYTHONSAFEPATH=1`, kept by `magi-app`'s `env_keep`: a module a teammate plants in a served folder in `shared/` no longer runs as the owner at startup (TB-24).
 **Previously:** 2026-11-22 (agents' Python environments) — an app now runs with its owner's own interpreter (`$WORKDIR/.venv/bin/python3`, made by the `python-env` skill) when one exists, still through `sudo -u <owner> magi-app` (TB-24): the path comes from the owner's workdir only, so an agent can choose the interpreter of its own apps, never another's — no more than it could already do with its app's code. `magi-app`'s `env_keep` adds three fixed, non-secret paths (`JUPYTER_PATH`, `JUPYTER_CONFIG_PATH`, `JUPYTERLAB_DIR`), and `magi-job`'s adds `WORKDIR` (the job's own workdir). No new boundary.
 **Previously:** 2026-11-21 (interactive apps, ADR-0037, slice e) — the control plane's side of TB-26: it now holds `APPS_TICKET_KEY` and `APPS_SIGNING_KEY`, issues tickets (`POST /api/missions/:id/apps/:name/open`, `POST /api/apps/reopen`, owner-scoped, both through `openApp`), assigns each app its slot on the apps host (`missionApps.slot`, unique), and injects each mission's `APPS_TOKEN` at machine creation.
 **Previously:** 2026-11-21 (interactive apps, ADR-0037, slice d) — new boundary **TB-26**: the operator's browser → the apps host (`magi-apps-<suffix>.fly.dev`, ports 20000–20099), a new public Fly app serving agent-authored code on a different site from the cockpit. It holds `APPS_TICKET_KEY`, `APPS_SIGNING_KEY` and `COCKPIT_URL` only.
@@ -419,6 +420,7 @@ graph TB
 
 ### TB-10: Control plane → Fly Machines API
 - `packages/control-plane/src/fly-machines.ts` — Machines API client; reads `FLY_API_TOKEN_MACHINES` and `FLY_MISSIONS_APP_NAME` from env only; never user-supplied
+- `packages/control-plane/src/fly-machine-diagnostics.ts` — a machine's exit events (Machines API) and its log buffer (`api.fly.io/api/v1/apps/<app>/logs`, same token); read by the copilot's `GetMissionStatus`/`ReadMissionLog` and the `machine-down` alert
 - `packages/control-plane/src/scheduler.ts` — node-cron heartbeat; calls `resumeMission()` before delivering scheduled messages
 
 ### TB-11: Control plane proxy → Execution plane
@@ -729,6 +731,8 @@ graph TB
 | Leaked token used to inject malicious env vars into new machines | T | ~ | App-scoped token cannot affect other Fly apps or Atlas; env vars at create time controlled by `fly-machines.ts` |
 | `FLY_API_TOKEN_MACHINES` forwarded to execution plane machines | I | ✅ | `fly-machines.ts` explicitly does NOT include this token in machine `env` |
 | App name or machine ID from user input → Machines API targeted to wrong app | T | ✅ | App name from `FLY_MISSIONS_APP_NAME` env var only; machine IDs from MongoDB `missions` collection only |
+| A user's copilot reads another tenant's machine log from Fly | I | ✅ | `ReadMissionLog` looks the mission up by `{missionId, userId}` before reading either the daemon or Fly; the machine id comes from that document; the URL's host is fixed and its parts are encoded (`fly-machine-diagnostics.ts`) |
+| Machine log content (agent-influenced) steers the copilot | T | ~ | Same exposure as the daemon's `/log`, which the copilot already read; lines capped at 500 chars and presented as a log with a header naming its source |
 
 ### TB-11: Control plane proxy → Execution plane
 

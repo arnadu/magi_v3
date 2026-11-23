@@ -32,7 +32,7 @@ export function appName(): string {
 	return name;
 }
 
-function apiToken(): string {
+export function apiToken(): string {
 	const token = process.env.FLY_API_TOKEN_MACHINES;
 	if (!token) throw new Error("FLY_API_TOKEN_MACHINES is not set");
 	return token;

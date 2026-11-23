@@ -9,7 +9,7 @@
 
 import type { AlertStateStore } from "@magi/agent-runtime-worker";
 import { describe, expect, it } from "vitest";
-import { checkOomExits, classifyExit } from "../src/fly-events.js";
+import { checkMachineExits, classifyExit } from "../src/fly-events.js";
 import type {
 	FlyMachineEvent,
 	FlyMachineSummary,
@@ -96,13 +96,13 @@ const missionDoc = (over: Doc = {}): Doc => ({
 	...over,
 });
 
-describe("checkOomExits", () => {
+describe("checkMachineExits", () => {
 	it("raises oom-suspected for a machine whose owning mission is on record", async () => {
 		const { db, data, listMachinesFn } = setup(
 			[{ id: "mach-1", events: [exitEvent({ exit_code: 137 })] }],
 			[missionDoc()],
 		);
-		await checkOomExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
 
 		expect(data.missionAnomalies).toHaveLength(1);
 		expect(data.missionAnomalies[0]).toMatchObject({
@@ -124,7 +124,7 @@ describe("checkOomExits", () => {
 			[{ id: "mach-1", events: [exitEvent({ requested_stop: true })] }],
 			[missionDoc()],
 		);
-		await checkOomExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
 		expect(data.missionAnomalies).toHaveLength(0);
 	});
 
@@ -138,7 +138,7 @@ describe("checkOomExits", () => {
 			],
 			[missionDoc()],
 		);
-		await checkOomExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
 		expect(data.missionAnomalies).toHaveLength(0);
 	});
 
@@ -148,8 +148,8 @@ describe("checkOomExits", () => {
 		];
 		const { db, data, listMachinesFn } = setup(machines, [missionDoc()]);
 
-		await checkOomExits(db, { listMachinesFn });
-		await checkOomExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
 
 		expect(data.missionAnomalies).toHaveLength(1);
 	});
@@ -173,7 +173,7 @@ describe("checkOomExits", () => {
 			lastAlertAt: new Date(),
 		} as never);
 
-		await checkOomExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
 		expect(data.missionAnomalies).toHaveLength(1);
 	});
 
@@ -189,7 +189,7 @@ describe("checkOomExits", () => {
 			],
 			[missionDoc()],
 		);
-		await checkOomExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
 		expect(data.missionAnomalies).toHaveLength(0);
 	});
 
@@ -199,7 +199,7 @@ describe("checkOomExits", () => {
 			[],
 		);
 		await expect(
-			checkOomExits(db, { listMachinesFn }),
+			checkMachineExits(db, { listMachinesFn }),
 		).resolves.toBeUndefined();
 		expect(data.missionAnomalies).toHaveLength(0);
 	});
@@ -207,7 +207,7 @@ describe("checkOomExits", () => {
 	it("never throws when listMachines itself fails", async () => {
 		const { db, data } = setup([], []);
 		await expect(
-			checkOomExits(db, {
+			checkMachineExits(db, {
 				listMachinesFn: async () => {
 					throw new Error("fly api down");
 				},
@@ -230,9 +230,9 @@ describe("checkOomExits", () => {
 			},
 			clear: async () => {},
 		};
-		await checkOomExits(db, { listMachinesFn, dedupeStore: brokenStore });
+		await checkMachineExits(db, { listMachinesFn, dedupeStore: brokenStore });
 		expect(data.missionAnomalies).toHaveLength(1);
-		await checkOomExits(db, { listMachinesFn, dedupeStore: brokenStore });
+		await checkMachineExits(db, { listMachinesFn, dedupeStore: brokenStore });
 		expect(data.missionAnomalies).toHaveLength(1);
 	});
 
@@ -250,10 +250,73 @@ describe("checkOomExits", () => {
 				missionDoc({ missionId: "m2", userId: "u2", machineId: "mach-2" }),
 			],
 		);
-		await checkOomExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
 		expect(data.missionAnomalies.map((a) => a.missionId).sort()).toEqual([
 			"m1",
 			"m2",
 		]);
+	});
+});
+
+describe("machine-down", () => {
+	// The exit AI News Digest's machine recorded on 2026-11-23, after its daemon
+	// refused to start on every boot and Fly used up its restarts.
+	const crashed = (
+		over: Partial<FlyMachineSummary> = {},
+	): FlyMachineSummary => ({
+		id: "mach-1",
+		state: "stopped",
+		events: [
+			{ type: "start", timestamp: 1795405002261 },
+			exitEvent({ exit_code: 1, oom_killed: false, requested_stop: false }),
+		],
+		...over,
+	});
+
+	it("is raised for a running mission whose machine stopped after a crash", async () => {
+		const { db, data, listMachinesFn } = setup(
+			[crashed()],
+			[missionDoc({ status: "running" })],
+		);
+		await checkMachineExits(db, { listMachinesFn });
+		expect(data.missionAnomalies).toHaveLength(1);
+		expect(data.missionAnomalies[0]).toMatchObject({
+			category: "machine-down",
+			severity: "hard",
+		});
+		expect(data.missionAnomalies[0].message).toContain(
+			"exit code 1, not an out-of-memory kill",
+		);
+	});
+
+	it("is raised once per exit, not on every tick", async () => {
+		const { db, data, listMachinesFn } = setup(
+			[crashed()],
+			[missionDoc({ status: "running" })],
+		);
+		await checkMachineExits(db, { listMachinesFn });
+		await checkMachineExits(db, { listMachinesFn });
+		expect(data.missionAnomalies).toHaveLength(1);
+	});
+
+	it("is not raised for a suspended mission, a requested stop, a clean exit or a machine Fly is restarting", async () => {
+		for (const [machine, status] of [
+			[crashed(), "suspended"],
+			[
+				crashed({
+					events: [exitEvent({ exit_code: 1, requested_stop: true })],
+				}),
+				"running",
+			],
+			[crashed({ events: [exitEvent({ exit_code: 0 })] }), "running"],
+			[crashed({ state: "started" }), "running"],
+		] as const) {
+			const { db, data, listMachinesFn } = setup(
+				[machine],
+				[missionDoc({ status })],
+			);
+			await checkMachineExits(db, { listMachinesFn });
+			expect(data.missionAnomalies).toHaveLength(0);
+		}
 	});
 });

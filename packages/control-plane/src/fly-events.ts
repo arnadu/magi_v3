@@ -1,6 +1,9 @@
 /**
- * OOM detection from Fly machine exit events (ADR-0032 Decision 2/4,
- * `oom-suspected`).
+ * Machine exits worth an alert, from Fly machine exit events: a suspected
+ * out-of-memory kill (ADR-0032 Decision 2/4, `oom-suspected`), and a running
+ * mission whose machine stopped after a crash that Fly will not restart
+ * (`machine-down`: a daemon failing at boot exits, is restarted three times,
+ * and stays stopped while the mission still reads `running`).
  *
  * Fly retains only ~5 events per machine, so this must run often enough
  * (the 5-min resource-monitor tick) not to miss a kill between samples.
@@ -23,6 +26,11 @@ import {
 	createMongoAnomalyRecorderForMission,
 } from "@magi/agent-runtime-worker";
 import type { Db } from "mongodb";
+import {
+	describeLastExit,
+	isCrashStopped,
+	lastExit,
+} from "./fly-machine-diagnostics.js";
 import type { FlyMachineEvent, FlyMachineSummary } from "./fly-machines.js";
 import { listMachines } from "./fly-machines.js";
 
@@ -76,25 +84,69 @@ async function recordOomSuspected(
 	});
 }
 
-export interface CheckOomExitsDeps {
+/** Raises `machine-down` when the stopped machine belongs to a mission that is meant to be running. */
+async function recordMachineDown(
+	db: Db,
+	machine: FlyMachineSummary,
+): Promise<void> {
+	const mission = await storedCollection(db, "missions").findOne({
+		machineId: machine.id,
+		status: "running",
+	});
+	if (!mission) return;
+	await createMongoAnomalyRecorderForMission(
+		db,
+		mission.missionId,
+		mission.userId,
+	).record({
+		missionId: mission.missionId,
+		category: "machine-down",
+		severity: "hard",
+		message: `Mission "${mission.missionId}" is running, but its machine ${machine.id} is stopped and will not restart by itself. Last exit, from Fly: ${describeLastExit(machine)}. Nothing in the mission runs until it is resumed, and resuming repeats the failure unless its cause is fixed.`,
+	});
+}
+
+export interface CheckMachineExitsDeps {
 	/** Injected for tests; defaults to the real Fly Machines API. */
 	listMachinesFn?: () => Promise<FlyMachineSummary[]>;
 	/** Injected for tests; defaults to a real Mongo-backed store. */
 	dedupeStore?: AlertStateStore;
 }
 
-/**
- * Scans every machine's retained event history for suspected OOM exits,
- * dedupes against previously-seen ones, and raises `oom-suspected` for each
- * new one against its owning mission. Never throws — a failure here must not
- * break the resource-monitor tick.
- */
 /** Exits reported while the dedupe store was failing; process-local (a restart may report one again). */
 const reportedWhileStoreDown = new Set<string>();
 
-export async function checkOomExits(
+/** True the first time `key` is seen; the store failing falls back to memory (FE1). */
+async function firstReport(
+	dedupeStore: AlertStateStore,
+	key: string,
+): Promise<boolean> {
+	try {
+		if (await dedupeStore.get(key)) return false;
+		await dedupeStore.put({ key, level: "hard", lastAlertAt: new Date() });
+		return true;
+	} catch (e) {
+		// FE1: still report a new exit, but not the same one on every tick
+		// for as long as the store is down.
+		if (reportedWhileStoreDown.has(key)) return false;
+		reportedWhileStoreDown.add(key);
+		console.error(
+			`[fly-events] Dedup store failed { key: "${key}", error: "${(e as Error).message}" } — de-duplicating in memory until it recovers`,
+		);
+		return true;
+	}
+}
+
+/**
+ * Scans every machine's retained event history for suspected OOM exits and
+ * for machines stopped after a crash, dedupes each against previously-seen
+ * exits, and raises `oom-suspected` / `machine-down` against the owning
+ * mission. Never throws — a failure here must not break the resource-monitor
+ * tick.
+ */
+export async function checkMachineExits(
 	db: Db,
-	deps: CheckOomExitsDeps = {},
+	deps: CheckMachineExitsDeps = {},
 ): Promise<void> {
 	const listMachinesFn = deps.listMachinesFn ?? listMachines;
 	const dedupeStore = deps.dedupeStore ?? createMongoAlertStateStore(db);
@@ -118,24 +170,33 @@ export async function checkOomExits(
 				// than risk re-reporting the same exit on every tick.
 				continue;
 			}
-			const key = `${machine.id}:oom-suspected:${exitedAt}`;
-			try {
-				if (await dedupeStore.get(key)) continue;
-				await dedupeStore.put({ key, level: "hard", lastAlertAt: new Date() });
-			} catch (e) {
-				// FE1: still report a new exit, but not the same one on every tick
-				// for as long as the store is down.
-				if (reportedWhileStoreDown.has(key)) continue;
-				reportedWhileStoreDown.add(key);
-				console.error(
-					`[fly-events] Dedup store failed { key: "${key}", error: "${(e as Error).message}" } — de-duplicating in memory until it recovers`,
-				);
-			}
+			if (
+				!(await firstReport(
+					dedupeStore,
+					`${machine.id}:oom-suspected:${exitedAt}`,
+				))
+			)
+				continue;
 			await recordOomSuspected(db, machine.id, exitedAt).catch((e) => {
 				console.error(
 					`[fly-events] Failed to record oom-suspected { machineId: "${machine.id}", error: "${(e as Error).message}" }`,
 				);
 			});
 		}
+
+		if (!isCrashStopped(machine)) continue;
+		const exitedAt = lastExit(machine.events)?.exitedAt;
+		if (
+			!(await firstReport(
+				dedupeStore,
+				`${machine.id}:machine-down:${exitedAt}`,
+			))
+		)
+			continue;
+		await recordMachineDown(db, machine).catch((e) => {
+			console.error(
+				`[fly-events] Failed to record machine-down { machineId: "${machine.id}", error: "${(e as Error).message}" } — the operator will not be told the machine is down`,
+			);
+		});
 	}
 }

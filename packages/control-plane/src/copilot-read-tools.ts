@@ -13,7 +13,12 @@ import {
 	monitorFetch,
 	ok,
 } from "./copilot-tool-deps.js";
-import { getMachineState, volumeExists } from "./fly-machines.js";
+import {
+	describeLastExit,
+	fetchMachineLog,
+	getMachine,
+} from "./fly-machine-diagnostics.js";
+import { volumeExists } from "./fly-machines.js";
 import {
 	defaultShapeOf,
 	getOpenSegment,
@@ -45,14 +50,20 @@ function listMissionsTool(deps: CopilotToolDeps): MagiTool {
 	};
 }
 
-async function liveMachineState(
+/** `liveState` and, from Fly's events, how the machine last exited. */
+async function liveMachineLines(
 	machineId: string | undefined,
-): Promise<string> {
-	if (!machineId) return "(no machine)";
+): Promise<string[]> {
+	if (!machineId) return ["liveState: (no machine)"];
+	if (machineId.startsWith("local-")) return ["liveState: started"];
 	try {
-		return await getMachineState(machineId);
+		const machine = await getMachine(machineId);
+		return [
+			`liveState: ${machine.state ?? "unknown"}`,
+			`lastExit:  ${describeLastExit(machine)}`,
+		];
 	} catch (e) {
-		return `error: ${(e as Error).message}`;
+		return [`liveState: error: ${(e as Error).message}`];
 	}
 }
 
@@ -121,7 +132,7 @@ function getMissionStatusTool(deps: CopilotToolDeps): MagiTool {
 		name: "GetMissionStatus",
 		operation: "mission.status",
 		description:
-			"Get full status of a mission including live Fly machine state.",
+			"Get full status of a mission including live Fly machine state and, from Fly's own records, how the machine last exited (exit code, out-of-memory or not, requested or not).",
 		parameters: Type.Object({
 			missionId: Type.String({ description: "Mission ID" }),
 		}),
@@ -134,8 +145,8 @@ function getMissionStatusTool(deps: CopilotToolDeps): MagiTool {
 			if (!mission) return err(`Mission "${missionId}" not found`);
 
 			const now = new Date();
-			const [machineState, runtime, diskLine, volumeLine] = await Promise.all([
-				liveMachineState(mission.machineId),
+			const [machineLines, runtime, diskLine, volumeLine] = await Promise.all([
+				liveMachineLines(mission.machineId),
 				runtimeLines(db, mission, now),
 				diskSampleLine(db, missionId, now),
 				verifiedVolumeLine(mission),
@@ -146,7 +157,7 @@ function getMissionStatusTool(deps: CopilotToolDeps): MagiTool {
 				`status:    ${mission.status}`,
 				`machineId: ${mission.machineId ?? "(none)"}`,
 				`privateIp: ${mission.privateIp ?? "(none)"}`,
-				`liveState: ${machineState}`,
+				...machineLines,
 				...runtime,
 				diskLine,
 				volumeLine,
@@ -200,7 +211,7 @@ function readMissionLogTool(deps: CopilotToolDeps): MagiTool {
 		name: "ReadMissionLog",
 		operation: "mission.log",
 		description:
-			"Read the daemon log for a running mission from its monitor server.",
+			"Read a mission's daemon log. From the daemon when it answers; otherwise from Fly's log buffer for the machine, which also shows a daemon that fails while starting.",
 		parameters: Type.Object({
 			missionId: Type.String({ description: "Mission ID" }),
 			lines: Type.Optional(
@@ -216,17 +227,38 @@ function readMissionLogTool(deps: CopilotToolDeps): MagiTool {
 				missionId,
 				userId,
 			});
-			if (!mission?.privateIp)
-				return err(`Mission "${missionId}" has no private IP — is it running?`);
-			try {
-				const text = await monitorFetch(
-					mission.privateIp,
-					mission.missionId,
-					`/log?lines=${lines}`,
+			if (!mission) return err(`Mission "${missionId}" not found`);
+			let daemonError = "the mission has no private IP";
+			if (mission.privateIp) {
+				try {
+					const text = await monitorFetch(
+						mission.privateIp,
+						mission.missionId,
+						`/log?lines=${lines}`,
+					);
+					return ok(text || "(empty log)");
+				} catch (e) {
+					daemonError = (e as Error).message;
+				}
+			}
+			if (!mission.machineId || mission.machineId.startsWith("local-")) {
+				return err(
+					`Failed to read log: ${daemonError}; no Fly machine to read instead`,
 				);
-				return ok(text || "(empty log)");
+			}
+			try {
+				const flyLines = await fetchMachineLog(mission.machineId);
+				const tail = flyLines.slice(-lines);
+				const header = `(The daemon did not answer: ${daemonError}. These are the last ${tail.length} lines of Fly's log buffer for machine ${mission.machineId}; the buffer can lag behind a busy machine, so check the timestamps.)`;
+				return ok(
+					[header, ...tail.map((l) => `${l.timestamp} ${l.message}`)].join(
+						"\n",
+					),
+				);
 			} catch (e) {
-				return err(`Failed to read log: ${(e as Error).message}`);
+				return err(
+					`Failed to read log: the daemon did not answer (${daemonError}), and neither did Fly (${(e as Error).message})`,
+				);
 			}
 		},
 	};

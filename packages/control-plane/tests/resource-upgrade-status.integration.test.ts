@@ -2,7 +2,7 @@
  * GetMissionStatus's ADR-0031 extension (tier, time-on-tier, cumulative
  * upgraded runtime), its ADR-0032 step 6.2 disk-sample line, and its
  * issue-#62 follow-up live volume-verification line, against real
- * MongoDB. `getMachineState`/`volumeExists` are mocked so this stays a pure
+ * MongoDB. `getMachine`/`volumeExists` are mocked so this stays a pure
  * Mongo integration test — no live Fly calls.
  */
 
@@ -23,8 +23,13 @@ import { volumeExists } from "../src/fly-machines.js";
 import { MongoPendingActionsStore } from "../src/pending-actions.js";
 
 vi.mock("../src/fly-machines.js", () => ({
-	getMachineState: vi.fn(),
 	volumeExists: vi.fn(),
+}));
+vi.mock("../src/fly-machine-diagnostics.js", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("../src/fly-machine-diagnostics.js")
+	>()),
+	getMachine: vi.fn(async () => ({ id: "m", state: "started", events: [] })),
 }));
 
 const mockedVolumeExists = vi.mocked(volumeExists);

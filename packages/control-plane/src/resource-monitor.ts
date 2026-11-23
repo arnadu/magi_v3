@@ -40,7 +40,7 @@ import {
 import type { Db, MongoClient } from "mongodb";
 import { schedule } from "node-cron";
 import { checkAtlasStorage } from "./atlas-usage.js";
-import { checkOomExits } from "./fly-events.js";
+import { checkMachineExits } from "./fly-events.js";
 import { checkOrphanMachines } from "./fly-orphans.js";
 import { upgradedMsSince } from "./machine-segments.js";
 import {
@@ -351,9 +351,9 @@ export async function runResourceMonitorTick(
 		),
 	);
 
-	await checkOomExits(db).catch((e) =>
+	await checkMachineExits(db).catch((e) =>
 		console.error(
-			`[resource-monitor] OOM check failed: ${(e as Error).message}`,
+			`[resource-monitor] machine-exit check failed: ${(e as Error).message}`,
 		),
 	);
 

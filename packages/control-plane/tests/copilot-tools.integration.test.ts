@@ -194,11 +194,12 @@ describe("copilot B1 tools — userId scoping", () => {
 		expect(cross.content[0].text).not.toContain("map B");
 	});
 
-	// ReadMissionLog/ReadMissionFile both gate on `mission?.privateIp`, so a
-	// cross-user missionId (findOne returns null) and an own mission that's
-	// merely not running collapse to the same "has no private IP" message —
-	// the security property under test is that neither path ever reaches
-	// mission B's real log/file content, not the exact wording.
+	// ReadMissionFile gates on `mission?.privateIp`, so a cross-user missionId
+	// (findOne returns null) and an own mission that's merely not running
+	// collapse to the same "has no private IP" message; ReadMissionLog says
+	// "not found" before trying the daemon or Fly. The security property under
+	// test is that neither path ever reaches mission B's real log/file content,
+	// not the exact wording.
 
 	it("ReadMissionLog rejects a cross-user missionId without leaking mission B's data", async () => {
 		const toolsA = toolsFor(userA);
@@ -207,7 +208,7 @@ describe("copilot B1 tools — userId scoping", () => {
 		});
 		expect(cross.isError).toBe(true);
 		expect(cross.content[0].text).toContain(missionB);
-		expect(cross.content[0].text).toContain("no private IP");
+		expect(cross.content[0].text).toContain("not found");
 	});
 
 	it("ReadMissionFile rejects a cross-user missionId without leaking mission B's data", async () => {

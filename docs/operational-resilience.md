@@ -369,7 +369,7 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | The Mongo write to `platformResources` fails | This tick's sample not persisted | 🟢 | Logged; alert evaluation still runs against the in-memory reading | None |
 | Relaying to one admin's mailbox fails | That admin misses this tick's alert | 🟢 | Logged per-recipient; the other admins and the stored sample are unaffected | None |
 
-**OOM detection** (`fly-events.ts`, no dedicated collection — dedupes via `resourceAlertState`)
+**OOM and machine-down detection** (`fly-events.ts`, no dedicated collection — dedupes via `resourceAlertState`)
 
 | Failure | Effect | Severity | Current mitigation | Gap |
 |---------|--------|----------|--------------------|-----|
@@ -378,6 +378,7 @@ Built incrementally across Sprint 28g; each step adds its rows here in the same 
 | `listMachines()` (whole-app Fly API call) fails | This tick's OOM scan is skipped | 🟢 | Logged, returns without throwing; the next tick tries again | None |
 | The exit event has no `exited_at` | Can't build a stable dedup key | 🟢 | Skipped rather than risking the same exit being reported on every tick forever | That specific exit is never reported at all — acceptable since it also can't be de-duplicated |
 | The owning mission was already destroyed/re-provisioned by the time the scan runs | No mission to attach the anomaly to | 🟢 | Logged and skipped; the machine-to-mission lookup is by current `machineId`, so a re-provisioned mission's *new* machine is unaffected | None |
+| A daemon fails at boot on every start (AI News Digest, 2026-11-21→23: a PID check, see PID1) | Fly restarts it three times and leaves the machine stopped; the mission reads `running` and nothing runs, for as long as nobody looks | 🟢 | `machine-down` (hard): a `running` mission whose machine is `stopped` after an exit that was neither requested nor clean, once per exit, with the exit read from Fly; `GetMissionStatus` shows the same last exit, and `ReadMissionLog` falls back to Fly's log buffer when the daemon does not answer (`fly-machine-diagnostics.ts`) | Fly's log buffer can lag on a busy machine (the tool shows timestamps); whether the control plane's deploy token may read logs is confirmed on dev, the tool says so when Fly refuses |
 | Dedup store (`resourceAlertState`) unreachable | Could report the same exit on every tick | 🟠 | Fails open (proceeds without de-duplication) rather than silently dropping a hard anomaly — same posture as every other alert path here | Repeat notifications during a store outage, never a missed one |
 
 **Resource-monitor tick** (`resource-monitor.ts`, `resource-alerts.ts` — `spend-cap-near`, `spend-spike`, `upgrade-cap-near`, `upgrade-idle`)
