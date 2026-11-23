@@ -36,6 +36,7 @@ import {
 	reflectSession,
 	shouldReflect,
 } from "./reflection.js";
+import { REPEATED_FAILURE_THRESHOLD } from "./repeated-tool-failure.js";
 import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
@@ -189,6 +190,30 @@ export interface TurnHooks {
 	beforeLlmCall?: () => Promise<void>;
 }
 
+/** Once per run of identical failures: at the threshold, not at every repeat after it. */
+async function recordRepeatedFailure(
+	ctx: AgentRunContext,
+	missionId: string,
+	agentId: string,
+	state: TurnState,
+	event: { toolName: string; repeatedFailures: number },
+): Promise<void> {
+	await ctx.anomalyRecorder
+		?.record({
+			missionId,
+			agentId,
+			turnNumber: state.turnNumber,
+			category: "tool-repeated-failure",
+			severity: "soft",
+			message: `Agent "${agentId}" called ${event.toolName} ${event.repeatedFailures} times in a row and got the same error each time. It may be misreading the error; its transcript shows the calls.`,
+		})
+		.catch((e: Error) =>
+			console.error(
+				`[runAgent] Failed to record tool-repeated-failure { missionId: "${missionId}", agentId: "${agentId}", tool: "${event.toolName}", error: "${e.message}" } — the operator will not see this alert`,
+			),
+		);
+}
+
 /**
  * The loop callbacks: persist every message as it arrives (assistant
  * messages with the mental-map snapshot and the call id), feed tool results
@@ -234,13 +259,18 @@ export function createTurnHooks(
 		missionId,
 		() => state.turnNumber,
 	);
-	// Undefined without a stats collector (enforceLimits is only ever wired alongside one).
-	const onToolResult: TurnHooks["onToolResult"] = ctx.statsCollector
-		? async (event) => {
-				await ctx.statsCollector?.recordToolResult(agentId, event);
-				await enforceLimits?.();
-			}
-		: undefined;
+	// Undefined with neither a stats collector nor an anomaly recorder
+	// (enforceLimits is only ever wired alongside a stats collector).
+	const onToolResult: TurnHooks["onToolResult"] =
+		ctx.statsCollector || ctx.anomalyRecorder
+			? async (event) => {
+					if (event.repeatedFailures === REPEATED_FAILURE_THRESHOLD) {
+						await recordRepeatedFailure(ctx, missionId, agentId, state, event);
+					}
+					await ctx.statsCollector?.recordToolResult(agentId, event);
+					await enforceLimits?.();
+				}
+			: undefined;
 
 	const onLlmCallFor = (turnNumber: number): OnLlmCall | undefined => {
 		const base = makeOnLlmCall(turnNumber, false);

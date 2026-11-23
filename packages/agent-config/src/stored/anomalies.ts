@@ -35,7 +35,13 @@ export type AnomalyCategory =
 	| "volume-forked"
 	// The machine firewall (`magi-net init`) could not be set at boot
 	// (ADR-0037): inbound private-network traffic is unfiltered, apps disabled.
-	| "firewall-failure";
+	| "firewall-failure"
+	// An agent got the same error from one tool several times in a row
+	// (repeated-tool-failure.ts): likely misreading the error.
+	| "tool-repeated-failure"
+	// A running mission's machine is stopped after an exit nobody requested,
+	// Fly's restarts used up (fly-events.ts): the daemon is not coming back.
+	| "machine-down";
 
 export type AnomalySeverity = "hard" | "soft";
 

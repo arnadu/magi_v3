@@ -5,6 +5,8 @@ import {
 	type MailboxMessage,
 	type MailboxRepository,
 } from "../src/mailbox.js";
+import { checkToolArguments } from "../src/tool-args.js";
+import type { MagiTool } from "../src/tools.js";
 
 function fakeRepo(listResult: MailboxMessage[] = []): MailboxRepository & {
 	posted: MailboxMessage[];
@@ -62,6 +64,17 @@ function findPostMessage(repo: MailboxRepository) {
 	return tool;
 }
 
+/** The tool as the loop and the Tool API call it: arguments validated first. */
+async function validatedCall(tool: MagiTool, args: Record<string, unknown>) {
+	const checked = checkToolArguments(tool, {
+		id: "id1",
+		name: tool.name,
+		arguments: args,
+	});
+	if (!checked.ok) throw new Error(checked.message);
+	return tool.execute("id1", checked.args);
+}
+
 describe("PostMessage", () => {
 	it("accepts to as an array (the LLM-schema-conformant shape)", async () => {
 		const repo = fakeRepo();
@@ -76,10 +89,10 @@ describe("PostMessage", () => {
 		expect(repo.posted[0].to).toEqual(["analyst"]);
 	});
 
-	it("accepts to as a bare string (the raw tool-api-server path, e.g. magi_tool.py) without throwing", async () => {
+	it("accepts to as a bare string (the Tool API path, e.g. magi_tool.py) once validated", async () => {
 		const repo = fakeRepo();
 		const tool = findPostMessage(repo);
-		const result = await tool.execute("id1", {
+		const result = await validatedCall(tool, {
 			to: "analyst",
 			subject: "s",
 			body: "b",
@@ -88,10 +101,10 @@ describe("PostMessage", () => {
 		expect(repo.posted[0].to).toEqual(["analyst"]);
 	});
 
-	it("reads a JSON-encoded list in a string as the list", async () => {
+	it("reads a JSON-encoded list in a string as the list once validated", async () => {
 		const repo = fakeRepo();
 		const tool = findPostMessage(repo);
-		const result = await tool.execute("id1", {
+		const result = await validatedCall(tool, {
 			to: '["analyst", "user"]',
 			subject: "s",
 			body: "b",
@@ -100,28 +113,20 @@ describe("PostMessage", () => {
 		expect(repo.posted[0].to).toEqual(["analyst", "user"]);
 	});
 
-	it("returns a clean error (not a thrown TypeError) for a non-string/array to", async () => {
-		const repo = fakeRepo();
-		const tool = findPostMessage(repo);
-		const result = await tool.execute("id1", {
-			to: 42,
-			subject: "s",
-			body: "b",
-		});
-		expect(result.isError).toBe(true);
-		expect(repo.posted).toHaveLength(0);
-	});
-
 	it("rejects an unknown recipient", async () => {
 		const repo = fakeRepo();
 		const tool = findPostMessage(repo);
 		const result = await tool.execute("id1", {
-			to: "nobody",
+			to: ["nobody"],
 			subject: "s",
 			body: "b",
 		});
 		expect(result.isError).toBe(true);
 		expect(repo.posted).toHaveLength(0);
+		// The model is told what it sent and what would have worked.
+		const text = (result.content[0] as { text: string }).text;
+		expect(text).toContain('["nobody"]');
+		expect(text).toContain("Valid recipients: analyst");
 	});
 });
 

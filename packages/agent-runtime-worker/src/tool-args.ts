@@ -13,7 +13,12 @@
  *
  * The obvious coercions ("5" for a number, "true" for a boolean) are applied
  * before checking, so sloppy-but-unambiguous calls still run; the tool
- * receives the converted copy, never the model's original object.
+ * receives the converted copy, never the model's original object. (`Value.Convert`
+ * also wraps a single value where a list is expected: `"user"` → `["user"]`.)
+ * One more is applied first, to a top-level parameter declared as a list or an
+ * object: a string holding that value as JSON is decoded. Some models send
+ * `'["user"]'` for `["user"]`, and keep doing it; `Value.Convert` alone would
+ * make that a list of one string, `'["user"]'`.
  */
 
 import {
@@ -39,7 +44,10 @@ export function checkToolArguments(
 	// unambiguous conversions ("5" → 5, "true" → true) are applied here first,
 	// on a copy; what the tool receives is this converted copy.
 	const raw = (call.arguments ?? {}) as Record<string, unknown>;
-	const converted = Value.Convert(tool.parameters, structuredClone(raw));
+	const converted = Value.Convert(
+		tool.parameters,
+		decodeStructuredStrings(tool.parameters, structuredClone(raw)),
+	);
 	const toolCall: ToolCall = {
 		type: "toolCall",
 		id: call.id,
@@ -54,6 +62,47 @@ export function checkToolArguments(
 		return { ok: true, args };
 	} catch (e) {
 		return { ok: false, message: boundedRejection(e) };
+	}
+}
+
+interface PropertySchema {
+	type?: unknown;
+}
+
+/** The JSON-in-a-string decoding above, on top-level parameters only. */
+function decodeStructuredStrings(
+	schema: unknown,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	const properties = (schema as { properties?: Record<string, PropertySchema> })
+		.properties;
+	if (!properties || typeof args !== "object" || args === null) return args;
+	for (const [name, prop] of Object.entries(properties)) {
+		const value = args[name];
+		if (typeof value !== "string") continue;
+		if (prop.type !== "array" && prop.type !== "object") continue;
+		const decoded = parseJson(value);
+		if (prop.type === "array" && Array.isArray(decoded)) {
+			args[name] = decoded;
+		} else if (
+			prop.type === "object" &&
+			decoded !== null &&
+			typeof decoded === "object" &&
+			!Array.isArray(decoded)
+		) {
+			args[name] = decoded;
+		}
+	}
+	return args;
+}
+
+function parseJson(text: string): unknown {
+	const t = text.trim();
+	if (!t.startsWith("[") && !t.startsWith("{")) return undefined;
+	try {
+		return JSON.parse(t);
+	} catch {
+		return undefined;
 	}
 }
 

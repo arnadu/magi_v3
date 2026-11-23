@@ -62,35 +62,38 @@ describe("checkToolArguments (LP2)", () => {
 		expect(input).toEqual({ seconds: "5", verbose: "true" });
 	});
 
-	it("accepts either shape of a union field (a single recipient or a list)", () => {
+	it("turns a single id or a JSON-encoded list into the list a list field declares", () => {
 		const post = {
 			name: "PostMessage",
 			parameters: Type.Object({
-				to: Type.Union([Type.Array(Type.String()), Type.String()]),
+				to: Type.Array(Type.String()),
+				meta: Type.Optional(Type.Object({ tag: Type.String() })),
 				body: Type.String(),
 			}),
 		};
-		expect(
+		const call = (args: Record<string, unknown>) =>
 			checkToolArguments(post, {
 				id: "c",
 				name: "PostMessage",
-				arguments: { to: "lead", body: "hi" },
-			}).ok,
-		).toBe(true);
+				arguments: args,
+			});
+		expect(call({ to: "lead", body: "hi" })).toMatchObject({
+			args: { to: ["lead"] },
+		});
+		expect(call({ to: '["lead", "user"]', body: "hi" })).toMatchObject({
+			args: { to: ["lead", "user"] },
+		});
 		expect(
-			checkToolArguments(post, {
-				id: "c",
-				name: "PostMessage",
-				arguments: { to: ["lead", "user"], body: "hi" },
-			}).ok,
-		).toBe(true);
-		expect(
-			checkToolArguments(post, {
-				id: "c",
-				name: "PostMessage",
-				arguments: { to: { name: "lead" }, body: "hi" },
-			}).ok,
-		).toBe(false);
+			call({ to: ["lead"], meta: '{"tag":"x"}', body: "hi" }),
+		).toMatchObject({
+			args: { meta: { tag: "x" } },
+		});
+		// Not JSON, or JSON of the wrong kind: left alone, and judged as sent.
+		expect(call({ to: "[lead", body: "hi" })).toMatchObject({
+			args: { to: ["[lead"] },
+		});
+		expect(call({ to: ["lead"], meta: "[1]", body: "hi" }).ok).toBe(false);
+		expect(call({ to: { name: "lead" }, body: "hi" }).ok).toBe(false);
 	});
 
 	it("treats absent arguments as an empty object", () => {

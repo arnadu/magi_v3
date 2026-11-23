@@ -182,30 +182,6 @@ export interface MailboxToolOptions {
 }
 
 /**
- * The recipients of a PostMessage call: a list, or one id. Some models send the
- * list JSON-encoded inside a string (`'["user"]'`); that is the list, not a
- * recipient named `["user"]`. Null when `to` is neither shape.
- */
-export function recipientList(to: unknown): string[] | null {
-	if (Array.isArray(to)) return to as string[];
-	if (typeof to !== "string") return null;
-	if (to.trimStart().startsWith("[")) {
-		try {
-			const parsed: unknown = JSON.parse(to);
-			if (
-				Array.isArray(parsed) &&
-				parsed.every((id) => typeof id === "string")
-			) {
-				return parsed;
-			}
-		} catch {
-			// Not JSON: an id that starts with "[" is checked against the roster as is.
-		}
-	}
-	return [to];
-}
-
-/**
  * Create the four mailbox tools for an agent.
  * All tool calls are scoped to `fromAgentId` as the sender.
  */
@@ -243,12 +219,10 @@ export function createMailboxTools(
 			"embedded image from your shared workspace — read the " +
 			"postmessage-conventions skill for the exact syntax each needs.",
 		parameters: Type.Object({
-			// A single id is accepted as well as a list: background-job scripts
-			// (magi_tool.py's post_message(to: str, …)) reach this tool through
-			// the Tool API, which validates against this same schema.
-			to: Type.Union([Type.Array(Type.String()), Type.String()], {
-				description:
-					'Recipient agent ids (or "user" for the operator) — a list, or one id',
+			// A single id or a JSON-encoded list is turned into the list before
+			// this runs (checkToolArguments), for models and Tool API scripts alike.
+			to: Type.Array(Type.String(), {
+				description: 'Recipient agent ids, or "user" for the operator',
 			}),
 			subject: Type.String({ description: "Message subject line" }),
 			body: Type.String({
@@ -258,20 +232,16 @@ export function createMailboxTools(
 			}),
 		}),
 		async execute(_id, args) {
-			// Both shapes the schema admits; arguments were validated before this
-			// ran (LP2), so anything else is unreachable and only kept as a guard.
-			const to = recipientList(args.to);
+			const to = args.to as string[];
 			const subject = args.subject as string;
 			const body = args.body as string;
-
-			if (to === null) {
-				return err('PostMessage: "to" must be a string or an array of strings');
-			}
 			if (to.length === 0) return err("PostMessage: to[] must not be empty");
 
 			const unknown = to.filter((id) => !validRecipients.has(id));
 			if (unknown.length > 0) {
-				return err(`PostMessage: unknown recipients: ${unknown.join(", ")}`);
+				return err(
+					`PostMessage: unknown recipients ${JSON.stringify(unknown)} (in to: ${JSON.stringify(to)}). Valid recipients: ${[...validRecipients].join(", ")}.`,
+				);
 			}
 
 			if (body.length > MAX_BODY_BYTES) {

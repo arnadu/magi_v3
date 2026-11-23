@@ -10,6 +10,10 @@ import type {
 } from "@mariozechner/pi-ai";
 import { pruneEphemeralResults } from "./context-utils.js";
 import { callLlmWithRetry } from "./loop-llm-call.js";
+import {
+	consecutiveIdenticalFailures,
+	withRepeatNote,
+} from "./repeated-tool-failure.js";
 import { checkToolArguments } from "./tool-args.js";
 import type { MagiTool } from "./tools.js";
 
@@ -129,11 +133,16 @@ export interface InnerLoopConfig {
 	 * Fires once per tool call, including for unknown tools and timeouts (which
 	 * are reported as errors). Runs in the daemon before the next LLM call, so it
 	 * is outside the tool-executor subprocess sandbox.
+	 *
+	 * `repeatedFailures` counts how many times in a row this tool has now failed
+	 * with this same error, this call included (0 on success); see
+	 * repeated-tool-failure.ts.
 	 */
 	onToolResult?: (event: {
 		toolName: string;
 		args: Record<string, unknown>;
 		isError: boolean;
+		repeatedFailures: number;
 	}) => Promise<void>;
 	/**
 	 * Extended thinking level to request on each LLM call.
@@ -290,17 +299,20 @@ export async function runInnerLoop(
 
 		// ── Tool execution ──────────────────────────────────────────────────────
 		for (const block of toolCalls) {
-			const toolResult = await executeToolCall(
+			const executed = await executeToolCall(
 				tools,
 				block,
 				signal,
 				config.toolTimeoutMs ?? 120_000,
 			);
+			const repeatedFailures = consecutiveIdenticalFailures(messages, executed);
+			const toolResult = withRepeatNote(executed, repeatedFailures);
 			await pushAndNotify(toolResult);
 			await config.onToolResult?.({
 				toolName: block.name,
 				args: (block.arguments ?? {}) as Record<string, unknown>,
 				isError: toolResult.isError ?? false,
+				repeatedFailures,
 			});
 		}
 	}

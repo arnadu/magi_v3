@@ -319,6 +319,14 @@ interface AgentTool<TSchema extends TSchema> {
 }
 ```
 
+Before `execute()`, the arguments are checked against the schema (`tool-args.ts`), for an
+agent's call and a background job's Tool API call alike. Unambiguous forms are converted first:
+`"5"` for a number, a single value where a list is expected, and a list or object sent as a JSON
+string (`'["user"]'`). A call that still doesn't match gets an error result naming the field. When
+one tool fails the same way three times in a row, the loop appends a note to the result asking the
+model to re-read the error rather than trust an earlier explanation of it; in a mission it also
+records a soft `tool-repeated-failure` anomaly (`repeated-tool-failure.ts`).
+
 Tools are instantiated with factory functions that receive `AclPolicy` hooks for path enforcement:
 
 ```typescript
