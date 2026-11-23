@@ -10,6 +10,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	symlinkSync,
@@ -649,6 +650,18 @@ describe("pidHoldsDaemon (PID1)", () => {
 					throw new Error("ENOENT");
 				}),
 			).toBe(false);
+		},
+	);
+
+	it.runIf(existsSync("/proc/self/task"))(
+		"on Linux, a thread id is not a daemon, even one of a daemon's threads",
+		() => {
+			const threadId = readdirSync("/proc/self/task")
+				.map(Number)
+				.find((t) => t !== process.pid);
+			expect(threadId).toBeDefined();
+			const daemonCmdline = () => "node\0dist/daemon.js";
+			expect(pidHoldsDaemon(threadId as number, daemonCmdline)).toBe(false);
 		},
 	);
 });

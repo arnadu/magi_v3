@@ -15,11 +15,17 @@ import type { BootContext } from "./context.js";
  * name the daemon: after a container restart PIDs start over, and the old
  * daemon's PID may now belong to sudo, a tool executor or Chromium — which
  * used to read as "already running" and crash-loop the restart (PID1).
+ * The PID must also be a process, not a thread: a thread id passes
+ * `kill(tid, 0)` and `/proc/<tid>/cmdline` is its process's command line, so
+ * the new daemon's own threads read as a running daemon when boot hands one
+ * of them the old PID — which, boot being near-deterministic, then happens on
+ * every restart.
  * Without /proc (macOS dev) liveness is all there is to go on.
  */
 export function pidHoldsDaemon(
 	pid: number,
 	readCmdline = (p: number) => readFileSync(`/proc/${p}/cmdline`, "utf8"),
+	readStatus = (p: number) => readFileSync(`/proc/${p}/status`, "utf8"),
 ): boolean {
 	try {
 		// Signal 0 tests liveness without sending a real signal.
@@ -29,6 +35,8 @@ export function pidHoldsDaemon(
 	}
 	if (!existsSync("/proc/self/cmdline")) return true;
 	try {
+		const tgid = readStatus(pid).match(/^Tgid:\s*(\d+)/m)?.[1];
+		if (tgid !== String(pid)) return false;
 		return readCmdline(pid).includes("daemon.js");
 	} catch {
 		return false;
