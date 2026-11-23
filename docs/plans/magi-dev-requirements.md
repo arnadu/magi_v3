@@ -2036,6 +2036,16 @@ changes, each with a mechanical check:
   the environment it inherits: a general red-team prompt, but it makes F-082 easier to find, so a
   hit there is weaker evidence than a hit on an item the skills say nothing about.
 
+### Rethinking the security reviewers (2026-11-23)
+
+The reviews of 2026-11-22 and 23 were mostly invented evidence, and every mechanical check written
+into a skill was skipped. Research into how working systems do agentic security review points the
+other way from phase 0's design: code decides, models triage narrow questions in small contexts,
+several samples and a refuter, findings rather than certificates, outcome metrics. The proposed
+redesign of appsec's and the code reviewer's roles, with the scanners and the generated attack
+matrix around them, is [security-assurance-plan.md](security-assurance-plan.md) (proposed, awaiting
+approval). Until it is decided, appsec and the code reviewer stay suspended.
+
 ## Phasing
 
 | Phase | Scope | Needs |
