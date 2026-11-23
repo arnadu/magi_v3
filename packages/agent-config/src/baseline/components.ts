@@ -216,6 +216,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		paths: [
 			"agent-runner*",
 			"loop*.ts",
+			"repeated-tool-failure.ts",
 			"prompt.ts",
 			"prompts.ts",
 			"reflection.ts",
