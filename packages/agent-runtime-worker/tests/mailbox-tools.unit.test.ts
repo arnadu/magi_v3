@@ -88,6 +88,18 @@ describe("PostMessage", () => {
 		expect(repo.posted[0].to).toEqual(["analyst"]);
 	});
 
+	it("reads a JSON-encoded list in a string as the list", async () => {
+		const repo = fakeRepo();
+		const tool = findPostMessage(repo);
+		const result = await tool.execute("id1", {
+			to: '["analyst", "user"]',
+			subject: "s",
+			body: "b",
+		});
+		expect(result.isError).toBeFalsy();
+		expect(repo.posted[0].to).toEqual(["analyst", "user"]);
+	});
+
 	it("returns a clean error (not a thrown TypeError) for a non-string/array to", async () => {
 		const repo = fakeRepo();
 		const tool = findPostMessage(repo);

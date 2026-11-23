@@ -182,6 +182,30 @@ export interface MailboxToolOptions {
 }
 
 /**
+ * The recipients of a PostMessage call: a list, or one id. Some models send the
+ * list JSON-encoded inside a string (`'["user"]'`); that is the list, not a
+ * recipient named `["user"]`. Null when `to` is neither shape.
+ */
+export function recipientList(to: unknown): string[] | null {
+	if (Array.isArray(to)) return to as string[];
+	if (typeof to !== "string") return null;
+	if (to.trimStart().startsWith("[")) {
+		try {
+			const parsed: unknown = JSON.parse(to);
+			if (
+				Array.isArray(parsed) &&
+				parsed.every((id) => typeof id === "string")
+			) {
+				return parsed;
+			}
+		} catch {
+			// Not JSON: an id that starts with "[" is checked against the roster as is.
+		}
+	}
+	return [to];
+}
+
+/**
  * Create the four mailbox tools for an agent.
  * All tool calls are scoped to `fromAgentId` as the sender.
  */
@@ -236,12 +260,7 @@ export function createMailboxTools(
 		async execute(_id, args) {
 			// Both shapes the schema admits; arguments were validated before this
 			// ran (LP2), so anything else is unreachable and only kept as a guard.
-			const rawTo = args.to;
-			const to = Array.isArray(rawTo)
-				? (rawTo as string[])
-				: typeof rawTo === "string"
-					? [rawTo]
-					: null;
+			const to = recipientList(args.to);
 			const subject = args.subject as string;
 			const body = args.body as string;
 
