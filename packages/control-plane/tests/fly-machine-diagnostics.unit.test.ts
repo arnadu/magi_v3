@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	describeLastExit,
 	fetchMachineLog,
+	getMachine,
 	isCrashStopped,
 	lastExit,
 } from "../src/fly-machine-diagnostics.js";
@@ -39,6 +40,27 @@ describe("machine exit diagnosis", () => {
 			"2026-11-23T03:36:50Z",
 		);
 		expect(lastExit([{ type: "start" }])).toBeNull();
+	});
+
+	it("dates an exit without exited_at by its event, and says when there is none", () => {
+		expect(lastExit([exit(1795405010578, { exit_code: 1 })])?.exitedAt).toBe(
+			new Date(1795405010578).toISOString(),
+		);
+		expect(
+			lastExit([{ type: "exit", request: { exit_event: { exit_code: 1 } } }])
+				?.exitedAt,
+		).toBe("(unknown time)");
+		expect(describeLastExit({ state: "stopped", events: [] })).toBe(
+			"no exit recorded in the machine's retained events",
+		);
+		expect(
+			describeLastExit({
+				state: "stopped",
+				events: [exit(1, { requested_stop: true })],
+			}),
+		).toBe(
+			`at ${new Date(1).toISOString()}, exit code unknown, not an out-of-memory kill, a requested stop`,
+		);
 	});
 
 	it("names a crash at boot for what it is, not an out-of-memory kill", () => {
@@ -109,6 +131,36 @@ describe("fetchMachineLog", () => {
 			{ timestamp: "t1", message: "[daemon] Already running as PID 618" },
 			{ timestamp: "", message: "" },
 		]);
+	});
+
+	it("sends a token that is not a FlyV1 macaroon as a bearer token", async () => {
+		process.env.FLY_API_TOKEN_MACHINES = "plain-token";
+		const fetchFn = vi.fn(async () => Response.json({}));
+		expect(
+			await fetchMachineLog("m", fetchFn as unknown as typeof fetch),
+		).toEqual([]);
+		const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+		expect((init.headers as Record<string, string>).Authorization).toBe(
+			"Bearer plain-token",
+		);
+	});
+
+	it("getMachine reads the machine, with its events, from the Machines API", async () => {
+		const fetchFn = vi.fn(async () =>
+			Response.json({ id: "m", state: "stopped", events: crashLoop }),
+		);
+		vi.stubGlobal("fetch", fetchFn);
+		try {
+			const machine = await getMachine("m");
+			expect(isCrashStopped(machine)).toBe(true);
+			expect(String((fetchFn.mock.calls[0] as unknown[])[0])).toBe(
+				"https://api.machines.dev/v1/apps/magi-missions-test/machines/m",
+			);
+			fetchFn.mockResolvedValueOnce(new Response("gone", { status: 404 }));
+			await expect(getMachine("m")).rejects.toThrow("404");
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 
 	it("says Fly refused, with the status", async () => {
