@@ -12,6 +12,7 @@ MAGI V3 is an autonomous multi-agent system where teams of AI agents run long-ho
 - [USER_GUIDE.md](USER_GUIDE.md) — developer quick-start (setup, build, run)
 - [docs/implementation-history.md](docs/implementation-history.md) — sprint-by-sprint build log and key file descriptions
 - [docs/env.md](docs/env.md) — every environment variable (generated, test-checked)
+- [docs/software-factory.md](docs/software-factory.md) — the software factory MAGI DEV is building toward: each station's status, and every piece of automation with why it exists, who tunes it and who acts on it
 - [docs/product/](docs/product/README.md) and [docs/architecture/components.md](docs/architecture/components.md) — the product and architecture baselines: what MAGI is meant to do and the components it is built from (generated from `packages/agent-config/src/baseline/`, ADR-0036)
 - [docs/practices/](docs/practices/) — the full working practices behind the rules below
 - [docs/references.md](docs/references.md) — MAGI v2 and pi-mono reference material
@@ -140,7 +141,8 @@ These apply continuously, not at sprint close. Each has a full write-up in
 **Documentation** ([detail](docs/practices/documentation.md)) — in the same commit as the code:
 ADRs for decisions between alternatives, the threat model for new boundaries/ports/`sudo` rules,
 the resilience doc for new failure modes, `docs/env.md` (via `npm run docs:env`) for env vars,
-the SPEC for agent capabilities and tools, `docs/code-structure.md` for structure decisions.
+the SPEC for agent capabilities and tools, `docs/code-structure.md` for structure decisions,
+`docs/software-factory.md`'s register for a new or changed piece of automation (gate, scanner, monitor).
 
 **Testing** ([detail](docs/practices/testing.md)) — unit tests are deterministic and offline;
 integration tests make real LLM calls with deterministic outcomes and clean up by `missionId`.

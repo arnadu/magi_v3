@@ -5,6 +5,9 @@ MAGI DEV" section of [MAGI_V3_ROADMAP.md](../../MAGI_V3_ROADMAP.md).
 
 ## Goal
 
+The picture of where this leads, station by station, with what exists today and who owns each
+piece of automation: [the MAGI software factory](../software-factory.md).
+
 A MAGI mission that runs the whole life-cycle of the MAGI platform: community, planning,
 design, development, security, resilience and application support. The end state is an
 autonomous mission; the user (the person or organization that owns the installation, called
