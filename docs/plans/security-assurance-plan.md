@@ -224,6 +224,13 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Dependency pass, 2026-11-24** (Dependabot's first 27 alerts): vite 6.4.6 everywhere (one copy,
+  pinned at the root so the cockpit and vitest agree), katex 0.18.2 (the cockpit renders agent-written math), the stale picomatch
+  exception dropped (no longer reported), `parked/` removed (audit item DEAD-PARKED). `npm audit fix`
+  was tried and reverted: it reshuffled the lockfile into a vulnerable production `undici` path.
+  Left, each needing a major upgrade, for their own task: vitest 3 → 5 (the two critical tinypool
+  alerts, development only, never shipped); firebase-admin 14, exceljs and Stagehand's AI SDK
+  (moderate and low, indirect: uuid, google-gax, provider-utils); mermaid 12 (its own katex copy).
 - **Step 3, first slice, 2026-11-24:** the control plane's HTTP cells, generated from
   `docs/api/control-plane.openapi.json` and run against the real `createApp` with a fake database and
   two mocked tenants (`attack-matrix-http.unit.test.ts`): no credential on 56 operator routes (401,
