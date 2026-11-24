@@ -290,6 +290,14 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 			"Admin key (API and cockpit). Also the only identity that may raise a mission's ceiling above the platform ceiling.",
 	},
 	{
+		name: "AUTH_TEST_USERS",
+		planes: ["control"],
+		required: false,
+		secret: true,
+		description:
+			"Test-only sign-in for the local scanning stack: `<token>=test-<name>` pairs, comma-separated (tokens of 32+ characters). The control plane refuses to start with it when `FLY_APP_NAME` is set. Never set it on a deployment.",
+	},
+	{
 		name: "MONITOR_SIGNING_KEY",
 		planes: ["control"],
 		required: true,

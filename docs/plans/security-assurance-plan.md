@@ -224,6 +224,20 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 5, environment B and Nuclei, 2026-11-24:** `scripts/security/stack/` starts the
+  control plane's own image on an internal Docker network (no route out) with a MongoDB container
+  and two test tenants through a new test-only sign-in (`AUTH_TEST_USERS`, refused on Fly: the
+  auth middleware cannot be built when `FLY_APP_NAME` is set; threat model TB-9). Nuclei (v3.11.1,
+  pinned by digest) runs four passes: controls that must match; six templates of ours
+  (`scripts/security/nuclei/`: cross-tenant, no credential, headers, exposed files, source maps,
+  error leaks), each proven to match a planted leaky server; the community templates (v10.5.1,
+  checksum-pinned, signatures enforced: 1,170 exposure and misconfiguration templates plus CVEs);
+  and DAST over the 62 OpenAPI routes as a tenant on her own mission (57 templates, ~2,500
+  requests). First run: one finding of ours (the cockpit named its framework, `X-Powered-By`;
+  fixed), nothing from the community or DAST passes. Nightly in CI (`security-nightly.yml`);
+  counts in the log, findings in code scanning. Not done, by decision: Nuclei "lightly against
+  dev" (dynamic scanning stays local; Fly's acceptable use). Still to come in environment B: the
+  apps host and a mission in local-execution mode.
 - **Step 5, fast-check, 2026-11-24:** properties over what agents, models and tenants write, in
   the ordinary unit suite with a fixed seed (`FAST_CHECK_SEED` explores elsewhere):
   `resolveInside` (no returned path's real location leaves the root, through `..`, symlinks in and

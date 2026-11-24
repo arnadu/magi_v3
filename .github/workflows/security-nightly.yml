@@ -1,0 +1,81 @@
+name: Security (nightly)
+
+# Environment B of the security assurance plan: the control plane's image on an internal Docker
+# network (no route out), a MongoDB container, two test tenants (AUTH_TEST_USERS, refused on Fly),
+# scanned by Nuclei: our templates (a gate, after a self-test against a planted leaky server), the
+# pinned community templates and DAST over the OpenAPI routes (report-only until a baseline is
+# triaged). Nothing deployed is touched. The repository is public: the log and the summary carry
+# counts only; findings go to code scanning (maintainers only).
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-nightly
+  cancel-in-progress: false
+
+jobs:
+  stack:
+    name: Local stack scan (Nuclei)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      # The cockpit bundle is built outside the image, as for a deploy (deploy-control-plane.yml).
+      - name: Build cockpit
+        run: |
+          npm ci
+          npm run build -w @magi/cockpit
+
+      - name: Build the control-plane image
+        run: docker build -f packages/control-plane/Dockerfile -t magi-control-stack:ci .
+
+      - name: Self-test our templates against a planted server
+        run: python3 scripts/security/stack/stack.py --image magi-control-stack:ci --selftest --out stack-selftest
+
+      - name: Scan the stack
+        run: |
+          python3 scripts/security/stack/stack.py --image magi-control-stack:ci --out stack-out | tee stack.log
+          echo "### Local stack scan" >> "$GITHUB_STEP_SUMMARY"
+          grep '^\[stack\]' stack.log | sed 's/^\[stack\] /- /' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Our templates' findings to code scanning
+        if: ${{ !cancelled() && hashFiles('stack-out/magi.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: stack-out/magi.sarif
+          category: nuclei-magi
+
+      - name: Community templates' findings to code scanning
+        if: ${{ !cancelled() && hashFiles('stack-out/community.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: stack-out/community.sarif
+          category: nuclei-community
+
+      - name: DAST findings to code scanning
+        if: ${{ !cancelled() && hashFiles('stack-out/dast.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: stack-out/dast.sarif
+          category: nuclei-dast

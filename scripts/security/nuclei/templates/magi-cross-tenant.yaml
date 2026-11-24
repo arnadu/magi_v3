@@ -1,0 +1,38 @@
+id: magi-cross-tenant
+
+info:
+  name: Another tenant reads or changes a mission it does not own
+  author: magi
+  severity: high
+  description: >
+    Bob, signed in, names Alice's mission on the routes that read or act on one. Any answer that
+    is not a refusal, or that carries Alice's marker, breaks sec.tenant-scoped.
+  tags: magi,magi-tenant
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/missions/{{alice_mission}}"
+      - "{{BaseURL}}/api/missions/{{alice_mission}}/config"
+      - "{{BaseURL}}/api/missions/{{alice_mission}}/agents"
+      - "{{BaseURL}}/api/missions/{{alice_mission}}/conversations"
+      - "{{BaseURL}}/api/missions/{{alice_mission}}/limits"
+      - "{{BaseURL}}/api/missions/{{alice_mission}}/objectives"
+      - "{{BaseURL}}/api/missions/{{alice_mission}}/transcript"
+      - "{{BaseURL}}/api/missions/{{alice_mission}}/turns"
+      - "{{BaseURL}}/api/missions/{{alice_mission}}/machine-runtime"
+      - "{{BaseURL}}/missions/{{alice_mission}}/status"
+    headers:
+      Authorization: "Bearer {{bob_token}}"
+    stop-at-first-match: false
+    matchers-condition: or
+    matchers:
+      - type: status
+        name: answered
+        status:
+          - 200
+      - type: word
+        name: leaked
+        part: body
+        words:
+          - "{{alice_marker}}"

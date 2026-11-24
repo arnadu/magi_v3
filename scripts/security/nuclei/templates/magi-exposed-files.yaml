@@ -1,0 +1,44 @@
+id: magi-exposed-files
+
+info:
+  name: A file that must never be served is served
+  author: magi
+  severity: high
+  description: Environment files, the git directory, workspace manifests and source maps of the cockpit bundle.
+  tags: magi,magi-exposure
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.env"
+      - "{{BaseURL}}/secrets.env"
+      - "{{BaseURL}}/.git/config"
+      - "{{BaseURL}}/package.json"
+      - "{{BaseURL}}/package-lock.json"
+      - "{{BaseURL}}/packages/control-plane/src/index.ts"
+      - "{{BaseURL}}/../../.env"
+      - "{{BaseURL}}/%2e%2e/%2e%2e/.env"
+    stop-at-first-match: false
+    matchers-condition: or
+    matchers:
+      - type: regex
+        name: env-file
+        part: body
+        regex:
+          - "(?m)^(MONGODB_URI|CONTROL_API_KEY|ANTHROPIC_API_KEY|[A-Z_]+_KEY)="
+      - type: word
+        name: git-config
+        part: body
+        words:
+          - "[core]"
+      - type: word
+        name: manifest
+        part: body
+        words:
+          - '"workspaces"'
+          - '"lockfileVersion"'
+      - type: word
+        name: source
+        part: body
+        words:
+          - "import { createApp }"

@@ -1,0 +1,40 @@
+id: magi-error-leak
+
+info:
+  name: An error answer leaks a stack trace or internals
+  author: magi
+  severity: medium
+  description: Malformed and hostile bodies sent by a signed-in tenant; the answer must not carry a stack, a file path or a driver error.
+  tags: magi,magi-errors
+
+http:
+  - raw:
+      - |
+        POST /api/missions/draft HTTP/1.1
+        Host: {{Hostname}}
+        Authorization: Bearer {{bob_token}}
+        Content-Type: application/json
+
+        {"missionId":
+      - |
+        POST /api/missions/draft HTTP/1.1
+        Host: {{Hostname}}
+        Authorization: Bearer {{bob_token}}
+        Content-Type: application/json
+
+        {"missionId":{"$gt":""},"name":{"$where":"1"},"teamConfig":["../../etc/passwd"]}
+      - |
+        PUT /api/missions/{{alice_mission}}/config HTTP/1.1
+        Host: {{Hostname}}
+        Authorization: Bearer {{bob_token}}
+        Content-Type: application/json
+
+        {"agents":{"$set":1}}
+    stop-at-first-match: false
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - '(?i)\bat [^ ]+ \((/app|node:internal|file:)'
+          - "(?i)(MongoServerError|MongoError|node_modules|/app/packages)"
+          - "(?i)SyntaxError: Unexpected"

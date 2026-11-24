@@ -1,0 +1,28 @@
+id: magi-source-maps
+
+info:
+  name: The cockpit bundle's source map is served
+  author: magi
+  severity: low
+  description: A source map hands the cockpit's source to anyone; the bundle is built without them.
+  tags: magi,magi-exposure
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+    extractors:
+      - type: regex
+        name: bundle
+        internal: true
+        group: 1
+        regex:
+          - 'src="(/assets/[^"]+\.js)"'
+
+  - method: GET
+    path:
+      - "{{BaseURL}}{{bundle}}.map"
+    matchers:
+      - type: dsl
+        dsl:
+          - 'status_code == 200 && contains(body, "\"sources\"")'

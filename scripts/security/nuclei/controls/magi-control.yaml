@@ -1,0 +1,58 @@
+id: magi-control
+
+info:
+  name: Controls for the MAGI templates (each must match, or the templates prove nothing)
+  author: magi
+  severity: info
+  description: >
+    The probes aimed where they are allowed: the stack answers, Alice reads her own mission
+    (so a 200 and her marker are what a leak would look like), Bob's token is accepted, and the
+    page is the cockpit (so the header checks read the right answer).
+  tags: magi-control
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/healthz"
+    matchers:
+      - type: status
+        name: stack-up
+        status:
+          - 200
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/missions/{{alice_mission}}"
+    headers:
+      Authorization: "Bearer {{alice_token}}"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        name: owner-reads
+        part: body
+        words:
+          - "{{alice_marker}}"
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/missions"
+    headers:
+      Authorization: "Bearer {{bob_token}}"
+    matchers:
+      - type: status
+        name: bob-signed-in
+        status:
+          - 200
+
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+    matchers:
+      - type: word
+        name: cockpit-page
+        part: body
+        words:
+          - '<div id="root">'

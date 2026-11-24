@@ -33,6 +33,8 @@ export interface AppDeps {
 export function createApp(deps: AppDeps): express.Express {
 	const { db, pendingActions, copilotRuntime, repoRoot } = deps;
 	const app = express();
+	// No answer names the framework (fingerprinting).
+	app.disable("x-powered-by");
 
 	// Fly.io terminates TLS and sets X-Forwarded-For. Trust one proxy hop so
 	// express-rate-limit can correctly identify client IPs.

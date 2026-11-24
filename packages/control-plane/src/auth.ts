@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import type { Db } from "mongodb";
 import { FailedAuthLimiter } from "./auth-limiter.js";
+import { matchTestUser, testUsersFromEnv } from "./auth-test-users.js";
 import { verifyFirebaseToken } from "./firebase.js";
 import { syncFirebaseUser } from "./users.js";
 
@@ -20,11 +21,14 @@ import { syncFirebaseUser } from "./users.js";
  * Two credential types are accepted:
  *   CONTROL_API_KEY  → req.userId = "admin", req.isAdmin = true  (sees all missions)
  *   Firebase JWT     → req.userId = Firebase UID, req.isAdmin = false
+ * and, off Fly only, a test user's token from AUTH_TEST_USERS (auth-test-users.ts).
  */
 export function createAuthMiddleware(
 	db: Db,
 	limiter: FailedAuthLimiter = new FailedAuthLimiter(),
 ) {
+	// Throws on Fly: the control plane refuses to start with a test sign-in there.
+	const testUsers = testUsersFromEnv(process.env);
 	return async function requireAuth(
 		req: Request,
 		res: Response,
@@ -48,6 +52,16 @@ export function createAuthMiddleware(
 		if (!blocked && apiKey && provided && safeEqual(provided, apiKey)) {
 			req.userId = "admin";
 			req.isAdmin = true;
+			next();
+			return;
+		}
+
+		// 1b. A test user (environment B only) → an ordinary tenant
+		const testUser =
+			testUsers && provided ? matchTestUser(testUsers, provided) : undefined;
+		if (testUser) {
+			req.userId = testUser;
+			req.isAdmin = false;
 			next();
 			return;
 		}

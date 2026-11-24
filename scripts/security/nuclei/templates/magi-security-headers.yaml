@@ -1,0 +1,37 @@
+id: magi-security-headers
+
+info:
+  name: The cockpit page lacks a security header
+  author: magi
+  severity: medium
+  description: >
+    The page the browser loads carries a content security policy, nosniff, a frame refusal and a
+    referrer policy; a missing one is a finding (its matcher name says which).
+  tags: magi,magi-headers
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+    matchers-condition: or
+    matchers:
+      - type: dsl
+        name: no-csp
+        dsl:
+          - '!regex("(?i)content-security-policy(-report-only)?:", header)'
+      - type: dsl
+        name: no-nosniff
+        dsl:
+          - '!regex("(?i)x-content-type-options:\\s*nosniff", header)'
+      - type: dsl
+        name: frames-allowed
+        dsl:
+          - '!regex("(?i)(x-frame-options:\\s*(deny|sameorigin)|frame-ancestors\\s+(''none''|''self''))", header)'
+      - type: dsl
+        name: no-referrer-policy
+        dsl:
+          - '!regex("(?i)referrer-policy:", header)'
+      - type: dsl
+        name: powered-by
+        dsl:
+          - 'regex("(?i)x-powered-by:", header)'
