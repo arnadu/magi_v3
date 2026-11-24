@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "600b210",
-  "time": "2026-11-24T02:17:21Z"
+  "commit": "6b4f1b0",
+  "time": "2026-11-24T02:36:34Z"
  },
  "findings": [
   {
@@ -34,6 +34,7 @@
      "components": [
       "config",
       "cp-api",
+      "cp-edge",
       "mm-state"
      ],
      "unresolved": [
@@ -245,6 +246,7 @@
      "components": [
       "config",
       "cp-api",
+      "cp-edge",
       "cp-oversight",
       "mm-agent-loop",
       "mm-state"
@@ -491,7 +493,8 @@
      "name": "route GET /",
      "where": "packages/control-plane/src/mission-routes-read.ts:284",
      "components": [
-      "cp-api"
+      "cp-api",
+      "cp-edge"
      ],
      "unresolved": [
       "json"
@@ -502,6 +505,7 @@
      "where": "packages/control-plane/src/mission-routes-read.ts:286",
      "components": [
       "cp-api",
+      "cp-edge",
       "cp-machines"
      ],
      "unresolved": [
@@ -835,8 +839,8 @@
    "about": "spend.report",
    "text": "8 of 10 entry points of spend.report reach no code in its home, cp-mission-ops: route GET /:id/machine-runtime; route GET /api/usage; tool ReadAgentUsage; tool ReadMissionCostSeries; tool ReadMissionLifetimeStats; monitor-route GET /^\\/agents\\/([^/]+)\\/usage$/; monitor-route GET \"/mission-stats\"; monitor-route GET \"/cost-series\".",
    "where": [
-    "packages/control-plane/src/mission-resource-routes.ts:40",
-    "packages/control-plane/src/platform-routes.ts:66",
+    "packages/control-plane/src/mission-resource-routes.ts:36",
+    "packages/control-plane/src/platform-routes.ts:67",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:63",
     "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:10",
     "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:51",
@@ -847,9 +851,10 @@
    "entryPoints": [
     {
      "name": "route GET /:id/machine-runtime",
-     "where": "packages/control-plane/src/mission-resource-routes.ts:40",
+     "where": "packages/control-plane/src/mission-resource-routes.ts:36",
      "components": [
       "cp-api",
+      "cp-edge",
       "cp-machines"
      ],
      "unresolved": [
@@ -864,10 +869,11 @@
     },
     {
      "name": "route GET /api/usage",
-     "where": "packages/control-plane/src/platform-routes.ts:66",
+     "where": "packages/control-plane/src/platform-routes.ts:67",
      "components": [
       "config",
       "cp-api",
+      "cp-edge",
       "cp-oversight"
      ],
      "unresolved": [
@@ -960,9 +966,9 @@
    "about": "spend.report",
    "text": "Entry points of spend.report reach different database writes: route GET /:id/machine-runtime lacks 4; route GET /stats lacks 6; route GET /api/usage lacks 6; tool ReadAgentUsage lacks 6; tool ReadMissionCostSeries lacks 6; tool ReadMissionLifetimeStats lacks 6; monitor-route GET /^\\/agents\\/([^/]+)\\/usage$/ lacks 6; monitor-route GET \"/mission-stats\" lacks 6; monitor-route GET \"/cost-series\" lacks 6.",
    "where": [
-    "packages/control-plane/src/mission-resource-routes.ts:40",
+    "packages/control-plane/src/mission-resource-routes.ts:36",
     "packages/control-plane/src/mission-routes-read.ts:285",
-    "packages/control-plane/src/platform-routes.ts:66",
+    "packages/control-plane/src/platform-routes.ts:67",
     "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts:63",
     "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:10",
     "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts:51",
@@ -973,7 +979,7 @@
    "lacks": [
     {
      "entryPoint": "route GET /:id/machine-runtime",
-     "where": "packages/control-plane/src/mission-resource-routes.ts:40",
+     "where": "packages/control-plane/src/mission-resource-routes.ts:36",
      "writes": [
       "agentTurnStats.findOneAndUpdate@packages/agent-runtime-worker/src/agent-stats.ts:158",
       "agentTurnStats.updateOne@packages/agent-runtime-worker/src/agent-stats.ts:210",
@@ -995,7 +1001,7 @@
     },
     {
      "entryPoint": "route GET /api/usage",
-     "where": "packages/control-plane/src/platform-routes.ts:66",
+     "where": "packages/control-plane/src/platform-routes.ts:67",
      "writes": [
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
       "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
@@ -1168,6 +1174,7 @@
      "components": [
       "config",
       "cp-api",
+      "cp-edge",
       "cp-mission-ops",
       "cp-oversight",
       "mm-state"
@@ -1412,7 +1419,8 @@
      "where": "packages/control-plane/src/mission-routes-read.ts:287",
      "components": [
       "config",
-      "cp-api"
+      "cp-api",
+      "cp-edge"
      ],
      "unresolved": [
       "collection",
@@ -1615,7 +1623,8 @@
      "where": "packages/control-plane/src/mission-routes-read.ts:289",
      "components": [
       "config",
-      "cp-api"
+      "cp-api",
+      "cp-edge"
      ],
      "unresolved": [
       "collection",

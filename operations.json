@@ -96,6 +96,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "mm-state"
     ],
     "writes": [
@@ -676,6 +677,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-oversight",
      "mm-agent-loop",
      "mm-state"
@@ -708,6 +710,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-mission-ops",
      "cp-oversight",
      "mm-state"
@@ -858,7 +861,8 @@
     "where": "packages/control-plane/src/mission-routes-read.ts:284",
     "reachesHome": false,
     "components": [
-     "cp-api"
+     "cp-api",
+     "cp-edge"
     ],
     "writes": [],
     "unresolved": [
@@ -874,6 +878,7 @@
     "reachesHome": false,
     "components": [
      "cp-api",
+     "cp-edge",
      "cp-machines"
     ],
     "writes": [
@@ -989,6 +994,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "mm-agent-loop",
      "mm-mission-copilot"
     ],
@@ -1300,6 +1306,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-mission-ops",
      "cp-oversight",
      "mm-state"
@@ -1336,10 +1343,11 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id/machine-runtime",
-    "where": "packages/control-plane/src/mission-resource-routes.ts:40",
+    "where": "packages/control-plane/src/mission-resource-routes.ts:36",
     "reachesHome": false,
     "components": [
      "cp-api",
+     "cp-edge",
      "cp-machines"
     ],
     "writes": [
@@ -1405,6 +1413,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-mission-ops"
     ],
     "writes": [],
@@ -1418,11 +1427,12 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /api/usage",
-    "where": "packages/control-plane/src/platform-routes.ts:66",
+    "where": "packages/control-plane/src/platform-routes.ts:67",
     "reachesHome": false,
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-oversight"
     ],
     "writes": [],
@@ -1877,6 +1887,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-mission-ops",
      "cp-oversight",
      "mm-state"
@@ -2894,7 +2905,8 @@
     "reachesHome": false,
     "components": [
      "config",
-     "cp-api"
+     "cp-api",
+     "cp-edge"
     ],
     "writes": [],
     "unresolved": [
@@ -2912,6 +2924,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-records"
     ],
     "writes": [],
@@ -2930,6 +2943,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-records"
     ],
     "writes": [],
@@ -2948,6 +2962,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-records"
     ],
     "writes": [],
@@ -2966,6 +2981,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-records"
     ],
     "writes": [],
@@ -3176,6 +3192,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-oversight",
      "mm-state"
     ],
@@ -3283,7 +3300,8 @@
     "reachesHome": false,
     "components": [
      "config",
-     "cp-api"
+     "cp-api",
+     "cp-edge"
     ],
     "writes": [
      "mailbox.updateMany@packages/control-plane/src/mission-routes-read.ts:224"
@@ -4418,6 +4436,7 @@
     "components": [
      "config",
      "cp-api",
+     "cp-edge",
      "cp-mission-ops",
      "mm-agent-loop",
      "mm-state"
@@ -4758,7 +4777,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /:id/apps/:name/open",
-    "where": "packages/control-plane/src/app-open-routes.ts:74",
+    "where": "packages/control-plane/src/app-open-routes.ts:76",
     "reachesHome": true,
     "components": [
      "config",
@@ -4784,7 +4803,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /reopen",
-    "where": "packages/control-plane/src/app-open-routes.ts:89",
+    "where": "packages/control-plane/src/app-open-routes.ts:91",
     "reachesHome": true,
     "components": [
      "config",
@@ -5351,7 +5370,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /api/models",
-    "where": "packages/control-plane/src/platform-routes.ts:86",
+    "where": "packages/control-plane/src/platform-routes.ts:87",
     "reachesHome": true,
     "components": [
      "cp-api",
