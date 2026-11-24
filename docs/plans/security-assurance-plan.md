@@ -224,6 +224,16 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 3, first slice, 2026-11-24:** the control plane's HTTP cells, generated from
+  `docs/api/control-plane.openapi.json` and run against the real `createApp` with a fake database and
+  two mocked tenants (`attack-matrix-http.unit.test.ts`): no credential on 56 operator routes (401,
+  nothing written); a bad mission token on 4 mission-copilot routes; another tenant on 30 routes
+  naming a mission or an app, with the oracle "tenant B's answer for A's mission equals its answer
+  for a mission that does not exist, nothing of A's leaks or changes". Every cell is proven by a
+  mutation of its guard (sign-in made a pass-through, any mission token accepted, the tenant rule
+  removed): 29 tenant cells proven, 1 untestable here (`DELETE`, refused to everyone). On the way, the
+  tenant rule had four copies (proxy, platform routes, resource routes, the apps' open path): it now
+  has one home, `auth-scope.ts`, so a fix or a mutation reaches every caller.
 - **Step 2b, 2026-11-24:** `docs/api/` holds four OpenAPI files generated from the code as built:
   the control plane (61 routes, read from `createApp` through `mount()` and the operation markers),
   the apps host (4), the monitor server (its route table; regex routes read as path templates) and

@@ -1,3 +1,4 @@
+import { ownerFilter } from "./auth-scope.js";
 /**
  * Reverse proxy: routes operator browser traffic to an execution plane machine.
  *
@@ -82,10 +83,9 @@ export function createProxyRouter(db: Db): Router {
 			// S2: resolve target from DB — never trust user input.
 			// S9 (F-019): scope lookup to the requesting user so a user cannot proxy
 			// into another user's mission. Admins bypass the filter.
-			const ownerFilter = req.isAdmin ? {} : { userId: req.userId };
 			const mission = await storedCollection(db, "missions").findOne({
 				missionId,
-				...ownerFilter,
+				...ownerFilter(req),
 			});
 
 			if (!mission || !mission.privateIp) {

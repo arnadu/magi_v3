@@ -1,3 +1,4 @@
+import { ownerFilter } from "./auth-scope.js";
 /**
  * The cockpit's way to open an interactive app (ADR-0037): two routes over
  * one operation (`openApp`), behind the cockpit's sign-in.
@@ -54,6 +55,7 @@ export function createAppOpenRoutes(db: Db) {
 		ticketKey: process.env.APPS_TICKET_KEY ?? "",
 		appsHostUrl: process.env.APPS_HOST_URL ?? "",
 		startApp: startOnMachine,
+		ownerFilter,
 	};
 	const caller = (req: Request) => ({
 		userId: req.userId as string,

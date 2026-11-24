@@ -2,6 +2,7 @@ import { verifyAppTicket } from "@magi/agent-config";
 import { describe, expect, it, vi } from "vitest";
 import { openApp } from "../src/apps-host/open.js";
 import { assignSlot, NoFreeSlotError } from "../src/apps-host/slots.js";
+import { ownerFilter } from "../src/auth-scope.js";
 import { type Doc, fakeDb } from "./support/fake-db.js";
 
 const CAP = "0123456789abcdef0123456789abcdef";
@@ -100,6 +101,7 @@ describe("openApp (app.open, the control plane's part)", () => {
 				db: f.db,
 				ticketKey: "tk",
 				appsHostUrl: "https://magi-apps-dev.fly.dev",
+				ownerFilter,
 				startApp: vi.fn(async () => {
 					const a = f.data.missionApps[0];
 					a.status = "starting";

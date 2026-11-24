@@ -1,3 +1,4 @@
+import { userFilter } from "./mission-scope.js";
 /**
  * Platform-wide read routes: per-user LLM usage and the model catalog for
  * the model pickers. Mounted behind requireAuth.
@@ -64,7 +65,7 @@ export function createPlatformRoutes(db: Db): Router {
 	const appRoutes = asyncRoutes(router);
 	// Per-user LLM usage summary (admin sees all missions).
 	appRoutes.get("/api/usage", "spend.report", async (req, res) => {
-		const filter = req.isAdmin ? {} : { userId: req.userId };
+		const filter = userFilter(req);
 		const missions = await storedCollection(db, "missions")
 			.find(filter, {
 				projection: { missionId: 1, name: 1, userId: 1, _id: 0 },

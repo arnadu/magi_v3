@@ -1,3 +1,4 @@
+import { userFilter } from "./mission-scope.js";
 /**
  * Machine-runtime reporting for the cockpit's Runtime tab (ADR-0031
  * Decision 1) — deliberately separate from `missions.ts`'s Limits routes,
@@ -5,18 +6,13 @@
  * read-only, non-enforcement runtime-by-config report.
  */
 
-import { type MissionDoc, storedCollection } from "@magi/agent-config";
+import { storedCollection } from "@magi/agent-config";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { Db } from "mongodb";
 import { asyncRoutes, routeParam } from "./async-handler.js";
 import { listSegments, runtimeByConfig } from "./machine-segments.js";
 import { estimateCostPerHourUsd } from "./machine-shapes.js";
-
-/** Admin sees all missions; regular users see only their own — same rule as missions.ts's userFilter. */
-function userFilter(req: Request): Partial<MissionDoc> {
-	return req.isAdmin ? {} : { userId: req.userId };
-}
 
 const DAY_MS = 86_400_000;
 

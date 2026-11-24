@@ -60,7 +60,11 @@ export default defineConfig({
 				},
 				"packages/control-plane/src/**": {
 					statements: 57.6,
-					branches: 88.6,
+					// 88.6 → 86.8 (2026-11-24): the attack matrix (attack-matrix-http.unit.test.ts)
+					// builds the whole app, loading route modules no unit test loaded before. A
+					// file never loaded adds almost no branches to the total, so loading one shows
+					// branches that were always there: more code covered, a lower percentage.
+					branches: 86.8,
 					functions: 74.8,
 				},
 			},

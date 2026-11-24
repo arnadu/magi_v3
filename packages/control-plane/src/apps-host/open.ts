@@ -28,6 +28,8 @@ export interface OpenAppDeps {
 		missionId: string,
 		name: string,
 	): Promise<{ ok: boolean; message: string }>;
+	/** The tenant rule (auth-scope.ts), passed in: this layer may not import the edge's. */
+	ownerFilter(caller: Caller): { userId?: string };
 	now?: () => Date;
 	sleep?: (ms: number) => Promise<void>;
 }
@@ -62,7 +64,7 @@ export async function openApp(
 		app &&
 		(await storedCollection(deps.db, "missions").findOne({
 			missionId: app.missionId,
-			...(caller.isAdmin ? {} : { userId: caller.userId }),
+			...deps.ownerFilter(caller),
 		}));
 	// Anyone but the owner (or an admin) learns nothing, not even that the app exists.
 	if (!app || !mission)
