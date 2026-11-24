@@ -1,0 +1,1762 @@
+[
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/app-open-routes.ts",
+		"line": 76,
+		"name": "POST /:id/apps/:name/open",
+		"tag": "app.open"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/app-open-routes.ts",
+		"line": 91,
+		"name": "POST /reopen",
+		"tag": "app.open"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/apps-host/server.ts",
+		"line": 117,
+		"name": "GET /healthz",
+		"tag": "infrastructure"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/apps-host/server.ts",
+		"line": 120,
+		"name": "GET /t/:ticket",
+		"tag": "app.open"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/apps-host/server.ts",
+		"line": 123,
+		"name": "ALL /a/:capability",
+		"tag": "app.open"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/apps-host/server.ts",
+		"line": 126,
+		"name": "ALL /a/:capability/*rest",
+		"tag": "app.open"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/catalog-routes.ts",
+		"line": 59,
+		"name": "GET /",
+		"tag": "platform.offerings"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 153,
+		"name": "launch_mission",
+		"tag": "mission.launch"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 154,
+		"name": "launch_draft",
+		"tag": "mission.launch"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 155,
+		"name": "suspend_mission",
+		"tag": "mission.suspend"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 156,
+		"name": "resume_mission",
+		"tag": "mission.resume"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 157,
+		"name": "fix_mission_volume",
+		"tag": "mission.repair"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 158,
+		"name": "write_mission_file",
+		"tag": "file.write"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 159,
+		"name": "save_session_config",
+		"tag": "mission.change-config"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 160,
+		"name": "cancel_schedule",
+		"tag": "schedule.cancel"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 161,
+		"name": "create_schedule",
+		"tag": "schedule.create"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 162,
+		"name": "pause_agent",
+		"tag": "agent.pause"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 163,
+		"name": "resume_agent",
+		"tag": "agent.resume"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 164,
+		"name": "set_mission_budget",
+		"tag": "mission.set-spend-cap"
+	},
+	{
+		"kind": "copilot-action",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-actions.ts",
+		"line": 165,
+		"name": "GITHUB_ISSUE_ACTION",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/copilot-daemon.ts",
+		"line": 443,
+		"name": "change event",
+		"tag": "agent.dispatch"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-draft-tools.ts",
+		"line": 26,
+		"name": "CreateDraft",
+		"tag": "mission.create-draft"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-draft-tools.ts",
+		"line": 74,
+		"name": "ReadMissionConfig",
+		"tag": "mission.read-config"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-draft-tools.ts",
+		"line": 142,
+		"name": "EditDraftConfig",
+		"tag": "mission.edit-draft"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-github-tools.ts",
+		"line": 13,
+		"name": "ListIssues",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-github-tools.ts",
+		"line": 82,
+		"name": "CreateIssue",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-github-tools.ts",
+		"line": 110,
+		"name": "CloseIssue",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-github-tools.ts",
+		"line": 128,
+		"name": "AddIssueComment",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-limits-routes.ts",
+		"line": 39,
+		"name": "GET /limits",
+		"tag": "mission.change-config"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-limits-routes.ts",
+		"line": 64,
+		"name": "PATCH /limits",
+		"tag": "mission.change-config"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-objective-tools.ts",
+		"line": 16,
+		"name": "ReviewObjectives",
+		"tag": "objectives.progress"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-objective-tools.ts",
+		"line": 46,
+		"name": "AssessKpi",
+		"tag": "kpi.record"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-objective-tools.ts",
+		"line": 97,
+		"name": "SaveObjectiveTree",
+		"tag": "objectives.edit"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-pending-routes.ts",
+		"line": 34,
+		"name": "POST /confirm",
+		"tag": "copilot.confirm"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-pending-routes.ts",
+		"line": 97,
+		"name": "GET /pending",
+		"tag": "copilot.confirm"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-pending-routes.ts",
+		"line": 116,
+		"name": "POST /dismiss",
+		"tag": "copilot.dismiss"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-propose-tool.ts",
+		"line": 18,
+		"name": "ProposeAction",
+		"tag": "proposal"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 35,
+		"name": "ListMissions",
+		"tag": "mission.status"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 131,
+		"name": "GetMissionStatus",
+		"tag": "mission.status"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 174,
+		"name": "ReadMissionMailbox",
+		"tag": "message.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 210,
+		"name": "ReadMissionLog",
+		"tag": "mission.log"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 269,
+		"name": "ReadMissionFile",
+		"tag": "file.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 319,
+		"name": "ListSchedule",
+		"tag": "schedule.list"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 368,
+		"name": "ListTemplates",
+		"tag": "platform.offerings"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 384,
+		"name": "GetTemplate",
+		"tag": "platform.offerings"
+	},
+	{
+		"kind": "tool",
+		"actor": "CC",
+		"file": "packages/control-plane/src/copilot-read-tools.ts",
+		"line": 417,
+		"name": "ReadMentalMap",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-router.ts",
+		"line": 62,
+		"name": "POST /message",
+		"tag": "copilot.ask"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-router.ts",
+		"line": 111,
+		"name": "GET /settings",
+		"tag": "mission.change-config"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-router.ts",
+		"line": 123,
+		"name": "POST /settings",
+		"tag": "mission.change-config"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-router.ts",
+		"line": 174,
+		"name": "GET /usage",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-router.ts",
+		"line": 185,
+		"name": "GET /history",
+		"tag": "copilot.ask"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-router.ts",
+		"line": 209,
+		"name": "GET /events",
+		"tag": "copilot.ask"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/copilot-router.ts",
+		"line": 220,
+		"name": "interval",
+		"tag": "feed"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-visibility-routes.ts",
+		"line": 33,
+		"name": "GET /turns",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-visibility-routes.ts",
+		"line": 38,
+		"name": "GET /transcript",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-visibility-routes.ts",
+		"line": 52,
+		"name": "GET /llm-calls",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-visibility-routes.ts",
+		"line": 66,
+		"name": "GET /llm-call",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/copilot-visibility-routes.ts",
+		"line": 100,
+		"name": "GET /files",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/copilot-waker.ts",
+		"line": 132,
+		"name": "change event",
+		"tag": "agent.dispatch"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/copilot-waker.ts",
+		"line": 153,
+		"name": "interval",
+		"tag": "agent.dispatch"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/index.ts",
+		"line": 119,
+		"name": "interval",
+		"tag": "housekeeping"
+	},
+	{
+		"kind": "route",
+		"actor": "MC",
+		"file": "packages/control-plane/src/mission-copilot-router.ts",
+		"line": 108,
+		"name": "POST /resources/upgrade",
+		"tag": "machine.upgrade"
+	},
+	{
+		"kind": "route",
+		"actor": "MC",
+		"file": "packages/control-plane/src/mission-copilot-router.ts",
+		"line": 113,
+		"name": "POST /resources/revert",
+		"tag": "machine.upgrade"
+	},
+	{
+		"kind": "route",
+		"actor": "MC",
+		"file": "packages/control-plane/src/mission-copilot-router.ts",
+		"line": 121,
+		"name": "GET /github/issues",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "route",
+		"actor": "MC",
+		"file": "packages/control-plane/src/mission-copilot-router.ts",
+		"line": 144,
+		"name": "POST /github/issue",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-resource-routes.ts",
+		"line": 36,
+		"name": "GET /:id/machine-runtime",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-config.ts",
+		"line": 349,
+		"name": "GET /:id/config",
+		"tag": "mission.read-config"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-config.ts",
+		"line": 350,
+		"name": "PUT /:id/config",
+		"tag": "mission.change-config"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-config.ts",
+		"line": 351,
+		"name": "PUT /:id/draft",
+		"tag": "mission.edit-draft"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-launch.ts",
+		"line": 98,
+		"name": "POST /:id/launch",
+		"tag": "mission.launch"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
+		"line": 269,
+		"name": "POST /",
+		"tag": "mission.launch"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
+		"line": 270,
+		"name": "POST /draft",
+		"tag": "mission.create-draft"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
+		"line": 271,
+		"name": "POST /:id/suspend",
+		"tag": "mission.suspend"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
+		"line": 272,
+		"name": "POST /:id/resume",
+		"tag": "mission.resume"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
+		"line": 273,
+		"name": "DELETE /:id",
+		"tag": "retired"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-limits.ts",
+		"line": 139,
+		"name": "GET /:id/limits",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-limits.ts",
+		"line": 140,
+		"name": "GET /:id/objectives",
+		"tag": "objectives.progress"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-limits.ts",
+		"line": 141,
+		"name": "PATCH /:id/limits/mission",
+		"tag": "mission.set-spend-cap"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-limits.ts",
+		"line": 146,
+		"name": "PATCH /:id/limits/ceiling",
+		"tag": "mission.set-ceiling"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-limits.ts",
+		"line": 151,
+		"name": "PATCH /:id/limits/upgrade-reset",
+		"tag": "machine.reset-upgrade-allowance"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-limits.ts",
+		"line": 156,
+		"name": "PATCH /:id/limits/agent/:agentId",
+		"tag": "mission.change-config"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-read.ts",
+		"line": 284,
+		"name": "GET /",
+		"tag": "mission.status"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-read.ts",
+		"line": 285,
+		"name": "GET /stats",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-read.ts",
+		"line": 286,
+		"name": "GET /:id",
+		"tag": "mission.status"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-read.ts",
+		"line": 287,
+		"name": "GET /:id/conversations",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-read.ts",
+		"line": 288,
+		"name": "GET /:id/agents",
+		"tag": "mission.status"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-read.ts",
+		"line": 289,
+		"name": "POST /:id/messages/read",
+		"tag": "message.read"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-read.ts",
+		"line": 290,
+		"name": "POST /:id/messages/send",
+		"tag": "message.send"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-transcript.ts",
+		"line": 122,
+		"name": "GET /:id/turns",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-transcript.ts",
+		"line": 123,
+		"name": "GET /:id/transcript",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-transcript.ts",
+		"line": 124,
+		"name": "GET /:id/llm-calls",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/mission-routes-transcript.ts",
+		"line": 125,
+		"name": "GET /:id/llm-call",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/platform-routes.ts",
+		"line": 67,
+		"name": "GET /api/usage",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/platform-routes.ts",
+		"line": 87,
+		"name": "GET /api/models",
+		"tag": "platform.offerings"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/public-routes.ts",
+		"line": 43,
+		"name": "GET /healthz",
+		"tag": "infrastructure"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/public-routes.ts",
+		"line": 50,
+		"name": "GET /firebase-config.js",
+		"tag": "infrastructure"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/public-routes.ts",
+		"line": 65,
+		"name": "POST /api/csp-report",
+		"tag": "infrastructure"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/resource-monitor.ts",
+		"line": 420,
+		"name": "cron */5 * * * *: tick",
+		"tag": "oversight.alert"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/scheduler.ts",
+		"line": 441,
+		"name": "cron * * * * *: tick",
+		"tag": "schedule.deliver"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/scheduler.ts",
+		"line": 445,
+		"name": "cron * * * * *",
+		"tag": "machine.upgrade"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/control-plane/src/scheduler.ts",
+		"line": 451,
+		"name": "cron */30 * * * *: prune",
+		"tag": "housekeeping"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/session-routes.ts",
+		"line": 35,
+		"name": "POST /session",
+		"tag": "session.sign-in"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/session-routes.ts",
+		"line": 52,
+		"name": "GET /me",
+		"tag": "session.sign-in"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/session-routes.ts",
+		"line": 60,
+		"name": "POST /logout",
+		"tag": "session.sign-out"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/templates.ts",
+		"line": 179,
+		"name": "GET /",
+		"tag": "platform.offerings"
+	},
+	{
+		"kind": "route",
+		"actor": "OP",
+		"file": "packages/control-plane/src/templates.ts",
+		"line": 183,
+		"name": "GET /:id",
+		"tag": "platform.offerings"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/app-hop.ts",
+		"line": 164,
+		"name": "* HOP_PATH",
+		"tag": "app.open"
+	},
+	{
+		"kind": "file-request",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/app-requests.ts",
+		"line": 188,
+		"name": "files in dirs.requests",
+		"tag": "app.declare"
+	},
+	{
+		"kind": "file-request",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/app-requests.ts",
+		"line": 188,
+		"name": "files in dirs.requests",
+		"tag": "app.control"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/cli-tail.ts",
+		"line": 82,
+		"name": "change event",
+		"tag": "developer"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts",
+		"line": 149,
+		"name": "interval",
+		"tag": "app.run"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/daemon-boot/apps-start.ts",
+		"line": 166,
+		"name": "interval",
+		"tag": "app.run"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/daemon-boot/mail-waiter.ts",
+		"line": 60,
+		"name": "change event",
+		"tag": "agent.dispatch"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/daemon.ts",
+		"line": 227,
+		"name": "interval: tick",
+		"tag": "job.run"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/images/create-image-tool.ts",
+		"line": 334,
+		"name": "CreateImage",
+		"tag": "image.create"
+	},
+	{
+		"kind": "tool",
+		"actor": "SUB",
+		"file": "packages/agent-runtime-worker/src/images/image-agent-tools.ts",
+		"line": 181,
+		"name": "generate_image",
+		"tag": "image.create"
+	},
+	{
+		"kind": "tool",
+		"actor": "SUB",
+		"file": "packages/agent-runtime-worker/src/images/image-agent-tools.ts",
+		"line": 309,
+		"name": "critique_candidates",
+		"tag": "image.create"
+	},
+	{
+		"kind": "tool",
+		"actor": "SUB",
+		"file": "packages/agent-runtime-worker/src/images/image-agent-tools.ts",
+		"line": 390,
+		"name": "finish",
+		"tag": "image.create"
+	},
+	{
+		"kind": "file-request",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/job-runner.ts",
+		"line": 291,
+		"name": "files in dirs.pending",
+		"tag": "job.submit"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/mailbox.ts",
+		"line": 210,
+		"name": "PostMessage",
+		"tag": "message.send"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/mailbox.ts",
+		"line": 274,
+		"name": "ListTeam",
+		"tag": "mission.status"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/mailbox.ts",
+		"line": 291,
+		"name": "ListMessages",
+		"tag": "message.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/mailbox.ts",
+		"line": 327,
+		"name": "ReadMessage",
+		"tag": "message.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/mental-map.ts",
+		"line": 255,
+		"name": "mental_map_update",
+		"tag": "agent.remember"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/mental-map.ts",
+		"line": 291,
+		"name": "mental_map_add",
+		"tag": "agent.remember"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/mental-map.ts",
+		"line": 330,
+		"name": "mental_map_remove",
+		"tag": "agent.remember"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts",
+		"line": 23,
+		"name": "ReadMissionConfig",
+		"tag": "mission.read-config"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-config-tools.ts",
+		"line": 131,
+		"name": "SaveMissionConfig",
+		"tag": "mission.change-config"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts",
+		"line": 17,
+		"name": "ReadMissionLog",
+		"tag": "mission.log"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts",
+		"line": 37,
+		"name": "ReadFileHistory",
+		"tag": "file.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts",
+		"line": 58,
+		"name": "ReadSharedFile",
+		"tag": "file.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts",
+		"line": 91,
+		"name": "ReadAgentWorkdirFile",
+		"tag": "file.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-diagnostics-tools.ts",
+		"line": 139,
+		"name": "ListBackgroundJobs",
+		"tag": "job.status"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-github-tools.ts",
+		"line": 8,
+		"name": "ListGithubIssues",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-github-tools.ts",
+		"line": 33,
+		"name": "ReportGithubIssue",
+		"tag": "issue.track"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts",
+		"line": 13,
+		"name": "PauseAgent",
+		"tag": "agent.pause"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts",
+		"line": 39,
+		"name": "ResumeAgent",
+		"tag": "agent.resume"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts",
+		"line": 62,
+		"name": "CancelBackgroundJob",
+		"tag": "job.control"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-intervention-tools.ts",
+		"line": 89,
+		"name": "RestartBackgroundJob",
+		"tag": "job.control"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts",
+		"line": 11,
+		"name": "ReadAgentMentalMap",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts",
+		"line": 33,
+		"name": "ListAgentSessions",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts",
+		"line": 63,
+		"name": "ReadAgentUsage",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts",
+		"line": 99,
+		"name": "ReadAgentSessionDetail",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts",
+		"line": 127,
+		"name": "ReadAgentLlmCall",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts",
+		"line": 184,
+		"name": "ReadMissionMailboxAll",
+		"tag": "message.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts",
+		"line": 220,
+		"name": "ReadMissionInteractions",
+		"tag": "message.read"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-monitoring-tools.ts",
+		"line": 278,
+		"name": "SearchMissionHistory",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-objectives-tools.ts",
+		"line": 11,
+		"name": "ReadMissionObjectives",
+		"tag": "objectives.progress"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-objectives-tools.ts",
+		"line": 30,
+		"name": "EditObjectiveTree",
+		"tag": "objectives.edit"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts",
+		"line": 10,
+		"name": "ReadMissionCostSeries",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts",
+		"line": 51,
+		"name": "ReadMissionLifetimeStats",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-resource-tools.ts",
+		"line": 78,
+		"name": "SetMissionSpendCap",
+		"tag": "mission.set-spend-cap"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts",
+		"line": 34,
+		"name": "CreateScheduledMessage",
+		"tag": "schedule.create"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts",
+		"line": 97,
+		"name": "CancelScheduledMessage",
+		"tag": "schedule.cancel"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/mission-copilot-schedule-tools.ts",
+		"line": 160,
+		"name": "ListScheduledMessages",
+		"tag": "schedule.list"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/monitor-feeds.ts",
+		"line": 38,
+		"name": "change event",
+		"tag": "feed"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts",
+		"line": 88,
+		"name": "GET /^\\/agents\\/([^/]+)\\/mental-map$/",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts",
+		"line": 113,
+		"name": "GET /^\\/agents\\/([^/]+)\\/sessions$/",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts",
+		"line": 124,
+		"name": "GET /^\\/agents\\/([^/]+)\\/sessions\\/(\\d+)$/",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/agent-sessions.ts",
+		"line": 145,
+		"name": "GET /^\\/agents\\/([^/]+)\\/usage$/",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/apps.ts",
+		"line": 35,
+		"name": "GET \"/apps\"",
+		"tag": "app.status"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/apps.ts",
+		"line": 44,
+		"name": "POST /^\\/apps\\/([a-z][a-z0-9-]{0,39})\\/(start|stop|remove)$/",
+		"tag": "app.control"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/budget.ts",
+		"line": 56,
+		"name": "POST \"/extend-budget\"",
+		"tag": "mission.set-spend-cap"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/budget.ts",
+		"line": 103,
+		"name": "POST \"/set-budget\"",
+		"tag": "mission.set-spend-cap"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts",
+		"line": 17,
+		"name": "GET \"/events\"",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts",
+		"line": 35,
+		"name": "GET \"/team\"",
+		"tag": "mission.status"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/dashboard-shell.ts",
+		"line": 44,
+		"name": "GET \"/status\"",
+		"tag": "mission.status"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts",
+		"line": 40,
+		"name": "GET \"/files/shared\"",
+		"tag": "file.read"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts",
+		"line": 50,
+		"name": "GET \"/files/history\"",
+		"tag": "file.read"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts",
+		"line": 60,
+		"name": "GET /^\\/files\\/workdir\\/([^/]+)$/",
+		"tag": "file.read"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts",
+		"line": 72,
+		"name": "POST \"/files/shared/write\"",
+		"tag": "file.write"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/file-browsing.ts",
+		"line": 81,
+		"name": "POST /^\\/files\\/workdir\\/([^/]+)\\/write$/",
+		"tag": "file.write"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/file-edit.ts",
+		"line": 17,
+		"name": "POST \"/files/shared/edit\"",
+		"tag": "file.write"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/lifecycle.ts",
+		"line": 12,
+		"name": "POST \"/stop\"",
+		"tag": "developer"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/log.ts",
+		"line": 12,
+		"name": "GET \"/log\"",
+		"tag": "mission.log"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts",
+		"line": 16,
+		"name": "GET \"/mailbox\"",
+		"tag": "message.read"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts",
+		"line": 48,
+		"name": "POST \"/send-message\"",
+		"tag": "message.send"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/pause-resume.ts",
+		"line": 18,
+		"name": "POST \"/pause-agent\"",
+		"tag": "agent.pause"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/pause-resume.ts",
+		"line": 33,
+		"name": "POST \"/resume-agent\"",
+		"tag": "agent.resume"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/run-control.ts",
+		"line": 27,
+		"name": "POST \"/step\"",
+		"tag": "developer"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/run-control.ts",
+		"line": 45,
+		"name": "POST \"/toggle-step\"",
+		"tag": "developer"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/run-control.ts",
+		"line": 63,
+		"name": "POST \"/start\"",
+		"tag": "developer"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/schedule.ts",
+		"line": 14,
+		"name": "GET \"/schedule\"",
+		"tag": "schedule.list"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/schedule.ts",
+		"line": 38,
+		"name": "DELETE /^\\/schedule\\/([^/]+)$/",
+		"tag": "schedule.cancel"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/trace.ts",
+		"line": 17,
+		"name": "GET \"/mission-stats\"",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/trace.ts",
+		"line": 40,
+		"name": "GET \"/cost-series\"",
+		"tag": "spend.report"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/trace.ts",
+		"line": 72,
+		"name": "GET \"/interactions\"",
+		"tag": "message.read"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/trace.ts",
+		"line": 102,
+		"name": "GET \"/message-events\"",
+		"tag": "message.read"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/upload-download.ts",
+		"line": 19,
+		"name": "POST \"/upload\"",
+		"tag": "file.upload"
+	},
+	{
+		"kind": "monitor-route",
+		"actor": "OP",
+		"file": "packages/agent-runtime-worker/src/monitor-routes/upload-download.ts",
+		"line": 27,
+		"name": "GET \"/download\"",
+		"tag": "file.download"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/monitor-server.ts",
+		"line": 455,
+		"name": "interval",
+		"tag": "feed"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/objectives/tools.ts",
+		"line": 145,
+		"name": "AddTask",
+		"tag": "task.create"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/objectives/tools.ts",
+		"line": 222,
+		"name": "UpdateTask",
+		"tag": "task.update"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/objectives/tools.ts",
+		"line": 302,
+		"name": "RecordKpi",
+		"tag": "kpi.record"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/objectives/tools.ts",
+		"line": 353,
+		"name": "Allocate",
+		"tag": "cost.allocate"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/orchestrator-dispatch.ts",
+		"line": 58,
+		"name": "createErrorCooldown callback",
+		"tag": "agent.dispatch"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/resource-upgrade-tool.ts",
+		"line": 95,
+		"name": "RequestResourceUpgrade",
+		"tag": "machine.upgrade"
+	},
+	{
+		"kind": "tool",
+		"actor": "MC",
+		"file": "packages/agent-runtime-worker/src/resource-upgrade-tool.ts",
+		"line": 154,
+		"name": "EndResourceUpgrade",
+		"tag": "machine.upgrade"
+	},
+	{
+		"kind": "file-request",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
+		"line": 473,
+		"name": "files in dir",
+		"tag": "schedule.create"
+	},
+	{
+		"kind": "file-request",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/schedule-ingest.ts",
+		"line": 473,
+		"name": "files in dir",
+		"tag": "schedule.cancel"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 291,
+		"name": "fetch-url",
+		"tag": "web.fetch"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 300,
+		"name": "inspect-image",
+		"tag": "web.fetch"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 312,
+		"name": "research",
+		"tag": "web.research"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 322,
+		"name": "search-web",
+		"tag": "web.search"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 327,
+		"name": "post-message",
+		"tag": "message.send"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 343,
+		"name": "data-fred",
+		"tag": "data.query"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 348,
+		"name": "data-fmp",
+		"tag": "data.query"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 353,
+		"name": "data-newsapi",
+		"tag": "data.query"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools/analyze-memories.ts",
+		"line": 22,
+		"name": "AnalyzeMemories",
+		"tag": "agent.history"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools/browse-web.ts",
+		"line": 361,
+		"name": "BrowseWeb",
+		"tag": "web.browse"
+	},
+	{
+		"kind": "tool",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tools/data-provider-proxy.ts",
+		"line": 99,
+		"name": "data-fred",
+		"tag": "data.query"
+	},
+	{
+		"kind": "tool",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tools/data-provider-proxy.ts",
+		"line": 133,
+		"name": "data-fmp",
+		"tag": "data.query"
+	},
+	{
+		"kind": "tool",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tools/data-provider-proxy.ts",
+		"line": 160,
+		"name": "data-newsapi",
+		"tag": "data.query"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools/fetch-url.ts",
+		"line": 484,
+		"name": "FetchUrl",
+		"tag": "web.fetch"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools/inspect-image.ts",
+		"line": 77,
+		"name": "InspectImage",
+		"tag": "web.fetch"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools/research.ts",
+		"line": 381,
+		"name": "Research",
+		"tag": "web.research"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools/search-web.ts",
+		"line": 51,
+		"name": "SearchWeb",
+		"tag": "web.search"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools.ts",
+		"line": 491,
+		"name": "Bash",
+		"tag": "agent.shell"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools.ts",
+		"line": 528,
+		"name": "WriteFile",
+		"tag": "file.write"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools.ts",
+		"line": 555,
+		"name": "EditFile",
+		"tag": "file.write"
+	}
+]
