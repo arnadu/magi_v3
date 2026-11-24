@@ -102,11 +102,13 @@ class Sandbox:
             self.docker("exec", "-i", "-u", "root", self.mission, "bash", "-c", "cat > /tmp/probe.py && chmod 755 /tmp/probe.py", input=f.read())
 
 
-def http(sb, user, method, path, port=4000, token=None, body=None):
+def http(sb, user, method, path, port=4000, token=None, body=None, bearer=None):
     """(status, body) of a request from inside the machine, on loopback."""
     args = [method, f"http://127.0.0.1:{port}{path}"]
     if token:
         args += ["--header", f"x-monitor-token: {token}"]
+    if bearer:
+        args += ["--header", f"authorization: Bearer {bearer}"]
     if body is not None:
         args += ["--body", json.dumps(body)]
     quoted = " ".join("'" + a.replace("'", "'\\''") + "'" for a in args)
@@ -248,6 +250,188 @@ def _(sb):
     inside = sb.run("alice", "timeout 4 bash -c 'echo > /dev/tcp/127.0.0.1/8888' && echo open || echo closed")[1]
     monitor = sb.docker("exec", sb.mongo, "bash", "-c", probe.format(port=4000), check=False).stdout.strip()
     return out == "closed", f"8888 from outside: {out}", inside == "open" and monitor == "open", f"8888 inside: {inside}, 4000 from outside: {monitor}"
+
+
+def daemon_logs(sb):
+    logs = sb.docker("logs", sb.mission, check=False)
+    return logs.stdout + logs.stderr
+
+
+def wait_for(predicate, seconds):
+    """Poll `predicate` every 3 s until it returns something truthy or `seconds` pass."""
+    deadline = time.time() + seconds
+    while True:
+        got = predicate()
+        if got or time.time() >= deadline:
+            return got
+        time.sleep(3)
+
+
+def mongo_count(sb, collection, query):
+    q = json.dumps(query)
+    r = sb.docker("exec", sb.mongo, "mongosh", "--quiet", "mongodb://localhost:27017/magi_sandbox",
+                  "--eval", f"db.{collection}.countDocuments({q})", check=False)
+    try:
+        return int(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return -1
+
+
+@cell("JOB-3", "sec.contained-paths", "alice", "plant a job request as a hard link")
+def _(sb):
+    marker_dir = f"{SHARED}/markers"
+    sb.run("root", f"mkdir -p {marker_dir} && chmod 1777 {marker_dir}")
+    script = f"{workdir('alice')}/hardlink.sh"
+    spec = {"id": "hardlink", "agentId": "alice", "scriptPath": script, "args": []}
+    sb.run("alice", f"printf '#!/bin/bash\\ntouch {marker_dir}/hardlink-ran\\n' > {script} && chmod 700 {script}")
+    sb.run("alice", f"cat > {workdir('alice')}/hardlink.json <<'EOF'\n{json.dumps(spec)}\nEOF")
+    rc, _ = sb.run("alice", f"ln {workdir('alice')}/hardlink.json {SHARED}/jobs/pending/hardlink.json")
+    _, links = sb.run("alice", f"stat -c %h {SHARED}/jobs/pending/hardlink.json")
+    refused = wait_for(lambda: any("hardlink.json" in ln and "hard link" in ln for ln in daemon_logs(sb).splitlines()), 75)
+    ran = sb.run("root", f"test -e {marker_dir}/hardlink-ran")[0] == 0
+    return refused and not ran, f"refused: {bool(refused)}, ran: {ran}", rc == 0 and links.strip() == "2", f"plant: rc {rc}, links {links.strip()}"
+
+
+@cell("SCHED-1", "sec.least-privilege", "alice", "write a schedule that runs a job as bob")
+def _(sb):
+    d = f"{SHARED}/schedules"
+    script = f"{workdir('alice')}/sched.sh"
+    sb.run("alice", f"mkdir -p {d}; printf '#!/bin/bash\\ntrue\\n' > {script} && chmod 700 {script}")
+    for label, who in (("spoof-bob", "bob"), ("own-alice", "alice")):
+        spec = {"cron": "0 0 1 1 *", "jobSpec": {"agentId": who, "scriptPath": script, "args": []}}
+        sb.run("alice", f"cat > {d}/{label}.json <<'EOF'\n{json.dumps(spec)}\nEOF")
+    own = wait_for(lambda: mongo_count(sb, "scheduled_messages", {"label": "own-alice"}) > 0, 75)
+    spoof = mongo_count(sb, "scheduled_messages", {"label": "spoof-bob"})
+    as_bob = mongo_count(sb, "scheduled_messages", {"jobSpec.agentId": "bob"})
+    return spoof == 0 and as_bob == 0, f"spoofed schedules stored: {spoof}, as bob: {as_bob}", bool(own), f"alice's own stored: {bool(own)}"
+
+
+def token_job(sb):
+    """Run, once, a job of alice's that records its pid, token and environment, then sleeps 25 s.
+    Returns the facts the TOOL-2, TOOL-3 and ENV-1 cells need."""
+    if getattr(sb, "_token_job", None) is not None:
+        return sb._token_job
+    w = workdir("alice")
+    marker_dir = f"{SHARED}/markers"
+    sb.run("root", f"mkdir -p {marker_dir} && chmod 1777 {marker_dir}")
+    script = f"{w}/tokjob.sh"
+    body = "\n".join([
+        "#!/bin/bash",
+        "umask 077",
+        f"env > {w}/tokjob-env.txt",
+        f'printf %s "$MAGI_TOOL_TOKEN" > {w}/tokjob-token.txt',
+        f"echo $$ > {marker_dir}/tokjob-pid",
+        "sleep 25",
+    ])
+    sb.run("alice", f"cat > {script} <<'EOF'\n{body}\nEOF\nchmod 700 {script}")
+    spec = {"id": "tokjob", "agentId": "alice", "scriptPath": script, "args": []}
+    sb.run("alice", f"cat > {SHARED}/jobs/pending/tokjob.json <<'EOF'\n{json.dumps(spec)}\nEOF")
+    pid = wait_for(lambda: sb.run("root", f"cat {marker_dir}/tokjob-pid 2>/dev/null")[1].strip(), 75)
+    facts = {"pid": pid}
+    if pid:
+        facts["token"] = sb.run("alice", f"cat {w}/tokjob-token.txt")[1].strip()
+        facts["env"] = sb.run("alice", f"cat {w}/tokjob-env.txt")[1]
+        facts["bob_read"] = sb.run("bob", f"tr '\\0' '\\n' < /proc/{pid}/environ")
+        facts["alice_read"] = sb.run("alice", f"tr '\\0' '\\n' < /proc/{pid}/environ")
+        facts["during"] = http(sb, "alice", "POST", "/tools/post-message", port=4001, body={}, bearer=facts["token"])[0]
+        # The job sleeps 25 s; the token must stop working once it has exited.
+        wait_for(lambda: sb.run("root", f"test -d /proc/{pid}")[0] != 0, 40)
+        time.sleep(3)
+        facts["after"] = http(sb, "alice", "POST", "/tools/post-message", port=4001, body={}, bearer=facts["token"])[0]
+    sb._token_job = facts
+    return facts
+
+
+@cell("TOOL-2", "sec.least-privilege", "bob", "steal a running job's Tool API token from alice's process")
+def _(sb):
+    f = token_job(sb)
+    if not f["pid"]:
+        return False, "the job never started", False, "no job"
+    tok = f["token"]
+    _, bob_out = f["bob_read"]
+    arc, alice_out = f["alice_read"]
+    return bool(tok) and tok not in bob_out, f"bob: rc {f['bob_read'][0]}", bool(tok) and tok in alice_out, f"alice: rc {arc}"
+
+
+@cell("TOOL-3", "sec.authenticated", "alice", "use a job's Tool API token after the job has exited")
+def _(sb):
+    f = token_job(sb)
+    if not f["pid"]:
+        return False, "the job never started", False, "no job"
+    # 400 = authenticated, then refused for its empty arguments (nothing is sent).
+    return f["after"] == 401, f"after exit: {f['after']}", f["during"] == 400, f"while running: {f['during']}"
+
+
+SECRET_NAMES = ("MONITOR_TOKEN", "MONGODB_URI", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "SANDBOX_CANARY", "APPS_TOKEN")
+
+
+@cell("ENV-1", "sec.no-secrets-to-agents", "alice", "find a platform secret in a background job's environment")
+def _(sb):
+    f = token_job(sb)
+    if not f["pid"]:
+        return False, "the job never started", False, "no job"
+    env = f["env"]
+    names = {ln.split("=", 1)[0] for ln in env.splitlines() if "=" in ln}
+    leaked = sorted(n for n in SECRET_NAMES if n in names) + (["canary value"] if sb.canary in env else [])
+    return not leaked, f"leaked: {leaked or 'none'}", "MAGI_TOOL_TOKEN" in names, "the job's own token is visible"
+
+
+@cell("ENV-2", "sec.no-secrets-to-agents", "the daemon (a leak in its spawn)", "pass a secret through magi-node, magi-job or magi-app")
+def _(sb):
+    secret_env = " ".join(f"{n}={sb.canary}" for n in SECRET_NAMES)
+    leaks, kept = [], []
+    for wrapper, keep in (("magi-node", None), ("magi-job", "WORKDIR"), ("magi-app", "PORT")):
+        cmd = "-e 'console.log(JSON.stringify(process.env))'" if wrapper == "magi-node" else "/usr/bin/env"
+        extra = f"{keep}=kept-{wrapper}" if keep else ""
+        _, out = sb.run("magi-operator", f"env {secret_env} {extra} sudo -n -u alice /usr/local/bin/{wrapper} {cmd}")
+        if sb.canary in out:
+            leaks.append(wrapper)
+        if keep and f"kept-{wrapper}" in out:
+            kept.append(wrapper)
+    return not leaks, f"leaked through: {leaks or 'none'}", kept == ["magi-job", "magi-app"], f"an allowed variable passes: {kept}"
+
+
+@cell("APP-1", "sec.served-apart", "bob", "reach alice's app on loopback")
+def _(sb):
+    port = 20077
+    sb.run("alice", f"nohup python3 -m http.server {port} --bind 127.0.0.1 >/dev/null 2>&1 &", timeout=10)
+    time.sleep(2)
+    _, uid = sb.run("alice", "id -u")
+    arc, _ = sb.run("magi-operator", f"sudo -n /usr/local/sbin/magi-net allow {port} {uid.strip()}")
+    probe = f"timeout 4 bash -c 'echo > /dev/tcp/127.0.0.1/{port}' 2>/dev/null && echo open || echo closed"
+    bob = sb.run("bob", probe)[1]
+    alice = sb.run("alice", probe)[1]
+    daemon = sb.run("magi-operator", probe)[1]
+    sb.run("magi-operator", f"sudo -n /usr/local/sbin/magi-net revoke {port}")
+    return bob == "closed", f"bob: {bob}", arc == 0 and alice == "open" and daemon == "open", f"allow rc {arc}, alice: {alice}, daemon: {daemon}"
+
+
+@cell("HELPER-1", "sec.least-privilege", "the daemon (a bug or injection in its call)", "open the firewall with arguments magi-net must refuse")
+def _(sb):
+    _, alice = sb.run("alice", "id -u")
+    _, daemon = sb.run("magi-operator", "id -u")
+    _, nobody = sb.run("root", "id -u nobody")
+    a, d, n = alice.strip(), daemon.strip(), nobody.strip()
+    bad = [f"allow 4000 {a}", f"allow 19999 {a}", f"allow 20100 {a}", "allow 20078 0", f"allow 20078 {d}",
+           f"allow 20078 {n}", f"allow '20078;id' {a}", f"allow 20078 '{a} extra'", "init extra", "flush", ""]
+    accepted = []
+    for args in bad:
+        if sb.run("magi-operator", f"sudo -n /usr/local/sbin/magi-net {args}")[0] == 0:
+            accepted.append(args or "(no arguments)")
+    _, rules = sb.run("root", "nft list set inet magi app_access")
+    stray = [p for p in ("4000 .", "19999 .", "20100 .", " . 0") if p in rules]
+    crc, _ = sb.run("magi-operator", f"sudo -n /usr/local/sbin/magi-net allow 20078 {a}")
+    _, after = sb.run("root", "nft list set inet magi app_access")
+    sb.run("magi-operator", "sudo -n /usr/local/sbin/magi-net revoke 20078")
+    return not accepted and not stray, f"accepted: {accepted or 'none'}, stray rules: {stray or 'none'}", crc == 0 and f"20078 . {a}" in after, f"a valid allow: rc {crc}"
+
+
+@cell("HELPER-2", "sec.least-privilege", "the daemon (a bug or injection in its call)", "run a wrapper as root")
+def _(sb):
+    targets = [("root", w) for w in ("magi-node", "magi-job", "magi-app")]
+    ran = [f"{w} as {u}" for u, w in targets if sb.run("magi-operator", f"sudo -n -u {u} /usr/local/bin/{w} /usr/bin/true")[0] == 0]
+    crc, _ = sb.run("magi-operator", "sudo -n -u alice /usr/local/bin/magi-job /usr/bin/true")
+    return not ran, f"ran: {ran or 'none'}", crc == 0, f"as alice: rc {crc}"
 
 
 def write_sarif(path, results):

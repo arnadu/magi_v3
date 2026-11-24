@@ -42,9 +42,11 @@ describe("attack matrix document", () => {
 			if (!sources.has(file))
 				sources.set(file, existsSync(file) ? readFileSync(file, "utf8") : "");
 			const src = sources.get(file) ?? "";
-			const named = c.by.test.endsWith(".py")
-				? src.includes(`"${c.by.name}"`)
-				: src.includes(c.by.name);
+			const named = c.by.name
+				.split(", ")
+				.every((n) =>
+					c.by?.test.endsWith(".py") ? src.includes(`"${n}"`) : src.includes(n),
+				);
 			if (!named)
 				missing.push(
 					`${c.row.method} ${c.row.path} ${c.cls.id} → ${c.by.test} (${c.by.name})`,

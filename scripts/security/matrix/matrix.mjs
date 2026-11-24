@@ -8,7 +8,8 @@
  * Rows: the four HTTP surfaces from docs/api/*.openapi.json (with their authentication); agent
  * tools, request folders, copilot actions and timers from the trace's entry points (a copy is kept
  * in docs/security/entry-points.json, refreshed by --write after `npm run trace`); and two platform
- * rows for what no entry point covers (an agent's OS user, the machine on the network).
+ * rows for what no entry point covers (an agent's OS user, the machine on the network, the
+ * daemon's sudo helpers).
  *
  *   node scripts/security/matrix/matrix.mjs --write   # refresh the copy and docs/security/attack-matrix.md
  *
@@ -121,7 +122,14 @@ export const CLASSES = [
 		invariant: "sec.least-privilege",
 		attack: "one agent's job token used to act as another agent",
 		applies: (r) => r.surface === "tool-api",
-		covered: () => null,
+		covered: () => ({ test: SANDBOX, name: "TOOL-2" }),
+	},
+	{
+		id: "token-after-exit",
+		invariant: "sec.authenticated",
+		attack: "a job's token used after the job has exited",
+		applies: (r) => r.surface === "tool-api",
+		covered: () => ({ test: SANDBOX, name: "TOOL-3" }),
 	},
 	// ── Apps host ──────────────────────────────────────────────────────────────
 	{
@@ -157,7 +165,11 @@ export const CLASSES = [
 		attack: "a request naming another agent as its author",
 		applies: (r) => r.surface === "request-folder",
 		covered: (r) =>
-			r.operation === "job.submit" ? { test: SANDBOX, name: "JOB-1" } : null,
+			r.operation === "job.submit"
+				? { test: SANDBOX, name: "JOB-1" }
+				: r.operation === "schedule.create"
+					? { test: SANDBOX, name: "SCHED-1" }
+					: null,
 	},
 	{
 		id: "symlink-or-hard-link",
@@ -165,7 +177,9 @@ export const CLASSES = [
 		attack: "a request planted as a symlink or a hard link",
 		applies: (r) => r.surface === "request-folder",
 		covered: (r) =>
-			r.operation === "job.submit" ? { test: SANDBOX, name: "JOB-2" } : null,
+			r.operation === "job.submit"
+				? { test: SANDBOX, name: "JOB-2, JOB-3" }
+				: null,
 	},
 	// ── Copilot actions ────────────────────────────────────────────────────────
 	{
@@ -224,7 +238,7 @@ export const CLASSES = [
 		invariant: "sec.no-secrets-to-agents",
 		attack: "find a platform secret in a tool or job subprocess's environment",
 		applies: (r) => r.path === "agent OS user",
-		covered: () => null,
+		covered: () => ({ test: SANDBOX, name: "ENV-1, ENV-2" }),
 	},
 	{
 		id: "reach-agent-server",
@@ -239,7 +253,21 @@ export const CLASSES = [
 		invariant: "sec.served-apart",
 		attack: "one agent reaches another agent's app on loopback",
 		applies: (r) => r.path === "the machine on the network",
-		covered: () => null,
+		covered: () => ({ test: SANDBOX, name: "APP-1" }),
+	},
+	{
+		id: "helper-arguments",
+		invariant: "sec.least-privilege",
+		attack: "the firewall helper given arguments it must refuse",
+		applies: (r) => r.path === "the daemon's sudo helpers",
+		covered: () => ({ test: SANDBOX, name: "HELPER-1" }),
+	},
+	{
+		id: "wrapper-to-root",
+		invariant: "sec.least-privilege",
+		attack: "a sudo wrapper run as root instead of an agent",
+		applies: (r) => r.path === "the daemon's sudo helpers",
+		covered: () => ({ test: SANDBOX, name: "HELPER-2" }),
 	},
 ];
 
@@ -338,6 +366,12 @@ export function buildMatrix(entries) {
 			surface: "platform",
 			method: "",
 			path: "the machine on the network",
+			operation: "",
+		},
+		{
+			surface: "platform",
+			method: "",
+			path: "the daemon's sudo helpers",
 			operation: "",
 		},
 	];

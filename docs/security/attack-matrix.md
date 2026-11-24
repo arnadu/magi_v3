@@ -13,13 +13,13 @@ public, and a cell that fails is in code scanning (maintainers only).
 | Control plane (internet) | 112 | 83 | 25 | 4 |
 | Apps host (internet) | 4 | 0 | 3 | 1 |
 | Monitor server (a mission machine's port 4000) | 43 | 35 | 8 | 0 |
-| Tool API (port 4001, background jobs) | 24 | 1 | 23 | 0 |
+| Tool API (port 4001, background jobs) | 36 | 25 | 11 | 0 |
 | Agent and copilot tools | 78 | 0 | 78 | 0 |
-| Request folders (agents write files the daemon acts on) | 10 | 2 | 8 | 0 |
+| Request folders (agents write files the daemon acts on) | 10 | 3 | 7 | 0 |
 | Copilot actions (proposed, then confirmed by the operator) | 13 | 0 | 13 | 0 |
 | Timers and change streams | 17 | 0 | 17 | 0 |
-| Platform (no entry point) | 8 | 6 | 2 | 0 |
-| **All** | **309** | **127** | **177** | **5** |
+| Platform (no entry point) | 10 | 10 | 0 | 0 |
+| **All** | **323** | **156** | **162** | **5** |
 
 ## Attack classes
 
@@ -34,6 +34,7 @@ public, and a cell that fails is in code scanning (maintainers only).
 | `apps-token` | `sec.authenticated` | the app hop without the apps token, or with another mission's |
 | `no-job-token` | `sec.authenticated` | the tool without a job token |
 | `other-agent-token` | `sec.least-privilege` | one agent's job token used to act as another agent |
+| `token-after-exit` | `sec.authenticated` | a job's token used after the job has exited |
 | `forged-or-replayed-ticket` | `sec.authenticated` | a forged, expired or reused ticket, or no app session |
 | `path-escape` | `sec.contained-paths` | a path or symlink that leaves the agent's allowed folders |
 | `other-tenant` | `sec.tenant-scoped` | the control-plane copilot names another user's mission |
@@ -49,6 +50,8 @@ public, and a cell that fails is in code scanning (maintainers only).
 | `secrets-in-subprocesses` | `sec.no-secrets-to-agents` | find a platform secret in a tool or job subprocess's environment |
 | `reach-agent-server` | `sec.served-apart` | another machine reaches a server an agent opened on all interfaces |
 | `reach-teammate-app` | `sec.served-apart` | one agent reaches another agent's app on loopback |
+| `helper-arguments` | `sec.least-privilege` | the firewall helper given arguments it must refuse |
+| `wrapper-to-root` | `sec.least-privilege` | a sudo wrapper run as root instead of an agent |
 
 ## Control plane (internet)
 
@@ -229,29 +232,41 @@ public, and a cell that fails is in code scanning (maintainers only).
 | Entry point | Operation | Attack class | Status | Test |
 |---|---|---|---|---|
 | POST `/tools/data-fmp` | `data.query` | `no-job-token` | open |  |
-| POST `/tools/data-fmp` | `data.query` | `other-agent-token` | open |  |
+| POST `/tools/data-fmp` | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/data-fmp` | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/data-fred` | `data.query` | `no-job-token` | open |  |
-| POST `/tools/data-fred` | `data.query` | `other-agent-token` | open |  |
+| POST `/tools/data-fred` | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/data-fred` | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/data-newsapi` | `data.query` | `no-job-token` | open |  |
-| POST `/tools/data-newsapi` | `data.query` | `other-agent-token` | open |  |
+| POST `/tools/data-newsapi` | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/data-newsapi` | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/fetch-url` | `web.fetch` | `no-job-token` | open |  |
-| POST `/tools/fetch-url` | `web.fetch` | `other-agent-token` | open |  |
+| POST `/tools/fetch-url` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/fetch-url` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/fetchurl` | `web.fetch` | `no-job-token` | open |  |
-| POST `/tools/fetchurl` | `web.fetch` | `other-agent-token` | open |  |
+| POST `/tools/fetchurl` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/fetchurl` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/inspect-image` | `web.fetch` | `no-job-token` | open |  |
-| POST `/tools/inspect-image` | `web.fetch` | `other-agent-token` | open |  |
+| POST `/tools/inspect-image` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/inspect-image` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/inspectimage` | `web.fetch` | `no-job-token` | open |  |
-| POST `/tools/inspectimage` | `web.fetch` | `other-agent-token` | open |  |
+| POST `/tools/inspectimage` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/inspectimage` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/post-message` | `message.send` | `no-job-token` | covered | `sandbox.py` (TOOL-1) |
-| POST `/tools/post-message` | `message.send` | `other-agent-token` | open |  |
+| POST `/tools/post-message` | `message.send` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/post-message` | `message.send` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/postmessage` | `message.send` | `no-job-token` | open |  |
-| POST `/tools/postmessage` | `message.send` | `other-agent-token` | open |  |
+| POST `/tools/postmessage` | `message.send` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/postmessage` | `message.send` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/research` | `web.research` | `no-job-token` | open |  |
-| POST `/tools/research` | `web.research` | `other-agent-token` | open |  |
+| POST `/tools/research` | `web.research` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/research` | `web.research` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/search-web` | `web.search` | `no-job-token` | open |  |
-| POST `/tools/search-web` | `web.search` | `other-agent-token` | open |  |
+| POST `/tools/search-web` | `web.search` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/search-web` | `web.search` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/searchweb` | `web.search` | `no-job-token` | open |  |
-| POST `/tools/searchweb` | `web.search` | `other-agent-token` | open |  |
+| POST `/tools/searchweb` | `web.search` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/searchweb` | `web.search` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 
 ## Agent and copilot tools
 
@@ -345,8 +360,8 @@ public, and a cell that fails is in code scanning (maintainers only).
 | `apps/requests/` | `app.control` | `spoofed-author` | open |  |
 | `apps/requests/` | `app.control` | `symlink-or-hard-link` | open |  |
 | `jobs/pending/` | `job.submit` | `spoofed-author` | covered | `sandbox.py` (JOB-1) |
-| `jobs/pending/` | `job.submit` | `symlink-or-hard-link` | covered | `sandbox.py` (JOB-2) |
-| `schedules/` | `schedule.create` | `spoofed-author` | open |  |
+| `jobs/pending/` | `job.submit` | `symlink-or-hard-link` | covered | `sandbox.py` (JOB-2, JOB-3) |
+| `schedules/` | `schedule.create` | `spoofed-author` | covered | `sandbox.py` (SCHED-1) |
 | `schedules/` | `schedule.create` | `symlink-or-hard-link` | open |  |
 | `schedules/` | `schedule.cancel` | `spoofed-author` | open |  |
 | `schedules/` | `schedule.cancel` | `symlink-or-hard-link` | open |  |
@@ -400,7 +415,9 @@ public, and a cell that fails is in code scanning (maintainers only).
 | `agent OS user` |  | `daemon-secrets` | covered | `sandbox.py` (OS-3) |
 | `agent OS user` |  | `daemon-state` | covered | `sandbox.py` (OS-4) |
 | `agent OS user` |  | `sudo` | covered | `sandbox.py` (SUDO-1) |
-| `agent OS user` |  | `secrets-in-subprocesses` | open |  |
+| `agent OS user` |  | `secrets-in-subprocesses` | covered | `sandbox.py` (ENV-1, ENV-2) |
 | `the machine on the network` |  | `reach-agent-server` | covered | `sandbox.py` (NET-1) |
-| `the machine on the network` |  | `reach-teammate-app` | open |  |
+| `the machine on the network` |  | `reach-teammate-app` | covered | `sandbox.py` (APP-1) |
+| `the daemon's sudo helpers` |  | `helper-arguments` | covered | `sandbox.py` (HELPER-1) |
+| `the daemon's sudo helpers` |  | `wrapper-to-root` | covered | `sandbox.py` (HELPER-2) |
 
