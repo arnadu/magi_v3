@@ -146,7 +146,8 @@ def _(sb):
 
 @cell("OS-3", "sec.no-secrets-to-agents", "alice", "read the daemon's environment (its secrets)")
 def _(sb):
-    rc, pid = sb.run("root", "pgrep -o -f daemon.js")
+    # The image has no procps: find the daemon by its command line.
+    rc, pid = sb.run("root", "for p in /proc/[0-9]*; do tr '\\0' ' ' < $p/cmdline 2>/dev/null | grep -q 'dist/daemon.js' && echo ${p#/proc/}; done | sort -n | head -1")
     rc1, out = sb.run("alice", f"tr '\\0' '\\n' < /proc/{pid.strip()}/environ")
     crc, cout = sb.run("magi-operator", f"tr '\\0' '\\n' < /proc/{pid.strip()}/environ")
     return sb.canary not in out, f"alice: rc {rc1}", sb.canary in cout, f"daemon user: rc {crc}"
@@ -174,7 +175,8 @@ def job_cell(sb, author, claims, cid):
     sb.run(author, f"printf '#!/bin/bash\\ntouch {marker_dir}/{cid}-$(id -un)\\n' > {script} && chmod 700 {script}")
     spec = {"id": cid, "agentId": claims, "scriptPath": script, "args": []}
     sb.run(author, f"cat > {SHARED}/jobs/pending/{cid}.json <<'EOF'\n{json.dumps(spec)}\nEOF")
-    deadline = time.time() + 45
+    # The job runner polls every 60 s.
+    deadline = time.time() + 75
     while time.time() < deadline:
         rc, out = sb.run("root", f"ls {marker_dir} | grep '^{cid}-' || true")
         if out.strip():
@@ -193,7 +195,7 @@ def _(sb):
 @cell("JOB-2", "sec.contained-paths", "alice", "plant a job request as a symlink to bob's file")
 def _(sb):
     rc, _ = sb.run("alice", f"ln -sf {workdir('bob')}/canary.txt {SHARED}/jobs/pending/link-bob.json")
-    deadline = time.time() + 30
+    deadline = time.time() + 75  # the job runner polls every 60 s
     refused = False
     while time.time() < deadline and not refused:
         logs = sb.docker("logs", sb.mission, check=False)
