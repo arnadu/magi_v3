@@ -40,6 +40,12 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 
 ## Fixed Findings
 
+### 2026-11-24 found while diagnosing skipped scheduled jobs
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-083 | MEDIUM | Fly app `magi-control-test-hello-world` (a test deployment of the control plane, 2026-05-07) | **A forgotten control-plane deployment held dev's database URI and admin key, ran May's code on a public address, and worked dev's scheduled messages.** It shared `MONGODB_URI` and `CONTROL_API_KEY` with `magi-control-dev` (same secret digests) and kept a machine running (`min_machines_running = 1`). Its scheduler claimed every dev mission's due entries, could not wake machines it could not see ("machine not found"), and counted failed deliveries: job schedules were left `delivered` and re-armed past their slot (`trace-scan`, `report-gate`, 2026-11-23), and at least one daily schedule ended `failed` (ai-news-digest, 2026-11-13). It had no Firebase configuration, so only the admin key could sign in; no sign of compromise. Found through the daemon's new re-arm reason line ("was delivered" on a cron schedule). | App destroyed by the operator, 2026-11-24; credentials not rotated (no indication of compromise; the key was held only by our own app). Prevention: the deployed-configuration check (security assurance plan, step 7) lists every app in the organisation holding a platform secret and flags one that is not a known component. |
+
 ### 2026-11-22 interactive apps, sprint-end security review
 
 | ID | Severity | Location | Description | Fix applied |
