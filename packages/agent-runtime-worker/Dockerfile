@@ -37,6 +37,11 @@ RUN npm prune --omit=dev --ignore-scripts
 # Runtime stage.
 FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 
+# npm 11 in place of the base image's npm 10.9.x, whose bundled packages carried every
+# remaining image-scan finding (2026-11-23: brace-expansion, picomatch, sigstore, pacote,
+# ip-address; npm 11.21.2 has none). Agents and MAGI DEV's advisory triage run npm.
+RUN npm install -g npm@11.21.2 && npm cache clean --force
+
 # System dependencies.
 # curl, zstd and ca-certificates: MAGI DEV's trace job installs the pinned CodeQL bundle
 # (a .tar.zst, checksum verified) with the repository's scripts/trace/install-codeql.sh.

@@ -47,7 +47,7 @@ jobs:
       # and secrets baked into a layer. Report-only until a baseline has been triaged: a new
       # Debian CVE must not block every deploy on day one. Results go to code scanning, never to
       # an artifact (the repository is public).
-      - name: Scan image (trivy, report-only)
+      - name: Scan image (trivy, high and critical, report)
         continue-on-error: true
         env:
           IMAGE: registry.fly.io/magi-missions-dev:${{ github.sha }}
@@ -65,6 +65,18 @@ jobs:
           crit = sum(1 for x in v if x["Severity"] == "CRITICAL")
           print(f"### Mission image scan\n\n{len(v)} fixable high/critical vulnerabilities ({crit} critical), {len(s)} secrets in layers. Details: code scanning (maintainers).")
           PY
+
+      # The gate: a critical vulnerability with a fix available, or a secret in a layer, stops
+      # the image before it is pushed. Accepted findings are in .trivyignore.yaml, with expiries.
+      - name: Image gate (trivy, fixable critical or a secret)
+        env:
+          IMAGE: registry.fly.io/magi-missions-dev:${{ github.sha }}
+        run: |
+          TRIVY="$(bash scripts/security/install-trivy.sh)"
+          "$TRIVY" image --quiet --scanners vuln --severity CRITICAL --ignore-unfixed \
+            --ignorefile .trivyignore.yaml --exit-code 1 "$IMAGE"
+          # Secrets at every severity: many key types are rated high, not critical.
+          "$TRIVY" image --quiet --scanners secret --ignorefile .trivyignore.yaml --exit-code 1 "$IMAGE"
 
       - name: Scan results to code scanning (maintainers only)
         if: hashFiles('trivy-image.sarif') != ''

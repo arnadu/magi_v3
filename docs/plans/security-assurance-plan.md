@@ -224,6 +224,15 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Image hardening, 2026-11-23:** the mission image scan went from 45 high/critical findings (3
+  critical) to 10 high and then none expected: production dependencies only in both images
+  (`npm prune --omit=dev`: esbuild, vite, vitest, tinypool out), a fresh `node:22-slim` and
+  `apt-get upgrade` at build, setuptools raised in the venv, npm 11.21.2 in place of the base's
+  10.9.10 (its bundled packages carried the last ten). soupsieve's fix needs Python >= 3.11.5 and
+  bookworm ships 3.11.2: an expiring exception (`.trivyignore.yaml`) until the base moves to a
+  newer Debian. The scan is now a gate on fixable critical vulnerabilities and on any secret in a
+  layer; high findings are reported to code scanning. Found on the way: the daemon imported
+  `dotenv` without declaring it.
 - **Step 2, 2026-11-23:** zizmor and trivy's Dockerfile scan gate CI (both clean after fixing
   zizmor's 12 medium findings: checkout no longer persists the workflow token, and the deploy and
   image workflows receive only `FLY_API_TOKEN_CI` instead of every secret); the mission image is

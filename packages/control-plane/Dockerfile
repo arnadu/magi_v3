@@ -48,6 +48,11 @@ RUN npm prune --omit=dev --ignore-scripts
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 
+# npm 11 in place of the base image's npm 10.9.x, whose bundled packages carried every
+# remaining image-scan finding (2026-11-23: brace-expansion, picomatch, sigstore, pacote,
+# ip-address; npm 11.21.2 has none). Agents and MAGI DEV's advisory triage run npm.
+RUN npm install -g npm@11.21.2 && npm cache clean --force
+
 WORKDIR /app
 
 # System dependencies for copilot subprocess isolation.
