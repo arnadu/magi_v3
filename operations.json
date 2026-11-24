@@ -4588,7 +4588,7 @@
     "kind": "file-request",
     "actor": "AG",
     "name": "files in dirs.requests",
-    "where": "packages/agent-runtime-worker/src/app-requests.ts:188",
+    "where": "packages/agent-runtime-worker/src/app-requests.ts:189",
     "reachesHome": true,
     "components": [
      "config",
@@ -4607,7 +4607,8 @@
      "on",
      "resolve",
      "revoke",
-     "set"
+     "set",
+     "workdirOf"
     ],
     "httpHops": []
    }
@@ -4647,7 +4648,8 @@
      "on",
      "resolve",
      "revoke",
-     "set"
+     "set",
+     "workdirOf"
     ],
     "httpHops": []
    },
@@ -4694,7 +4696,7 @@
     "kind": "file-request",
     "actor": "AG",
     "name": "files in dirs.requests",
-    "where": "packages/agent-runtime-worker/src/app-requests.ts:188",
+    "where": "packages/agent-runtime-worker/src/app-requests.ts:189",
     "reachesHome": true,
     "components": [
      "config",
@@ -4713,7 +4715,8 @@
      "on",
      "resolve",
      "revoke",
-     "set"
+     "set",
+     "workdirOf"
     ],
     "httpHops": []
    },
