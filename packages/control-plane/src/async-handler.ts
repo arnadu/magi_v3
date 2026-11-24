@@ -34,9 +34,18 @@ export type AsyncRoutes = Record<
  * It does nothing at run time; the entry-point scan reads the tag. Routes
  * registered through `asyncRoutes` pass the tag as an argument instead.
  */
+/**
+ * The operation a marker middleware names (read by api-surface.ts, which lists the API).
+ * A registered symbol, so the apps host's own marker carries the same key without importing this.
+ */
+export const OPERATION = Symbol.for("magi.operation");
+/** Paths given to `asyncRoutes(...).use(path, ...)`, by router: Express 5 keeps no mount path. */
+export const USE_PATHS = new WeakMap<object, string[]>();
+
 export function operation(tag: EntryTag): RequestHandler {
-	void tag;
-	return (_req, _res, next) => next();
+	const marker: RequestHandler = (_req, _res, next) => next();
+	Object.defineProperty(marker, OPERATION, { value: tag });
+	return marker;
 }
 
 /**
@@ -59,15 +68,19 @@ export function asyncRoutes(
 		};
 	const route =
 		(verb: Verb) =>
-		(path: string, _operation: EntryTag, ...handlers: RequestHandler[]) =>
-			wrap(verb)(path, ...handlers);
+		(path: string, tag: EntryTag, ...handlers: RequestHandler[]) =>
+			wrap(verb)(path, operation(tag), ...handlers);
+	const use = (path: string, ...handlers: RequestHandler[]): void => {
+		USE_PATHS.set(router, [...(USE_PATHS.get(router) ?? []), path]);
+		wrap("use")(path, ...handlers);
+	};
 	return {
 		get: route("get"),
 		post: route("post"),
 		put: route("put"),
 		patch: route("patch"),
 		delete: route("delete"),
-		use: wrap("use"),
+		use,
 	};
 }
 

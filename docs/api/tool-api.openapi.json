@@ -1,0 +1,343 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "MAGI Tool API",
+		"version": "generated",
+		"description": "A mission machine's port 4001 on loopback: background jobs call the platform's tools as the agent that started them.\n\nGenerated from the code by packages/control-plane/tests/api-surface.unit.test.ts (npm run docs:api); do not edit. Request bodies are declared as objects until the route's Zod schema is attached.\n\nAuthentication:\n- `job`: the job's MAGI_TOOL_TOKEN, issued for one job and revoked when it ends"
+	},
+	"paths": {
+		"/tools/data-fmp": {
+			"post": {
+				"operationId": "postToolsDataFmp",
+				"x-magi-operation": "data.query",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/data-fred": {
+			"post": {
+				"operationId": "postToolsDataFred",
+				"x-magi-operation": "data.query",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/data-newsapi": {
+			"post": {
+				"operationId": "postToolsDataNewsapi",
+				"x-magi-operation": "data.query",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/fetch-url": {
+			"post": {
+				"operationId": "postToolsFetchUrl",
+				"x-magi-operation": "web.fetch",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/fetchurl": {
+			"post": {
+				"operationId": "postToolsFetchurl",
+				"x-magi-operation": "web.fetch",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/inspect-image": {
+			"post": {
+				"operationId": "postToolsInspectImage",
+				"x-magi-operation": "web.fetch",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/inspectimage": {
+			"post": {
+				"operationId": "postToolsInspectimage",
+				"x-magi-operation": "web.fetch",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/post-message": {
+			"post": {
+				"operationId": "postToolsPostMessage",
+				"x-magi-operation": "message.send",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/postmessage": {
+			"post": {
+				"operationId": "postToolsPostmessage",
+				"x-magi-operation": "message.send",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/research": {
+			"post": {
+				"operationId": "postToolsResearch",
+				"x-magi-operation": "web.research",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/search-web": {
+			"post": {
+				"operationId": "postToolsSearchWeb",
+				"x-magi-operation": "web.search",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/tools/searchweb": {
+			"post": {
+				"operationId": "postToolsSearchweb",
+				"x-magi-operation": "web.search",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"securitySchemes": {
+			"jobToken": {
+				"type": "http",
+				"scheme": "bearer",
+				"description": "MAGI_TOOL_TOKEN"
+			}
+		}
+	}
+}

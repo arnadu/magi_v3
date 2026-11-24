@@ -1,0 +1,373 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "MAGI apps host",
+		"version": "generated",
+		"description": "Serves the operator's interactive apps on a site of their own (magi-apps-<suffix>.fly.dev, ports 20000-20099; ADR-0037).\n\nGenerated from the code by packages/control-plane/tests/api-surface.unit.test.ts (npm run docs:api); do not edit. Request bodies are declared as objects until the route's Zod schema is attached.\n\nAuthentication:\n- `public`: no API credential: a signed ticket in the path, or the app's session cookie, checked by the route"
+	},
+	"paths": {
+		"/a/{capability}": {
+			"get": {
+				"operationId": "getACapability",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postACapability",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"put": {
+				"operationId": "putACapability",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"patch": {
+				"operationId": "patchACapability",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteACapability",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/a/{capability}/{rest}": {
+			"get": {
+				"operationId": "getACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"put": {
+				"operationId": "putACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"patch": {
+				"operationId": "patchACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"x-magi-any-method": true,
+				"security": [],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/healthz": {
+			"get": {
+				"operationId": "getHealthz",
+				"x-magi-operation": "infrastructure",
+				"x-magi-auth": "public",
+				"security": [],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/t/{ticket}": {
+			"get": {
+				"operationId": "getTTicket",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "public",
+				"security": [],
+				"parameters": [
+					{
+						"name": "ticket",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"securitySchemes": {}
+	}
+}

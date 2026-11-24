@@ -1,5 +1,5 @@
 import { entryTrigger } from "@magi/agent-config";
-import { createAppOpenRoutes } from "./app-open-routes.js";
+import { createApp } from "./app.js";
 import { ensureSlotIndex } from "./apps-host/slots.js";
 /**
  * Control plane entry point.
@@ -22,12 +22,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { exitOnFatal } from "@magi/agent-runtime-worker";
 import { config as dotenvConfig } from "dotenv";
-import express from "express";
-import rateLimit from "express-rate-limit";
 import type { Db, MongoClient } from "mongodb";
-import { createAuthMiddleware } from "./auth.js";
-import { createCatalogRouter } from "./catalog-routes.js";
-import { createCopilotRouter } from "./copilot-router.js";
 import {
 	type CopilotRuntime,
 	createCopilotRuntime,
@@ -35,24 +30,17 @@ import {
 import { startCopilotWaker } from "./copilot-waker.js";
 import { initFirebase } from "./firebase.js";
 import { ensureMissionIdIndex } from "./mission-claims.js";
-import { createMissionCopilotRouter } from "./mission-copilot-router.js";
-import { createMissionResourceRoutes } from "./mission-resource-routes.js";
-import { createMissionsRouter } from "./missions.js";
 import { connectMongo } from "./mongo.js";
 import { MongoPendingActionsStore } from "./pending-actions.js";
-import { createPlatformRoutes } from "./platform-routes.js";
-import { errorMiddleware, installProcessGuards } from "./process-guards.js";
-import { createProxyRouter } from "./proxy.js";
-import { mountPublicSurface } from "./public-routes.js";
+import { installProcessGuards } from "./process-guards.js";
 import { startResourceMonitor } from "./resource-monitor.js";
 import { startScheduler } from "./scheduler.js";
-import { createSessionRouter } from "./session-routes.js";
 import {
 	backfillMissionCaps,
 	backfillMissionCeilings,
 	platformAdminUserIds,
 } from "./spend-policy.js";
-import { createTemplatesRouter, loadTemplates } from "./templates.js";
+import { loadTemplates } from "./templates.js";
 
 const REPO_ROOT = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -95,108 +83,6 @@ function requireEnv(): string {
 		process.exit(1);
 	}
 	return mongoUri;
-}
-
-/**
- * Mission-copilot GitHub proxy (ADR-0016) — machine-to-machine auth via
- * per-mission MONITOR_TOKEN, not Firebase/CONTROL_API_KEY, so it must be
- * mounted before requireAuth. Rate-limited per-IP: each mission runs on its
- * own stable WireGuard address, so this naturally isolates the limit per
- * mission — one mission's copilot going haywire can't exhaust the quota for
- * every other mission. That's a property of the *default* per-IP keying;
- * re-check this comment if the keying is ever changed. A mission copilot's
- * GitHub-issue request becomes a pending action in the mission owner's
- * cockpit (github-issues.ts).
- */
-function mountMissionCopilotProxy(
-	app: express.Express,
-	db: Db,
-	pendingActions: MongoPendingActionsStore,
-	copilotRuntime: CopilotRuntime,
-): void {
-	app.use(
-		"/api/mission-copilot",
-		express.json({ limit: "1mb" }),
-		rateLimit({
-			windowMs: 60_000,
-			max: 20,
-			standardHeaders: true,
-			legacyHeaders: false,
-		}),
-		createMissionCopilotRouter(db, {
-			pending: pendingActions,
-			notify: (userId, type, data) =>
-				copilotRuntime.eventBus.push(userId, type, data),
-		}),
-	);
-}
-
-/** Everything behind requireAuth, in mount order. */
-function mountAuthenticatedApi(
-	app: express.Express,
-	db: Db,
-	pendingActions: MongoPendingActionsStore,
-	copilotRuntime: CopilotRuntime,
-): void {
-	app.use(createAuthMiddleware(db));
-
-	// API responses must never be cached. Express sets an ETag but no
-	// Cache-Control, so browsers apply heuristic caching and a normal reload can
-	// serve a stale template/config/mission (the operator should not need a
-	// force-reload to see a just-saved edit).
-	app.use("/api", (_req, res, next) => {
-		res.setHeader("Cache-Control", "no-store");
-		next();
-	});
-
-	// Session cookie issue/inspect/clear — the bearer presented to /session has
-	// already passed requireAuth above.
-	app.use("/api/auth", createSessionRouter());
-
-	// Skill and tool names the cockpit's config editors may toggle.
-	app.use("/api/catalog", createCatalogRouter(REPO_ROOT));
-
-	// Mission templates — list available team configs.
-	// 4 MB limit: template payloads include teamFiles (skills, scripts) which can exceed 100 KB.
-	app.use(
-		"/api/templates",
-		express.json({ limit: "4mb" }),
-		createTemplatesRouter(),
-	);
-
-	// Copilot chat API + SSE (per-user daemon started lazily on first message).
-	app.use(
-		"/api/copilot",
-		express.json({ limit: "4mb" }),
-		rateLimit({
-			windowMs: 60_000,
-			max: 30,
-			standardHeaders: true,
-			legacyHeaders: false,
-		}),
-		createCopilotRouter(db, pendingActions, copilotRuntime),
-	);
-
-	// Mission CRUD + lifecycle.
-	// 4 MB limit: mission creation and config-edit endpoints accept teamFiles (skills, scripts).
-	// express.json() is scoped here — proxy routes below must NOT consume the
-	// request body or http-proxy-middleware cannot forward it to the daemon.
-	app.use(
-		"/api/missions",
-		express.json({ limit: "4mb" }),
-		createMissionsRouter(db),
-	);
-	app.use("/api/missions", createMissionResourceRoutes(db));
-	// Interactive apps (ADR-0037): the Open button and the apps host's "open it again".
-	const appOpen = createAppOpenRoutes(db);
-	app.use("/api/missions", appOpen.missionsRouter);
-	app.use("/api/apps", appOpen.appsRouter);
-
-	// Per-user LLM usage summary and the model-picker catalog.
-	app.use(createPlatformRoutes(db));
-
-	// Reverse proxy to execution plane machines.
-	app.use(createProxyRouter(db));
 }
 
 /**
@@ -281,15 +167,6 @@ async function main(): Promise<void> {
 	// (ADR-0021) — no database involved.
 	loadTemplates(REPO_ROOT);
 
-	const app = express();
-
-	// Fly.io terminates TLS and sets X-Forwarded-For. Trust one proxy hop so
-	// express-rate-limit can correctly identify client IPs.
-	app.set("trust proxy", 1);
-
-	// Serve static UI without authentication — the login page is public.
-	const publicDir = mountPublicSurface(app);
-
 	// Shared by the control-plane copilot and the mission-copilot proxy.
 	const pendingActions = new MongoPendingActionsStore(db);
 	await pendingActions.ensureIndexes();
@@ -299,19 +176,12 @@ async function main(): Promise<void> {
 	await backfillMissionCeilings(db);
 	const copilotRuntime = createCopilotRuntime(db, REPO_ROOT, pendingActions);
 
-	mountMissionCopilotProxy(app, db, pendingActions, copilotRuntime);
-	mountAuthenticatedApi(app, db, pendingActions, copilotRuntime);
-
-	// Fallback: serve index.html for unknown paths (SPA behaviour).
-	// Use regex — bare "*" is rejected by path-to-regexp v8 (Express 4.21+).
-	app.get(/.*/, (_req, res) => {
-		res.sendFile(join(publicDir, "index.html"));
+	const app = createApp({
+		db,
+		pendingActions,
+		copilotRuntime,
+		repoRoot: REPO_ROOT,
 	});
-
-	// Terminal error handler — after every route, so a `next(err)` from
-	// asyncHandler (or a synchronous throw) becomes a JSON 500 instead of a
-	// hung request.
-	app.use(errorMiddleware());
 
 	const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 	const server = app.listen(port, () => {

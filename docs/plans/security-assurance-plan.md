@@ -224,6 +224,16 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 2b, 2026-11-24:** `docs/api/` holds four OpenAPI files generated from the code as built:
+  the control plane (61 routes, read from `createApp` through `mount()` and the operation markers),
+  the apps host (4), the monitor server (its route table; regex routes read as path templates) and
+  the Tool API (its tool names). A test regenerates and compares them (`npm run docs:api`), and
+  enforces the contract on every route: it names an operation the catalog defines, and is public
+  only when listed with a reason; the reader and the contract are proven on a planted app. The
+  app's assembly moved from `index.ts` to `createApp(deps)`, which the attack tests (step 3) will
+  build the same way. Not yet: request bodies from the Zod schemas (declared as objects for now),
+  and the tenant-scoping claim per route, which the matrix's cross-tenant cells will test rather
+  than declare.
 - **Image hardening, 2026-11-23:** the mission image scan went from 45 high/critical findings (3
   critical) to 10 high and then none expected: production dependencies only in both images
   (`npm prune --omit=dev`: esbuild, vite, vitest, tinypool out), a fresh `node:22-slim` and

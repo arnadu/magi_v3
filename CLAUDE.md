@@ -33,6 +33,7 @@ npm run test:integration  # integration tests — requires ANTHROPIC_API_KEY and
 npm run lint              # Biome check (lint + format); npm run lint:fix to auto-fix
 npm run verify            # what pre-push and CI run: build, lint, tripwires, structure, typecheck, coverage
 npm run trace             # scan the code against the baseline catalog; reports in analysis/ (ADR-0036)
+npm run docs:api          # regenerate docs/api/*.openapi.json after a route change (a test fails until you do)
 
 bash scripts/bootstrap.sh # full initial cloud setup; see docs/deployment.md
 ```

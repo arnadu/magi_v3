@@ -46,8 +46,11 @@ const PROXY_TIMEOUT_MS = 10 * 60_000;
  * plane's `operation()` in async-handler.ts, which this layer does not import).
  */
 function operation(tag: EntryTag): express.RequestHandler {
-	void tag;
-	return (_req, _res, next) => next();
+	const marker: express.RequestHandler = (_req, _res, next) => next();
+	// The same registered key as the control plane's marker (async-handler.ts), so the API
+	// surface reads both without this layer importing that one.
+	Object.defineProperty(marker, Symbol.for("magi.operation"), { value: tag });
+	return marker;
 }
 
 export interface AppsHostConfig {

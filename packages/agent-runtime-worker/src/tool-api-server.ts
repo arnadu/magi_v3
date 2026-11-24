@@ -357,6 +357,13 @@ export class ToolApiServer {
 		},
 	];
 
+	/** The names a background job may call (POST /tools/<name>), with their operations. */
+	toolNames(): ReadonlyArray<{ name: string; operation: string }> {
+		return this.entries.flatMap((e) =>
+			e.names.map((name) => ({ name, operation: e.operation })),
+		);
+	}
+
 	private entryFor(name: string): ToolApiEntry | undefined {
 		const normalised = name.toLowerCase();
 		return this.entries.find((e) => e.names.includes(normalised));

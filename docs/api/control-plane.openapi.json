@@ -1,0 +1,1891 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "MAGI control plane",
+		"version": "generated",
+		"description": "The cockpit's API and the mission-copilot proxy (Express, magi-control-<suffix>.fly.dev).\n\nGenerated from the code by packages/control-plane/tests/api-surface.unit.test.ts (npm run docs:api); do not edit. Request bodies are declared as objects until the route's Zod schema is attached.\n\nAuthentication:\n- `public`: no credential (listed, with the reason, in the contract test)\n- `operator`: a signed-in operator (Firebase ID token or session cookie) or the admin key; every mission route is then scoped to the operator's own missions\n- `monitor-token`: a mission machine's per-mission monitor token (the mission copilot's calls)"
+	},
+	"paths": {
+		"/api/apps/reopen": {
+			"post": {
+				"operationId": "postApiAppsReopen",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/auth/logout": {
+			"post": {
+				"operationId": "postApiAuthLogout",
+				"x-magi-operation": "session.sign-out",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/auth/me": {
+			"get": {
+				"operationId": "getApiAuthMe",
+				"x-magi-operation": "session.sign-in",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/auth/session": {
+			"post": {
+				"operationId": "postApiAuthSession",
+				"x-magi-operation": "session.sign-in",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/catalog": {
+			"get": {
+				"operationId": "getApiCatalog",
+				"x-magi-operation": "platform.offerings",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/confirm": {
+			"post": {
+				"operationId": "postApiCopilotConfirm",
+				"x-magi-operation": "copilot.confirm",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/dismiss": {
+			"post": {
+				"operationId": "postApiCopilotDismiss",
+				"x-magi-operation": "copilot.dismiss",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/events": {
+			"get": {
+				"operationId": "getApiCopilotEvents",
+				"x-magi-operation": "copilot.ask",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/files": {
+			"get": {
+				"operationId": "getApiCopilotFiles",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/history": {
+			"get": {
+				"operationId": "getApiCopilotHistory",
+				"x-magi-operation": "copilot.ask",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/limits": {
+			"get": {
+				"operationId": "getApiCopilotLimits",
+				"x-magi-operation": "mission.change-config",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"patch": {
+				"operationId": "patchApiCopilotLimits",
+				"x-magi-operation": "mission.change-config",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/llm-call": {
+			"get": {
+				"operationId": "getApiCopilotLlmCall",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/llm-calls": {
+			"get": {
+				"operationId": "getApiCopilotLlmCalls",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/message": {
+			"post": {
+				"operationId": "postApiCopilotMessage",
+				"x-magi-operation": "copilot.ask",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/pending": {
+			"get": {
+				"operationId": "getApiCopilotPending",
+				"x-magi-operation": "copilot.confirm",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/settings": {
+			"get": {
+				"operationId": "getApiCopilotSettings",
+				"x-magi-operation": "mission.change-config",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postApiCopilotSettings",
+				"x-magi-operation": "mission.change-config",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/transcript": {
+			"get": {
+				"operationId": "getApiCopilotTranscript",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/turns": {
+			"get": {
+				"operationId": "getApiCopilotTurns",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/copilot/usage": {
+			"get": {
+				"operationId": "getApiCopilotUsage",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/csp-report": {
+			"post": {
+				"operationId": "postApiCspReport",
+				"x-magi-operation": "infrastructure",
+				"x-magi-auth": "public",
+				"security": [],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/mission-copilot/github/issue": {
+			"post": {
+				"operationId": "postApiMissionCopilotGithubIssue",
+				"x-magi-operation": "issue.track",
+				"x-magi-auth": "monitor-token",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/mission-copilot/github/issues": {
+			"get": {
+				"operationId": "getApiMissionCopilotGithubIssues",
+				"x-magi-operation": "issue.track",
+				"x-magi-auth": "monitor-token",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/mission-copilot/resources/revert": {
+			"post": {
+				"operationId": "postApiMissionCopilotResourcesRevert",
+				"x-magi-operation": "machine.upgrade",
+				"x-magi-auth": "monitor-token",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/mission-copilot/resources/upgrade": {
+			"post": {
+				"operationId": "postApiMissionCopilotResourcesUpgrade",
+				"x-magi-operation": "machine.upgrade",
+				"x-magi-auth": "monitor-token",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions": {
+			"get": {
+				"operationId": "getApiMissions",
+				"x-magi-operation": "mission.status",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postApiMissions",
+				"x-magi-operation": "mission.launch",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}": {
+			"delete": {
+				"operationId": "deleteApiMissionsId",
+				"x-magi-operation": "retired",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"get": {
+				"operationId": "getApiMissionsId",
+				"x-magi-operation": "mission.status",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/agents": {
+			"get": {
+				"operationId": "getApiMissionsIdAgents",
+				"x-magi-operation": "mission.status",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/apps/{name}/open": {
+			"post": {
+				"operationId": "postApiMissionsIdAppsNameOpen",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "name",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/config": {
+			"get": {
+				"operationId": "getApiMissionsIdConfig",
+				"x-magi-operation": "mission.read-config",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"put": {
+				"operationId": "putApiMissionsIdConfig",
+				"x-magi-operation": "mission.change-config",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/conversations": {
+			"get": {
+				"operationId": "getApiMissionsIdConversations",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/draft": {
+			"put": {
+				"operationId": "putApiMissionsIdDraft",
+				"x-magi-operation": "mission.edit-draft",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/launch": {
+			"post": {
+				"operationId": "postApiMissionsIdLaunch",
+				"x-magi-operation": "mission.launch",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/limits": {
+			"get": {
+				"operationId": "getApiMissionsIdLimits",
+				"x-magi-operation": "spend.report",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/limits/agent/{agentId}": {
+			"patch": {
+				"operationId": "patchApiMissionsIdLimitsAgentAgentId",
+				"x-magi-operation": "mission.change-config",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "agentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/limits/ceiling": {
+			"patch": {
+				"operationId": "patchApiMissionsIdLimitsCeiling",
+				"x-magi-operation": "mission.set-ceiling",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/limits/mission": {
+			"patch": {
+				"operationId": "patchApiMissionsIdLimitsMission",
+				"x-magi-operation": "mission.set-spend-cap",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/limits/upgrade-reset": {
+			"patch": {
+				"operationId": "patchApiMissionsIdLimitsUpgradeReset",
+				"x-magi-operation": "machine.reset-upgrade-allowance",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/llm-call": {
+			"get": {
+				"operationId": "getApiMissionsIdLlmCall",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/llm-calls": {
+			"get": {
+				"operationId": "getApiMissionsIdLlmCalls",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/machine-runtime": {
+			"get": {
+				"operationId": "getApiMissionsIdMachineRuntime",
+				"x-magi-operation": "spend.report",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/messages/read": {
+			"post": {
+				"operationId": "postApiMissionsIdMessagesRead",
+				"x-magi-operation": "message.read",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/messages/send": {
+			"post": {
+				"operationId": "postApiMissionsIdMessagesSend",
+				"x-magi-operation": "message.send",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/objectives": {
+			"get": {
+				"operationId": "getApiMissionsIdObjectives",
+				"x-magi-operation": "objectives.progress",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/resume": {
+			"post": {
+				"operationId": "postApiMissionsIdResume",
+				"x-magi-operation": "mission.resume",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/suspend": {
+			"post": {
+				"operationId": "postApiMissionsIdSuspend",
+				"x-magi-operation": "mission.suspend",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/transcript": {
+			"get": {
+				"operationId": "getApiMissionsIdTranscript",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/{id}/turns": {
+			"get": {
+				"operationId": "getApiMissionsIdTurns",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/draft": {
+			"post": {
+				"operationId": "postApiMissionsDraft",
+				"x-magi-operation": "mission.create-draft",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/missions/stats": {
+			"get": {
+				"operationId": "getApiMissionsStats",
+				"x-magi-operation": "spend.report",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/models": {
+			"get": {
+				"operationId": "getApiModels",
+				"x-magi-operation": "platform.offerings",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/templates": {
+			"get": {
+				"operationId": "getApiTemplates",
+				"x-magi-operation": "platform.offerings",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/templates/{id}": {
+			"get": {
+				"operationId": "getApiTemplatesId",
+				"x-magi-operation": "platform.offerings",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/api/usage": {
+			"get": {
+				"operationId": "getApiUsage",
+				"x-magi-operation": "spend.report",
+				"x-magi-auth": "operator",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/firebase-config.js": {
+			"get": {
+				"operationId": "getFirebaseConfigJs",
+				"x-magi-operation": "infrastructure",
+				"x-magi-auth": "public",
+				"security": [],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/healthz": {
+			"get": {
+				"operationId": "getHealthz",
+				"x-magi-operation": "infrastructure",
+				"x-magi-auth": "public",
+				"security": [],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/missions/{id}": {
+			"get": {
+				"operationId": "getMissionsId",
+				"x-magi-auth": "operator",
+				"x-magi-any-method": true,
+				"x-magi-forwards": "the mission's monitor server (monitor.openapi.json), with the mission's monitor token added",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postMissionsId",
+				"x-magi-auth": "operator",
+				"x-magi-any-method": true,
+				"x-magi-forwards": "the mission's monitor server (monitor.openapi.json), with the mission's monitor token added",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"put": {
+				"operationId": "putMissionsId",
+				"x-magi-auth": "operator",
+				"x-magi-any-method": true,
+				"x-magi-forwards": "the mission's monitor server (monitor.openapi.json), with the mission's monitor token added",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"patch": {
+				"operationId": "patchMissionsId",
+				"x-magi-auth": "operator",
+				"x-magi-any-method": true,
+				"x-magi-forwards": "the mission's monitor server (monitor.openapi.json), with the mission's monitor token added",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteMissionsId",
+				"x-magi-auth": "operator",
+				"x-magi-any-method": true,
+				"x-magi-forwards": "the mission's monitor server (monitor.openapi.json), with the mission's monitor token added",
+				"security": [
+					{
+						"operatorBearer": []
+					},
+					{
+						"operatorSession": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"securitySchemes": {
+			"operatorBearer": {
+				"type": "http",
+				"scheme": "bearer",
+				"description": "Firebase ID token, or CONTROL_API_KEY"
+			},
+			"operatorSession": {
+				"type": "apiKey",
+				"in": "cookie",
+				"name": "magi_session",
+				"description": "the cockpit's session cookie"
+			},
+			"monitorToken": {
+				"type": "apiKey",
+				"in": "header",
+				"name": "x-monitor-token",
+				"description": "per-mission token derived from MONITOR_SIGNING_KEY"
+			}
+		}
+	}
+}

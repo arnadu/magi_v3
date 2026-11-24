@@ -1,0 +1,1055 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "MAGI monitor server",
+		"version": "generated",
+		"description": "A mission machine's port 4000, reached over Fly's private network: by the control plane's proxy (the cockpit), the control plane itself, and the apps host's hop.\n\nGenerated from the code by packages/control-plane/tests/api-surface.unit.test.ts (npm run docs:api); do not edit. Request bodies are declared as objects until the route's Zod schema is attached.\n\nAuthentication:\n- `monitor`: the per-mission monitor token, required on every route (GETs and SSE included) whenever MONITOR_TOKEN is set, which is always on Fly\n- `apps`: the apps host's per-mission apps token with the mission id; the monitor token is refused here"
+	},
+	"paths": {
+		"/a/{capability}/{rest}": {
+			"get": {
+				"operationId": "getACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "apps",
+				"x-magi-any-method": true,
+				"x-magi-pattern": "^\\/a\\/([0-9a-f]{32})(\\/|$)",
+				"security": [
+					{
+						"appsToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"post": {
+				"operationId": "postACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "apps",
+				"x-magi-any-method": true,
+				"x-magi-pattern": "^\\/a\\/([0-9a-f]{32})(\\/|$)",
+				"security": [
+					{
+						"appsToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"put": {
+				"operationId": "putACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "apps",
+				"x-magi-any-method": true,
+				"x-magi-pattern": "^\\/a\\/([0-9a-f]{32})(\\/|$)",
+				"security": [
+					{
+						"appsToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"patch": {
+				"operationId": "patchACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "apps",
+				"x-magi-any-method": true,
+				"x-magi-pattern": "^\\/a\\/([0-9a-f]{32})(\\/|$)",
+				"security": [
+					{
+						"appsToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			},
+			"delete": {
+				"operationId": "deleteACapabilityRest",
+				"x-magi-operation": "app.open",
+				"x-magi-auth": "apps",
+				"x-magi-any-method": true,
+				"x-magi-pattern": "^\\/a\\/([0-9a-f]{32})(\\/|$)",
+				"security": [
+					{
+						"appsToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "capability",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "rest",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/agents/{agent}/mental-map": {
+			"get": {
+				"operationId": "getAgentsAgentMentalMap",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "monitor",
+				"x-magi-pattern": "^\\/agents\\/([^/]+)\\/mental-map$",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "agent",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/agents/{agent}/sessions": {
+			"get": {
+				"operationId": "getAgentsAgentSessions",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "monitor",
+				"x-magi-pattern": "^\\/agents\\/([^/]+)\\/sessions$",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "agent",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/agents/{agent}/sessions/{session}": {
+			"get": {
+				"operationId": "getAgentsAgentSessionsSession",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "monitor",
+				"x-magi-pattern": "^\\/agents\\/([^/]+)\\/sessions\\/(\\d+)$",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "agent",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "session",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/agents/{agent}/usage": {
+			"get": {
+				"operationId": "getAgentsAgentUsage",
+				"x-magi-operation": "spend.report",
+				"x-magi-auth": "monitor",
+				"x-magi-pattern": "^\\/agents\\/([^/]+)\\/usage$",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "agent",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/apps": {
+			"get": {
+				"operationId": "getApps",
+				"x-magi-operation": "app.status",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/apps/{app}/{action}": {
+			"post": {
+				"operationId": "postAppsAppAction",
+				"x-magi-operation": "app.control",
+				"x-magi-auth": "monitor",
+				"x-magi-pattern": "^\\/apps\\/([a-z][a-z0-9-]{0,39})\\/(start|stop|remove)$",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "app",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "action",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/cost-series": {
+			"get": {
+				"operationId": "getCostSeries",
+				"x-magi-operation": "spend.report",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/download": {
+			"get": {
+				"operationId": "getDownload",
+				"x-magi-operation": "file.download",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/events": {
+			"get": {
+				"operationId": "getEvents",
+				"x-magi-operation": "agent.history",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/extend-budget": {
+			"post": {
+				"operationId": "postExtendBudget",
+				"x-magi-operation": "mission.set-spend-cap",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/files/history": {
+			"get": {
+				"operationId": "getFilesHistory",
+				"x-magi-operation": "file.read",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/files/shared": {
+			"get": {
+				"operationId": "getFilesShared",
+				"x-magi-operation": "file.read",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/files/shared/edit": {
+			"post": {
+				"operationId": "postFilesSharedEdit",
+				"x-magi-operation": "file.write",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/files/shared/write": {
+			"post": {
+				"operationId": "postFilesSharedWrite",
+				"x-magi-operation": "file.write",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/files/workdir/{workdir}": {
+			"get": {
+				"operationId": "getFilesWorkdirWorkdir",
+				"x-magi-operation": "file.read",
+				"x-magi-auth": "monitor",
+				"x-magi-pattern": "^\\/files\\/workdir\\/([^/]+)$",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "workdir",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/files/workdir/{workdir}/write": {
+			"post": {
+				"operationId": "postFilesWorkdirWorkdirWrite",
+				"x-magi-operation": "file.write",
+				"x-magi-auth": "monitor",
+				"x-magi-pattern": "^\\/files\\/workdir\\/([^/]+)\\/write$",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "workdir",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/interactions": {
+			"get": {
+				"operationId": "getInteractions",
+				"x-magi-operation": "message.read",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/log": {
+			"get": {
+				"operationId": "getLog",
+				"x-magi-operation": "mission.log",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/mailbox": {
+			"get": {
+				"operationId": "getMailbox",
+				"x-magi-operation": "message.read",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/message-events": {
+			"get": {
+				"operationId": "getMessageEvents",
+				"x-magi-operation": "message.read",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/mission-stats": {
+			"get": {
+				"operationId": "getMissionStats",
+				"x-magi-operation": "spend.report",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/pause-agent": {
+			"post": {
+				"operationId": "postPauseAgent",
+				"x-magi-operation": "agent.pause",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/resume-agent": {
+			"post": {
+				"operationId": "postResumeAgent",
+				"x-magi-operation": "agent.resume",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/schedule": {
+			"get": {
+				"operationId": "getSchedule",
+				"x-magi-operation": "schedule.list",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/schedule/{schedule}": {
+			"delete": {
+				"operationId": "deleteScheduleSchedule",
+				"x-magi-operation": "schedule.cancel",
+				"x-magi-auth": "monitor",
+				"x-magi-pattern": "^\\/schedule\\/([^/]+)$",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "schedule",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/send-message": {
+			"post": {
+				"operationId": "postSendMessage",
+				"x-magi-operation": "message.send",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/set-budget": {
+			"post": {
+				"operationId": "postSetBudget",
+				"x-magi-operation": "mission.set-spend-cap",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/start": {
+			"post": {
+				"operationId": "postStart",
+				"x-magi-operation": "developer",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/status": {
+			"get": {
+				"operationId": "getStatus",
+				"x-magi-operation": "mission.status",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/step": {
+			"post": {
+				"operationId": "postStep",
+				"x-magi-operation": "developer",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/stop": {
+			"post": {
+				"operationId": "postStop",
+				"x-magi-operation": "developer",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/team": {
+			"get": {
+				"operationId": "getTeam",
+				"x-magi-operation": "mission.status",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/toggle-step": {
+			"post": {
+				"operationId": "postToggleStep",
+				"x-magi-operation": "developer",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
+		"/upload": {
+			"post": {
+				"operationId": "postUpload",
+				"x-magi-operation": "file.upload",
+				"x-magi-auth": "monitor",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"securitySchemes": {
+			"monitorToken": {
+				"type": "apiKey",
+				"in": "header",
+				"name": "x-monitor-token",
+				"description": "per-mission token derived from MONITOR_SIGNING_KEY"
+			},
+			"appsToken": {
+				"type": "apiKey",
+				"in": "header",
+				"name": "x-apps-token",
+				"description": "per-mission token derived from APPS_SIGNING_KEY, with x-apps-mission"
+			}
+		}
+	}
+}

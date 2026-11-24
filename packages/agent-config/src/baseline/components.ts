@@ -67,6 +67,7 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 			"templates.ts",
 			"config-version.ts",
 			"async-handler.ts",
+			"api-surface.ts",
 		],
 	},
 	{
@@ -187,7 +188,13 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 		responsibility: "Start-up, database, process guards",
 		layer: 6,
 		root: CP,
-		paths: ["index.ts", "mongo.ts", "process-guards.ts", "types.d.ts"],
+		paths: [
+			"index.ts",
+			"app.ts",
+			"mongo.ts",
+			"process-guards.ts",
+			"types.d.ts",
+		],
 	},
 	// ── Mission machine ─────────────────────────────────────────────────────
 	{

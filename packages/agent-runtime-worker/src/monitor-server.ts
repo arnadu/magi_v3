@@ -502,9 +502,15 @@ export class MonitorServer {
 		);
 	}
 
-	/** Every registered route (method + path), for tests that must cover the whole surface. */
-	routeTable(): ReadonlyArray<Pick<RouteEntry, "method" | "path">> {
-		return this.routes.map(({ method, path }) => ({ method, path }));
+	/** Every registered route without its handler: for tests that must cover the whole surface, and the generated API description. */
+	routeTable(): ReadonlyArray<
+		Pick<RouteEntry, "method" | "path" | "operation">
+	> {
+		return this.routes.map(({ method, path, operation }) => ({
+			method,
+			path,
+			operation,
+		}));
 	}
 
 	private async handleRequest(
