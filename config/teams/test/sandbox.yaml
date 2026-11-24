@@ -1,0 +1,28 @@
+# The attack sandbox's team (security assurance plan, step 4): two agents whose OS users,
+# workdirs and request files the attack runner uses. No agent is ever sent a message, so no
+# turn and no model call happens; the daemon only boots, guards and polls.
+mission:
+  id: sandbox
+  name: "Attack sandbox"
+
+agents:
+  - id: alice
+    name: "Alice"
+    role: tester
+    supervisor: user
+    systemPrompt: |
+      Sandbox agent. Never dispatched.
+
+      {{mentalMap}}
+    initialMentalMap: |
+      <section id="status"><p>Idle</p></section>
+  - id: bob
+    name: "Bob"
+    role: tester
+    supervisor: user
+    systemPrompt: |
+      Sandbox agent. Never dispatched.
+
+      {{mentalMap}}
+    initialMentalMap: |
+      <section id="status"><p>Idle</p></section>

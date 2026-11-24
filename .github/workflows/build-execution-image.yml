@@ -78,6 +78,30 @@ jobs:
           # Secrets at every severity: many key types are rated high, not critical.
           "$TRIVY" image --quiet --scanners secret --ignorefile .trivyignore.yaml --exit-code 1 "$IMAGE"
 
+      # The attack sandbox (security assurance plan, step 4): the image just built, started as
+      # production starts it with a MongoDB container, attacked from inside as its agent users;
+      # each cell is paired with a control that must succeed. Report-only until its first runs
+      # have been reviewed. Only cell verdicts reach the summary (the repository is public).
+      - name: Attack sandbox (report-only)
+        continue-on-error: true
+        env:
+          IMAGE: registry.fly.io/magi-missions-dev:${{ github.sha }}
+        run: |
+          set +e
+          python3 scripts/security/sandbox/sandbox.py --image "$IMAGE" --report sandbox.json --sarif sandbox.sarif
+          status=$?
+          # Counts only: this summary is public, and a cell that did not hold is a vulnerability.
+          python3 -c 'import json; r=json.load(open("sandbox.json")); h=sum(c["verdict"]=="held" for c in r); print(f"### Attack sandbox\n\n{h} of {len(r)} cells held with a working control; any other is in code scanning (maintainers).")' >> "$GITHUB_STEP_SUMMARY" || true
+          exit $status
+
+      - name: Attack sandbox results to code scanning (maintainers only)
+        if: hashFiles('sandbox.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: sandbox.sarif
+          category: attack-sandbox
+
       - name: Scan results to code scanning (maintainers only)
         if: hashFiles('trivy-image.sarif') != ''
         continue-on-error: true
