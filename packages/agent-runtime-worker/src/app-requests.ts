@@ -79,7 +79,7 @@ export function ensureAppDirs(sharedDir: string): void {
 	}
 }
 
-type Checked =
+export type Checked =
 	| { ok: true; action: "declare"; declaration: AppDeclaration }
 	| { ok: true; action: Exclude<Action, "declare">; name: string }
 	| { ok: false; message: string };
@@ -102,10 +102,11 @@ function containedPath(path: unknown, roots: string[]): string | null {
 	return null;
 }
 
-function checkRequest(
+/** Validates one request file's content for `owner` (the file's owner); never acts. */
+export function checkAppRequest(
 	raw: unknown,
 	owner: string,
-	deps: AppRequestDeps,
+	deps: Pick<AppRequestDeps, "workdirOf" | "sharedDir">,
 ): Checked {
 	if (typeof raw !== "object" || raw === null)
 		return { ok: false, message: "not a JSON object" };
@@ -216,7 +217,11 @@ export async function processAppRequests(deps: AppRequestDeps): Promise<void> {
 					message: `unreadable or malformed: ${(e as Error).message}`,
 				};
 			}
-			outcome ??= await act(checkRequest(raw, owner, deps), owner, deps).catch(
+			outcome ??= await act(
+				checkAppRequest(raw, owner, deps),
+				owner,
+				deps,
+			).catch(
 				(e: Error): Outcome => ({ ok: false, message: `failed: ${e.message}` }),
 			);
 		}

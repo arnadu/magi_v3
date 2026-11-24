@@ -224,6 +224,19 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 5, fast-check, 2026-11-24:** properties over what agents, models and tenants write, in
+  the ordinary unit suite with a fixed seed (`FAST_CHECK_SEED` explores elsewhere):
+  `resolveInside` (no returned path's real location leaves the root, through `..`, symlinks in and
+  out, dangling links), app requests (only files in the owner's workdir or `shared/`), schedule
+  files (only the author's jobs, only roster recipients, a spoofed author refused rather than
+  rewritten), tool arguments (what a tool receives always matches its schema), team-file paths,
+  the apps host's tickets and sessions (refused after any one-character edit, as the other kind,
+  under another key, or expired), and the cockpit's markdown renderer (no script, handler,
+  dangerous URL or stray style in the parsed DOM). Each property also asserts it accepted some
+  inputs, and each guard was mutated to prove its property fails: 15 mutations, all caught but
+  two equivalent ones (a session has no nonce, so the ticket's kind check has a backup). The
+  first runs found two vacuous properties (random junk never reached the accepting branch) and
+  one gap in the markdown cases (no quote inside an attribute such as an image's alt text).
 - **Step 4, second batch, 2026-11-24:** nine more sandbox cells, 20 in all, each holding with a
   working control (run locally first, now that Docker answers from WSL): a job request planted as
   a hard link (JOB-3); a schedule file that runs a job as another agent (SCHED-1); another agent
