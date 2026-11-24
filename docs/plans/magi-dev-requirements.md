@@ -2049,6 +2049,13 @@ redesign of appsec's and the code reviewer's roles, with the scanners and the ge
 matrix around them, is [security-assurance-plan.md](security-assurance-plan.md) (proposed, awaiting
 approval). Until it is decided, appsec and the code reviewer stay suspended.
 
+**Decided 2026-11-24.** The plan was approved and its steps 1–5 built (the scanners, the attack
+matrix, the image sandbox, property tests, the local scanning stack). The reviewers' redesign is
+its step 6, [part 5](security-assurance-plan.md#5-what-the-magi-dev-agents-do-design-agreed-2026-11-24):
+structured items from the automated suite, a clean-context worker per item, catalog-driven work
+with catalog proposals, and code that runs the pipeline and accepts the answers; one run per item
+by default, rotation by risk class, fingerprints to skip what has not changed.
+
 ## Phasing
 
 | Phase | Scope | Needs |
