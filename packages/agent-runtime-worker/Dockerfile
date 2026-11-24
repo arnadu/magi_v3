@@ -235,11 +235,11 @@ RUN /opt/magi/venv/bin/pip install --no-cache-dir \
 RUN /opt/magi/venv/bin/pip install --no-cache-dir \
     -r /app/packages/skills/serve-app/requirements.txt
 
-# Security floor for packages the requirements pull in indirectly or that the venv brings
-# with it (image scan, 2026-11-23): setuptools 66 from Debian's ensurepip (CVE-2024-6345,
-# CVE-2025-47273) and soupsieve 2.10 (CVE-2026-126190, CVE-2026-126191).
-RUN /opt/magi/venv/bin/pip install --no-cache-dir --upgrade \
-    "setuptools>=78.1.1" "soupsieve>=4.0.0"
+# Security floor for what the venv brings with it (image scan, 2026-11-23): setuptools 66
+# from Debian's ensurepip (CVE-2024-6345, CVE-2025-47273). soupsieve's fixed versions need
+# Python >= 3.11.5 and bookworm ships 3.11.2: an exception in .trivyignore.yaml until the base
+# moves to a newer Debian.
+RUN /opt/magi/venv/bin/pip install --no-cache-dir --upgrade "setuptools>=78.1.1"
 
 # Volume mount point for the Fly.io workspace volume.
 RUN mkdir -p /missions && chown magi-operator:magi-shared /missions

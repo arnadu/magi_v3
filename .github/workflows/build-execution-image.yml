@@ -54,6 +54,7 @@ jobs:
         run: |
           TRIVY="$(bash scripts/security/install-trivy.sh)"
           "$TRIVY" image --quiet --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed \
+            --ignorefile .trivyignore.yaml \
             --format json --output trivy-image.json "$IMAGE"
           "$TRIVY" convert --format sarif --output trivy-image.sarif trivy-image.json
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"

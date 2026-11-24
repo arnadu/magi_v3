@@ -1,0 +1,17 @@
+# Accepted findings of the image scan (trivy). Each entry says why, and expires: when it does,
+# the finding comes back and is decided again. The repository is public, so a statement names
+# the reason, never an exploit path.
+vulnerabilities:
+  - id: CVE-2026-126190
+    paths:
+      - "opt/magi/venv/lib/python3.11/site-packages/soupsieve-2.10.dist-info/METADATA"
+    statement: >-
+      soupsieve's fixed versions (>= 3.0.2) need Python >= 3.11.5; the image's Debian bookworm
+      ships 3.11.2. soupsieve parses CSS selectors, which our code and agents' scripts write;
+      the untrusted input they handle is HTML. Revisit with the move to a newer Debian base.
+    expired_at: 2027-02-28
+  - id: CVE-2026-126191
+    paths:
+      - "opt/magi/venv/lib/python3.11/site-packages/soupsieve-2.10.dist-info/METADATA"
+    statement: Same as CVE-2026-126190.
+    expired_at: 2027-02-28
