@@ -4772,8 +4772,10 @@
     ],
     "unresolved": [
      "collection",
+     "get",
      "has",
      "json",
+     "set",
      "update"
     ],
     "httpHops": []
@@ -4796,8 +4798,10 @@
     ],
     "unresolved": [
      "collection",
+     "get",
      "has",
      "json",
+     "set",
      "update"
     ],
     "httpHops": []
@@ -4806,7 +4810,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /t/:ticket",
-    "where": "packages/control-plane/src/apps-host/server.ts:117",
+    "where": "packages/control-plane/src/apps-host/server.ts:120",
     "reachesHome": true,
     "components": [
      "config",
@@ -4826,7 +4830,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "ALL /a/:capability",
-    "where": "packages/control-plane/src/apps-host/server.ts:120",
+    "where": "packages/control-plane/src/apps-host/server.ts:123",
     "reachesHome": true,
     "components": [
      "config",
@@ -4844,7 +4848,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "ALL /a/:capability/*rest",
-    "where": "packages/control-plane/src/apps-host/server.ts:123",
+    "where": "packages/control-plane/src/apps-host/server.ts:126",
     "reachesHome": true,
     "components": [
      "config",
@@ -5262,9 +5266,9 @@
      "missionAnomalies.insertOne@packages/agent-runtime-worker/src/anomaly.ts:223",
      "resourceAlertState.updateOne@packages/agent-runtime-worker/src/resource-alert-state.ts:150",
      "resourceAlertState.deleteOne@packages/agent-runtime-worker/src/resource-alert-state.ts:157",
-     "platformResources.updateOne@packages/control-plane/src/atlas-usage.ts:184",
      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:81",
      "machineSegments.updateOne@packages/control-plane/src/machine-segments.ts:88",
+     "platformResources.updateOne@packages/control-plane/src/atlas-usage.ts:184",
      "platformResources.updateOne@packages/control-plane/src/fly-orphans.ts:159",
      "resourceSnapshots.updateOne@packages/control-plane/src/resource-report.ts:231",
      "resourceSnapshots.deleteOne@packages/control-plane/src/resource-report.ts:279"

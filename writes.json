@@ -33,6 +33,39 @@
   "ownerOk": true
  },
  {
+  "file": "packages/control-plane/src/users.ts",
+  "line": 36,
+  "function": "syncFirebaseUser",
+  "method": "updateOne",
+  "collection": "users",
+  "docType": "UserDoc",
+  "fn": "packages/control-plane/src/users.ts:29:8",
+  "component": "cp-edge",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/users.ts",
+  "line": 69,
+  "function": "setCopilotModel",
+  "method": "updateOne",
+  "collection": "users",
+  "docType": "UserDoc",
+  "fn": "packages/control-plane/src/users.ts:64:8",
+  "component": "cp-edge",
+  "ownerOk": true
+ },
+ {
+  "file": "packages/control-plane/src/users.ts",
+  "line": 97,
+  "function": "setCopilotSpendCap",
+  "method": "updateOne",
+  "collection": "users",
+  "docType": "UserDoc",
+  "fn": "packages/control-plane/src/users.ts:92:8",
+  "component": "cp-edge",
+  "ownerOk": true
+ },
+ {
   "file": "packages/agent-runtime-worker/src/llm-call-log.ts",
   "line": 214,
   "function": "append",
@@ -229,50 +262,6 @@
   "docType": "__type",
   "fn": "packages/agent-runtime-worker/src/resource-alert-state.ts:156:3",
   "component": "mm-state",
-  "ownerOk": true
- },
- {
-  "file": "packages/control-plane/src/atlas-usage.ts",
-  "line": 184,
-  "function": "checkAtlasStorage",
-  "method": "updateOne",
-  "collection": "platformResources",
-  "docType": "AtlasUsageDoc",
-  "fn": "packages/control-plane/src/atlas-usage.ts:178:8",
-  "component": "cp-oversight",
-  "ownerOk": true
- },
- {
-  "file": "packages/control-plane/src/users.ts",
-  "line": 36,
-  "function": "syncFirebaseUser",
-  "method": "updateOne",
-  "collection": "users",
-  "docType": "UserDoc",
-  "fn": "packages/control-plane/src/users.ts:29:8",
-  "component": "cp-edge",
-  "ownerOk": true
- },
- {
-  "file": "packages/control-plane/src/users.ts",
-  "line": 69,
-  "function": "setCopilotModel",
-  "method": "updateOne",
-  "collection": "users",
-  "docType": "UserDoc",
-  "fn": "packages/control-plane/src/users.ts:64:8",
-  "component": "cp-edge",
-  "ownerOk": true
- },
- {
-  "file": "packages/control-plane/src/users.ts",
-  "line": 97,
-  "function": "setCopilotSpendCap",
-  "method": "updateOne",
-  "collection": "users",
-  "docType": "UserDoc",
-  "fn": "packages/control-plane/src/users.ts:92:8",
-  "component": "cp-edge",
   "ownerOk": true
  },
  {
@@ -1511,6 +1500,17 @@
   "fn": "packages/control-plane/src/copilot-draft-tools.ts:158:3",
   "component": "cp-copilot",
   "ownerOk": false
+ },
+ {
+  "file": "packages/control-plane/src/atlas-usage.ts",
+  "line": 184,
+  "function": "checkAtlasStorage",
+  "method": "updateOne",
+  "collection": "platformResources",
+  "docType": "AtlasUsageDoc",
+  "fn": "packages/control-plane/src/atlas-usage.ts:178:8",
+  "component": "cp-oversight",
+  "ownerOk": true
  },
  {
   "file": "packages/control-plane/src/fly-orphans.ts",

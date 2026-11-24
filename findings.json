@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "da6d162",
-  "time": "2026-11-24T00:25:44Z"
+  "commit": "699f428",
+  "time": "2026-11-24T01:13:57Z"
  },
  "findings": [
   {
@@ -2456,23 +2456,14 @@
    "about": "app.open",
    "text": "Entry points of app.open reach different database writes: route GET /t/:ticket lacks 3; route ALL /a/:capability lacks 3; route ALL /a/:capability/*rest lacks 3; monitor-route * HOP_PATH lacks 3.",
    "where": [
-    "packages/control-plane/src/apps-host/server.ts:117",
     "packages/control-plane/src/apps-host/server.ts:120",
     "packages/control-plane/src/apps-host/server.ts:123",
+    "packages/control-plane/src/apps-host/server.ts:126",
     "packages/agent-runtime-worker/src/app-hop.ts:164"
    ],
    "lacks": [
     {
      "entryPoint": "route GET /t/:ticket",
-     "where": "packages/control-plane/src/apps-host/server.ts:117",
-     "writes": [
-      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
-      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:78",
-      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:99"
-     ]
-    },
-    {
-     "entryPoint": "route ALL /a/:capability",
      "where": "packages/control-plane/src/apps-host/server.ts:120",
      "writes": [
       "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
@@ -2481,8 +2472,17 @@
      ]
     },
     {
-     "entryPoint": "route ALL /a/:capability/*rest",
+     "entryPoint": "route ALL /a/:capability",
      "where": "packages/control-plane/src/apps-host/server.ts:123",
+     "writes": [
+      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
+      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:78",
+      "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:99"
+     ]
+    },
+    {
+     "entryPoint": "route ALL /a/:capability/*rest",
+     "where": "packages/control-plane/src/apps-host/server.ts:126",
      "writes": [
       "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:49",
       "missionApps.updateOne@packages/control-plane/src/apps-host/slots.ts:78",
