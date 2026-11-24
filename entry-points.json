@@ -4992,7 +4992,7 @@
   "tag": "session.sign-in",
   "reached": [
    "(anonymous) packages/control-plane/src/session-routes.ts:38",
-   "extractBearer packages/control-plane/src/auth.ts:110",
+   "extractBearer packages/control-plane/src/auth.ts:124",
    "marker packages/control-plane/src/async-handler.ts:46",
    "operation packages/control-plane/src/async-handler.ts:45",
    "sessionCookieHeader packages/control-plane/src/session-routes.ts:23"
