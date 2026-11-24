@@ -26,7 +26,7 @@ control failed (the probe could not have seen success); `BROKEN` when the attack
 | TOOL-1 | `sec.authenticated` | the Tool API without a job token | — |
 | NET-1 | `sec.served-apart` | another machine reaches a server an agent bound to all interfaces | it answers inside; port 4000 answers from outside |
 
-In CI (`build-execution-image.yml`) it runs on the image just built, before the push, report-only
-for now. The log and the summary carry counts only: the repository is public, and a cell that did
+In CI (`build-execution-image.yml`) it runs on the image just built, before the push, as a gate
+(since 2026-11-24, after a clean run): an image where a cell does not hold is not pushed. The log and the summary carry counts only: the repository is public, and a cell that did
 not hold is an unfixed vulnerability. The cells that did not hold go to code scanning (maintainers
 only) as SARIF.

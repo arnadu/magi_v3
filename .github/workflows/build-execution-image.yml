@@ -80,10 +80,10 @@ jobs:
 
       # The attack sandbox (security assurance plan, step 4): the image just built, started as
       # production starts it with a MongoDB container, attacked from inside as its agent users;
-      # each cell is paired with a control that must succeed. Report-only until its first runs
-      # have been reviewed. Only cell verdicts reach the summary (the repository is public).
-      - name: Attack sandbox (report-only)
-        continue-on-error: true
+      # each cell is paired with a control that must succeed. A gate: an image where a cell does
+      # not hold (broken, or a control that failed) is not pushed. Counts only in the summary
+      # (the repository is public); the cells that did not hold go to code scanning.
+      - name: Attack sandbox (gate)
         env:
           IMAGE: registry.fly.io/magi-missions-dev:${{ github.sha }}
         run: |
@@ -95,7 +95,7 @@ jobs:
           exit $status
 
       - name: Attack sandbox results to code scanning (maintainers only)
-        if: hashFiles('sandbox.sarif') != ''
+        if: ${{ !cancelled() && hashFiles('sandbox.sarif') != '' }}
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:

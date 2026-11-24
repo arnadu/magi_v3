@@ -229,8 +229,9 @@ figure; 6 depends on 1 and 3.
   agents and from the daemon (files, environment, private state), sudo, job spoofing and symlink
   plants, every monitor route without its token, the monitor's file routes by traversal and symlink,
   the Tool API without a token, and the firewall from another machine. Each cell has a control that
-  must succeed. In CI before the push, report-only; counts in the public log, details in code
-  scanning. The monitor-server cells of step 3 live here (they need the real users and MongoDB).
+  must succeed. In CI before the push; a gate since its second run held 11 of 11 (the first run's
+  two misses were the harness: a 60-second job poll, and no `pgrep` in the image). Counts in the
+  public log, details in code scanning. The monitor-server cells of step 3 live here (they need the real users and MongoDB).
 - **Dependency pass, 2026-11-24** (Dependabot's first 27 alerts): vite 6.4.6 everywhere (one copy,
   pinned at the root so the cockpit and vitest agree), katex 0.18.2 (the cockpit renders agent-written math), the stale picomatch
   exception dropped (no longer reported), `parked/` removed (audit item DEAD-PARKED). `npm audit fix`
