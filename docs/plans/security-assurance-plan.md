@@ -243,6 +243,30 @@ model verdicts; it is built from small parts:
   fingerprint is too narrow.
 - **Kept privately** in MAGI DEV's mission: a verdict on a security question is not published.
 
+**The threat model, connected (agreed 2026-11-24).** Today it is the richest security document and
+the least connected: 26 boundaries and their STRIDE rows by hand, each row's status (✅, ⚠️, ~) a
+claim in prose (91 ✅ rows name no test), the matrix's rows carrying operations but not boundaries,
+the invariants' `enforcedBy` saying "a test" without naming it. Phase 0's appsec kept it in step
+with the code from memory and invented TB-30..33. Two mechanical links:
+1. **Every matrix row names the boundary it crosses**, from a mapping in the matrix generator (the
+   Tool API to TB-5; job and schedule request folders to TB-4 and TB-7; app requests to TB-24; the
+   apps host to TB-26; an agent's OS user to TB-3 and TB-4; the machine on the network to TB-23;
+   and so on). The matrix reads per boundary, and the boundary risk class is assigned by code.
+2. **Every ✅ row cites its proof**, a matrix cell or a named test. A test counts the rows without
+   one ("claimed") as a ratchet that may only go down; the 91 rows get their proof over time.
+
+Then the threat model is both a source and a destination of the pipeline:
+- **Items from it:** each ⚠️ row and open finding ("is it still open?"); each claimed ✅ row (a
+  discovery item: write the cell that proves it); a new boundary's entry points become matrix rows.
+- **Proposals back to it:** new rows, status changes, new attack classes and boundaries, verified by
+  Claude Code and accepted by the sponsor, like catalog proposals. A cell that stops holding turns
+  its row into a candidate ⚠️ with the failing test as evidence.
+- **Findings stay private until fixed:** anything above low severity stays in MAGI DEV's register
+  and reaches `findings.md` when fixed or accepted as a known risk.
+- **Fingerprints include the boundary's STRIDE rows**, so a changed row re-opens its verdicts.
+- **Kept by people:** the narrative, the STRIDE analysis of a new design (`/threat-model` at design
+  time), and accepting residual risk. The phase-0 drift sweep is retired: the links find drift.
+
 **The roles:**
 - **appsec** coordinates the security outputs (code scanning, Dependabot, the image scan, the
   nightly community scan and DAST) and extends the matrix (attack classes, tests for open cells).
@@ -279,7 +303,7 @@ Each step is a commit series with its tests and docs, like the interactive-apps 
 | 3 | **Attack matrix generator and in-process templates** (routes with two tenants, tools), the can-fail check with historical known answers (F-082 first), coverage counts. The four invariants with no test get theirs here. | 3 days |
 | 4 | **The mission image as a sandbox in CI:** the Docker job, the attack runner as agent users, templates for request folders, helpers and environment canaries. | 3–4 days |
 | 5 | **fast-check, and Nuclei** in environment B (with the test-only sign-in and the MongoDB container), and lightly against dev. | 2–3 days |
-| 6 | **MAGI DEV redesign** (part 5): 6a the worker, a clean-context sub-agent tool, callable by agents and by jobs through the Tool API; 6b the pipeline as a job script (sampling, refuter, acceptance) and the fingerprint store; 6c the inputs, with code-scanning and Dependabot alerts read through a control-plane proxy (never the public repository or a CI artifact); 6d the known-answer benchmark and the model comparison; 6e the roles and skills rewritten, schedules restored per role, the paused agents' false beliefs corrected; 6f the production measures. | 4–5 days |
+| 6 | **MAGI DEV redesign** (part 5): 6a the worker, a clean-context sub-agent tool, callable by agents and by jobs through the Tool API; 6b the pipeline as a job script (sampling, refuter, acceptance) and the fingerprint store; 6c the inputs: code-scanning and Dependabot alerts read through a control-plane proxy (never the public repository or a CI artifact), and the threat model connected (boundaries on matrix rows, proof cited by each ✅ row, a ratchet on claimed rows); 6d the known-answer benchmark and the model comparison; 6e the roles and skills rewritten, schedules restored per role, the paused agents' false beliefs corrected; 6f the production measures. | 5–6 days |
 | 7 | **Fly runbook** for the operator's probes (Nuclei network templates) and the deployed-configuration checks, and the detections list from the security-testing item, with G-5 alerting where needed. | 1–2 days |
 
 About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 give the coverage
@@ -423,7 +447,10 @@ figure; 6 depends on 1 and 3.
     pipeline and accepting the answers.
 11. Parsimonious sampling (one run by default, confirmation only for a candidate, rotation by risk
     class, a daily budget) and fingerprints to skip what has not changed.
-12. Open: the risk classes' maximum ages (proposed in part 5); the order of restoring roles
+13. The threat model connected to the pipeline: matrix rows name their boundary; each ✅ row cites
+    its proof, with a ratchet on claimed rows; ⚠️ rows, open findings and claimed rows become
+    items; agents' changes to it are proposals the sponsor accepts.
+14. Open: the risk classes' maximum ages (proposed in part 5); the order of restoring roles
     (proposed: appsec, then the code reviewer, then QA).
 
 ## Not in this plan
