@@ -287,7 +287,7 @@
    "executeLaunchMission packages/control-plane/src/copilot-launch-actions.ts:19",
    "flyFetch packages/control-plane/src/fly-machines.ts:46",
    "flyVolumeName packages/control-plane/src/fly-machines.ts:133",
-   "getTemplate packages/control-plane/src/templates.ts:160",
+   "getTemplate packages/control-plane/src/templates.ts:170",
    "launch_mission packages/control-plane/src/copilot-action-handlers.ts:63",
    "log packages/agent-runtime-worker/src/tool-executor.ts:17",
    "machineConfig packages/control-plane/src/fly-machines.ts:165",
@@ -303,7 +303,7 @@
   ],
   "unresolved": [
    "collection packages/agent-config/src/stored/collections.ts:99",
-   "get packages/control-plane/src/templates.ts:161",
+   "get packages/control-plane/src/templates.ts:171",
    "json packages/control-plane/src/fly-machines.ts:310",
    "json packages/control-plane/src/fly-machines.ts:327",
    "error packages/control-plane/src/machine-lifecycle.ts:50",
@@ -1136,10 +1136,10 @@
   "tag": "mission.create-draft",
   "reached": [
    "(anonymous) packages/agent-config/src/mission-id.ts:35",
-   "createDraftMission packages/control-plane/src/mission-drafts.ts:34",
+   "createDraftMission packages/control-plane/src/mission-drafts.ts:35",
    "err packages/control-plane/src/copilot-tool-deps.ts:25",
    "execute packages/control-plane/src/copilot-draft-tools.ts:49",
-   "getTemplate packages/control-plane/src/templates.ts:160",
+   "getTemplate packages/control-plane/src/templates.ts:170",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21",
    "platformMaxCostCeilingUsd packages/control-plane/src/spend-policy.ts:21",
    "storedCollection packages/agent-config/src/stored/collections.ts:95",
@@ -1148,7 +1148,7 @@
   ],
   "unresolved": [
    "collection packages/agent-config/src/stored/collections.ts:99",
-   "get packages/control-plane/src/templates.ts:161"
+   "get packages/control-plane/src/templates.ts:171"
   ],
   "httpHops": []
  },
@@ -1877,10 +1877,10 @@
   "tag": "platform.offerings",
   "reached": [
    "(anonymous) packages/control-plane/src/copilot-read-tools.ts:378",
-   "(anonymous) packages/control-plane/src/templates.ts:167",
-   "(anonymous) packages/control-plane/src/templates.ts:168",
+   "(anonymous) packages/control-plane/src/templates.ts:177",
+   "(anonymous) packages/control-plane/src/templates.ts:178",
    "execute packages/control-plane/src/copilot-read-tools.ts:375",
-   "listTemplates packages/control-plane/src/templates.ts:165",
+   "listTemplates packages/control-plane/src/templates.ts:175",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21"
   ],
   "unresolved": [],
@@ -1898,11 +1898,11 @@
    "(anonymous) packages/control-plane/src/copilot-read-tools.ts:399",
    "err packages/control-plane/src/copilot-tool-deps.ts:25",
    "execute packages/control-plane/src/copilot-read-tools.ts:392",
-   "getTemplate packages/control-plane/src/templates.ts:160",
+   "getTemplate packages/control-plane/src/templates.ts:170",
    "ok packages/control-plane/src/copilot-tool-deps.ts:21"
   ],
   "unresolved": [
-   "get packages/control-plane/src/templates.ts:161"
+   "get packages/control-plane/src/templates.ts:171"
   ],
   "httpHops": []
  },
@@ -3047,8 +3047,8 @@
   "kind": "route",
   "actor": "OP",
   "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-  "line": 269,
-  "endLine": 269,
+  "line": 281,
+  "endLine": 281,
   "name": "POST /",
   "tag": "mission.launch",
   "reached": [
@@ -3062,7 +3062,7 @@
    "(anonymous) packages/control-plane/src/machine-lifecycle.ts:78",
    "(anonymous) packages/control-plane/src/machine-segments.ts:50",
    "(anonymous) packages/control-plane/src/machine-segments.ts:56",
-   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:91",
+   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:98",
    "apiToken packages/control-plane/src/fly-machines.ts:35",
    "appName packages/control-plane/src/fly-machines.ts:29",
    "assertKnownModels packages/agent-runtime-worker/src/models.ts:289",
@@ -3070,7 +3070,7 @@
    "closePrevious packages/control-plane/src/machine-segments.ts:193",
    "collection packages/control-plane/src/machine-segments.ts:44",
    "constructor packages/control-plane/src/fly-machines.ts:145",
-   "createMission packages/control-plane/src/mission-routes-lifecycle.ts:90",
+   "createMission packages/control-plane/src/mission-routes-lifecycle.ts:97",
    "deriveAppsToken packages/agent-config/src/apps-signing.ts:149",
    "deriveAppsTokenFor packages/control-plane/src/monitor-token.ts:45",
    "deriveMonitorToken packages/control-plane/src/monitor-token.ts:14",
@@ -3078,7 +3078,7 @@
    "ensureMissionSpendCap packages/control-plane/src/spend-policy.ts:47",
    "flyFetch packages/control-plane/src/fly-machines.ts:46",
    "flyVolumeName packages/control-plane/src/fly-machines.ts:133",
-   "getTemplate packages/control-plane/src/templates.ts:160",
+   "getTemplate packages/control-plane/src/templates.ts:170",
    "hasRealPrice packages/agent-runtime-worker/src/models.ts:241",
    "insertMissionOrConflict packages/control-plane/src/mission-claims.ts:50",
    "isKnownModelId packages/agent-runtime-worker/src/models.ts:228",
@@ -3093,7 +3093,7 @@
    "provisionMission packages/control-plane/src/fly-machines.ts:277",
    "provisionTracked packages/control-plane/src/machine-lifecycle.ts:65",
    "registeredOpenRouterModel packages/agent-runtime-worker/src/models.ts:184",
-   "resolveCreateConfig packages/control-plane/src/mission-routes-lifecycle.ts:42",
+   "resolveCreateConfig packages/control-plane/src/mission-routes-lifecycle.ts:43",
    "runningPatch packages/control-plane/src/mission-claims.ts:84",
    "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
@@ -3104,13 +3104,13 @@
    "withDefaultSpendCap packages/control-plane/src/spend-policy.ts:32"
   ],
   "unresolved": [
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:110",
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:120",
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:134",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:117",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:127",
    "json packages/control-plane/src/mission-routes-lifecycle.ts:141",
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:180",
-   "error packages/control-plane/src/mission-routes-lifecycle.ts:183",
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:190",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:152",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:192",
+   "error packages/control-plane/src/mission-routes-lifecycle.ts:195",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:202",
    "json packages/control-plane/src/mission-claims.ts:60",
    "json packages/control-plane/src/fly-machines.ts:310",
    "json packages/control-plane/src/fly-machines.ts:327",
@@ -3127,7 +3127,7 @@
    "update packages/control-plane/src/monitor-token.ts:17",
    "update packages/agent-config/src/apps-signing.ts:151",
    "collection packages/agent-config/src/stored/collections.ts:99",
-   "get packages/control-plane/src/templates.ts:161"
+   "get packages/control-plane/src/templates.ts:171"
   ],
   "httpHops": []
  },
@@ -3135,24 +3135,24 @@
   "kind": "route",
   "actor": "OP",
   "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-  "line": 270,
-  "endLine": 270,
+  "line": 282,
+  "endLine": 282,
   "name": "POST /draft",
   "tag": "mission.create-draft",
   "reached": [
    "(anonymous) packages/agent-config/src/mission-id.ts:35",
-   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:200",
-   "createDraftMission packages/control-plane/src/mission-drafts.ts:34",
-   "getTemplate packages/control-plane/src/templates.ts:160",
+   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:212",
+   "createDraftMission packages/control-plane/src/mission-drafts.ts:35",
+   "getTemplate packages/control-plane/src/templates.ts:170",
    "platformMaxCostCeilingUsd packages/control-plane/src/spend-policy.ts:21",
-   "postDraft packages/control-plane/src/mission-routes-lifecycle.ts:199",
+   "postDraft packages/control-plane/src/mission-routes-lifecycle.ts:211",
    "validateNewMissionId packages/agent-config/src/mission-id.ts:28",
    "withDefaultSpendCap packages/control-plane/src/spend-policy.ts:32"
   ],
   "unresolved": [
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:214",
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:217",
-   "get packages/control-plane/src/templates.ts:161"
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:226",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:229",
+   "get packages/control-plane/src/templates.ts:171"
   ],
   "httpHops": []
  },
@@ -3160,8 +3160,8 @@
   "kind": "route",
   "actor": "OP",
   "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-  "line": 271,
-  "endLine": 271,
+  "line": 283,
+  "endLine": 283,
   "name": "POST /:id/suspend",
   "tag": "mission.suspend",
   "reached": [
@@ -3200,7 +3200,7 @@
    "(anonymous) packages/control-plane/src/machine-lifecycle.ts:99",
    "(anonymous) packages/control-plane/src/machine-segments.ts:50",
    "(anonymous) packages/control-plane/src/machine-segments.ts:56",
-   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:233",
+   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:245",
    "(anonymous) packages/control-plane/src/resource-upgrade-claim.ts:102",
    "(anonymous) packages/control-plane/src/resource-upgrade-claim.ts:116",
    "(anonymous) packages/control-plane/src/resource-upgrade-notify.ts:168",
@@ -3259,7 +3259,7 @@
    "post packages/agent-runtime-worker/src/mailbox.ts:40",
    "post packages/control-plane/src/resource-upgrade-notify.ts:50",
    "postMailbox packages/control-plane/src/mailbox-writer.ts:22",
-   "postSuspend packages/control-plane/src/mission-routes-lifecycle.ts:232",
+   "postSuspend packages/control-plane/src/mission-routes-lifecycle.ts:244",
    "provisionMission packages/control-plane/src/fly-machines.ts:277",
    "provisionOnVolumeTracked packages/control-plane/src/machine-lifecycle.ts:271",
    "provisionTracked packages/control-plane/src/machine-lifecycle.ts:65",
@@ -3275,7 +3275,7 @@
    "resumeTracked packages/control-plane/src/machine-lifecycle.ts:105",
    "revertUpgrade packages/control-plane/src/resource-upgrade.ts:355",
    "routeParam packages/control-plane/src/async-handler.ts:92",
-   "sendLifecycle packages/control-plane/src/mission-routes-lifecycle.ts:223",
+   "sendLifecycle packages/control-plane/src/mission-routes-lifecycle.ts:235",
    "stage packages/control-plane/src/machine-lifecycle.ts:403",
    "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "suspendMission packages/control-plane/src/fly-machines.ts:340",
@@ -3291,8 +3291,8 @@
    "waitForVolumeReady packages/control-plane/src/fly-volume-fork.ts:74"
   ],
   "unresolved": [
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:228",
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:229",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:240",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:241",
    "error packages/control-plane/src/mission-lifecycle-actions.ts:51",
    "error packages/control-plane/src/machine-lifecycle.ts:50",
    "collection packages/control-plane/src/machine-segments.ts:45",
@@ -3344,8 +3344,8 @@
   "kind": "route",
   "actor": "OP",
   "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-  "line": 272,
-  "endLine": 272,
+  "line": 284,
+  "endLine": 284,
   "name": "POST /:id/resume",
   "tag": "mission.resume",
   "reached": [
@@ -3374,7 +3374,7 @@
    "(anonymous) packages/control-plane/src/machine-segments.ts:50",
    "(anonymous) packages/control-plane/src/machine-segments.ts:56",
    "(anonymous) packages/control-plane/src/mission-lifecycle-actions.ts:171",
-   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:244",
+   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:256",
    "aboutCopilot packages/agent-runtime-worker/src/anomaly.ts:168",
    "add packages/agent-runtime-worker/src/anomaly-digest.ts:71",
    "anomalyDedupeKey packages/agent-runtime-worker/src/anomaly.ts:66",
@@ -3419,7 +3419,7 @@
    "ownerFilter packages/control-plane/src/auth-scope.ts:7",
    "post packages/agent-runtime-worker/src/mailbox.ts:112",
    "post packages/agent-runtime-worker/src/mailbox.ts:40",
-   "postResume packages/control-plane/src/mission-routes-lifecycle.ts:243",
+   "postResume packages/control-plane/src/mission-routes-lifecycle.ts:255",
    "provisionMission packages/control-plane/src/fly-machines.ts:277",
    "provisionOnVolumeTracked packages/control-plane/src/machine-lifecycle.ts:271",
    "provisionTracked packages/control-plane/src/machine-lifecycle.ts:65",
@@ -3433,7 +3433,7 @@
    "resumeMission packages/control-plane/src/mission-lifecycle-actions.ts:65",
    "resumeTracked packages/control-plane/src/machine-lifecycle.ts:105",
    "routeParam packages/control-plane/src/async-handler.ts:92",
-   "sendLifecycle packages/control-plane/src/mission-routes-lifecycle.ts:223",
+   "sendLifecycle packages/control-plane/src/mission-routes-lifecycle.ts:235",
    "storedCollection packages/agent-config/src/stored/collections.ts:95",
    "throwMachineError packages/control-plane/src/fly-machines.ts:151",
    "time packages/agent-runtime-worker/src/anomaly-digest.ts:23",
@@ -3444,8 +3444,8 @@
    "waitForVolumeReady packages/control-plane/src/fly-volume-fork.ts:74"
   ],
   "unresolved": [
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:228",
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:229",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:240",
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:241",
    "error packages/control-plane/src/mission-lifecycle-actions.ts:157",
    "error packages/agent-runtime-worker/src/anomaly.ts:225",
    "get packages/agent-runtime-worker/src/anomaly.ts:236",
@@ -3491,16 +3491,16 @@
   "kind": "route",
   "actor": "OP",
   "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-  "line": 273,
-  "endLine": 273,
+  "line": 285,
+  "endLine": 285,
   "name": "DELETE /:id",
   "tag": "retired",
   "reached": [
-   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:257",
-   "deleteMission packages/control-plane/src/mission-routes-lifecycle.ts:256"
+   "(anonymous) packages/control-plane/src/mission-routes-lifecycle.ts:269",
+   "deleteMission packages/control-plane/src/mission-routes-lifecycle.ts:268"
   ],
   "unresolved": [
-   "json packages/control-plane/src/mission-routes-lifecycle.ts:258"
+   "json packages/control-plane/src/mission-routes-lifecycle.ts:270"
   ],
   "httpHops": []
  },
@@ -5046,20 +5046,20 @@
   "kind": "route",
   "actor": "OP",
   "file": "packages/control-plane/src/templates.ts",
-  "line": 179,
-  "endLine": 181,
+  "line": 189,
+  "endLine": 191,
   "name": "GET /",
   "tag": "platform.offerings",
   "reached": [
-   "(anonymous) packages/control-plane/src/templates.ts:167",
-   "(anonymous) packages/control-plane/src/templates.ts:168",
-   "(anonymous) packages/control-plane/src/templates.ts:179",
-   "listTemplates packages/control-plane/src/templates.ts:165",
+   "(anonymous) packages/control-plane/src/templates.ts:177",
+   "(anonymous) packages/control-plane/src/templates.ts:178",
+   "(anonymous) packages/control-plane/src/templates.ts:189",
+   "listTemplates packages/control-plane/src/templates.ts:175",
    "marker packages/control-plane/src/async-handler.ts:46",
    "operation packages/control-plane/src/async-handler.ts:45"
   ],
   "unresolved": [
-   "json packages/control-plane/src/templates.ts:180"
+   "json packages/control-plane/src/templates.ts:190"
   ],
   "httpHops": []
  },
@@ -5067,21 +5067,21 @@
   "kind": "route",
   "actor": "OP",
   "file": "packages/control-plane/src/templates.ts",
-  "line": 183,
-  "endLine": 195,
+  "line": 193,
+  "endLine": 205,
   "name": "GET /:id",
   "tag": "platform.offerings",
   "reached": [
-   "(anonymous) packages/control-plane/src/templates.ts:183",
-   "getTemplate packages/control-plane/src/templates.ts:160",
+   "(anonymous) packages/control-plane/src/templates.ts:193",
+   "getTemplate packages/control-plane/src/templates.ts:170",
    "marker packages/control-plane/src/async-handler.ts:46",
    "operation packages/control-plane/src/async-handler.ts:45",
    "routeParam packages/control-plane/src/async-handler.ts:92"
   ],
   "unresolved": [
-   "json packages/control-plane/src/templates.ts:186",
-   "json packages/control-plane/src/templates.ts:189",
-   "get packages/control-plane/src/templates.ts:161"
+   "json packages/control-plane/src/templates.ts:196",
+   "json packages/control-plane/src/templates.ts:199",
+   "get packages/control-plane/src/templates.ts:171"
   ],
   "httpHops": []
  },
@@ -5520,16 +5520,16 @@
   "kind": "trigger",
   "actor": "PLT",
   "file": "packages/agent-runtime-worker/src/daemon.ts",
-  "line": 227,
-  "endLine": 227,
+  "line": 228,
+  "endLine": 228,
   "name": "interval: tick",
   "tag": "job.run",
   "ref": "tick",
   "reached": [
-   "(anonymous) packages/agent-runtime-worker/src/daemon.ts:193",
-   "(anonymous) packages/agent-runtime-worker/src/daemon.ts:202",
+   "(anonymous) packages/agent-runtime-worker/src/daemon.ts:194",
    "(anonymous) packages/agent-runtime-worker/src/daemon.ts:203",
-   "(anonymous) packages/agent-runtime-worker/src/daemon.ts:208",
+   "(anonymous) packages/agent-runtime-worker/src/daemon.ts:204",
+   "(anonymous) packages/agent-runtime-worker/src/daemon.ts:209",
    "(anonymous) packages/agent-runtime-worker/src/job-processes.ts:15",
    "(anonymous) packages/agent-runtime-worker/src/job-runner.ts:206",
    "(anonymous) packages/agent-runtime-worker/src/job-runner.ts:289",
@@ -5641,7 +5641,7 @@
    "specHashOf packages/agent-runtime-worker/src/schedule-ingest.ts:251",
    "startJob packages/agent-runtime-worker/src/job-runner.ts:354",
    "storedCollection packages/agent-config/src/stored/collections.ts:95",
-   "tick packages/agent-runtime-worker/src/daemon.ts:178",
+   "tick packages/agent-runtime-worker/src/daemon.ts:179",
    "unregisterRunningJob packages/agent-runtime-worker/src/job-processes.ts:20",
    "upsertSchedule packages/agent-runtime-worker/src/schedule-ingest.ts:380",
    "validateJobSpec packages/agent-runtime-worker/src/schedule-ingest.ts:142",
@@ -5654,8 +5654,8 @@
    "error packages/agent-runtime-worker/src/resource-sampler.ts:149",
    "error packages/agent-runtime-worker/src/resource-sampler.ts:166",
    "error packages/agent-runtime-worker/src/resource-sampler.ts:177",
-   "error packages/agent-runtime-worker/src/daemon.ts:194",
-   "error packages/agent-runtime-worker/src/daemon.ts:204",
+   "error packages/agent-runtime-worker/src/daemon.ts:195",
+   "error packages/agent-runtime-worker/src/daemon.ts:205",
    "push packages/agent-runtime-worker/src/job-runner.ts:294",
    "push packages/agent-runtime-worker/src/job-runner.ts:300",
    "claim packages/agent-runtime-worker/src/job-runner.ts:305",
@@ -8989,6 +8989,38 @@
    "set packages/agent-runtime-worker/src/retry-backoff.ts:73",
    "delete packages/agent-runtime-worker/src/retry-backoff.ts:69",
    "error packages/agent-runtime-worker/src/orchestrator-dispatch.ts:83"
+  ],
+  "httpHops": []
+ },
+ {
+  "kind": "trigger",
+  "actor": "PLT",
+  "file": "packages/agent-runtime-worker/src/platform-tasks.ts",
+  "line": 154,
+  "endLine": 156,
+  "name": "callback",
+  "tag": "mission.platform-task",
+  "reached": [
+   "(anonymous) packages/agent-runtime-worker/src/platform-tasks.ts:123",
+   "(anonymous) packages/agent-runtime-worker/src/platform-tasks.ts:154",
+   "(anonymous) packages/agent-runtime-worker/src/platform-tasks.ts:87",
+   "entryTrigger packages/agent-config/src/baseline/entry-tag.ts:31",
+   "log packages/agent-runtime-worker/src/tool-executor.ts:17",
+   "report packages/agent-runtime-worker/src/platform-tasks.ts:89",
+   "runNow packages/agent-runtime-worker/src/platform-tasks.ts:120",
+   "runTaskWithSudo packages/agent-runtime-worker/src/platform-tasks.ts:43",
+   "taskArgs packages/agent-runtime-worker/src/platform-tasks.ts:35"
+  ],
+  "unresolved": [
+   "has packages/agent-runtime-worker/src/platform-tasks.ts:125",
+   "add packages/agent-runtime-worker/src/platform-tasks.ts:126",
+   "get packages/agent-runtime-worker/src/platform-tasks.ts:129",
+   "set packages/agent-runtime-worker/src/platform-tasks.ts:131",
+   "set packages/agent-runtime-worker/src/platform-tasks.ts:137",
+   "error packages/agent-runtime-worker/src/platform-tasks.ts:138",
+   "delete packages/agent-runtime-worker/src/platform-tasks.ts:149",
+   "record packages/agent-runtime-worker/src/platform-tasks.ts:90",
+   "error packages/agent-runtime-worker/src/tool-executor.ts:17"
   ],
   "httpHops": []
  },

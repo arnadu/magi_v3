@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "f08da4e",
-  "time": "2026-11-25T00:21:12Z"
+  "commit": "6d8b452",
+  "time": "2026-11-25T00:49:30Z"
  },
  "findings": [
   {
@@ -82,7 +82,7 @@
     "packages/control-plane/src/copilot-actions.ts:153",
     "packages/control-plane/src/copilot-actions.ts:154",
     "packages/control-plane/src/mission-routes-launch.ts:98",
-    "packages/control-plane/src/mission-routes-lifecycle.ts:269"
+    "packages/control-plane/src/mission-routes-lifecycle.ts:281"
    ],
    "lacks": [
     {
@@ -95,8 +95,8 @@
       "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:85",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:25",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:38",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:174",
       "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:186",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:198",
       "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
      ]
     },
@@ -112,8 +112,8 @@
       "missions.updateOne@packages/control-plane/src/mission-routes-launch.ts:85",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:25",
       "missions.updateOne@packages/control-plane/src/mission-claims.ts:38",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:174",
       "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:186",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:198",
       "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
      ]
     },
@@ -127,14 +127,14 @@
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:83",
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:136",
       "missions.updateOne@packages/control-plane/src/copilot-action-handlers.ts:154",
-      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:174",
       "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:186",
+      "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:198",
       "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
      ]
     },
     {
      "entryPoint": "route POST /",
-     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:269",
+     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:281",
      "writes": [
       "missions.insertOne@packages/control-plane/src/copilot-launch-actions.ts:41",
       "missions.updateOne@packages/control-plane/src/copilot-launch-actions.ts:65",
@@ -158,7 +158,7 @@
    "text": "Entry points of mission.resume reach different database writes: copilot-action resume_mission lacks 4; route POST /:id/resume lacks 9.",
    "where": [
     "packages/control-plane/src/copilot-actions.ts:156",
-    "packages/control-plane/src/mission-routes-lifecycle.ts:272"
+    "packages/control-plane/src/mission-routes-lifecycle.ts:284"
    ],
    "lacks": [
     {
@@ -173,7 +173,7 @@
     },
     {
      "entryPoint": "route POST /:id/resume",
-     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:272",
+     "where": "packages/control-plane/src/mission-routes-lifecycle.ts:284",
      "writes": [
       "machineSegments.updateMany@packages/control-plane/src/machine-segments.ts:231",
       "missions.updateOne@packages/control-plane/src/machine-lifecycle.ts:368",
@@ -2736,7 +2736,7 @@
    "about": "missions",
    "text": "cp-api writes missions (insertOne in createDraftMission); its owner is cp-mission-ops.",
    "where": [
-    "packages/control-plane/src/mission-drafts.ts:90"
+    "packages/control-plane/src/mission-drafts.ts:94"
    ],
    "new": false
   },
@@ -2746,8 +2746,8 @@
    "about": "missions",
    "text": "cp-api writes missions (updateOne in (anonymous)); its owner is cp-mission-ops.",
    "where": [
-    "packages/control-plane/src/mission-routes-lifecycle.ts:174",
-    "packages/control-plane/src/mission-routes-lifecycle.ts:186"
+    "packages/control-plane/src/mission-routes-lifecycle.ts:186",
+    "packages/control-plane/src/mission-routes-lifecycle.ts:198"
    ],
    "new": false
   },
@@ -3021,7 +3021,7 @@
    "about": "mission",
    "text": "(anonymous) (cp-api) can change a mission status in ways the catalog does not allow: draft → error, suspended → error, error → error, archived → error. Its filter does not check the current status.",
    "where": [
-    "packages/control-plane/src/mission-routes-lifecycle.ts:186"
+    "packages/control-plane/src/mission-routes-lifecycle.ts:198"
    ],
    "undeclared": [
     "draft → error",

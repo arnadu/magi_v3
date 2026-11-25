@@ -785,7 +785,7 @@
  },
  {
   "file": "packages/control-plane/src/mission-drafts.ts",
-  "line": 90,
+  "line": 94,
   "function": "createDraftMission",
   "method": "insertOne",
   "collection": "missions",
@@ -799,7 +799,7 @@
     "op": "none"
    }
   },
-  "fn": "packages/control-plane/src/mission-drafts.ts:34:8",
+  "fn": "packages/control-plane/src/mission-drafts.ts:35:8",
   "component": "cp-api",
   "ownerOk": false,
   "statusCheck": {
@@ -815,18 +815,18 @@
  },
  {
   "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-  "line": 174,
+  "line": 186,
   "function": "(anonymous)",
   "method": "updateOne",
   "collection": "missions",
   "docType": "MissionDoc",
-  "fn": "packages/control-plane/src/mission-routes-lifecycle.ts:91:9",
+  "fn": "packages/control-plane/src/mission-routes-lifecycle.ts:98:9",
   "component": "cp-api",
   "ownerOk": false
  },
  {
   "file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-  "line": 186,
+  "line": 198,
   "function": "(anonymous)",
   "method": "updateOne",
   "collection": "missions",
@@ -840,7 +840,7 @@
     "op": "any"
    }
   },
-  "fn": "packages/control-plane/src/mission-routes-lifecycle.ts:91:9",
+  "fn": "packages/control-plane/src/mission-routes-lifecycle.ts:98:9",
   "component": "cp-api",
   "ownerOk": false,
   "statusCheck": {
