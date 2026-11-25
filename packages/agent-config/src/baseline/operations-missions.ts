@@ -256,4 +256,21 @@ export const MISSION_OPERATIONS = defineOperations([
 		home: "cp-machines",
 		rules: ["Not reachable by any copilot or agent"],
 	},
+	{
+		id: "mission.platform-task",
+		group: "missions",
+		intent:
+			"Run a platform task on the mission machine: housekeeping the mission's agents must not be able to do, such as keeping a read-only copy of a repository",
+		actors: ["PLT"],
+		home: "mm-jobs",
+		rules: [
+			"Only task kinds shipped in the mission image run; the control plane chooses the kind, its schedule and its parameters, never the code",
+			"Parameters must match the kind's schema",
+			"A task runs as the platform user, never with the daemon's secrets",
+			"Agents can read a task's output but never write it",
+			"A failure keeps the last good output, marked stale; repeated failures raise an anomaly",
+			"Only the platform admin changes a mission's platform tasks",
+		],
+		planned: true,
+	},
 ]);

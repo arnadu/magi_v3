@@ -116,6 +116,20 @@ export const TEAM_OPERATIONS = defineOperations([
 		],
 	},
 	{
+		id: "agent.investigate",
+		group: "agents",
+		intent: "Investigate one question with a sub-agent in a clean context",
+		actors: ["AG", "JOB"],
+		home: "mm-tools",
+		rules: [
+			"The sub-agent acts with the calling agent's identity, tools and budget, but none of its history",
+			"It reviews code in a read-only reference copy kept by a platform task",
+			"Its answer matches the caller's schema, or the call fails",
+			"Spend counts against the mission",
+		],
+		planned: true,
+	},
+	{
 		id: "data.query",
 		group: "agents",
 		intent: "Query a data provider",

@@ -302,6 +302,20 @@ export const JOURNEYS = defineJourneys([
 		],
 		note: "The agent writes the app, declares it, sees it answer, and tells the operator where to find it",
 	},
+	{
+		id: "A-11",
+		title: "Review a codebase item by item",
+		actors: ["AG", "JOB"],
+		operations: [
+			"mission.platform-task",
+			"job.submit",
+			"job.run",
+			"agent.investigate",
+			"file.write",
+			"message.send",
+		],
+		note: "Planned (security assurance plan, step 6): a platform task keeps a read-only copy of the repository; the agent's job puts each item to a clean-context sub-agent and checks its answer; what survives is filed and the author told",
+	},
 ]);
 
 export type JourneyId = (typeof JOURNEYS)[number]["id"];

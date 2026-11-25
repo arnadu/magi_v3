@@ -33,3 +33,4 @@
 | A-08 | Ask for more resources | AG, MC | `message.send`, `machine.upgrade` | The agent asks the mission copilot, which decides |
 | A-09 | Keep its memory useful | AG | `agent.remember`, `agent.history` | Its mental map and its own past turns |
 | A-10 | Publish an interactive app for the operator | AG | `file.write`, `app.declare`, `app.run`, `app.status`, `message.send`, `app.control` | The agent writes the app, declares it, sees it answer, and tells the operator where to find it |
+| A-11 | Review a codebase item by item | AG, JOB | `mission.platform-task`, `job.submit`, `job.run`, `agent.investigate`, `file.write`, `message.send` | Planned (security assurance plan, step 6): a platform task keeps a read-only copy of the repository; the agent's job puts each item to a clean-context sub-agent and checks its answer; what survives is filed and the author told |

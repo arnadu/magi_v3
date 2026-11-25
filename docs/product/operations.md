@@ -46,6 +46,7 @@
 | `template.browse` (read) (planned) | The templates on offer and everything each holds | OP, CC | `cp-mission-ops` | The same figure wherever it is shown; reading never changes it; Every template is visible to every operator |
 | `template.create` (planned) | A new template: blank, cloned from a template, or from a mission | OP, CC | `cp-mission-ops` | A unique name; From a mission: its configuration, team files and agents' mental maps, never its conversations; only a mission the requester owns; Presets come from files in the repository, loaded at install |
 | `template.edit` (planned) | Change any part of a template, including copying skills from any template or mission | OP, CC | `cp-mission-ops` | Validated as a launch would validate it; A write based on an outdated version is refused; Presets are read-only: clone one to change it |
+| `mission.platform-task` (planned) | Run a platform task on the mission machine: housekeeping the mission's agents must not be able to do, such as keeping a read-only copy of a repository | PLT | `mm-jobs` | Only task kinds shipped in the mission image run; the control plane chooses the kind, its schedule and its parameters, never the code; Parameters must match the kind's schema; A task runs as the platform user, never with the daemon's secrets; Agents can read a task's output but never write it; A failure keeps the last good output, marked stale; repeated failures raise an anomaly; Only the platform admin changes a mission's platform tasks |
 
 ## Spend and machine
 
@@ -70,6 +71,7 @@
 | `web.fetch` | Fetch a page or a document, or inspect an image | AG, SUB, JOB | `mm-tools` | Never reaches an internal address, at any redirect; Bounded in size and time; Spend counts against the mission |
 | `web.browse` | Drive a browser through a site | AG, SUB | `mm-tools` | Through the egress proxy; never an internal address; Bounded in time; the browser is closed; Spend counts against the mission |
 | `web.research` | Research a question with a sub-agent | AG, JOB | `mm-tools` | The sub-agent acts with the agent's identity and budget; Spend counts against the mission |
+| `agent.investigate` (planned) | Investigate one question with a sub-agent in a clean context | AG, JOB | `mm-tools` | The sub-agent acts with the calling agent's identity, tools and budget, but none of its history; It reviews code in a read-only reference copy kept by a platform task; Its answer matches the caller's schema, or the call fails; Spend counts against the mission |
 | `data.query` | Query a data provider | JOB | `mm-tools` | The provider's key never reaches the caller |
 | `agent.pause` | Stop one agent's dispatch | OP, CC, MC | `mm-daemon` | Takes effect before the agent's next turn; Holds across restarts until someone resumes the agent; Agents never pause a teammate |
 | `agent.resume` | Restart one agent's dispatch | OP, CC, MC | `mm-daemon` | Takes effect before the agent's next turn |
