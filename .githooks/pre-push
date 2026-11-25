@@ -24,3 +24,8 @@ if ! npm run audit:semgrep-changed --silent; then
     echo "[pre-push] BLOCKED: fix the Semgrep findings above before pushing."
     exit 1
 fi
+
+# A watched guard (scripts/security/watched-guards.json) changed: a commit must say how it was reviewed.
+if ! npm run audit:watched-guards --silent; then
+    exit 1
+fi

@@ -18,6 +18,7 @@
 		"audit:tripwires": "bash scripts/audit/tripwires.sh --selftest && bash scripts/audit/tripwires.sh",
 		"audit:structure": "node scripts/audit/structure-check.mjs",
 		"audit:semgrep-changed": "bash scripts/security/semgrep-changed.sh",
+		"audit:watched-guards": "node scripts/security/watched-guards.mjs",
 		"verify:quick": "npm run lint && npm run audit:tripwires && npm run audit:structure && npm run typecheck",
 		"verify": "npm run build && npm run verify:quick && npm run test:coverage",
 		"security:sast": "semgrep scan --config p/default packages/ --error",

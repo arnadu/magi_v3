@@ -433,7 +433,7 @@ export function boundariesOf(r) {
  * Mitigated (✅) STRIDE rows that cite no proof. A ceiling, not a target: it may only go down as
  * rows gain their proof (a sandbox cell id or a named test file in the row's notes).
  */
-export const CLAIMED_ROWS_CEILING = 88;
+export const CLAIMED_ROWS_CEILING = 84;
 
 /** Where a test file named in the threat model lives, or null. */
 function findTestFile(name) {

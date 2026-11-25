@@ -161,3 +161,16 @@ describe("the threat model, connected to the matrix", () => {
 		expect([...new Set(wrong)]).toEqual([]);
 	});
 });
+
+describe("watched guards", () => {
+	it("every watched guard and every test it names exists", () => {
+		const { guards } = JSON.parse(
+			readFileSync(join(ROOT, "scripts/security/watched-guards.json"), "utf8"),
+		) as { guards: { path: string; tests: string[] }[] };
+		const missing = guards
+			.flatMap((g) => [g.path, ...g.tests])
+			.filter((p) => !existsSync(join(ROOT, p)));
+		expect(guards.length).toBeGreaterThan(0);
+		expect(missing).toEqual([]);
+	});
+});

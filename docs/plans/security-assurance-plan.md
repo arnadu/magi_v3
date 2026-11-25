@@ -215,9 +215,9 @@ items:
 - **A cheaper model first and a stronger one to confirm**, only if the benchmark shows the cheaper
   model's misses are rare enough.
 
-| Risk class | Items | Maximum age (proposed; the sponsor sets it) |
+| Risk class | Items | Maximum age (decided 2026-11-25) |
 |---|---|---|
-| Boundary | Cells and findings on a trust boundary, a `sec.*` invariant, sudo, a request folder, authentication | 2 weeks |
+| Boundary | Cells and findings on a trust boundary, a `sec.*` invariant, sudo, a request folder, authentication, a watched guard | 2 weeks |
 | Platform | Other entry points, scanner alerts on shipped code, dependencies that ship | 1 month |
 | Ordinary | Documentation, development-only dependencies, code no entry point reaches | 2 months |
 
@@ -510,8 +510,12 @@ figure; 6 depends on 1 and 3.
     401); no private repository. MAGI DEV reads them through the control plane with a separate,
     read-only fine-grained token (a GitHub App when source control, deliverable B, is built),
     for agents the platform admin names on an admin-owned mission (`security.read-alerts`).
-17. Open: the risk classes' maximum ages (proposed in part 5); the order of restoring roles
-    (proposed: appsec, then the code reviewer, then QA).
+17. The risk classes' maximum ages: 14 days (boundary), 30 (platform), 60 (ordinary). Restoring
+    roles: appsec first, then the code reviewer, then QA.
+19. Code-scanning alert #2 (CodeQL SSRF in the BrowseWeb egress proxy) dismissed as a false
+    positive (2026-11-25), and the code it names put under watch: watched guards
+    (`scripts/security/watched-guards.json`: the egress proxy, `ssrf.ts`, `safe-http.ts`), a push
+    changing one needs a `Security review:` line, and MAGI DEV re-reviews each on every change.
 
 ## Not in this plan
 

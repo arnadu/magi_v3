@@ -25,11 +25,11 @@ public, and a cell that fails is in code scanning (maintainers only).
 
 The boundaries are the threat model's (`docs/security/threat-model.md`). Its mitigated (✅) rows are
 **proven** when their notes cite a sandbox cell or a named test, and **claimed** otherwise;
-claimed rows may only decrease (ceiling 88).
+claimed rows may only decrease (ceiling 84).
 
 | Boundary | Matrix cells | Covered | Open | ✅ proven | ✅ claimed | ~ partial | ⚠️ open | Accepted |
 |---|---|---|---|---|---|---|---|---|
-| TB-1 | 0 | 0 | 0 | 0 | 8 | 2 | 0 | 0 |
+| TB-1 | 0 | 0 | 0 | 4 | 4 | 2 | 0 | 0 |
 | TB-2 | 42 | 35 | 7 | 0 | 0 | 2 | 2 | 0 |
 | TB-3 | 8 | 8 | 0 | 1 | 4 | 0 | 0 | 0 |
 | TB-4 | 8 | 8 | 0 | 0 | 7 | 0 | 0 | 1 |

@@ -1,0 +1,29 @@
+{
+	"about": "Files that hold a security property on their own. A push changing one needs a commit in it with a 'Security review:' line (the pre-push hook checks); MAGI DEV re-reviews each on every change (review-pipeline, boundary risk class). Add a guard by adding an entry; each names the tests that attack it.",
+	"guards": [
+		{
+			"path": "packages/agent-runtime-worker/src/tools/browse-web-egress-proxy.ts",
+			"invariant": "sec.safe-egress",
+			"boundary": "TB-1",
+			"why": "BrowseWeb's only way out: every request vetted and connected to the vetted address (F-002, F-043). CodeQL's SSRF alert #2 on it was dismissed as a false positive on 2026-11-25.",
+			"tests": [
+				"packages/agent-runtime-worker/tests/browse-web-egress-proxy.unit.test.ts",
+				"packages/agent-runtime-worker/tests/ssrf.unit.test.ts"
+			]
+		},
+		{
+			"path": "packages/agent-runtime-worker/src/ssrf.ts",
+			"invariant": "sec.safe-egress",
+			"boundary": "TB-1",
+			"why": "Decides what is private: every resolved address and IP literal, in every encoding; fails closed on a lookup error.",
+			"tests": ["packages/agent-runtime-worker/tests/ssrf.unit.test.ts"]
+		},
+		{
+			"path": "packages/agent-runtime-worker/src/safe-http.ts",
+			"invariant": "sec.safe-egress",
+			"boundary": "TB-1",
+			"why": "FetchUrl's client: vets and pins every redirect hop, caps size and time.",
+			"tests": ["packages/agent-runtime-worker/tests/safe-http.unit.test.ts"]
+		}
+	]
+}

@@ -128,6 +128,8 @@ These apply continuously, not at sprint close. Each has a full write-up in
 - New path from input: contained (`safe-path.ts`) after resolving symlinks?
 - New port or public endpoint: authenticated? Loopback or network? Threat model updated in the same commit?
 - Identity, ACL and OS isolation are never optional: a field needed for secure operation is required in the type and the schema.
+- A watched guard (`scripts/security/watched-guards.json`) changed: `/security-review` the change and say so in a
+  `Security review:` line of the commit message (the pre-push hook refuses the push without one).
 
 **Operational resilience** ([detail](docs/practices/operational-resilience.md), FMEA in [docs/operational-resilience.md](docs/operational-resilience.md)) — ask:
 - New background loop: what if it crashes, hangs or overlaps itself? Watchdog, timeout, lock?
