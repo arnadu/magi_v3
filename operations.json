@@ -23,7 +23,7 @@
      "cp-mission-ops"
     ],
     "writes": [
-     "missions.insertOne@packages/control-plane/src/mission-drafts.ts:94"
+     "missions.insertOne@packages/control-plane/src/mission-drafts.ts:97"
     ],
     "unresolved": [
      "collection",
@@ -35,7 +35,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /draft",
-    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:282",
+    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:286",
     "reachesHome": true,
     "components": [
      "config",
@@ -43,7 +43,7 @@
      "cp-mission-ops"
     ],
     "writes": [
-     "missions.insertOne@packages/control-plane/src/mission-drafts.ts:94"
+     "missions.insertOne@packages/control-plane/src/mission-drafts.ts:97"
     ],
     "unresolved": [
      "get",
@@ -159,6 +159,7 @@
      "get",
      "has",
      "json",
+     "text",
      "update"
     ],
     "httpHops": []
@@ -195,6 +196,7 @@
      "error",
      "has",
      "json",
+     "text",
      "update"
     ],
     "httpHops": []
@@ -233,6 +235,7 @@
      "error",
      "has",
      "json",
+     "text",
      "update"
     ],
     "httpHops": []
@@ -241,7 +244,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /",
-    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:281",
+    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:285",
     "reachesHome": true,
     "components": [
      "config",
@@ -259,8 +262,8 @@
      "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:215",
      "machineSegments.insertOne@packages/control-plane/src/machine-segments.ts:221",
      "missions.updateOne@packages/control-plane/src/spend-policy.ts:51",
-     "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:186",
-     "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:198",
+     "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:190",
+     "missions.updateOne@packages/control-plane/src/mission-routes-lifecycle.ts:202",
      "missions.insertOne@packages/control-plane/src/mission-claims.ts:56"
     ],
     "unresolved": [
@@ -271,6 +274,7 @@
      "get",
      "has",
      "json",
+     "text",
      "update"
     ],
     "httpHops": []
@@ -338,6 +342,7 @@
      "has",
      "json",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -349,7 +354,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /:id/suspend",
-    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:283",
+    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:287",
     "reachesHome": true,
     "components": [
      "config",
@@ -395,6 +400,7 @@
      "has",
      "json",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -465,6 +471,7 @@
      "has",
      "json",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -476,7 +483,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "POST /:id/resume",
-    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:284",
+    "where": "packages/control-plane/src/mission-routes-lifecycle.ts:288",
     "reachesHome": true,
     "components": [
      "config",
@@ -516,6 +523,7 @@
      "has",
      "json",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -1057,6 +1065,7 @@
      "end",
      "get",
      "json",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -1567,7 +1576,7 @@
     "kind": "route",
     "actor": "MC",
     "name": "POST /resources/upgrade",
-    "where": "packages/control-plane/src/mission-copilot-router.ts:108",
+    "where": "packages/control-plane/src/mission-copilot-router.ts:109",
     "reachesHome": true,
     "components": [
      "config",
@@ -1620,6 +1629,7 @@
      "json",
      "push",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -1631,7 +1641,7 @@
     "kind": "route",
     "actor": "MC",
     "name": "POST /resources/revert",
-    "where": "packages/control-plane/src/mission-copilot-router.ts:113",
+    "where": "packages/control-plane/src/mission-copilot-router.ts:114",
     "reachesHome": true,
     "components": [
      "config",
@@ -1677,6 +1687,7 @@
      "has",
      "json",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -1734,6 +1745,7 @@
      "has",
      "json",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -1799,6 +1811,7 @@
      "json",
      "push",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -1858,6 +1871,7 @@
      "has",
      "json",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -2040,6 +2054,7 @@
      "add",
      "agent",
      "append",
+     "at",
      "clear",
      "close",
      "commitWorkspace",
@@ -2209,7 +2224,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "search-web",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:364",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:385",
     "reachesHome": true,
     "components": [
      "mm-jobs",
@@ -2258,7 +2273,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "fetch-url",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:323",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:332",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2287,7 +2302,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "inspect-image",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:332",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:341",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2412,7 +2427,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "research",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:344",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:353",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2498,7 +2513,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "investigate",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:354",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:363",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2556,7 +2571,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-fred",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:385",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:406",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -2581,7 +2596,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-fmp",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:390",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:411",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -2606,7 +2621,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-newsapi",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:395",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:416",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -3346,7 +3361,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "post-message",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:369",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:390",
     "reachesHome": true,
     "components": [
      "mm-jobs",
@@ -3668,6 +3683,7 @@
      "collection",
      "end",
      "get",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -4075,6 +4091,7 @@
      "json",
      "reject",
      "set",
+     "text",
      "update"
     ],
     "httpHops": [
@@ -4201,7 +4218,7 @@
     "kind": "trigger",
     "actor": "PLT",
     "name": "interval: tick",
-    "where": "packages/agent-runtime-worker/src/daemon.ts:228",
+    "where": "packages/agent-runtime-worker/src/daemon.ts:232",
     "reachesHome": true,
     "components": [
      "config",
@@ -5273,7 +5290,7 @@
     "kind": "route",
     "actor": "MC",
     "name": "GET /github/issues",
-    "where": "packages/control-plane/src/mission-copilot-router.ts:121",
+    "where": "packages/control-plane/src/mission-copilot-router.ts:133",
     "reachesHome": true,
     "components": [
      "cp-copilot",
@@ -5292,7 +5309,7 @@
     "kind": "route",
     "actor": "MC",
     "name": "POST /github/issue",
-    "where": "packages/control-plane/src/mission-copilot-router.ts:144",
+    "where": "packages/control-plane/src/mission-copilot-router.ts:156",
     "reachesHome": true,
     "components": [
      "config",
@@ -5323,7 +5340,8 @@
     "writes": [],
     "unresolved": [
      "json",
-     "push"
+     "push",
+     "text"
     ],
     "httpHops": [
      "route GET /github/issues"
@@ -5345,10 +5363,102 @@
     "writes": [],
     "unresolved": [
      "collection",
-     "json"
+     "json",
+     "text"
     ],
     "httpHops": [
      "route POST /github/issue"
+    ]
+   }
+  ]
+ },
+ {
+  "id": "security.read-alerts",
+  "intent": "Read the repository's open security alerts (code scanning, Dependabot) to triage them",
+  "home": "cp-copilot",
+  "actors": [
+   "AG",
+   "JOB",
+   "MC"
+  ],
+  "planned": false,
+  "startedBy": null,
+  "entryPoints": [
+   {
+    "kind": "route",
+    "actor": "MC",
+    "name": "GET /github/alerts",
+    "where": "packages/control-plane/src/mission-copilot-router.ts:123",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-mc-gateway",
+     "cp-mission-ops"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection",
+     "error",
+     "has",
+     "json",
+     "push"
+    ],
+    "httpHops": [
+     "route GET /github/alerts"
+    ]
+   },
+   {
+    "kind": "tool-api",
+    "actor": "JOB",
+    "name": "security-alerts",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:373",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-mc-gateway",
+     "cp-mission-ops",
+     "mm-jobs",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection",
+     "error",
+     "has",
+     "json",
+     "push",
+     "text"
+    ],
+    "httpHops": [
+     "route GET /github/alerts"
+    ]
+   },
+   {
+    "kind": "tool",
+    "actor": "AG",
+    "name": "SecurityAlerts",
+    "where": "packages/agent-runtime-worker/src/tools/security-alerts.ts:29",
+    "reachesHome": true,
+    "components": [
+     "config",
+     "cp-copilot",
+     "cp-mc-gateway",
+     "cp-mission-ops",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "collection",
+     "error",
+     "has",
+     "json",
+     "push",
+     "text"
+    ],
+    "httpHops": [
+     "route GET /github/alerts"
     ]
    }
   ]
@@ -5488,7 +5598,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /",
-    "where": "packages/control-plane/src/templates.ts:189",
+    "where": "packages/control-plane/src/templates.ts:197",
     "reachesHome": true,
     "components": [
      "cp-api"
@@ -5503,7 +5613,7 @@
     "kind": "route",
     "actor": "OP",
     "name": "GET /:id",
-    "where": "packages/control-plane/src/templates.ts:193",
+    "where": "packages/control-plane/src/templates.ts:201",
     "reachesHome": true,
     "components": [
      "cp-api"
