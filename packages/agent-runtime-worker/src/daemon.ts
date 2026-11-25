@@ -116,6 +116,7 @@ import { buildUidToAgentId } from "./linux-user.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { MISSION_COPILOT_AGENT_ID } from "./mission-copilot.js";
 import { runOrchestrationLoop } from "./orchestrator.js";
+import { startPlatformTasks } from "./platform-tasks.js";
 import { sampleDiskUsage } from "./resource-sampler.js";
 import { createScheduleIngestor } from "./schedule-ingest.js";
 import type { ToolApiServer } from "./tool-api-server.js";
@@ -241,6 +242,7 @@ type DataLayer = Pick<
 	| "db"
 	| "missionId"
 	| "teamDir"
+	| "platformTasksRaw"
 	| "teamConfig"
 	| "mailboxRepo"
 	| "conversationRepo"
@@ -282,7 +284,7 @@ async function bootDataLayer(): Promise<DataLayer | null> {
 		process.exitCode = 1;
 		return null;
 	}
-	const { teamConfig, missionId, teamDir } = teamConfigResult;
+	const { teamConfig, missionId, teamDir, platformTasksRaw } = teamConfigResult;
 
 	provisionAgentIdentities({ teamConfig, missionId }, missionCopilotEnabled);
 	await syncTeamFiles({ db, missionId, teamDir });
@@ -304,6 +306,7 @@ async function bootDataLayer(): Promise<DataLayer | null> {
 		db,
 		missionId,
 		teamDir,
+		platformTasksRaw,
 		teamConfig,
 		...repos,
 		anomalyRecorder,
@@ -317,9 +320,9 @@ async function bootDataLayer(): Promise<DataLayer | null> {
  * The abort signal, pid lock, usage cap, monitor and tool servers,
  * background job runner, mail waiter and the mission copilot's tools.
  */
-async function startServices(data: DataLayer): Promise<RunningMission> {
-	const { db, missionId, teamConfig, mailboxRepo, anomalyRecorder, workdir } =
-		data;
+/** What guards the machine before any server starts: abort signal, pid lock, spend cap, firewall. */
+async function startGuards(data: DataLayer) {
+	const { missionId, teamConfig, anomalyRecorder, workdir } = data;
 	// Abort controller — fired by SIGTERM / SIGINT / cost cap / monitor stop.
 	const { ac, signal } = wireAbortSignal();
 	const { pidFile } = lockPidFile({ workdir, missionId, anomalyRecorder });
@@ -329,6 +332,14 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		onFly: Boolean(process.env.FLY_APP_NAME),
 		anomalyRecorder,
 	});
+	return { ac, signal, pidFile, usageAccumulator, maxCostUsd, firewall };
+}
+
+async function startServices(data: DataLayer): Promise<RunningMission> {
+	const { db, missionId, teamConfig, mailboxRepo, anomalyRecorder, workdir } =
+		data;
+	const guards = await startGuards(data);
+	const { ac, signal, usageAccumulator, maxCostUsd, firewall } = guards;
 
 	const { monitorPort, toolPort, sharedDir, workspaceGit, monitor } =
 		await startMonitorServer({
@@ -390,6 +401,13 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		monitor,
 	});
 
+	const platformTasks = startPlatformTasks({
+		missionId,
+		rawTasks: data.platformTasksRaw,
+		anomalies: data.anomalyRecorder,
+		onFly: Boolean(process.env.FLY_APP_NAME),
+	});
+
 	// Change Stream: wake when a new MailboxMessage is inserted for this mission.
 	const waitForMail = createMailWaiter(
 		storedCollection(db, "mailbox"),
@@ -415,11 +433,7 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 	);
 	return {
 		...data,
-		ac,
-		signal,
-		pidFile,
-		usageAccumulator,
-		maxCostUsd,
+		...guards,
 		monitorPort,
 		toolPort,
 		sharedDir,
@@ -427,9 +441,9 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		monitor,
 		toolApiServer,
 		stopJobRunner,
-		firewall,
 		apps,
 		stopApps,
+		platformTasks,
 		waitForMail,
 		missionCopilotTools,
 	};
@@ -494,6 +508,7 @@ async function runAndShutdown(ctx: RunningMission): Promise<void> {
 		monitor.stop();
 		ctx.toolApiServer.stop();
 		ctx.stopJobRunner();
+		ctx.platformTasks.stop();
 		await ctx
 			.stopApps()
 			.catch((e: Error) =>

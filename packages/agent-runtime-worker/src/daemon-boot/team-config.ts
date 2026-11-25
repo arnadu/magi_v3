@@ -1,13 +1,18 @@
+import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
 	loadTeamConfig,
 	parseTeamConfig,
+	rawPlatformTasksYaml,
 	storedCollection,
 } from "@magi/agent-config";
 import type { BootContext } from "./context.js";
 
 export type LoadTeamConfigResult =
-	| ({ ok: true } & Pick<BootContext, "teamConfig" | "missionId" | "teamDir">)
+	| ({ ok: true } & Pick<
+			BootContext,
+			"teamConfig" | "missionId" | "teamDir" | "platformTasksRaw"
+	  >)
 	| { ok: false; exitMessage: string };
 
 /**
@@ -53,20 +58,33 @@ export async function loadDaemonTeamConfig(
 			};
 		}
 		const teamDir = join(ctx.agentWorkdir, "team");
-		return { ok: true, teamConfig, missionId, teamDir };
+		return {
+			ok: true,
+			teamConfig,
+			missionId,
+			teamDir,
+			platformTasksRaw: missionDoc.platformTasks,
+		};
 	}
 
 	// Standalone local/dev path — boot directly against a hand-authored YAML
 	// file, no MongoDB `missions` document required.
 	process.stdout.write("[daemon] Loading team config from file…\n");
-	// biome-ignore lint/style/noNonNullAssertion: checked by the caller — missionIdEnv is falsy here, so teamConfigPath must be set
-	const teamConfig = loadTeamConfig(ctx.teamConfigPath!);
+	const configPath = ctx.teamConfigPath;
+	if (!configPath) {
+		return {
+			ok: false,
+			exitMessage: "Error: neither MISSION_ID nor TEAM_CONFIG is set",
+		};
+	}
+	const teamConfig = loadTeamConfig(configPath);
 	const missionId = teamConfig.mission.id;
-	const teamDir = join(
-		// biome-ignore lint/style/noNonNullAssertion: same as above
-		dirname(ctx.teamConfigPath!),
-		// biome-ignore lint/style/noNonNullAssertion: same as above
-		basename(ctx.teamConfigPath!, ".yaml"),
-	);
-	return { ok: true, teamConfig, missionId, teamDir };
+	const teamDir = join(dirname(configPath), basename(configPath, ".yaml"));
+	return {
+		ok: true,
+		teamConfig,
+		missionId,
+		teamDir,
+		platformTasksRaw: rawPlatformTasksYaml(readFileSync(configPath, "utf8")),
+	};
 }

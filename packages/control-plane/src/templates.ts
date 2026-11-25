@@ -14,7 +14,12 @@ import { operation, routeParam } from "./async-handler.js";
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
-import { parseTeamConfigYaml, type TeamConfig } from "@magi/agent-config";
+import {
+	type PlatformTask,
+	parsePlatformTasksYaml,
+	parseTeamConfigYaml,
+	type TeamConfig,
+} from "@magi/agent-config";
 import { Router } from "express";
 
 export interface TeamFile {
@@ -27,6 +32,8 @@ export interface Template {
 	name: string;
 	config: TeamConfig;
 	teamFiles: TeamFile[];
+	/** Copied to a mission created from this template; never from a caller's inline config. */
+	platformTasks: PlatformTask[];
 }
 
 // ---------------------------------------------------------------------------
@@ -132,8 +139,10 @@ export function loadTemplates(repoRoot: string): void {
 		}
 
 		let config: TeamConfig;
+		let platformTasks: PlatformTask[];
 		try {
 			config = parseTeamConfigYaml(yaml);
+			platformTasks = parsePlatformTasksYaml(yaml);
 		} catch (e) {
 			console.warn(
 				`[templates] Skipping invalid template ${templateId}: ${(e as Error).message}`,
@@ -149,6 +158,7 @@ export function loadTemplates(repoRoot: string): void {
 			name: config.mission.name,
 			config,
 			teamFiles,
+			platformTasks,
 		});
 		console.log(
 			`[templates] Loaded template: ${templateId} ("${config.mission.name}") with ${teamFiles.length} files`,

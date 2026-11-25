@@ -271,6 +271,5 @@ export const MISSION_OPERATIONS = defineOperations([
 			"A failure keeps the last good output, marked stale; repeated failures raise an anomaly",
 			"Only the platform admin changes a mission's platform tasks",
 		],
-		planned: true,
 	},
 ]);

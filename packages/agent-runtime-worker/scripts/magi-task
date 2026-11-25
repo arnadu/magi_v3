@@ -1,0 +1,96 @@
+#!/bin/sh
+# magi-task — platform tasks (operation mission.platform-task).
+#
+# Installed root-owned at /usr/local/sbin/magi-task. The daemon (magi-operator)
+# runs it as magi-platform through one sudo rule; sudo resets the environment,
+# and this script sets everything it uses. Only the kinds below exist: the
+# mission chooses a kind and its parameters, never code.
+#
+#   magi-task git-mirror <name> <url> <branch>
+#       Keep /var/lib/magi/reference/<name>: a bare mirror (mirror.git), one
+#       snapshot of the branch's files per commit (snapshots/<commit>), a
+#       `current` link to the newest, and status.json. Agents (magi-shared)
+#       read it all and write none of it. Prints the commit.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 027
+ROOT=/var/lib/magi/reference
+MAX_MB=1024
+KEEP_SNAPSHOTS=3
+
+fail() {
+	echo "magi-task: $*" >&2
+	exit 2
+}
+
+[ "$(id -un)" = magi-platform ] || fail "must run as magi-platform"
+
+# A slug, a GitHub HTTPS repository, a branch that is neither an option nor a path escape.
+check_name() { printf '%s' "$1" | grep -Eqx '[a-z][a-z0-9-]{0,39}' || fail "name must be a lowercase slug"; }
+check_url() {
+	printf '%s' "$1" | grep -Eqx 'https://github\.com/[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}' ||
+		fail "url must be https://github.com/<owner>/<repo>"
+}
+check_branch() {
+	printf '%s' "$1" | grep -Eqx '[A-Za-z0-9._/-]{1,100}' || fail "branch has characters outside [A-Za-z0-9._/-]"
+	case "$1" in -* | *..*) fail "branch must not start with '-' or contain '..'" ;; esac
+}
+
+# git with no system or user configuration, no prompts, no hooks from anywhere.
+g() {
+	GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 HOME=/nonexistent \
+		git -c core.hooksPath=/dev/null -c protocol.allow=never -c protocol.https.allow=always "$@"
+}
+
+git_mirror() {
+	name=$1 url=$2 branch=$3
+	d=$ROOT/$name
+	mkdir -p "$d/snapshots"
+	if [ ! -d "$d/mirror.git" ]; then
+		rm -rf "$d/mirror.git.tmp"
+		g clone --quiet --bare --single-branch --branch "$branch" -- "$url" "$d/mirror.git.tmp"
+		mv "$d/mirror.git.tmp" "$d/mirror.git"
+	else
+		[ "$(g -C "$d/mirror.git" config --get remote.origin.url)" = "$url" ] || fail "$name already mirrors another repository"
+		g -C "$d/mirror.git" fetch --quiet --prune origin "+refs/heads/$branch:refs/heads/$branch"
+	fi
+	used=$(du -sm "$d/mirror.git" | cut -f1)
+	[ "$used" -le "$MAX_MB" ] || fail "$name is ${used} MB, over the ${MAX_MB} MB limit"
+
+	commit=$(g -C "$d/mirror.git" rev-parse --verify "refs/heads/$branch^{commit}")
+	snap=$d/snapshots/$commit
+	if [ ! -d "$snap" ]; then
+		tmp=$d/snapshots/.tmp-$commit
+		rm -rf "$tmp"
+		mkdir "$tmp"
+		g -C "$d/mirror.git" archive --format=tar "$commit" | tar -x --no-same-owner --no-same-permissions -C "$tmp"
+		chmod -R go-w "$tmp"
+		mv "$tmp" "$snap"
+	fi
+	# Switch `current` in one rename: a reader never sees a half-written tree.
+	ln -sfn "snapshots/$commit" "$d/current.tmp"
+	mv -T "$d/current.tmp" "$d/current"
+	printf '{"kind":"git-mirror","url":"%s","branch":"%s","commit":"%s","updatedAt":"%s"}\n' \
+		"$url" "$branch" "$commit" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$d/status.json.tmp"
+	mv "$d/status.json.tmp" "$d/status.json"
+	# Keep the newest few snapshots; one a reader started on survives the next switch.
+	# Snapshot names are commit hashes, and the order wanted is by age, hence ls -t.
+	# shellcheck disable=SC2012
+	ls -1t "$d/snapshots" | tail -n +$((KEEP_SNAPSHOTS + 1)) | while read -r old; do
+		[ "$old" = "$commit" ] || rm -rf "${d:?}/snapshots/$old"
+	done
+	echo "$commit"
+}
+
+case "${1:-}" in
+git-mirror)
+	[ $# -eq 4 ] || fail "usage: magi-task git-mirror <name> <url> <branch>"
+	check_name "$2"
+	check_url "$3"
+	check_branch "$4"
+	git_mirror "$2" "$3" "$4"
+	;;
+*)
+	fail "unknown task kind (known: git-mirror)"
+	;;
+esac

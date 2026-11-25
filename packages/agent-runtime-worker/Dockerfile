@@ -106,6 +106,17 @@ RUN useradd -m -u 60011 -s /bin/bash -G magi-shared mission-copilot
 RUN git config --system safe.directory /missions && \
     git config --system safe.directory /app
 
+# magi-platform: runs platform tasks (mission.platform-task) through magi-task. Not in
+# magi-shared, so the daemon's agent-wide sudo grants cannot reach it, and it holds no secret
+# (sudo resets the environment). It owns /var/lib/magi/reference; the folder's group is
+# magi-shared with the setgid bit, so everything a task writes there is readable by agents and
+# writable by no agent. On the machine's own disk, not the mission volume: tasks rebuild their
+# output at boot.
+RUN useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin magi-platform && \
+    mkdir -p /var/lib/magi/reference && \
+    chown magi-platform:magi-shared /var/lib/magi/reference && \
+    chmod 2750 /var/lib/magi/reference
+
 # magi-create-user: root helper invoked via sudo by magi-operator to create
 # per-agent OS users at daemon startup. Validates the username format;
 # idempotent for a user it (or this image) created. An existing name is only
@@ -159,6 +170,7 @@ RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL
     echo "magi-operator ALL=(root) NOPASSWD: /usr/local/sbin/magi-net" >> /etc/sudoers.d/magi && \
     echo "Defaults!/usr/local/bin/magi-app env_keep += \"PORT BASE_PATH JUPYTER_TOKEN GRADIO_SERVER_NAME GRADIO_SERVER_PORT GRADIO_ROOT_PATH GRADIO_ANALYTICS_ENABLED GRADIO_RUN_HISTORY JUPYTER_PATH JUPYTER_CONFIG_PATH JUPYTERLAB_DIR PYTHONSAFEPATH\"" >> /etc/sudoers.d/magi && \
     echo "magi-operator ALL=(%magi-shared) NOPASSWD: /usr/local/bin/magi-app" >> /etc/sudoers.d/magi && \
+    echo "magi-operator ALL=(magi-platform) NOPASSWD: /usr/local/sbin/magi-task" >> /etc/sudoers.d/magi && \
     chmod 440 /etc/sudoers.d/magi
 
 # magi-net — the machine firewall (ADR-0037 decision 5, F-081): inbound only
@@ -167,6 +179,11 @@ RUN echo "Defaults!/usr/local/bin/magi-job env_keep += \"MAGI_TOOL_URL MAGI_TOOL
 # above; it validates its own arguments and reads no environment.
 COPY packages/agent-runtime-worker/scripts/magi-net /usr/local/sbin/magi-net
 RUN chown root:root /usr/local/sbin/magi-net && chmod 755 /usr/local/sbin/magi-net
+
+# magi-task — platform tasks: the only code magi-platform runs (sudo rule above). Root-owned,
+# checks its own arguments, sets its own environment.
+COPY packages/agent-runtime-worker/scripts/magi-task /usr/local/sbin/magi-task
+RUN chown root:root /usr/local/sbin/magi-task && chmod 755 /usr/local/sbin/magi-task
 
 # magi-node wrapper — exec's the real Node binary at a stable path.
 # Avoids the nvm PATH problem (nvm not in sudo PATH).

@@ -563,7 +563,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 269,
+		"line": 281,
 		"name": "POST /",
 		"tag": "mission.launch"
 	},
@@ -571,7 +571,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 270,
+		"line": 282,
 		"name": "POST /draft",
 		"tag": "mission.create-draft"
 	},
@@ -579,7 +579,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 271,
+		"line": 283,
 		"name": "POST /:id/suspend",
 		"tag": "mission.suspend"
 	},
@@ -587,7 +587,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 272,
+		"line": 284,
 		"name": "POST /:id/resume",
 		"tag": "mission.resume"
 	},
@@ -595,7 +595,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 273,
+		"line": 285,
 		"name": "DELETE /:id",
 		"tag": "retired"
 	},
@@ -835,7 +835,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/templates.ts",
-		"line": 179,
+		"line": 189,
 		"name": "GET /",
 		"tag": "platform.offerings"
 	},
@@ -843,7 +843,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/templates.ts",
-		"line": 183,
+		"line": 193,
 		"name": "GET /:id",
 		"tag": "platform.offerings"
 	},
@@ -859,7 +859,7 @@
 		"kind": "file-request",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/app-requests.ts",
-		"line": 188,
+		"line": 189,
 		"name": "files in dirs.requests",
 		"tag": "app.declare"
 	},
@@ -867,7 +867,7 @@
 		"kind": "file-request",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/app-requests.ts",
-		"line": 188,
+		"line": 189,
 		"name": "files in dirs.requests",
 		"tag": "app.control"
 	},
@@ -907,7 +907,7 @@
 		"kind": "trigger",
 		"actor": "PLT",
 		"file": "packages/agent-runtime-worker/src/daemon.ts",
-		"line": 227,
+		"line": 228,
 		"name": "interval: tick",
 		"tag": "job.run"
 	},
@@ -1566,6 +1566,14 @@
 		"line": 58,
 		"name": "createErrorCooldown callback",
 		"tag": "agent.dispatch"
+	},
+	{
+		"kind": "trigger",
+		"actor": "PLT",
+		"file": "packages/agent-runtime-worker/src/platform-tasks.ts",
+		"line": 154,
+		"name": "callback",
+		"tag": "mission.platform-task"
 	},
 	{
 		"kind": "tool",

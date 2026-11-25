@@ -348,17 +348,33 @@ describe("loadDaemonTeamConfig", () => {
 			agents: [validAgent],
 		});
 		const db = fakeDbWithMissionDoc(null);
-		const result = await loadDaemonTeamConfig({
-			db,
-			missionIdEnv: undefined,
-			teamConfigPath: "/some/dir/my-team.yaml",
-			agentWorkdir: "/tmp/magi-agent-workdir",
-		});
-		expect(mockLoadTeamConfig).toHaveBeenCalledWith("/some/dir/my-team.yaml");
-		expect(result.ok).toBe(true);
-		if (!result.ok) throw new Error("expected ok:true");
-		expect(result.missionId).toBe("yaml-mission");
-		expect(result.teamDir).toBe("/some/dir/my-team");
+		const dir = mkdtempSync(join(tmpdir(), "magi-yaml-branch-"));
+		const path = join(dir, "my-team.yaml");
+		const task = {
+			kind: "git-mirror",
+			name: "repo",
+			params: { url: "https://github.com/a/b", branch: "main" },
+		};
+		writeFileSync(
+			path,
+			`mission:\n  id: yaml-mission\nplatformTasks:\n  - ${JSON.stringify(task)}\n`,
+		);
+		try {
+			const result = await loadDaemonTeamConfig({
+				db,
+				missionIdEnv: undefined,
+				teamConfigPath: path,
+				agentWorkdir: "/tmp/magi-agent-workdir",
+			});
+			expect(mockLoadTeamConfig).toHaveBeenCalledWith(path);
+			expect(result.ok).toBe(true);
+			if (!result.ok) throw new Error("expected ok:true");
+			expect(result.missionId).toBe("yaml-mission");
+			expect(result.teamDir).toBe(join(dir, "my-team"));
+			expect(result.platformTasksRaw).toEqual([task]);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -17,9 +17,9 @@ public, and a cell that fails is in code scanning (maintainers only).
 | Agent and copilot tools | 78 | 0 | 78 | 0 |
 | Request folders (agents write files the daemon acts on) | 10 | 3 | 7 | 0 |
 | Copilot actions (proposed, then confirmed by the operator) | 13 | 0 | 13 | 0 |
-| Timers and change streams | 17 | 0 | 17 | 0 |
-| Platform (no entry point) | 10 | 10 | 0 | 0 |
-| **All** | **323** | **156** | **162** | **5** |
+| Timers and change streams | 18 | 1 | 17 | 0 |
+| Platform (no entry point) | 14 | 14 | 0 | 0 |
+| **All** | **328** | **161** | **162** | **5** |
 
 ## Attack classes
 
@@ -50,6 +50,10 @@ public, and a cell that fails is in code scanning (maintainers only).
 | `secrets-in-subprocesses` | `sec.no-secrets-to-agents` | find a platform secret in a tool or job subprocess's environment |
 | `reach-agent-server` | `sec.served-apart` | another machine reaches a server an agent opened on all interfaces |
 | `reach-teammate-app` | `sec.served-apart` | one agent reaches another agent's app on loopback |
+| `write-task-output` | `sec.least-privilege` | an agent writes the output a platform task keeps (the reference copy) |
+| `run-task-wrapper` | `sec.least-privilege` | an agent runs the platform-task wrapper |
+| `task-arguments` | `sec.input-validated` | a mission's task list fetches elsewhere or writes outside the task's folder |
+| `task-reach` | `sec.least-privilege` | a compromised task reaches the agents' files or sudo |
 | `helper-arguments` | `sec.least-privilege` | the firewall helper given arguments it must refuse |
 | `wrapper-to-root` | `sec.least-privilege` | a sudo wrapper run as root instead of an agent |
 
@@ -401,10 +405,11 @@ public, and a cell that fails is in code scanning (maintainers only).
 | `interval (apps-start.ts:149)` | `app.run` | `overlap-or-replay` | open |  |
 | `interval (apps-start.ts:166)` | `app.run` | `overlap-or-replay` | open |  |
 | `change event (mail-waiter.ts:60)` | `agent.dispatch` | `overlap-or-replay` | open |  |
-| `interval: tick (daemon.ts:227)` | `job.run` | `overlap-or-replay` | open |  |
+| `interval: tick (daemon.ts:228)` | `job.run` | `overlap-or-replay` | open |  |
 | `change event (monitor-feeds.ts:38)` | `feed` | `overlap-or-replay` | open |  |
 | `interval (monitor-server.ts:455)` | `feed` | `overlap-or-replay` | open |  |
 | `createErrorCooldown callback (orchestrator-dispatch.ts:58)` | `agent.dispatch` | `overlap-or-replay` | open |  |
+| `callback (platform-tasks.ts:154)` | `mission.platform-task` | `overlap-or-replay` | covered | `platform-tasks.unit.test.ts` (never starts a task twice at once) |
 
 ## Platform (no entry point)
 
@@ -420,4 +425,8 @@ public, and a cell that fails is in code scanning (maintainers only).
 | `the machine on the network` |  | `reach-teammate-app` | covered | `sandbox.py` (APP-1) |
 | `the daemon's sudo helpers` |  | `helper-arguments` | covered | `sandbox.py` (HELPER-1) |
 | `the daemon's sudo helpers` |  | `wrapper-to-root` | covered | `sandbox.py` (HELPER-2) |
+| `platform tasks` | `mission.platform-task` | `write-task-output` | covered | `sandbox.py` (PLAT-1) |
+| `platform tasks` | `mission.platform-task` | `run-task-wrapper` | covered | `sandbox.py` (PLAT-2) |
+| `platform tasks` | `mission.platform-task` | `task-arguments` | covered | `sandbox.py` (PLAT-3) |
+| `platform tasks` | `mission.platform-task` | `task-reach` | covered | `sandbox.py` (PLAT-4) |
 

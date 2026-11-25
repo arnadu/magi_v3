@@ -745,6 +745,30 @@ $AGENT_WORKDIR/
 4. Runs `setfacl` to grant each agent's `linuxUser` read/write access to `sharedDir` and read/write
    access to their own `workdir` only.
 
+### Reference copies (platform tasks)
+
+A mission can declare platform tasks (`mission.platform-task`): housekeeping its agents must not be
+able to do. The kinds are code in the mission image (`/usr/local/sbin/magi-task`); the mission's
+`platformTasks` (a top-level field on its document, copied from the template at creation and
+otherwise changed only by the admin; `platformTasks:` in a local team YAML) chooses kind, schedule
+and parameters. The daemon runs each task at boot and every `everyMinutes` (default 15), as the
+`magi-platform` user, which holds no secret and belongs to no agent group.
+
+The first kind, `git-mirror`, keeps a read-only copy of a GitHub repository for the agents:
+
+```
+/var/lib/magi/reference/{name}/        ← on the machine's own disk; rebuilt at boot
+  current -> snapshots/{commit}        the files of the branch's newest commit (read these)
+  snapshots/{commit}/                  the last three commits' files
+  mirror.git/                          a bare mirror, for history:
+                                       git -c safe.directory=$PWD/mirror.git --git-dir=mirror.git log
+  status.json                          {kind, url, branch, commit, updatedAt}
+```
+
+Agents (`magi-shared`) read everything there and write nothing. A review records the commit from
+`status.json`. A failed refresh keeps the last good copy; three failures in a row raise a
+`platform-task-failure` anomaly.
+
 ---
 
 ## 11. Configuration

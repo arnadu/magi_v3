@@ -434,6 +434,69 @@ def _(sb):
     return not ran, f"ran: {ran or 'none'}", crc == 0, f"as alice: rc {crc}"
 
 
+REF = "/var/lib/magi/reference"
+
+
+@cell("PLAT-1", "sec.least-privilege", "alice", "write the reference copy a platform task keeps")
+def _(sb):
+    d = f"{REF}/magi-v3"
+    # The daemon mirrors at boot; a first clone can take a while.
+    status = wait_for(lambda: sb.run("alice", f"cat {d}/status.json 2>/dev/null")[1].strip(), 120)
+    attempts = {
+        "a file in the copy": f"echo x >> {d}/current/README.md",
+        "a new file in the copy": f"touch {d}/current/planted",
+        "the mirror": f"touch {d}/mirror.git/planted",
+        "the status": f"echo x > {d}/status.json",
+        "the current link": f"ln -sfn /tmp {d}/current",
+        "the folder": f"mkdir {REF}/planted",
+    }
+    wrote = [what for what, cmd in attempts.items() if sb.run("alice", cmd)[0] == 0]
+    rc, readme = sb.run("alice", f"head -c 200 {d}/current/README.md")
+    committed = '"commit":"' in status
+    return not wrote, f"wrote: {wrote or 'none'}", committed and rc == 0 and len(readme) > 0, f"status written: {committed}, README read: rc {rc}"
+
+
+@cell("PLAT-2", "sec.least-privilege", "alice", "run the platform-task wrapper")
+def _(sb):
+    rc, _ = sb.run("alice", "sudo -n -u magi-platform /usr/local/sbin/magi-task git-mirror x https://github.com/a/b main")
+    rc2, _ = sb.run("alice", "/usr/local/sbin/magi-task git-mirror x https://github.com/a/b main")
+    crc, cout = sb.run("magi-operator", "sudo -n -u magi-platform /usr/local/sbin/magi-task")
+    # The control reaches the wrapper itself: its own usage error, not sudo's refusal.
+    return rc != 0 and rc2 != 0, f"via sudo: rc {rc}; directly: rc {rc2}", "magi-task:" in cout, f"daemon reaches the wrapper: {'magi-task:' in cout}"
+
+
+@cell("PLAT-3", "sec.input-validated", "the daemon (a bad task in the mission's config)", "make the wrapper fetch elsewhere or write outside its folder")
+def _(sb):
+    bad = [
+        "shell x y z", "git-mirror ../x https://github.com/a/b main", "git-mirror X https://github.com/a/b main",
+        "git-mirror x http://github.com/a/b main", "git-mirror x https://gitlab.com/a/b main",
+        "git-mirror x https://u:p@github.com/a/b main", "git-mirror x 'https://github.com/a/b;id' main",
+        "git-mirror x https://github.com/a/b/c main", "git-mirror x https://github.com/a/b --upload-pack=id",
+        "git-mirror x https://github.com/a/b a/../b", "git-mirror x https://github.com/a/b", "git-mirror x https://github.com/a/b main extra",
+    ]
+    accepted = [args for args in bad if sb.run("magi-operator", f"sudo -n -u magi-platform /usr/local/sbin/magi-task {args}", timeout=60)[0] == 0]
+    _, listing = sb.run("root", f"ls -A {REF}; ls -A /var/lib/magi")
+    stray = [n for n in listing.split() if n not in ("magi-v3", "reference")]
+    crc, commit = sb.run("magi-operator", "sudo -n -u magi-platform /usr/local/sbin/magi-task git-mirror magi-v3 https://github.com/arnadu/magi_v3 main", timeout=180)
+    valid = crc == 0 and len(commit.strip().splitlines()[-1]) == 40 if commit.strip() else False
+    return not accepted and not stray, f"accepted: {accepted or 'none'}; stray entries: {stray or 'none'}", valid, f"a valid run: rc {crc}"
+
+
+@cell("PLAT-4", "sec.least-privilege", "a compromised platform task", "reach the agents' files or sudo from the platform user")
+def _(sb):
+    as_platform = "runuser -u magi-platform -- sh -c"
+    tries = {
+        "alice's workdir": f"touch {workdir('alice')}/planted",
+        "shared/": f"touch {SHARED}/planted-by-platform",
+        "sudo": "sudo -n true",
+    }
+    got = [what for what, cmd in tries.items() if sb.run("root", f"{as_platform} '{cmd}'")[0] == 0]
+    _, groups = sb.run("root", "id -nG magi-platform")
+    in_shared = "magi-shared" in groups.split()
+    crc, _ = sb.run("root", f"{as_platform} 'touch {REF}/.probe && rm {REF}/.probe'")
+    return not got and not in_shared, f"reached: {got or 'none'}; in magi-shared: {in_shared}", crc == 0, f"writes its own folder: rc {crc}"
+
+
 def write_sarif(path, results):
     """Every cell that did not hold, as a code-scanning result (visible to maintainers only)."""
     rules, findings = [], []

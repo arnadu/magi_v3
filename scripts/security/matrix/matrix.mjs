@@ -9,7 +9,7 @@
  * tools, request folders, copilot actions and timers from the trace's entry points (a copy is kept
  * in docs/security/entry-points.json, refreshed by --write after `npm run trace`); and two platform
  * rows for what no entry point covers (an agent's OS user, the machine on the network, the
- * daemon's sudo helpers).
+ * daemon's sudo helpers, platform tasks).
  *
  *   node scripts/security/matrix/matrix.mjs --write   # refresh the copy and docs/security/attack-matrix.md
  *
@@ -195,7 +195,13 @@ export const CLASSES = [
 		invariant: "sec.input-validated",
 		attack: "the trigger overlapping itself, or replayed after a crash",
 		applies: (r) => r.surface === "trigger",
-		covered: () => null,
+		covered: (r) =>
+			r.operation === "mission.platform-task"
+				? {
+						test: "packages/agent-runtime-worker/tests/platform-tasks.unit.test.ts",
+						name: "never starts a task twice at once",
+					}
+				: null,
 	},
 	// ── Platform ───────────────────────────────────────────────────────────────
 	{
@@ -254,6 +260,36 @@ export const CLASSES = [
 		attack: "one agent reaches another agent's app on loopback",
 		applies: (r) => r.path === "the machine on the network",
 		covered: () => ({ test: SANDBOX, name: "APP-1" }),
+	},
+	{
+		id: "write-task-output",
+		invariant: "sec.least-privilege",
+		attack:
+			"an agent writes the output a platform task keeps (the reference copy)",
+		applies: (r) => r.path === "platform tasks",
+		covered: () => ({ test: SANDBOX, name: "PLAT-1" }),
+	},
+	{
+		id: "run-task-wrapper",
+		invariant: "sec.least-privilege",
+		attack: "an agent runs the platform-task wrapper",
+		applies: (r) => r.path === "platform tasks",
+		covered: () => ({ test: SANDBOX, name: "PLAT-2" }),
+	},
+	{
+		id: "task-arguments",
+		invariant: "sec.input-validated",
+		attack:
+			"a mission's task list fetches elsewhere or writes outside the task's folder",
+		applies: (r) => r.path === "platform tasks",
+		covered: () => ({ test: SANDBOX, name: "PLAT-3" }),
+	},
+	{
+		id: "task-reach",
+		invariant: "sec.least-privilege",
+		attack: "a compromised task reaches the agents' files or sudo",
+		applies: (r) => r.path === "platform tasks",
+		covered: () => ({ test: SANDBOX, name: "PLAT-4" }),
 	},
 	{
 		id: "helper-arguments",
@@ -373,6 +409,12 @@ export function buildMatrix(entries) {
 			method: "",
 			path: "the daemon's sudo helpers",
 			operation: "",
+		},
+		{
+			surface: "platform",
+			method: "",
+			path: "platform tasks",
+			operation: "mission.platform-task",
 		},
 	];
 	const cells = [];

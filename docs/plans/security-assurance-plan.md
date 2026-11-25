@@ -310,6 +310,16 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 6a, platform tasks, 2026-11-24:** `mission.platform-task` built. Kinds ship in the
+  image (`/usr/local/sbin/magi-task`, root-owned, its own argument checks); the mission's top-level
+  `platformTasks` (from its template at creation, never from a config editor or an inline config)
+  chooses kind, schedule and parameters; the daemon runs each at boot and every `everyMinutes` as
+  `magi-platform` (no secret, not in `magi-shared`, one new sudo rule), never twice at once, with a
+  `platform-task-failure` anomaly after three failures in a row. First kind `git-mirror`: a
+  GitHub repository kept at `/var/lib/magi/reference/<name>` (a bare mirror, snapshots per
+  commit, an atomic `current` link, `status.json`), readable by agents and writable by none.
+  Threat model TB-27 (its rows cite their proof); sandbox PLAT-1..4: 24 of 24 cells held. Next in
+  6a: `Investigate`, the clean-context worker over that copy.
 - **Step 5, environment B and Nuclei, 2026-11-24:** `scripts/security/stack/` starts the
   control plane's own image on an internal Docker network (no route out) with a MongoDB container
   and two test tenants through a new test-only sign-in (`AUTH_TEST_USERS`, refused on Fly: the

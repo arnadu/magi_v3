@@ -287,7 +287,12 @@ export const COMPONENTS: readonly Component<ComponentId>[] = [
 			"Background jobs, the Tool API (port 4001), schedule ingestion",
 		layer: 4,
 		root: MM,
-		paths: ["job-*", "tool-api-server.ts", "schedule-ingest.ts"],
+		paths: [
+			"job-*",
+			"tool-api-server.ts",
+			"schedule-ingest.ts",
+			"platform-tasks.ts",
+		],
 	},
 	{
 		id: "mm-apps",

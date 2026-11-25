@@ -41,7 +41,10 @@ export type AnomalyCategory =
 	| "tool-repeated-failure"
 	// A running mission's machine is stopped after an exit nobody requested,
 	// Fly's restarts used up (fly-events.ts): the daemon is not coming back.
-	| "machine-down";
+	| "machine-down"
+	// A platform task (mission.platform-task) failed several runs in a row, or could not run
+	// at all (platform-tasks.ts): its output is stale or missing.
+	| "platform-task-failure";
 
 export type AnomalySeverity = "hard" | "soft";
 

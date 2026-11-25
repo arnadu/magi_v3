@@ -6,6 +6,7 @@
 import {
 	type AgentConfig,
 	type Limits,
+	type PlatformTask,
 	parseTeamConfig,
 	type TeamConfig,
 	validateNewMissionId,
@@ -49,7 +50,11 @@ function resolveCreateConfig(
 		teamFiles?: Array<{ path: string; content: string }>;
 	},
 ):
-	| { config: TeamConfig; files: Array<{ path: string; content: string }> }
+	| {
+			config: TeamConfig;
+			files: Array<{ path: string; content: string }>;
+			platformTasks: PlatformTask[];
+	  }
 	| { status: number; error: string } {
 	if (inline.mission && inline.agents) {
 		let config: TeamConfig;
@@ -72,7 +77,8 @@ function resolveCreateConfig(
 		} catch (e) {
 			return { status: 400, error: (e as Error).message };
 		}
-		return { config, files: inline.teamFiles ?? [] };
+		// A caller's inline config is tenant input: it never carries platform tasks.
+		return { config, files: inline.teamFiles ?? [], platformTasks: [] };
 	}
 	const template = getTemplate(templateId);
 	if (!template)
@@ -83,6 +89,7 @@ function resolveCreateConfig(
 			mission: { ...template.config.mission, id: missionId },
 		},
 		files: template.teamFiles,
+		platformTasks: template.platformTasks,
 	};
 }
 
@@ -134,7 +141,11 @@ function createMission({ db, col }: MissionRouteDeps): RequestHandler {
 			res.status(resolved.status).json({ error: resolved.error });
 			return;
 		}
-		const { config: resolvedConfig, files: resolvedFiles } = resolved;
+		const {
+			config: resolvedConfig,
+			files: resolvedFiles,
+			platformTasks,
+		} = resolved;
 
 		const existing = await col.findOne({ missionId });
 		if (existing) {
@@ -155,6 +166,7 @@ function createMission({ db, col }: MissionRouteDeps): RequestHandler {
 			agents: resolvedConfig.agents,
 			missionCopilotLimits: resolvedConfig.missionCopilotLimits,
 			teamFiles: resolvedFiles,
+			platformTasks,
 			maxCostCeilingUsd: platformMaxCostCeilingUsd(),
 			status: "provisioning",
 			createdAt: new Date(),

@@ -11,6 +11,7 @@ import type { MailboxRepository } from "../mailbox.js";
 import type { MissionConfigRepository } from "../mission-config.js";
 import type { MonitorServer } from "../monitor-server.js";
 import type { ObjectivesRepository } from "../objectives/repository.js";
+import type { PlatformTaskRunner } from "../platform-tasks.js";
 import type { ToolApiServer } from "../tool-api-server.js";
 import type { MagiTool } from "../tools.js";
 import type { UsageAccumulator } from "../usage.js";
@@ -62,6 +63,10 @@ export interface BootContext {
 	apps: AppSupervisor;
 	/** Ends the apps' timers and stops every app. */
 	stopApps: () => Promise<void>;
+	/** The mission's platform tasks as stored (validated by the runner). */
+	platformTasksRaw: unknown;
+	/** The platform tasks' runner (mission.platform-task). */
+	platformTasks: PlatformTaskRunner;
 	waitForMail: () => Promise<void>;
 	missionCopilotTools: MagiTool[] | undefined;
 }

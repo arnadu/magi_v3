@@ -8,6 +8,7 @@
 import {
 	type AgentConfig,
 	type Limits,
+	type PlatformTask,
 	type TeamConfig,
 	validateNewMissionId,
 } from "@magi/agent-config";
@@ -52,6 +53,7 @@ export async function createDraftMission(
 	let agents: AgentConfig[];
 	let missionCopilotLimits: Limits | undefined;
 	let teamFiles: Array<{ path: string; content: string }>;
+	let platformTasks: PlatformTask[] = [];
 	if (templateId) {
 		const template = getTemplate(templateId);
 		if (!template) {
@@ -65,6 +67,7 @@ export async function createDraftMission(
 		agents = template.config.agents;
 		missionCopilotLimits = template.config.missionCopilotLimits;
 		teamFiles = template.teamFiles;
+		platformTasks = template.platformTasks;
 	} else {
 		mission = { id: missionId, name };
 		agents = [];
@@ -81,6 +84,7 @@ export async function createDraftMission(
 		agents,
 		missionCopilotLimits,
 		teamFiles,
+		platformTasks,
 		maxCostCeilingUsd: platformMaxCostCeilingUsd(),
 		status: "draft",
 		createdAt: now,

@@ -463,6 +463,22 @@ Implemented on dev 2026-11-21 (slices a–g); agents' Python environments added 
 | Packages an agent installed under its home folder | Gone at the next resume (the home folder is on the machine's disk) | 🟡 | The `python-env` skill tells agents to install only into `$WORKDIR/.venv`, which is on the volume; found live 2026-11-22 | An agent that ignores the skill loses its packages; its apps fail visibly (row above) |
 | A package or tool an app needs is missing from the image | The app fails to start, or a notebook cell fails to import | 🟡 | The image ships the scientific stack, Jupyter, Gradio and widgets; an agent adds the rest with `python-env` | None |
 
+
+## Layer 13 — Platform tasks (`mission.platform-task`)
+
+Implemented 2026-11-24 (security assurance plan, step 6a). The first kind, `git-mirror`, keeps the
+reference copy of a repository.
+
+| Failure | Effect | Severity | Current mitigation | Gap |
+|---------|--------|----------|--------------------|-----|
+| GitHub unreachable, or the fetch fails | The copy stops following the branch | 🟡 | The last good copy stays, with its commit and time in `status.json`; retried every `everyMinutes`; three failures in a row raise a `platform-task-failure` anomaly (once per streak) | An agent must read `status.json` to notice a stale copy |
+| A fetch hangs | One run never ends | 🟡 | 10-minute timeout; a task is never started twice at once, so a hung run delays only its own next turn | None |
+| The repository grows past the cap, or fills the disk | Refresh refused, or writes fail on the machine's disk | 🟠 | 1 GB cap on the mirror (the run fails, the old copy stays); three snapshots kept; the machine's own disk, not the mission volume | No alert on the machine's root disk itself |
+| The wrapper is missing (an old image) or the sudo rule broken | No task runs | 🟡 | On Fly, a `platform-task-failure` anomaly at boot; locally a log line | None |
+| The mission's task list is invalid (a hand-edited document) | No task runs | 🟡 | Validated at boot; an anomaly names the error; the rest of the daemon runs | None |
+| The machine restarts | The copy is gone with the machine's disk | 🟢 | Every task runs at boot | A first clone after a restart takes a while; reviews wait for `status.json` |
+| A refresh while a reader is in the middle of a run | The reader sees files change under it | 🟢 | `current` switches in one rename; the previous snapshot stays until two newer ones exist | None |
+
 ---
 
 ## Gap summary

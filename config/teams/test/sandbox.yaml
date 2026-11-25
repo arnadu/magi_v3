@@ -26,3 +26,12 @@ agents:
       {{mentalMap}}
     initialMentalMap: |
       <section id="status"><p>Idle</p></section>
+
+# A platform task the daemon runs at boot (mission.platform-task): the PLAT cells check that the
+# reference copy it keeps is readable by agents and writable by none of them.
+platformTasks:
+  - kind: git-mirror
+    name: magi-v3
+    params:
+      url: https://github.com/arnadu/magi_v3
+      branch: main

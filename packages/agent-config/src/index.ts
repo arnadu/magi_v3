@@ -57,6 +57,19 @@ export {
 	type ImageKind,
 } from "./models.js";
 export {
+	GITHUB_REPO_URL_RE,
+	PLATFORM_TASK_KINDS,
+	PLATFORM_TASK_NAME_RE,
+	PLATFORM_TASK_ROOT,
+	type PlatformTask,
+	type PlatformTaskKind,
+	PlatformTaskSchema,
+	PlatformTasksSchema,
+	parsePlatformTasks,
+	parsePlatformTasksYaml,
+	rawPlatformTasksYaml,
+} from "./platform-tasks.js";
+export {
 	capForConfigWrite,
 	DEFAULT_MISSION_MAX_COST_USD,
 	SpendCapCeilingExceededError,

@@ -34,6 +34,10 @@ control failed (the probe could not have seen success); `BROKEN` when the attack
 | APP-1 | `sec.served-apart` | bob reaches alice's app on loopback | alice and the daemon reach it |
 | HELPER-1 | `sec.least-privilege` | `magi-net` given ports, uids or extra words it must refuse | a valid `allow` |
 | HELPER-2 | `sec.least-privilege` | `magi-node`, `magi-job`, `magi-app` run as root | as alice |
+| PLAT-1 | `sec.least-privilege` | alice writes the reference copy a platform task keeps (files, mirror, status, the `current` link, the folder) | the copy is readable and the daemon's run wrote its commit |
+| PLAT-2 | `sec.least-privilege` | alice runs `magi-task`, through sudo or directly | the daemon reaches the wrapper |
+| PLAT-3 | `sec.input-validated` | `magi-task` given a kind, URL, branch or name it must refuse (12 cases), leaving nothing behind | a valid `git-mirror` run returns a commit |
+| PLAT-4 | `sec.least-privilege` | the platform user writes alice's workdir or `shared/`, sudoes, or is in `magi-shared` | it writes its own folder |
 
 In CI (`build-execution-image.yml`) it runs on the image just built, before the push, as a gate
 (since 2026-11-24, after a clean run): an image where a cell does not hold is not pushed. The log and the summary carry counts only: the repository is public, and a cell that did

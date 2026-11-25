@@ -7,6 +7,7 @@
  */
 
 import type { AgentConfig, Limits, TeamConfig } from "../loader.js";
+import type { PlatformTask } from "../platform-tasks.js";
 
 export type MissionStatus =
 	| "draft"
@@ -46,6 +47,11 @@ export interface MissionDoc {
 	 * execution-plane tool can read or write it. Absent means no ceiling.
 	 */
 	maxCostCeilingUsd?: number;
+	/**
+	 * Platform tasks the daemon runs (`mission.platform-task`). Top-level like the ceiling, so no
+	 * config editor writes it: copied from the template at creation, otherwise admin-only.
+	 */
+	platformTasks?: PlatformTask[];
 	/** Team files (skills, etc.) stored at provision time; updated on config edit. */
 	teamFiles?: Array<{ path: string; content: string }>;
 	machineId?: string;
