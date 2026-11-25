@@ -170,7 +170,8 @@ def test_discovery_keeps_a_single_candidate_for_the_refuter(w):
     ([], "no evidence"),
     ([{"file": "src/zz.ts", "line": 1, "quote": "x"}], "does not exist"),
     ([{"file": "src/a.ts", "line": 999, "quote": "x"}], "is not a line"),
-    ([{"file": "src/a.ts", "line": 30, "quote": "req.body.path"}], "quote not found"),
+    ([{"file": "src/a.ts", "line": 30, "quote": "req.body.path"}], "quote not found in src/a.ts"),
+    ([{"file": "src/a.ts", "line": 30, "quote": "line 1"}], "occurs"),
     ([{"file": "../etc/passwd", "line": 1, "quote": "root"}], "bad path"),
 ])
 def test_acceptance_rejects_invented_evidence(w, evidence, problem):
@@ -220,3 +221,20 @@ def test_skill_paths_may_be_relative_to_the_descriptor(w):
     w.kind("rel", mode="triage", skill="../SKILL.md", refuter_skill="../REFUTE.md")
     k = review.load_kinds(str(w.kinds))["rel"]
     assert k.skill == str(w.tmp / "SKILL.md") and k.refuter_skill == str(w.tmp / "REFUTE.md")
+
+
+def test_a_quote_cited_at_a_drifted_line_is_relocated(w):
+    w.kind("cell", mode="discovery")
+    w.answers = [{"verdict": "real", "evidence": [{"file": "src/a.ts", "line": 3, "quote": "req.query.path"}]},
+                 {"refuted": False, "reason": "holds"}]
+    out, store = w.run([{**ITEM, "id": "cell-1", "kind": "cell"}])
+    assert out[0].status == "finding", out[0].problems
+    ev = store["cell-1"]["answer"]["evidence"][0]
+    assert ev["line"] == 30 and ev["relocated_from"] == 3
+
+
+def test_a_kind_sets_the_investigation_turn_budget(w):
+    w.kind("alert", mode="triage", max_turns=30)
+    w.answers = [FP]
+    w.run([ITEM])
+    assert w.calls[0]["max_turns"] == 30

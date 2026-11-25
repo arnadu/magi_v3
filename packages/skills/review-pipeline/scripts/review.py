@@ -96,6 +96,7 @@ class Kind:
     severity_field: str | None = None
     reproduction_field: str | None = None
     evidence_field: str = "evidence"
+    max_turns: int | None = None  # the investigation's turn budget; Investigate's default if unset
 
     @property
     def version(self) -> str:
@@ -129,7 +130,7 @@ def load_kinds(directory: str) -> dict:
             mode=d["mode"], risk=d["risk"], positive_field=pos["field"],
             positive_values=pos["values"], refuter_skill=d.get("refuter_skill"),
             severity_field=d.get("severity_field"), reproduction_field=d.get("reproduction_field"),
-            evidence_field=d.get("evidence_field", "evidence"),
+            evidence_field=d.get("evidence_field", "evidence"), max_turns=d.get("max_turns"),
         )
     return kinds
 
@@ -192,6 +193,14 @@ def _norm(s: str) -> str:
     return " ".join(s.split())
 
 
+def _occurrences(lines: list, quote: str) -> list:
+    """The 1-based lines where `quote` starts (spanning as many lines as it has)."""
+    q, span = _norm(quote), quote.count("\n") + 1
+    hits = [i for i in range(len(lines)) if q in _norm(" ".join(lines[i:i + span]))]
+    # A window that holds the quote also matches from the line before it: keep each run's last.
+    return [i + 1 for n, i in enumerate(hits) if n + 1 == len(hits) or hits[n + 1] != i + 1]
+
+
 def accept(ref: Reference, kind: Kind, answer: dict) -> list:
     """Why the answer is not acceptable; empty when it is."""
     problems = []
@@ -215,7 +224,14 @@ def accept(ref: Reference, kind: Kind, answer: dict) -> list:
         if quote:
             lo, hi = max(0, line - 1 - QUOTE_WINDOW), min(len(lines), line + QUOTE_WINDOW)
             if _norm(quote) not in _norm(" ".join(lines[lo:hi])):
-                problems.append(f"quote not found near {path}:{line}")
+                found = _occurrences(lines, quote)
+                if len(found) == 1:
+                    # A real quote cited at a drifted line: correct the line, keep the evidence.
+                    e["relocated_from"], e["line"] = line, found[0]
+                elif found:
+                    problems.append(f"quote not found near {path}:{line} (it occurs {len(found)} times elsewhere)")
+                else:
+                    problems.append(f"quote not found in {path}")
     if kind.severity_field and kind.reproduction_field:
         sev = answer.get(kind.severity_field, "low")
         if sev in SEVERITY_ORDER and SEVERITY_ORDER.index(sev) > SEVERITY_ORDER.index("low"):
@@ -264,8 +280,9 @@ def review_item(item, kind, ref, investigate, budget) -> tuple:
     question = kind.question.format(**item.get("facts", {}))
 
     def ask(skill, q, schema, briefing):
+        extra = {"max_turns": kind.max_turns} if kind.max_turns else {}
         out = investigate(question=q, answer_schema=schema, skill_file=skill,
-                          briefing=briefing, reference=ref.name)
+                          briefing=briefing, reference=ref.name, **extra)
         return out["answer"]
 
     if not budget.take():
@@ -358,6 +375,7 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
     ap.add_argument("--reference", required=True)
     ap.add_argument("--max-calls", type=int, default=40)
     ap.add_argument("--max-age", action="append", default=[], help="risk=days")
+    ap.add_argument("--reference-root", default=reference_root, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
 
     max_age = dict(DEFAULT_MAX_AGE_DAYS)
@@ -378,7 +396,7 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
     if os.path.exists(store_path):
         with open(store_path, encoding="utf-8") as f:
             store = json.load(f)
-    ref = load_reference(a.reference, reference_root)
+    ref = load_reference(a.reference, a.reference_root)
     now = time.time()
     budget = Budget(a.max_calls)
     outcomes = run(load_items(a.items), load_kinds(a.kinds), ref, store, investigate,

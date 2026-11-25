@@ -61,7 +61,7 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 function setup(
-	replies: string[],
+	replies: (string | AssistantMessage)[],
 	statusText = JSON.stringify({ commit: COMMIT }),
 ) {
 	const contexts: Context[] = [];
@@ -88,7 +88,8 @@ function setup(
 			shell,
 			completeFn: async (_m, ctx) => {
 				contexts.push(structuredClone(ctx));
-				return reply(replies[Math.min(i++, replies.length - 1)]);
+				const next = replies[Math.min(i++, replies.length - 1)];
+				return typeof next === "string" ? reply(next) : next;
 			},
 		},
 	);
@@ -157,6 +158,50 @@ describe("Investigate", () => {
 		);
 	});
 
+	it("tells an investigation that ran out of turns to answer from what it found", async () => {
+		const toolCall = {
+			...reply(""),
+			content: [
+				{
+					type: "toolCall",
+					id: "c1",
+					name: "Bash",
+					arguments: { command: "ls" },
+				},
+			],
+			stopReason: "toolUse",
+		} as AssistantMessage;
+		const { tool, contexts } = setup([toolCall, toolCall, ok]);
+		const r = await tool.execute("t1", {
+			question: "Q?",
+			answer_schema: SCHEMA,
+			max_turns: 2,
+		});
+		expect(r.isError).toBeFalsy();
+		expect(JSON.stringify(contexts.at(-1)?.messages.at(-1))).toMatch(
+			/used all 2 turns/,
+		);
+	});
+
+	it("reports a failed model call as such, without a repair turn", async () => {
+		const failed = {
+			...reply(""),
+			content: [],
+			stopReason: "error",
+			errorMessage: '401 {"type":"authentication_error"}',
+		} as AssistantMessage;
+		const { tool, contexts } = setup([failed]);
+		const r = await tool.execute("t1", {
+			question: "Q?",
+			answer_schema: SCHEMA,
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(
+			/model call failed \(error\): 401/,
+		);
+		expect(contexts).toHaveLength(1);
+	});
+
 	it.each([
 		[
 			"no question",
@@ -209,6 +254,18 @@ describe("extractJson", () => {
 	it("takes JSON after prose", () => {
 		expect(extractJson('Done.\n{"a":[1,2]}')).toEqual({ a: [1, 2] });
 	});
+	it("is not misled by a fence in another language before the answer", () => {
+		const text =
+			'The guard:\n```typescript\nif (a) {\n```\nSo it holds.\n```json\n{"verdict": "real"}\n```';
+		expect(extractJson(text)).toEqual({ verdict: "real" });
+	});
+
+	it("falls back to an earlier JSON fence when the last does not parse", () => {
+		expect(extractJson('```json\n{"a":1}\n```\n```json\n{oops\n```')).toEqual({
+			a: 1,
+		});
+	});
+
 	it("finds nothing in prose", () => {
 		expect(extractJson("no answer")).toBeUndefined();
 	});

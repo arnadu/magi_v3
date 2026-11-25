@@ -30,7 +30,7 @@ files the answer cites are added to them.
 **Kinds** (a folder of `<kind>.json`, one per kind of item):
 
 ```json
-{"kind": "code-scanning", "question": "Is code-scanning alert {number} ({rule}) real?",
+{"kind": "code-scanning", "question": "Is code-scanning alert {number} ({rule}) real?", "max_turns": 30,
  "skill": "/missions/.../skills/_team/triage-code-scanning/SKILL.md",
  "schema": {"type": "object", "required": ["verdict", "evidence"], "properties": {…}},
  "mode": "triage", "risk": "boundary",
@@ -45,8 +45,11 @@ files the answer cites are added to them.
   way to break this) keeps a single candidate and relies on the refuter.
 - `risk` (`boundary`, `platform`, `ordinary`) sets how long an unchanged verdict stands.
 - `positive` says which answers are candidate findings.
+- `max_turns` (optional) is each investigation's turn budget; without it, Investigate's default.
 - The schema's evidence items must carry `file` (relative to the repository), `line` and
-  `quote`: acceptance checks each one at the reference commit.
+  `quote`: acceptance checks each one at the reference commit. A quote found exactly once
+  elsewhere in the file has its line corrected (`relocated_from` records the cited one); a
+  quote found nowhere rejects the answer.
 
 ## Run it
 

@@ -99,9 +99,11 @@ export interface InvestigateOptions {
 
 /** The last JSON value in a text: a ```json fence, else the text from its last `{` or `[`. */
 export function extractJson(text: string): unknown {
-	const fences = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)];
-	const candidates = fences.length
-		? [fences[fences.length - 1][1]]
+	const blocks = fencedBlocks(text).filter(
+		(b) => b.lang === "" || b.lang === "json",
+	);
+	const candidates = blocks.length
+		? blocks.map((b) => b.body).reverse()
 		: [text.trim(), ...lastBracketTails(text)];
 	for (const c of candidates) {
 		try {
@@ -113,6 +115,23 @@ export function extractJson(text: string): unknown {
 	return undefined;
 }
 
+/** Fenced blocks, paired line by line: a fence in another language must not shift the pairing. */
+function fencedBlocks(text: string): { lang: string; body: string }[] {
+	const blocks: { lang: string; body: string }[] = [];
+	let open: { lang: string; lines: string[] } | null = null;
+	for (const line of text.split("\n")) {
+		const t = line.trim();
+		if (open === null) {
+			if (t.startsWith("```"))
+				open = { lang: t.slice(3).trim().toLowerCase(), lines: [] };
+		} else if (t === "```") {
+			blocks.push({ lang: open.lang, body: open.lines.join("\n") });
+			open = null;
+		} else open.lines.push(line);
+	}
+	return blocks;
+}
+
 function lastBracketTails(text: string): string[] {
 	const out: string[] = [];
 	for (const open of ["{", "["]) {
@@ -122,6 +141,22 @@ function lastBracketTails(text: string): string[] {
 		if (j >= 0) out.push(text.slice(j));
 	}
 	return out;
+}
+
+function lastStop(messages: Message[]): string | undefined {
+	return [...messages]
+		.reverse()
+		.find((m): m is AssistantMessage => m.role === "assistant")?.stopReason;
+}
+
+/** The provider's error when the last model call failed or was cut off: no answer to repair. */
+function callFailure(messages: Message[]): string | undefined {
+	const last = [...messages]
+		.reverse()
+		.find((m): m is AssistantMessage => m.role === "assistant");
+	if (last?.stopReason !== "error" && last?.stopReason !== "aborted")
+		return undefined;
+	return `the model call failed (${last.stopReason}): ${(last.errorMessage ?? "no message").slice(0, 300)}`;
 }
 
 function finalText(messages: Message[]): string {
@@ -267,9 +302,12 @@ async function investigate(
 		tools: [shell],
 		maxTurns,
 	});
+	const failed = callFailure(first.messages);
+	if (failed) return { error: failed };
 	let answer = extractJson(finalText(first.messages));
 	if (answer !== undefined && validate(answer))
 		return { answer, turns: first.turnCount };
+	const outOfTurns = lastStop(first.messages) === "toolUse";
 	const why =
 		answer === undefined
 			? "no JSON value was found"
@@ -277,10 +315,14 @@ async function investigate(
 	const repair = await runInnerLoop({
 		...common,
 		previousMessages: first.messages,
-		task: `Your answer does not match the schema (${why}). Reply with only the corrected JSON value, in a \`\`\`json fence.`,
+		task: outOfTurns
+			? `You have used all ${maxTurns} turns. Answer now from what you have found: where you could not finish a check, say so in your answer rather than guessing. Reply with only the JSON value, in a \`\`\`json fence.`
+			: `Your answer does not match the schema (${why}). Reply with only the corrected JSON value, in a \`\`\`json fence.`,
 		tools: [],
 		maxTurns: 1,
 	});
+	const repairFailed = callFailure(repair.messages);
+	if (repairFailed) return { error: repairFailed };
 	answer = extractJson(finalText(repair.messages));
 	if (answer !== undefined && validate(answer))
 		return { answer, turns: first.turnCount + repair.turnCount };
