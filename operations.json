@@ -2537,7 +2537,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "Investigate",
-    "where": "packages/agent-runtime-worker/src/tools/investigate.ts:301",
+    "where": "packages/agent-runtime-worker/src/tools/investigate.ts:343",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
