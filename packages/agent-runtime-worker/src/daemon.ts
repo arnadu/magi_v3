@@ -120,6 +120,10 @@ import { startPlatformTasks } from "./platform-tasks.js";
 import { sampleDiskUsage } from "./resource-sampler.js";
 import { createScheduleIngestor } from "./schedule-ingest.js";
 import type { ToolApiServer } from "./tool-api-server.js";
+import {
+	createSecurityAlertsTool,
+	type SecurityAlertsClient,
+} from "./tools/security-alerts.js";
 
 /**
  * Mission copilot (ADR-0016): default-on as of Sprint 26, validated end-to-end
@@ -243,6 +247,7 @@ type DataLayer = Pick<
 	| "missionId"
 	| "teamDir"
 	| "platformTasksRaw"
+	| "securityAlertsAgents"
 	| "teamConfig"
 	| "mailboxRepo"
 	| "conversationRepo"
@@ -284,7 +289,13 @@ async function bootDataLayer(): Promise<DataLayer | null> {
 		process.exitCode = 1;
 		return null;
 	}
-	const { teamConfig, missionId, teamDir, platformTasksRaw } = teamConfigResult;
+	const {
+		teamConfig,
+		missionId,
+		teamDir,
+		platformTasksRaw,
+		securityAlertsAgents,
+	} = teamConfigResult;
 
 	provisionAgentIdentities({ teamConfig, missionId }, missionCopilotEnabled);
 	await syncTeamFiles({ db, missionId, teamDir });
@@ -307,6 +318,7 @@ async function bootDataLayer(): Promise<DataLayer | null> {
 		missionId,
 		teamDir,
 		platformTasksRaw,
+		securityAlertsAgents,
 		teamConfig,
 		...repos,
 		anomalyRecorder,
@@ -371,6 +383,7 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		missionConfigRepo: data.missionConfigRepo,
 		maxCostUsd,
 		anomalyRecorder,
+		securityAlertsAgents: data.securityAlertsAgents,
 	});
 
 	// Scheduled message delivery has moved to the control plane (Sprint 14).
@@ -478,7 +491,14 @@ async function runAndShutdown(ctx: RunningMission): Promise<void> {
 				getAdditionalTools: (agentId) =>
 					agentId === MISSION_COPILOT_AGENT_ID
 						? ctx.missionCopilotTools
-						: undefined,
+						: ctx.securityAlertsAgents.includes(agentId)
+							? [
+									createSecurityAlertsTool(
+										securityAlertsClient(missionId),
+										agentId,
+									),
+								]
+							: undefined,
 				...createRemainingOrchestrationCallbacks(
 					{
 						monitor,
@@ -554,3 +574,12 @@ main().catch((e) => {
 	);
 	process.exitCode = 1;
 });
+
+/** How the daemon reaches the control plane for security alerts (the mission's own token). */
+export function securityAlertsClient(missionId: string): SecurityAlertsClient {
+	return {
+		controlPlaneUrl: process.env.CONTROL_PLANE_URL ?? "",
+		monitorToken: process.env.MONITOR_TOKEN ?? "",
+		missionId,
+	};
+}

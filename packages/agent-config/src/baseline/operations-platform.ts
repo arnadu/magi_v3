@@ -48,6 +48,19 @@ export const PLATFORM_OPERATIONS = defineOperations([
 		],
 	},
 	{
+		id: "security.read-alerts",
+		group: "platform",
+		intent:
+			"Read the repository's open security alerts (code scanning, Dependabot) to triage them",
+		actors: ["AG", "JOB", "MC"],
+		home: "cp-copilot",
+		rules: [
+			"Only for agents the platform admin names on a mission a platform admin owns; anyone else gets the answer for a route that does not exist",
+			"Read-only, through the control plane: no token reaches the mission",
+			"The alerts never become public: not in a log, an artifact or the repository",
+		],
+	},
+	{
 		id: "oversight.alert",
 		group: "platform",
 		intent: "Sample resources, raise alerts, send the daily report",

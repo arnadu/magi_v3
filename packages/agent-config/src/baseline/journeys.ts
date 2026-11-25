@@ -308,6 +308,7 @@ export const JOURNEYS = defineJourneys([
 		actors: ["AG", "JOB"],
 		operations: [
 			"mission.platform-task",
+			"security.read-alerts",
 			"job.submit",
 			"job.run",
 			"agent.investigate",

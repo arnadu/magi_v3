@@ -17,7 +17,10 @@ import { basename, join, relative } from "node:path";
 import {
 	type PlatformTask,
 	parsePlatformTasksYaml,
+	parseSecurityAlerts,
 	parseTeamConfigYaml,
+	rawSecurityAlertsYaml,
+	type SecurityAlerts,
 	type TeamConfig,
 } from "@magi/agent-config";
 import { Router } from "express";
@@ -34,6 +37,8 @@ export interface Template {
 	teamFiles: TeamFile[];
 	/** Copied to a mission created from this template; never from a caller's inline config. */
 	platformTasks: PlatformTask[];
+	/** Copied like platformTasks: the agents that may read security alerts. */
+	securityAlerts: SecurityAlerts | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,9 +145,11 @@ export function loadTemplates(repoRoot: string): void {
 
 		let config: TeamConfig;
 		let platformTasks: PlatformTask[];
+		let securityAlerts: SecurityAlerts | undefined;
 		try {
 			config = parseTeamConfigYaml(yaml);
 			platformTasks = parsePlatformTasksYaml(yaml);
+			securityAlerts = parseSecurityAlerts(rawSecurityAlertsYaml(yaml));
 		} catch (e) {
 			console.warn(
 				`[templates] Skipping invalid template ${templateId}: ${(e as Error).message}`,
@@ -159,6 +166,7 @@ export function loadTemplates(repoRoot: string): void {
 			config,
 			teamFiles,
 			platformTasks,
+			securityAlerts,
 		});
 		console.log(
 			`[templates] Loaded template: ${templateId} ("${config.mission.name}") with ${teamFiles.length} files`,

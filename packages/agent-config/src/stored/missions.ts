@@ -7,7 +7,7 @@
  */
 
 import type { AgentConfig, Limits, TeamConfig } from "../loader.js";
-import type { PlatformTask } from "../platform-tasks.js";
+import type { PlatformTask, SecurityAlerts } from "../platform-tasks.js";
 
 export type MissionStatus =
 	| "draft"
@@ -52,6 +52,8 @@ export interface MissionDoc {
 	 * config editor writes it: copied from the template at creation, otherwise admin-only.
 	 */
 	platformTasks?: PlatformTask[];
+	/** Agents that may read the repository's security alerts (`security.read-alerts`); admin-only like `platformTasks`. */
+	securityAlerts?: SecurityAlerts;
 	/** Team files (skills, etc.) stored at provision time; updated on config edit. */
 	teamFiles?: Array<{ path: string; content: string }>;
 	machineId?: string;

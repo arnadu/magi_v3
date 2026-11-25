@@ -766,7 +766,16 @@ The first kind, `git-mirror`, keeps a read-only copy of a GitHub repository for 
   status.json                          {kind, url, branch, commit, updatedAt}
 ```
 
-Agents (`magi-shared`) read everything there and write nothing. A review records the commit from
+Agents (`magi-shared`) read everything there and write nothing.
+
+### Security alerts
+
+A mission's admin-set `securityAlerts.agents` (top-level on its document, like `platformTasks`)
+names the agents that may read the repository's open code-scanning and Dependabot alerts
+(`security.read-alerts`). They get a `SecurityAlerts` tool, and their jobs a `security-alerts`
+Tool API name; both call the control plane (`GET /api/mission-copilot/github/alerts`), which also
+requires the mission's owner to be a platform admin and reads GitHub with its own read-only
+`GITHUB_ALERTS_TOKEN`. The alerts are private: never quoted in a public place. A review records the commit from
 `status.json`. A failed refresh keeps the last good copy; three failures in a row raise a
 `platform-task-failure` anomaly.
 

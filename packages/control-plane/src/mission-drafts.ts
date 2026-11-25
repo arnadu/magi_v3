@@ -54,6 +54,7 @@ export async function createDraftMission(
 	let missionCopilotLimits: Limits | undefined;
 	let teamFiles: Array<{ path: string; content: string }>;
 	let platformTasks: PlatformTask[] = [];
+	let securityAlerts: MissionDoc["securityAlerts"];
 	if (templateId) {
 		const template = getTemplate(templateId);
 		if (!template) {
@@ -68,6 +69,7 @@ export async function createDraftMission(
 		missionCopilotLimits = template.config.missionCopilotLimits;
 		teamFiles = template.teamFiles;
 		platformTasks = template.platformTasks;
+		securityAlerts = template.securityAlerts;
 	} else {
 		mission = { id: missionId, name };
 		agents = [];
@@ -85,6 +87,7 @@ export async function createDraftMission(
 		missionCopilotLimits,
 		teamFiles,
 		platformTasks,
+		...(securityAlerts ? { securityAlerts } : {}),
 		maxCostCeilingUsd: platformMaxCostCeilingUsd(),
 		status: "draft",
 		createdAt: now,

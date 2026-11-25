@@ -446,3 +446,16 @@ agents:
         <h2>Working notes</h2>
         <p></p>
       </section>
+
+# Admin-only, copied into a mission created from this template and never editable by a config
+# editor (security assurance plan, step 6): a read-only copy of the repository kept by a platform
+# task, which Investigate reads; and the agents that may read the repository's security alerts.
+platformTasks:
+  - kind: git-mirror
+    name: magi-v3
+    params:
+      url: https://github.com/arnadu/magi_v3
+      branch: main
+
+securityAlerts:
+  agents: [appsec]

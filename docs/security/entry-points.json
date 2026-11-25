@@ -491,7 +491,7 @@
 		"kind": "route",
 		"actor": "MC",
 		"file": "packages/control-plane/src/mission-copilot-router.ts",
-		"line": 108,
+		"line": 109,
 		"name": "POST /resources/upgrade",
 		"tag": "machine.upgrade"
 	},
@@ -499,7 +499,7 @@
 		"kind": "route",
 		"actor": "MC",
 		"file": "packages/control-plane/src/mission-copilot-router.ts",
-		"line": 113,
+		"line": 114,
 		"name": "POST /resources/revert",
 		"tag": "machine.upgrade"
 	},
@@ -507,7 +507,15 @@
 		"kind": "route",
 		"actor": "MC",
 		"file": "packages/control-plane/src/mission-copilot-router.ts",
-		"line": 121,
+		"line": 123,
+		"name": "GET /github/alerts",
+		"tag": "security.read-alerts"
+	},
+	{
+		"kind": "route",
+		"actor": "MC",
+		"file": "packages/control-plane/src/mission-copilot-router.ts",
+		"line": 133,
 		"name": "GET /github/issues",
 		"tag": "issue.track"
 	},
@@ -515,7 +523,7 @@
 		"kind": "route",
 		"actor": "MC",
 		"file": "packages/control-plane/src/mission-copilot-router.ts",
-		"line": 144,
+		"line": 156,
 		"name": "POST /github/issue",
 		"tag": "issue.track"
 	},
@@ -563,7 +571,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 281,
+		"line": 285,
 		"name": "POST /",
 		"tag": "mission.launch"
 	},
@@ -571,7 +579,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 282,
+		"line": 286,
 		"name": "POST /draft",
 		"tag": "mission.create-draft"
 	},
@@ -579,7 +587,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 283,
+		"line": 287,
 		"name": "POST /:id/suspend",
 		"tag": "mission.suspend"
 	},
@@ -587,7 +595,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 284,
+		"line": 288,
 		"name": "POST /:id/resume",
 		"tag": "mission.resume"
 	},
@@ -595,7 +603,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/mission-routes-lifecycle.ts",
-		"line": 285,
+		"line": 289,
 		"name": "DELETE /:id",
 		"tag": "retired"
 	},
@@ -835,7 +843,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/templates.ts",
-		"line": 189,
+		"line": 197,
 		"name": "GET /",
 		"tag": "platform.offerings"
 	},
@@ -843,7 +851,7 @@
 		"kind": "route",
 		"actor": "OP",
 		"file": "packages/control-plane/src/templates.ts",
-		"line": 193,
+		"line": 201,
 		"name": "GET /:id",
 		"tag": "platform.offerings"
 	},
@@ -907,7 +915,7 @@
 		"kind": "trigger",
 		"actor": "PLT",
 		"file": "packages/agent-runtime-worker/src/daemon.ts",
-		"line": 228,
+		"line": 232,
 		"name": "interval: tick",
 		"tag": "job.run"
 	},
@@ -1611,7 +1619,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 292,
+		"line": 332,
 		"name": "fetch-url",
 		"tag": "web.fetch"
 	},
@@ -1619,7 +1627,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 301,
+		"line": 341,
 		"name": "inspect-image",
 		"tag": "web.fetch"
 	},
@@ -1627,7 +1635,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 313,
+		"line": 353,
 		"name": "research",
 		"tag": "web.research"
 	},
@@ -1635,7 +1643,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 323,
+		"line": 363,
 		"name": "investigate",
 		"tag": "agent.investigate"
 	},
@@ -1643,7 +1651,15 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 333,
+		"line": 373,
+		"name": "security-alerts",
+		"tag": "security.read-alerts"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 385,
 		"name": "search-web",
 		"tag": "web.search"
 	},
@@ -1651,7 +1667,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 338,
+		"line": 390,
 		"name": "post-message",
 		"tag": "message.send"
 	},
@@ -1659,7 +1675,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 354,
+		"line": 406,
 		"name": "data-fred",
 		"tag": "data.query"
 	},
@@ -1667,7 +1683,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 359,
+		"line": 411,
 		"name": "data-fmp",
 		"tag": "data.query"
 	},
@@ -1675,7 +1691,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 364,
+		"line": 416,
 		"name": "data-newsapi",
 		"tag": "data.query"
 	},
@@ -1739,7 +1755,7 @@
 		"kind": "tool",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/tools/investigate.ts",
-		"line": 300,
+		"line": 301,
 		"name": "Investigate",
 		"tag": "agent.investigate"
 	},
@@ -1758,6 +1774,14 @@
 		"line": 51,
 		"name": "SearchWeb",
 		"tag": "web.search"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools/security-alerts.ts",
+		"line": 29,
+		"name": "SecurityAlerts",
+		"tag": "security.read-alerts"
 	},
 	{
 		"kind": "tool",

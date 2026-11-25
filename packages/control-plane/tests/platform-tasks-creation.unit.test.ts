@@ -31,6 +31,8 @@ platformTasks:
     params:
       url: https://github.com/arnadu/magi_v3
       branch: main
+securityAlerts:
+  agents: [appsec]
 `;
 
 function fakeCollection() {
@@ -81,6 +83,7 @@ describe("platform tasks at mission creation", () => {
 				everyMinutes: 15,
 			},
 		]);
+		expect(inserted[0].securityAlerts).toEqual({ agents: ["appsec"] });
 	});
 
 	it("a template with an invalid task list is not loaded", () => {
@@ -99,5 +102,6 @@ describe("platform tasks at mission creation", () => {
 			userId: "u1",
 		});
 		expect(inserted[0].platformTasks).toEqual([]);
+		expect(inserted[0].securityAlerts).toBeUndefined();
 	});
 });

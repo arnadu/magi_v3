@@ -151,6 +151,7 @@
 | Id | Intent | Actors | Home | Rules that hold for every actor |
 |---|---|---|---|---|
 | `issue.track` | Report and follow bugs and ideas about MAGI | CC, MC | `cp-copilot` | Search freely; every write (file, comment, close) is a proposal the operator confirms; An issue from a mission is marked as such |
+| `security.read-alerts` | Read the repository's open security alerts (code scanning, Dependabot) to triage them | AG, JOB, MC | `cp-copilot` | Only for agents the platform admin names on a mission a platform admin owns; anyone else gets the answer for a route that does not exist; Read-only, through the control plane: no token reaches the mission; The alerts never become public: not in a log, an artifact or the repository |
 | `oversight.alert` | Sample resources, raise alerts, send the daily report | PLT | `cp-oversight` | An alert is raised once per episode, not on every sample; One report per user per day, even across restarts; CC receives the platform's reports and alerts; MC those about its mission |
 | `platform.offerings` (read) | Templates, models and tools on offer | OP, CC | `cp-api` | The same figure wherever it is shown; reading never changes it |
 | `session.sign-in` | Start using the cockpit | OP | `cp-edge` |  |

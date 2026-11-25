@@ -54,6 +54,10 @@ import { createInspectImageTool } from "./tools/inspect-image.js";
 import { createInvestigateTool } from "./tools/investigate.js";
 import { createResearchTool } from "./tools/research.js";
 import { tryCreateSearchWebTool } from "./tools/search-web.js";
+import {
+	createSecurityAlertsTool,
+	type SecurityAlertsClient,
+} from "./tools/security-alerts.js";
 import type { AclPolicy, MagiTool } from "./tools.js";
 import type { AgentIdentity } from "./workspace-manager.js";
 
@@ -163,6 +167,11 @@ export class ToolApiServer {
 		private readonly teamConfig: TeamConfig,
 		/** How LLM-backed tools are charged and gated (CST-1). */
 		private readonly spend: ToolApiSpend,
+		/** Who may read security alerts, and how (security.read-alerts); absent: nobody. */
+		private readonly securityAlerts?: {
+			agents: readonly string[];
+			client: SecurityAlertsClient;
+		},
 	) {}
 
 	// ---------------------------------------------------------------------------
@@ -360,6 +369,18 @@ export class ToolApiServer {
 					workdir: ctx.identity.workdir,
 					onSubLoopLlmCall: meter(),
 				}),
+		},
+		{
+			names: ["security-alerts"],
+			operation: "security.read-alerts",
+			// Only for the agents the mission names; anyone else sees an unknown tool.
+			build: (ctx) =>
+				this.securityAlerts?.agents.includes(ctx.acl.agentId)
+					? createSecurityAlertsTool(
+							this.securityAlerts.client,
+							ctx.acl.agentId,
+						)
+					: null,
 		},
 		{
 			names: ["search-web", "searchweb"],

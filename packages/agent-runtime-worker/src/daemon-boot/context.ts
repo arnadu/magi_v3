@@ -65,6 +65,8 @@ export interface BootContext {
 	stopApps: () => Promise<void>;
 	/** The mission's platform tasks as stored (validated by the runner). */
 	platformTasksRaw: unknown;
+	/** Agents that may read the repository's security alerts (admin-set; empty for most missions). */
+	securityAlertsAgents: readonly string[];
 	/** The platform tasks' runner (mission.platform-task). */
 	platformTasks: PlatformTaskRunner;
 	waitForMail: () => Promise<void>;

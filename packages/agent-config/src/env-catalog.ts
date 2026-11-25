@@ -298,6 +298,14 @@ export const ENV_CATALOG: readonly EnvVar[] = [
 			"Test-only sign-in for the local scanning stack: `<token>=test-<name>` pairs, comma-separated (tokens of 32+ characters). The control plane refuses to start with it when `FLY_APP_NAME` is set. Never set it on a deployment.",
 	},
 	{
+		name: "GITHUB_ALERTS_TOKEN",
+		planes: ["control"],
+		required: false,
+		secret: true,
+		description:
+			"Read-only GitHub token for the repository's code-scanning and Dependabot alerts (a fine-grained token with only those two read permissions on `GITHUB_REPO`), used by `security.read-alerts`. Separate from `GH_TOKEN`. Unset: the route answers that alerts are not configured.",
+	},
+	{
 		name: "MONITOR_SIGNING_KEY",
 		planes: ["control"],
 		required: true,

@@ -356,6 +356,33 @@
 					}
 				}
 			}
+		},
+		"/tools/security-alerts": {
+			"post": {
+				"operationId": "postToolsSecurityAlerts",
+				"x-magi-operation": "security.read-alerts",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
 		}
 	},
 	"components": {

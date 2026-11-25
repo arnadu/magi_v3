@@ -27,6 +27,7 @@ import { Router } from "express";
 import type { Db } from "mongodb";
 import { asyncRoutes, operation } from "./async-handler.js";
 import { safeEqual } from "./auth.js";
+import { readSecurityAlerts } from "./github-alerts.js";
 import {
 	type ProposeForOwnerDeps,
 	proposeIssueForMissionOwner,
@@ -117,6 +118,17 @@ export function createMissionCopilotRouter(
 			revertUpgrade(db, missionId, { reason: "requested" }),
 		),
 	);
+
+	// Open security alerts, for the agents the platform admin named (github-alerts.ts holds the rule).
+	routes.get("/github/alerts", "security.read-alerts", async (req, res) => {
+		const outcome = await readSecurityAlerts(
+			db,
+			req.query.missionId as string,
+			req.query.agentId,
+		);
+		if (outcome.status === 200) res.json({ alerts: outcome.alerts });
+		else res.status(outcome.status).json({ error: outcome.error });
+	});
 
 	routes.get("/github/issues", "issue.track", async (req, res) => {
 		const query = req.query.query as string | undefined;

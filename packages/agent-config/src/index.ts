@@ -67,7 +67,11 @@ export {
 	PlatformTasksSchema,
 	parsePlatformTasks,
 	parsePlatformTasksYaml,
+	parseSecurityAlerts,
 	rawPlatformTasksYaml,
+	rawSecurityAlertsYaml,
+	type SecurityAlerts,
+	SecurityAlertsSchema,
 } from "./platform-tasks.js";
 export {
 	capForConfigWrite,

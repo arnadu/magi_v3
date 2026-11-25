@@ -152,6 +152,7 @@ const QUERY: Record<string, string> = {
 	"/transcript": "?agent=lead&turn=1",
 	"/turns": "?agent=lead",
 	"/github/issues": "?missionId=m-a",
+	"/github/alerts": "?missionId=m-a&agentId=appsec",
 };
 
 /** Bodies that pass a route's own validation, so the request reaches the mission lookup. */

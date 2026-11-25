@@ -37,6 +37,7 @@ Secrets are never logged and never reach agent tool or job subprocesses (those g
 | `FMP_API_KEY` | mission daemon | — | secret | Held by the daemon for the data-fmp tool; never forwarded to jobs. |
 | `FRED_API_KEY` | mission daemon | — | secret | Held by the daemon for the data-fred tool (from .env.data-keys); never forwarded to jobs. |
 | `GH_TOKEN` | control plane | — | secret | GitHub token (repo scope) for the copilots' issue tools; every write is confirmed in the cockpit first. |
+| `GITHUB_ALERTS_TOKEN` | control plane | — | secret | Read-only GitHub token for the repository's code-scanning and Dependabot alerts (a fine-grained token with only those two read permissions on `GITHUB_REPO`), used by `security.read-alerts`. Separate from `GH_TOKEN`. Unset: the route answers that alerts are not configured. |
 | `GITHUB_ISSUE_DAILY_CAP` | control plane | `10` | — | Per-mission daily cap on GitHub issue writes proposed by a mission copilot. |
 | `GITHUB_REPO` | control plane | `arnadu/magi_v3` | — | Repository the issue tools use. |
 | `LOCAL_EXECUTION` | control plane | — | — | `true` runs missions as local daemons instead of Fly machines (development). |

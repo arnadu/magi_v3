@@ -348,6 +348,15 @@ figure; 6 depends on 1 and 3.
   table shows: TB-6 (agents' tool calls, 59 cells) and TB-15 (the control copilot, 33) have no
   covered cell; TB-26 (the apps host) has 11 claimed rows and nothing proving them. Still to come
   in 6c: the private route for code-scanning and Dependabot alerts (a decision for the sponsor).
+- **Step 6c, the private route for alerts, 2026-11-25:** `security.read-alerts` built, as decided
+  (decision 18): one public repository; a read-only fine-grained token for the two alert types,
+  `GITHUB_ALERTS_TOKEN`, held by the control plane and separate from `GH_TOKEN`; a read-only
+  route on the mission-copilot gateway with two keys checked on every call (an admin-owned
+  mission, and the agent named in its admin-set `securityAlerts`); anyone else gets 404 and
+  GitHub is never called. `SecurityAlerts` on the mission, built only for the named agents, and
+  `security-alerts` on the Tool API only for their jobs. Threat model TB-19 gains its STRIDE rows,
+  all proven (4). The MAGI DEV template names appsec and mirrors the repository. Waiting on the
+  sponsor: the token itself (`flyctl secrets set GITHUB_ALERTS_TOKEN=… --app magi-control-dev`).
 - **Step 5, environment B and Nuclei, 2026-11-24:** `scripts/security/stack/` starts the
   control plane's own image on an internal Docker network (no route out) with a MongoDB container
   and two test tenants through a new test-only sign-in (`AUTH_TEST_USERS`, refused on Fly: the
@@ -497,6 +506,10 @@ figure; 6 depends on 1 and 3.
     through one root-owned wrapper and one sudo rule; agents read their output and never write it.
     Only the platform admin changes a mission's platform tasks (owners may be allowed later).
     The first kind is `git-mirror`, which keeps the reference copy.
+18. Alerts stay on GitHub, which already hides them from the public (an anonymous request gets
+    401); no private repository. MAGI DEV reads them through the control plane with a separate,
+    read-only fine-grained token (a GitHub App when source control, deliverable B, is built),
+    for agents the platform admin names on an admin-owned mission (`security.read-alerts`).
 17. Open: the risk classes' maximum ages (proposed in part 5); the order of restoring roles
     (proposed: appsec, then the code reviewer, then QA).
 

@@ -141,6 +141,7 @@ export function startToolApiServer(
 		| "mailboxRepo"
 		| "teamConfig"
 		| "toolPort"
+		| "securityAlertsAgents"
 		| "llmCallLog"
 		| "monitor"
 		| "statsCollector"
@@ -157,6 +158,14 @@ export function startToolApiServer(
 		ctx.mailboxRepo,
 		ctx.teamConfig,
 		createJobSpend(ctx),
+		{
+			agents: ctx.securityAlertsAgents,
+			client: {
+				controlPlaneUrl: process.env.CONTROL_PLANE_URL ?? "",
+				monitorToken: process.env.MONITOR_TOKEN ?? "",
+				missionId: ctx.missionId,
+			},
+		},
 	);
 	toolApiServer.listen(ctx.toolPort);
 	return { toolApiServer };

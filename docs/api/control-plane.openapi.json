@@ -525,6 +525,23 @@
 				}
 			}
 		},
+		"/api/mission-copilot/github/alerts": {
+			"get": {
+				"operationId": "getApiMissionCopilotGithubAlerts",
+				"x-magi-operation": "security.read-alerts",
+				"x-magi-auth": "monitor-token",
+				"security": [
+					{
+						"monitorToken": []
+					}
+				],
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
 		"/api/mission-copilot/github/issue": {
 			"post": {
 				"operationId": "postApiMissionCopilotGithubIssue",

@@ -54,6 +54,7 @@ function resolveCreateConfig(
 			config: TeamConfig;
 			files: Array<{ path: string; content: string }>;
 			platformTasks: PlatformTask[];
+			securityAlerts?: MissionDoc["securityAlerts"];
 	  }
 	| { status: number; error: string } {
 	if (inline.mission && inline.agents) {
@@ -90,6 +91,7 @@ function resolveCreateConfig(
 		},
 		files: template.teamFiles,
 		platformTasks: template.platformTasks,
+		securityAlerts: template.securityAlerts,
 	};
 }
 
@@ -145,6 +147,7 @@ function createMission({ db, col }: MissionRouteDeps): RequestHandler {
 			config: resolvedConfig,
 			files: resolvedFiles,
 			platformTasks,
+			securityAlerts,
 		} = resolved;
 
 		const existing = await col.findOne({ missionId });
@@ -167,6 +170,7 @@ function createMission({ db, col }: MissionRouteDeps): RequestHandler {
 			missionCopilotLimits: resolvedConfig.missionCopilotLimits,
 			teamFiles: resolvedFiles,
 			platformTasks,
+			...(securityAlerts ? { securityAlerts } : {}),
 			maxCostCeilingUsd: platformMaxCostCeilingUsd(),
 			status: "provisioning",
 			createdAt: new Date(),

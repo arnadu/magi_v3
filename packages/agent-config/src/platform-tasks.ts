@@ -77,3 +77,28 @@ export function rawPlatformTasksYaml(yamlContent: string): unknown {
 export function parsePlatformTasksYaml(yamlContent: string): PlatformTask[] {
 	return parsePlatformTasks(rawPlatformTasksYaml(yamlContent));
 }
+
+/**
+ * Which agents of the mission may read the repository's open security alerts (code scanning,
+ * Dependabot) through the control plane (operation `security.read-alerts`). Admin-only like
+ * `platformTasks`: a top-level field of the mission document no config editor writes. The
+ * control plane also requires the mission's owner to be a platform admin.
+ */
+export const SecurityAlertsSchema = z
+	.object({
+		agents: z.array(z.string().regex(PLATFORM_TASK_NAME_RE)).min(1).max(10),
+	})
+	.strict();
+export type SecurityAlerts = z.infer<typeof SecurityAlertsSchema>;
+
+/** The agents allowed to read security alerts; none when the field is absent. Throws when invalid. */
+export function parseSecurityAlerts(raw: unknown): SecurityAlerts | undefined {
+	if (raw === undefined || raw === null) return undefined;
+	return SecurityAlertsSchema.parse(raw);
+}
+
+/** The `securityAlerts` section of a team YAML, unvalidated. */
+export function rawSecurityAlertsYaml(yamlContent: string): unknown {
+	const raw = parse(yamlContent) as { securityAlerts?: unknown } | null;
+	return raw?.securityAlerts;
+}

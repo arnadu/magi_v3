@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
 	loadTeamConfig,
+	parseSecurityAlerts,
 	parseTeamConfig,
 	rawPlatformTasksYaml,
+	rawSecurityAlertsYaml,
 	storedCollection,
 } from "@magi/agent-config";
 import type { BootContext } from "./context.js";
@@ -11,7 +13,11 @@ import type { BootContext } from "./context.js";
 export type LoadTeamConfigResult =
 	| ({ ok: true } & Pick<
 			BootContext,
-			"teamConfig" | "missionId" | "teamDir" | "platformTasksRaw"
+			| "teamConfig"
+			| "missionId"
+			| "teamDir"
+			| "platformTasksRaw"
+			| "securityAlertsAgents"
 	  >)
 	| { ok: false; exitMessage: string };
 
@@ -64,6 +70,7 @@ export async function loadDaemonTeamConfig(
 			missionId,
 			teamDir,
 			platformTasksRaw: missionDoc.platformTasks,
+			securityAlertsAgents: alertsAgents(missionDoc.securityAlerts),
 		};
 	}
 
@@ -78,6 +85,7 @@ export async function loadDaemonTeamConfig(
 		};
 	}
 	const teamConfig = loadTeamConfig(configPath);
+	const yaml = readFileSync(configPath, "utf8");
 	const missionId = teamConfig.mission.id;
 	const teamDir = join(dirname(configPath), basename(configPath, ".yaml"));
 	return {
@@ -85,6 +93,19 @@ export async function loadDaemonTeamConfig(
 		teamConfig,
 		missionId,
 		teamDir,
-		platformTasksRaw: rawPlatformTasksYaml(readFileSync(configPath, "utf8")),
+		platformTasksRaw: rawPlatformTasksYaml(yaml),
+		securityAlertsAgents: alertsAgents(rawSecurityAlertsYaml(yaml)),
 	};
+}
+
+/** The agents allowed to read security alerts; none when the field is absent or invalid (logged). */
+function alertsAgents(raw: unknown): readonly string[] {
+	try {
+		return parseSecurityAlerts(raw)?.agents ?? [];
+	} catch (e) {
+		console.error(
+			`[daemon] the mission's securityAlerts field is invalid, no agent gets SecurityAlerts: ${(e as Error).message}`,
+		);
+		return [];
+	}
 }

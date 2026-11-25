@@ -10,16 +10,16 @@ public, and a cell that fails is in code scanning (maintainers only).
 
 | Surface | Cells | Covered | Open | n/a |
 |---|---|---|---|---|
-| Control plane (internet) | 112 | 83 | 25 | 4 |
+| Control plane (internet) | 113 | 84 | 25 | 4 |
 | Apps host (internet) | 4 | 0 | 3 | 1 |
 | Monitor server (a mission machine's port 4000) | 43 | 35 | 8 | 0 |
-| Tool API (port 4001, background jobs) | 39 | 27 | 12 | 0 |
-| Agent and copilot tools | 79 | 0 | 79 | 0 |
+| Tool API (port 4001, background jobs) | 42 | 29 | 13 | 0 |
+| Agent and copilot tools | 80 | 0 | 80 | 0 |
 | Request folders (agents write files the daemon acts on) | 10 | 3 | 7 | 0 |
 | Copilot actions (proposed, then confirmed by the operator) | 13 | 0 | 13 | 0 |
 | Timers and change streams | 18 | 1 | 17 | 0 |
 | Platform (no entry point) | 14 | 14 | 0 | 0 |
-| **All** | **332** | **163** | **164** | **5** |
+| **All** | **337** | **166** | **166** | **5** |
 
 ## By trust boundary
 
@@ -33,8 +33,8 @@ claimed rows may only decrease (ceiling 88).
 | TB-2 | 42 | 35 | 7 | 0 | 0 | 2 | 2 | 0 |
 | TB-3 | 8 | 8 | 0 | 1 | 4 | 0 | 0 | 0 |
 | TB-4 | 8 | 8 | 0 | 0 | 7 | 0 | 0 | 1 |
-| TB-5 | 39 | 27 | 12 | 0 | 2 | 1 | 0 | 0 |
-| TB-6 | 59 | 0 | 59 | 0 | 5 | 0 | 0 | 0 |
+| TB-5 | 42 | 29 | 13 | 0 | 2 | 1 | 0 | 0 |
+| TB-6 | 60 | 0 | 60 | 0 | 5 | 0 | 0 | 0 |
 | TB-7 | 4 | 1 | 3 | 0 | 2 | 1 | 0 | 1 |
 | TB-8 | 0 | 0 | 0 | 0 | 1 | 2 | 0 | 0 |
 | TB-9 | 102 | 77 | 22 | 0 | 7 | 0 | 1 | 0 |
@@ -45,7 +45,7 @@ claimed rows may only decrease (ceiling 88).
 | TB-14 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 2 |
 | TB-15 | 33 | 0 | 33 | 0 | 3 | 1 | 0 | 1 |
 | TB-16 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
-| TB-19 | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0 |
+| TB-19 | 4 | 3 | 1 | 4 | 0 | 3 | 0 | 0 |
 | TB-21 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | TB-22 | 4 | 2 | 2 | 0 | 7 | 2 | 0 | 0 |
 | TB-23 | 4 | 4 | 0 | 0 | 7 | 1 | 0 | 0 |
@@ -125,6 +125,7 @@ claimed rows may only decrease (ceiling 88).
 | GET `/api/copilot/turns` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
 | GET `/api/copilot/usage` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
 | POST `/api/csp-report` | TB-9 | `infrastructure` | `no-credential` | n/a | public by design (listed with its reason in api-surface.unit.test.ts) |
+| GET `/api/mission-copilot/github/alerts` | TB-19 | `security.read-alerts` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
 | POST `/api/mission-copilot/github/issue` | TB-19 | `issue.track` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
 | POST `/api/mission-copilot/github/issue` | TB-19 | `issue.track` | `field-injection` | open |  |
 | GET `/api/mission-copilot/github/issues` | TB-19 | `issue.track` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
@@ -307,6 +308,9 @@ claimed rows may only decrease (ceiling 88).
 | POST `/tools/searchweb` | TB-5 | `web.search` | `no-job-token` | open |  |
 | POST `/tools/searchweb` | TB-5 | `web.search` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
 | POST `/tools/searchweb` | TB-5 | `web.search` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/security-alerts` | TB-5 | `security.read-alerts` | `no-job-token` | open |  |
+| POST `/tools/security-alerts` | TB-5 | `security.read-alerts` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/security-alerts` | TB-5 | `security.read-alerts` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 
 ## Agent and copilot tools
 
@@ -388,6 +392,7 @@ claimed rows may only decrease (ceiling 88).
 | `Investigate` | TB-6 | `agent.investigate` | `path-escape` | open |  |
 | `Research` | TB-6 | `web.research` | `path-escape` | open |  |
 | `SearchWeb` | TB-6 | `web.search` | `path-escape` | open |  |
+| `SecurityAlerts` | TB-6 | `security.read-alerts` | `path-escape` | open |  |
 | `Bash` | TB-6 | `agent.shell` | `path-escape` | open |  |
 | `WriteFile` | TB-6 | `file.write` | `path-escape` | open |  |
 | `EditFile` | TB-6 | `file.write` | `path-escape` | open |  |
@@ -442,7 +447,7 @@ claimed rows may only decrease (ceiling 88).
 | `interval (apps-start.ts:149)` |  | `app.run` | `overlap-or-replay` | open |  |
 | `interval (apps-start.ts:166)` |  | `app.run` | `overlap-or-replay` | open |  |
 | `change event (mail-waiter.ts:60)` |  | `agent.dispatch` | `overlap-or-replay` | open |  |
-| `interval: tick (daemon.ts:228)` |  | `job.run` | `overlap-or-replay` | open |  |
+| `interval: tick (daemon.ts:232)` |  | `job.run` | `overlap-or-replay` | open |  |
 | `change event (monitor-feeds.ts:38)` |  | `feed` | `overlap-or-replay` | open |  |
 | `interval (monitor-server.ts:455)` |  | `feed` | `overlap-or-replay` | open |  |
 | `createErrorCooldown callback (orchestrator-dispatch.ts:58)` |  | `agent.dispatch` | `overlap-or-replay` | open |  |
