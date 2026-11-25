@@ -294,7 +294,8 @@ export function createInvestigateTool(
 	acl: AclPolicy,
 	opts: InvestigateOptions,
 ): MagiTool {
-	const ajv = new Ajv({ allErrors: true, strict: false });
+	// First error only: collecting every error of a large hostile value can exhaust memory.
+	const ajv = new Ajv({ strict: false });
 	const shell = opts.shell ?? createBashTool(opts.workdir, acl);
 
 	return {
