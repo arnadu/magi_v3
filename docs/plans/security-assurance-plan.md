@@ -326,6 +326,19 @@ figure; 6 depends on 1 and 3.
   pause; the reference copy's commit returned with the answer; an answer that does not match the
   schema gets one repair turn, then the call fails. Disabled for the mission copilot, like
   Research. 6a is done; next, 6b: the pipeline and the fingerprint store.
+- **Step 6b, the pipeline, 2026-11-24:** platform skill `review-pipeline` (`review.py`, Python, run
+  as the coordinating agent's background job). Generic: items (JSON lines) and kind descriptors
+  (skill, schema, refuter, risk class, triage or discovery) come from the mission. Per item: due
+  or not (no stored verdict, a dependency's hash changed at the reference commit, or older than
+  its risk class's maximum age: 14, 30, 60 days by default); one Investigate run; for a
+  candidate, two more runs and 2 of 3 agreeing (triage) or straight to the refuter (discovery);
+  acceptance by code (each cited file, line and quote at the commit; a reproduction above low
+  severity); the verdict stored with each dependency's hash (git blob hashes of the cited and
+  declared files, the kind's descriptor and skills, the facts, the pipeline version). A call
+  budget defers the rest. 17 offline tests against a real git mirror, in CI; four rules mutated,
+  each caught. On the way: the Tool API capped every job's tool call at 120 s, whatever the
+  tool declared (Research from a job was cut at 2 of its 10 minutes); fixed (`cf6bc0e`). Next:
+  MAGI DEV's item producers and kind descriptors (6c/6e), the benchmark (6d).
 - **Step 5, environment B and Nuclei, 2026-11-24:** `scripts/security/stack/` starts the
   control plane's own image on an internal Docker network (no route out) with a MongoDB container
   and two test tenants through a new test-only sign-in (`AUTH_TEST_USERS`, refused on Fly: the

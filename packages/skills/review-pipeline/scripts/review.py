@@ -1,0 +1,405 @@
+#!/usr/bin/env python3
+"""review.py — run a list of review items through Investigate, with code deciding what counts.
+
+Security assurance plan, step 6b. Generic: what to review is in the items and the kind
+descriptors the mission supplies; this script only orchestrates and checks.
+
+    python3 review.py --items items.jsonl --kinds <dir> --state <dir> --reference <name>
+                      [--max-calls 40] [--max-age boundary=14 --max-age platform=30 ...]
+
+For each item, in order:
+  1. Due?     skipped when a stored verdict exists, nothing it depended on has changed at the
+              reference copy's commit, and it is younger than its risk class's maximum age.
+  2. One Investigate run with the kind's skill, schema and question, and the item's briefing.
+  3. A candidate finding (the kind's `positive` rule) is confirmed: triage kinds run twice more
+     and keep it when two of three agree; discovery kinds keep any candidate. Then the kind's
+     refuter tries to disprove it.
+  4. Acceptance, by code: every cited file and line exists at the commit and every quote is
+     found within three lines of its line; above low severity a reproduction is required.
+  5. The verdict is stored with its dependencies (each with its hash at the commit), so the
+     next run can tell what changed.
+
+Writes, under --state: verdicts.json (the store), ledger.jsonl (every item examined, appended),
+runs/<stamp>/findings.json and summary.json. Prints the summary. Stops starting new
+investigations once --max-calls is reached; the items left are recorded as deferred.
+"""
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+
+PIPELINE_VERSION = "1"
+REFERENCE_ROOT = "/var/lib/magi/reference"
+DEFAULT_MAX_AGE_DAYS = {"boundary": 14, "platform": 30, "ordinary": 60}
+SEVERITY_ORDER = ["info", "low", "medium", "high", "critical"]
+QUOTE_WINDOW = 3
+
+
+# ── Reference copy ───────────────────────────────────────────────────────────
+
+
+@dataclass
+class Reference:
+    name: str
+    commit: str
+    root: str  # /var/lib/magi/reference/<name>
+
+    @property
+    def tree(self) -> str:
+        return os.path.join(self.root, "snapshots", self.commit)
+
+    @property
+    def git_dir(self) -> str:
+        return os.path.join(self.root, "mirror.git")
+
+
+def load_reference(name: str, reference_root: str = REFERENCE_ROOT) -> Reference:
+    root = os.path.join(reference_root, name)
+    with open(os.path.join(root, "status.json"), encoding="utf-8") as f:
+        commit = json.load(f)["commit"]
+    return Reference(name, commit, root)
+
+
+def file_hash(ref: Reference, path: str) -> str:
+    """The file's git blob hash at the reference commit, or "missing"."""
+    r = subprocess.run(
+        ["git", "-c", f"safe.directory={ref.git_dir}", "--git-dir", ref.git_dir,
+         "rev-parse", "--verify", "--quiet", f"{ref.commit}:{path}"],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    return r.stdout.strip() if r.returncode == 0 else "missing"
+
+
+def text_hash(value: object) -> str:
+    data = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()[:16]
+
+
+# ── Kinds and items ──────────────────────────────────────────────────────────
+
+
+@dataclass
+class Kind:
+    kind: str
+    question: str  # a template: {field} from the item's facts
+    skill: str
+    schema: dict
+    mode: str  # "triage" | "discovery"
+    risk: str  # "boundary" | "platform" | "ordinary"
+    positive_field: str
+    positive_values: list
+    refuter_skill: str | None = None
+    severity_field: str | None = None
+    reproduction_field: str | None = None
+    evidence_field: str = "evidence"
+
+    @property
+    def version(self) -> str:
+        """Changes when the descriptor, its skill or its refuter's skill change."""
+        parts = [json.dumps(self.__dict__, sort_keys=True)]
+        for path in (self.skill, self.refuter_skill):
+            if path and os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    parts.append(f.read())
+        return text_hash("\n".join(parts))
+
+
+def load_kinds(directory: str) -> dict:
+    kinds = {}
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".json"):
+            continue
+        with open(os.path.join(directory, name), encoding="utf-8") as f:
+            d = json.load(f)
+        if d.get("mode") not in ("triage", "discovery"):
+            raise ValueError(f"{name}: mode must be triage or discovery")
+        if d.get("risk") not in DEFAULT_MAX_AGE_DAYS:
+            raise ValueError(f"{name}: risk must be one of {sorted(DEFAULT_MAX_AGE_DAYS)}")
+        pos = d["positive"]
+        kinds[d["kind"]] = Kind(
+            kind=d["kind"], question=d["question"], skill=d["skill"], schema=d["schema"],
+            mode=d["mode"], risk=d["risk"], positive_field=pos["field"],
+            positive_values=pos["values"], refuter_skill=d.get("refuter_skill"),
+            severity_field=d.get("severity_field"), reproduction_field=d.get("reproduction_field"),
+            evidence_field=d.get("evidence_field", "evidence"),
+        )
+    return kinds
+
+
+def load_items(path: str) -> list:
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+# ── Fingerprints ─────────────────────────────────────────────────────────────
+
+
+def dependencies(ref: Reference, kind: Kind, item: dict, cited: list) -> list:
+    """Everything a verdict depends on, each with its hash at the commit."""
+    deps = [
+        {"dep": "pipeline", "hash": PIPELINE_VERSION},
+        {"dep": "kind", "hash": kind.version},
+        {"dep": "facts", "hash": text_hash(item.get("facts", {}))},
+    ]
+    files = sorted(set(item.get("deps", {}).get("files", [])) | set(cited))
+    deps += [{"dep": f"file:{p}", "hash": file_hash(ref, p)} for p in files]
+    return deps
+
+
+def changed(ref: Reference, kind: Kind, item: dict, stored: dict) -> str | None:
+    """The first recorded dependency whose hash differs now, or None."""
+    for d in stored.get("deps", []):
+        name = d["dep"]
+        if name == "pipeline":
+            now = PIPELINE_VERSION
+        elif name == "kind":
+            now = kind.version
+        elif name == "facts":
+            now = text_hash(item.get("facts", {}))
+        elif name.startswith("file:"):
+            now = file_hash(ref, name[5:])
+        else:
+            continue
+        if now != d["hash"]:
+            return name
+    return None
+
+
+def due(ref, kind, item, stored, max_age_days, now) -> str | None:
+    """Why the item must be reviewed now, or None to skip it."""
+    if not stored:
+        return "new"
+    what = changed(ref, kind, item, stored)
+    if what:
+        return f"changed: {what}"
+    if now - stored.get("reviewedAt", 0) > max_age_days[kind.risk] * 86400:
+        return "rotation"
+    return None
+
+
+# ── Acceptance ───────────────────────────────────────────────────────────────
+
+
+def _norm(s: str) -> str:
+    return " ".join(s.split())
+
+
+def accept(ref: Reference, kind: Kind, answer: dict) -> list:
+    """Why the answer is not acceptable; empty when it is."""
+    problems = []
+    evidence = answer.get(kind.evidence_field) or []
+    if not evidence:
+        problems.append("no evidence")
+    for e in evidence:
+        path, line, quote = e.get("file"), e.get("line"), e.get("quote")
+        if not isinstance(path, str) or ".." in path.split("/") or path.startswith("/"):
+            problems.append(f"bad path {path!r}")
+            continue
+        full = os.path.join(ref.tree, path)
+        if not os.path.isfile(full):
+            problems.append(f"{path} does not exist at {ref.commit[:10]}")
+            continue
+        with open(full, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+        if not isinstance(line, int) or not 1 <= line <= len(lines):
+            problems.append(f"{path}:{line} is not a line of the file ({len(lines)} lines)")
+            continue
+        if quote:
+            lo, hi = max(0, line - 1 - QUOTE_WINDOW), min(len(lines), line + QUOTE_WINDOW)
+            if _norm(quote) not in _norm(" ".join(lines[lo:hi])):
+                problems.append(f"quote not found near {path}:{line}")
+    if kind.severity_field and kind.reproduction_field:
+        sev = answer.get(kind.severity_field, "low")
+        if sev in SEVERITY_ORDER and SEVERITY_ORDER.index(sev) > SEVERITY_ORDER.index("low"):
+            if not str(answer.get(kind.reproduction_field) or "").strip():
+                problems.append(f"severity {sev} without a reproduction")
+    return problems
+
+
+# ── The pipeline ─────────────────────────────────────────────────────────────
+
+REFUTER_SCHEMA = {
+    "type": "object",
+    "required": ["refuted", "reason"],
+    "properties": {"refuted": {"type": "boolean"}, "reason": {"type": "string"}},
+}
+
+
+@dataclass
+class Budget:
+    max_calls: int
+    used: int = 0
+
+    def take(self, n: int = 1) -> bool:
+        if self.used + n > self.max_calls:
+            return False
+        self.used += n
+        return True
+
+
+@dataclass
+class Outcome:
+    item_id: str
+    status: str  # skipped | deferred | negative | finding | rejected | refuted | unconfirmed | failed
+    reason: str = ""
+    answer: dict | None = None
+    problems: list = field(default_factory=list)
+
+
+def is_positive(kind: Kind, answer: dict) -> bool:
+    return answer.get(kind.positive_field) in kind.positive_values
+
+
+def review_item(item, kind, ref, investigate, budget) -> tuple:
+    """(Outcome, the answer to store or None)."""
+    iid = item["id"]
+    question = kind.question.format(**item.get("facts", {}))
+
+    def ask(skill, q, schema, briefing):
+        out = investigate(question=q, answer_schema=schema, skill_file=skill,
+                          briefing=briefing, reference=ref.name)
+        return out["answer"]
+
+    if not budget.take():
+        return Outcome(iid, "deferred", "budget"), None
+    try:
+        first = ask(kind.skill, question, kind.schema, item.get("briefing", ""))
+    except Exception as e:  # an investigation that fails is recorded, never fatal to the run
+        return Outcome(iid, "failed", str(e)[:300]), None
+    if not is_positive(kind, first):
+        return Outcome(iid, "negative", answer=first), first
+
+    if kind.mode == "triage":
+        if not budget.take(2):
+            return Outcome(iid, "deferred", "budget (confirmation)", answer=first), None
+        votes = [first]
+        for _ in range(2):
+            try:
+                votes.append(ask(kind.skill, question, kind.schema, item.get("briefing", "")))
+            except Exception as e:
+                votes.append({"error": str(e)[:200]})
+        if sum(is_positive(kind, v) for v in votes) < 2:
+            return Outcome(iid, "unconfirmed", "1 of 3 runs", answer=first), first
+
+    problems = accept(ref, kind, first)
+    if problems:
+        return Outcome(iid, "rejected", "acceptance", answer=first, problems=problems), first
+
+    if kind.refuter_skill:
+        if not budget.take():
+            return Outcome(iid, "deferred", "budget (refuter)", answer=first), None
+        brief = (f"{item.get('briefing', '')}\n\n## The finding to test\n\n"
+                 f"```json\n{json.dumps(first, indent=2)}\n```")
+        try:
+            verdict = ask(kind.refuter_skill,
+                          f"Try to disprove this finding about {iid}. Is it wrong?",
+                          REFUTER_SCHEMA, brief)
+        except Exception as e:
+            return Outcome(iid, "failed", f"refuter: {str(e)[:300]}", answer=first), None
+        if verdict.get("refuted"):
+            return Outcome(iid, "refuted", verdict.get("reason", "")[:500], answer=first), first
+
+    return Outcome(iid, "finding", answer=first), first
+
+
+def cited_files(kind: Kind, answer: dict | None) -> list:
+    if not answer:
+        return []
+    return [e["file"] for e in answer.get(kind.evidence_field) or []
+            if isinstance(e, dict) and isinstance(e.get("file"), str)]
+
+
+def run(items, kinds, ref, store, investigate, budget, max_age_days, now) -> list:
+    outcomes = []
+    for item in items:
+        kind = kinds.get(item.get("kind"))
+        if kind is None:
+            outcomes.append(Outcome(item.get("id", "?"), "failed", f"unknown kind {item.get('kind')!r}"))
+            continue
+        why = due(ref, kind, item, store.get(item["id"]), max_age_days, now)
+        if why is None:
+            outcomes.append(Outcome(item["id"], "skipped", "unchanged"))
+            continue
+        outcome, answer = review_item(item, kind, ref, investigate, budget)
+        outcome.reason = outcome.reason or why
+        if answer is not None:
+            store[item["id"]] = {
+                "kind": kind.kind, "status": outcome.status, "answer": answer,
+                "commit": ref.commit, "reviewedAt": now, "why": why,
+                "deps": dependencies(ref, kind, item, cited_files(kind, answer)),
+            }
+        outcomes.append(outcome)
+    return outcomes
+
+
+# ── Command line ─────────────────────────────────────────────────────────────
+
+
+def _write_json(path: str, value) -> None:
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(value, f, indent=1)
+    os.replace(tmp, path)
+
+
+def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--items", required=True)
+    ap.add_argument("--kinds", required=True)
+    ap.add_argument("--state", required=True)
+    ap.add_argument("--reference", required=True)
+    ap.add_argument("--max-calls", type=int, default=40)
+    ap.add_argument("--max-age", action="append", default=[], help="risk=days")
+    a = ap.parse_args(argv)
+
+    max_age = dict(DEFAULT_MAX_AGE_DAYS)
+    for spec in a.max_age:
+        risk, days = spec.split("=", 1)
+        if risk not in max_age:
+            raise SystemExit(f"--max-age: unknown risk class {risk!r}")
+        max_age[risk] = float(days)
+    if investigate is None:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                                        "run-background", "scripts"))
+        import magi_tool  # noqa: E402 — only when run as a real job
+        investigate = magi_tool.investigate
+
+    os.makedirs(a.state, exist_ok=True)
+    store_path = os.path.join(a.state, "verdicts.json")
+    store = {}
+    if os.path.exists(store_path):
+        with open(store_path, encoding="utf-8") as f:
+            store = json.load(f)
+    ref = load_reference(a.reference, reference_root)
+    now = time.time()
+    budget = Budget(a.max_calls)
+    outcomes = run(load_items(a.items), load_kinds(a.kinds), ref, store, investigate,
+                   budget, max_age, now)
+    _write_json(store_path, store)
+
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now))
+    out_dir = os.path.join(a.state, "runs", stamp)
+    os.makedirs(out_dir, exist_ok=True)
+    findings = [o.__dict__ for o in outcomes if o.status == "finding"]
+    _write_json(os.path.join(out_dir, "findings.json"), findings)
+    counts = {}
+    for o in outcomes:
+        counts[o.status] = counts.get(o.status, 0) + 1
+    summary = {"commit": ref.commit, "items": len(outcomes), "calls": budget.used,
+               "maxCalls": budget.max_calls, "counts": counts, "findings": len(findings)}
+    _write_json(os.path.join(out_dir, "summary.json"), summary)
+    with open(os.path.join(a.state, "ledger.jsonl"), "a", encoding="utf-8") as f:
+        for o in outcomes:
+            f.write(json.dumps({"run": stamp, "commit": ref.commit, "item": o.item_id,
+                                "status": o.status, "reason": o.reason,
+                                "problems": o.problems}) + "\n")
+    print(json.dumps(summary))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

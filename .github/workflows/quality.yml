@@ -167,7 +167,7 @@ jobs:
           done
 
   data-factory-python:
-    name: data-factory Python tests (offline)
+    name: Python tests (offline)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -179,6 +179,10 @@ jobs:
           cd tests/data_factory
           python3 -m pytest -q test_process_news.py test_refresh.py test_catalog.py \
             -k "not yfinance and not invalid_ticker"
+      - name: review pipeline (offline, a git mirror in a temporary folder)
+        run: |
+          cd tests/review_pipeline
+          python3 -m pytest -q
 
   trace:
     # Report-only (ADR-0036): the CodeQL trace joined to the baseline catalog. No deploy job
