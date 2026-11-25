@@ -214,3 +214,9 @@ def test_main_writes_the_store_the_findings_the_summary_and_the_ledger(w, capsys
     assert "cs-1" in json.loads((state / "verdicts.json").read_text())
     ledger = (state / "ledger.jsonl").read_text().splitlines()
     assert json.loads(ledger[0])["status"] == "finding"
+
+
+def test_skill_paths_may_be_relative_to_the_descriptor(w):
+    w.kind("rel", mode="triage", skill="../SKILL.md", refuter_skill="../REFUTE.md")
+    k = review.load_kinds(str(w.kinds))["rel"]
+    assert k.skill == str(w.tmp / "SKILL.md") and k.refuter_skill == str(w.tmp / "REFUTE.md")

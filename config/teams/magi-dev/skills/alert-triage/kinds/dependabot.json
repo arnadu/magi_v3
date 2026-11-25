@@ -1,0 +1,87 @@
+{
+	"kind": "dependabot",
+	"question": "Dependabot alert {number} ({package}, {advisory}): is MAGI exposed to it at this commit?",
+	"skill": "../investigate-dependabot.md",
+	"schema": {
+		"type": "object",
+		"required": [
+			"verdict",
+			"severity",
+			"reasoning",
+			"evidence"
+		],
+		"additionalProperties": false,
+		"properties": {
+			"verdict": {
+				"enum": [
+					"exposed",
+					"not-exposed",
+					"could-not-establish"
+				]
+			},
+			"severity": {
+				"enum": [
+					"info",
+					"low",
+					"medium",
+					"high",
+					"critical"
+				]
+			},
+			"reasoning": {
+				"type": "string",
+				"maxLength": 2000
+			},
+			"evidence": {
+				"type": "array",
+				"maxItems": 12,
+				"items": {
+					"type": "object",
+					"required": [
+						"file",
+						"line",
+						"quote"
+					],
+					"additionalProperties": false,
+					"properties": {
+						"file": {
+							"type": "string",
+							"maxLength": 300
+						},
+						"line": {
+							"type": "integer",
+							"minimum": 1
+						},
+						"quote": {
+							"type": "string",
+							"maxLength": 400
+						}
+					}
+				}
+			},
+			"reproduction": {
+				"type": "string",
+				"maxLength": 1500
+			},
+			"catalogProposal": {
+				"type": "string",
+				"maxLength": 1000
+			},
+			"upgrade": {
+				"type": "string",
+				"maxLength": 500
+			}
+		}
+	},
+	"mode": "triage",
+	"risk": "platform",
+	"positive": {
+		"field": "verdict",
+		"values": [
+			"exposed"
+		]
+	},
+	"refuter_skill": "../refute.md",
+	"severity_field": "severity",
+	"reproduction_field": "reproduction"
+}

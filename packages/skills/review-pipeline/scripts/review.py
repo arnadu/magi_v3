@@ -120,6 +120,10 @@ def load_kinds(directory: str) -> dict:
         if d.get("risk") not in DEFAULT_MAX_AGE_DAYS:
             raise ValueError(f"{name}: risk must be one of {sorted(DEFAULT_MAX_AGE_DAYS)}")
         pos = d["positive"]
+        # A skill path may be relative to the descriptor's folder (a team skill's own files).
+        for key in ("skill", "refuter_skill"):
+            if d.get(key) and not os.path.isabs(d[key]):
+                d[key] = os.path.normpath(os.path.join(directory, d[key]))
         kinds[d["kind"]] = Kind(
             kind=d["kind"], question=d["question"], skill=d["skill"], schema=d["schema"],
             mode=d["mode"], risk=d["risk"], positive_field=pos["field"],

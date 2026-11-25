@@ -1,0 +1,83 @@
+{
+	"kind": "code-scanning",
+	"question": "Code-scanning alert {number} ({tool} {rule}) at {path}:{line}: is it a real vulnerability at this commit?",
+	"skill": "../investigate-code-scanning.md",
+	"schema": {
+		"type": "object",
+		"required": [
+			"verdict",
+			"severity",
+			"reasoning",
+			"evidence"
+		],
+		"additionalProperties": false,
+		"properties": {
+			"verdict": {
+				"enum": [
+					"real",
+					"false-positive",
+					"could-not-establish"
+				]
+			},
+			"severity": {
+				"enum": [
+					"info",
+					"low",
+					"medium",
+					"high",
+					"critical"
+				]
+			},
+			"reasoning": {
+				"type": "string",
+				"maxLength": 2000
+			},
+			"evidence": {
+				"type": "array",
+				"maxItems": 12,
+				"items": {
+					"type": "object",
+					"required": [
+						"file",
+						"line",
+						"quote"
+					],
+					"additionalProperties": false,
+					"properties": {
+						"file": {
+							"type": "string",
+							"maxLength": 300
+						},
+						"line": {
+							"type": "integer",
+							"minimum": 1
+						},
+						"quote": {
+							"type": "string",
+							"maxLength": 400
+						}
+					}
+				}
+			},
+			"reproduction": {
+				"type": "string",
+				"maxLength": 1500
+			},
+			"catalogProposal": {
+				"type": "string",
+				"maxLength": 1000
+			}
+		}
+	},
+	"mode": "triage",
+	"risk": "boundary",
+	"positive": {
+		"field": "verdict",
+		"values": [
+			"real"
+		]
+	},
+	"refuter_skill": "../refute.md",
+	"severity_field": "severity",
+	"reproduction_field": "reproduction"
+}

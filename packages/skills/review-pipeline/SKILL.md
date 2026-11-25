@@ -39,7 +39,8 @@ files the answer cites are added to them.
  "severity_field": "severity", "reproduction_field": "reproduction"}
 ```
 
-- `question` is filled from the item's `facts`.
+- `question` is filled from the item's `facts`. `skill` and `refuter_skill` may be relative to
+  the descriptor's folder.
 - `mode`: `triage` (is this alert real?) needs two of three runs to agree; `discovery` (find a
   way to break this) keeps a single candidate and relies on the refuter.
 - `risk` (`boundary`, `platform`, `ordinary`) sets how long an unchanged verdict stands.

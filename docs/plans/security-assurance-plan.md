@@ -310,6 +310,17 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 6e, MAGI DEV's first kinds, 2026-11-25:** team skill `alert-triage`
+  (`config/teams/magi-dev/skills/alert-triage/`): three kinds for the review pipeline —
+  code-scanning and Dependabot alerts (triage) and the watched guards (discovery) — each with
+  its investigator skill and a shared refuter; `produce_items.py` turns the `security-alerts`
+  output and the watched guards into items whose briefings come from the reference copy (the
+  file's entry points and operations, a guard's purpose and tests). Installed read-only under
+  `shared/skills/_team/`, so the agents cannot change how their own work is judged; skill paths
+  in a descriptor may now be relative to it. Tests: the producer against the real descriptors
+  (every item fills its kind's question, every skill exists), and every descriptor's schema
+  compiles as Investigate compiles it. First live data for it: 57 open alerts (37 code scanning,
+  20 Dependabot) on 2026-11-25. Next: the benchmark (6d) on these kinds, then appsec's role.
 - **Step 6a, platform tasks, 2026-11-24:** `mission.platform-task` built. Kinds ship in the
   image (`/usr/local/sbin/magi-task`, root-owned, its own argument checks); the mission's top-level
   `platformTasks` (from its template at creation, never from a config editor or an inline config)
