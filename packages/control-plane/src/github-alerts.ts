@@ -112,31 +112,38 @@ function dependabot(a: Json): SecurityAlert {
 	};
 }
 
-/** Every open alert of one kind, up to MAX_PAGES pages; a 404 (no analysis yet) is none. */
+/** The `rel="next"` URL of a GitHub `Link` header, only if it stays on the API host. */
+export function nextPage(link: string | null): string | null {
+	const m = link?.match(/<([^>]+)>;\s*rel="next"/);
+	return m?.[1].startsWith("https://api.github.com/") ? m[1] : null;
+}
+
+/**
+ * Every open alert of one kind, following GitHub's `Link` header for up to MAX_PAGES pages
+ * (Dependabot pages by cursor and refuses `page=`); a 404 (no analysis yet) is none.
+ */
 async function list(
 	kind: "code-scanning" | "dependabot",
 	token: string,
 	doFetch: typeof fetch,
 ): Promise<Json[]> {
 	const out: Json[] = [];
-	for (let page = 1; page <= MAX_PAGES; page++) {
-		const res = await doFetch(
-			`https://api.github.com/repos/${GITHUB_REPO}/${kind}/alerts?state=open&per_page=${PAGE}&page=${page}`,
-			{
-				signal: AbortSignal.timeout(15_000),
-				headers: {
-					Authorization: `Bearer ${token}`,
-					Accept: "application/vnd.github+json",
-					"X-GitHub-Api-Version": "2022-11-28",
-				},
+	let url: string | null =
+		`https://api.github.com/repos/${GITHUB_REPO}/${kind}/alerts?state=open&per_page=${PAGE}`;
+	for (let page = 0; url && page < MAX_PAGES; page++) {
+		const res = await doFetch(url, {
+			signal: AbortSignal.timeout(15_000),
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28",
 			},
-		);
+		});
 		if (res.status === 404) return out;
 		if (!res.ok)
 			throw new Error(`GitHub answered ${res.status} for ${kind} alerts`);
-		const batch = (await res.json()) as Json[];
-		out.push(...batch);
-		if (batch.length < PAGE) break;
+		out.push(...((await res.json()) as Json[]));
+		url = nextPage(res.headers.get("link"));
 	}
 	return out;
 }

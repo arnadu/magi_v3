@@ -4,7 +4,7 @@
  */
 import type { Db } from "mongodb";
 import { describe, expect, it } from "vitest";
-import { readSecurityAlerts } from "../src/github-alerts.js";
+import { nextPage, readSecurityAlerts } from "../src/github-alerts.js";
 
 const ENV = {
 	PLATFORM_ADMIN_USER_IDS: "admin-uid",
@@ -60,7 +60,15 @@ function fakeFetch(answers: Record<string, { status: number; body: unknown }>) {
 		calls.push({ url, auth });
 		const kind = url.includes("/code-scanning/") ? "cs" : "dep";
 		const a = answers[kind];
-		return new Response(JSON.stringify(a.body), { status: a.status });
+		// Like GitHub: a full page links to the next by cursor; `page=` is refused by Dependabot.
+		if (/[?&]page=/.test(url)) return new Response("{}", { status: 400 });
+		const full = Array.isArray(a.body) && a.body.length === 100;
+		const headers: Record<string, string> = full
+			? {
+					link: `<https://api.github.com${new URL(url).pathname}?state=open&per_page=100&after=c${calls.length}>; rel="next"`,
+				}
+			: {};
+		return new Response(JSON.stringify(a.body), { status: a.status, headers });
 	}) as unknown as typeof fetch;
 	return { f, calls };
 }
@@ -170,7 +178,17 @@ describe("readSecurityAlerts", () => {
 		expect(r2.status).toBe(502);
 	});
 
-	it("reads further pages while they are full, at most three", async () => {
+	it("follows only a next link that stays on the API host", () => {
+		expect(
+			nextPage(
+				'<https://api.github.com/repos/a/b/x?after=Y>; rel="next", <https://api.github.com/z>; rel="last"',
+			),
+		).toBe("https://api.github.com/repos/a/b/x?after=Y");
+		expect(nextPage('<https://evil.example/x>; rel="next"')).toBeNull();
+		expect(nextPage(null)).toBeNull();
+	});
+
+	it("reads further pages through the Link header, at most three", async () => {
 		const full = Array.from({ length: 100 }, (_, i) => ({ ...CS, number: i }));
 		const { f, calls } = fakeFetch({
 			cs: { status: 200, body: full },
