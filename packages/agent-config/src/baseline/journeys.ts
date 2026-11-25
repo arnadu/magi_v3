@@ -314,7 +314,7 @@ export const JOURNEYS = defineJourneys([
 			"file.write",
 			"message.send",
 		],
-		note: "Planned (security assurance plan, step 6): a platform task keeps a read-only copy of the repository; the agent's job puts each item to a clean-context sub-agent and checks its answer; what survives is filed and the author told",
+		note: "The review pipeline is planned (security assurance plan, step 6b); its parts exist: a platform task keeps a read-only copy of the repository; the agent's job puts each item to a clean-context sub-agent and checks its answer; what survives is filed and the author told",
 	},
 ]);
 

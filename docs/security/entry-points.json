@@ -1611,7 +1611,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 291,
+		"line": 292,
 		"name": "fetch-url",
 		"tag": "web.fetch"
 	},
@@ -1619,7 +1619,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 300,
+		"line": 301,
 		"name": "inspect-image",
 		"tag": "web.fetch"
 	},
@@ -1627,7 +1627,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 312,
+		"line": 313,
 		"name": "research",
 		"tag": "web.research"
 	},
@@ -1635,7 +1635,15 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 322,
+		"line": 323,
+		"name": "investigate",
+		"tag": "agent.investigate"
+	},
+	{
+		"kind": "tool-api",
+		"actor": "JOB",
+		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
+		"line": 333,
 		"name": "search-web",
 		"tag": "web.search"
 	},
@@ -1643,7 +1651,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 327,
+		"line": 338,
 		"name": "post-message",
 		"tag": "message.send"
 	},
@@ -1651,7 +1659,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 343,
+		"line": 354,
 		"name": "data-fred",
 		"tag": "data.query"
 	},
@@ -1659,7 +1667,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 348,
+		"line": 359,
 		"name": "data-fmp",
 		"tag": "data.query"
 	},
@@ -1667,7 +1675,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 353,
+		"line": 364,
 		"name": "data-newsapi",
 		"tag": "data.query"
 	},
@@ -1726,6 +1734,14 @@
 		"line": 77,
 		"name": "InspectImage",
 		"tag": "web.fetch"
+	},
+	{
+		"kind": "tool",
+		"actor": "AG",
+		"file": "packages/agent-runtime-worker/src/tools/investigate.ts",
+		"line": 300,
+		"name": "Investigate",
+		"tag": "agent.investigate"
 	},
 	{
 		"kind": "tool",

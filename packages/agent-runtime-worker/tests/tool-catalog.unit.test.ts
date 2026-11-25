@@ -17,6 +17,7 @@ import {
 import { createAnalyzeMemoriesTool } from "../src/tools/analyze-memories.js";
 import { createFetchUrlTool } from "../src/tools/fetch-url.js";
 import { createInspectImageTool } from "../src/tools/inspect-image.js";
+import { createInvestigateTool } from "../src/tools/investigate.js";
 import { createResearchTool } from "../src/tools/research.js";
 import { createFileTools } from "../src/tools.js";
 
@@ -37,6 +38,7 @@ describe("TIER_A_TOOL_NAMES", () => {
 			createFetchUrlTool(CLAUDE_SONNET, "/tmp", []),
 			createInspectImageTool("/tmp", CLAUDE_SONNET),
 			createResearchTool(CLAUDE_SONNET, "/tmp", acl),
+			createInvestigateTool(CLAUDE_SONNET, acl, { workdir: "/tmp" }),
 			createAnalyzeMemoriesTool({
 				conversationRepo: {} as never,
 				agentId: "a",

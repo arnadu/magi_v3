@@ -96,10 +96,11 @@ describe("buildMissionCopilotAgentConfig", () => {
 		expect(cfg.initialMentalMap).toContain("{{workdir}}");
 	});
 
-	it("disables Research, InspectImage and CreateImage", () => {
+	it("disables Research, Investigate, InspectImage and CreateImage", () => {
 		const cfg = buildMissionCopilotAgentConfig(baseTeamConfig());
 		expect(cfg.disabledTools).toEqual([
 			"Research",
+			"Investigate",
 			"InspectImage",
 			"CreateImage",
 		]);

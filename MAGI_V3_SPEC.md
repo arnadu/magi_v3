@@ -373,6 +373,7 @@ Every tool name is case-sensitive and can appear in `disabledTools` in the agent
 | `SearchWeb` | Web/data | Brave Search API → ranked result list | `BRAVE_SEARCH_API_KEY` |
 | `BrowseWeb` | Web/data | Stagehand/Playwright JS-rendered browsing; SSRF blocked | Chromium present |
 | `Research` | Agentic | Nested `runInnerLoop` in isolated context; writes results to `sharedDir/research/` | — |
+| `Investigate` | Agentic | One question about a codebase, put to a nested `runInnerLoop` with a clean context: the agent's own shell, a skill file, a briefing, and a JSON Schema the answer must match (one repair turn, then an error). Reads a reference copy kept by a platform task and returns its commit with the answer. Also on the Tool API (`investigate`) for review pipelines run as jobs | — |
 | `CreateImage` | Agentic | Image sub-agent (ADR-0035): picks a menu model, generates, critiques and refines within a budget; writes candidates, `manifest.json` and `contact-sheet.html` to `sharedDir/images/<job-id>/` | `OPENROUTER_API_KEY` |
 | `AnalyzeMemories` | Memory | Searches full conversation history (incl. compacted/pruned turns) in MongoDB; recovers stubbed tool outputs | — |
 | `AddTask` / `UpdateTask` | Objectives | Create or update a task in the mission's objectives store (ADR-0019); updates are limited to the task's assignee, creator, objective owner, or the operator/mission copilot | — |

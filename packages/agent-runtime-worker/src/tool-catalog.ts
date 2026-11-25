@@ -22,6 +22,7 @@ export const TIER_A_TOOL_NAMES = [
 	"FetchUrl",
 	"InspectImage",
 	"Research",
+	"Investigate",
 	"CreateImage",
 	"AnalyzeMemories",
 	"SearchWeb",

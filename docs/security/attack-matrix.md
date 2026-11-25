@@ -13,13 +13,13 @@ public, and a cell that fails is in code scanning (maintainers only).
 | Control plane (internet) | 112 | 83 | 25 | 4 |
 | Apps host (internet) | 4 | 0 | 3 | 1 |
 | Monitor server (a mission machine's port 4000) | 43 | 35 | 8 | 0 |
-| Tool API (port 4001, background jobs) | 36 | 25 | 11 | 0 |
-| Agent and copilot tools | 78 | 0 | 78 | 0 |
+| Tool API (port 4001, background jobs) | 39 | 27 | 12 | 0 |
+| Agent and copilot tools | 79 | 0 | 79 | 0 |
 | Request folders (agents write files the daemon acts on) | 10 | 3 | 7 | 0 |
 | Copilot actions (proposed, then confirmed by the operator) | 13 | 0 | 13 | 0 |
 | Timers and change streams | 18 | 1 | 17 | 0 |
 | Platform (no entry point) | 14 | 14 | 0 | 0 |
-| **All** | **328** | **161** | **162** | **5** |
+| **All** | **332** | **163** | **164** | **5** |
 
 ## Attack classes
 
@@ -256,6 +256,9 @@ public, and a cell that fails is in code scanning (maintainers only).
 | POST `/tools/inspectimage` | `web.fetch` | `no-job-token` | open |  |
 | POST `/tools/inspectimage` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
 | POST `/tools/inspectimage` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/investigate` | `agent.investigate` | `no-job-token` | open |  |
+| POST `/tools/investigate` | `agent.investigate` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/investigate` | `agent.investigate` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 | POST `/tools/post-message` | `message.send` | `no-job-token` | covered | `sandbox.py` (TOOL-1) |
 | POST `/tools/post-message` | `message.send` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
 | POST `/tools/post-message` | `message.send` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
@@ -349,6 +352,7 @@ public, and a cell that fails is in code scanning (maintainers only).
 | `data-newsapi` | `data.query` | `path-escape` | open |  |
 | `FetchUrl` | `web.fetch` | `path-escape` | open |  |
 | `InspectImage` | `web.fetch` | `path-escape` | open |  |
+| `Investigate` | `agent.investigate` | `path-escape` | open |  |
 | `Research` | `web.research` | `path-escape` | open |  |
 | `SearchWeb` | `web.search` | `path-escape` | open |  |
 | `Bash` | `agent.shell` | `path-escape` | open |  |

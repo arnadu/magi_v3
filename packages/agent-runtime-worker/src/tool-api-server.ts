@@ -51,6 +51,7 @@ import {
 } from "./tools/data-provider-proxy.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
 import { createInspectImageTool } from "./tools/inspect-image.js";
+import { createInvestigateTool } from "./tools/investigate.js";
 import { createResearchTool } from "./tools/research.js";
 import { tryCreateSearchWebTool } from "./tools/search-web.js";
 import type { AclPolicy, MagiTool } from "./tools.js";
@@ -316,6 +317,16 @@ export class ToolApiServer {
 			build: (ctx, meter) =>
 				createResearchTool(this.model, this.sharedDir, ctx.acl, {
 					visionModel: this.visionModel,
+					onSubLoopLlmCall: meter(),
+				}),
+		},
+		{
+			names: ["investigate"],
+			operation: "agent.investigate",
+			callsLlm: true,
+			build: (ctx, meter) =>
+				createInvestigateTool(this.model, ctx.acl, {
+					workdir: ctx.identity.workdir,
 					onSubLoopLlmCall: meter(),
 				}),
 		},

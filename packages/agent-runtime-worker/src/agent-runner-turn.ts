@@ -41,6 +41,7 @@ import { createAnalyzeMemoriesTool } from "./tools/analyze-memories.js";
 import { tryCreateBrowseWebTool } from "./tools/browse-web.js";
 import { createFetchUrlTool } from "./tools/fetch-url.js";
 import { createInspectImageTool } from "./tools/inspect-image.js";
+import { createInvestigateTool } from "./tools/investigate.js";
 import { createResearchTool } from "./tools/research.js";
 import { tryCreateSearchWebTool } from "./tools/search-web.js";
 import type { AclPolicy, MagiTool } from "./tools.js";
@@ -393,6 +394,12 @@ export function buildTurnTools(
 			onSubLoopLlmCall: hooks.meter,
 			beforeSubLoopLlmCall: hooks.beforeLlmCall,
 			disabledTools: agent.disabledTools,
+		}),
+		createInvestigateTool(ctx.model, acl, {
+			workdir,
+			onSubLoopMessage: appendSubLoop,
+			onSubLoopLlmCall: hooks.meter,
+			beforeSubLoopLlmCall: hooks.beforeLlmCall,
 		}),
 		...(createImageTool ? [createImageTool] : []),
 		createAnalyzeMemoriesTool({

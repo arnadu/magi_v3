@@ -127,7 +127,6 @@ export const TEAM_OPERATIONS = defineOperations([
 			"Its answer matches the caller's schema, or the call fails",
 			"Spend counts against the mission",
 		],
-		planned: true,
 	},
 	{
 		id: "data.query",

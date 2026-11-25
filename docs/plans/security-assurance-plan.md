@@ -318,8 +318,14 @@ figure; 6 depends on 1 and 3.
   `platform-task-failure` anomaly after three failures in a row. First kind `git-mirror`: a
   GitHub repository kept at `/var/lib/magi/reference/<name>` (a bare mirror, snapshots per
   commit, an atomic `current` link, `status.json`), readable by agents and writable by none.
-  Threat model TB-27 (its rows cite their proof); sandbox PLAT-1..4: 24 of 24 cells held. Next in
-  6a: `Investigate`, the clean-context worker over that copy.
+  Threat model TB-27 (its rows cite their proof); sandbox PLAT-1..4: 24 of 24 cells held, locally
+  and as CI's gate.
+- **Step 6a, Investigate, 2026-11-24:** `agent.investigate` built, for agents and on the Tool API
+  (`investigate`) for pipelines run as jobs. One question, a clean context (only a skill file, a
+  briefing, the question and a JSON Schema), the calling agent's shell, its budget and spend-cap
+  pause; the reference copy's commit returned with the answer; an answer that does not match the
+  schema gets one repair turn, then the call fails. Disabled for the mission copilot, like
+  Research. 6a is done; next, 6b: the pipeline and the fingerprint store.
 - **Step 5, environment B and Nuclei, 2026-11-24:** `scripts/security/stack/` starts the
   control plane's own image on an internal Docker network (no route out) with a MongoDB container
   and two test tenants through a new test-only sign-in (`AUTH_TEST_USERS`, refused on Fly: the

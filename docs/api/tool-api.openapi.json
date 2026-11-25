@@ -195,6 +195,33 @@
 				}
 			}
 		},
+		"/tools/investigate": {
+			"post": {
+				"operationId": "postToolsInvestigate",
+				"x-magi-operation": "agent.investigate",
+				"x-magi-auth": "job",
+				"security": [
+					{
+						"jobToken": []
+					}
+				],
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object"
+							}
+						}
+					}
+				},
+				"responses": {
+					"default": {
+						"description": "See the route's code."
+					}
+				}
+			}
+		},
 		"/tools/post-message": {
 			"post": {
 				"operationId": "postToolsPostMessage",

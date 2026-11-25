@@ -71,7 +71,7 @@
 | `web.fetch` | Fetch a page or a document, or inspect an image | AG, SUB, JOB | `mm-tools` | Never reaches an internal address, at any redirect; Bounded in size and time; Spend counts against the mission |
 | `web.browse` | Drive a browser through a site | AG, SUB | `mm-tools` | Through the egress proxy; never an internal address; Bounded in time; the browser is closed; Spend counts against the mission |
 | `web.research` | Research a question with a sub-agent | AG, JOB | `mm-tools` | The sub-agent acts with the agent's identity and budget; Spend counts against the mission |
-| `agent.investigate` (planned) | Investigate one question with a sub-agent in a clean context | AG, JOB | `mm-tools` | The sub-agent acts with the calling agent's identity, tools and budget, but none of its history; It reviews code in a read-only reference copy kept by a platform task; Its answer matches the caller's schema, or the call fails; Spend counts against the mission |
+| `agent.investigate` | Investigate one question with a sub-agent in a clean context | AG, JOB | `mm-tools` | The sub-agent acts with the calling agent's identity, tools and budget, but none of its history; It reviews code in a read-only reference copy kept by a platform task; Its answer matches the caller's schema, or the call fails; Spend counts against the mission |
 | `data.query` | Query a data provider | JOB | `mm-tools` | The provider's key never reaches the caller |
 | `agent.pause` | Stop one agent's dispatch | OP, CC, MC | `mm-daemon` | Takes effect before the agent's next turn; Holds across restarts until someone resumes the agent; Agents never pause a teammate |
 | `agent.resume` | Restart one agent's dispatch | OP, CC, MC | `mm-daemon` | Takes effect before the agent's next turn |

@@ -21,6 +21,7 @@ export type PromptFile =
 	| "image-describe.md"
 	| "image-ocr.md"
 	| "image-page-visual.md"
+	| "investigate.md"
 	| "mental-map-pointer.md"
 	| "mission-copilot-mental-map.html"
 	| "mission-copilot.md"
