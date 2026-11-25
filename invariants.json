@@ -398,7 +398,7 @@
   "enforcedBy": [],
   "decidedBy": null,
   "open": "Nothing enforces it yet: no redaction before logs, conversations or call records are written",
-  "findings": 4
+  "findings": 3
  },
  {
   "id": "sec.contained-paths",

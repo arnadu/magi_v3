@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "2190388",
-  "time": "2026-11-25T02:17:09Z"
+  "commit": "cf6bc0e",
+  "time": "2026-11-25T02:26:41Z"
  },
  "findings": [
   {
@@ -1562,7 +1562,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mailbox.ts:210",
     "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:48",
-    "packages/agent-runtime-worker/src/tool-api-server.ts:338"
+    "packages/agent-runtime-worker/src/tool-api-server.ts:369"
    ],
    "lacks": [
     {
@@ -1583,7 +1583,7 @@
     },
     {
      "entryPoint": "tool-api post-message",
-     "where": "packages/agent-runtime-worker/src/tool-api-server.ts:338",
+     "where": "packages/agent-runtime-worker/src/tool-api-server.ts:369",
      "writes": [
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
