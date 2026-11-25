@@ -2063,6 +2063,7 @@
      "onUserMessage",
      "post",
      "push",
+     "read",
      "readCostEvents",
      "readLifetime",
      "readTeamConfig",
@@ -2208,7 +2209,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "search-web",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:322",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:333",
     "reachesHome": true,
     "components": [
      "mm-jobs",
@@ -2257,7 +2258,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "fetch-url",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:291",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:292",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2276,6 +2277,7 @@
      "meter",
      "on",
      "push",
+     "read",
      "reject",
      "resolve"
     ],
@@ -2285,7 +2287,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "inspect-image",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:300",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:301",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2322,6 +2324,7 @@
      "lookup",
      "on",
      "push",
+     "read",
      "reject",
      "resolve"
     ],
@@ -2409,7 +2412,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "research",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:312",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:313",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2436,6 +2439,7 @@
      "meter",
      "on",
      "push",
+     "read",
      "reject",
      "resolve",
      "set",
@@ -2487,9 +2491,56 @@
    "AG",
    "JOB"
   ],
-  "planned": true,
+  "planned": false,
   "startedBy": null,
-  "entryPoints": []
+  "entryPoints": [
+   {
+    "kind": "tool-api",
+    "actor": "JOB",
+    "name": "investigate",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:323",
+    "reachesHome": true,
+    "components": [
+     "mm-agent-loop",
+     "mm-isolation",
+     "mm-jobs",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "get",
+     "has",
+     "meter",
+     "push",
+     "reject",
+     "resolve",
+     "set"
+    ],
+    "httpHops": []
+   },
+   {
+    "kind": "tool",
+    "actor": "AG",
+    "name": "Investigate",
+    "where": "packages/agent-runtime-worker/src/tools/investigate.ts:300",
+    "reachesHome": true,
+    "components": [
+     "mm-agent-loop",
+     "mm-isolation",
+     "mm-tools"
+    ],
+    "writes": [],
+    "unresolved": [
+     "get",
+     "has",
+     "push",
+     "reject",
+     "resolve",
+     "set"
+    ],
+    "httpHops": []
+   }
+  ]
  },
  {
   "id": "data.query",
@@ -2505,7 +2556,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-fred",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:343",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:354",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -2530,7 +2581,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-fmp",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:348",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:359",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -2555,7 +2606,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-newsapi",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:353",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:364",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -3295,7 +3346,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "post-message",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:327",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:338",
     "reachesHome": true,
     "components": [
      "mm-jobs",

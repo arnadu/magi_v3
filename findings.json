@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "6d8b452",
-  "time": "2026-11-25T00:49:30Z"
+  "commit": "22a377e",
+  "time": "2026-11-25T01:43:32Z"
  },
  "findings": [
   {
@@ -1562,7 +1562,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mailbox.ts:210",
     "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:48",
-    "packages/agent-runtime-worker/src/tool-api-server.ts:327"
+    "packages/agent-runtime-worker/src/tool-api-server.ts:338"
    ],
    "lacks": [
     {
@@ -1583,7 +1583,7 @@
     },
     {
      "entryPoint": "tool-api post-message",
-     "where": "packages/agent-runtime-worker/src/tool-api-server.ts:327",
+     "where": "packages/agent-runtime-worker/src/tool-api-server.ts:338",
      "writes": [
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
@@ -3447,14 +3447,14 @@
    "new": false
   },
   {
-   "key": "5802bfa5135f",
+   "key": "80a87c9b90f6",
    "kind": "layer.against",
    "about": "mm-tools",
-   "text": "mm-tools (layer 2) imports mm-agent-loop (layer 3) 15 time(s), against the declared layering.",
+   "text": "mm-tools (layer 2) imports mm-agent-loop (layer 3) 18 time(s), against the declared layering.",
    "where": [],
    "to": "mm-agent-loop",
-   "imports": 15,
-   "new": false
+   "imports": 18,
+   "new": true
   },
   {
    "key": "a3e96df030e5",
