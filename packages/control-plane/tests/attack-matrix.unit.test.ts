@@ -8,7 +8,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	buildMatrix,
+	CLAIMED_ROWS_CEILING,
 	loadEntries,
+	loadThreatRows,
 	renderMarkdown,
 } from "../../../scripts/security/matrix/matrix.mjs";
 
@@ -100,5 +102,62 @@ describe("attack matrix document", () => {
 				without.push(`${e.kind} ${e.name}`);
 		}
 		expect(without).toEqual([]);
+	});
+});
+
+interface ThreatRow {
+	boundary: string;
+	threat: string;
+	status: string;
+	proofs: { test: string; name: string | null; missing?: boolean }[];
+}
+
+describe("the threat model, connected to the matrix", () => {
+	const rows: ThreatRow[] = loadThreatRows();
+	const threatModel = readFileSync(
+		join(ROOT, "docs", "security", "threat-model.md"),
+		"utf8",
+	);
+
+	it("every proof a STRIDE row cites exists, and a sandbox cell it names is in the sandbox", () => {
+		const bad: string[] = [];
+		const sandbox = readFileSync(
+			join(ROOT, "scripts/security/sandbox/sandbox.py"),
+			"utf8",
+		);
+		for (const r of rows) {
+			for (const p of r.proofs) {
+				if (p.missing || !existsSync(join(ROOT, p.test)))
+					bad.push(`${r.boundary} "${r.threat}": ${p.test} does not exist`);
+				else if (p.name && !sandbox.includes(`"${p.name}"`))
+					bad.push(`${r.boundary} "${r.threat}": no sandbox cell ${p.name}`);
+			}
+		}
+		expect(bad).toEqual([]);
+	});
+
+	it(`mitigated rows that only claim it stay at or under ${CLAIMED_ROWS_CEILING} (lower the ceiling as proofs are added)`, () => {
+		const claimed = rows.filter(
+			(r) => r.status === "mitigated" && r.proofs.length === 0,
+		);
+		expect(claimed.length).toBeLessThanOrEqual(CLAIMED_ROWS_CEILING);
+	});
+
+	it("every matrix row but a timer names a boundary the threat model defines", () => {
+		const defined = new Set(
+			threatModel.match(/\*\*TB-\d+\*\*/g)?.map((t) => t.slice(2, -2)),
+		);
+		const rowsOf = buildMatrix(loadEntries()).map(
+			(c: Cell & { row: { boundaries: string[] } }) => c.row,
+		);
+		const wrong = rowsOf
+			.filter((r: { surface: string }) => r.surface !== "trigger")
+			.filter(
+				(r: { boundaries: string[] }) =>
+					r.boundaries.length === 0 ||
+					r.boundaries.some((b) => !defined.has(b)),
+			)
+			.map((r: { surface: string; path: string }) => `${r.surface} ${r.path}`);
+		expect([...new Set(wrong)]).toEqual([]);
 	});
 });

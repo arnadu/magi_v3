@@ -21,6 +21,39 @@ public, and a cell that fails is in code scanning (maintainers only).
 | Platform (no entry point) | 14 | 14 | 0 | 0 |
 | **All** | **332** | **163** | **164** | **5** |
 
+## By trust boundary
+
+The boundaries are the threat model's (`docs/security/threat-model.md`). Its mitigated (✅) rows are
+**proven** when their notes cite a sandbox cell or a named test, and **claimed** otherwise;
+claimed rows may only decrease (ceiling 88).
+
+| Boundary | Matrix cells | Covered | Open | ✅ proven | ✅ claimed | ~ partial | ⚠️ open | Accepted |
+|---|---|---|---|---|---|---|---|---|
+| TB-1 | 0 | 0 | 0 | 0 | 8 | 2 | 0 | 0 |
+| TB-2 | 42 | 35 | 7 | 0 | 0 | 2 | 2 | 0 |
+| TB-3 | 8 | 8 | 0 | 1 | 4 | 0 | 0 | 0 |
+| TB-4 | 8 | 8 | 0 | 0 | 7 | 0 | 0 | 1 |
+| TB-5 | 39 | 27 | 12 | 0 | 2 | 1 | 0 | 0 |
+| TB-6 | 59 | 0 | 59 | 0 | 5 | 0 | 0 | 0 |
+| TB-7 | 4 | 1 | 3 | 0 | 2 | 1 | 0 | 1 |
+| TB-8 | 0 | 0 | 0 | 0 | 1 | 2 | 0 | 0 |
+| TB-9 | 102 | 77 | 22 | 0 | 7 | 0 | 1 | 0 |
+| TB-10 | 0 | 0 | 0 | 0 | 3 | 3 | 0 | 0 |
+| TB-11 | 44 | 37 | 7 | 0 | 2 | 1 | 2 | 0 |
+| TB-12 | 0 | 0 | 0 | 0 | 1 | 3 | 0 | 0 |
+| TB-13 | 0 | 0 | 0 | 0 | 2 | 2 | 0 | 0 |
+| TB-14 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 2 |
+| TB-15 | 33 | 0 | 33 | 0 | 3 | 1 | 0 | 1 |
+| TB-16 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
+| TB-19 | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0 |
+| TB-21 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| TB-22 | 4 | 2 | 2 | 0 | 7 | 2 | 0 | 0 |
+| TB-23 | 4 | 4 | 0 | 0 | 7 | 1 | 0 | 0 |
+| TB-24 | 4 | 0 | 4 | 0 | 8 | 1 | 0 | 0 |
+| TB-25 | 1 | 0 | 1 | 0 | 6 | 1 | 0 | 0 |
+| TB-26 | 4 | 0 | 3 | 0 | 11 | 2 | 0 | 0 |
+| TB-27 | 4 | 4 | 0 | 5 | 0 | 3 | 0 | 0 |
+
 ## Attack classes
 
 | Class | Invariant | Attack |
@@ -59,378 +92,378 @@ public, and a cell that fails is in code scanning (maintainers only).
 
 ## Control plane (internet)
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| POST `/api/apps/reopen` | `app.open` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/apps/reopen` | `app.open` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/apps/reopen` | `app.open` | `field-injection` | open |  |
-| POST `/api/auth/logout` | `session.sign-out` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/auth/logout` | `session.sign-out` | `field-injection` | open |  |
-| GET `/api/auth/me` | `session.sign-in` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/auth/session` | `session.sign-in` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/auth/session` | `session.sign-in` | `field-injection` | open |  |
-| GET `/api/catalog` | `platform.offerings` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/copilot/confirm` | `copilot.confirm` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/copilot/confirm` | `copilot.confirm` | `field-injection` | open |  |
-| POST `/api/copilot/dismiss` | `copilot.dismiss` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/copilot/dismiss` | `copilot.dismiss` | `field-injection` | open |  |
-| GET `/api/copilot/events` | `copilot.ask` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/copilot/files` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/copilot/history` | `copilot.ask` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/copilot/limits` | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| PATCH `/api/copilot/limits` | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| PATCH `/api/copilot/limits` | `mission.change-config` | `field-injection` | open |  |
-| GET `/api/copilot/llm-call` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/copilot/llm-calls` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/copilot/message` | `copilot.ask` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/copilot/message` | `copilot.ask` | `field-injection` | open |  |
-| GET `/api/copilot/pending` | `copilot.confirm` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/copilot/settings` | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/copilot/settings` | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/copilot/settings` | `mission.change-config` | `field-injection` | open |  |
-| GET `/api/copilot/transcript` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/copilot/turns` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/copilot/usage` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/csp-report` | `infrastructure` | `no-credential` | n/a | public by design (listed with its reason in api-surface.unit.test.ts) |
-| POST `/api/mission-copilot/github/issue` | `issue.track` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
-| POST `/api/mission-copilot/github/issue` | `issue.track` | `field-injection` | open |  |
-| GET `/api/mission-copilot/github/issues` | `issue.track` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
-| POST `/api/mission-copilot/resources/revert` | `machine.upgrade` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
-| POST `/api/mission-copilot/resources/revert` | `machine.upgrade` | `field-injection` | open |  |
-| POST `/api/mission-copilot/resources/upgrade` | `machine.upgrade` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
-| POST `/api/mission-copilot/resources/upgrade` | `machine.upgrade` | `field-injection` | open |  |
-| GET `/api/missions` | `mission.status` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions` | `mission.launch` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions` | `mission.launch` | `field-injection` | open |  |
-| DELETE `/api/missions/{id}` | `retired` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| DELETE `/api/missions/{id}` | `retired` | `other-tenant` | n/a | refused to everyone, the owner included (destruction disabled) |
-| GET `/api/missions/{id}` | `mission.status` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}` | `mission.status` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| GET `/api/missions/{id}/agents` | `mission.status` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/agents` | `mission.status` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/apps/{name}/open` | `app.open` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions/{id}/apps/{name}/open` | `app.open` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/apps/{name}/open` | `app.open` | `field-injection` | open |  |
-| GET `/api/missions/{id}/config` | `mission.read-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/config` | `mission.read-config` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PUT `/api/missions/{id}/config` | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| PUT `/api/missions/{id}/config` | `mission.change-config` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PUT `/api/missions/{id}/config` | `mission.change-config` | `field-injection` | open |  |
-| GET `/api/missions/{id}/conversations` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/conversations` | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PUT `/api/missions/{id}/draft` | `mission.edit-draft` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| PUT `/api/missions/{id}/draft` | `mission.edit-draft` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PUT `/api/missions/{id}/draft` | `mission.edit-draft` | `field-injection` | open |  |
-| POST `/api/missions/{id}/launch` | `mission.launch` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions/{id}/launch` | `mission.launch` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/launch` | `mission.launch` | `field-injection` | open |  |
-| GET `/api/missions/{id}/limits` | `spend.report` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/limits` | `spend.report` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PATCH `/api/missions/{id}/limits/agent/{agentId}` | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| PATCH `/api/missions/{id}/limits/agent/{agentId}` | `mission.change-config` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PATCH `/api/missions/{id}/limits/agent/{agentId}` | `mission.change-config` | `field-injection` | open |  |
-| PATCH `/api/missions/{id}/limits/ceiling` | `mission.set-ceiling` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| PATCH `/api/missions/{id}/limits/ceiling` | `mission.set-ceiling` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PATCH `/api/missions/{id}/limits/ceiling` | `mission.set-ceiling` | `field-injection` | open |  |
-| PATCH `/api/missions/{id}/limits/mission` | `mission.set-spend-cap` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| PATCH `/api/missions/{id}/limits/mission` | `mission.set-spend-cap` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PATCH `/api/missions/{id}/limits/mission` | `mission.set-spend-cap` | `field-injection` | open |  |
-| PATCH `/api/missions/{id}/limits/upgrade-reset` | `machine.reset-upgrade-allowance` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| PATCH `/api/missions/{id}/limits/upgrade-reset` | `machine.reset-upgrade-allowance` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| PATCH `/api/missions/{id}/limits/upgrade-reset` | `machine.reset-upgrade-allowance` | `field-injection` | open |  |
-| GET `/api/missions/{id}/llm-call` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/llm-call` | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| GET `/api/missions/{id}/llm-calls` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/llm-calls` | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| GET `/api/missions/{id}/machine-runtime` | `spend.report` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/machine-runtime` | `spend.report` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/messages/read` | `message.read` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions/{id}/messages/read` | `message.read` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/messages/read` | `message.read` | `field-injection` | open |  |
-| POST `/api/missions/{id}/messages/send` | `message.send` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions/{id}/messages/send` | `message.send` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/messages/send` | `message.send` | `field-injection` | open |  |
-| GET `/api/missions/{id}/objectives` | `objectives.progress` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/objectives` | `objectives.progress` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/resume` | `mission.resume` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions/{id}/resume` | `mission.resume` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/resume` | `mission.resume` | `field-injection` | open |  |
-| POST `/api/missions/{id}/suspend` | `mission.suspend` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions/{id}/suspend` | `mission.suspend` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/{id}/suspend` | `mission.suspend` | `field-injection` | open |  |
-| GET `/api/missions/{id}/transcript` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/transcript` | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| GET `/api/missions/{id}/turns` | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/missions/{id}/turns` | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
-| POST `/api/missions/draft` | `mission.create-draft` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| POST `/api/missions/draft` | `mission.create-draft` | `field-injection` | open |  |
-| GET `/api/missions/stats` | `spend.report` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/models` | `platform.offerings` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/templates` | `platform.offerings` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/templates/{id}` | `platform.offerings` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/api/usage` | `spend.report` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| GET `/firebase-config.js` | `infrastructure` | `no-credential` | n/a | public by design (listed with its reason in api-surface.unit.test.ts) |
-| GET `/healthz` | `infrastructure` | `no-credential` | n/a | public by design (listed with its reason in api-surface.unit.test.ts) |
-| * `/missions/{id}` |  | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
-| * `/missions/{id}` |  | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| POST `/api/apps/reopen` | TB-9 | `app.open` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/apps/reopen` | TB-9 | `app.open` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/apps/reopen` | TB-9 | `app.open` | `field-injection` | open |  |
+| POST `/api/auth/logout` | TB-9 | `session.sign-out` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/auth/logout` | TB-9 | `session.sign-out` | `field-injection` | open |  |
+| GET `/api/auth/me` | TB-9 | `session.sign-in` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/auth/session` | TB-9 | `session.sign-in` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/auth/session` | TB-9 | `session.sign-in` | `field-injection` | open |  |
+| GET `/api/catalog` | TB-9 | `platform.offerings` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/copilot/confirm` | TB-9 | `copilot.confirm` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/copilot/confirm` | TB-9 | `copilot.confirm` | `field-injection` | open |  |
+| POST `/api/copilot/dismiss` | TB-9 | `copilot.dismiss` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/copilot/dismiss` | TB-9 | `copilot.dismiss` | `field-injection` | open |  |
+| GET `/api/copilot/events` | TB-9 | `copilot.ask` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/copilot/files` | TB-9, TB-21 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/copilot/history` | TB-9 | `copilot.ask` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/copilot/limits` | TB-9 | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| PATCH `/api/copilot/limits` | TB-9 | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| PATCH `/api/copilot/limits` | TB-9 | `mission.change-config` | `field-injection` | open |  |
+| GET `/api/copilot/llm-call` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/copilot/llm-calls` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/copilot/message` | TB-9 | `copilot.ask` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/copilot/message` | TB-9 | `copilot.ask` | `field-injection` | open |  |
+| GET `/api/copilot/pending` | TB-9 | `copilot.confirm` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/copilot/settings` | TB-9 | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/copilot/settings` | TB-9 | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/copilot/settings` | TB-9 | `mission.change-config` | `field-injection` | open |  |
+| GET `/api/copilot/transcript` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/copilot/turns` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/copilot/usage` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/csp-report` | TB-9 | `infrastructure` | `no-credential` | n/a | public by design (listed with its reason in api-surface.unit.test.ts) |
+| POST `/api/mission-copilot/github/issue` | TB-19 | `issue.track` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
+| POST `/api/mission-copilot/github/issue` | TB-19 | `issue.track` | `field-injection` | open |  |
+| GET `/api/mission-copilot/github/issues` | TB-19 | `issue.track` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
+| POST `/api/mission-copilot/resources/revert` | TB-22 | `machine.upgrade` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
+| POST `/api/mission-copilot/resources/revert` | TB-22 | `machine.upgrade` | `field-injection` | open |  |
+| POST `/api/mission-copilot/resources/upgrade` | TB-22 | `machine.upgrade` | `bad-mission-token` | covered | `attack-matrix-http.unit.test.ts` (bad-mission-token) |
+| POST `/api/mission-copilot/resources/upgrade` | TB-22 | `machine.upgrade` | `field-injection` | open |  |
+| GET `/api/missions` | TB-9 | `mission.status` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions` | TB-9 | `mission.launch` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions` | TB-9 | `mission.launch` | `field-injection` | open |  |
+| DELETE `/api/missions/{id}` | TB-9 | `retired` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| DELETE `/api/missions/{id}` | TB-9 | `retired` | `other-tenant` | n/a | refused to everyone, the owner included (destruction disabled) |
+| GET `/api/missions/{id}` | TB-9 | `mission.status` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}` | TB-9 | `mission.status` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| GET `/api/missions/{id}/agents` | TB-9 | `mission.status` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/agents` | TB-9 | `mission.status` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/apps/{name}/open` | TB-9 | `app.open` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions/{id}/apps/{name}/open` | TB-9 | `app.open` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/apps/{name}/open` | TB-9 | `app.open` | `field-injection` | open |  |
+| GET `/api/missions/{id}/config` | TB-9 | `mission.read-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/config` | TB-9 | `mission.read-config` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PUT `/api/missions/{id}/config` | TB-9 | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| PUT `/api/missions/{id}/config` | TB-9 | `mission.change-config` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PUT `/api/missions/{id}/config` | TB-9 | `mission.change-config` | `field-injection` | open |  |
+| GET `/api/missions/{id}/conversations` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/conversations` | TB-9 | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PUT `/api/missions/{id}/draft` | TB-9 | `mission.edit-draft` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| PUT `/api/missions/{id}/draft` | TB-9 | `mission.edit-draft` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PUT `/api/missions/{id}/draft` | TB-9 | `mission.edit-draft` | `field-injection` | open |  |
+| POST `/api/missions/{id}/launch` | TB-9 | `mission.launch` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions/{id}/launch` | TB-9 | `mission.launch` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/launch` | TB-9 | `mission.launch` | `field-injection` | open |  |
+| GET `/api/missions/{id}/limits` | TB-9 | `spend.report` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/limits` | TB-9 | `spend.report` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PATCH `/api/missions/{id}/limits/agent/{agentId}` | TB-9 | `mission.change-config` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| PATCH `/api/missions/{id}/limits/agent/{agentId}` | TB-9 | `mission.change-config` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PATCH `/api/missions/{id}/limits/agent/{agentId}` | TB-9 | `mission.change-config` | `field-injection` | open |  |
+| PATCH `/api/missions/{id}/limits/ceiling` | TB-9 | `mission.set-ceiling` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| PATCH `/api/missions/{id}/limits/ceiling` | TB-9 | `mission.set-ceiling` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PATCH `/api/missions/{id}/limits/ceiling` | TB-9 | `mission.set-ceiling` | `field-injection` | open |  |
+| PATCH `/api/missions/{id}/limits/mission` | TB-9 | `mission.set-spend-cap` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| PATCH `/api/missions/{id}/limits/mission` | TB-9 | `mission.set-spend-cap` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PATCH `/api/missions/{id}/limits/mission` | TB-9 | `mission.set-spend-cap` | `field-injection` | open |  |
+| PATCH `/api/missions/{id}/limits/upgrade-reset` | TB-9 | `machine.reset-upgrade-allowance` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| PATCH `/api/missions/{id}/limits/upgrade-reset` | TB-9 | `machine.reset-upgrade-allowance` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| PATCH `/api/missions/{id}/limits/upgrade-reset` | TB-9 | `machine.reset-upgrade-allowance` | `field-injection` | open |  |
+| GET `/api/missions/{id}/llm-call` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/llm-call` | TB-9 | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| GET `/api/missions/{id}/llm-calls` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/llm-calls` | TB-9 | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| GET `/api/missions/{id}/machine-runtime` | TB-9 | `spend.report` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/machine-runtime` | TB-9 | `spend.report` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/messages/read` | TB-9 | `message.read` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions/{id}/messages/read` | TB-9 | `message.read` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/messages/read` | TB-9 | `message.read` | `field-injection` | open |  |
+| POST `/api/missions/{id}/messages/send` | TB-9 | `message.send` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions/{id}/messages/send` | TB-9 | `message.send` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/messages/send` | TB-9 | `message.send` | `field-injection` | open |  |
+| GET `/api/missions/{id}/objectives` | TB-9 | `objectives.progress` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/objectives` | TB-9 | `objectives.progress` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/resume` | TB-9 | `mission.resume` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions/{id}/resume` | TB-9 | `mission.resume` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/resume` | TB-9 | `mission.resume` | `field-injection` | open |  |
+| POST `/api/missions/{id}/suspend` | TB-9 | `mission.suspend` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions/{id}/suspend` | TB-9 | `mission.suspend` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/{id}/suspend` | TB-9 | `mission.suspend` | `field-injection` | open |  |
+| GET `/api/missions/{id}/transcript` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/transcript` | TB-9 | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| GET `/api/missions/{id}/turns` | TB-9 | `agent.history` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/missions/{id}/turns` | TB-9 | `agent.history` | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
+| POST `/api/missions/draft` | TB-9 | `mission.create-draft` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| POST `/api/missions/draft` | TB-9 | `mission.create-draft` | `field-injection` | open |  |
+| GET `/api/missions/stats` | TB-9 | `spend.report` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/models` | TB-9 | `platform.offerings` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/templates` | TB-9 | `platform.offerings` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/templates/{id}` | TB-9 | `platform.offerings` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/api/usage` | TB-9 | `spend.report` | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| GET `/firebase-config.js` | TB-14 | `infrastructure` | `no-credential` | n/a | public by design (listed with its reason in api-surface.unit.test.ts) |
+| GET `/healthz` | TB-9 | `infrastructure` | `no-credential` | n/a | public by design (listed with its reason in api-surface.unit.test.ts) |
+| * `/missions/{id}` | TB-11 |  | `no-credential` | covered | `attack-matrix-http.unit.test.ts` (no-credential) |
+| * `/missions/{id}` | TB-11 |  | `other-tenant` | covered | `attack-matrix-http.unit.test.ts` (other-tenant) |
 
 ## Apps host (internet)
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| * `/a/{capability}` | `app.open` | `forged-or-replayed-ticket` | open |  |
-| * `/a/{capability}/{rest}` | `app.open` | `forged-or-replayed-ticket` | open |  |
-| GET `/healthz` | `infrastructure` | `forged-or-replayed-ticket` | n/a | public liveness probe: no state, no app reached |
-| GET `/t/{ticket}` | `app.open` | `forged-or-replayed-ticket` | open |  |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| * `/a/{capability}` | TB-26 | `app.open` | `forged-or-replayed-ticket` | open |  |
+| * `/a/{capability}/{rest}` | TB-26 | `app.open` | `forged-or-replayed-ticket` | open |  |
+| GET `/healthz` | TB-26 | `infrastructure` | `forged-or-replayed-ticket` | n/a | public liveness probe: no state, no app reached |
+| GET `/t/{ticket}` | TB-26 | `app.open` | `forged-or-replayed-ticket` | open |  |
 
 ## Monitor server (a mission machine's port 4000)
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| * `/a/{capability}/{rest}` | `app.open` | `apps-token` | open |  |
-| GET `/agents/{agent}/mental-map` | `agent.history` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/agents/{agent}/sessions` | `agent.history` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/agents/{agent}/sessions/{session}` | `agent.history` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/agents/{agent}/usage` | `spend.report` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/apps` | `app.status` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/apps/{app}/{action}` | `app.control` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/cost-series` | `spend.report` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/download` | `file.download` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/download` | `file.download` | `path-escape` | open |  |
-| GET `/events` | `agent.history` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/extend-budget` | `mission.set-spend-cap` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/files/history` | `file.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/files/history` | `file.read` | `path-escape` | open |  |
-| GET `/files/shared` | `file.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/files/shared` | `file.read` | `path-escape` | covered | `sandbox.py` (MON-2) |
-| POST `/files/shared/edit` | `file.write` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/files/shared/edit` | `file.write` | `path-escape` | open |  |
-| POST `/files/shared/write` | `file.write` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/files/shared/write` | `file.write` | `path-escape` | open |  |
-| GET `/files/workdir/{workdir}` | `file.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/files/workdir/{workdir}` | `file.read` | `path-escape` | open |  |
-| POST `/files/workdir/{workdir}/write` | `file.write` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/files/workdir/{workdir}/write` | `file.write` | `path-escape` | open |  |
-| GET `/interactions` | `message.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/log` | `mission.log` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/mailbox` | `message.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/message-events` | `message.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/mission-stats` | `spend.report` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/pause-agent` | `agent.pause` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/resume-agent` | `agent.resume` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/schedule` | `schedule.list` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| DELETE `/schedule/{schedule}` | `schedule.cancel` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/send-message` | `message.send` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/set-budget` | `mission.set-spend-cap` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/start` | `developer` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/status` | `mission.status` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/step` | `developer` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/stop` | `developer` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| GET `/team` | `mission.status` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/toggle-step` | `developer` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/upload` | `file.upload` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
-| POST `/upload` | `file.upload` | `path-escape` | open |  |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| * `/a/{capability}/{rest}` | TB-25 | `app.open` | `apps-token` | open |  |
+| GET `/agents/{agent}/mental-map` | TB-11, TB-2 | `agent.history` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/agents/{agent}/sessions` | TB-11, TB-2 | `agent.history` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/agents/{agent}/sessions/{session}` | TB-11, TB-2 | `agent.history` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/agents/{agent}/usage` | TB-11, TB-2 | `spend.report` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/apps` | TB-11, TB-2 | `app.status` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/apps/{app}/{action}` | TB-11, TB-2 | `app.control` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/cost-series` | TB-11, TB-2 | `spend.report` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/download` | TB-11, TB-2 | `file.download` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/download` | TB-11, TB-2 | `file.download` | `path-escape` | open |  |
+| GET `/events` | TB-11, TB-2 | `agent.history` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/extend-budget` | TB-11, TB-2 | `mission.set-spend-cap` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/files/history` | TB-11, TB-2 | `file.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/files/history` | TB-11, TB-2 | `file.read` | `path-escape` | open |  |
+| GET `/files/shared` | TB-11, TB-2 | `file.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/files/shared` | TB-11, TB-2 | `file.read` | `path-escape` | covered | `sandbox.py` (MON-2) |
+| POST `/files/shared/edit` | TB-11, TB-2 | `file.write` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/files/shared/edit` | TB-11, TB-2 | `file.write` | `path-escape` | open |  |
+| POST `/files/shared/write` | TB-11, TB-2 | `file.write` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/files/shared/write` | TB-11, TB-2 | `file.write` | `path-escape` | open |  |
+| GET `/files/workdir/{workdir}` | TB-11, TB-2 | `file.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/files/workdir/{workdir}` | TB-11, TB-2 | `file.read` | `path-escape` | open |  |
+| POST `/files/workdir/{workdir}/write` | TB-11, TB-2 | `file.write` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/files/workdir/{workdir}/write` | TB-11, TB-2 | `file.write` | `path-escape` | open |  |
+| GET `/interactions` | TB-11, TB-2 | `message.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/log` | TB-11, TB-2 | `mission.log` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/mailbox` | TB-11, TB-2 | `message.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/message-events` | TB-11, TB-2 | `message.read` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/mission-stats` | TB-11, TB-2 | `spend.report` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/pause-agent` | TB-11, TB-2 | `agent.pause` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/resume-agent` | TB-11, TB-2 | `agent.resume` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/schedule` | TB-11, TB-2 | `schedule.list` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| DELETE `/schedule/{schedule}` | TB-11, TB-2 | `schedule.cancel` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/send-message` | TB-11, TB-2 | `message.send` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/set-budget` | TB-11, TB-2 | `mission.set-spend-cap` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/start` | TB-11, TB-2 | `developer` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/status` | TB-11, TB-2 | `mission.status` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/step` | TB-11, TB-2 | `developer` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/stop` | TB-11, TB-2 | `developer` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| GET `/team` | TB-11, TB-2 | `mission.status` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/toggle-step` | TB-11, TB-2 | `developer` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/upload` | TB-11, TB-2 | `file.upload` | `no-monitor-token` | covered | `sandbox.py` (MON-1) |
+| POST `/upload` | TB-11, TB-2 | `file.upload` | `path-escape` | open |  |
 
 ## Tool API (port 4001, background jobs)
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| POST `/tools/data-fmp` | `data.query` | `no-job-token` | open |  |
-| POST `/tools/data-fmp` | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/data-fmp` | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/data-fred` | `data.query` | `no-job-token` | open |  |
-| POST `/tools/data-fred` | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/data-fred` | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/data-newsapi` | `data.query` | `no-job-token` | open |  |
-| POST `/tools/data-newsapi` | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/data-newsapi` | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/fetch-url` | `web.fetch` | `no-job-token` | open |  |
-| POST `/tools/fetch-url` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/fetch-url` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/fetchurl` | `web.fetch` | `no-job-token` | open |  |
-| POST `/tools/fetchurl` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/fetchurl` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/inspect-image` | `web.fetch` | `no-job-token` | open |  |
-| POST `/tools/inspect-image` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/inspect-image` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/inspectimage` | `web.fetch` | `no-job-token` | open |  |
-| POST `/tools/inspectimage` | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/inspectimage` | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/investigate` | `agent.investigate` | `no-job-token` | open |  |
-| POST `/tools/investigate` | `agent.investigate` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/investigate` | `agent.investigate` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/post-message` | `message.send` | `no-job-token` | covered | `sandbox.py` (TOOL-1) |
-| POST `/tools/post-message` | `message.send` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/post-message` | `message.send` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/postmessage` | `message.send` | `no-job-token` | open |  |
-| POST `/tools/postmessage` | `message.send` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/postmessage` | `message.send` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/research` | `web.research` | `no-job-token` | open |  |
-| POST `/tools/research` | `web.research` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/research` | `web.research` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/search-web` | `web.search` | `no-job-token` | open |  |
-| POST `/tools/search-web` | `web.search` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/search-web` | `web.search` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
-| POST `/tools/searchweb` | `web.search` | `no-job-token` | open |  |
-| POST `/tools/searchweb` | `web.search` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
-| POST `/tools/searchweb` | `web.search` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| POST `/tools/data-fmp` | TB-5 | `data.query` | `no-job-token` | open |  |
+| POST `/tools/data-fmp` | TB-5 | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/data-fmp` | TB-5 | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/data-fred` | TB-5 | `data.query` | `no-job-token` | open |  |
+| POST `/tools/data-fred` | TB-5 | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/data-fred` | TB-5 | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/data-newsapi` | TB-5 | `data.query` | `no-job-token` | open |  |
+| POST `/tools/data-newsapi` | TB-5 | `data.query` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/data-newsapi` | TB-5 | `data.query` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/fetch-url` | TB-5 | `web.fetch` | `no-job-token` | open |  |
+| POST `/tools/fetch-url` | TB-5 | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/fetch-url` | TB-5 | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/fetchurl` | TB-5 | `web.fetch` | `no-job-token` | open |  |
+| POST `/tools/fetchurl` | TB-5 | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/fetchurl` | TB-5 | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/inspect-image` | TB-5 | `web.fetch` | `no-job-token` | open |  |
+| POST `/tools/inspect-image` | TB-5 | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/inspect-image` | TB-5 | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/inspectimage` | TB-5 | `web.fetch` | `no-job-token` | open |  |
+| POST `/tools/inspectimage` | TB-5 | `web.fetch` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/inspectimage` | TB-5 | `web.fetch` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/investigate` | TB-5 | `agent.investigate` | `no-job-token` | open |  |
+| POST `/tools/investigate` | TB-5 | `agent.investigate` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/investigate` | TB-5 | `agent.investigate` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/post-message` | TB-5 | `message.send` | `no-job-token` | covered | `sandbox.py` (TOOL-1) |
+| POST `/tools/post-message` | TB-5 | `message.send` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/post-message` | TB-5 | `message.send` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/postmessage` | TB-5 | `message.send` | `no-job-token` | open |  |
+| POST `/tools/postmessage` | TB-5 | `message.send` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/postmessage` | TB-5 | `message.send` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/research` | TB-5 | `web.research` | `no-job-token` | open |  |
+| POST `/tools/research` | TB-5 | `web.research` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/research` | TB-5 | `web.research` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/search-web` | TB-5 | `web.search` | `no-job-token` | open |  |
+| POST `/tools/search-web` | TB-5 | `web.search` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/search-web` | TB-5 | `web.search` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
+| POST `/tools/searchweb` | TB-5 | `web.search` | `no-job-token` | open |  |
+| POST `/tools/searchweb` | TB-5 | `web.search` | `other-agent-token` | covered | `sandbox.py` (TOOL-2) |
+| POST `/tools/searchweb` | TB-5 | `web.search` | `token-after-exit` | covered | `sandbox.py` (TOOL-3) |
 
 ## Agent and copilot tools
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| `CreateDraft` | `mission.create-draft` | `other-tenant` | open |  |
-| `ReadMissionConfig` | `mission.read-config` | `other-tenant` | open |  |
-| `EditDraftConfig` | `mission.edit-draft` | `other-tenant` | open |  |
-| `ListIssues` | `issue.track` | `other-tenant` | open |  |
-| `CreateIssue` | `issue.track` | `other-tenant` | open |  |
-| `CloseIssue` | `issue.track` | `other-tenant` | open |  |
-| `AddIssueComment` | `issue.track` | `other-tenant` | open |  |
-| `ReviewObjectives` | `objectives.progress` | `other-tenant` | open |  |
-| `AssessKpi` | `kpi.record` | `other-tenant` | open |  |
-| `SaveObjectiveTree` | `objectives.edit` | `other-tenant` | open |  |
-| `ProposeAction` | `proposal` | `other-tenant` | open |  |
-| `ListMissions` | `mission.status` | `other-tenant` | open |  |
-| `GetMissionStatus` | `mission.status` | `other-tenant` | open |  |
-| `ReadMissionMailbox` | `message.read` | `other-tenant` | open |  |
-| `ReadMissionLog` | `mission.log` | `other-tenant` | open |  |
-| `ReadMissionFile` | `file.read` | `other-tenant` | open |  |
-| `ListSchedule` | `schedule.list` | `other-tenant` | open |  |
-| `ListTemplates` | `platform.offerings` | `other-tenant` | open |  |
-| `GetTemplate` | `platform.offerings` | `other-tenant` | open |  |
-| `ReadMentalMap` | `agent.history` | `other-tenant` | open |  |
-| `CreateImage` | `image.create` | `path-escape` | open |  |
-| `generate_image` | `image.create` | `path-escape` | open |  |
-| `critique_candidates` | `image.create` | `path-escape` | open |  |
-| `finish` | `image.create` | `path-escape` | open |  |
-| `PostMessage` | `message.send` | `path-escape` | open |  |
-| `ListTeam` | `mission.status` | `path-escape` | open |  |
-| `ListMessages` | `message.read` | `path-escape` | open |  |
-| `ReadMessage` | `message.read` | `path-escape` | open |  |
-| `mental_map_update` | `agent.remember` | `path-escape` | open |  |
-| `mental_map_add` | `agent.remember` | `path-escape` | open |  |
-| `mental_map_remove` | `agent.remember` | `path-escape` | open |  |
-| `ReadMissionConfig` | `mission.read-config` | `path-escape` | open |  |
-| `SaveMissionConfig` | `mission.change-config` | `path-escape` | open |  |
-| `ReadMissionLog` | `mission.log` | `path-escape` | open |  |
-| `ReadFileHistory` | `file.read` | `path-escape` | open |  |
-| `ReadSharedFile` | `file.read` | `path-escape` | open |  |
-| `ReadAgentWorkdirFile` | `file.read` | `path-escape` | open |  |
-| `ListBackgroundJobs` | `job.status` | `path-escape` | open |  |
-| `ListGithubIssues` | `issue.track` | `path-escape` | open |  |
-| `ReportGithubIssue` | `issue.track` | `path-escape` | open |  |
-| `PauseAgent` | `agent.pause` | `path-escape` | open |  |
-| `ResumeAgent` | `agent.resume` | `path-escape` | open |  |
-| `CancelBackgroundJob` | `job.control` | `path-escape` | open |  |
-| `RestartBackgroundJob` | `job.control` | `path-escape` | open |  |
-| `ReadAgentMentalMap` | `agent.history` | `path-escape` | open |  |
-| `ListAgentSessions` | `agent.history` | `path-escape` | open |  |
-| `ReadAgentUsage` | `spend.report` | `path-escape` | open |  |
-| `ReadAgentSessionDetail` | `agent.history` | `path-escape` | open |  |
-| `ReadAgentLlmCall` | `agent.history` | `path-escape` | open |  |
-| `ReadMissionMailboxAll` | `message.read` | `path-escape` | open |  |
-| `ReadMissionInteractions` | `message.read` | `path-escape` | open |  |
-| `SearchMissionHistory` | `agent.history` | `path-escape` | open |  |
-| `ReadMissionObjectives` | `objectives.progress` | `path-escape` | open |  |
-| `EditObjectiveTree` | `objectives.edit` | `path-escape` | open |  |
-| `ReadMissionCostSeries` | `spend.report` | `path-escape` | open |  |
-| `ReadMissionLifetimeStats` | `spend.report` | `path-escape` | open |  |
-| `SetMissionSpendCap` | `mission.set-spend-cap` | `path-escape` | open |  |
-| `CreateScheduledMessage` | `schedule.create` | `path-escape` | open |  |
-| `CancelScheduledMessage` | `schedule.cancel` | `path-escape` | open |  |
-| `ListScheduledMessages` | `schedule.list` | `path-escape` | open |  |
-| `AddTask` | `task.create` | `path-escape` | open |  |
-| `UpdateTask` | `task.update` | `path-escape` | open |  |
-| `RecordKpi` | `kpi.record` | `path-escape` | open |  |
-| `Allocate` | `cost.allocate` | `path-escape` | open |  |
-| `RequestResourceUpgrade` | `machine.upgrade` | `path-escape` | open |  |
-| `EndResourceUpgrade` | `machine.upgrade` | `path-escape` | open |  |
-| `AnalyzeMemories` | `agent.history` | `path-escape` | open |  |
-| `BrowseWeb` | `web.browse` | `path-escape` | open |  |
-| `data-fred` | `data.query` | `path-escape` | open |  |
-| `data-fmp` | `data.query` | `path-escape` | open |  |
-| `data-newsapi` | `data.query` | `path-escape` | open |  |
-| `FetchUrl` | `web.fetch` | `path-escape` | open |  |
-| `InspectImage` | `web.fetch` | `path-escape` | open |  |
-| `Investigate` | `agent.investigate` | `path-escape` | open |  |
-| `Research` | `web.research` | `path-escape` | open |  |
-| `SearchWeb` | `web.search` | `path-escape` | open |  |
-| `Bash` | `agent.shell` | `path-escape` | open |  |
-| `WriteFile` | `file.write` | `path-escape` | open |  |
-| `EditFile` | `file.write` | `path-escape` | open |  |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| `CreateDraft` | TB-15 | `mission.create-draft` | `other-tenant` | open |  |
+| `ReadMissionConfig` | TB-15 | `mission.read-config` | `other-tenant` | open |  |
+| `EditDraftConfig` | TB-15 | `mission.edit-draft` | `other-tenant` | open |  |
+| `ListIssues` | TB-15 | `issue.track` | `other-tenant` | open |  |
+| `CreateIssue` | TB-15 | `issue.track` | `other-tenant` | open |  |
+| `CloseIssue` | TB-15 | `issue.track` | `other-tenant` | open |  |
+| `AddIssueComment` | TB-15 | `issue.track` | `other-tenant` | open |  |
+| `ReviewObjectives` | TB-15 | `objectives.progress` | `other-tenant` | open |  |
+| `AssessKpi` | TB-15 | `kpi.record` | `other-tenant` | open |  |
+| `SaveObjectiveTree` | TB-15 | `objectives.edit` | `other-tenant` | open |  |
+| `ProposeAction` | TB-15 | `proposal` | `other-tenant` | open |  |
+| `ListMissions` | TB-15 | `mission.status` | `other-tenant` | open |  |
+| `GetMissionStatus` | TB-15 | `mission.status` | `other-tenant` | open |  |
+| `ReadMissionMailbox` | TB-15 | `message.read` | `other-tenant` | open |  |
+| `ReadMissionLog` | TB-15 | `mission.log` | `other-tenant` | open |  |
+| `ReadMissionFile` | TB-15 | `file.read` | `other-tenant` | open |  |
+| `ListSchedule` | TB-15 | `schedule.list` | `other-tenant` | open |  |
+| `ListTemplates` | TB-15 | `platform.offerings` | `other-tenant` | open |  |
+| `GetTemplate` | TB-15 | `platform.offerings` | `other-tenant` | open |  |
+| `ReadMentalMap` | TB-15 | `agent.history` | `other-tenant` | open |  |
+| `CreateImage` | TB-6 | `image.create` | `path-escape` | open |  |
+| `generate_image` | TB-6 | `image.create` | `path-escape` | open |  |
+| `critique_candidates` | TB-6 | `image.create` | `path-escape` | open |  |
+| `finish` | TB-6 | `image.create` | `path-escape` | open |  |
+| `PostMessage` | TB-6 | `message.send` | `path-escape` | open |  |
+| `ListTeam` | TB-6 | `mission.status` | `path-escape` | open |  |
+| `ListMessages` | TB-6 | `message.read` | `path-escape` | open |  |
+| `ReadMessage` | TB-6 | `message.read` | `path-escape` | open |  |
+| `mental_map_update` | TB-6 | `agent.remember` | `path-escape` | open |  |
+| `mental_map_add` | TB-6 | `agent.remember` | `path-escape` | open |  |
+| `mental_map_remove` | TB-6 | `agent.remember` | `path-escape` | open |  |
+| `ReadMissionConfig` | TB-6 | `mission.read-config` | `path-escape` | open |  |
+| `SaveMissionConfig` | TB-6 | `mission.change-config` | `path-escape` | open |  |
+| `ReadMissionLog` | TB-6 | `mission.log` | `path-escape` | open |  |
+| `ReadFileHistory` | TB-6 | `file.read` | `path-escape` | open |  |
+| `ReadSharedFile` | TB-6 | `file.read` | `path-escape` | open |  |
+| `ReadAgentWorkdirFile` | TB-6 | `file.read` | `path-escape` | open |  |
+| `ListBackgroundJobs` | TB-6 | `job.status` | `path-escape` | open |  |
+| `ListGithubIssues` | TB-6 | `issue.track` | `path-escape` | open |  |
+| `ReportGithubIssue` | TB-6 | `issue.track` | `path-escape` | open |  |
+| `PauseAgent` | TB-6 | `agent.pause` | `path-escape` | open |  |
+| `ResumeAgent` | TB-6 | `agent.resume` | `path-escape` | open |  |
+| `CancelBackgroundJob` | TB-6 | `job.control` | `path-escape` | open |  |
+| `RestartBackgroundJob` | TB-6 | `job.control` | `path-escape` | open |  |
+| `ReadAgentMentalMap` | TB-6 | `agent.history` | `path-escape` | open |  |
+| `ListAgentSessions` | TB-6 | `agent.history` | `path-escape` | open |  |
+| `ReadAgentUsage` | TB-6 | `spend.report` | `path-escape` | open |  |
+| `ReadAgentSessionDetail` | TB-6 | `agent.history` | `path-escape` | open |  |
+| `ReadAgentLlmCall` | TB-6 | `agent.history` | `path-escape` | open |  |
+| `ReadMissionMailboxAll` | TB-6 | `message.read` | `path-escape` | open |  |
+| `ReadMissionInteractions` | TB-6 | `message.read` | `path-escape` | open |  |
+| `SearchMissionHistory` | TB-6 | `agent.history` | `path-escape` | open |  |
+| `ReadMissionObjectives` | TB-6 | `objectives.progress` | `path-escape` | open |  |
+| `EditObjectiveTree` | TB-6 | `objectives.edit` | `path-escape` | open |  |
+| `ReadMissionCostSeries` | TB-6 | `spend.report` | `path-escape` | open |  |
+| `ReadMissionLifetimeStats` | TB-6 | `spend.report` | `path-escape` | open |  |
+| `SetMissionSpendCap` | TB-6 | `mission.set-spend-cap` | `path-escape` | open |  |
+| `CreateScheduledMessage` | TB-6 | `schedule.create` | `path-escape` | open |  |
+| `CancelScheduledMessage` | TB-6 | `schedule.cancel` | `path-escape` | open |  |
+| `ListScheduledMessages` | TB-6 | `schedule.list` | `path-escape` | open |  |
+| `AddTask` | TB-6 | `task.create` | `path-escape` | open |  |
+| `UpdateTask` | TB-6 | `task.update` | `path-escape` | open |  |
+| `RecordKpi` | TB-6 | `kpi.record` | `path-escape` | open |  |
+| `Allocate` | TB-6 | `cost.allocate` | `path-escape` | open |  |
+| `RequestResourceUpgrade` | TB-6 | `machine.upgrade` | `path-escape` | open |  |
+| `EndResourceUpgrade` | TB-6 | `machine.upgrade` | `path-escape` | open |  |
+| `AnalyzeMemories` | TB-6 | `agent.history` | `path-escape` | open |  |
+| `BrowseWeb` | TB-6 | `web.browse` | `path-escape` | open |  |
+| `data-fred` | TB-6 | `data.query` | `path-escape` | open |  |
+| `data-fmp` | TB-6 | `data.query` | `path-escape` | open |  |
+| `data-newsapi` | TB-6 | `data.query` | `path-escape` | open |  |
+| `FetchUrl` | TB-6 | `web.fetch` | `path-escape` | open |  |
+| `InspectImage` | TB-6 | `web.fetch` | `path-escape` | open |  |
+| `Investigate` | TB-6 | `agent.investigate` | `path-escape` | open |  |
+| `Research` | TB-6 | `web.research` | `path-escape` | open |  |
+| `SearchWeb` | TB-6 | `web.search` | `path-escape` | open |  |
+| `Bash` | TB-6 | `agent.shell` | `path-escape` | open |  |
+| `WriteFile` | TB-6 | `file.write` | `path-escape` | open |  |
+| `EditFile` | TB-6 | `file.write` | `path-escape` | open |  |
 
 ## Request folders (agents write files the daemon acts on)
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| `apps/requests/` | `app.declare` | `spoofed-author` | open |  |
-| `apps/requests/` | `app.declare` | `symlink-or-hard-link` | open |  |
-| `apps/requests/` | `app.control` | `spoofed-author` | open |  |
-| `apps/requests/` | `app.control` | `symlink-or-hard-link` | open |  |
-| `jobs/pending/` | `job.submit` | `spoofed-author` | covered | `sandbox.py` (JOB-1) |
-| `jobs/pending/` | `job.submit` | `symlink-or-hard-link` | covered | `sandbox.py` (JOB-2, JOB-3) |
-| `schedules/` | `schedule.create` | `spoofed-author` | covered | `sandbox.py` (SCHED-1) |
-| `schedules/` | `schedule.create` | `symlink-or-hard-link` | open |  |
-| `schedules/` | `schedule.cancel` | `spoofed-author` | open |  |
-| `schedules/` | `schedule.cancel` | `symlink-or-hard-link` | open |  |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| `apps/requests/` | TB-24 | `app.declare` | `spoofed-author` | open |  |
+| `apps/requests/` | TB-24 | `app.declare` | `symlink-or-hard-link` | open |  |
+| `apps/requests/` | TB-24 | `app.control` | `spoofed-author` | open |  |
+| `apps/requests/` | TB-24 | `app.control` | `symlink-or-hard-link` | open |  |
+| `jobs/pending/` | TB-4 | `job.submit` | `spoofed-author` | covered | `sandbox.py` (JOB-1) |
+| `jobs/pending/` | TB-4 | `job.submit` | `symlink-or-hard-link` | covered | `sandbox.py` (JOB-2, JOB-3) |
+| `schedules/` | TB-7 | `schedule.create` | `spoofed-author` | covered | `sandbox.py` (SCHED-1) |
+| `schedules/` | TB-7 | `schedule.create` | `symlink-or-hard-link` | open |  |
+| `schedules/` | TB-7 | `schedule.cancel` | `spoofed-author` | open |  |
+| `schedules/` | TB-7 | `schedule.cancel` | `symlink-or-hard-link` | open |  |
 
 ## Copilot actions (proposed, then confirmed by the operator)
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| `launch_mission` | `mission.launch` | `unconfirmed-effect` | open |  |
-| `launch_draft` | `mission.launch` | `unconfirmed-effect` | open |  |
-| `suspend_mission` | `mission.suspend` | `unconfirmed-effect` | open |  |
-| `resume_mission` | `mission.resume` | `unconfirmed-effect` | open |  |
-| `fix_mission_volume` | `mission.repair` | `unconfirmed-effect` | open |  |
-| `write_mission_file` | `file.write` | `unconfirmed-effect` | open |  |
-| `save_session_config` | `mission.change-config` | `unconfirmed-effect` | open |  |
-| `cancel_schedule` | `schedule.cancel` | `unconfirmed-effect` | open |  |
-| `create_schedule` | `schedule.create` | `unconfirmed-effect` | open |  |
-| `pause_agent` | `agent.pause` | `unconfirmed-effect` | open |  |
-| `resume_agent` | `agent.resume` | `unconfirmed-effect` | open |  |
-| `set_mission_budget` | `mission.set-spend-cap` | `unconfirmed-effect` | open |  |
-| `GITHUB_ISSUE_ACTION` | `issue.track` | `unconfirmed-effect` | open |  |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| `launch_mission` | TB-15 | `mission.launch` | `unconfirmed-effect` | open |  |
+| `launch_draft` | TB-15 | `mission.launch` | `unconfirmed-effect` | open |  |
+| `suspend_mission` | TB-15 | `mission.suspend` | `unconfirmed-effect` | open |  |
+| `resume_mission` | TB-15 | `mission.resume` | `unconfirmed-effect` | open |  |
+| `fix_mission_volume` | TB-15 | `mission.repair` | `unconfirmed-effect` | open |  |
+| `write_mission_file` | TB-15 | `file.write` | `unconfirmed-effect` | open |  |
+| `save_session_config` | TB-15 | `mission.change-config` | `unconfirmed-effect` | open |  |
+| `cancel_schedule` | TB-15 | `schedule.cancel` | `unconfirmed-effect` | open |  |
+| `create_schedule` | TB-15 | `schedule.create` | `unconfirmed-effect` | open |  |
+| `pause_agent` | TB-15 | `agent.pause` | `unconfirmed-effect` | open |  |
+| `resume_agent` | TB-15 | `agent.resume` | `unconfirmed-effect` | open |  |
+| `set_mission_budget` | TB-15 | `mission.set-spend-cap` | `unconfirmed-effect` | open |  |
+| `GITHUB_ISSUE_ACTION` | TB-15 | `issue.track` | `unconfirmed-effect` | open |  |
 
 ## Timers and change streams
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| `change event (copilot-daemon.ts:443)` | `agent.dispatch` | `overlap-or-replay` | open |  |
-| `interval (copilot-router.ts:220)` | `feed` | `overlap-or-replay` | open |  |
-| `change event (copilot-waker.ts:132)` | `agent.dispatch` | `overlap-or-replay` | open |  |
-| `interval (copilot-waker.ts:153)` | `agent.dispatch` | `overlap-or-replay` | open |  |
-| `interval (index.ts:119)` | `housekeeping` | `overlap-or-replay` | open |  |
-| `cron */5 * * * *: tick (resource-monitor.ts:420)` | `oversight.alert` | `overlap-or-replay` | open |  |
-| `cron * * * * *: tick (scheduler.ts:441)` | `schedule.deliver` | `overlap-or-replay` | open |  |
-| `cron * * * * * (scheduler.ts:445)` | `machine.upgrade` | `overlap-or-replay` | open |  |
-| `cron */30 * * * *: prune (scheduler.ts:451)` | `housekeeping` | `overlap-or-replay` | open |  |
-| `change event (cli-tail.ts:82)` | `developer` | `overlap-or-replay` | open |  |
-| `interval (apps-start.ts:149)` | `app.run` | `overlap-or-replay` | open |  |
-| `interval (apps-start.ts:166)` | `app.run` | `overlap-or-replay` | open |  |
-| `change event (mail-waiter.ts:60)` | `agent.dispatch` | `overlap-or-replay` | open |  |
-| `interval: tick (daemon.ts:228)` | `job.run` | `overlap-or-replay` | open |  |
-| `change event (monitor-feeds.ts:38)` | `feed` | `overlap-or-replay` | open |  |
-| `interval (monitor-server.ts:455)` | `feed` | `overlap-or-replay` | open |  |
-| `createErrorCooldown callback (orchestrator-dispatch.ts:58)` | `agent.dispatch` | `overlap-or-replay` | open |  |
-| `callback (platform-tasks.ts:154)` | `mission.platform-task` | `overlap-or-replay` | covered | `platform-tasks.unit.test.ts` (never starts a task twice at once) |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| `change event (copilot-daemon.ts:443)` |  | `agent.dispatch` | `overlap-or-replay` | open |  |
+| `interval (copilot-router.ts:220)` |  | `feed` | `overlap-or-replay` | open |  |
+| `change event (copilot-waker.ts:132)` |  | `agent.dispatch` | `overlap-or-replay` | open |  |
+| `interval (copilot-waker.ts:153)` |  | `agent.dispatch` | `overlap-or-replay` | open |  |
+| `interval (index.ts:119)` |  | `housekeeping` | `overlap-or-replay` | open |  |
+| `cron */5 * * * *: tick (resource-monitor.ts:420)` |  | `oversight.alert` | `overlap-or-replay` | open |  |
+| `cron * * * * *: tick (scheduler.ts:441)` |  | `schedule.deliver` | `overlap-or-replay` | open |  |
+| `cron * * * * * (scheduler.ts:445)` |  | `machine.upgrade` | `overlap-or-replay` | open |  |
+| `cron */30 * * * *: prune (scheduler.ts:451)` |  | `housekeeping` | `overlap-or-replay` | open |  |
+| `change event (cli-tail.ts:82)` |  | `developer` | `overlap-or-replay` | open |  |
+| `interval (apps-start.ts:149)` |  | `app.run` | `overlap-or-replay` | open |  |
+| `interval (apps-start.ts:166)` |  | `app.run` | `overlap-or-replay` | open |  |
+| `change event (mail-waiter.ts:60)` |  | `agent.dispatch` | `overlap-or-replay` | open |  |
+| `interval: tick (daemon.ts:228)` |  | `job.run` | `overlap-or-replay` | open |  |
+| `change event (monitor-feeds.ts:38)` |  | `feed` | `overlap-or-replay` | open |  |
+| `interval (monitor-server.ts:455)` |  | `feed` | `overlap-or-replay` | open |  |
+| `createErrorCooldown callback (orchestrator-dispatch.ts:58)` |  | `agent.dispatch` | `overlap-or-replay` | open |  |
+| `callback (platform-tasks.ts:154)` |  | `mission.platform-task` | `overlap-or-replay` | covered | `platform-tasks.unit.test.ts` (never starts a task twice at once) |
 
 ## Platform (no entry point)
 
-| Entry point | Operation | Attack class | Status | Test |
-|---|---|---|---|---|
-| `agent OS user` |  | `read-other-agent` | covered | `sandbox.py` (OS-1) |
-| `agent OS user` |  | `write-other-agent` | covered | `sandbox.py` (OS-2) |
-| `agent OS user` |  | `daemon-secrets` | covered | `sandbox.py` (OS-3) |
-| `agent OS user` |  | `daemon-state` | covered | `sandbox.py` (OS-4) |
-| `agent OS user` |  | `sudo` | covered | `sandbox.py` (SUDO-1) |
-| `agent OS user` |  | `secrets-in-subprocesses` | covered | `sandbox.py` (ENV-1, ENV-2) |
-| `the machine on the network` |  | `reach-agent-server` | covered | `sandbox.py` (NET-1) |
-| `the machine on the network` |  | `reach-teammate-app` | covered | `sandbox.py` (APP-1) |
-| `the daemon's sudo helpers` |  | `helper-arguments` | covered | `sandbox.py` (HELPER-1) |
-| `the daemon's sudo helpers` |  | `wrapper-to-root` | covered | `sandbox.py` (HELPER-2) |
-| `platform tasks` | `mission.platform-task` | `write-task-output` | covered | `sandbox.py` (PLAT-1) |
-| `platform tasks` | `mission.platform-task` | `run-task-wrapper` | covered | `sandbox.py` (PLAT-2) |
-| `platform tasks` | `mission.platform-task` | `task-arguments` | covered | `sandbox.py` (PLAT-3) |
-| `platform tasks` | `mission.platform-task` | `task-reach` | covered | `sandbox.py` (PLAT-4) |
+| Entry point | Boundary | Operation | Attack class | Status | Test |
+|---|---|---|---|---|---|
+| `agent OS user` | TB-3, TB-4 |  | `read-other-agent` | covered | `sandbox.py` (OS-1) |
+| `agent OS user` | TB-3, TB-4 |  | `write-other-agent` | covered | `sandbox.py` (OS-2) |
+| `agent OS user` | TB-3, TB-4 |  | `daemon-secrets` | covered | `sandbox.py` (OS-3) |
+| `agent OS user` | TB-3, TB-4 |  | `daemon-state` | covered | `sandbox.py` (OS-4) |
+| `agent OS user` | TB-3, TB-4 |  | `sudo` | covered | `sandbox.py` (SUDO-1) |
+| `agent OS user` | TB-3, TB-4 |  | `secrets-in-subprocesses` | covered | `sandbox.py` (ENV-1, ENV-2) |
+| `the machine on the network` | TB-23 |  | `reach-agent-server` | covered | `sandbox.py` (NET-1) |
+| `the machine on the network` | TB-23 |  | `reach-teammate-app` | covered | `sandbox.py` (APP-1) |
+| `the daemon's sudo helpers` | TB-3, TB-23 |  | `helper-arguments` | covered | `sandbox.py` (HELPER-1) |
+| `the daemon's sudo helpers` | TB-3, TB-23 |  | `wrapper-to-root` | covered | `sandbox.py` (HELPER-2) |
+| `platform tasks` | TB-27 | `mission.platform-task` | `write-task-output` | covered | `sandbox.py` (PLAT-1) |
+| `platform tasks` | TB-27 | `mission.platform-task` | `run-task-wrapper` | covered | `sandbox.py` (PLAT-2) |
+| `platform tasks` | TB-27 | `mission.platform-task` | `task-arguments` | covered | `sandbox.py` (PLAT-3) |
+| `platform tasks` | TB-27 | `mission.platform-task` | `task-reach` | covered | `sandbox.py` (PLAT-4) |
 

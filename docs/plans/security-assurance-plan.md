@@ -339,6 +339,15 @@ figure; 6 depends on 1 and 3.
   each caught. On the way: the Tool API capped every job's tool call at 120 s, whatever the
   tool declared (Research from a job was cut at 2 of its 10 minutes); fixed (`cf6bc0e`). Next:
   MAGI DEV's item producers and kind descriptors (6c/6e), the benchmark (6d).
+- **Step 6c, the threat model connected, 2026-11-24:** every matrix row names the trust boundary
+  it crosses (`boundariesOf` in the generator); the matrix document gains a per-boundary table
+  (cells covered and open; the STRIDE rows proven, claimed, partial, open, accepted). A
+  mitigated row is proven when its notes cite a sandbox cell or a named test; the test checks
+  every cited proof exists and holds claimed rows at or under a ceiling that may only go down
+  (88 of 94 today; TB-27's are the first proven). Both checks were planted to fail. What the
+  table shows: TB-6 (agents' tool calls, 59 cells) and TB-15 (the control copilot, 33) have no
+  covered cell; TB-26 (the apps host) has 11 claimed rows and nothing proving them. Still to come
+  in 6c: the private route for code-scanning and Dependabot alerts (a decision for the sponsor).
 - **Step 5, environment B and Nuclei, 2026-11-24:** `scripts/security/stack/` starts the
   control plane's own image on an internal Docker network (no route out) with a MongoDB container
   and two test tenants through a new test-only sign-in (`AUTH_TEST_USERS`, refused on Fly: the

@@ -16,7 +16,7 @@
  * attack-matrix.unit.test.ts (control plane) renders it again and compares, and checks that every
  * test the matrix names exists and names the cell.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -393,6 +393,115 @@ function traceRows(entries) {
 	return rows;
 }
 
+/** The trust boundaries (threat-model TB ids) a row's attacks cross. */
+export function boundariesOf(r) {
+	switch (r.surface) {
+		case "control-plane":
+			if (r.path.startsWith("/api/mission-copilot/github/")) return ["TB-19"];
+			if (r.path.startsWith("/api/mission-copilot/resources/"))
+				return ["TB-22"];
+			if (r.path.startsWith("/missions/{id}")) return ["TB-11"];
+			if (r.path === "/api/copilot/files") return ["TB-9", "TB-21"];
+			if (r.path === "/firebase-config.js") return ["TB-14"];
+			return ["TB-9"];
+		case "apps-host":
+			return ["TB-26"];
+		case "monitor":
+			return r.path.startsWith("/a/") ? ["TB-25"] : ["TB-11", "TB-2"];
+		case "tool-api":
+			return ["TB-5"];
+		case "tool":
+			return r.actor === "CC" ? ["TB-15"] : ["TB-6"];
+		case "request-folder":
+			if (r.operation === "job.submit") return ["TB-4"];
+			return r.operation.startsWith("app.") ? ["TB-24"] : ["TB-7"];
+		case "copilot-action":
+			return ["TB-15"];
+		case "platform":
+			return {
+				"agent OS user": ["TB-3", "TB-4"],
+				"the machine on the network": ["TB-23"],
+				"the daemon's sudo helpers": ["TB-3", "TB-23"],
+				"platform tasks": ["TB-27"],
+			}[r.path];
+		default:
+			return [];
+	}
+}
+
+/**
+ * Mitigated (✅) STRIDE rows that cite no proof. A ceiling, not a target: it may only go down as
+ * rows gain their proof (a sandbox cell id or a named test file in the row's notes).
+ */
+export const CLAIMED_ROWS_CEILING = 88;
+
+/** Where a test file named in the threat model lives, or null. */
+function findTestFile(name) {
+	for (const pkg of readdirSync(join(ROOT, "packages"))) {
+		const p = join("packages", pkg, "tests", name);
+		if (existsSync(join(ROOT, p))) return p;
+	}
+	return null;
+}
+
+/** The proofs a STRIDE row's notes cite: named test files, and sandbox cell ids (PLAT-1..4 is four). */
+function proofsIn(notes) {
+	const proofs = [];
+	for (const m of notes.matchAll(
+		/([\w.-]+\.(?:unit|integration|seam)\.test\.ts)/g,
+	)) {
+		const path = findTestFile(m[1]);
+		proofs.push({ test: path ?? m[1], name: null, missing: !path });
+	}
+	for (const m of notes.matchAll(/sandbox ([A-Z]+)-(\d+)(?:\.\.(\d+))?/g)) {
+		const last = Number(m[3] ?? m[2]);
+		for (let i = Number(m[2]); i <= last; i++) {
+			proofs.push({ test: SANDBOX, name: `${m[1]}-${i}` });
+		}
+	}
+	return proofs;
+}
+
+function statusOf(cell) {
+	if (cell.includes("✅")) return "mitigated";
+	if (cell.includes("⚠")) return "open";
+	if (cell.startsWith("~")) return "partial";
+	return cell.startsWith("A") ? "accepted" : "other";
+}
+
+/** The STRIDE rows of docs/security/threat-model.md, each with its boundary, status and proofs. */
+export function parseThreatModel(text) {
+	const start = text.indexOf("## STRIDE Threat Table");
+	const end = text.indexOf("\n## ", start + 10);
+	const rows = [];
+	let boundary = null;
+	for (const line of text.slice(start, end < 0 ? undefined : end).split("\n")) {
+		boundary = line.match(/^### (TB-\d+)/)?.[1] ?? boundary;
+		const isRow =
+			line.startsWith("|") &&
+			!line.startsWith("|--") &&
+			!line.startsWith("| Threat");
+		const cells = line
+			.replace(/^\||\|$/g, "")
+			.split("|")
+			.map((c) => c.trim());
+		if (!boundary || !isRow || cells.length < 4) continue;
+		rows.push({
+			boundary,
+			threat: cells[0],
+			status: statusOf(cells[2]),
+			proofs: proofsIn(cells.slice(3).join("|")),
+		});
+	}
+	return rows;
+}
+
+export function loadThreatRows() {
+	return parseThreatModel(
+		readFileSync(join(ROOT, "docs", "security", "threat-model.md"), "utf8"),
+	);
+}
+
 export function buildMatrix(entries) {
 	const rows = [
 		...httpRows(),
@@ -419,6 +528,7 @@ export function buildMatrix(entries) {
 	];
 	const cells = [];
 	for (const row of rows) {
+		row.boundaries = boundariesOf(row) ?? [];
 		for (const c of CLASSES) {
 			if (!c.applies(row)) continue;
 			const na = c.na?.(row) ?? null;
@@ -439,7 +549,7 @@ function rowLabel(r) {
 	return `${r.method ? `${r.method} ` : ""}\`${r.path}\``;
 }
 
-export function renderMarkdown(cells) {
+export function renderMarkdown(cells, threatRows = loadThreatRows()) {
 	const out = [
 		"# The attack matrix",
 		"",
@@ -473,6 +583,33 @@ export function renderMarkdown(cells) {
 		"",
 	);
 	out.push(
+		"## By trust boundary",
+		"",
+		"The boundaries are the threat model's (`docs/security/threat-model.md`). Its mitigated (✅) rows are",
+		"**proven** when their notes cite a sandbox cell or a named test, and **claimed** otherwise;",
+		`claimed rows may only decrease (ceiling ${CLAIMED_ROWS_CEILING}).`,
+		"",
+		"| Boundary | Matrix cells | Covered | Open | ✅ proven | ✅ claimed | ~ partial | ⚠️ open | Accepted |",
+		"|---|---|---|---|---|---|---|---|---|",
+	);
+	const ids = new Set([
+		...threatRows.map((r) => r.boundary),
+		...cells.flatMap((c) => c.row.boundaries),
+	]);
+	const tb = [...ids].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
+	for (const id of tb) {
+		const cs = cells.filter((c) => c.row.boundaries.includes(id));
+		const rs = threatRows.filter((r) => r.boundary === id);
+		const n = (st) => rs.filter((r) => r.status === st).length;
+		const proven = rs.filter(
+			(r) => r.status === "mitigated" && r.proofs.length > 0,
+		).length;
+		out.push(
+			`| ${id} | ${cs.length} | ${cs.filter((c) => c.status === "covered").length} | ${cs.filter((c) => c.status === "open").length} | ${proven} | ${n("mitigated") - proven} | ${n("partial")} | ${n("open")} | ${n("accepted")} |`,
+		);
+	}
+	out.push("");
+	out.push(
 		"## Attack classes",
 		"",
 		"| Class | Invariant | Attack |",
@@ -492,15 +629,15 @@ export function renderMarkdown(cells) {
 		out.push(
 			`## ${title}`,
 			"",
-			"| Entry point | Operation | Attack class | Status | Test |",
-			"|---|---|---|---|---|",
+			"| Entry point | Boundary | Operation | Attack class | Status | Test |",
+			"|---|---|---|---|---|---|",
 		);
 		for (const c of cs) {
 			const test = c.by
 				? `\`${c.by.test.split("/").pop()}\` (${c.by.name})`
 				: (c.reason ?? "");
 			out.push(
-				`| ${rowLabel(c.row)} | ${c.row.operation ? `\`${c.row.operation}\`` : ""} | \`${c.cls.id}\` | ${c.status} | ${test} |`,
+				`| ${rowLabel(c.row)} | ${c.row.boundaries.join(", ")} | ${c.row.operation ? `\`${c.row.operation}\`` : ""} | \`${c.cls.id}\` | ${c.status} | ${test} |`,
 			);
 		}
 		out.push("");
