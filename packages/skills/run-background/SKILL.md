@@ -95,6 +95,10 @@ text = result["result"]["content"][0]["text"]
 result = magi_tool.research("What is NVDA's current P/E ratio?")
 finding = result["result"]["content"][0]["text"]
 
+# Investigate: one question to a clean-context sub-agent, answered as JSON (minutes)
+out = magi_tool.investigate("Is alert 214 real?", {"type": "object"}, reference="magi-v3")
+answer, commit = out["answer"], out["reference"]["commit"]
+
 # PostMessage
 magi_tool.post_message("lead-analyst", "Data refresh complete", "All series updated.")
 ```

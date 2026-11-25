@@ -32,8 +32,14 @@ class ToolError(Exception):
 
 
 def call_tool(name: str, **params) -> dict:
+    """POST /tools/<name> with JSON params; waits up to 135 s. See call_tool_timeout."""
+    return call_tool_timeout(name, 135, params)
+
+
+def call_tool_timeout(name: str, timeout_s: float, params: dict) -> dict:
     """
-    POST /tools/<name> with JSON params and return the parsed response.
+    POST /tools/<name> with JSON params and return the parsed response, waiting up to
+    timeout_s (a sub-agent such as investigate or research runs for minutes).
 
     Raises:
         ToolError: if the server returns {"error": "..."}.
@@ -55,7 +61,7 @@ def call_tool(name: str, **params) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=135) as resp:  # server timeout 120s + 15s buffer  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is the loopback tool API server; no user input reaches scheme or host
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is the loopback tool API server; no user input reaches scheme or host
             data = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body_text = e.read().decode("utf-8", errors="replace")
@@ -96,7 +102,31 @@ def research(
         kwargs["max_age_hours"] = 0  # always fresh when context provided
     if output_path:
         kwargs["output_path"] = output_path
-    return call_tool("research", **kwargs)
+    # Research may run 10 minutes (its maxRuntimeMs, which the Tool API honours).
+    return call_tool_timeout("research", 11 * 60, kwargs)
+
+
+def investigate(
+    question: str,
+    answer_schema: dict,
+    skill_file: str | None = None,
+    briefing: str | None = None,
+    reference: str | None = None,
+    max_turns: int | None = None,
+) -> dict:
+    """
+    One question to a clean-context sub-agent (the Investigate tool); returns
+    {"answer": <JSON matching answer_schema>, "reference": {"name", "commit"} | None, "turns"}.
+    Raises ToolError when the answer does not match the schema after its repair turn.
+    """
+    params: dict = {"question": question, "answer_schema": answer_schema}
+    for key, value in (("skill_file", skill_file), ("briefing", briefing),
+                       ("reference", reference), ("max_turns", max_turns)):
+        if value is not None:
+            params[key] = value
+    # Investigate may run 15 minutes (its maxRuntimeMs, which the Tool API honours).
+    data = call_tool_timeout("investigate", 16 * 60, params)
+    return json.loads(data["result"]["content"][0]["text"])
 
 
 def search_web(query: str) -> dict:

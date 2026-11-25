@@ -18,7 +18,7 @@
  *   401                                  — missing/invalid token
  *   404                                  — unknown tool name
  *   405                                  — method not POST
- *   504                                  — tool timed out (120 s default)
+ *   504                                  — tool timed out (its maxRuntimeMs, else 120 s)
  *
  * Container-ready: MAGI_TOOL_URL env var overrides the default loopback
  * address. Scripts and the Python SDK read this env var. In Kubernetes,
@@ -66,8 +66,57 @@ interface TokenContext {
 	identity: AgentIdentity;
 }
 
-/** Default per-tool call timeout in milliseconds. */
+/** Per-call timeout for a tool that declares no runtime of its own (`maxRuntimeMs`). */
 const TOOL_TIMEOUT_MS = 120_000;
+
+/** How long one call may run: the tool's own declared runtime (a sub-agent's minutes), else 120 s. */
+export function toolTimeoutMs(
+	tool: Pick<MagiTool, "maxRuntimeMs">,
+	args: Record<string, unknown>,
+): number {
+	return tool.maxRuntimeMs?.(args) ?? TOOL_TIMEOUT_MS;
+}
+
+/**
+ * Runs one call, raced against its timeout (not merely signalled: a tool that ignores the
+ * AbortSignal used to hold the request open forever and the documented 504 never happened,
+ * audit TA2).
+ */
+async function executeWithTimeout(
+	tool: MagiTool,
+	callId: string,
+	args: Record<string, unknown>,
+): Promise<
+	| { result: Awaited<ReturnType<MagiTool["execute"]>> }
+	| { failure: "timeout" }
+	| { failure: "error"; error: string }
+> {
+	const ac = new AbortController();
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<"timeout">((resolve) => {
+		timer = setTimeout(
+			() => {
+				ac.abort();
+				resolve("timeout");
+			},
+			toolTimeoutMs(tool, args),
+		);
+	});
+	try {
+		const outcome = await Promise.race([
+			tool.execute(callId, args, ac.signal),
+			timeout,
+		]);
+		if (outcome === "timeout") return { failure: "timeout" };
+		return { result: outcome };
+	} catch (err) {
+		return ac.signal.aborted
+			? { failure: "timeout" }
+			: { failure: "error", error: String(err) };
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 // ---------------------------------------------------------------------------
 // ToolApiServer
@@ -241,38 +290,20 @@ export class ToolApiServer {
 			return;
 		}
 
-		// Execute with timeout.
-		const ac = new AbortController();
-		let timedOut = false;
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		const timeout = new Promise<never>((_, reject) => {
-			timer = setTimeout(() => {
-				timedOut = true;
-				ac.abort();
-				reject(new Error(`tool ${toolName} timed out`));
-			}, TOOL_TIMEOUT_MS);
-		});
-		let result: Awaited<ReturnType<MagiTool["execute"]>>;
-		try {
-			// Raced, not merely signalled: a tool that ignores the AbortSignal
-			// used to hold the request open forever and the documented 504 never
-			// happened (audit TA2).
-			result = await Promise.race([
-				tool.execute(callId, checked.args, ac.signal),
-				timeout,
-			]);
-		} catch (err) {
-			clearTimeout(timer);
-			if (timedOut || ac.signal.aborted) {
-				res.writeHead(504, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: `tool ${toolName} timed out` }));
-			} else {
-				res.writeHead(500, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: String(err) }));
-			}
+		const run = await executeWithTimeout(tool, callId, checked.args);
+		if ("failure" in run) {
+			const timedOut = run.failure === "timeout";
+			res.writeHead(timedOut ? 504 : 500, {
+				"Content-Type": "application/json",
+			});
+			res.end(
+				JSON.stringify({
+					error: timedOut ? `tool ${toolName} timed out` : run.error,
+				}),
+			);
 			return;
 		}
-		clearTimeout(timer);
+		const { result } = run;
 
 		res.writeHead(200, { "Content-Type": "application/json" });
 		if (result.isError) {
