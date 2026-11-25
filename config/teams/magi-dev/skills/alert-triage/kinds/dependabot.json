@@ -75,6 +75,7 @@
 	},
 	"mode": "triage",
 	"risk": "platform",
+	"max_turns": 20,
 	"positive": {
 		"field": "verdict",
 		"values": [

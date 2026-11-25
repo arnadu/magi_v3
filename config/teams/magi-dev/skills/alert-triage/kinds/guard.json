@@ -71,6 +71,7 @@
 	},
 	"mode": "discovery",
 	"risk": "boundary",
+	"max_turns": 30,
 	"positive": {
 		"field": "verdict",
 		"values": [

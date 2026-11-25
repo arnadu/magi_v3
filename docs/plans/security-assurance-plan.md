@@ -310,6 +310,27 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 6d, the known-answer benchmark, 2026-11-25:** `scripts/magi-dev-bench/` runs the real
+  chain (`produce_items.py`, `review.py`, `Investigate`, a real model) over six cases whose
+  answer is known: three fixed defects at the commit before their fix (the SSRF guard before
+  06fc0ce, `fetch-url.ts` before it, the monitor download before 6261e2f) and three clean ones
+  (the same code after the fixes, and alert #2). The investigator's shell runs in a container
+  with no network and the copies read-only; spend is metered and capped. Six runs found four
+  pipeline defects, each fixed with a test: `extractJson` paired fences in sequence, so a
+  ```` ```typescript ```` block before the answer hid it ("no JSON value"); a failed model call
+  (a refused key, no credit) was reported as "no JSON value" after a useless repair turn, and now
+  carries the provider's error; almost every investigation hit Investigate's 15-turn default and
+  answered in the forced, tool-less repair turn (kinds now set `max_turns`, 30 for code scanning
+  and guards, and that turn says the turns ran out); acceptance rejected a correct verdict over
+  one citation's drifted line (a quote found once elsewhere in the file is now relocated, and
+  recorded). One skill defect: the code-scanning skill counted any check before the use as a
+  guard; it now asks whether the guard covers what the use acts on and what can change in
+  between (worded generally, naming no case's answer). Scores, all with 0 false alarms in the 3
+  clean cases: GLM 5.2 1/3 ($0.43, $0.32) before the fixes, **2/3 ($0.59)** after; Sonnet 4.6
+  2/3 ($1.79) before the turn fix. The steady miss is the monitor download: both models accept
+  `resolve()` + `startsWith` as containment and never ask where the path leads on disk. Next: a
+  briefing that carries the boundary's attacker capabilities from the threat model (TB-7: agents
+  write `shared/`), a Sonnet run after the fixes, then appsec's role.
 - **Step 6e, MAGI DEV's first kinds, 2026-11-25:** team skill `alert-triage`
   (`config/teams/magi-dev/skills/alert-triage/`): three kinds for the review pipeline —
   code-scanning and Dependabot alerts (triage) and the watched guards (discovery) — each with

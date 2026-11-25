@@ -1,0 +1,6 @@
+# The benchmark's sandbox for the investigator's shell: the tools an agent's shell has for reading
+# code, no network at run time (docker run --network none), the code mounted read-only.
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e
+RUN apt-get update && apt-get install -y --no-install-recommends git ripgrep ca-certificates jq \
+    && rm -rf /var/lib/apt/lists/* && useradd -m -u 60001 reader
+USER reader

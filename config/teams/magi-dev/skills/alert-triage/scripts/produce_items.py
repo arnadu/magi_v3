@@ -106,9 +106,10 @@ def guard_item(g, entries):
     }
 
 
-def produce(alerts, tree):
+def produce(alerts, tree, guards_file=None):
     entries = load_json(os.path.join(tree, "docs", "security", "entry-points.json"), [])
-    guards = load_json(os.path.join(tree, "scripts", "security", "watched-guards.json"), {}).get("guards", [])
+    guards_path = guards_file or os.path.join(tree, "scripts", "security", "watched-guards.json")
+    guards = load_json(guards_path, {}).get("guards", [])
     items = [guard_item(g, entries) for g in guards]
     for a in alerts:
         if a.get("source") == "code-scanning":
@@ -123,10 +124,12 @@ def main(argv, reference_root=REFERENCE_ROOT):
     ap.add_argument("--reference", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--alerts", help="a file holding the security-alerts tool's output (otherwise the tool is called)")
+    ap.add_argument("--reference-root", default=reference_root, help=argparse.SUPPRESS)
+    ap.add_argument("--guards", help=argparse.SUPPRESS)  # another watched-guards list (the benchmark's)
     a = ap.parse_args(argv)
     alerts = load_json(a.alerts, {}).get("alerts", []) if a.alerts else fetch_alerts()
-    tree = os.path.join(reference_root, a.reference, "current")
-    items = produce(alerts, tree)
+    tree = os.path.join(a.reference_root, a.reference, "current")
+    items = produce(alerts, tree, a.guards)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     tmp = f"{a.out}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:

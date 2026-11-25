@@ -1,0 +1,113 @@
+{
+	"about": "Known answers for MAGI DEV's alert-triage kinds (security assurance plan, step 6d). Each case is a commit and one item; expected 'finding' or 'none'. Positives are the commit before a security fix; negatives the fix itself or today's code, verified by hand. F-082 is kept out: it is a known answer for the discovery kinds.",
+	"cases": [
+		{
+			"id": "ssrf-guard-before",
+			"commit": "06fc0ce^",
+			"expected": "finding",
+			"note": "Before F-043: the SSRF guard was a regex on the first hop.",
+			"guards": [
+				{
+					"path": "packages/agent-runtime-worker/src/ssrf.ts",
+					"invariant": "sec.safe-egress",
+					"boundary": "TB-1",
+					"why": "Decides what is private for every outbound request agents can cause: every resolved address and IP literal, in every encoding.",
+					"tests": ["packages/agent-runtime-worker/tests/ssrf.unit.test.ts"]
+				}
+			],
+			"alerts": []
+		},
+		{
+			"id": "ssrf-guard-now",
+			"commit": "HEAD",
+			"expected": "none",
+			"note": "Today's guard (F-043 fixed, watched).",
+			"guards": [
+				{
+					"path": "packages/agent-runtime-worker/src/ssrf.ts",
+					"invariant": "sec.safe-egress",
+					"boundary": "TB-1",
+					"why": "Decides what is private for every outbound request agents can cause: every resolved address and IP literal, in every encoding.",
+					"tests": ["packages/agent-runtime-worker/tests/ssrf.unit.test.ts"]
+				}
+			],
+			"alerts": []
+		},
+		{
+			"id": "fetch-ssrf-before",
+			"commit": "06fc0ce^",
+			"expected": "finding",
+			"note": "Before F-043: FetchUrl followed redirects without vetting the next hop.",
+			"guards": [],
+			"alerts": [
+				{
+					"source": "code-scanning",
+					"number": 9001,
+					"tool": "CodeQL",
+					"rule": "js/request-forgery",
+					"severity": "critical",
+					"path": "packages/agent-runtime-worker/src/tools/fetch-url.ts",
+					"line": 85,
+					"message": "The URL of this request depends on a user-provided value."
+				}
+			]
+		},
+		{
+			"id": "download-path-before",
+			"commit": "6261e2f^",
+			"expected": "finding",
+			"note": "Before F-037: the monitor's download route resolved the requested path with no containment.",
+			"guards": [],
+			"alerts": [
+				{
+					"source": "code-scanning",
+					"number": 9002,
+					"tool": "CodeQL",
+					"rule": "js/path-injection",
+					"severity": "high",
+					"path": "packages/agent-runtime-worker/src/monitor-server.ts",
+					"line": 755,
+					"message": "This path depends on a user-provided value."
+				}
+			]
+		},
+		{
+			"id": "download-path-after",
+			"commit": "6261e2f",
+			"expected": "none",
+			"note": "F-037's fix: resolveInside and an O_NOFOLLOW open.",
+			"guards": [],
+			"alerts": [
+				{
+					"source": "code-scanning",
+					"number": 9003,
+					"tool": "CodeQL",
+					"rule": "js/path-injection",
+					"severity": "high",
+					"path": "packages/agent-runtime-worker/src/monitor-files.ts",
+					"line": 236,
+					"message": "This path depends on a user-provided value."
+				}
+			]
+		},
+		{
+			"id": "alert-2-now",
+			"commit": "HEAD",
+			"expected": "none",
+			"note": "Code-scanning alert #2, dismissed as a false positive on 2026-11-25 after review.",
+			"guards": [],
+			"alerts": [
+				{
+					"source": "code-scanning",
+					"number": 2,
+					"tool": "CodeQL",
+					"rule": "js/request-forgery",
+					"severity": "critical",
+					"path": "packages/agent-runtime-worker/src/tools/browse-web-egress-proxy.ts",
+					"line": 122,
+					"message": "The URL of this request depends on a user-provided value."
+				}
+			]
+		}
+	]
+}

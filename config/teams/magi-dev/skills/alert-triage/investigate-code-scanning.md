@@ -9,12 +9,17 @@ helper, a request pinned to a vetted address. Your job is to find out which it i
    environment) and forward to where it is used. Read every function it passes through.
 3. Look for the guard that would make it safe, and read it: a check that is called on another
    path, or after the use, does not count.
-4. Look for a test that attacks this path (the briefing names any the catalog knows).
+4. A guard examines a value at one moment; the use acts on whatever that value leads to when
+   it runs. Check that the guard covers what is actually used, not only the value as written:
+   what can the use do or reach that the check never looked at, and what can change between
+   the check and the use? A guard that leaves a way through does not hold.
+5. Look for a test that attacks this path (the briefing names any the catalog knows).
 
 Answer:
 - `real`: a value an attacker controls reaches the flagged use without a guard that holds.
   Give `reproduction`: the request, file or call that would show it.
-- `false-positive`: a guard holds on every path to the flagged use. Cite the guard.
+- `false-positive`: a guard holds on every path to the flagged use, for what the use actually
+  acts on. Cite the guard, and say why nothing gets past it.
 - `could-not-establish`: you could not follow the value to its source or the guard to its end.
   Say where you stopped.
 
