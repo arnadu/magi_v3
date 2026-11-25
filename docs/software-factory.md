@@ -90,6 +90,7 @@ owner in the aim.
 | **Before the change leaves the machine (station E)** | | | | | |
 | **Pre-commit lint**<br>`Biome, git hook` | Formatting and lint rules | Blocks | Code-quality practice | Claude Code (`biome.json`) | The author, at once → *the building agent* |
 | **Pre-push verify**<br>`npm run verify` | Everything in the first CI job, before it reaches CI | Blocks | Third-party audit, Oct 2026 (sprint 28f) | Claude Code | The author → *the building agent* |
+| **Pre-push Semgrep**<br>`npm run audit:semgrep-changed` | CI's Semgrep rules on the files the push changes, so a finding is fixed before CI sees it | Blocks | A Semgrep finding that reached CI, 2026-11-24 (Ajv `allErrors`) | Claude Code (`scripts/security/semgrep-changed.sh`) | The author → *the building agent* |
 | **On every push to main (station G, `quality.yml`)** | | | | | |
 | **Build, typecheck, unit tests**<br>`~1,900 tests, incl. property tests` | Broken code; guards that fast-check can defeat (paths, schedules, tool arguments, tickets, markdown) | Blocks | Testing practice; property tests: Security assurance plan, step 5 | Claude Code, with each test | The author → *the building agent; QA watches for gaps* |
 | **Coverage ratchet**<br>`vitest thresholds` | Coverage falling below each package's floor | Blocks | Third-party audit, Oct 2026 (sprint 28f) | Claude Code; a lowered floor carries a comment saying why | The author → *the building agent* |

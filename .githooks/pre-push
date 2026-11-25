@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pre-push hook: a push to main deploys dev, so the full gate runs here, not just lint.
 # `npm run verify` = build + lint + tripwires + structure ratchet + typecheck + unit tests with
-# coverage thresholds — the same script CI runs, so local and CI agree.
+# coverage thresholds — the same script CI runs, so local and CI agree — then Semgrep on the
+# files the push changes (CI scans them all).
 # Install via: git config core.hooksPath .githooks  (done by setup-dev.sh)
 # Escape hatch for a genuine emergency: git push --no-verify (say why in the commit message).
 
@@ -13,5 +14,13 @@ echo "[pre-push] Running npm run verify…"
 if ! npm run verify --silent; then
     echo ""
     echo "[pre-push] BLOCKED: fix the failures above before pushing."
+    exit 1
+fi
+
+# Semgrep runs in CI only; this catches its findings in the files this push changes first.
+echo "[pre-push] Running Semgrep on the changed files…"
+if ! npm run audit:semgrep-changed --silent; then
+    echo ""
+    echo "[pre-push] BLOCKED: fix the Semgrep findings above before pushing."
     exit 1
 fi
