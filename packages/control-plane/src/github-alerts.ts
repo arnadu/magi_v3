@@ -140,8 +140,16 @@ async function list(
 			},
 		});
 		if (res.status === 404) return out;
-		if (!res.ok)
-			throw new Error(`GitHub answered ${res.status} for ${kind} alerts`);
+		if (!res.ok) {
+			// GitHub's message names the missing permission or bad parameter; it holds no secret.
+			const why = str(
+				((await res.json().catch(() => ({}))) as Json).message,
+				200,
+			);
+			throw new Error(
+				`GitHub answered ${res.status} for ${kind} alerts: ${why}`,
+			);
+		}
 		out.push(...((await res.json()) as Json[]));
 		url = nextPage(res.headers.get("link"));
 	}
