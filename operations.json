@@ -4392,14 +4392,18 @@
     "kind": "tool",
     "actor": "AG",
     "name": "AddTask",
-    "where": "packages/agent-runtime-worker/src/objectives/tools.ts:145",
+    "where": "packages/agent-runtime-worker/src/objectives/tools.ts:159",
     "reachesHome": true,
     "components": [
      "mm-state",
      "mm-tools"
     ],
     "writes": [],
-    "unresolved": [],
+    "unresolved": [
+     "get",
+     "has",
+     "push"
+    ],
     "httpHops": []
    }
   ]
@@ -4419,7 +4423,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "UpdateTask",
-    "where": "packages/agent-runtime-worker/src/objectives/tools.ts:222",
+    "where": "packages/agent-runtime-worker/src/objectives/tools.ts:239",
     "reachesHome": true,
     "components": [
      "mm-state",
@@ -4427,6 +4431,7 @@
     ],
     "writes": [],
     "unresolved": [
+     "get",
      "has",
      "push"
     ],
@@ -4468,7 +4473,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "RecordKpi",
-    "where": "packages/agent-runtime-worker/src/objectives/tools.ts:302",
+    "where": "packages/agent-runtime-worker/src/objectives/tools.ts:414",
     "reachesHome": true,
     "components": [
      "mm-state",
@@ -4496,7 +4501,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "Allocate",
-    "where": "packages/agent-runtime-worker/src/objectives/tools.ts:353",
+    "where": "packages/agent-runtime-worker/src/objectives/tools.ts:465",
     "reachesHome": true,
     "components": [
      "mm-state",

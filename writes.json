@@ -171,7 +171,7 @@
   "function": "appendEvent",
   "method": "insertOne",
   "collection": "objectivesEvents",
-  "docType": "EventDoc<\"task\", { id: string; at: string; by: string; title?: string | undefined; objective?: string | null | undefined; assignee?: string | null | undefined; status?: \"open\" | \"in-progress\" | ... 4 more ... | undefined; ... 4 more ...; note?: string | undefined; }> | EventDoc<...> | EventDoc<...> | EventDoc<...>",
+  "docType": "EventDoc<\"task\", { id: string; at: string; by: string; instructions?: string | undefined; doneWhen?: string | undefined; check?: { script: string; args?: string[] | undefined; } | undefined; skills?: string[] | undefined; ... 8 more ...; note?: string | undefined; }> | EventDoc<...> | EventDoc<...> | EventDoc<...>",
   "fn": "packages/agent-runtime-worker/src/objectives/repository.ts:147:2",
   "component": "mm-state",
   "ownerOk": true

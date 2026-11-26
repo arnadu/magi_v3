@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "ac2b667",
-  "time": "2026-11-25T22:20:24Z"
+  "commit": "2b6f62c",
+  "time": "2026-11-26T18:33:28Z"
  },
  "findings": [
   {
@@ -2324,12 +2324,12 @@
    "about": "kpi.record",
    "text": "Entry points of kpi.record reach different database writes: tool RecordKpi lacks 1.",
    "where": [
-    "packages/agent-runtime-worker/src/objectives/tools.ts:302"
+    "packages/agent-runtime-worker/src/objectives/tools.ts:414"
    ],
    "lacks": [
     {
      "entryPoint": "tool RecordKpi",
-     "where": "packages/agent-runtime-worker/src/objectives/tools.ts:302",
+     "where": "packages/agent-runtime-worker/src/objectives/tools.ts:414",
      "writes": [
       "objectivesEvents.insertOne@packages/agent-runtime-worker/src/objectives/repository.ts:152"
      ]

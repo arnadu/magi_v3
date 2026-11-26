@@ -117,6 +117,40 @@
   "findings": 0
  },
  {
+  "id": "task.done-checked",
+  "scope": "task",
+  "text": "A task with a finish line is completed only when it is met: its check script, run as the agent completing it, passes; or, without a check, the completion note says how. Only the operator or the mission copilot may complete it otherwise, and the reason is recorded.",
+  "enforcedBy": [
+   {
+    "kind": "runtime",
+    "where": "agent-runtime-worker/src/objectives/work-order.ts: completionNote, runCheck (called by UpdateTask)"
+   },
+   {
+    "kind": "test"
+   }
+  ],
+  "decidedBy": "ADR-0038",
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "task.terms-guarded",
+  "scope": "task",
+  "text": "A task's finish line, check and required skills are set by whoever assigned it (its creator, its objective's owner or the mission copilot), never by an assignee alone; its check script and required skills come only from the team and platform skills, which agents cannot write, and the assignee must have each required skill.",
+  "enforcedBy": [
+   {
+    "kind": "runtime",
+    "where": "agent-runtime-worker/src/objectives/work-order.ts: termsChangeDenied, requiredSkillsError; agent-runtime-worker/src/agent-runner-work-orders.ts: resolveCheckScript"
+   },
+   {
+    "kind": "test"
+   }
+  ],
+  "decidedBy": "ADR-0038",
+  "open": null,
+  "findings": 0
+ },
+ {
   "id": "message.wakes",
   "scope": "message",
   "text": "A message wakes its recipient.",
