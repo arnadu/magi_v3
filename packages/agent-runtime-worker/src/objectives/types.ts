@@ -11,6 +11,7 @@
  * the event shapes (Zod-validated) and the folded output shape.
  */
 
+import { type TaskCheck, TaskWorkOrderSchema } from "@magi/agent-config";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -159,6 +160,8 @@ export const TaskEventSchema = z.object({
 	budgetUsd: z.number().optional(),
 	effort: z.number().optional(),
 	note: z.string().optional(),
+	// The work order (instructions, doneWhen, check, skills), last-write-wins.
+	...TaskWorkOrderSchema.shape,
 });
 export type TaskEvent = z.infer<typeof TaskEventSchema>;
 
@@ -211,6 +214,10 @@ export interface FoldedTask {
 	priority?: string;
 	deadline?: string;
 	budgetUsd?: number;
+	instructions?: string;
+	doneWhen?: string;
+	check?: TaskCheck;
+	skills?: string[];
 	costUsd: number; // attributed (≈ — turn-granular)
 	notes: string[];
 	createdAt: string;

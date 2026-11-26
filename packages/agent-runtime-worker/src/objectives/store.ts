@@ -92,6 +92,10 @@ function foldTasks(
 		if (ev.priority !== undefined) t.priority = ev.priority;
 		if (ev.deadline !== undefined) t.deadline = ev.deadline;
 		if (ev.budgetUsd !== undefined) t.budgetUsd = ev.budgetUsd;
+		if (ev.instructions !== undefined) t.instructions = ev.instructions;
+		if (ev.doneWhen !== undefined) t.doneWhen = ev.doneWhen;
+		if (ev.check !== undefined) t.check = ev.check;
+		if (ev.skills !== undefined) t.skills = ev.skills;
 		if (ev.note !== undefined) t.notes.push(ev.note);
 		t.updatedAt = ev.at;
 	}

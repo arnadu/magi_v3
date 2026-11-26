@@ -74,6 +74,40 @@ should go (relative weights; targets are task ids, objective ids, or `overhead`)
 Allocate(key: "TASK-1:60,overhead:40")
 ```
 
+## Work orders
+
+A task can carry its own instructions, so that whoever does it does not have to guess:
+
+```
+AddTask(id: "SEC-T6", title: "First triage pass", objective: "SEC-4", assignee: "appsec",
+  instructions: "After each triage run, verify what survived. Inputs: review/state/runs/ ...",
+  doneWhen: "A run has no deferred item and the verification queue is empty.",
+  check: {script: "alert-triage/scripts/check_first_pass.sh"},
+  skills: ["alert-triage", "security-judgement"])
+```
+
+- `instructions` (up to 2,000 characters): what to achieve and why, the inputs with their
+  paths, and the limits. Write it for someone starting cold.
+- `doneWhen` (up to 500): the finish line, stated so it can be checked.
+- `skills` (up to 6): team or platform skills the work must follow. They are refused if the
+  assignee does not have them. When the assignee starts the task (`in-progress`), the
+  answer carries their full text: do the work to their standard.
+- `check`: a script inside a team or platform skill (`<skill>/<path>`), with optional `args`.
+  When the task is completed, it runs as the agent completing it, in that agent's workdir
+  (with `WORKDIR`, `SHARED_DIR`, `AGENT_ID`), for at most 120 seconds. Exit 0 means done,
+  and its output is recorded as the evidence; any other exit refuses the completion and
+  shows the output. A check reads; it never changes anything.
+
+**Completing a work order.** With a check, `UpdateTask(status: "completed")` runs it. Without
+one, a task with a `doneWhen` needs a note saying how each condition was met, with paths.
+Only the operator and the mission copilot may complete a task without meeting its finish
+line, with `override: "<reason>"`, which is recorded.
+
+**Who sets the terms.** `doneWhen`, `check` and `skills` are changed only by the task's
+creator, its objective's owner or the mission copilot. If you are assigned a task whose terms
+look wrong, say so to whoever assigned it; you may still update its `instructions` with what
+you learn.
+
 ## Rules
 
 - **Keep status honest and current.** The operator manages by exception from this

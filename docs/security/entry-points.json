@@ -1539,7 +1539,7 @@
 		"kind": "tool",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/objectives/tools.ts",
-		"line": 145,
+		"line": 159,
 		"name": "AddTask",
 		"tag": "task.create"
 	},
@@ -1547,7 +1547,7 @@
 		"kind": "tool",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/objectives/tools.ts",
-		"line": 222,
+		"line": 239,
 		"name": "UpdateTask",
 		"tag": "task.update"
 	},
@@ -1555,7 +1555,7 @@
 		"kind": "tool",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/objectives/tools.ts",
-		"line": 302,
+		"line": 414,
 		"name": "RecordKpi",
 		"tag": "kpi.record"
 	},
@@ -1563,7 +1563,7 @@
 		"kind": "tool",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/objectives/tools.ts",
-		"line": 353,
+		"line": 465,
 		"name": "Allocate",
 		"tag": "cost.allocate"
 	},
@@ -1755,7 +1755,7 @@
 		"kind": "tool",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/tools/investigate.ts",
-		"line": 301,
+		"line": 343,
 		"name": "Investigate",
 		"tag": "agent.investigate"
 	},

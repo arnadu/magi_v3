@@ -94,7 +94,8 @@ function Task({
 	filterAgent?: string | null;
 }) {
 	const dim = !!filterAgent && t.assignee !== filterAgent;
-	return (
+	const order = t.instructions || t.doneWhen || t.check || t.skills?.length;
+	const row = (
 		<div className={`task${dim ? " dim" : ""}`}>
 			<span className={`s-dot s-${t.status}`} />
 			<span className="tid">{t.id}</span>
@@ -106,6 +107,47 @@ function Task({
 				<span className="ass">—</span>
 			)}
 		</div>
+	);
+	if (!order) return row;
+	const lastNote = t.notes?.at(-1);
+	return (
+		<details className="task-order">
+			<summary>{row}</summary>
+			<dl>
+				{t.instructions && (
+					<>
+						<dt>Instructions</dt>
+						<dd>{t.instructions}</dd>
+					</>
+				)}
+				{t.doneWhen && (
+					<>
+						<dt>Done when</dt>
+						<dd>{t.doneWhen}</dd>
+					</>
+				)}
+				{t.check && (
+					<>
+						<dt>Checked by</dt>
+						<dd>
+							<code>{[t.check.script, ...(t.check.args ?? [])].join(" ")}</code>
+						</dd>
+					</>
+				)}
+				{t.skills?.length ? (
+					<>
+						<dt>Must follow</dt>
+						<dd>{t.skills.join(", ")}</dd>
+					</>
+				) : null}
+				{lastNote && (
+					<>
+						<dt>Last note</dt>
+						<dd className="task-note">{lastNote}</dd>
+					</>
+				)}
+			</dl>
+		</details>
 	);
 }
 

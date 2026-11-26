@@ -9,7 +9,7 @@
  * turn and is read-only to the agent.
  */
 
-import type { FoldedObjective, FoldedTree } from "./types.js";
+import type { FoldedObjective, FoldedTask, FoldedTree } from "./types.js";
 
 /**
  * The `data-managed` key for the daemon-owned objectives region. It carries no
@@ -36,6 +36,24 @@ function flatten(roots: FoldedObjective[]): FoldedObjective[] {
 }
 
 const OPEN_TASK = (s: string) => s !== "completed" && s !== "cancelled";
+
+/**
+ * One task: its title, and for a task being worked on its work order. A
+ * deferred task shows only its title, to keep the map short.
+ */
+function renderTask(t: FoldedTask): string {
+	const objRef = t.objective ? ` [${t.objective}]` : "";
+	const head = `<strong>${t.id}</strong> ${esc(t.title)} — ${t.status}${objRef}`;
+	if (t.status === "deferred") return `<li>${head}</li>`;
+	const lines: string[] = [];
+	if (t.instructions) lines.push(`Instructions: ${esc(t.instructions)}`);
+	if (t.doneWhen) lines.push(`Done when: ${esc(t.doneWhen)}`);
+	if (t.check) lines.push(`Checked by: <code>${esc(t.check.script)}</code>`);
+	if (t.skills?.length)
+		lines.push(`Must follow skills: ${t.skills.map(esc).join(", ")}`);
+	if (lines.length === 0) return `<li>${head}</li>`;
+	return `<li>${head}<br>${lines.join("<br>")}</li>`;
+}
 
 /**
  * Build the inner HTML for the agent's `#my-objectives` section, or `null` when
@@ -79,6 +97,7 @@ export function renderMyObjectives(
 		parts.push(
 			`<p>You own objective <strong>${o.id}</strong> "${esc(o.title)}" (${o.status}${budget}${spent}).</p>`,
 		);
+		if (o.description) parts.push(`<p>${esc(o.description)}</p>`);
 	}
 
 	if (myKpis.length > 0) {
@@ -100,14 +119,9 @@ export function renderMyObjectives(
 	}
 
 	if (myTasks.length > 0) {
-		const items = myTasks
-			.map((t) => {
-				const objRef = t.objective ? ` [${t.objective}]` : "";
-				return `<li><strong>${t.id}</strong> ${esc(t.title)} — ${t.status}${objRef}</li>`;
-			})
-			.join("");
+		const items = myTasks.map(renderTask).join("");
 		parts.push(
-			`<p>Your open tasks (update with <code>UpdateTask</code>):</p><ul>${items}</ul>`,
+			`<p>Your open tasks (update with <code>UpdateTask</code>). Starting one (in-progress) gives you the skills it must follow; completing one needs its finish line met: its check passes, or your note says how each condition was met.</p><ul>${items}</ul>`,
 		);
 	} else {
 		parts.push("<p>No open tasks are assigned to you.</p>");

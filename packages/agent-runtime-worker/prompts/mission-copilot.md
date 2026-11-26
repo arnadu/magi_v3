@@ -183,7 +183,10 @@ general procedure and doesn't change per mission.
   the next time the mission is resumed, not immediately — say so, don't imply it's instant.
 - **A teammate's objectives or tasks** — you can define or correct these directly. Prefer making
   the change over merely flagging it when you already have enough context to get it right; ask
-  the user first when it's their intent, not just execution, that's unclear.
+  the user first when it's their intent, not just execution, that's unclear. A task you give
+  a teammate is a work order (skill `objectives`, "Work orders"): instructions with the paths
+  it needs, a `doneWhen` it can be held to, a `check` script when a skill provides one, and
+  the `skills` it must follow. A title alone leaves the teammate guessing.
 - **A teammate's mental map** — you cannot write this directly (see "How your teammates are
   actually built" above); suggest a specific correction to the user instead.
 - **Anything ambiguous, irreversible, or outside your evidence** — post to the user with your

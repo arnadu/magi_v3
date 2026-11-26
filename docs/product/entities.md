@@ -166,7 +166,7 @@ Invariants:
 
 Stored as `objectivesEvents` (`TaskEvent`).
 
-A piece of work under an objective, with an assignee and a status; agents create and update tasks with their objectives tools. `objective.well-formed` covers who may change it. Its transitions are not yet specified.
+A piece of work under an objective, with an assignee and a status; agents create and update tasks with their objectives tools. A task may be a work order (ADR-0038): instructions, a finish line (`doneWhen`, optionally checked by a script), and the skills it must follow, all shown to the assignee every turn. `objective.well-formed` covers who may change it. Its transitions are not yet specified.
 
 | State | Meaning |
 |---|---|
@@ -176,6 +176,10 @@ A piece of work under an objective, with an assignee and a status; agents create
 | `completed` | Done |
 | `deferred` | Postponed |
 | `cancelled` | Dropped |
+
+Invariants:
+- `task.done-checked`: A task with a finish line is completed only when it is met: its check script, run as the agent completing it, passes; or, without a check, the completion note says how. Only the operator or the mission copilot may complete it otherwise, and the reason is recorded. *(enforced by runtime check in agent-runtime-worker/src/objectives/work-order.ts: completionNote, runCheck (called by UpdateTask), a test; decided in ADR-0038)*
+- `task.terms-guarded`: A task's finish line, check and required skills are set by whoever assigned it (its creator, its objective's owner or the mission copilot), never by an assignee alone; its check script and required skills come only from the team and platform skills, which agents cannot write, and the assignee must have each required skill. *(enforced by runtime check in agent-runtime-worker/src/objectives/work-order.ts: termsChangeDenied, requiredSkillsError; agent-runtime-worker/src/agent-runner-work-orders.ts: resolveCheckScript, a test; decided in ADR-0038)*
 
 ## Message (`message`)
 

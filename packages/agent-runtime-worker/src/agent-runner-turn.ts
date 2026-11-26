@@ -21,6 +21,7 @@ import {
 	createLimitEnforcer,
 	syncObjectivesSection,
 } from "./agent-runner-phases.js";
+import { workOrderEnv } from "./agent-runner-work-orders.js";
 import { tryCreateCreateImageTool } from "./images/create-image-tool.js";
 import type { LlmCallEvent, LlmCallMeter } from "./llm-meter.js";
 import { type InnerLoopConfig, runInnerLoop } from "./loop.js";
@@ -410,7 +411,12 @@ export function buildTurnTools(
 		...(searchWebTool ? [searchWebTool] : []),
 		...(browseWebHandle ? [browseWebHandle.tool] : []),
 		...(ctx.objectivesRepo
-			? createObjectivesTools(ctx.objectivesRepo, missionId, agentId)
+			? createObjectivesTools(
+					ctx.objectivesRepo,
+					missionId,
+					agentId,
+					workOrderEnv(ctx.teamConfig.agents, workdir, sharedDir, acl),
+				)
 			: []),
 	];
 	const disabled = new Set(agent.disabledTools ?? []);

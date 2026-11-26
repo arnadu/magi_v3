@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { TaskWorkOrder } from "@magi/agent-config";
 import { Type } from "@sinclair/typebox";
 import type { MagiTool, ToolResult } from "../tools.js";
 import { truncate } from "../tools.js";
@@ -18,10 +19,20 @@ import type { ObjectivesRepository } from "./repository.js";
 import {
 	type AllocEvent,
 	type FoldedObjective,
+	type FoldedTask,
 	type KpiEvent,
 	type TaskEvent,
 	TaskStatusSchema,
 } from "./types.js";
+import {
+	completionNote,
+	parseWorkOrder,
+	referencesError,
+	skillHandover,
+	termsChangeDenied,
+	WORK_ORDER_PARAMS,
+	type WorkOrderEnv,
+} from "./work-order.js";
 
 function findObjective(
 	roots: FoldedObjective[],
@@ -135,18 +146,21 @@ interface ObjectivesToolDeps {
 	repo: ObjectivesRepository;
 	missionId: string;
 	agentId: string;
+	/** Absent where tasks are written outside an agent's turn: work orders are then only stored. */
+	workOrders?: WorkOrderEnv;
 }
 
 function addTaskTool({
 	repo,
 	missionId,
 	agentId,
+	workOrders,
 }: ObjectivesToolDeps): MagiTool {
 	return {
 		name: "AddTask",
 		operation: "task.create",
 		description:
-			"Add a new task to the objectives store. Defaults: assignee = you, status = open, id auto-generated. Prints the new task id.",
+			"Add a new task to the objectives store. Defaults: assignee = you, status = open, id auto-generated. Prints the new task id. A task for someone else should be a work order: instructions, doneWhen, and the skills it must follow (skill objectives).",
 		parameters: Type.Object({
 			id: Type.Optional(
 				Type.String({
@@ -170,6 +184,7 @@ function addTaskTool({
 			deadline: Type.Optional(Type.String()),
 			budgetUsd: Type.Optional(Type.Number()),
 			note: Type.Optional(Type.String()),
+			...WORK_ORDER_PARAMS,
 		}),
 		async execute(_id, args) {
 			const status = (args.status as string | undefined) ?? "open";
@@ -178,6 +193,15 @@ function addTaskTool({
 					`AddTask: invalid status "${status}" (one of: ${TASK_STATUSES.join(", ")})`,
 				);
 			}
+			if (status === "completed")
+				return err(
+					"AddTask: a new task cannot start completed — add it, then complete it with UpdateTask",
+				);
+			const parsed = parseWorkOrder(args);
+			if ("error" in parsed) return err(`AddTask: ${parsed.error}`);
+			const assignee = (args.assignee as string | undefined) ?? agentId;
+			const refErr = referencesError(workOrders, parsed.order, assignee);
+			if (refErr) return err(`AddTask: ${refErr}`);
 			const id =
 				(args.id as string | undefined) || `TASK-${randomUUID().slice(0, 8)}`;
 			if (args.id && (await taskExists(repo, missionId, id))) {
@@ -191,25 +215,17 @@ function addTaskTool({
 				by: agentId,
 				title: args.title as string,
 				objective: (args.objective as string | undefined) ?? null,
-				assignee: (args.assignee as string | undefined) ?? agentId,
+				assignee,
 				status: status as TaskEvent["status"],
-				...(args.priority !== undefined
-					? { priority: args.priority as string }
-					: {}),
-				...(args.deadline !== undefined
-					? { deadline: args.deadline as string }
-					: {}),
-				...(args.budgetUsd !== undefined
-					? { budgetUsd: args.budgetUsd as number }
-					: {}),
-				...(args.note !== undefined ? { note: args.note as string } : {}),
+				...definedFields(args, ["priority", "deadline", "budgetUsd", "note"]),
+				...parsed.order,
 			};
 			try {
 				await repo.appendTaskEvent(missionId, event);
-				return ok(id);
 			} catch (e) {
 				return err(`AddTask: failed to record task — ${(e as Error).message}`);
 			}
+			return ok(withHandover(id, workOrders, status, undefined, parsed.order));
 		},
 	};
 }
@@ -218,12 +234,13 @@ function updateTaskTool({
 	repo,
 	missionId,
 	agentId,
+	workOrders,
 }: ObjectivesToolDeps): MagiTool {
 	return {
 		name: "UpdateTask",
 		operation: "task.update",
 		description:
-			"Update a task in the objectives store. Only the fields you pass are changed (last-write-wins); note is appended to the task's notes. effort is a relative per-turn weight used by cost attribution.",
+			"Update a task in the objectives store. Only the fields you pass are changed (last-write-wins); note is appended to the task's notes. effort is a relative per-turn weight used by cost attribution. Starting a task (in-progress) returns the skills it must follow; completing one runs its check, or needs a note meeting its doneWhen.",
 		parameters: Type.Object({
 			id: Type.String({ description: "Task id to update" }),
 			status: Type.Optional(
@@ -242,8 +259,15 @@ function updateTaskTool({
 				}),
 			),
 			note: Type.Optional(Type.String()),
+			override: Type.Optional(
+				Type.String({
+					description:
+						"Operator and mission copilot only: complete without meeting the finish line; the reason is recorded.",
+				}),
+			),
+			...WORK_ORDER_PARAMS,
 		}),
-		async execute(_id, args) {
+		async execute(_id, args, signal) {
 			const status = args.status as string | undefined;
 			if (
 				status &&
@@ -253,45 +277,133 @@ function updateTaskTool({
 					`UpdateTask: invalid status "${status}" (one of: ${TASK_STATUSES.join(", ")})`,
 				);
 			}
-			const denied = await taskWriteDenied(
-				repo,
-				missionId,
-				agentId,
-				args.id as string,
+			const prepared = await prepareUpdate(
+				{ repo, missionId, agentId, workOrders },
+				args,
+				signal,
 			);
-			if (denied) return err(`UpdateTask: ${denied}`);
-			const event: TaskEvent = {
-				id: args.id as string,
-				at: new Date().toISOString(),
-				by: agentId,
-				...(status !== undefined
-					? { status: status as TaskEvent["status"] }
-					: {}),
-				...(args.assignee !== undefined
-					? { assignee: args.assignee as string }
-					: {}),
-				...(args.priority !== undefined
-					? { priority: args.priority as string }
-					: {}),
-				...(args.deadline !== undefined
-					? { deadline: args.deadline as string }
-					: {}),
-				...(args.budgetUsd !== undefined
-					? { budgetUsd: args.budgetUsd as number }
-					: {}),
-				...(args.effort !== undefined ? { effort: args.effort as number } : {}),
-				...(args.note !== undefined ? { note: args.note as string } : {}),
-			};
+			if ("error" in prepared) return err(`UpdateTask: ${prepared.error}`);
 			try {
-				await repo.appendTaskEvent(missionId, event);
-				return ok(`UpdateTask: ${event.id} updated`);
+				await repo.appendTaskEvent(missionId, prepared.event);
 			} catch (e) {
 				return err(
 					`UpdateTask: failed to record update — ${(e as Error).message}`,
 				);
 			}
+			return ok(
+				withHandover(
+					`UpdateTask: ${prepared.event.id} updated`,
+					workOrders,
+					status,
+					prepared.task,
+					prepared.order,
+				),
+			);
 		},
 	};
+}
+
+/** Event fields copied from the tool call when given. */
+function definedFields(
+	args: Record<string, unknown>,
+	keys: readonly (keyof TaskEvent)[],
+): Partial<TaskEvent> {
+	const out: Record<string, unknown> = {};
+	for (const k of keys) if (args[k] !== undefined) out[k] = args[k];
+	return out as Partial<TaskEvent>;
+}
+
+/** The confirmation, plus the required skills' text when the task is being started. */
+function withHandover(
+	text: string,
+	workOrders: WorkOrderEnv | undefined,
+	status: string | undefined,
+	task: FoldedTask | undefined,
+	order: TaskWorkOrder,
+): string {
+	const skills = order.skills ?? task?.skills;
+	if (
+		status !== "in-progress" ||
+		task?.status === "in-progress" ||
+		!skills?.length ||
+		!workOrders
+	)
+		return text;
+	return `${text}\n\n${skillHandover(workOrders, skills)}`;
+}
+
+/**
+ * Every check an update must pass, in order (ownership, the work order, who may
+ * change its terms, the assignee's skills, the finish line), and the event to record.
+ */
+async function prepareUpdate(
+	{ repo, missionId, agentId, workOrders }: ObjectivesToolDeps,
+	args: Record<string, unknown>,
+	signal: AbortSignal | undefined,
+): Promise<
+	| { event: TaskEvent; task: FoldedTask; order: TaskWorkOrder }
+	| { error: string }
+> {
+	const taskId = args.id as string;
+	const denied = await taskWriteDenied(repo, missionId, agentId, taskId);
+	if (denied) return { error: denied };
+	const tree = await repo.readTree(missionId);
+	const task = tree.tasks.find((t) => t.id === taskId);
+	if (!task) return { error: `unknown task "${taskId}"` };
+	const parsed = parseWorkOrder(args);
+	if ("error" in parsed) return parsed;
+	const order = parsed.order;
+	const owner = task.objective
+		? findObjective(tree.objectives, task.objective)?.owner
+		: undefined;
+	const privileged = PRIVILEGED.has(agentId);
+	const termsDenied = termsChangeDenied(
+		task,
+		agentId,
+		privileged,
+		owner,
+		order,
+	);
+	if (termsDenied) return { error: termsDenied };
+	const assignee =
+		(args.assignee as string | undefined) ?? task.assignee ?? null;
+	// A new assignee must be able to follow the skills the task already requires.
+	const skills =
+		order.skills ?? (args.assignee !== undefined ? task.skills : undefined);
+	const refErr = referencesError(workOrders, { ...order, skills }, assignee);
+	if (refErr) return { error: refErr };
+	let note = args.note as string | undefined;
+	if (args.status === "completed" && task.status !== "completed") {
+		const done = await completionNote(
+			task,
+			order,
+			args,
+			agentId,
+			privileged,
+			workOrders,
+			signal,
+		);
+		if ("error" in done) return done;
+		note = done.note;
+	} else if (args.override !== undefined) {
+		return { error: "override applies only when completing a task" };
+	}
+	const event: TaskEvent = {
+		id: taskId,
+		at: new Date().toISOString(),
+		by: agentId,
+		...definedFields(args, [
+			"status",
+			"assignee",
+			"priority",
+			"deadline",
+			"budgetUsd",
+			"effort",
+		]),
+		...(note !== undefined ? { note } : {}),
+		...order,
+	};
+	return { event, task, order };
 }
 
 function recordKpiTool({
@@ -384,8 +496,9 @@ export function createObjectivesTools(
 	repo: ObjectivesRepository,
 	missionId: string,
 	agentId: string,
+	workOrders?: WorkOrderEnv,
 ): MagiTool[] {
-	const deps = { repo, missionId, agentId };
+	const deps = { repo, missionId, agentId, workOrders };
 	return [
 		addTaskTool(deps),
 		updateTaskTool(deps),

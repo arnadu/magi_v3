@@ -217,7 +217,11 @@ mental_map_remove({ target_id: "task-17" })
 
 Agents use them to add tasks from inbound messages, reprioritize, mark tasks done, record findings
 and keep working notes. Daemon-managed regions (`data-managed`, e.g. `#my-objectives`) are synced
-from their real source at turn start and cannot be removed by an edit.
+from their real source at turn start and cannot be removed by an edit. `#my-objectives` shows the
+agent's owned objectives with their descriptions, its KPIs, and its open tasks with their work
+orders (instructions, finish line, check, required skills; ADR-0038). Every agent's system prompt
+also says what the map is for: its memory across sessions, kept short, with pointers rather than
+copies and facts apart from assessments (`prompts/mental-map-pointer.md`).
 
 An agent's config can also declare `managedRegions`: up to four regions the daemon fills, before
 each turn, from a file in the mission's shared folder (`{ key, file, title?, maxBytes?,
@@ -376,7 +380,7 @@ Every tool name is case-sensitive and can appear in `disabledTools` in the agent
 | `Investigate` | Agentic | One question about a codebase, put to a nested `runInnerLoop` with a clean context: the agent's own shell, a skill file, a briefing, and a JSON Schema the answer must match (one repair turn, then an error). Reads a reference copy kept by a platform task and returns its commit with the answer. Also on the Tool API (`investigate`) for review pipelines run as jobs | — |
 | `CreateImage` | Agentic | Image sub-agent (ADR-0035): picks a menu model, generates, critiques and refines within a budget; writes candidates, `manifest.json` and `contact-sheet.html` to `sharedDir/images/<job-id>/` | `OPENROUTER_API_KEY` |
 | `AnalyzeMemories` | Memory | Searches full conversation history (incl. compacted/pruned turns) in MongoDB; recovers stubbed tool outputs | — |
-| `AddTask` / `UpdateTask` | Objectives | Create or update a task in the mission's objectives store (ADR-0019); updates are limited to the task's assignee, creator, objective owner, or the operator/mission copilot | — |
+| `AddTask` / `UpdateTask` | Objectives | Create or update a task in the mission's objectives store (ADR-0019); updates are limited to the task's assignee, creator, objective owner, or the operator/mission copilot. A task may be a work order (ADR-0038): `instructions`, `doneWhen`, a `check` script and required `skills`. Starting it returns the skills' text; completing it runs its check as the caller, or needs a note meeting `doneWhen`; its terms are changed only by whoever assigned it | — |
 | `RecordKpi` | Objectives | Record a value for a KPI the agent owns | — |
 | `Allocate` | Objectives | Explicit cost-allocation timesheet across tasks/objectives, used only when the mental map flags unattributed cost | — |
 

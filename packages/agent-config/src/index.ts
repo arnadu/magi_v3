@@ -57,6 +57,19 @@ export {
 	type ImageKind,
 } from "./models.js";
 export {
+	MAX_TASK_CHECK_ARG_CHARS,
+	MAX_TASK_CHECK_ARGS,
+	MAX_TASK_DONE_WHEN_CHARS,
+	MAX_TASK_INSTRUCTIONS_CHARS,
+	MAX_TASK_SKILLS,
+	TASK_CHECK_SCRIPT_RE,
+	TASK_SKILL_NAME_RE,
+	type TaskCheck,
+	TaskCheckSchema,
+	type TaskWorkOrder,
+	TaskWorkOrderSchema,
+} from "./objectives-task.js";
+export {
 	GITHUB_REPO_URL_RE,
 	PLATFORM_TASK_KINDS,
 	PLATFORM_TASK_NAME_RE,

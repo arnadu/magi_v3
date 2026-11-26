@@ -1,3 +1,4 @@
+import type { TaskCheck } from "@magi/agent-config";
 // Mirrors the folded shape returned by the monitor `GET /objectives` endpoint
 // (agent-runtime-worker/src/objectives/types.ts FoldedTree). Kept structural so
 // the Objectives panel can render the live store unchanged once auth is wired.
@@ -35,6 +36,12 @@ export interface FoldedTask {
 	status: TaskStatus;
 	costUsd: number;
 	budgetUsd?: number;
+	/** The work order (ADR-0038). */
+	instructions?: string;
+	doneWhen?: string;
+	check?: TaskCheck;
+	skills?: string[];
+	notes?: string[];
 }
 
 export interface FoldedObjective {

@@ -496,9 +496,36 @@ const task = defineEntity({
 		{ id: "cancelled", meaning: "Dropped" },
 	],
 	transitions: [],
-	invariants: [],
+	invariants: [
+		{
+			id: "task.done-checked",
+			text: "A task with a finish line is completed only when it is met: its check script, run as the agent completing it, passes; or, without a check, the completion note says how. Only the operator or the mission copilot may complete it otherwise, and the reason is recorded.",
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/objectives/work-order.ts: completionNote, runCheck (called by UpdateTask)",
+				},
+				{ kind: "test" },
+			],
+			decidedBy: "ADR-0038",
+		},
+		{
+			id: "task.terms-guarded",
+			text: "A task's finish line, check and required skills are set by whoever assigned it (its creator, its objective's owner or the mission copilot), never by an assignee alone; its check script and required skills come only from the team and platform skills, which agents cannot write, and the assignee must have each required skill.",
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/objectives/work-order.ts: termsChangeDenied, requiredSkillsError; agent-runtime-worker/src/agent-runner-work-orders.ts: resolveCheckScript",
+				},
+				{ kind: "test" },
+			],
+			decidedBy: "ADR-0038",
+		},
+	],
 	notes:
-		"A piece of work under an objective, with an assignee and a status; agents create and update tasks with their objectives tools. `objective.well-formed` covers who may change it. Its transitions are not yet specified.",
+		"A piece of work under an objective, with an assignee and a status; agents create and update tasks with their objectives tools. A task may be a work order (ADR-0038): instructions, a finish line (`doneWhen`, optionally checked by a script), and the skills it must follow, all shown to the assignee every turn. `objective.well-formed` covers who may change it. Its transitions are not yet specified.",
 });
 
 const message = defineEntity({

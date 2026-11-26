@@ -814,6 +814,31 @@ h2.sec {
 	font-size: 11px;
 	color: var(--mut);
 }
+.task-order > summary {
+	list-style: none;
+	cursor: pointer;
+}
+.task-order > summary::-webkit-details-marker {
+	display: none;
+}
+.task-order dl {
+	margin: 2px 0 8px 22px;
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 3px 10px;
+	font-size: 12px;
+}
+.task-order dt {
+	color: var(--mut);
+}
+.task-order dd {
+	margin: 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.task-order .task-note {
+	color: var(--mut);
+}
 .task .cost {
 	font-size: 11px;
 	color: var(--mut);
