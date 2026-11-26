@@ -51,6 +51,18 @@ MD-NNN` or `duplicate of F-NNN`.
   in your mental map (counts by severity and status, the top open items), and the KPIs you own.
 - The register is private to the mission. Never copy an unfixed finding anywhere public.
 
+## Monthly review
+
+Once a month, for every entry not yet at an end state:
+- still present at the reference copy's current commit? Open its citations; if the code
+  changed, re-check the claim, and if it is gone, find the commit that removed it and verify the
+  fix (above).
+- status current? An entry `reported` for a month with no answer goes in the next weekly
+  summary under what needs a decision.
+
+Then update every KPI you own that the register establishes, naming the counts it comes from;
+report the others as unknown. Done when every open entry carries this month's date.
+
 ## Importing the official tracker (onboarding)
 
 For each open row of `docs/security/findings.md`, add an entry with status `reported`, the

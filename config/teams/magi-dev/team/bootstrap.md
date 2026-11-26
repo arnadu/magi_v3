@@ -271,3 +271,62 @@ code-reviewer and qa-lead are paused: send anything you would hand to them to th
 
 When the documenter replies, check with ListScheduledMessages that `report-gate` is pending, and
 tell the user its next run time. The gate's results are in `reports/gate/ledger.md`.
+
+## Addendum 2026-11-26 — appsec returns, on alert triage
+
+Apply only this section if the earlier ones were already applied. appsec is resumed with a new
+role (its system prompt is replaced by the operator): it triages the repository's security
+alerts and re-reviews the watched guards through the review pipeline, verifies what survives,
+and keeps the register. Its commit-by-commit review, red team and drift sweeps stay paused.
+
+**Objectives.** Call ReadMissionObjectives, then EditObjectiveTree with the same tree and only
+these changes:
+- SEC-2 gains the KPI `{"id":"K-sec2-held","label":"share of pipeline findings that held when verified","owner":"appsec","kind":"quantitative","source":"agent-reported","unit":"%"}`.
+- SEC-4 gains the KPI `{"id":"K-sec4-untriaged","label":"open security alerts without a verdict","owner":"appsec","kind":"quantitative","source":"agent-reported","target":0}`.
+- SEC-4's title becomes "Supply chain and scanner alerts: every open alert has a verified verdict, and no HIGH or CRITICAL is real and open".
+
+**Tasks.** UpdateTask T-10, SEC-T1 and SEC-T3 to `deferred` with the note "paused 2026-11-26:
+appsec is on alert triage until the pipeline has a kind for this". Then AddTask, passing the
+`id` shown (if taken, use the next free one and report the mapping):
+
+| id | objective | assignee | title |
+|---|---|---|---|
+| SEC-T4 | SEC | appsec | Restructure your mental map and correct its stale beliefs (the message of 2026-11-26) |
+| SEC-T5 | SEC-4 | appsec | Schedule the daily alert-triage job and check its first run (skill alert-triage) |
+| SEC-T6 | SEC-2 | appsec | First pass: run triage daily until no item is deferred; verify every finding; register or dismiss each |
+
+**Schedules.** CreateScheduledMessage (cron in UTC):
+
+| label | to | cron | subject | body |
+|---|---|---|---|---|
+| appsec-weekly | appsec | `0 7 * * 1` | Weekly summary | Write and send the weekly summary (skill security-reporting, "The weekly summary"). |
+| appsec-monthly | appsec | `0 8 1 * *` | Monthly register review | Review the findings register (skill findings-register, "Monthly review"). |
+
+**Then PostMessage appsec** (subject "Your role has changed"), exactly:
+
+"Your role has changed: read your system prompt again. You now triage the repository's
+security alerts through the review pipeline and verify what survives; read skill alert-triage
+before anything else. Your commit-by-commit review and red team are paused; tasks T-10, SEC-T1
+and SEC-T3 are deferred. Your tasks, in order: SEC-T4, SEC-T5, SEC-T6.
+
+SEC-T4, your mental map:
+1. Restructure it to these sections, in this order: Mission context, Triage state,
+   Verification queue, Findings summary, Pipeline calibration, Questions for the user, Lessons,
+   Working notes. Move your 'Riskiest boundaries' notes into Working notes, labelled 'my
+   assessment, not verified'. Keep your review cursor (803571f) in Working notes for when
+   commit review returns. Remove the advisory baseline of 2026-11-10 and the
+   trust-boundary-to-file list: the pipeline and the reference copy replace them. Remove the
+   standing duties too: your tasks and schedules hold them now.
+2. Correct these beliefs. They were never established by evidence:
+   - 'No HIGH or CRITICAL finding open' and 'production has no HIGH or CRITICAL advisory'
+     came from npm audit on 2026-11-10 and your own reviews. The repository's scanners now
+     report open alerts at those severities; their verdicts are unknown until the first
+     triage pass. Record K-sec-open-high and K-sec4-open as unknown, not 0.
+   - '152 commits reviewed, no new findings' says the commits were read, not that they are
+     secure. Say 'read', not 'reviewed clean', wherever you report it.
+   - K-sec3-accuracy and K-sec5-usefulness are `manual`: the user scores them. Do not record
+     values for them.
+
+SEC-T5: schedule the daily job as alert-triage's 'Schedule the job (once)' says, reply to the
+user with the script's output, then run the job once now as a background job instead of
+waiting for 06:00. SEC-T6 starts when it finishes ('After a run')."

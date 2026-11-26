@@ -47,8 +47,15 @@ the hand-off block.
 ## The weekly summary
 
 `YYYY-MM-DD-weekly-summary.md`, then a short PostMessage to the user pointing to it:
-what was reviewed (commit range, advisories, the boundary studied in depth), findings by
-severity and status, KPI values, and **what needs a decision from the user**.
+- what was examined: the week's triage runs (stamps, items, outcomes, calls) and anything else
+  reviewed (a commit range, a boundary studied in depth);
+- findings verified and dismissed this week, with register ids; findings by severity and status;
+- what is still unverified (the verification queue) and what the pipeline got wrong (pipeline
+  calibration);
+- KPI values, each with its source; one you could not establish is "unknown";
+- **what needs a decision from the user**.
+
+Every number names the file it came from.
 
 ## Immediate mail
 

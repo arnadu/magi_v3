@@ -1,41 +1,95 @@
 ---
 name: alert-triage
-description: Triage the repository's open security alerts (code scanning, Dependabot) and re-review the watched guards, item by item through the review pipeline, so code decides what counts. For the agents allowed to read security alerts.
+description: Triage the repository's open security alerts (code scanning, Dependabot) and re-review the watched guards through the review pipeline, then verify what survived and record it. Covers scheduling the daily job, reading a run, verifying findings, and watching the pipeline's own errors. For the agents allowed to read security alerts.
 ---
 
 # Alert triage
 
-Each day: turn the open alerts and the watched guards into review items, run them through the
-`review-pipeline` as a background job, then work through what survived.
+A background job turns every open alert and every watched guard into a review item and runs the
+items through the `review-pipeline`. You then verify what survived, by reading the code, and
+record the result in the findings register. The pipeline narrows; it does not decide.
 
-## Run
+## What the pipeline does
 
-As one background job (see `run-background`):
+- One item per alert and per watched guard.
+- Each item goes to a fresh investigator (`Investigate`) that reads a read-only copy of the
+  repository and must answer in a fixed form, citing file, line and an exact quote.
+- A positive answer is confirmed by more runs, then another investigator tries to disprove it,
+  then code checks that every cited line exists and says what is quoted.
+- Verdicts are kept: an item is examined again only when a file it depends on changes, or when
+  its verdict is older than its risk class allows. Once the backlog is through, daily runs are
+  short.
+
+Each item ends a run with one outcome:
+
+| Outcome | Meaning | What it asks of you |
+|---|---|---|
+| `finding` | survived confirmation, the refuter and the citation check | verify it (below) |
+| `negative` | the investigator found it is not real | nothing |
+| `unconfirmed` | only one of the confirmation runs said real | nothing, unless the same item stays unconfirmed three runs running: note it |
+| `refuted` | the refuter showed why it is wrong | nothing, unless you read the refutation and it is wrong |
+| `rejected` | its citations did not check out | count it (pipeline errors) |
+| `failed` | the investigation errored | count it (pipeline errors) |
+| `deferred` | the run's budget ran out | nothing; the next run takes it first |
+| `skipped` | unchanged since its last verdict | nothing |
+
+A `finding` is a lead whose citations exist, not a vulnerability. A `negative` is the
+pipeline's best answer, not proof of safety.
+
+## Schedule the job (once)
 
 ```bash
-SK=$SHARED_DIR/skills/_team/alert-triage
-python3 $SK/scripts/produce_items.py --reference magi-v3 --out $WORKDIR/review/items.jsonl
-python3 $SHARED_DIR/skills/_platform/review-pipeline/scripts/review.py \
-  --items $WORKDIR/review/items.jsonl --kinds $SK/kinds \
-  --state $WORKDIR/review/state --reference magi-v3 --max-calls 40
+bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" --label alert-triage \
+  --cron '0 6 * * *' --script "$SHARED_DIR/skills/_team/alert-triage/scripts/run_triage.sh" \
+  --args "$SHARED_DIR $WORKDIR 40" --notify-agent "$AGENT_ID" --notify-subject 'Alert triage run finished'
 ```
 
-`produce_items.py` reads the alerts with the `security-alerts` tool and the repository from the
-reference copy. Items whose dependencies have not changed are skipped by the pipeline, so a
-daily run costs little once the backlog is through.
+`run_triage.sh` runs `produce_items.py` into `$WORKDIR/review/items.jsonl`, then the pipeline
+over those items with this skill's kinds, its state in `$WORKDIR/review/state`; 40 is the most
+investigations one run may use. To run it once now, start the same script as a background job
+(`run-background`). Everything under `$WORKDIR/review/` is private: never copy it into `shared/`.
 
-## Then
+## After a run
 
-Read `state/runs/<latest>/summary.json` and `findings.json`. For each finding:
+You are woken by "Alert triage run finished". Each run has a folder
+`$WORKDIR/review/state/runs/<stamp>/`; take the newest.
 
-1. Verify it yourself in the reference copy: open each cited file at its line.
-2. If it holds, add it to the findings register (private, never a public issue).
-3. If it does not, record why in the register's dismissed list; do not edit `verdicts.json`.
+1. **Check the run.** Read its `summary.json` (commit, items, calls, counts per outcome). If
+   the job failed or there is no run newer than the last one in your map, tell the user what
+   the job's status says, and stop.
+2. **Record it.** In your mental map's "Triage state": the run stamp, commit, items, counts,
+   calls.
+3. **Queue the findings.** Add each entry of the run's `findings.json` to the "Verification
+   queue" in your map: item id, kind, one line.
+4. **Verify, oldest first.** For each queued finding, read its verdict, reasoning, evidence and
+   reproduction, then in the reference copy:
+   - open every cited file at its line; if the reference copy has moved past the run's commit,
+     check that the code is still the same;
+   - check the claim, not only the quotes: does an attacker really control the input at that
+     entry point? Does the guard it says is missing really miss it, on every path? Would the
+     reproduction work as written? You read; you never run it against a live system.
+   - Judge it with `security-judgement`.
+   - **It holds:** add it to the register (`findings-register`) with your severity, the
+     citations, the item id and run stamp, and "verified by reading at <commit>". A new HIGH
+     or CRITICAL is mailed to the user at once (`security-reporting`).
+   - **It does not:** add it to the register's dismissed list with the reason and the file and
+     line that show it, and note it under "Pipeline calibration".
 
-`rejected` and `failed` items in the ledger are not findings; look at them only when many
-appear: a skill or a schema may need fixing.
+   Remove it from the queue either way. If the turn ends first, the rest stay queued for the
+   next turn.
+5. **Watch the pipeline.** Read this run's lines in `$WORKDIR/review/state/ledger.jsonl` (one
+   line per item per run, with the run's stamp, status and reason). Under "Pipeline
+   calibration", record `rejected` or `failed` items that repeat (the same item in two runs,
+   or more than five in one run), with item ids and the ledger's reasons. Do not investigate
+   those alerts yourself instead: the skill or schema behind them gets fixed.
+6. **Update the KPIs** (`RecordKpi`): `K-sec4-untriaged` = this run's `deferred` + `failed`;
+   `K-sec2-held` = the share of findings you verified that held, over all your verifications
+   (name the register counts it comes from).
+
+Done when the queue is empty, or what is left is in it, and the map and KPIs are current.
 
 ## Rules
 
 - The alerts are private: never quote one in a public place (an issue, a commit, a pull request).
+- Never edit `verdicts.json`, and never rerun an item to get a different answer.
 - A finding is a lead whose citations were checked, not a verdict. You verify; the sponsor decides.
