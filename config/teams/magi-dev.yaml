@@ -42,6 +42,7 @@ agents:
       - data-factory-client
       - illustration
       - serve-app
+      - request-resources
     disabledTools: [BrowseWeb, CreateImage, Research, InspectImage]
     systemPrompt: |
       You are the Application Security Architect of MAGI DEV, the team of agents that reviews

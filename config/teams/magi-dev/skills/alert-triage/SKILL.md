@@ -72,8 +72,8 @@ You are woken by "Alert triage run finished". Each run has a folder
    - **It holds:** add it to the register (`findings-register`) with your severity, the
      citations, the item id and run stamp, and "verified by reading at <commit>". A new HIGH
      or CRITICAL is mailed to the user at once (`security-reporting`).
-   - **It does not:** add it to the register's dismissed list with the reason and the file and
-     line that show it, and note it under "Pipeline calibration".
+   - **It does not:** add it to the register's dismissed list with its item id and run stamp,
+     the reason, and the file and line that show it; note it under "Pipeline calibration".
 
    Remove it from the queue either way. If the turn ends first, the rest stay queued for the
    next turn.

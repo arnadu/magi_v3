@@ -274,28 +274,104 @@ tell the user its next run time. The gate's results are in `reports/gate/ledger.
 
 ## Addendum 2026-11-26 — appsec returns, on alert triage
 
-Apply only this section if the earlier ones were already applied. appsec is resumed with a new
-role (its system prompt is replaced by the operator): it triages the repository's security
-alerts and re-reviews the watched guards through the review pipeline, verifies what survives,
-and keeps the register. Its commit-by-commit review, red team and drift sweeps stay paused.
+Apply only this section if the earlier ones were already applied, and only once the mission runs
+the image with work-order tasks (ADR-0038): `AddTask` must accept `instructions`, `doneWhen`,
+`check` and `skills`. If it does not, stop and tell the user. Before this, the operator has
+replaced appsec's system prompt and its mental map.
 
-**Objectives.** Call ReadMissionObjectives, then EditObjectiveTree with the same tree and only
-these changes:
-- SEC-2 gains the KPI `{"id":"K-sec2-held","label":"share of pipeline findings that held when verified","owner":"appsec","kind":"quantitative","source":"agent-reported","unit":"%"}`.
-- SEC-4 gains the KPI `{"id":"K-sec4-untriaged","label":"open security alerts without a verdict","owner":"appsec","kind":"quantitative","source":"agent-reported","target":0}`.
-- SEC-4's title becomes "Supply chain and scanner alerts: every open alert has a verified verdict, and no HIGH or CRITICAL is real and open".
+appsec returns with a new role: it triages the repository's security alerts and re-reviews the
+watched guards through the review pipeline, verifies what survives, and keeps the register. Its
+commit-by-commit review, red team, drift sweeps and design work are paused: their objectives go
+back to `proposed` until the user reactivates them.
 
-**Tasks.** UpdateTask T-10, SEC-T1 and SEC-T3 to `deferred` with the note "paused 2026-11-26:
-appsec is on alert triage until the pipeline has a kind for this". Then AddTask, passing the
-`id` shown (if taken, use the next free one and report the mapping):
+**Objectives.** Call ReadMissionObjectives, then EditObjectiveTree with the same tree, changing
+only appsec's branch (SEC and its children) as follows. Keep every other objective, and every
+KPI not named here, exactly as it is.
+- SEC: add the description "Secure by design, and the user always knows, with evidence, where
+  MAGI's security stands. appsec is the named reader of the security checks that only report."
+- SEC-4: title "Every security signal gets a verdict appsec checked", description "Each open
+  code-scanning and Dependabot alert, and each watched guard, is examined by the review pipeline
+  (skill alert-triage) and, where the pipeline could not dismiss it, by appsec reading the
+  code." KPIs: keep `K-sec4-open` with the label "verified HIGH or CRITICAL alerts still open"
+  (target 0); remove `K-sec4-lag`; add
+  `{"id":"K-sec4-untriaged","label":"open security alerts without a verdict","owner":"appsec","kind":"quantitative","source":"agent-reported","target":0}`.
+- SEC-2: description "The findings register tells the truth: a real issue is in it with its
+  evidence; a fixed one is marked fixed only after appsec read the fix; a dismissed one says
+  why, with the code that shows it." Add the KPI
+  `{"id":"K-sec2-held","label":"share of pipeline findings that held when verified","owner":"appsec","kind":"quantitative","source":"agent-reported","unit":"%"}`.
+- New SEC-8, parent SEC, owner appsec, status active: title "The user knows the security
+  state", description "A new HIGH or CRITICAL is mailed at once; a weekly summary gives the
+  runs, the findings verified and dismissed, and what needs a decision, every number with its
+  source; what could not be established is reported as unknown (skill security-reporting)."
+  No KPI.
+- New SEC-9, parent SEC, owner appsec, status active: title "The checks get better",
+  description "Where the pipeline or a scanner errs, appsec says so with the evidence (item
+  ids, ledger reasons) and proposes the change; it never does a broken check's job by hand."
+  KPI `{"id":"K-sec9-errors","label":"rejected or failed items in the last triage run","owner":"appsec","kind":"quantitative","source":"agent-reported","target":0}`.
+- SEC-1, SEC-3, SEC-5, SEC-6 and SEC-7: status `proposed`, each with the description "Paused
+  2026-11-26 until the review pipeline supports this work; the user reactivates it."
 
-| id | objective | assignee | title |
-|---|---|---|---|
-| SEC-T4 | SEC | appsec | Restructure your mental map and correct its stale beliefs (the message of 2026-11-26) |
-| SEC-T5 | SEC-4 | appsec | Schedule the daily alert-triage job and check its first run (skill alert-triage) |
-| SEC-T6 | SEC-2 | appsec | First pass: run triage daily until no item is deferred; verify every finding; register or dismiss each |
+**KPIs.** RecordKpi `K-sec-open-high` and `K-sec4-open` with the value `unknown` and the note
+"2026-11-26: the earlier 0 came from npm audit and appsec's own reviews; the scanners report
+open alerts at these severities, unverified until the first triage pass (SEC-T6)".
 
-**Schedules.** CreateScheduledMessage (cron in UTC):
+**Tasks.** UpdateTask to `cancelled`, each with its note:
+- T-10: "Cancelled 2026-11-26: recurring work is not a task. Change review returns, as a
+  pipeline kind, when the user reactivates SEC-1."
+- SEC-T1: "Cancelled 2026-11-26: the controls checklist returns as a pipeline kind."
+- SEC-T3: "Cancelled 2026-11-26: TB-23 done (report 2026-11-23-red-team-tb23.md); TB-24, TB-25
+  and TB-26 remain for when red team returns."
+
+Then AddTask, one call each, with exactly these fields (assignee `appsec`; if an id is taken,
+use the next free one and report the mapping).
+
+SEC-T5 · objective SEC-4 · priority high · title "Schedule the daily alert-triage job and run
+it once now"
+- instructions: "Follow skill alert-triage, 'Schedule the job (once)': schedule run_triage.sh
+  daily at 06:00 UTC, notifying you when each run finishes. Then start the same script once now
+  as a background job (skill run-background) rather than waiting for 06:00. Reply to the user
+  with both commands' output. The run wakes you with 'Alert triage run finished'."
+- doneWhen: "shared/schedules/alert-triage.json runs alert-triage/scripts/run_triage.sh and
+  notifies you, and at least one run has finished in your review/state/runs/."
+- check: `{"script":"alert-triage/scripts/check_triage.sh","args":["scheduled"]}`
+- skills: `["alert-triage","run-background"]`
+
+SEC-T6 · objective SEC-4 · priority high · title "First triage pass: verify what the pipeline
+found until the backlog is through"
+- instructions: "After each run ('Alert triage run finished'), follow skill alert-triage, 'After
+  a run': read the newest review/state/runs/<stamp>/summary.json and findings.json, verify each
+  finding by reading the code in the reference copy, and record it in the register (skill
+  findings-register), as a finding or as dismissed, with its item id and run stamp. Each daily
+  run first takes up what the last one deferred. Mail a new HIGH or CRITICAL to the user at once
+  (skill security-reporting). Report repeated rejected or failed items; never investigate them
+  yourself instead."
+- doneWhen: "The newest run deferred no item, and every finding of every run is in
+  shared/reports/security/register.md by its item id, verified or dismissed."
+- check: `{"script":"alert-triage/scripts/check_triage.sh","args":["first-pass"]}`
+- skills: `["alert-triage","security-judgement","findings-register"]`
+
+SEC-T7 · objective SEC-2 · title "Review the findings register against the current code"
+- instructions: "Follow skill findings-register, 'Monthly review', for
+  shared/reports/security/register.md, against the reference copy at its current commit
+  (/var/lib/magi/reference/magi-v3/status.json). Start with MD-001 to MD-004, imported on
+  2026-11-10 from F-022, F-026, F-029 and F-031: check each against docs/security/findings.md
+  and the code. Then update the findings summary in your mental map."
+- doneWhen: "Every register entry not at an end state carries today's date in its History with
+  what was checked, and your mental map's findings summary matches the register."
+- skills: `["findings-register","security-judgement"]`
+
+SEC-T8 · objective SEC-2 · title "Mark your three unestablished reports as superseded"
+- instructions: "Three of your reports state that no HIGH or CRITICAL issue was open, which was
+  never established: shared/reports/security/2026-11-10-change-review.md,
+  2026-11-10-advisory-triage.md and 2026-11-11-security-backlog.md. Add one line at the top of
+  each: 'Superseded 2026-11-26: its conclusion that no HIGH or CRITICAL issue was open was not
+  established; see the alert triage (task SEC-T6).' Change nothing else."
+- doneWhen: "Each of the three files begins with that line, and nothing else in them changed."
+- skills: `["security-reporting"]`
+
+**Schedules.** First cancel every schedule addressed to appsec that is still pending (from
+the earlier sections: `appsec-change-review`, `appsec-weekly`, `appsec-monthly`,
+`appsec-red-team`). Then CreateScheduledMessage (cron in UTC):
 
 | label | to | cron | subject | body |
 |---|---|---|---|---|
@@ -304,29 +380,9 @@ appsec is on alert triage until the pipeline has a kind for this". Then AddTask,
 
 **Then PostMessage appsec** (subject "Your role has changed"), exactly:
 
-"Your role has changed: read your system prompt again. You now triage the repository's
-security alerts through the review pipeline and verify what survives; read skill alert-triage
-before anything else. Your commit-by-commit review and red team are paused; tasks T-10, SEC-T1
-and SEC-T3 are deferred. Your tasks, in order: SEC-T4, SEC-T5, SEC-T6.
+"Your role has changed: read your system prompt and your mental map, both rewritten on
+2026-11-26; trust them over anything earlier. Your work is in 'Your objectives', each task with
+its instructions, finish line and the skills it must follow. Start SEC-T5; do SEC-T8 and SEC-T7
+while the first triage run works; SEC-T6 when it finishes."
 
-SEC-T4, your mental map:
-1. Restructure it to these sections, in this order: Mission context, Triage state,
-   Verification queue, Findings summary, Pipeline calibration, Questions for the user, Lessons,
-   Working notes. Move your 'Riskiest boundaries' notes into Working notes, labelled 'my
-   assessment, not verified'. Keep your review cursor (803571f) in Working notes for when
-   commit review returns. Remove the advisory baseline of 2026-11-10 and the
-   trust-boundary-to-file list: the pipeline and the reference copy replace them. Remove the
-   standing duties too: your tasks and schedules hold them now.
-2. Correct these beliefs. They were never established by evidence:
-   - 'No HIGH or CRITICAL finding open' and 'production has no HIGH or CRITICAL advisory'
-     came from npm audit on 2026-11-10 and your own reviews. The repository's scanners now
-     report open alerts at those severities; their verdicts are unknown until the first
-     triage pass. Record K-sec-open-high and K-sec4-open as unknown, not 0.
-   - '152 commits reviewed, no new findings' says the commits were read, not that they are
-     secure. Say 'read', not 'reviewed clean', wherever you report it.
-   - K-sec3-accuracy and K-sec5-usefulness are `manual`: the user scores them. Do not record
-     values for them.
-
-SEC-T5: schedule the daily job as alert-triage's 'Schedule the job (once)' says, reply to the
-user with the script's output, then run the job once now as a background job instead of
-waiting for 06:00. SEC-T6 starts when it finishes ('After a run')."
+Report to the user what you changed, with the task ids as created.
