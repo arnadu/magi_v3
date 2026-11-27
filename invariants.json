@@ -248,7 +248,7 @@
  {
   "id": "work-item.within-budget",
   "scope": "work-item",
-  "text": "No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; every investigation's cost is counted, a failed one's too.",
+  "text": "No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; an item that comes back incomplete twice in a row is not paid for again until something changes or the agent pins it; every investigation's cost is counted, a failed one's too.",
   "enforcedBy": [
    {
     "kind": "test"
@@ -274,7 +274,7 @@
  {
   "id": "work-item.not-a-verdict",
   "scope": "work-item",
-  "text": "An incomplete, failed or over-budget outcome is recorded with its reason and never stored as a verdict.",
+  "text": "An incomplete, set-aside, failed or over-budget outcome is recorded with its reason and never stored as a verdict.",
   "enforcedBy": [
    {
     "kind": "test"
