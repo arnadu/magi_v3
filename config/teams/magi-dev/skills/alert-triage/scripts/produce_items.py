@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import time
 
 REFERENCE_ROOT = "/var/lib/magi/reference"
 
@@ -27,6 +28,9 @@ SEVERITY = {"critical": 40, "high": 30, "error": 30, "medium": 20, "moderate": 2
 BOUNDARY_BONUS = 15
 GUARD = 50
 BOUNDARY_SECTION = "## Implementing Files by Boundary"
+# The reference copy lives on the machine's root disk and is rebuilt after every boot by a
+# platform task, which can still be running when an interrupted job is recovered.
+REFERENCE_WAIT_SECONDS = 300
 
 
 def load_json(path, default):
@@ -163,6 +167,23 @@ def produce(alerts, tree, guards_file=None):
     return items
 
 
+def reference_ready(root, name, guards_file=None) -> bool:
+    """The copy has its status file and the watched guards: without them the run would list no
+    guard and the pipeline could not hash a file."""
+    tree = os.path.join(root, name, "current")
+    guards = guards_file or os.path.join(tree, "scripts", "security", "watched-guards.json")
+    return os.path.isfile(os.path.join(root, name, "status.json")) and os.path.isfile(guards)
+
+
+def wait_for_reference(root, name, guards_file, wait_seconds, sleep=time.sleep) -> bool:
+    deadline = time.monotonic() + wait_seconds
+    while not reference_ready(root, name, guards_file):
+        if time.monotonic() >= deadline:
+            return False
+        sleep(min(15, max(0.0, deadline - time.monotonic())))
+    return True
+
+
 def main(argv, reference_root=REFERENCE_ROOT):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--reference", required=True)
@@ -170,7 +191,13 @@ def main(argv, reference_root=REFERENCE_ROOT):
     ap.add_argument("--alerts", help="a file holding the security-alerts tool's output (otherwise the tool is called)")
     ap.add_argument("--reference-root", default=reference_root, help=argparse.SUPPRESS)
     ap.add_argument("--guards", help=argparse.SUPPRESS)  # another watched-guards list (the benchmark's)
+    ap.add_argument("--wait-seconds", type=float, default=REFERENCE_WAIT_SECONDS, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
+    if not wait_for_reference(a.reference_root, a.reference, a.guards, a.wait_seconds):
+        print(f"produce_items: the reference copy {a.reference} is not ready (no status.json or no "
+              f"watched guards under {a.reference_root}/{a.reference}) after {a.wait_seconds:.0f}s; "
+              "no items produced, the next run tries again", file=sys.stderr)
+        return 3
     alerts = load_json(a.alerts, {}).get("alerts", []) if a.alerts else fetch_alerts()
     tree = os.path.join(a.reference_root, a.reference, "current")
     items = produce(alerts, tree, a.guards)

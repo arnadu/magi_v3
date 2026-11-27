@@ -481,7 +481,7 @@ reference copy of a repository.
 | The repository grows past the cap, or fills the disk | Refresh refused, or writes fail on the machine's disk | 🟠 | 1 GB cap on the mirror (the run fails, the old copy stays); three snapshots kept; the machine's own disk, not the mission volume | No alert on the machine's root disk itself |
 | The wrapper is missing (an old image) or the sudo rule broken | No task runs | 🟡 | On Fly, a `platform-task-failure` anomaly at boot; locally a log line | None |
 | The mission's task list is invalid (a hand-edited document) | No task runs | 🟡 | Validated at boot; an anomaly names the error; the rest of the daemon runs | None |
-| The machine restarts | The copy is gone with the machine's disk | 🟢 | Every task runs at boot | A first clone after a restart takes a while; reviews wait for `status.json` |
+| The machine restarts | The copy is gone with the machine's disk | 🟢 | Every task runs at boot. **Found 2026-11-27 (`magi-dev-1`):** a triage job interrupted by a suspend was recovered at boot before the copy was rebuilt, listed no guards and crashed on the missing `status.json`; the alert-triage producer now waits up to 5 minutes for `status.json` and the watched guards, then fails the run with "not ready" and produces nothing | A first clone after a restart takes a while; a run that gives up waits for the next hour |
 | A refresh while a reader is in the middle of a run | The reader sees files change under it | 🟢 | `current` switches in one rename; the previous snapshot stays until two newer ones exist | None |
 
 ---

@@ -65,11 +65,39 @@ def test_main_writes_the_items_from_a_saved_alert_list(tree, tmp_path, capsys):
     ref_root = tmp_path / "ref"
     (ref_root / "magi-v3").mkdir(parents=True)
     (ref_root / "magi-v3" / "current").symlink_to(tree)
+    (ref_root / "magi-v3" / "status.json").write_text(json.dumps({"commit": "a" * 40}))
     out = tmp_path / "review" / "items.jsonl"
     assert produce_items.main(["--reference", "magi-v3", "--out", str(out), "--alerts", str(alerts)],
                               reference_root=str(ref_root)) == 0
     assert len(out.read_text().splitlines()) == 4
     assert json.loads(capsys.readouterr().out)["byKind"] == {"guard": 1, "code-scanning": 2, "dependabot": 1}
+
+
+def test_main_refuses_a_reference_copy_not_yet_rebuilt(tree, tmp_path, capsys):
+    alerts = tmp_path / "alerts.json"
+    alerts.write_text(json.dumps({"alerts": ALERTS}))
+    ref_root = tmp_path / "ref"
+    (ref_root / "magi-v3").mkdir(parents=True)
+    (ref_root / "magi-v3" / "current").symlink_to(tree)  # no status.json yet
+    out = tmp_path / "review" / "items.jsonl"
+    assert produce_items.main(["--reference", "magi-v3", "--out", str(out), "--alerts", str(alerts),
+                               "--wait-seconds", "0"], reference_root=str(ref_root)) == 3
+    assert not out.exists()
+    assert "not ready" in capsys.readouterr().err
+
+
+def test_the_wait_ends_when_the_copy_appears(tree, tmp_path):
+    ref_root = tmp_path / "ref"
+    (ref_root / "magi-v3").mkdir(parents=True)
+    (ref_root / "magi-v3" / "current").symlink_to(tree)
+    sleeps = []
+
+    def sleep(s):
+        sleeps.append(s)
+        (ref_root / "magi-v3" / "status.json").write_text("{}")
+
+    assert produce_items.wait_for_reference(str(ref_root), "magi-v3", None, 60, sleep=sleep)
+    assert len(sleeps) == 1
 
 
 def test_priority_is_severity_plus_a_boundary_bonus_and_guards_first(tree):

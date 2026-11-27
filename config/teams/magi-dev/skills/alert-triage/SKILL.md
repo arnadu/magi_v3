@@ -65,7 +65,9 @@ over those items with this skill's kinds, its state in `$WORKDIR/review/state`. 
 starts after 12 minutes, so a run ends before the job's 30-minute limit; none starts once the
 day's budget is spent. Do not change these numbers, add arguments, or resubmit the job to get
 through faster: the budget is the pace the user chose. When a run fails, tell the user the last
-lines of its log and leave the next run to the schedule. Everything under `$WORKDIR/review/` is
+lines of its log and leave the next run to the schedule. Right after the machine restarts, the
+reference copy is still being rebuilt: the producer waits up to 5 minutes for it, then fails with
+"reference copy ... not ready" and produces nothing; that is not a fault to report. Everything under `$WORKDIR/review/` is
 private: never copy it into `shared/`.
 
 ## Steer the order (when you have a reason)
