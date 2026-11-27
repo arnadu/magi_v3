@@ -145,6 +145,7 @@ Places where the code does not yet do what the approved catalog says ([catalog-r
 | **Secrets kept out of records** | `sec.secrets-not-recorded` | Nothing redacts secrets before logs, conversations or model-call records are written |
 | **Untrusted text in the copilots' inboxes** | `sec.untrusted-text-labelled` | Anomaly text relayed to the copilots is not marked as data (AN1) |
 | **Editable templates** | `template.*` (planned) | See near-term candidates below |
+| **Configuration and spend in view** (added 2026-11-27) | `platform.config-in-view`, `platform.spend-in-view` | The operator sees and edits every parameter, the platform's safety bounds included, and sees every cost against its limit. First: work-queue budgets in the mission config (no longer in the job's arguments, which the agent writes) and a "Work queues" card in the Limits tab (today's spend against the budget, the backlog, over-budget items); background-job spend as its own line. After a few days of MAGI DEV's real triage costs. Then an inventory of every parameter and cost against the two invariants |
 | **The copilots' shells** | `agent.shell` (CC and MC rules) | An ADR and a threat-model update on what each copilot's shell may reach, the identity it runs as and the credential it holds, before any code (decision 7) |
 
 ---
