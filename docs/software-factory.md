@@ -5,7 +5,7 @@ MAGI agents (MAGI DEV), with the sponsor deciding and code checking. For each st
 today, who works it now, and the roadmap item that would hand it to an agent. For each piece of
 automation: why it exists, who tunes it, and who acts on what it reports.
 
-Status as of 2026-11-24. Design detail lives in
+Status as of 2026-11-27. Design detail lives in
 [magi-dev-requirements.md](plans/magi-dev-requirements.md) (deliverables A–H, phases) and
 [security-assurance-plan.md](plans/security-assurance-plan.md) (the checks); sprint status in
 [MAGI_V3_ROADMAP.md](../MAGI_V3_ROADMAP.md).
@@ -24,7 +24,7 @@ sends it back. Loop 3: incidents in production become work items.
 |---|---|
 | **The sponsor** (the user) | Product owner: what to build and what to merge. Commissions independent audits that establish what automation is needed, accepts the tools proposed, validates the catalog they enforce. Also an operator of real missions. |
 | **Claude Code** | The engineer: builds, reviews with its own commands, designs and tunes the automation, reads MAGI DEV's reports. The fallback if MAGI DEV breaks itself. |
-| **MAGI DEV agents** | A mission of reviewers on dev: documenter (active); appsec, code reviewer, QA lead (paused 2026-11-23); mission copilot. Planned: a production support engineer, builders. |
+| **MAGI DEV agents** | A mission of reviewers on dev: documenter (active); appsec (active again since 2026-11-26, as the reader of security alerts: an hourly triage job puts each alert to a clean-context investigator, and appsec verifies what survives); code reviewer, QA lead (paused 2026-11-23); mission copilot. Planned: a production support engineer, builders. |
 | **Copilots** | The control-plane copilot diagnoses missions and proposes actions; each mission's copilot does the same inside its mission. Every external write is a card the operator confirms. |
 | **Code** | The gates, scanners, tests and monitors. Its verdicts cannot be argued with, which is why it decides wherever a check can be written. |
 
@@ -40,7 +40,7 @@ sends it back. Loop 3: incidents in production become work items.
 | E | Local checks | Built | Whoever builds runs the same checks as CI before proposing, including the attacks. | Pre-commit lint, pre-push `npm run verify`; the attack sandbox and the local scanning stack run in Docker in minutes. | The same, inside the agents' sandbox (D). |
 | F | Propose | Planned | Every change is a pull request from an identity with only its role's rights; rulesets forbid direct pushes to `main`. | Solo development: commits go straight to `main`, guarded by the pre-push hook and CI. | A GitHub App per role and the git proxy (B, sprint 32). |
 | G | Gates (CI) | Built | Code decides everything a check can decide, and each check proves it can fail. | Build, lint, tripwires, ratchets, tests, static and secret scans, workflow and image scans, contract tests, the attack sandbox (the register below). | Deployed-configuration checks, a nightly scan of the running images (assurance plan, step 7). |
-| H | Review | Partial | Agents review each change through narrow, checkable questions, sampled more than once and challenged by a refuter. | Claude Code's `/security-review` and `/code-review`. The documenter checks each day's commits reliably; appsec, the code reviewer and QA are paused after inventing evidence. The report gate rejects any report citing what does not exist (8 of the first 13). | MAGI DEV redesign (assurance plan, step 6), scored against known answers (#96). |
+| H | Review | Partial | Agents review each change through narrow, checkable questions, sampled more than once and challenged by a refuter. | Claude Code's `/security-review` and `/code-review`. The documenter checks each day's commits reliably. Appsec triages every open scanner alert and watched guard through the review pipeline (one clean-context investigation per item, two confirmations and a refuter for a positive, citations checked by code), within a daily and a per-item budget ([ADR-0040](adr/0040-work-queues.md)), and verifies what survives. The code reviewer and QA stay paused after inventing evidence. The report gate rejects any report citing what does not exist (8 of the first 13). | The code reviewer's return on the same pipeline (assurance plan, step 6), scored against known answers (#96). |
 | I | Decide & merge | Partial | A change merges when its gates pass and the decider named by policy approves; a production release has the sponsor as required reviewer. | The sponsor approves in conversation; the push to `main` deploys dev. | Merge queue and protected release environment (B); approvals through the inbox (E). |
 | J | Staging | Planned | Release candidates run on a full MAGI stack first: the integration suite, isolation tests, an end-to-end mission. | No staging: dev is both test bed and where the sponsor's real missions run. The attack sandbox and the local stack cover part of it. | Staging installation (C). |
 | K | Rollout | Partial | A release reaches running missions canary first, with health checks and automatic rollback. | CI deploys the control plane and pins the new mission image; `promote.sh` deploys a named environment such as beta. A running mission takes the new image only on suspend and resume. | Rollout and rollback (F), through the Ops API (A). |
@@ -93,7 +93,7 @@ owner in the aim.
 | **Pre-push Semgrep**<br>`npm run audit:semgrep-changed` | CI's Semgrep rules on the files the push changes, so a finding is fixed before CI sees it | Blocks | A Semgrep finding that reached CI, 2026-11-24 (Ajv `allErrors`) | Claude Code (`scripts/security/semgrep-changed.sh`) | The author → *the building agent* |
 | **Watched guards**<br>`npm run audit:watched-guards` | A push that changes a file holding a security property on its own (`scripts/security/watched-guards.json`: the SSRF chain today) without a `Security review:` line in one of its commits | Blocks | CodeQL's SSRF alert #2, dismissed as a false positive on 2026-11-25: the sponsor asked for close attention to that code | Claude Code (the list); the sponsor validates additions | The author → *the building agent; MAGI DEV re-reviews each guard on every change* |
 | **On every push to main (station G, `quality.yml`)** | | | | | |
-| **Build, typecheck, unit tests**<br>`~1,900 tests, incl. property tests` | Broken code; guards that fast-check can defeat (paths, schedules, tool arguments, tickets, markdown) | Blocks | Testing practice; property tests: Security assurance plan, step 5 | Claude Code, with each test | The author → *the building agent; QA watches for gaps* |
+| **Build, typecheck, unit tests**<br>`~1,970 tests, incl. property tests; the skills' pytest suites` | Broken code; guards that fast-check can defeat (paths, schedules, tool arguments, tickets, markdown) | Blocks | Testing practice; property tests: Security assurance plan, step 5 | Claude Code, with each test | The author → *the building agent; QA watches for gaps* |
 | **Coverage ratchet**<br>`vitest thresholds` | Coverage falling below each package's floor | Blocks | Third-party audit, Oct 2026 (sprint 28f) | Claude Code; a lowered floor carries a comment saying why | The author → *the building agent* |
 | **Structure ratchet**<br>`audit:structure` | Files over 600 lines, functions over 120 | Blocks | Third-party audit, Oct 2026 (sprint 28f) | Claude Code | The author |
 | **Tripwires T1–T15**<br>`scripts/audit/tripwires.sh` | Known bad patterns: env from tenant input, raw HTML sinks, unchecked path joins, raw mailbox writes, model ids outside the tables… | Blocks | Third-party audit, Oct 2026 (sprint 28f) | Claude Code; each has a planted self-test and an allow-list | The author |
@@ -103,16 +103,16 @@ owner in the aim.
 | **Workflow and Dockerfile scans**<br>`actionlint, zizmor, shellcheck, trivy config` | Unsafe CI workflows, shell bugs, Dockerfile misconfiguration | Blocks | actionlint: Third-party audit, Oct 2026 (sprint 28f); the rest: Security assurance plan, step 2 | Claude Code | The author |
 | **Contract and freshness tests** | OpenAPI files, attack matrix, env doc and catalog docs out of date; a route without an operation or auth; a covered matrix cell whose test does not exist | Blocks | ADR-0036; Security assurance plan, steps 2b and 3 | Claude Code | The author → *the documenter watches the docs it doesn't generate* |
 | **Trace**<br>`npm run trace, report only` | Code and catalog disagreeing: writes, status transitions, layering, unenforced invariants | Reports | ADR-0036 | Claude Code | Claude Code reads "new since the last run" before each relevant commit → *the code reviewer (30t, T3)* |
-| **CodeQL**<br>`GitHub default setup` | Data-flow vulnerabilities in TypeScript, Python, workflows | Reports | Repository setting | GitHub defaults | **Gap:** alerts in code scanning, no routine reader → *appsec triage, one alert per question* |
+| **CodeQL**<br>`GitHub default setup` | Data-flow vulnerabilities in TypeScript, Python, workflows | Reports | Repository setting | GitHub defaults | Appsec, through the hourly alert triage (every open code-scanning alert, one investigation each) |
 | **Building the mission image (`build-execution-image.yml`)** | | | | | |
 | **Image gate**<br>`trivy` | Fixable critical vulnerabilities; any secret baked into a layer | Blocks | Security assurance plan (image hardening) | Claude Code; exceptions in `.trivyignore.yaml` must expire | The author |
-| **Image scan, high**<br>`trivy` | High vulnerabilities in what ships | Reports | Security assurance plan, step 2 | Claude Code | **Gap:** code scanning, no routine reader → *appsec triage* |
+| **Image scan, high**<br>`trivy` | High vulnerabilities in what ships | Reports | Security assurance plan, step 2 | Claude Code | Appsec, through the alert triage (its findings land in code scanning) |
 | **Attack sandbox**<br>`20 cells` | The shipped image attacked from inside as its agents: OS isolation, sudo, job and schedule spoofing, token theft, secrets in subprocesses, firewall | Blocks | Security assurance plan, step 4 | Claude Code; each cell has a control | The author; details in code scanning → *new cells proposed from open matrix rows* |
 | **Nightly (`security-nightly.yml`)** | | | | | |
 | **Local stack scan, our templates**<br>`Nuclei, environment B` | Cross-tenant reads, unauthenticated routes, missing headers, exposed files and source maps, leaking errors | Fails the run | Security assurance plan, step 5 | Claude Code; each template proven on a planted server | GitHub emails the sponsor a failed run; Claude Code fixes → *appsec* |
-| **Local stack scan, community and DAST**<br>`Nuclei, pinned templates` | Known exposures, misconfigurations and CVEs; fuzzing of every API route | Reports | Security assurance plan, step 5 | Claude Code (template release, tags) | **Gap:** code scanning, no routine reader → *appsec triage* |
+| **Local stack scan, community and DAST**<br>`Nuclei, pinned templates` | Known exposures, misconfigurations and CVEs; fuzzing of every API route | Reports | Security assurance plan, step 5 | Claude Code (template release, tags) | Appsec, through the alert triage (its findings land in code scanning) |
 | **GitHub services** | | | | | |
-| **Dependabot alerts** | Vulnerable dependencies, including development ones | Reports | Security assurance plan, step 2 | — | **Gap:** read on request; five major upgrades waiting (vitest 5, firebase-admin 14, exceljs, Stagehand's SDK, mermaid 12) → *appsec triages, a builder upgrades* |
+| **Dependabot alerts** | Vulnerable dependencies, including development ones | Reports | Security assurance plan, step 2 | — | Appsec triages them in the alert triage; the upgrades themselves wait for a builder (five major versions: vitest 5, firebase-admin 14, exceljs, Stagehand's SDK, mermaid 12) |
 | **Running MAGI (station M)** | | | | | |
 | **Daemon anomalies**<br>`crash, timeout, scheduling, repeated tool failure` | A mission misbehaving | Reports | Resilience practice; incidents | Claude Code | The mission copilot, then the sponsor → *the support agent* |
 | **Resource and machine alerts**<br>`ADR-0032, fly-events` | Disk, spend, upgrades, OOM, Atlas storage, a machine down, a scheduler stall | Reports | ADR-0032; the AI News outage (machine-down); F-083 (scheduler stall) | Claude Code (thresholds in env) | The control copilot diagnoses; the sponsor acts → *the support agent proposes, the sponsor approves* |
@@ -120,16 +120,19 @@ owner in the aim.
 | **Daily resource report** | Trends: disk growth, spend, chronic upgrades | Reports | ADR-0032 | Claude Code | The sponsor |
 | **MAGI DEV's own checks (station H)** | | | | | |
 | **Report gate**<br>`report-gate.py, a scheduled job` | Reports citing files, lines, tests, commits or ids that do not exist | Rejects | MAGI DEV's invented evidence, 2026-11-22/23; Security assurance plan, step 1 | Claude Code (`check-citations.py`) | Claude Code reads only accepted reports, and verifies before acting → *rejections go back to the author* |
+| **Alert triage**<br>`run_triage.sh, an hourly job; review-pipeline` | Every open code-scanning and Dependabot alert and every watched guard, investigated one by one: real, or not, with citations that code checks | Reports | Security assurance plan, step 6; ADR-0040 | Claude Code (the kinds, skills and scores); the sponsor sets the daily and per-item budgets | Appsec verifies each finding by reading the code and records it in its register; a new HIGH or CRITICAL is mailed to the sponsor |
+| **Task checks**<br>`a work order's check script, ADR-0038` | A task marked done whose finish line is not met | Refuses the completion | Appsec's completion notes that claimed what nobody checked, 2026-11-23 | Whoever writes the task (the sponsor, the mission copilot) | The agent, at once; the sponsor or the copilot may override, with a reason |
 | **Documenter's daily check** | Documentation that no longer matches the code | Reports | MAGI DEV phase 0 | Claude Code (skills in `config/teams/magi-dev/`) | Claude Code, at the start of a session → *the documenter's own pull request* |
 
 ## Gaps in ownership today
 
-- **Code scanning has no reader.** CodeQL, trivy's high findings, and the nightly community and DAST
-  scans land there and nobody reviews them on a schedule. The first job for a redesigned appsec
-  (assurance plan, step 6).
-- **Dependabot is read on request.** Five upgrades that each need a major version are waiting.
-- **Rejected reports go nowhere.** The report gate rejects them, but their authors are paused and
-  nothing sends a rejection back.
+- **The alert triage's budgets and backlog are not in the cockpit.** They are in the job's
+  arguments and appsec's workdir; the sponsor sees them only through appsec's mail
+  (`platform.config-in-view`, `platform.spend-in-view`, roadmap catalog gaps).
+- **Dependabot's upgrades have no builder.** Appsec triages the alerts; five upgrades that each need
+  a major version are waiting.
+- **Rejected reports reach only active authors.** The report gate mails each rejection to its
+  author; the paused code reviewer and QA lead do not read theirs.
 - **Runtime alerts stop at the sponsor.** If the sponsor is away and MAGI is down, no alert leaves
   MAGI (G-5).
 

@@ -1,6 +1,6 @@
 # Security assurance: scanners, a generated attack matrix, and agents that triage
 
-**Status:** approved 2026-11-23; steps 1–5 done; step 6 designed 2026-11-24 (part 5), in progress.
+**Status:** approved 2026-11-23; steps 1–5 done; step 6 designed 2026-11-24 (part 5): 6a–6e built, appsec live on alert triage since 2026-11-26 (6f); the code reviewer's return is next.
 **Replaces:** the "Security testing and detection" item in the roadmap's near-term list (its four
 parts are kept, made concrete here), and the appsec and code-review parts of MAGI DEV's phase 0
 as they run today (`magi-dev-requirements.md`).
@@ -310,6 +310,21 @@ About 17–21 days in all. Steps 1–2 pay off whatever else is decided; 3–4 g
 figure; 6 depends on 1 and 3.
 
 ### Progress
+- **Step 6f, appsec live on alert triage, 2026-11-26/27:** appsec's role rewritten (goals in its
+  prompt, procedures in skills, work in objectives) and its tasks made **work orders** with
+  check scripts ([ADR-0038](../adr/0038-tasks-as-work-orders.md)). The first live runs found
+  three platform defects, fixed at their cause: a job's sub-agent calls escaped the log and the
+  cap (**F-084**); a run killed at the job's limit lost all its verdicts; sub-agents had no time
+  or money bound and ended only when killed ([ADR-0039](../adr/0039-sub-agent-budgets-and-records.md):
+  a last step that answers from what it has, marked `incomplete`; every step stored, every call
+  charged). The pipeline became a **work queue** ([ADR-0040](../adr/0040-work-queues.md)):
+  priority (severity, a bonus for files on a trust boundary, guards first), a daily and a
+  per-item budget in dollars set by the sponsor ($2 and $1), an hourly job that mails appsec only
+  when there is work. First budgeted run: 15 investigations, $0.98, no findings;
+  4 incomplete (out of turns, two trying to run the test suite on the read-only copy).
+  Behaviour seen in the agents, to fix in their prompts: the mission copilot and appsec stated
+  causes they had no evidence for (a "30–60 s per investigation" that was invented; a provider
+  402 read as "the pipeline's budget"), and appsec changed its job's arguments on that advice.
 - **Step 6d, the known-answer benchmark, 2026-11-25:** `scripts/magi-dev-bench/` runs the real
   chain (`produce_items.py`, `review.py`, `Investigate`, a real model) over six cases whose
   answer is known: three fixed defects at the commit before their fix (the SSRF guard before

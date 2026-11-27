@@ -311,6 +311,10 @@ KPI not named here, exactly as it is.
 - SEC-1, SEC-3, SEC-5, SEC-6 and SEC-7: status `proposed`, each with the description "Paused
   2026-11-26 until the review pipeline supports this work; the user reactivates it."
 
+- SEC (the root): relabel `K-sec-open-high` to "open CRITICAL and HIGH issues, from the register
+  and the untriaged alerts". It stays `unknown` while any alert is untriaged: the register alone
+  does not answer it.
+
 **KPIs.** RecordKpi `K-sec-open-high` and `K-sec4-open` with the value `unknown` and the note
 "2026-11-26: the earlier 0 came from npm audit and appsec's own reviews; the scanners report
 open alerts at these severities, unverified until the first triage pass (SEC-T6)".
@@ -325,12 +329,14 @@ open alerts at these severities, unverified until the first triage pass (SEC-T6)
 Then AddTask, one call each, with exactly these fields (assignee `appsec`; if an id is taken,
 use the next free one and report the mapping).
 
-SEC-T5 · objective SEC-4 · priority high · title "Schedule the daily alert-triage job and run
+SEC-T5 · objective SEC-4 · priority high · title "Schedule the hourly alert-triage job and run
 it once now"
 - instructions: "Follow skill alert-triage, 'Schedule the job (once)': schedule run_triage.sh
-  daily at 06:00 UTC, notifying you when each run finishes. Then start the same script once now
-  as a background job (skill run-background) rather than waiting for 06:00. Reply to the user
-  with both commands' output. The run wakes you with 'Alert triage run finished'."
+  hourly with --notify set to you, --max-usd-per-day 2 and --max-usd-per-item 1 (the user's
+  budgets, 2026-11-27; do not change them). Then start the same script once now as a background
+  job (skill run-background) rather than waiting for the hour. Reply to the user with both
+  commands' output. A run mails you ('Alert triage: ...') only when there is work, and once a day
+  with the backlog line."
 - doneWhen: "shared/schedules/alert-triage.json runs alert-triage/scripts/run_triage.sh and
   notifies you, and at least one run has finished in your review/state/runs/."
 - check: `{"script":"alert-triage/scripts/check_triage.sh","args":["scheduled"]}`
@@ -338,15 +344,15 @@ it once now"
 
 SEC-T6 · objective SEC-4 · priority high · title "First triage pass: verify what the pipeline
 found until the backlog is through"
-- instructions: "After each run ('Alert triage run finished'), follow skill alert-triage, 'After
-  a run': read the newest review/state/runs/<stamp>/summary.json and findings.json, verify each
-  finding by reading the code in the reference copy, and record it in the register (skill
-  findings-register), as a finding or as dismissed, with its item id and run stamp. Each daily
-  run first takes up what the last one deferred. Mail a new HIGH or CRITICAL to the user at once
-  (skill security-reporting). Report repeated rejected or failed items; never investigate them
-  yourself instead."
-- doneWhen: "The newest run deferred no item, and every finding of every run is in
-  shared/reports/security/register.md by its item id, verified or dismissed."
+- instructions: "When a run mails you ('Alert triage: ...'), follow skill alert-triage, 'After
+  a run': read summary.json and findings.json in the newest run's folder in review/state/runs/,
+  verify each finding by reading the code in the reference copy, and record it in the register
+  (skill findings-register), as a finding or as dismissed, with its item id and run stamp. The
+  runs work the backlog highest priority first, within the user's budgets. Mail a new HIGH or
+  CRITICAL to the user at once (skill security-reporting). Report repeated rejected, incomplete,
+  failed or over-budget items; never investigate them yourself instead."
+- doneWhen: "The newest run left no item deferred, incomplete or over budget, and every finding
+  of every run is in shared/reports/security/register.md by its item id, verified or dismissed."
 - check: `{"script":"alert-triage/scripts/check_triage.sh","args":["first-pass"]}`
 - skills: `["alert-triage","security-judgement","findings-register"]`
 
@@ -378,11 +384,18 @@ the earlier sections: `appsec-change-review`, `appsec-weekly`, `appsec-monthly`,
 | appsec-weekly | appsec | `0 7 * * 1` | Weekly summary | Write and send the weekly summary (skill security-reporting, "The weekly summary"). |
 | appsec-monthly | appsec | `0 8 1 * *` | Monthly register review | Review the findings register (skill findings-register, "Monthly review"). |
 
+**Check what you wrote.** Read the objectives back (ListObjectives) and compare each new task's
+instructions, doneWhen, check and skills with this text, word for word. A call can be cut short
+(a long argument, an unusual character) and still create the task: fix every difference with
+UpdateTask. Do not report the addendum applied until they match.
+
 **Then PostMessage appsec** (subject "Your role has changed"), exactly:
 
 "Your role has changed: read your system prompt and your mental map, both rewritten on
 2026-11-26; trust them over anything earlier. Your work is in 'Your objectives', each task with
-its instructions, finish line and the skills it must follow. Start SEC-T5; do SEC-T8 and SEC-T7
-while the first triage run works; SEC-T6 when it finishes."
+its instructions, finish line and the skills it must follow. Mail older than this message was
+written for your earlier role: answer it only where it still bears on these tasks. Start SEC-T5;
+do SEC-T8 and SEC-T7 while the first triage run works; SEC-T6 when it finishes."
 
-Report to the user what you changed, with the task ids as created.
+Report to the user what you changed, with the task ids as created and what your comparison
+found.

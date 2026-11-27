@@ -8,7 +8,9 @@ A mission is built around a handful of core ideas:
 
 - **Objectives.** An agent's work stays tied to an explicit, structured goal, not an assumption
   baked into a prompt. Objectives form a tree (goals → tasks → KPIs), and LLM cost is attributed
-  back down that tree, so you can see what a specific piece of work actually cost.
+  back down that tree, so you can see what a specific piece of work actually cost. A task can be a
+  **work order**: what to do, when it is done (checked by a script the platform runs, where one
+  can be written), and the skills the work must follow ([ADR-0038](docs/adr/0038-tasks-as-work-orders.md)).
 - **The Mental Map.** What an agent currently knows and is working toward lives in a structure it
   maintains itself across the whole mission, not an ever-growing transcript. Its high-level shape
   can be enforced by the operator, alongside detailed instructions.
@@ -28,12 +30,25 @@ A mission is built around a handful of core ideas:
   without limit on its own, so MAGI doesn't rely on a single safeguard: a hard cap at your LLM
   provider (no auto-replenishment) is the outermost layer, MAGI's own hard limits on cost and
   call-count stop a turn outright, and softer thresholds alert the mission's copilot before
-  anything reaches a hard ceiling. How the layers fit together: [docs/spend-limits.md](docs/spend-limits.md).
-- **Sub-agents, not just tool calls.** Some tool calls are themselves small agents: `Research`
-  delegates a question to its own nested agent, with its own LLM budget and isolated context, and
-  returns a synthesized finding the whole team can reuse. Browsing the web is different but similar
-  in spirit — an interactive session, with cookies and logins that persist across calls, not a
-  stateless fetch.
+  anything reaches a hard ceiling. A background job's calls, and a sub-agent's, count against the
+  same limits as the agent that started them. How the layers fit together: [docs/spend-limits.md](docs/spend-limits.md).
+- **Sub-agents, not just tool calls.** Some tool calls are themselves small agents with a clean
+  context of their own: `Research` answers a question from the web and returns a finding the whole
+  team can reuse; `Investigate` answers one narrow question about a codebase, as JSON matching a
+  schema the caller gives, citing what it read; `CreateImage` makes and critiques images within a
+  budget. Each works within a time, turn and money budget; when one runs out it answers from what
+  it has and says what it did not finish. Every step it takes is stored, and every call is charged
+  to the agent that asked ([ADR-0039](docs/adr/0039-sub-agent-budgets-and-records.md)). Browsing
+  the web is different but similar in spirit — an interactive session, with cookies and logins
+  that persist across calls, not a stateless fetch.
+- **Work queues.** A long list of items, such as a repository's security alerts, is worked through
+  by a scheduled job rather than in an agent's context: highest priority first, each item put to a
+  sub-agent, within a daily and a per-item budget in dollars that the operator sets. The agent is
+  woken only when there is something for it, and each run reports how far behind the work is
+  ([ADR-0040](docs/adr/0040-work-queues.md)).
+- **Interactive apps.** An agent can publish a notebook (JupyterLab), a Gradio app or a static
+  site, which the operator opens in the browser. Apps are served from their own site, separate
+  from the cockpit, and each opens only for its mission's owner ([ADR-0037](docs/adr/0037-interactive-apps.md)).
 - **Skills, extensible at runtime.** An agent's abilities aren't fixed to what ships in the core —
   skills are recipes and scripts that can be run on demand or scheduled to run later, and any
   agent, a copilot especially, can author a new one for itself or the whole team without anyone
@@ -59,8 +74,9 @@ multi-provider LLM library it's built on.
 Two views: how missions are hosted, and what happens inside one of them once it's running.
 
 **Platform topology.** The control plane is the only always-on machine; every mission gets its own
-execution-plane machine, provisioned on demand and suspended when idle. Both are plain virtual
-machines — the boxes below are the processes running on them, not separate services:
+execution-plane machine, provisioned on demand and suspended when idle; a third app, the apps host,
+serves the agents' interactive apps on a site of its own. All are plain virtual machines — the
+boxes below are the processes running on them, not separate services:
 
 ```mermaid
 flowchart TB
@@ -77,14 +93,21 @@ flowchart TB
     end
 
     subgraph EPVM["Execution-plane VM (one per mission)"]
-        Daemon["Orchestration daemon"]
+        Daemon["Orchestration daemon<br/>(+ Tool API for jobs)"]
         AgentProcs["Agent processes<br/>(one per agent, own Linux user)"]
+        Apps["Agents' apps"]
+    end
+
+    subgraph AHVM["Apps host VM"]
+        AppsHost["Apps host"]
     end
 
     Browser --> Frontend
     Browser --> API
+    Browser --> AppsHost
     EPVM --> API
     API --> EPVM
+    AppsHost --> Apps
     Daemon --> AgentProcs
 
     CPProcess --> Firebase[("Firebase")]
@@ -129,6 +152,14 @@ And on the execution plane:
 - **Agent processes.** Each agent's shell and file tool calls run as a real OS subprocess under
   that agent's own dedicated Linux user, ACL'd to its own workspace, spawned by the daemon through
   a narrowly-scoped sudo rule — the actual isolation boundary behind "a computer of its own."
+- **Tool API.** A loopback server in the daemon that background jobs call, with a token issued for
+  that job alone, to reach what needs a credential or the model (data providers, `Research`,
+  `Investigate`, posting a message) without ever holding the credential.
+- **Platform tasks.** Work the platform does for a mission on its machine, outside any agent: today
+  `git-mirror`, which keeps a read-only reference copy of a repository for agents to review.
+- **Apps and the firewall.** The daemon supervises the agents' declared apps; the machine's
+  firewall lets an app's port be reached only by its owner and the daemon. The apps host, a
+  separate public app, forwards the operator's browser to it.
 
 Everything a mission's own daemon and agents do beyond that — reading/writing state, waking up,
 coordinating — goes through MongoDB, not a direct line to the control plane. Full design:
@@ -211,7 +242,14 @@ threat boundaries are documented in [docs/security/threat-model.md](docs/securit
 
 ## Status
 
-**MVP complete.** The system runs end-to-end, locally and in the cloud: agent teams coordinate, use tools, persist state across restarts, wake on schedule, and are managed through a multi-tenant cloud control plane with a cockpit UI and a per-user AI copilot. Current work is operational and security hardening ahead of a production launch — see [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) for the full sprint history and what's next.
+**MVP complete.** The system runs end-to-end, locally and in the cloud: agent teams coordinate, use tools, persist state across restarts, wake on schedule, and are managed through a multi-tenant cloud control plane with a cockpit UI and a per-user AI copilot. Current work is MAGI DEV (below), with the security and quality gates around it, and operational hardening ahead of a production launch — see [MAGI_V3_ROADMAP.md](MAGI_V3_ROADMAP.md) for the full sprint history and what's next.
+
+**MAGI DEV.** MAGI is also reviewed by a team of MAGI agents, running as a mission on dev: a
+documenter that checks the documentation against each day's commits, and an application security
+architect (`appsec`) that triages the repository's security alerts through a work queue and
+verifies what survives by reading the code. Their reports pass a gate that rejects any reference to
+a file, line, test or commit that does not exist. Design: [docs/plans/magi-dev-requirements.md](docs/plans/magi-dev-requirements.md);
+how the gates, scanners and agents fit together: [docs/software-factory.md](docs/software-factory.md).
 
 ---
 
@@ -231,7 +269,7 @@ MAGI-V3 ships with its own limit system, but better safe than sorry.
 - **Agents execute real shell commands.** A confused or manipulated agent can delete files, make network requests, or exhaust disk. Review `permittedPaths` before deploying.
 - **Web content is untrusted.** The trust-boundary headers are a mitigation, not a guarantee. Do not point agents at adversarial content and ask them to act on it without human review checkpoints.
 - **API costs are real.** Set `MAX_COST_USD` in your environment. A misconfigured cron schedule can accumulate significant spend.
-- **The security model has had internal review** (see `docs/security/`) but no independent audit. Browser process isolation is a known gap (Playwright runs in the orchestrator process), documented and deferred.
+- **The security model has had internal review** (see `docs/security/`) and is attacked by automated tests on every build (an attack matrix generated from the catalog, the mission image attacked from inside as its agents, nightly scans of a local stack), but no independent penetration test. Browser process isolation is a known gap (Playwright runs in the orchestrator process), documented and deferred.
 
 Use this in a controlled environment. The monitor and control-plane endpoints are authenticated; do not disable that.
 
@@ -331,13 +369,22 @@ TEAM_CONFIG=$PWD/config/teams/equity-research.yaml npm run cli:tail -w packages/
 TEAM_CONFIG=$PWD/config/teams/equity-research.yaml npm run cli:usage -w packages/agent-runtime-worker
 ```
 
-**Tests:**
+**Tests and gates:**
 
 ```bash
 npm test                  # unit tests — no LLM, no network
 npm run test:integration  # full stack — requires an LLM provider key + MONGODB_URI (and pool users)
 npm run lint
+npm run verify            # what the pre-push hook and CI run: build, lint, tripwires, structure, typecheck, coverage
+(cd tests/review_pipeline && python3 -m pytest -q)   # the review pipeline's Python tests (CI runs them too)
+npm run trace             # compare the code with the catalog; reports in analysis/
 ```
+
+`setup-dev.sh` installs the git hooks: lint before each commit; `npm run verify`, Semgrep on the
+changed files and the watched-guards check before each push (a push to `main` deploys dev). CI runs
+the same and more — static, secret, dependency, workflow and image scans, the attack sandbox, and a
+nightly scan of a local stack; [docs/software-factory.md](docs/software-factory.md) lists every
+gate, what it catches and who acts on it.
 
 ---
 
@@ -389,18 +436,23 @@ decisions behind the catalog).
 packages/
   control-plane/          — Express API (missions CRUD + lifecycle), Fly client, cron scheduler, copilot, proxy, UI
   agent-runtime-worker/   — daemon, agent loop, tools, orchestrator, monitor server, tool IPC server, CLI
-  agent-config/           — YAML team config loader (Zod schema)
+  agent-config/           — the shared contract: team config schema (Zod), stored-document types,
+                            model defaults, the env catalog, and the product catalog (src/baseline/)
   cockpit/                — the operator UI (Vite + React), built into the control plane's public/
-  skills/                 — platform-tier skill playbooks
+  skills/                 — platform skills, shipped to every mission (incl. the review pipeline)
 config/
-  teams/                  — team templates (one YAML each, plus a folder of team files), the
-                            control-plane copilot's config (copilot.yaml), and test/ fixtures
+  teams/                  — team templates (one YAML each, plus a folder of team files, e.g. magi-dev/),
+                            the control-plane copilot's config (copilot.yaml), and test/ fixtures
 docs/
   adr/                    — architecture decision records
-  deployment.md           — cloud deployment guide
-  security/               — threat model, findings, security practice
-  operational-resilience.md, implementation-history.md
-scripts/                  — dev setup, bootstrap, deploy, promote, mission-state reconcile, audit gates
+  product/, architecture/ — the catalog, rendered (operations, entities, journeys, components)
+  plans/, practices/      — designs in progress; the working practices behind CLAUDE.md
+  api/                    — the HTTP surfaces as OpenAPI files, generated from the code
+  security/               — threat model, findings, attack matrix, security practice
+  deployment.md, software-factory.md, operational-resilience.md, implementation-history.md
+tests/                    — the Python tests of the skills (review pipeline, data factory)
+scripts/                  — dev setup, bootstrap, deploy, promote, reconcile, the trace, audit and
+                            security gates, the MAGI DEV benchmark
 ```
 
 ---

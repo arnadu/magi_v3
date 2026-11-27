@@ -252,6 +252,11 @@ npm test                   # unit tests — no LLM, no network
 npm run test:integration   # integration tests — requires ANTHROPIC_API_KEY + MONGODB_URI
 npm run lint               # Biome lint check
 npm run lint:fix           # Biome auto-fix
+npm run verify             # what the pre-push hook and CI run (build, lint, tripwires, structure, typecheck, coverage)
+npm run trace              # compare the code with the catalog; reports in analysis/
+
+# The skills' Python tests (review pipeline, data factory), also run by CI:
+(cd tests/review_pipeline && python3 -m pytest -q)
 ```
 
 Run a single integration test file:

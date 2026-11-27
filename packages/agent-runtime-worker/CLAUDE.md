@@ -74,6 +74,10 @@ Full list: [`docs/env.md`](../../docs/env.md). The ones that change behaviour:
   ([traceability](../../docs/practices/traceability.md)).
 - One file per tool in `src/tools/`; a tool that may run longer than the loop's 2-minute default
   declares `maxRuntimeMs` (the loop aborts the call's signal at the limit — honour it).
+- A tool that runs a sub-agent (a nested `runInnerLoop`) takes `SubAgentHooks`
+  (`src/tools/sub-agent-hooks.ts`: store each step, meter, gate and price each call), required,
+  and gives its loop a `finalStep` (time, turn and money budget, ADR-0039). Whoever builds it —
+  the turn or the Tool API for a job — supplies the hooks.
 - Platform prompts are files in `prompts/`, loaded with `loadPrompt()` (`src/prompts.ts`); see
   `prompts/README.md`. Tool descriptions stay beside their parameter schemas.
 - Code that runs in a worker thread or child process (`pdf-worker.ts`, `tool-executor.ts`) is

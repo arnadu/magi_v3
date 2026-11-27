@@ -43,15 +43,22 @@ ceiling from the cockpit.
 ### What "paused" means
 
 When the cap is reached, nothing new is dispatched, and every turn already running stops before
-its next LLM call (including the calls of a Research sub-agent inside it). The tool call in
+its next LLM call (including the calls of a Research or Investigate sub-agent inside it). The tool call in
 progress finishes; nothing is cut off. When the cap is raised the paused turns carry on where they
 stopped. A turn's wall-clock limit (`MAX_AGENT_RUN_SECONDS`, 4 h) keeps counting during the pause,
 so a turn paused longer than that is ended as timed out; its next mail starts a new turn.
 
-Background jobs count too: every LLM call a job makes through the Tool API (Research, FetchUrl,
-InspectImage) is charged to the agent that submitted it and checked against the cap, and while the
-mission is paused those tools answer 503. The job itself keeps running; its other tools (data
-providers, PostMessage) still work.
+Background jobs count too: every LLM call a job makes through the Tool API (Research,
+Investigate, FetchUrl, InspectImage), its sub-agents' calls included, is logged, charged to the
+agent that submitted it and checked against the cap. While the mission is paused those tools answer
+503, and a sub-agent already running in a job stops at its next call. The job itself keeps running;
+its other tools (data providers, PostMessage) still work. (Until 2026-11-27 a job's Research and
+Investigate sub-agent calls escaped the log and the cap: F-084, fixed.)
+
+Below the mission cap, a work queue has budgets of its own ([ADR-0040](adr/0040-work-queues.md)):
+a daily budget and a per-item budget, in dollars, set in its job's arguments. They set the pace of
+the queue; the mission cap still bounds everything. Each sub-agent call also has its own time,
+turn and money budget ([ADR-0039](adr/0039-sub-agent-budgets-and-records.md)).
 
 If the ceiling you need is above the platform ceiling and you are not a platform admin, ask one —
 or, if you own the platform, add your UID to `PLATFORM_ADMIN_USER_IDS`, or raise

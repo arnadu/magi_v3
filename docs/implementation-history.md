@@ -1751,3 +1751,71 @@ module that sets matplotlib's `Agg` backend on import hides every plot (the skil
 ADR: from the browser through the real apps host, and on the machine as the agents' users. One
 gap left to the security-testing work: an agent's own server outside the app range is reachable
 by its teammates on the same machine.
+
+## Security assurance, and MAGI DEV's reviewers rebuilt — 2026-11-23 to 2026-11-27
+
+**Why.** The security reviews MAGI DEV's agents wrote on 2026-11-22/23 rested mostly on evidence
+they had invented, and every mechanical check written into their skills had been skipped. The
+[security assurance plan](plans/security-assurance-plan.md) (approved 2026-11-23) turned the
+work around: code decides wherever a check can be written, and models answer narrow questions in
+small contexts, sampled more than once and challenged by a refuter.
+
+**Steps 1–5 (2026-11-23/24): the gates.** The report gate (`report-gate.py`) rejects any report
+citing what does not exist; static scanners (trivy, zizmor, our Semgrep rules with planted
+samples) and Dependabot; the four HTTP surfaces as OpenAPI files generated from the code
+(`docs/api/`); the attack matrix generated from the catalog, each cell proven able to fail; the
+mission image attacked from inside as its agents in CI (the attack sandbox); fast-check property
+tests of the parsers and validators; Nuclei against a local stack, nightly. Semgrep also runs on
+the changed files before every push. Each is in the register of
+[software-factory.md](software-factory.md).
+
+**Step 6 (2026-11-24/25): the review pipeline.**
+- **Platform tasks** (`mission.platform-task`): work the platform does on a mission's machine,
+  outside any agent; the first kind, `git-mirror`, keeps a read-only reference copy of the
+  repository (`/var/lib/magi/reference/<name>`).
+- **`Investigate`**: one narrow question to a clean-context sub-agent, answered as JSON matching
+  the caller's schema, with the reference copy's commit.
+- **`review-pipeline`** (platform skill): items through `Investigate`, two confirmations and a
+  refuter for a positive, citations checked against the code, verdicts kept until something they
+  depend on changes.
+- **`security.read-alerts`**: the repository's open code-scanning and Dependabot alerts, read
+  through the control plane, private to the agents a platform admin names.
+- **Alert triage** (MAGI DEV team skill): an item per alert and per watched guard.
+- **The known-answer benchmark** (`scripts/magi-dev-bench/`, step 6d): six cases with known
+  answers; it found four pipeline defects, each fixed with a test.
+
+**Appsec returns (2026-11-26).** Its role prompt keeps only its goals and responsibilities in the
+life cycle; procedures moved to skills, and its work to objectives and tasks.
+**Tasks became work orders** ([ADR-0038](adr/0038-tasks-as-work-orders.md)): instructions, a
+finish line, an optional check script the platform runs as the agent when the task is completed,
+and the skills the work must follow, handed over in full when the task starts. Two invariants:
+`task.done-checked` and `task.terms-guarded`. The mental-map guidance now treats the map as the
+agent's memory.
+
+**What the first live runs found (2026-11-27), each fixed at its cause:**
+- A background job's `Research` and `Investigate` calls escaped the call log, the agent's cost
+  and the mission cap: the job's meter dropped events that named no model (**F-084**). The meter
+  now requires the loop model.
+- A run killed at the job's 30-minute limit lost everything it had found: `review.py` saved only
+  at the end. Each verdict is now saved as it is reached.
+- **Sub-agents are bounded and recorded** ([ADR-0039](adr/0039-sub-agent-budgets-and-records.md)):
+  a time, turn and money budget, ending in a last step with no tools in which the sub-agent
+  answers from what it has and says what it did not finish (`incomplete`); `SubAgentHooks`
+  (store each step, meter, gate, price) are required, so a caller that forgets one does not
+  compile; a job's sub-agent steps are stored in `conversationMessages` at turn 0 with the job's
+  id.
+- **Work queues** ([ADR-0040](adr/0040-work-queues.md), `work_queue.py`): the backlog is
+  worked in priority order (severity, a bonus for files on a trust boundary, watched guards
+  first), within a daily and a per-item budget in dollars; the agent steers with a reason; each
+  run reports how far behind it is; the job mails the agent only when there is work. Alert
+  triage runs hourly.
+
+**Catalog.** Journey A-11 became "Work through a backlog of items within a budget"; the new
+entity `work-item`; enforcement recorded for `turn.persisted-per-step`, `llm-call.recorded` and
+`llm-call.cost-counted`; new invariants `turn.sub-agent-bounded`, `platform.config-in-view` and
+`platform.spend-in-view` (the last two not yet enforced: the queue's budgets and spend are not in
+the cockpit). The baseline test now also reads the Python tests' docstrings.
+
+**Measured on the first budgeted run (2026-11-27, `glm-5.2`):** 15 investigations for $0.98,
+about $0.065 each; four ran out of turns, two of them trying to run the test suite on the
+read-only copy.

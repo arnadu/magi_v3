@@ -2056,6 +2056,42 @@ structured items from the automated suite, a clean-context worker per item, cata
 with catalog proposals, and code that runs the pipeline and accepts the answers; one run per item
 by default, rotation by risk class, fingerprints to skip what has not changed.
 
+### Appsec as the reader of security alerts (2026-11-26/27)
+
+**How an agent's instructions are split.** The role prompt holds the agent's goals and
+responsibilities in the life cycle, and its limits; how to do a piece of work is a skill; what to
+do now is an objective and its tasks; what the agent has learned is its mental map. Appsec's prompt
+had grown into a procedure manual, which agents follow selectively. A task carried only a title,
+so its intent travelled in messages that reach later turns only as summaries; tasks are now
+**work orders** ([ADR-0038](../adr/0038-tasks-as-work-orders.md)): instructions, a finish line a
+script checks where one can be written, and the skills the work must follow.
+
+**What acceptance of the first runs found**, and the cause each points to:
+- **Old mail drives the first turn after a role change.** On resume, appsec spent its turn
+  answering five-day-old report-gate rejections for reports a task was about to supersede. The
+  procedure that changes a role must clear or answer the agent's waiting mail.
+- **The mission copilot reported success it had not checked.** Its first `AddTask` for SEC-T6 was
+  cut off at a `<` in the instructions, the retry was refused as a duplicate, and it reported the
+  addendum applied. A procedure that writes tasks must re-read them and compare with the spec; a
+  bootstrap text must not contain angle-bracket placeholders.
+- **A KPI was set from one source.** Appsec recorded `K-sec-open-high = 0` from its register alone,
+  two minutes after the copilot had set it to `unknown` pending the triage. The KPI's definition
+  was ambiguous ("findings"); it means open issues from every source, unknown while any alert is
+  untriaged.
+- **Causes stated without evidence.** The copilot told appsec each investigation took "30–60 s"
+  and to cut its job's calls; appsec did, resubmitted the job three times, and later read an
+  OpenRouter 402 as "the pipeline's budget". Neither had looked. Both agents' prompts need the rule
+  that a cause is stated only with its evidence, otherwise "unknown"; the skill now forbids
+  changing the job's arguments or resubmitting it.
+- **What the platform got wrong** is in the security assurance plan's progress (step 6f): F-084,
+  verdicts lost on a killed run, unbounded sub-agents; fixed by ADR-0039 and ADR-0040, which also
+  took the job's pace out of the agent's hands (an hourly job, budgets the sponsor sets).
+
+**A known answer proposed for #96.** Commit `22a377e` (Investigate on the Tool API) shipped with a
+job's sub-agent calls neither logged nor charged (F-084, fixed in `ed12349`). No reviewer was
+active then; once the code reviewer returns, this case scores whether it would catch a defect
+spread over two files (a meter that drops events without a model, and a loop that never sets one).
+
 ## Phasing
 
 | Phase | Scope | Needs |
