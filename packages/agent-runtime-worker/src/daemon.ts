@@ -377,6 +377,7 @@ async function startServices(data: DataLayer): Promise<RunningMission> {
 		teamConfig,
 		toolPort,
 		llmCallLog: data.llmCallLog,
+		conversationRepo: data.conversationRepo,
 		monitor,
 		statsCollector: data.statsCollector,
 		missionId,

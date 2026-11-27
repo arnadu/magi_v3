@@ -52,6 +52,8 @@ export interface StoredMessage {
 	 * Holds the tool_use block id of the parent tool call that spawned this sub-loop.
 	 */
 	parentToolUseId?: string;
+	/** A background job's sub-agent step (turnNumber 0): the job's id. */
+	jobId?: string;
 }
 
 export interface ConversationRepository {
@@ -241,6 +243,7 @@ export function createMongoConversationRepository(
 							...(sm.parentToolUseId !== undefined
 								? { parentToolUseId: sm.parentToolUseId }
 								: {}),
+							...(sm.jobId !== undefined ? { jobId: sm.jobId } : {}),
 						});
 						inserted = true;
 					} catch (e: unknown) {

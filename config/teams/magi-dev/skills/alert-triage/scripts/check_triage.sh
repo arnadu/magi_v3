@@ -3,8 +3,8 @@
 # agent completing it, with WORKDIR, SHARED_DIR and AGENT_ID set. Reads only; exit 0 = done.
 #
 #   check_triage.sh scheduled    the daily job is scheduled for this agent, and a run has finished
-#   check_triage.sh first-pass   the newest run deferred nothing, and every finding of every run
-#                                is in the findings register (by its item id)
+#   check_triage.sh first-pass   the newest run left nothing deferred or incomplete, and every
+#                                finding of every run is in the findings register (by its item id)
 set -euo pipefail
 MODE="${1:-}"
 python3 -I - "$MODE" "$WORKDIR" "$SHARED_DIR" "${AGENT_ID:-}" <<'EOF'
@@ -41,9 +41,11 @@ elif mode == "first-pass":
     if not runs:
         fail(f"no run has finished yet in {runs_dir}")
     newest = summary(runs[-1])
-    deferred = newest.get("counts", {}).get("deferred", 0)
-    if deferred:
-        fail(f"newest run {runs[-1]} deferred {deferred} item(s): the backlog is not through yet")
+    counts = newest.get("counts", {})
+    left = counts.get("deferred", 0) + counts.get("incomplete", 0)
+    if left:
+        fail(f"newest run {runs[-1]} left {left} item(s) deferred or incomplete: "
+             "the backlog is not through yet")
     register = os.path.join(shared, "reports", "security", "register.md")
     text = open(register, encoding="utf-8").read() if os.path.isfile(register) else ""
     findings = {}
@@ -60,7 +62,7 @@ elif mode == "first-pass":
     if missing:
         fail(f"{len(missing)} finding(s) not yet in {register}, as verified or dismissed: "
              + ", ".join(missing[:20]))
-    print(f"newest run {runs[-1]} deferred nothing ({json.dumps(newest['counts'])}); "
+    print(f"newest run {runs[-1]} left nothing deferred or incomplete ({json.dumps(newest['counts'])}); "
           f"all {len(findings)} finding(s) from {len(runs)} run(s) are in {register}")
 else:
     fail("usage: check_triage.sh scheduled|first-pass")

@@ -381,7 +381,7 @@ function startJob(
 	if (typeof logStream === "string") return drop(logStream);
 	// Issue the token right before the spawn and revoke it the moment the spawn
 	// fails, so the window in which it exists unused is as short as possible.
-	const token = deps.toolApiServer.issueToken(acl, identity);
+	const token = deps.toolApiServer.issueToken(acl, identity, spec.id);
 
 	runningJobs++;
 	const interpreter = readShebangInterpreter(resolvedScript);

@@ -194,6 +194,7 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 					meteredAgents.push(agentId);
 				},
 				isBudgetPaused: () => false,
+				recordStep: async () => {},
 			},
 		);
 		server.listen(port);
@@ -209,7 +210,7 @@ describe("Tool API: research with news digest (Sprint 12)", () => {
 			sharedDir,
 			linuxUser: "nobody",
 		};
-		token = server.issueToken(acl, identity);
+		token = server.issueToken(acl, identity, "job-1");
 	}, 60_000);
 
 	afterAll(() => {

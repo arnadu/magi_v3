@@ -7,14 +7,17 @@
  *
  * The answer must match the caller's schema: a mismatch gets one repair turn, then the call
  * fails. Nothing here decides whether the answer is right; the caller's pipeline does.
+ *
+ * The sub-agent has a turn and a time budget. When either runs out, its last step has no tools
+ * and tells it to answer from what it has and say what it did not finish; the result is then
+ * marked `incomplete`, with that explanation (turn.sub-agent-bounded, ADR-0039).
  */
 
 import { PLATFORM_TASK_NAME_RE, PLATFORM_TASK_ROOT } from "@magi/agent-config";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
-import type { LlmCallMeter } from "../llm-meter.js";
-import { type CompleteFn, runInnerLoop } from "../loop.js";
+import { type CompleteFn, runInnerLoop, type WindDownReason } from "../loop.js";
 import { loadPrompt } from "../prompts.js";
 import { readInside } from "../safe-path.js";
 import {
@@ -25,11 +28,17 @@ import {
 	truncate,
 } from "../tools.js";
 import { containResearchPaths } from "./research.js";
+import type { SubAgentHooks } from "./sub-agent-hooks.js";
 
 /** Model calls one investigation may make (its shell calls included) before it must answer. */
 export const INVESTIGATE_DEFAULT_TURNS = 15;
 export const INVESTIGATE_MAX_TURNS = 40;
-const INVESTIGATE_MAX_RUNTIME_MS = 15 * 60_000;
+/** Time one investigation may take before its last step. */
+export const INVESTIGATE_TIME_BUDGET_MS = 5 * 60_000;
+/** The Tool API's backstop: the budget, a tool call in flight, the last step and its repair. */
+const INVESTIGATE_MAX_RUNTIME_MS = 10 * 60_000;
+/** Longest explanation of what was not finished that is returned. */
+const MAX_INCOMPLETE_NOTE = 1_000;
 /** Caps on what the caller hands the sub-agent: the context stays small on purpose. */
 const MAX_SKILL_BYTES = 40_000;
 const MAX_BRIEFING_BYTES = 60_000;
@@ -86,11 +95,10 @@ type Args = {
 export interface InvestigateOptions {
 	/** The calling agent's working directory: the sub-agent's shell starts there. */
 	workdir: string;
-	onSubLoopMessage?: (toolUseId: string, msg: Message) => Promise<void>;
-	/** Meters every sub-loop call against the caller's turn or job. */
-	onSubLoopLlmCall?: LlmCallMeter;
-	/** Awaited before each sub-loop call: the mission's spend-cap pause. */
-	beforeSubLoopLlmCall?: () => Promise<void>;
+	/** Stores, meters and gates every step: by the caller's turn, or the job's Tool API call. */
+	hooks: SubAgentHooks;
+	/** Tests shorten the time budget. */
+	timeBudgetMs?: number;
 	/** Tests replace the model. */
 	completeFn?: CompleteFn;
 	/** Tests replace the shell. */
@@ -143,12 +151,6 @@ function lastBracketTails(text: string): string[] {
 	return out;
 }
 
-function lastStop(messages: Message[]): string | undefined {
-	return [...messages]
-		.reverse()
-		.find((m): m is AssistantMessage => m.role === "assistant")?.stopReason;
-}
-
 /** The provider's error when the last model call failed or was cut off: no answer to repair. */
 function callFailure(messages: Message[]): string | undefined {
 	const last = [...messages]
@@ -170,6 +172,14 @@ function finalText(messages: Message[]): string {
 			.join("")
 			.trim() ?? ""
 	);
+}
+
+/** What the sub-agent wrote before its JSON answer: its account of what it did not finish. */
+export function textBeforeAnswer(text: string): string {
+	const fence = text.lastIndexOf("```json");
+	const brace = Math.max(text.lastIndexOf("\n{"), text.lastIndexOf("\n["));
+	const cut = fence >= 0 ? fence : brace >= 0 ? brace : 0;
+	return text.slice(0, cut).trim().slice(0, MAX_INCOMPLETE_NOTE);
 }
 
 function describeErrors(errors: ErrorObject[] | null | undefined): string {
@@ -288,26 +298,56 @@ type LoopCommon = Omit<
 	"task" | "tools" | "maxTurns" | "previousMessages"
 >;
 
-/** Runs the investigation, then at most one repair turn; the answer or why there is none. */
+/** The investigation's outcome: an answer (marked when a budget ran out first) or why there is none. */
+type Outcome =
+	| {
+			answer: unknown;
+			turns: number;
+			incomplete?: { reason: WindDownReason; note: string };
+	  }
+	| { error: string };
+
+/** Runs the investigation, then at most one repair turn for an answer that misses the schema. */
 async function investigate(
 	common: LoopCommon,
 	task: string,
 	shell: MagiTool,
-	maxTurns: number,
+	budget: { maxTurns: number; timeBudgetMs: number },
 	validate: ValidateFunction,
-): Promise<{ answer: unknown; turns: number } | { error: string }> {
+): Promise<Outcome> {
 	const first = await runInnerLoop({
 		...common,
 		task,
 		tools: [shell],
-		maxTurns,
+		maxTurns: budget.maxTurns,
+		finalStep: {
+			timeBudgetMs: budget.timeBudgetMs,
+			notice: (reason) =>
+				loadPrompt("investigate-final-step.md", {
+					budget:
+						reason === "turns"
+							? `all ${budget.maxTurns} of your turns`
+							: `your ${Math.round(budget.timeBudgetMs / 60_000)} minutes`,
+				}),
+		},
 	});
 	const failed = callFailure(first.messages);
 	if (failed) return { error: failed };
-	let answer = extractJson(finalText(first.messages));
+	const text = finalText(first.messages);
+	const incomplete = first.windDown
+		? {
+				reason: first.windDown,
+				note: textBeforeAnswer(text) || "(no explanation given)",
+			}
+		: undefined;
+	const done = (answer: unknown, turns: number): Outcome => ({
+		answer,
+		turns,
+		...(incomplete ? { incomplete } : {}),
+	});
+	let answer = extractJson(text);
 	if (answer !== undefined && validate(answer))
-		return { answer, turns: first.turnCount };
-	const outOfTurns = lastStop(first.messages) === "toolUse";
+		return done(answer, first.turnCount);
 	const why =
 		answer === undefined
 			? "no JSON value was found"
@@ -315,9 +355,7 @@ async function investigate(
 	const repair = await runInnerLoop({
 		...common,
 		previousMessages: first.messages,
-		task: outOfTurns
-			? `You have used all ${maxTurns} turns. Answer now from what you have found: where you could not finish a check, say so in your answer rather than guessing. Reply with only the JSON value, in a \`\`\`json fence.`
-			: `Your answer does not match the schema (${why}). Reply with only the corrected JSON value, in a \`\`\`json fence.`,
+		task: `Your answer does not match the schema (${why}). Reply with only the corrected JSON value, in a \`\`\`json fence.`,
 		tools: [],
 		maxTurns: 1,
 	});
@@ -325,7 +363,7 @@ async function investigate(
 	if (repairFailed) return { error: repairFailed };
 	answer = extractJson(finalText(repair.messages));
 	if (answer !== undefined && validate(answer))
-		return { answer, turns: first.turnCount + repair.turnCount };
+		return done(answer, first.turnCount + repair.turnCount);
 	return {
 		error: `the answer did not match the schema after one repair (${answer === undefined ? "no JSON value" : describeErrors(validate.errors)}). Narrow the question or simplify the schema.`,
 	};
@@ -346,7 +384,8 @@ export function createInvestigateTool(
 		description:
 			"Put one narrow question about a codebase to a sub-agent with a clean context: it has your shell and permissions but none of your history, follows the skill file you give it, and must answer as JSON matching your schema. " +
 			`Give it a reference copy (a folder under ${PLATFORM_TASK_ROOT}) to read; the copy's commit is returned with the answer. ` +
-			"Use it for each item of a review rather than investigating many things in your own context.",
+			"Use it for each item of a review rather than investigating many things in your own context. " +
+			`It has ${INVESTIGATE_TIME_BUDGET_MS / 60_000} minutes and its turns; when either runs out it answers from what it has, and the result carries \`incomplete\` with what it did not finish and why.`,
 		parameters: PARAMS,
 		maxRuntimeMs: () => INVESTIGATE_MAX_RUNTIME_MS,
 
@@ -357,20 +396,23 @@ export function createInvestigateTool(
 			const systemPrompt = loadPrompt("investigate.md", {
 				skill: p.skill ? `## Skill\n\n${p.skill}` : "",
 			});
-			const onSub = opts.onSubLoopMessage;
+			const { hooks } = opts;
 			const outcome = await investigate(
 				{
 					model,
 					getSystemPrompt: () => systemPrompt,
 					signal,
-					onMessage: onSub ? async (msg: Message) => onSub(id, msg) : undefined,
-					onLlmCall: opts.onSubLoopLlmCall,
-					beforeLlmCall: opts.beforeSubLoopLlmCall,
+					onMessage: async (msg: Message) => hooks.onMessage(id, msg),
+					onLlmCall: hooks.onLlmCall,
+					beforeLlmCall: hooks.beforeLlmCall,
 					completeFn: opts.completeFn,
 				},
 				buildTask(p, args.answer_schema),
 				shell,
-				args.max_turns ?? INVESTIGATE_DEFAULT_TURNS,
+				{
+					maxTurns: args.max_turns ?? INVESTIGATE_DEFAULT_TURNS,
+					timeBudgetMs: opts.timeBudgetMs ?? INVESTIGATE_TIME_BUDGET_MS,
+				},
 				p.validate,
 			);
 			if ("error" in outcome) return err(`Investigate: ${outcome.error}`);
@@ -379,6 +421,7 @@ export function createInvestigateTool(
 				answer: outcome.answer,
 				reference: ref ? { name: ref.name, commit: ref.commit } : null,
 				turns: outcome.turns,
+				...(outcome.incomplete ? { incomplete: outcome.incomplete } : {}),
 			};
 			return {
 				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

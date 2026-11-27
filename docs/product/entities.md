@@ -222,7 +222,8 @@ Its messages are in `conversationMessages`, one per step; its model calls are `l
 
 Invariants:
 - `turn.reconstructible`: Any turn can be reconstructed from what is stored: the prompt and mental map it started from, every model call, every tool call with its arguments and result, its cost, and how it ended. *(not yet enforced)*
-- `turn.persisted-per-step`: Each step of a turn (a model answer, a tool result) is stored before the next step starts, so a crash loses at most the step in progress. *(not yet enforced)*
+- `turn.persisted-per-step`: Each step of a turn (a model answer, a tool result) is stored before the next step starts, so a crash loses at most the step in progress. A sub-agent's steps are stored the same way, whether it runs in a turn or in a background job. *(enforced by runtime check in agent-runtime-worker/src/loop.ts: runInnerLoop (onMessage before the next step); agent-runtime-worker/src/tools/sub-agent-hooks.ts: SubAgentHooks (required by Investigate and Research), a test)*
+- `turn.sub-agent-bounded`: A sub-agent (Investigate, Research) ends within its time and turn budget: its last step has no tools and tells it to answer from what it has, and its answer says what it did not finish and why. It is never extended, and never cut off without that last step except by its caller's abort or the backstop above its budget. *(enforced by runtime check in agent-runtime-worker/src/loop.ts: windDownReason, runInnerLoop (finalStep), a test; decided in ADR-0039)*
 - `turn.no-silent-loss`: An interrupted turn is either resumed from its last stored step or closed with a recorded reason; it is never silently dropped or replayed from the start. *(not yet enforced; **open decision:** Resume from the last stored step (needs tools that are safe to repeat), or close the turn and start a new one)*
 
 ## Model call (`llm-call`)
@@ -240,8 +241,8 @@ Stored as `llmCallLog` (`LlmCallLogEntry`).
 | `recorded` | the retention period ends | `summarized` | PLT |  |
 
 Invariants:
-- `llm-call.recorded`: Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time, and its full input and output are kept for the retention period the operator sets. *(not yet enforced; decided in ADR-0017; **open decision:** The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full)*
-- `llm-call.cost-counted`: Every recorded call's cost counts against its mission's spend. *(not yet enforced; decided in ADR-0017)*
+- `llm-call.recorded`: Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time, and its full input and output are kept for the retention period the operator sets. *(enforced by runtime check in agent-runtime-worker/src/llm-meter.ts: createLogOnlyMeter (loopModel required); agent-runtime-worker/src/tools/sub-agent-hooks.ts: SubAgentHooks, a test; decided in ADR-0017; **open decision:** The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full)*
+- `llm-call.cost-counted`: Every recorded call's cost counts against its mission's spend. A sub-agent's calls count as its calling agent's: in a turn, that turn's; in a background job, the job's agent's. *(enforced by runtime check in agent-runtime-worker/src/daemon-boot/monitor-tool-servers.ts: createJobSpend; agent-runtime-worker/src/tool-api-server.ts: jobSubAgentHooks, a test; decided in ADR-0017)*
 
 ## Template (planned: editable templates, on the roadmap) (`template`)
 

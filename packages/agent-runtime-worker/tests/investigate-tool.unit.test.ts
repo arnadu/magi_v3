@@ -14,6 +14,7 @@ import {
 	extractJson,
 } from "../src/tools/investigate.js";
 import type { MagiTool } from "../src/tools.js";
+import { recordingHooks } from "./sub-agent-hooks.js";
 
 const COMMIT = "a".repeat(40);
 const SCHEMA = {
@@ -63,7 +64,9 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 function setup(
 	replies: (string | AssistantMessage)[],
 	statusText = JSON.stringify({ commit: COMMIT }),
+	timeBudgetMs?: number,
 ) {
+	const recorded = recordingHooks();
 	const contexts: Context[] = [];
 	const shellCalls: string[] = [];
 	const shell: MagiTool = {
@@ -86,6 +89,8 @@ function setup(
 		{
 			workdir,
 			shell,
+			hooks: recorded.hooks,
+			...(timeBudgetMs !== undefined ? { timeBudgetMs } : {}),
 			completeFn: async (_m, ctx) => {
 				contexts.push(structuredClone(ctx));
 				const next = replies[Math.min(i++, replies.length - 1)];
@@ -93,7 +98,7 @@ function setup(
 			},
 		},
 	);
-	return { tool, contexts, shellCalls };
+	return { tool, contexts, shellCalls, ...recorded };
 }
 
 const ok = '```json\n{"verdict":"false-positive","evidence":["a.ts:3"]}\n```';
@@ -158,7 +163,7 @@ describe("Investigate", () => {
 		);
 	});
 
-	it("tells an investigation that ran out of turns to answer from what it found", async () => {
+	it("turn.sub-agent-bounded: out of turns, its last step has no tools and the answer is marked incomplete", async () => {
 		const toolCall = {
 			...reply(""),
 			content: [
@@ -171,16 +176,66 @@ describe("Investigate", () => {
 			],
 			stopReason: "toolUse",
 		} as AssistantMessage;
-		const { tool, contexts } = setup([toolCall, toolCall, ok]);
+		const { tool, contexts } = setup([
+			toolCall,
+			`I could not read b.ts in time.\n${ok}`,
+		]);
 		const r = await tool.execute("t1", {
 			question: "Q?",
 			answer_schema: SCHEMA,
 			max_turns: 2,
 		});
 		expect(r.isError).toBeFalsy();
-		expect(JSON.stringify(contexts.at(-1)?.messages.at(-1))).toMatch(
-			/used all 2 turns/,
+		const last = contexts.at(-1);
+		expect(last?.tools).toEqual([]);
+		const notice = last?.messages.at(-1);
+		expect(notice?.role).toBe("user");
+		expect(JSON.stringify(notice)).toContain("all 2 of your turns");
+		const out = JSON.parse((r.content[0] as { text: string }).text);
+		expect(out.answer.verdict).toBe("false-positive");
+		expect(out.incomplete).toEqual({
+			reason: "turns",
+			note: "I could not read b.ts in time.",
+		});
+		expect(contexts).toHaveLength(2);
+	});
+
+	it("turn.sub-agent-bounded: out of time, the next call is its last, and says so", async () => {
+		const { tool, contexts } = setup(
+			[`Nothing read yet.\n${ok}`],
+			undefined,
+			0,
 		);
+		const r = await tool.execute("t1", {
+			question: "Q?",
+			answer_schema: SCHEMA,
+		});
+		const out = JSON.parse((r.content[0] as { text: string }).text);
+		expect(out.incomplete).toEqual({
+			reason: "time",
+			note: "Nothing read yet.",
+		});
+		expect(contexts[0].tools).toEqual([]);
+		expect(JSON.stringify(contexts[0].messages)).toMatch(/your 0 minutes/);
+	});
+
+	it("turn.persisted-per-step: every step is stored and every model call metered, through its hooks", async () => {
+		const { tool, steps, calls } = setup([ok]);
+		await tool.execute("t9", { question: "Q?", answer_schema: SCHEMA });
+		expect(steps.map((s) => s.msg.role)).toEqual(["user", "assistant"]);
+		expect(steps.every((s) => s.toolUseId === "t9")).toBe(true);
+		expect(calls).toHaveLength(1);
+	});
+
+	it("a finished investigation is not marked incomplete", async () => {
+		const { tool } = setup([ok]);
+		const r = await tool.execute("t1", {
+			question: "Q?",
+			answer_schema: SCHEMA,
+		});
+		expect(
+			JSON.parse((r.content[0] as { text: string }).text),
+		).not.toHaveProperty("incomplete");
 	});
 
 	it("reports a failed model call as such, without a repair turn", async () => {

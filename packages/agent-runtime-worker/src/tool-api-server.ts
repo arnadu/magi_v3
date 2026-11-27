@@ -39,7 +39,7 @@ import {
 	type ServerResponse,
 } from "node:http";
 import type { EntryTag, TeamConfig } from "@magi/agent-config";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Message, Model } from "@mariozechner/pi-ai";
 import type { LlmCallMeter } from "./llm-meter.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
@@ -58,6 +58,7 @@ import {
 	createSecurityAlertsTool,
 	type SecurityAlertsClient,
 } from "./tools/security-alerts.js";
+import type { SubAgentHooks } from "./tools/sub-agent-hooks.js";
 import type { AclPolicy, MagiTool } from "./tools.js";
 import type { AgentIdentity } from "./workspace-manager.js";
 
@@ -68,6 +69,8 @@ import type { AgentIdentity } from "./workspace-manager.js";
 interface TokenContext {
 	acl: AclPolicy;
 	identity: AgentIdentity;
+	/** The job the token was issued to: a sub-agent's stored steps name it. */
+	jobId: string;
 }
 
 /** Per-call timeout for a tool that declares no runtime of its own (`maxRuntimeMs`). */
@@ -130,12 +133,42 @@ async function executeWithTimeout(
  * HTTP server that dispatches tool calls from background job scripts.
  * One instance is created per daemon; tokens are issued per job spawn.
  */
-/** Charging and gating for the LLM-backed tools jobs may call (CST-1). */
+/** Charging, gating and recording for the LLM-backed tools jobs may call (CST-1). */
 export interface ToolApiSpend {
 	/** Meter for LLM calls a job makes as `agentId`: log, charge the agent's lifetime cost, check the cap. */
 	meterFor: (agentId: string) => LlmCallMeter;
 	/** True while the spend cap has paused the mission. */
 	isBudgetPaused: () => boolean;
+	/** Stores one step of a job's sub-agent, under its agent, outside any turn. */
+	recordStep: (
+		agentId: string,
+		jobId: string,
+		toolUseId: string,
+		msg: Message,
+	) => Promise<void>;
+}
+
+/**
+ * A job's sub-agent: every step stored and every call charged to the job's
+ * agent; the cap's pause stops it at its next model call (a turn's sub-agent
+ * waits instead, but a job's HTTP call cannot hold for hours).
+ */
+export function jobSubAgentHooks(
+	spend: ToolApiSpend,
+	agentId: string,
+	jobId: string,
+): SubAgentHooks {
+	return {
+		onMessage: (toolUseId, msg) =>
+			spend.recordStep(agentId, jobId, toolUseId, msg),
+		onLlmCall: spend.meterFor(agentId),
+		beforeLlmCall: async () => {
+			if (spend.isBudgetPaused())
+				throw new Error(
+					"the mission's spend cap is reached and the mission is paused; the sub-agent stopped",
+				);
+		},
+	};
 }
 
 /** A tool a background job may call through the Tool API. */
@@ -147,7 +180,11 @@ interface ToolApiEntry {
 	/** Its calls reach an LLM, so the spend cap's pause refuses them. */
 	callsLlm?: boolean;
 	/** A fresh, stateless tool for this token's context; null when not configured. */
-	build: (ctx: TokenContext, meter: () => LlmCallMeter) => MagiTool | null;
+	build: (
+		ctx: TokenContext,
+		meter: () => LlmCallMeter,
+		subAgent: () => SubAgentHooks,
+	) => MagiTool | null;
 }
 
 export class ToolApiServer {
@@ -183,9 +220,9 @@ export class ToolApiServer {
 	 * The token inherits the agent's AclPolicy so tool calls cannot exceed the
 	 * same privilege boundary the agent has in the interactive loop.
 	 */
-	issueToken(acl: AclPolicy, identity: AgentIdentity): string {
+	issueToken(acl: AclPolicy, identity: AgentIdentity, jobId: string): string {
 		const token = randomUUID();
-		this.tokens.set(token, { acl, identity });
+		this.tokens.set(token, { acl, identity, jobId });
 		return token;
 	}
 
@@ -277,7 +314,11 @@ export class ToolApiServer {
 
 		// Build the requested tool for this token's context.
 		const tool =
-			entry?.build(ctx, () => this.spend.meterFor(ctx.acl.agentId)) ?? null;
+			entry?.build(
+				ctx,
+				() => this.spend.meterFor(ctx.acl.agentId),
+				() => jobSubAgentHooks(this.spend, ctx.acl.agentId, ctx.jobId),
+			) ?? null;
 		if (!tool) {
 			res.writeHead(404, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: `unknown tool: ${toolName}` }));
@@ -354,20 +395,20 @@ export class ToolApiServer {
 			names: ["research"],
 			operation: "web.research",
 			callsLlm: true,
-			build: (ctx, meter) =>
+			build: (ctx, _meter, subAgent) =>
 				createResearchTool(this.model, this.sharedDir, ctx.acl, {
+					hooks: subAgent(),
 					visionModel: this.visionModel,
-					onSubLoopLlmCall: meter(),
 				}),
 		},
 		{
 			names: ["investigate"],
 			operation: "agent.investigate",
 			callsLlm: true,
-			build: (ctx, meter) =>
+			build: (ctx, _meter, subAgent) =>
 				createInvestigateTool(this.model, ctx.acl, {
 					workdir: ctx.identity.workdir,
-					onSubLoopLlmCall: meter(),
+					hooks: subAgent(),
 				}),
 		},
 		{

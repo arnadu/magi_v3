@@ -116,7 +116,9 @@ def investigate(
 ) -> dict:
     """
     One question to a clean-context sub-agent (the Investigate tool); returns
-    {"answer": <JSON matching answer_schema>, "reference": {"name", "commit"} | None, "turns"}.
+    {"answer": <JSON matching answer_schema>, "reference": {"name", "commit"} | None, "turns"},
+    plus "incomplete": {"reason": "time" | "turns", "note"} when it ran out before finishing:
+    its answer is then what it had, and the note says what it did not finish.
     Raises ToolError when the answer does not match the schema after its repair turn.
     """
     params: dict = {"question": question, "answer_schema": answer_schema}
@@ -124,8 +126,8 @@ def investigate(
                        ("reference", reference), ("max_turns", max_turns)):
         if value is not None:
             params[key] = value
-    # Investigate may run 15 minutes (its maxRuntimeMs, which the Tool API honours).
-    data = call_tool_timeout("investigate", 16 * 60, params)
+    # Investigate answers within 5 minutes; its maxRuntimeMs backstop is 10, honoured by the Tool API.
+    data = call_tool_timeout("investigate", 11 * 60, params)
     return json.loads(data["result"]["content"][0]["text"])
 
 

@@ -131,7 +131,7 @@ export async function startMonitorServer(
  * A job's LLM calls are logged under its agent, charged to that agent's
  * lifetime cost and followed by the same mission-cap check an agent's call
  * gets; while the cap has the mission paused, LLM-backed tools are refused
- * (CST-1).
+ * (CST-1). A job's sub-agent stores each of its steps under the job's agent.
  */
 export function startToolApiServer(
 	ctx: Pick<
@@ -150,6 +150,7 @@ export function startToolApiServer(
 		| "missionConfigRepo"
 		| "maxCostUsd"
 		| "anomalyRecorder"
+		| "conversationRepo"
 	>,
 ): Pick<BootContext, "toolApiServer"> {
 	const toolApiServer = new ToolApiServer(
@@ -189,6 +190,7 @@ export function createJobSpend(
 		| "anomalyRecorder"
 		| "mailboxRepo"
 		| "model"
+		| "conversationRepo"
 	>,
 ): ToolApiSpend {
 	const capState: CapCheckState = { alertedAt: 0, consecutiveFailures: 0 };
@@ -210,5 +212,11 @@ export function createJobSpend(
 				},
 			),
 		isBudgetPaused: () => ctx.monitor.isBudgetPaused(),
+		// Turn 0 is outside any turn, as the meter logs these calls; parentToolUseId
+		// keeps the steps out of the agent's own history, as a turn's sub-agent steps.
+		recordStep: (agentId, jobId, toolUseId, message) =>
+			ctx.conversationRepo.append(agentId, ctx.missionId, [
+				{ turnNumber: 0, parentToolUseId: toolUseId, jobId, message },
+			]),
 	};
 }

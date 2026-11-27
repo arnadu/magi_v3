@@ -40,6 +40,12 @@ Accepted as design trade-offs. Re-evaluate before production deployment.
 
 ## Fixed Findings
 
+### 2026-11-27 found while diagnosing MAGI DEV's first alert-triage runs
+
+| ID | Severity | Location | Description | Fix applied |
+|----|----------|----------|-------------|-------------|
+| F-084 | MEDIUM | `packages/agent-runtime-worker/src/llm-meter.ts` (`createLogOnlyMeter`), `src/tool-api-server.ts` | **A background job's Research and Investigate calls escaped the spend cap, the call log and the agent's cost.** F-076 (2026-10-22) charged a job's LLM calls to its agent and checked the cap, through a log-only meter that returned early on an event naming no model; `runInnerLoop` never names one, so every call of a job's Research (since 2026-10-22) and Investigate (since 2026-11-24) sub-agent was unrecorded, uncharged and outside the cap. An agent could spend without limit by writing a job that calls them. The test's event always named a model. The sub-agents' steps were not stored either (no step hook on the job path). Found when `magi-dev-1`'s triage jobs ran for 30 minutes with no logged call. What those runs spent is known only to the provider. | Fixed 2026-11-27 (ADR-0039): the meter takes the loop model as a required argument (`ed12349`); a sub-agent cannot be built without `SubAgentHooks` (store each step, meter each call, gate each call), so a missing hook is a compile error; on the job path each step is stored under the job's agent with `jobId`, and the cap's pause stops the sub-agent at its next call. Tests named `llm-call.recorded`, `llm-call.cost-counted`, `turn.persisted-per-step` (`tool-api-spend.unit.test.ts`, `investigate-tool.unit.test.ts`). |
+
 ### 2026-11-24 found while diagnosing skipped scheduled jobs
 
 | ID | Severity | Location | Description | Fix applied |

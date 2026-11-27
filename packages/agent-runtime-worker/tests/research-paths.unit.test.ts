@@ -25,6 +25,7 @@ import {
 	writeFinding,
 } from "../src/tools/research.js";
 import { saveEntry } from "../src/tools/research-cache.js";
+import { recordingHooks } from "./sub-agent-hooks.js";
 
 let base: string;
 let shared: string;
@@ -48,11 +49,16 @@ afterEach(() => {
 const model = { id: "stub", input: ["text"] } as unknown as Model<string>;
 
 function tool() {
-	return createResearchTool(model, shared, {
-		agentId: "a1",
-		linuxUser: "magi-w1",
-		permittedPaths: [workdir, shared],
-	});
+	return createResearchTool(
+		model,
+		shared,
+		{
+			agentId: "a1",
+			linuxUser: "magi-w1",
+			permittedPaths: [workdir, shared],
+		},
+		{ hooks: recordingHooks().hooks },
+	);
 }
 
 function text(result: Awaited<ReturnType<ReturnType<typeof tool>["execute"]>>) {

@@ -12,7 +12,7 @@
  */
 
 import { resolve } from "node:path";
-import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
+import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { LlmCallMeter } from "../llm-meter.js";
 import { runInnerLoop } from "../loop.js";
@@ -29,6 +29,7 @@ import {
 	slugify,
 } from "./research-cache.js";
 import { tryCreateSearchWebTool } from "./search-web.js";
+import type { SubAgentHooks } from "./sub-agent-hooks.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -39,6 +40,8 @@ const RESEARCH_MAX_TURNS = 10;
 
 /** How long one Research call may run before the loop cancels it. */
 const RESEARCH_MAX_RUNTIME_MS = 10 * 60_000;
+/** Time the sub-loop may take before its last step; the runtime above is the backstop. */
+const RESEARCH_TIME_BUDGET_MS = 6 * 60_000;
 
 /** Default cache freshness for time-sensitive data (market prices, news). */
 const DEFAULT_MAX_AGE_HOURS = 12;
@@ -187,7 +190,7 @@ function statelessResearchTools(
 	sharedDir: string,
 	acl: AclPolicy,
 	disabled: ReadonlySet<string>,
-	meter: LlmCallMeter | undefined,
+	meter: LlmCallMeter,
 ): MagiTool[] {
 	const searchWebTool = tryCreateSearchWebTool();
 	return [
@@ -286,9 +289,7 @@ interface ResearchLoopDeps {
 	sharedDir: string;
 	statelessTools: MagiTool[];
 	disabled: ReadonlySet<string>;
-	onSubLoopMessage?: (toolUseId: string, msg: Message) => Promise<void>;
-	onSubLoopLlmCall?: LlmCallMeter;
-	beforeSubLoopLlmCall?: () => Promise<void>;
+	hooks: SubAgentHooks;
 }
 
 /**
@@ -301,7 +302,7 @@ async function runResearchLoop(
 	signal: AbortSignal | undefined,
 	toolUseId: string,
 ): Promise<Awaited<ReturnType<typeof runInnerLoop>>> {
-	const { onSubLoopMessage } = deps;
+	const { hooks } = deps;
 	const browseHandle = deps.disabled.has("BrowseWeb")
 		? undefined
 		: tryCreateBrowseWebTool(deps.visionModel, deps.sharedDir);
@@ -315,13 +316,19 @@ async function runResearchLoop(
 				: deps.statelessTools,
 			signal,
 			maxTurns: RESEARCH_MAX_TURNS,
-			onMessage: onSubLoopMessage
-				? async (msg) => {
-						await onSubLoopMessage(toolUseId, msg);
-					}
-				: undefined,
-			onLlmCall: deps.onSubLoopLlmCall,
-			beforeLlmCall: deps.beforeSubLoopLlmCall,
+			finalStep: {
+				timeBudgetMs: RESEARCH_TIME_BUDGET_MS,
+				notice: (reason) =>
+					loadPrompt("research-final-step.md", {
+						budget:
+							reason === "turns"
+								? `all ${RESEARCH_MAX_TURNS} of your turns`
+								: `your ${RESEARCH_TIME_BUDGET_MS / 60_000} minutes`,
+					}),
+			},
+			onMessage: async (msg) => hooks.onMessage(toolUseId, msg),
+			onLlmCall: hooks.onLlmCall,
+			beforeLlmCall: hooks.beforeLlmCall,
 		});
 	} finally {
 		await browseHandle?.close();
@@ -335,20 +342,17 @@ async function runResearchLoop(
  * @param sharedDir - Mission shared directory; research index and findings are
  *                    written here under research/.
  * @param acl       - ACL policy for Bash access (sharedDir only — no workdir).
- * @param opts      - Optional callbacks for sub-loop message observation.
+ * @param opts      - The sub-loop's hooks (required: every step stored, every call charged), and options.
  */
 export function createResearchTool(
 	model: Model<string>,
 	sharedDir: string,
 	acl: AclPolicy,
-	opts?: {
+	opts: {
+		/** Stores, meters and gates every step: by the caller's turn, or the job's Tool API call. */
+		hooks: SubAgentHooks;
 		/** Vision model for BrowseWeb and FetchUrl image captioning. Defaults to model. */
 		visionModel?: Model<string>;
-		onSubLoopMessage?: (toolUseId: string, msg: Message) => Promise<void>;
-		/** Meters every sub-loop LLM call against the calling agent's turn (COST-1). */
-		onSubLoopLlmCall?: LlmCallMeter;
-		/** Awaited before each sub-loop LLM call: the mission's spend-cap pause. */
-		beforeSubLoopLlmCall?: () => Promise<void>;
 		/**
 		 * The calling agent's disabledTools. The sub-loop must not hand back a
 		 * tool the operator switched off for this agent (RS1) — Research would
@@ -357,14 +361,14 @@ export function createResearchTool(
 		disabledTools?: readonly string[];
 	},
 ): MagiTool {
-	const visionModel = opts?.visionModel ?? model;
-	const disabled = new Set(opts?.disabledTools ?? []);
+	const visionModel = opts.visionModel ?? model;
+	const disabled = new Set(opts.disabledTools ?? []);
 	const statelessTools = statelessResearchTools(
 		visionModel,
 		sharedDir,
 		acl,
 		disabled,
-		opts?.onSubLoopLlmCall,
+		opts.hooks.onLlmCall,
 	);
 
 	const loop: ResearchLoopDeps = {
@@ -373,9 +377,7 @@ export function createResearchTool(
 		sharedDir,
 		statelessTools,
 		disabled,
-		onSubLoopMessage: opts?.onSubLoopMessage,
-		onSubLoopLlmCall: opts?.onSubLoopLlmCall,
-		beforeSubLoopLlmCall: opts?.beforeSubLoopLlmCall,
+		hooks: opts.hooks,
 	};
 
 	return {

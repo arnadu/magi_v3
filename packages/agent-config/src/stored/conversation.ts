@@ -47,4 +47,6 @@ export interface ConversationDoc {
 	mentalMapHtml?: string;
 	/** Parent tool_use block id for sub-loop messages. */
 	parentToolUseId?: string;
+	/** For a background job's sub-agent (turnNumber 0, outside any turn): the job's id. */
+	jobId?: string;
 }

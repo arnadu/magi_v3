@@ -57,8 +57,28 @@ export const TURN = defineEntity({
 		},
 		{
 			id: "turn.persisted-per-step",
-			text: "Each step of a turn (a model answer, a tool result) is stored before the next step starts, so a crash loses at most the step in progress.",
-			enforcedBy: [],
+			text: "Each step of a turn (a model answer, a tool result) is stored before the next step starts, so a crash loses at most the step in progress. A sub-agent's steps are stored the same way, whether it runs in a turn or in a background job.",
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/loop.ts: runInnerLoop (onMessage before the next step); agent-runtime-worker/src/tools/sub-agent-hooks.ts: SubAgentHooks (required by Investigate and Research)",
+				},
+				{ kind: "test" },
+			],
+		},
+		{
+			id: "turn.sub-agent-bounded",
+			text: "A sub-agent (Investigate, Research) ends within its time and turn budget: its last step has no tools and tells it to answer from what it has, and its answer says what it did not finish and why. It is never extended, and never cut off without that last step except by its caller's abort or the backstop above its budget.",
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/loop.ts: windDownReason, runInnerLoop (finalStep)",
+				},
+				{ kind: "test" },
+			],
+			decidedBy: "ADR-0039",
 		},
 		{
 			id: "turn.no-silent-loss",
@@ -105,14 +125,28 @@ export const LLM_CALL = defineEntity({
 		{
 			id: "llm-call.recorded",
 			text: "Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time, and its full input and output are kept for the retention period the operator sets.",
-			enforcedBy: [],
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/llm-meter.ts: createLogOnlyMeter (loopModel required); agent-runtime-worker/src/tools/sub-agent-hooks.ts: SubAgentHooks",
+				},
+				{ kind: "test" },
+			],
 			decidedBy: "ADR-0017",
 			open: "The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full",
 		},
 		{
 			id: "llm-call.cost-counted",
-			text: "Every recorded call's cost counts against its mission's spend.",
-			enforcedBy: [],
+			text: "Every recorded call's cost counts against its mission's spend. A sub-agent's calls count as its calling agent's: in a turn, that turn's; in a background job, the job's agent's.",
+			enforcedBy: [
+				{
+					kind: "runtime",
+					where:
+						"agent-runtime-worker/src/daemon-boot/monitor-tool-servers.ts: createJobSpend; agent-runtime-worker/src/tool-api-server.ts: jobSubAgentHooks",
+				},
+				{ kind: "test" },
+			],
 			decidedBy: "ADR-0017",
 		},
 	],

@@ -51,6 +51,7 @@ describe("loadPrompt", () => {
 			"image-describe.md",
 			"image-ocr.md",
 			"image-page-visual.md",
+			"investigate-final-step.md",
 			"investigate.md",
 			"mental-map-pointer.md",
 			"mission-copilot-mental-map.html",
@@ -58,6 +59,7 @@ describe("loadPrompt", () => {
 			"reflection.md",
 			"rendering-note.md",
 			"research-context-only.md",
+			"research-final-step.md",
 			"research.md",
 		];
 		const files = readdirSync(PROMPTS_DIR).filter((f) => f !== "README.md");

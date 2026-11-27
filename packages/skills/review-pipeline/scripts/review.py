@@ -269,7 +269,7 @@ class Budget:
 @dataclass
 class Outcome:
     item_id: str
-    status: str  # skipped | deferred | negative | finding | rejected | refuted | unconfirmed | failed
+    status: str  # skipped | deferred | negative | finding | rejected | refuted | unconfirmed | incomplete | failed
     reason: str = ""
     answer: dict | None = None
     problems: list = field(default_factory=list)
@@ -279,21 +279,37 @@ def is_positive(kind: Kind, answer: dict) -> bool:
     return answer.get(kind.positive_field) in kind.positive_values
 
 
+class Incomplete(Exception):
+    """An investigation that ran out of time or turns: its answer is not a verdict."""
+
+
 def review_item(item, kind, ref, investigate, budget) -> tuple:
     """(Outcome, the answer to store or None)."""
+    try:
+        return _review_item(item, kind, ref, investigate, budget)
+    except Incomplete as e:  # never stored: the next run asks again
+        return Outcome(item["id"], "incomplete", str(e)[:500]), None
+
+
+def _review_item(item, kind, ref, investigate, budget) -> tuple:
     iid = item["id"]
     question = kind.question.format(**item.get("facts", {}))
 
-    def ask(skill, q, schema, briefing):
+    def ask(skill, q, schema, briefing, stage="investigation"):
         extra = {"max_turns": kind.max_turns} if kind.max_turns else {}
         out = investigate(question=q, answer_schema=schema, skill_file=skill,
                           briefing=briefing, reference=ref.name, **extra)
+        if out.get("incomplete"):
+            inc = out["incomplete"]
+            raise Incomplete(f"{stage} ran out of {inc.get('reason')}: {inc.get('note', '')}")
         return out["answer"]
 
     if not budget.take():
         return Outcome(iid, "deferred", "budget"), None
     try:
         first = ask(kind.skill, question, kind.schema, item.get("briefing", ""))
+    except Incomplete:
+        raise
     except Exception as e:  # an investigation that fails is recorded, never fatal to the run
         return Outcome(iid, "failed", str(e)[:300]), None
     if not is_positive(kind, first):
@@ -305,7 +321,10 @@ def review_item(item, kind, ref, investigate, budget) -> tuple:
         votes = [first]
         for _ in range(2):
             try:
-                votes.append(ask(kind.skill, question, kind.schema, item.get("briefing", "")))
+                votes.append(ask(kind.skill, question, kind.schema, item.get("briefing", ""),
+                                 stage="confirmation"))
+            except Incomplete:
+                raise
             except Exception as e:
                 votes.append({"error": str(e)[:200]})
         if sum(is_positive(kind, v) for v in votes) < 2:
@@ -323,7 +342,9 @@ def review_item(item, kind, ref, investigate, budget) -> tuple:
         try:
             verdict = ask(kind.refuter_skill,
                           f"Try to disprove this finding about {iid}. Is it wrong?",
-                          REFUTER_SCHEMA, brief)
+                          REFUTER_SCHEMA, brief, stage="refuter")
+        except Incomplete:
+            raise
         except Exception as e:
             return Outcome(iid, "failed", f"refuter: {str(e)[:300]}", answer=first), None
         if verdict.get("refuted"):

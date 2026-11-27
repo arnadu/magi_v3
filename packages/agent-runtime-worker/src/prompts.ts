@@ -21,6 +21,7 @@ export type PromptFile =
 	| "image-describe.md"
 	| "image-ocr.md"
 	| "image-page-visual.md"
+	| "investigate-final-step.md"
 	| "investigate.md"
 	| "mental-map-pointer.md"
 	| "mission-copilot-mental-map.html"
@@ -28,6 +29,7 @@ export type PromptFile =
 	| "reflection.md"
 	| "rendering-note.md"
 	| "research-context-only.md"
+	| "research-final-step.md"
 	| "research.md";
 
 // Prompt files are immutable for the life of the process (they ship in the

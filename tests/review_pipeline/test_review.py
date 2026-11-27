@@ -79,7 +79,11 @@ class World:
         nxt = self.answers.pop(0) if self.answers else {"verdict": "false-positive", "evidence": []}
         if isinstance(nxt, Exception):
             raise nxt
-        return {"answer": nxt, "reference": {"name": "repo", "commit": self.commit}, "turns": 1}
+        out = {"answer": nxt, "reference": {"name": "repo", "commit": self.commit}, "turns": 1}
+        if isinstance(nxt, dict) and "incomplete" in nxt:
+            out["answer"] = {k: v for k, v in nxt.items() if k != "incomplete"}
+            out["incomplete"] = nxt["incomplete"]
+        return out
 
     def run(self, items, now=1_000_000.0, max_calls=40, store=None):
         store = {} if store is None else store
@@ -217,6 +221,20 @@ def test_each_verdict_is_saved_as_it_is_reached(w):
     review.run(items, review.load_kinds(str(w.kinds)), ref, {}, investigate, review.Budget(40),
                review.DEFAULT_MAX_AGE_DAYS, 1_000_000.0, save=lambda s: saved.append(dict(s)))
     assert [sorted(s) for s in saved] == [["cs-0"], ["cs-0", "cs-1"]]
+
+
+def test_an_incomplete_investigation_is_recorded_with_its_reason_and_not_stored(w):
+    w.answers = [{**FP, "incomplete": {"reason": "time", "note": "could not read b.ts"}}]
+    out, store = w.run([ITEM])
+    assert out[0].status == "incomplete" and "cs-1" not in store
+    assert "investigation ran out of time: could not read b.ts" in out[0].reason
+
+
+def test_an_incomplete_confirmation_makes_the_item_incomplete(w):
+    w.answers = [REAL, {**REAL, "incomplete": {"reason": "turns", "note": "unfinished"}}]
+    out, store = w.run([ITEM])
+    assert out[0].status == "incomplete" and "confirmation" in out[0].reason
+    assert "cs-1" not in store
 
 
 def test_a_failed_investigation_is_recorded_and_not_stored(w):

@@ -101,6 +101,17 @@ export interface InnerLoopConfig {
 	 */
 	maxTurns?: number;
 	/**
+	 * A sub-agent's last step. When its turns (`maxTurns`) or its time
+	 * (`timeBudgetMs`, from the loop's start) run out, the next call is its last:
+	 * the notice is stored as a user message, the call is offered no tools, and
+	 * the loop ends after it — so the sub-agent always answers, saying what it
+	 * did not finish. `LoopResult.windDown` says which budget ran out.
+	 */
+	finalStep?: {
+		notice: (reason: WindDownReason) => string;
+		timeBudgetMs?: number;
+	};
+	/**
 	 * Awaited before every LLM call; the mission's spend-cap pause parks a
 	 * running turn here until the cap is raised. The loop re-checks `signal`
 	 * when it returns, so an abort during the wait ends the run.
@@ -174,9 +185,28 @@ export interface InnerLoopConfig {
 // was found investigating.
 const MID_SESSION_PRUNE_THRESHOLD = 100_000;
 
+/** Which of a sub-agent's budgets ran out (see `InnerLoopConfig.finalStep`). */
+export type WindDownReason = "turns" | "time";
+
 export interface LoopResult {
 	messages: Message[];
 	turnCount: number;
+	/** Set when the loop ended with its final step. */
+	windDown?: WindDownReason;
+}
+
+/** Whether the call about to be made (the `turnCount`-th) must be the last. */
+export function windDownReason(
+	config: Pick<InnerLoopConfig, "finalStep" | "maxTurns">,
+	turnCount: number,
+	elapsedMs: number,
+): WindDownReason | undefined {
+	if (!config.finalStep) return undefined;
+	if (config.maxTurns !== undefined && turnCount >= config.maxTurns)
+		return "turns";
+	const budget = config.finalStep.timeBudgetMs;
+	if (budget !== undefined && elapsedMs >= budget) return "time";
+	return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +223,68 @@ async function readyForCall(
 	return !signal?.aborted;
 }
 
+/** One model call: logged through `onLlmCall`, then its answer stored, both under one call id. */
+async function callAndRecord(
+	config: InnerLoopConfig,
+	context: Context,
+	offered: MagiTool[],
+	push: (msg: Message, meta?: { callId?: string }) => Promise<void>,
+): Promise<AssistantMessage> {
+	// One id per logical call — retries are attempts at the same call.
+	const callId = randomUUID();
+	const answer = await callLlmWithRetry(config, context);
+	await config.onLlmCall?.({
+		systemPrompt: context.systemPrompt ?? "",
+		messages: [...context.messages], // snapshot before the answer is pushed
+		toolNames: offered.map((t) => t.name),
+		response: answer,
+		callId,
+	});
+	await push(answer, { callId });
+	return answer;
+}
+
+/** The user message that opens a sub-agent's last step. */
+function finalStepNotice(
+	config: InnerLoopConfig,
+	reason: WindDownReason,
+): Message {
+	return {
+		role: "user",
+		content: config.finalStep?.notice(reason) ?? "",
+		timestamp: Date.now(),
+	};
+}
+
+/** Runs the answer's tool calls, storing each result; false when it made none (the loop is done). */
+async function runToolCalls(
+	config: InnerLoopConfig,
+	answer: AssistantMessage,
+	messages: Message[],
+	push: (msg: Message) => Promise<void>,
+): Promise<boolean> {
+	const toolCalls = answer.content.filter((c) => c.type === "toolCall");
+	if (toolCalls.length === 0) return false;
+	for (const block of toolCalls) {
+		const executed = await executeToolCall(
+			config.tools,
+			block,
+			config.signal,
+			config.toolTimeoutMs ?? 120_000,
+		);
+		const repeatedFailures = consecutiveIdenticalFailures(messages, executed);
+		const toolResult = withRepeatNote(executed, repeatedFailures);
+		await push(toolResult);
+		await config.onToolResult?.({
+			toolName: block.name,
+			args: (block.arguments ?? {}) as Record<string, unknown>,
+			isError: toolResult.isError ?? false,
+			repeatedFailures,
+		});
+	}
+	return true;
+}
+
 /**
  * Run the agent inner loop until the LLM makes no further tool calls.
  *
@@ -203,7 +295,7 @@ async function readyForCall(
 export async function runInnerLoop(
 	config: InnerLoopConfig,
 ): Promise<LoopResult> {
-	const { task, tools, signal, onMessage, onLlmCall, maxTurns } = config;
+	const { task, tools, signal, onMessage, maxTurns } = config;
 
 	// Seed with prior history if resuming; onMessage does not fire for these.
 	const messages: Message[] = config.previousMessages
@@ -238,11 +330,16 @@ export async function runInnerLoop(
 	await pushAndNotify({ role: "user", content: task, timestamp: Date.now() });
 
 	let turnCount = 0;
+	let windDown: WindDownReason | undefined;
+	const startedAt = Date.now();
 
 	while (true) {
 		// The run's own signal ends the loop even when the provider ignores it (#65).
 		if (!(await readyForCall(config, signal))) break;
 		turnCount++;
+		windDown = windDownReason(config, turnCount, Date.now() - startedAt);
+		if (windDown) await pushAndNotify(finalStepNotice(config, windDown));
+		const offered = windDown ? [] : tools;
 
 		const systemPrompt = config.getSystemPrompt();
 		if (config.getDynamicContext) {
@@ -255,26 +352,19 @@ export async function runInnerLoop(
 		const context: Context = {
 			systemPrompt,
 			messages,
-			tools: tools.map((t) => ({
+			tools: offered.map((t) => ({
 				name: t.name,
 				description: t.description,
 				parameters: t.parameters,
 			})),
 		};
 
-		// One id per logical call — retries are attempts at the same call.
-		const callId = randomUUID();
-		const assistantMessage = await callLlmWithRetry(config, context);
-		if (onLlmCall) {
-			await onLlmCall({
-				systemPrompt,
-				messages: [...messages], // snapshot before assistant msg is pushed
-				toolNames: tools.map((t) => t.name),
-				response: assistantMessage,
-				callId,
-			});
-		}
-		await pushAndNotify(assistantMessage, { callId });
+		const assistantMessage = await callAndRecord(
+			config,
+			context,
+			offered,
+			pushAndNotify,
+		);
 		pruneIfLarge(messages, assistantMessage);
 
 		// Abort on LLM error or explicit abort signal
@@ -288,36 +378,21 @@ export async function runInnerLoop(
 			break;
 		}
 
-		// ── Turn cap (agentic sub-loops) ────────────────────────────────────────
+		// ── Turn cap and final step (agentic sub-loops) ─────────────────────────
+		if (windDown) break;
 		if (maxTurns !== undefined && turnCount >= maxTurns) break;
 
-		// ── Natural termination ─────────────────────────────────────────────────
-		const toolCalls = assistantMessage.content.filter(
-			(c) => c.type === "toolCall",
+		// ── Natural termination, else tool execution ────────────────────────────
+		const ran = await runToolCalls(
+			config,
+			assistantMessage,
+			messages,
+			pushAndNotify,
 		);
-		if (toolCalls.length === 0) break;
-
-		// ── Tool execution ──────────────────────────────────────────────────────
-		for (const block of toolCalls) {
-			const executed = await executeToolCall(
-				tools,
-				block,
-				signal,
-				config.toolTimeoutMs ?? 120_000,
-			);
-			const repeatedFailures = consecutiveIdenticalFailures(messages, executed);
-			const toolResult = withRepeatNote(executed, repeatedFailures);
-			await pushAndNotify(toolResult);
-			await config.onToolResult?.({
-				toolName: block.name,
-				args: (block.arguments ?? {}) as Record<string, unknown>,
-				isError: toolResult.isError ?? false,
-				repeatedFailures,
-			});
-		}
+		if (!ran) break;
 	}
 
-	return { messages, turnCount };
+	return { messages, turnCount, ...(windDown ? { windDown } : {}) };
 }
 
 /**

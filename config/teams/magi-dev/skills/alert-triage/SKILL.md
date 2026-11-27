@@ -29,6 +29,7 @@ Each item ends a run with one outcome:
 | `unconfirmed` | only one of the confirmation runs said real | nothing, unless the same item stays unconfirmed three runs running: note it |
 | `refuted` | the refuter showed why it is wrong | nothing, unless you read the refutation and it is wrong |
 | `rejected` | its citations did not check out | count it (pipeline errors) |
+| `incomplete` | an investigation ran out of time or turns; the ledger has what it did not finish | count it (pipeline errors); the next run asks again |
 | `failed` | the investigation errored | count it (pipeline errors) |
 | `deferred` | the run's budget ran out | nothing; the next run takes it first |
 | `skipped` | unchanged since its last verdict | nothing |
@@ -83,10 +84,10 @@ You are woken by "Alert triage run finished". Each run has a folder
    next turn.
 5. **Watch the pipeline.** Read this run's lines in `$WORKDIR/review/state/ledger.jsonl` (one
    line per item per run, with the run's stamp, status and reason). Under "Pipeline
-   calibration", record `rejected` or `failed` items that repeat (the same item in two runs,
+   calibration", record `rejected`, `incomplete` or `failed` items that repeat (the same item in two runs,
    or more than five in one run), with item ids and the ledger's reasons. Do not investigate
    those alerts yourself instead: the skill or schema behind them gets fixed.
-6. **Update the KPIs** (`RecordKpi`): `K-sec4-untriaged` = this run's `deferred` + `failed`;
+6. **Update the KPIs** (`RecordKpi`): `K-sec4-untriaged` = this run's `deferred` + `incomplete` + `failed`;
    `K-sec2-held` = the share of findings you verified that held, over all your verifications
    (name the register counts it comes from).
 

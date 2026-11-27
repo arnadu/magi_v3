@@ -81,7 +81,11 @@ describe("the Tool API's security-alerts", () => {
 				mission: { id: "m1", name: "t" },
 				agents: [{ id: "appsec" }, { id: "documenter" }],
 			} as never,
-			{ meterFor: () => async () => {}, isBudgetPaused: () => false },
+			{
+				meterFor: () => async () => {},
+				isBudgetPaused: () => false,
+				recordStep: async () => {},
+			},
 			{ agents: ["appsec"], client: c.client },
 		);
 		const port = await freePort();
@@ -92,6 +96,7 @@ describe("the Tool API's security-alerts", () => {
 				const token = server.issueToken(
 					{ agentId, linuxUser: agentId, permittedPaths: ["/tmp"] },
 					{ workdir: "/tmp", sharedDir: "/tmp", linuxUser: agentId },
+					"job-1",
 				);
 				return fetch(`http://127.0.0.1:${port}/tools/security-alerts`, {
 					method: "POST",

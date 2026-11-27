@@ -20,6 +20,7 @@ import { createInspectImageTool } from "../src/tools/inspect-image.js";
 import { createInvestigateTool } from "../src/tools/investigate.js";
 import { createResearchTool } from "../src/tools/research.js";
 import { createFileTools } from "../src/tools.js";
+import { recordingHooks } from "./sub-agent-hooks.js";
 
 describe("TIER_A_TOOL_NAMES", () => {
 	it("matches the names the runner's tool factories produce", () => {
@@ -37,8 +38,13 @@ describe("TIER_A_TOOL_NAMES", () => {
 			),
 			createFetchUrlTool(CLAUDE_SONNET, "/tmp", []),
 			createInspectImageTool("/tmp", CLAUDE_SONNET),
-			createResearchTool(CLAUDE_SONNET, "/tmp", acl),
-			createInvestigateTool(CLAUDE_SONNET, acl, { workdir: "/tmp" }),
+			createResearchTool(CLAUDE_SONNET, "/tmp", acl, {
+				hooks: recordingHooks().hooks,
+			}),
+			createInvestigateTool(CLAUDE_SONNET, acl, {
+				workdir: "/tmp",
+				hooks: recordingHooks().hooks,
+			}),
 			createAnalyzeMemoriesTool({
 				conversationRepo: {} as never,
 				agentId: "a",

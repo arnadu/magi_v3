@@ -9,7 +9,7 @@ import { createServer } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import { createJobSpend } from "../src/daemon-boot/monitor-tool-servers.js";
 import { CLAUDE_HAIKU, CLAUDE_SONNET } from "../src/models.js";
-import { ToolApiServer } from "../src/tool-api-server.js";
+import { jobSubAgentHooks, ToolApiServer } from "../src/tool-api-server.js";
 
 type SpendCtx = Parameters<typeof createJobSpend>[0];
 
@@ -17,7 +17,9 @@ function spendCtx(opts: { spentUsd: number; capUsd: number }) {
 	const append = vi.fn(async () => {});
 	const recordOutOfTurnCost = vi.fn(async () => {});
 	const notifyCostPause = vi.fn(async () => {});
+	const conversationAppend = vi.fn(async () => {});
 	const ctx = {
+		conversationRepo: { append: conversationAppend },
 		missionId: "m1",
 		model: CLAUDE_SONNET,
 		llmCallLog: { append },
@@ -35,7 +37,13 @@ function spendCtx(opts: { spentUsd: number; capUsd: number }) {
 		anomalyRecorder: { record: async () => {} },
 		mailboxRepo: { post: async () => {} },
 	} as unknown as SpendCtx;
-	return { ctx, append, recordOutOfTurnCost, notifyCostPause };
+	return {
+		ctx,
+		append,
+		recordOutOfTurnCost,
+		notifyCostPause,
+		conversationAppend,
+	};
 }
 
 const event = {
@@ -70,7 +78,7 @@ describe("createJobSpend", () => {
 		expect(s.notifyCostPause).toHaveBeenCalledWith(6, 5);
 	});
 
-	it("logs and charges a sub-agent's call, which names no model, at the loop model's price", async () => {
+	it("llm-call.recorded: logs and charges a sub-agent's call, which names no model, at the loop model's price", async () => {
 		const s = spendCtx({ spentUsd: 1, capUsd: 5 });
 		const { model: _named, ...subLoopEvent } = event as { model: unknown };
 		await createJobSpend(s.ctx).meterFor("a1")(subLoopEvent as never);
@@ -79,6 +87,41 @@ describe("createJobSpend", () => {
 		);
 		const charged = (s.recordOutOfTurnCost.mock.calls[0] as unknown[])[2];
 		expect(charged).toBeGreaterThan(0);
+	});
+
+	it("turn.persisted-per-step: stores a job's sub-agent step under its agent and job, outside any turn", async () => {
+		const s = spendCtx({ spentUsd: 1, capUsd: 5 });
+		const msg = { role: "user", content: "task", timestamp: 1 } as const;
+		await jobSubAgentHooks(createJobSpend(s.ctx), "a1", "job-7").onMessage(
+			"call-3",
+			msg,
+		);
+		expect(s.conversationAppend).toHaveBeenCalledWith("a1", "m1", [
+			{
+				turnNumber: 0,
+				parentToolUseId: "call-3",
+				jobId: "job-7",
+				message: msg,
+			},
+		]);
+	});
+
+	it("llm-call.cost-counted: a job's sub-agent is charged to its agent, and stopped by the cap's pause", async () => {
+		const s = spendCtx({ spentUsd: 1, capUsd: 5 });
+		let paused = false;
+		const spend = { ...createJobSpend(s.ctx), isBudgetPaused: () => paused };
+		const hooks = jobSubAgentHooks(spend, "a1", "job-7");
+		await hooks.beforeLlmCall();
+		const { model: _named, ...subLoopEvent } = event as { model: unknown };
+		await hooks.onLlmCall(subLoopEvent as never);
+		expect(s.recordOutOfTurnCost).toHaveBeenCalledWith(
+			"m1",
+			"a1",
+			expect.any(Number),
+			"background job",
+		);
+		paused = true;
+		await expect(hooks.beforeLlmCall()).rejects.toThrow(/spend cap/);
 	});
 
 	it("does not pause below the cap", async () => {
@@ -107,7 +150,11 @@ describe("ToolApiServer while the mission is budget-paused", () => {
 			"/tmp/magi-tool-api-spend",
 			{ post: async () => {} } as never,
 			{ mission: { id: "m1", name: "t" }, agents: [{ id: "a1" }] } as never,
-			{ meterFor: () => async () => {}, isBudgetPaused: () => true },
+			{
+				meterFor: () => async () => {},
+				isBudgetPaused: () => true,
+				recordStep: async () => {},
+			},
 		);
 		const port = await freePort();
 		server.listen(port);
@@ -116,6 +163,7 @@ describe("ToolApiServer while the mission is budget-paused", () => {
 			const token = server.issueToken(
 				{ agentId: "a1", linuxUser: "magi-w1", permittedPaths: ["/tmp"] },
 				{ workdir: "/tmp", sharedDir: "/tmp", linuxUser: "magi-w1" },
+				"job-1",
 			);
 			const call = (tool: string, body: unknown) =>
 				fetch(`http://127.0.0.1:${port}/tools/${tool}`, {
