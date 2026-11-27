@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "dc0028f",
-  "time": "2026-11-27T17:11:00Z"
+  "commit": "846df45",
+  "time": "2026-11-27T19:23:21Z"
  },
  "findings": [
   {
@@ -3723,7 +3723,7 @@
    "about": "platform.config-in-view",
    "text": "The catalog names nothing that enforces platform.config-in-view (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "59fb1396f16e",
@@ -3731,7 +3731,7 @@
    "about": "platform.spend-in-view",
    "text": "The catalog names nothing that enforces platform.spend-in-view (its enforcedBy is empty).",
    "where": [],
-   "new": true
+   "new": false
   },
   {
    "key": "88d3d6708bbe",
