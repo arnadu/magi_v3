@@ -19,6 +19,7 @@ function spendCtx(opts: { spentUsd: number; capUsd: number }) {
 	const notifyCostPause = vi.fn(async () => {});
 	const ctx = {
 		missionId: "m1",
+		model: CLAUDE_SONNET,
 		llmCallLog: { append },
 		statsCollector: {
 			recordOutOfTurnCost,
@@ -67,6 +68,17 @@ describe("createJobSpend", () => {
 		const charged = (s.recordOutOfTurnCost.mock.calls[0] as unknown[])[2];
 		expect(charged).toBeGreaterThan(0);
 		expect(s.notifyCostPause).toHaveBeenCalledWith(6, 5);
+	});
+
+	it("logs and charges a sub-agent's call, which names no model, at the loop model's price", async () => {
+		const s = spendCtx({ spentUsd: 1, capUsd: 5 });
+		const { model: _named, ...subLoopEvent } = event as { model: unknown };
+		await createJobSpend(s.ctx).meterFor("a1")(subLoopEvent as never);
+		expect(s.append).toHaveBeenCalledWith(
+			expect.objectContaining({ agentId: "a1", model: CLAUDE_SONNET.id }),
+		);
+		const charged = (s.recordOutOfTurnCost.mock.calls[0] as unknown[])[2];
+		expect(charged).toBeGreaterThan(0);
 	});
 
 	it("does not pause below the cap", async () => {

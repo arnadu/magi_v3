@@ -105,6 +105,7 @@ describe("createLogOnlyMeter", () => {
 			{ append: async (e) => void appended.push(e) },
 			"m1",
 			"operator-upload",
+			CLAUDE_HAIKU,
 		);
 		await meter({
 			systemPrompt: "",

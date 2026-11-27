@@ -113,6 +113,7 @@ export async function startMonitorServer(
 		ctx.llmCallLog,
 		ctx.missionId,
 		"operator-upload",
+		ctx.visionModel,
 	);
 	await monitor.start(monitorPort);
 	process.stdout.write(
@@ -187,6 +188,7 @@ export function createJobSpend(
 		| "maxCostUsd"
 		| "anomalyRecorder"
 		| "mailboxRepo"
+		| "model"
 	>,
 ): ToolApiSpend {
 	const capState: CapCheckState = { alertedAt: 0, consecutiveFailures: 0 };
@@ -196,6 +198,7 @@ export function createJobSpend(
 				ctx.llmCallLog,
 				ctx.missionId,
 				agentId,
+				ctx.model,
 				async (costUsd) => {
 					await ctx.statsCollector.recordOutOfTurnCost(
 						ctx.missionId,

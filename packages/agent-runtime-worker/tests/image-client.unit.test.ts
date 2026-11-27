@@ -226,6 +226,7 @@ describe("image metering", () => {
 			{ append: async (e) => void appended.push(e as never) },
 			"m1",
 			"designer",
+			CLAUDE_HAIKU,
 			async (c) => void charged.push(c),
 		)(imageMeterEvent(result, "a fern"));
 		expect(appended[0].model).toBe(FLUX);

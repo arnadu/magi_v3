@@ -46,7 +46,11 @@ bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" --lab
 
 `run_triage.sh` runs `produce_items.py` into `$WORKDIR/review/items.jsonl`, then the pipeline
 over those items with this skill's kinds, its state in `$WORKDIR/review/state`; 40 is the most
-investigations one run may use. To run it once now, start the same script as a background job
+investigations one run may use, and none starts after 12 minutes, so the run ends before the
+job's 30-minute limit. What a run does not reach is deferred, and the next run takes it first:
+a large backlog takes several daily runs, by design. Do not lower these numbers or resubmit the
+job to get through faster. When a run fails, tell the user the last lines of its log and
+leave the next run to the schedule; do not resubmit it or change its arguments. To run it once now, start the same script as a background job
 (`run-background`). Everything under `$WORKDIR/review/` is private: never copy it into `shared/`.
 
 ## After a run

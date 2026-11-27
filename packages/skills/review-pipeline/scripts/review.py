@@ -253,9 +253,14 @@ REFUTER_SCHEMA = {
 class Budget:
     max_calls: int
     used: int = 0
+    # time.monotonic() after which no investigation starts, so a run ends (and is recorded)
+    # before the job's wall-clock limit kills it.
+    deadline: float | None = None
 
     def take(self, n: int = 1) -> bool:
         if self.used + n > self.max_calls:
+            return False
+        if self.deadline is not None and time.monotonic() >= self.deadline:
             return False
         self.used += n
         return True
@@ -334,7 +339,8 @@ def cited_files(kind: Kind, answer: dict | None) -> list:
             if isinstance(e, dict) and isinstance(e.get("file"), str)]
 
 
-def run(items, kinds, ref, store, investigate, budget, max_age_days, now) -> list:
+def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=None) -> list:
+    """Reviews the items in order; `save(store)` after each new verdict, so a run cut short keeps them."""
     outcomes = []
     for item in items:
         kind = kinds.get(item.get("kind"))
@@ -353,6 +359,8 @@ def run(items, kinds, ref, store, investigate, budget, max_age_days, now) -> lis
                 "commit": ref.commit, "reviewedAt": now, "why": why,
                 "deps": dependencies(ref, kind, item, cited_files(kind, answer)),
             }
+            if save is not None:
+                save(store)
         outcomes.append(outcome)
     return outcomes
 
@@ -374,6 +382,8 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
     ap.add_argument("--state", required=True)
     ap.add_argument("--reference", required=True)
     ap.add_argument("--max-calls", type=int, default=40)
+    ap.add_argument("--max-minutes", type=float, default=None,
+                    help="start no investigation after this many minutes; the rest is deferred")
     ap.add_argument("--max-age", action="append", default=[], help="risk=days")
     ap.add_argument("--reference-root", default=reference_root, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
@@ -398,9 +408,10 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
             store = json.load(f)
     ref = load_reference(a.reference, a.reference_root)
     now = time.time()
-    budget = Budget(a.max_calls)
+    deadline = None if a.max_minutes is None else time.monotonic() + 60 * a.max_minutes
+    budget = Budget(a.max_calls, deadline=deadline)
     outcomes = run(load_items(a.items), load_kinds(a.kinds), ref, store, investigate,
-                   budget, max_age, now)
+                   budget, max_age, now, save=lambda s: _write_json(store_path, s))
     _write_json(store_path, store)
 
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now))

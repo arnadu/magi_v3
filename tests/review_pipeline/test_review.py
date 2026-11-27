@@ -196,6 +196,29 @@ def test_the_budget_defers_what_it_cannot_reach(w):
     assert "cs-2" not in store
 
 
+def test_past_the_deadline_nothing_starts_and_the_rest_is_deferred(w):
+    ref = review.load_reference("repo", str(w.refroot))
+    budget = review.Budget(40, deadline=review.time.monotonic() - 1)
+    out = review.run([ITEM], review.load_kinds(str(w.kinds)), ref, {}, w.investigate, budget,
+                     review.DEFAULT_MAX_AGE_DAYS, 1_000_000.0)
+    assert [o.status for o in out] == ["deferred"] and w.calls == []
+
+
+def test_each_verdict_is_saved_as_it_is_reached(w):
+    items = [{**ITEM, "id": f"cs-{i}"} for i in range(2)]
+    saved = []
+    ref = review.load_reference("repo", str(w.refroot))
+
+    def investigate(**kw):
+        if len(w.calls) == 1:
+            assert "cs-0" in saved[-1], "the first verdict is saved before the second call"
+        return w.investigate(**kw)
+
+    review.run(items, review.load_kinds(str(w.kinds)), ref, {}, investigate, review.Budget(40),
+               review.DEFAULT_MAX_AGE_DAYS, 1_000_000.0, save=lambda s: saved.append(dict(s)))
+    assert [sorted(s) for s in saved] == [["cs-0"], ["cs-0", "cs-1"]]
+
+
 def test_a_failed_investigation_is_recorded_and_not_stored(w):
     w.answers = [RuntimeError("the answer did not match the schema")]
     out, store = w.run([ITEM])

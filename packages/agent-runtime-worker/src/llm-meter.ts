@@ -135,12 +135,16 @@ export function createLogOnlyMeter(
 	llmCallLog: Pick<LlmCallLogRepository, "append">,
 	missionId: string,
 	agentId: string,
+	/**
+	 * The model of an event that names none: `runInnerLoop` never sets one, so
+	 * a sub-agent's calls (Investigate, Research) arrive without it.
+	 */
+	loopModel: Model<string>,
 	/** Runs after the log entry with the call's cost — e.g. to charge it to the agent and check the cap. */
 	onCost?: (costUsd: number) => Promise<void>,
 ): LlmCallMeter {
 	return async (event) => {
-		const model = event.model;
-		if (!model) return;
+		const model = event.model ?? loopModel;
 		const usage = event.response.usage;
 		const { cost, costEstimated } = resolveEventCost(event, model);
 		await llmCallLog.append({
