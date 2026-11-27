@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "ed12349",
-  "time": "2026-11-27T03:45:44Z"
+  "commit": "fe49cc5",
+  "time": "2026-11-27T13:58:43Z"
  },
  "findings": [
   {
@@ -1562,7 +1562,7 @@
    "where": [
     "packages/agent-runtime-worker/src/mailbox.ts:210",
     "packages/agent-runtime-worker/src/monitor-routes/mailbox.ts:48",
-    "packages/agent-runtime-worker/src/tool-api-server.ts:390"
+    "packages/agent-runtime-worker/src/tool-api-server.ts:431"
    ],
    "lacks": [
     {
@@ -1583,7 +1583,7 @@
     },
     {
      "entryPoint": "tool-api post-message",
-     "where": "packages/agent-runtime-worker/src/tool-api-server.ts:390",
+     "where": "packages/agent-runtime-worker/src/tool-api-server.ts:431",
      "writes": [
       "mailbox.insertOne@packages/agent-runtime-worker/src/mailbox.ts:119",
       "mailbox.updateMany@packages/agent-runtime-worker/src/mailbox.ts:131"
@@ -3638,34 +3638,10 @@
    "new": false
   },
   {
-   "key": "b90e46ecfc86",
-   "kind": "inv.unenforced",
-   "about": "turn.persisted-per-step",
-   "text": "The catalog names nothing that enforces turn.persisted-per-step (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
    "key": "2c5a468f7bbd",
    "kind": "inv.unenforced",
    "about": "turn.no-silent-loss",
    "text": "The catalog names nothing that enforces turn.no-silent-loss (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "17fdfdae75dd",
-   "kind": "inv.unenforced",
-   "about": "llm-call.recorded",
-   "text": "The catalog names nothing that enforces llm-call.recorded (its enforcedBy is empty).",
-   "where": [],
-   "new": false
-  },
-  {
-   "key": "f2ec4610ca14",
-   "kind": "inv.unenforced",
-   "about": "llm-call.cost-counted",
-   "text": "The catalog names nothing that enforces llm-call.cost-counted (its enforcedBy is empty).",
    "where": [],
    "new": false
   },

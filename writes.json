@@ -200,23 +200,23 @@
  },
  {
   "file": "packages/agent-runtime-worker/src/conversation-repository.ts",
-  "line": 228,
+  "line": 230,
   "function": "append",
   "method": "insertOne",
   "collection": "conversationMessages",
   "docType": "ConversationDoc",
-  "fn": "packages/agent-runtime-worker/src/conversation-repository.ts:206:3",
+  "fn": "packages/agent-runtime-worker/src/conversation-repository.ts:208:3",
   "component": "mm-state",
   "ownerOk": true
  },
  {
   "file": "packages/agent-runtime-worker/src/conversation-repository.ts",
-  "line": 256,
+  "line": 259,
   "function": "compact",
   "method": "updateMany",
   "collection": "conversationMessages",
   "docType": "ConversationDoc",
-  "fn": "packages/agent-runtime-worker/src/conversation-repository.ts:255:3",
+  "fn": "packages/agent-runtime-worker/src/conversation-repository.ts:258:3",
   "component": "mm-state",
   "ownerOk": true
  },
