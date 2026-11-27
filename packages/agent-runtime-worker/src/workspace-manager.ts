@@ -16,6 +16,7 @@ import {
 import { userInfo } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { uidOf } from "./linux-user.js";
 import { ensureSharedGitDir } from "./safe-git.js";
 import { mkdirInside, resolveInside, writeFileInside } from "./safe-path.js";
 
@@ -201,6 +202,7 @@ function applyWorkdirAcl(
 	agentUser: string,
 	orchestratorUser: string,
 ): void {
+	removeStaleWorkdirGrants(dir, [uidOf(agentUser), uidOf(orchestratorUser)]);
 	execFileSync("setfacl", ["-m", `u:${agentUser}:rwx`, dir], {
 		stdio: "ignore",
 	});
@@ -210,6 +212,46 @@ function applyWorkdirAcl(
 	execFileSync("setfacl", ["-d", "-m", `u:${orchestratorUser}:rwx`, dir], {
 		stdio: "ignore",
 	});
+}
+
+/**
+ * Named-user entries (access or default) on a getfacl listing whose uid is
+ * not one of `allowed`. Expects numeric output (`getfacl -n`).
+ */
+export function staleUserGrants(
+	getfaclOutput: string,
+	allowed: readonly number[],
+): number[] {
+	const stale = new Set<number>();
+	for (const line of getfaclOutput.split("\n")) {
+		const m = line.trim().match(/^(?:default:)?user:(\d+):/);
+		if (m && !allowed.includes(Number(m[1]))) stale.add(Number(m[1]));
+	}
+	return [...stale];
+}
+
+/**
+ * A private workdir grants only its agent and the daemon. An entry for any
+ * other uid is left from an earlier boot whose user had another uid, and would
+ * let whoever holds that uid now into this agent's files: removed, from the
+ * top directory only (the daemon owns it, not the agent's files below; with
+ * mode 0700 and no grant at the top, nothing below is reachable).
+ */
+function removeStaleWorkdirGrants(dir: string, allowed: number[]): void {
+	const listing = execFileSync("getfacl", ["-n", "-p", "--omit-header", dir], {
+		env: { PATH: "/usr/bin:/bin" },
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "ignore"],
+	});
+	for (const uid of staleUserGrants(listing, allowed)) {
+		execFileSync("setfacl", ["-x", `u:${uid},d:u:${uid}`, dir], {
+			env: { PATH: "/usr/bin:/bin" },
+			stdio: "ignore",
+		});
+		console.warn(
+			`[workspace] removed a stale grant to uid ${uid} from ${dir}: it is not this workdir's agent or the daemon`,
+		);
+	}
 }
 
 /**

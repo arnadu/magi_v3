@@ -117,8 +117,11 @@ RUN useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/
     chown magi-platform:magi-shared /var/lib/magi/reference && \
     chmod 2750 /var/lib/magi/reference
 
-# magi-create-user: root helper invoked via sudo by magi-operator to create
-# per-agent OS users at daemon startup. Validates the username format;
+# magi-create-user <name> <uid>: root helper invoked via sudo by magi-operator
+# to create per-agent OS users at daemon startup, each with the uid the
+# mission volume pins for it (daemon-boot/uid-map.ts): users are recreated on
+# every boot, and a uid that changed would own another agent's files. The uid
+# must be in 1001-59999 and held by no other account. Validates the username format;
 # idempotent for a user it (or this image) created. An existing name is only
 # accepted if it is a real agent-class user — uid >= 1000 and a member of
 # magi-shared — so an agent id that collides with a system account (root,
@@ -134,7 +137,13 @@ RUN printf '%s\n' \
       'if [[ ! "$1" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then' \
       '  echo "magi-create-user: invalid username" >&2; exit 1' \
       'fi' \
+      'if [[ ! "$2" =~ ^[1-9][0-9]{3,4}$ ]] || (( $2 < 1001 || $2 > 59999 )); then' \
+      '  echo "magi-create-user: uid must be 1001-59999" >&2; exit 1' \
+      'fi' \
       'if id "$1" >/dev/null 2>&1; then' \
+      '  if [[ "$(id -u "$1")" != "$2" ]]; then' \
+      '    echo "magi-create-user: $1 exists with another uid than $2" >&2; exit 1' \
+      '  fi' \
       '  if [[ "$(id -u "$1")" -lt 1000 ]]; then' \
       '    echo "magi-create-user: $1 is a system account, not an agent user" >&2; exit 1' \
       '  fi' \
@@ -143,7 +152,10 @@ RUN printf '%s\n' \
       '  fi' \
       '  exit 0' \
       'fi' \
-      'useradd -m -s /bin/bash -G magi-shared "$1"' \
+      'if getent passwd "$2" >/dev/null; then' \
+      '  echo "magi-create-user: uid $2 is held by another account" >&2; exit 1' \
+      'fi' \
+      'useradd -m -u "$2" -s /bin/bash -G magi-shared "$1"' \
       > /usr/local/bin/magi-create-user && chmod 755 /usr/local/bin/magi-create-user
 
 # sudoers: ONLY magi-operator (the daemon) may invoke sudo, and only to become

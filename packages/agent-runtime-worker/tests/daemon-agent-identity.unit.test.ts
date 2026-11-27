@@ -8,6 +8,9 @@
  * across describe blocks.
  */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { TeamConfig } from "@magi/agent-config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,48 +27,98 @@ vi.mock("node:fs", async (importOriginal) => ({
 	existsSync: (...args: unknown[]) => mockExistsSync(...args),
 }));
 
+const { existsSync } =
+	await vi.importActual<typeof import("node:fs")>("node:fs");
+const { readUidMap, UID_MAP_FILE, writeUidMap } = await import(
+	"../src/daemon-boot/uid-map.js"
+);
 const {
 	ensureAgentUsers,
 	provisionAgentIdentities,
 	verifyMissionCopilotSourceAccess,
 } = await import("../src/daemon-boot/agent-identity.js");
 
+/** execFileSync stand-in: `id -u` answers from `uids`. */
+function fakeAccounts(uids: Record<string, number>) {
+	mockExecFileSync.mockImplementation((cmd: string, args: string[]) => {
+		if (cmd === "id") {
+			const uid = uids[args[args.length - 1]];
+			if (uid === undefined) throw new Error("no such user");
+			return `${uid}\n`;
+		}
+		return "";
+	});
+}
+
+function created(): Array<[string, string]> {
+	return mockExecFileSync.mock.calls
+		.filter((c) => c[0] === "sudo")
+		.map((c) => [c[1][1], c[1][2]]);
+}
+
 describe("ensureAgentUsers", () => {
+	let workdir: string;
 	beforeEach(() => {
 		mockExecFileSync.mockReset();
 		mockExistsSync.mockReset().mockReturnValue(false);
+		workdir = mkdtempSync(join(tmpdir(), "uid-map-"));
 	});
 
-	it("does nothing for an already-existing OS user", () => {
-		mockExecFileSync.mockReturnValueOnce(""); // `id <user>` succeeds
-		ensureAgentUsers([{ id: "analyst" }]);
-		expect(mockExecFileSync).toHaveBeenCalledTimes(1);
-		expect(mockExecFileSync).toHaveBeenCalledWith("id", ["magi-w1"], {
-			stdio: "ignore",
-		});
+	it("local dev: checks the pool users and never creates one", () => {
+		fakeAccounts({ "magi-w1": 60001 });
+		ensureAgentUsers([{ id: "analyst" }], workdir);
+		expect(created()).toEqual([]);
+		expect(existsSync(join(workdir, UID_MAP_FILE))).toBe(false);
 	});
 
-	it("creates the OS user via sudo magi-create-user when `id` fails", () => {
-		mockExecFileSync
-			.mockImplementationOnce(() => {
-				throw new Error("no such user");
-			})
-			.mockReturnValueOnce(""); // sudo magi-create-user succeeds
-		ensureAgentUsers([{ id: "analyst" }]);
-		expect(mockExecFileSync).toHaveBeenCalledTimes(2);
-		expect(mockExecFileSync).toHaveBeenNthCalledWith(
-			2,
-			"sudo",
-			["/usr/local/bin/magi-create-user", "magi-w1"],
-			{ stdio: "inherit" },
+	it("does not throw when a pool user is missing (reported, not fatal, in local dev)", () => {
+		fakeAccounts({});
+		expect(() => ensureAgentUsers([{ id: "analyst" }], workdir)).not.toThrow();
+	});
+
+	it("production: creates each user with a pinned uid and records the map first", () => {
+		mockExistsSync.mockReturnValue(true);
+		fakeAccounts({ "mission-copilot": 60011 });
+		ensureAgentUsers(
+			[{ id: "documenter" }, { id: "appsec" }, { id: "mission-copilot" }],
+			workdir,
+			(uid) => uid === 1002,
 		);
+		expect(created()).toEqual([
+			["documenter", "1001"],
+			["appsec", "1003"],
+		]);
+		expect(readUidMap(workdir)).toEqual({
+			documenter: 1001,
+			appsec: 1003,
+			"mission-copilot": 60011,
+		});
 	});
 
-	it("does not throw when both `id` and user creation fail (non-fatal in local dev)", () => {
-		mockExecFileSync.mockImplementation(() => {
-			throw new Error("boom");
-		});
-		expect(() => ensureAgentUsers([{ id: "analyst" }])).not.toThrow();
+	it("production: a reordered or grown roster keeps every agent's uid", () => {
+		mockExistsSync.mockReturnValue(true);
+		writeUidMap(workdir, { documenter: 1003, "qa-lead": 1004 });
+		fakeAccounts({});
+		ensureAgentUsers(
+			[{ id: "appsec" }, { id: "qa-lead" }, { id: "documenter" }],
+			workdir,
+			() => false,
+		);
+		expect(created()).toEqual([
+			["appsec", "1005"],
+			["qa-lead", "1004"],
+			["documenter", "1003"],
+		]);
+	});
+
+	it("production: refuses a user that exists under another uid than its pinned one", () => {
+		mockExistsSync.mockReturnValue(true);
+		writeUidMap(workdir, { documenter: 1003 });
+		fakeAccounts({ documenter: 1004 });
+		expect(() => ensureAgentUsers([{ id: "documenter" }], workdir)).toThrow(
+			/documenter: 1004, pinned 1003/,
+		);
+		expect(created()).toEqual([]);
 	});
 });
 
@@ -86,8 +139,8 @@ describe("verifyMissionCopilotSourceAccess", () => {
 		mockExecFileSync.mockReturnValueOnce("");
 		expect(verifyMissionCopilotSourceAccess("mission-copilot")).toBe(true);
 		const [cmd, args] = mockExecFileSync.mock.calls[0];
-		expect(cmd).toBe("sudo");
-		expect(args.slice(0, 4)).toEqual([
+		expect([cmd, ...args.slice(0, 4)]).toEqual([
+			"sudo",
 			"-n",
 			"-u",
 			"mission-copilot",
@@ -132,7 +185,10 @@ describe("provisionAgentIdentities", () => {
 
 	it("injects the mission copilot and ensures OS users for the full roster when enabled", () => {
 		const teamConfig = baseTeamConfig();
-		provisionAgentIdentities({ teamConfig, missionId: "m1" }, true);
+		provisionAgentIdentities(
+			{ teamConfig, missionId: "m1", workdir: tmpdir() },
+			true,
+		);
 
 		expect(teamConfig.agents.some((a) => a.id === "mission-copilot")).toBe(
 			true,
@@ -145,7 +201,10 @@ describe("provisionAgentIdentities", () => {
 	it("does not inject the mission copilot when disabled, and skips the source-access check", () => {
 		const teamConfig = baseTeamConfig();
 		const originalCount = teamConfig.agents.length;
-		provisionAgentIdentities({ teamConfig, missionId: "m1" }, false);
+		provisionAgentIdentities(
+			{ teamConfig, missionId: "m1", workdir: tmpdir() },
+			false,
+		);
 
 		expect(teamConfig.agents.length).toBe(originalCount);
 		expect(teamConfig.agents.some((a) => a.id === "mission-copilot")).toBe(

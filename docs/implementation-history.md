@@ -1819,3 +1819,14 @@ the cockpit). The baseline test now also reads the Python tests' docstrings.
 **Measured on the first budgeted run (2026-11-27, `glm-5.2`):** 15 investigations for $0.98,
 about $0.065 each; four ran out of turns, two of them trying to run the test suite on the
 read-only copy.
+
+**Pinned agent uids (ADR-0041, F-085), 2026-11-27.** On `magi-dev-1`, `documenter` and `qa-lead`
+had swapped uids between two boots: agent users are recreated on every boot with `useradd`'s next
+free uid, and a change in roster order handed each the other's files and workdir grants. Each
+agent user's uid is now pinned in `$AGENT_WORKDIR/.agent-uids.json` (`daemon-boot/uid-map.ts`),
+written before any user is created; `magi-create-user` takes the uid; a user that exists under
+another uid stops the boot; provisioning removes stale grants from each private workdir. The
+first test run caught a bug in the draft: a pinned image user (`mission-copilot`, 60011) pushed
+new agents past the range. The working agreements gained rule 11: a platform fault is reported
+at once, never worked around in silence (the documenter had moved its reports to a new folder
+and told no one). Also: the alert-triage producer waits for the reference copy after a restart.

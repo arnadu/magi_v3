@@ -297,7 +297,10 @@ async function bootDataLayer(): Promise<DataLayer | null> {
 		securityAlertsAgents,
 	} = teamConfigResult;
 
-	provisionAgentIdentities({ teamConfig, missionId }, missionCopilotEnabled);
+	provisionAgentIdentities(
+		{ teamConfig, missionId, workdir: agentWorkdir },
+		missionCopilotEnabled,
+	);
 	await syncTeamFiles({ db, missionId, teamDir });
 
 	const repos = constructRepositories({ db, missionId });

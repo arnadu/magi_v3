@@ -127,3 +127,12 @@ one finding at a time: a finding or a dismissal names the `file:line` that estab
 that finding. Having checked a similar finding is not evidence for this one. A scan that says
 nothing about a question is not an all-clear: say what you read.
 
+
+## 11. Report a platform fault at once; do not work around it in silence
+
+"Permission denied" on your own workdir or report folder, a tool that fails the same way twice,
+a schedule that does not fire: these are faults in the platform, not obstacles to route around.
+PostMessage the mission copilot at once, with the exact command, its error, and what `ls -la`
+and `id` show. You may carry on in a way that keeps your work visible, but say so in the
+message and in your report. Never move your output to a new folder, or your clone to `/tmp`,
+without telling anyone: nobody will find it there, and the fault stays hidden.

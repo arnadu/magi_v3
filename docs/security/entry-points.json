@@ -1619,7 +1619,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 332,
+		"line": 376,
 		"name": "fetch-url",
 		"tag": "web.fetch"
 	},
@@ -1627,7 +1627,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 341,
+		"line": 385,
 		"name": "inspect-image",
 		"tag": "web.fetch"
 	},
@@ -1635,7 +1635,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 353,
+		"line": 397,
 		"name": "research",
 		"tag": "web.research"
 	},
@@ -1643,7 +1643,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 363,
+		"line": 407,
 		"name": "investigate",
 		"tag": "agent.investigate"
 	},
@@ -1651,7 +1651,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 373,
+		"line": 417,
 		"name": "security-alerts",
 		"tag": "security.read-alerts"
 	},
@@ -1659,7 +1659,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 385,
+		"line": 429,
 		"name": "search-web",
 		"tag": "web.search"
 	},
@@ -1667,7 +1667,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 390,
+		"line": 434,
 		"name": "post-message",
 		"tag": "message.send"
 	},
@@ -1675,7 +1675,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 406,
+		"line": 450,
 		"name": "data-fred",
 		"tag": "data.query"
 	},
@@ -1683,7 +1683,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 411,
+		"line": 455,
 		"name": "data-fmp",
 		"tag": "data.query"
 	},
@@ -1691,7 +1691,7 @@
 		"kind": "tool-api",
 		"actor": "JOB",
 		"file": "packages/agent-runtime-worker/src/tool-api-server.ts",
-		"line": 416,
+		"line": 460,
 		"name": "data-newsapi",
 		"tag": "data.query"
 	},
@@ -1755,7 +1755,7 @@
 		"kind": "tool",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/tools/investigate.ts",
-		"line": 343,
+		"line": 427,
 		"name": "Investigate",
 		"tag": "agent.investigate"
 	},
@@ -1763,7 +1763,7 @@
 		"kind": "tool",
 		"actor": "AG",
 		"file": "packages/agent-runtime-worker/src/tools/research.ts",
-		"line": 381,
+		"line": 383,
 		"name": "Research",
 		"tag": "web.research"
 	},
