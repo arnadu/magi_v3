@@ -188,7 +188,7 @@
  {
   "id": "turn.sub-agent-bounded",
   "scope": "turn",
-  "text": "A sub-agent (Investigate, Research) ends within its time and turn budget: its last step has no tools and tells it to answer from what it has, and its answer says what it did not finish and why. It is never extended, and never cut off without that last step except by its caller's abort or the backstop above its budget.",
+  "text": "A sub-agent (Investigate, Research) ends within its time, turn and (Investigate) money budget: its last step has no tools and tells it to answer from what it has, and its answer says what it did not finish and why. It is never extended, and never cut off without that last step except by its caller's abort or the backstop above its budget.",
   "enforcedBy": [
    {
     "kind": "runtime",

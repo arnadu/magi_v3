@@ -2224,7 +2224,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "search-web",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:426",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:429",
     "reachesHome": true,
     "components": [
      "mm-jobs",
@@ -2273,7 +2273,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "fetch-url",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:373",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:376",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2302,7 +2302,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "inspect-image",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:382",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:385",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2427,7 +2427,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "research",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:394",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:397",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2512,7 +2512,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "investigate",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:404",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:407",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2535,7 +2535,7 @@
     "kind": "tool",
     "actor": "AG",
     "name": "Investigate",
-    "where": "packages/agent-runtime-worker/src/tools/investigate.ts:381",
+    "where": "packages/agent-runtime-worker/src/tools/investigate.ts:427",
     "reachesHome": true,
     "components": [
      "mm-agent-loop",
@@ -2569,7 +2569,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-fred",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:447",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:450",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -2594,7 +2594,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-fmp",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:452",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:455",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -2619,7 +2619,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "data-newsapi",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:457",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:460",
     "reachesHome": true,
     "components": [
      "mm-isolation",
@@ -3359,7 +3359,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "post-message",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:431",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:434",
     "reachesHome": true,
     "components": [
      "mm-jobs",
@@ -5416,7 +5416,7 @@
     "kind": "tool-api",
     "actor": "JOB",
     "name": "security-alerts",
-    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:414",
+    "where": "packages/agent-runtime-worker/src/tool-api-server.ts:417",
     "reachesHome": true,
     "components": [
      "config",
