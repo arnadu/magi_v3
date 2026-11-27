@@ -91,6 +91,157 @@ export const TURN = defineEntity({
 		"Its messages are in `conversationMessages`, one per step; its model calls are `llm-call`s.",
 });
 
+/** One item of a work queue (ADR-0040): an alert, a guard, later an article. */
+export const WORK_ITEM = defineEntity({
+	id: "work-item",
+	name: "Work item (one entry of a review's backlog)",
+	store: {
+		kind: "other",
+		where:
+			"Files in the owning agent's workdir, written by its job through the review pipeline: `review/state/verdicts.json` (the verdict or marker), `ledger.jsonl` (every outcome), `seen.json`, `spend.json`; `priorities.json` is the agent's",
+	},
+	states: [
+		{
+			id: "due",
+			meaning:
+				"Listed and without a current verdict: new, a file it depends on changed, or its verdict reached its maximum age",
+			stored: null,
+		},
+		{
+			id: "deferred",
+			meaning:
+				"Due, not reached: a run's calls or minutes, or the day's budget, ran out first",
+			stored: null,
+		},
+		{
+			id: "held",
+			meaning: "Due, put aside by the agent until a date, with a reason",
+			stored: null,
+		},
+		{
+			id: "incomplete",
+			meaning:
+				"An investigation ran out of time, turns or money: no verdict, asked again next run",
+			stored: null,
+		},
+		{
+			id: "failed",
+			meaning: "An investigation errored: no verdict, asked again next run",
+			stored: null,
+		},
+		{
+			id: "over-budget",
+			meaning:
+				"Its own budget ran out before a verdict: a marker, not asked again until something it depends on changes or the agent pins it",
+		},
+		{
+			id: "judged",
+			meaning:
+				"A verdict is stored: negative, unconfirmed, refuted, rejected, or a finding for the agent to verify",
+			stored: null,
+		},
+	],
+	transitions: [
+		{
+			from: null,
+			event: "the producer lists it",
+			to: "due",
+			actors: ["JOB"],
+		},
+		{
+			from: "due",
+			event: "a run's or the day's budget runs out first",
+			to: "deferred",
+			actors: ["JOB"],
+		},
+		{
+			from: "deferred",
+			event: "the next run",
+			to: "due",
+			actors: ["JOB"],
+		},
+		{
+			from: "due",
+			event: "the agent holds it until a date, with a reason",
+			to: "held",
+			actors: ["AG"],
+		},
+		{ from: "held", event: "the date passes", to: "due", actors: ["JOB"] },
+		{
+			from: "due",
+			event: "investigated: a verdict",
+			to: "judged",
+			actors: ["JOB", "SUB"],
+		},
+		{
+			from: "due",
+			event: "an investigation runs out of time, turns or money",
+			to: "incomplete",
+			actors: ["JOB", "SUB"],
+		},
+		{
+			from: "due",
+			event: "an investigation errors",
+			to: "failed",
+			actors: ["JOB"],
+		},
+		{
+			from: "due",
+			event: "its own budget cannot cover the next investigation",
+			to: "over-budget",
+			actors: ["JOB"],
+		},
+		{
+			from: "incomplete",
+			event: "the next run",
+			to: "due",
+			actors: ["JOB"],
+		},
+		{ from: "failed", event: "the next run", to: "due", actors: ["JOB"] },
+		{
+			from: "over-budget",
+			event: "something it depends on changes, or the agent pins it",
+			to: "due",
+			actors: ["JOB", "AG"],
+		},
+		{
+			from: "judged",
+			event:
+				"something it depends on changes, or its verdict reaches its maximum age",
+			to: "due",
+			actors: ["JOB"],
+		},
+	],
+	invariants: [
+		{
+			id: "work-item.within-budget",
+			text: "No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; every investigation's cost is counted, a failed one's too.",
+			enforcedBy: [{ kind: "test" }],
+			decidedBy: "ADR-0040",
+			open: "Who may set the budgets: today the job's arguments, which the owning agent writes; the skill says they are the operator's, but nothing enforces it. A place only the operator or the mission copilot can set (the mission config) is the follow-up",
+		},
+		{
+			id: "work-item.ordered",
+			text: "Due items are worked pinned first, then new and changed before re-checks, then by the producer's priority, then the longest waiting; the agent changes the order only with a recorded reason.",
+			enforcedBy: [{ kind: "test" }],
+			decidedBy: "ADR-0040",
+		},
+		{
+			id: "work-item.not-a-verdict",
+			text: "An incomplete, failed or over-budget outcome is recorded with its reason and never stored as a verdict.",
+			enforcedBy: [{ kind: "test" }],
+			decidedBy: "ADR-0040",
+		},
+		{
+			id: "work-item.verdict-stands",
+			text: "A verdict changes only when something it depends on changes or it reaches its maximum age; never by hand.",
+			enforcedBy: [{ kind: "test" }],
+		},
+	],
+	notes:
+		"The agent verifies a finding and files it in its own register; that step is the agent's work, not the item's state. Items no longer listed leave the backlog.",
+});
+
 /** One call to a model made on a mission's behalf. */
 export const LLM_CALL = defineEntity({
 	id: "llm-call",

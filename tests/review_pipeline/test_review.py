@@ -104,6 +104,7 @@ def w(tmp_path):
 
 
 def test_an_unchanged_item_is_skipped_without_a_call(w):
+    """work-item.verdict-stands: an unchanged item keeps its verdict and costs nothing."""
     w.answers = [FP]
     out, store = w.run([ITEM])
     assert out[0].status == "negative" and len(w.calls) == 1
@@ -112,6 +113,7 @@ def test_an_unchanged_item_is_skipped_without_a_call(w):
 
 
 def test_a_change_to_a_cited_file_brings_it_back(w):
+    """work-item.verdict-stands: a verdict is reviewed again when a file it depends on changes."""
     w.answers = [FP]
     _, store = w.run([ITEM])
     w.write("src/b.ts", "changed\n")  # not cited: still skipped
@@ -224,6 +226,7 @@ def test_each_verdict_is_saved_as_it_is_reached(w):
 
 
 def test_an_incomplete_investigation_is_recorded_with_its_reason_and_not_stored(w):
+    """work-item.not-a-verdict: an incomplete investigation is recorded, never stored as a verdict."""
     w.answers = [{**FP, "incomplete": {"reason": "time", "note": "could not read b.ts"}}]
     out, store = w.run([ITEM])
     assert out[0].status == "incomplete" and "cs-1" not in store
@@ -238,6 +241,7 @@ def test_an_incomplete_confirmation_makes_the_item_incomplete(w):
 
 
 def test_a_failed_investigation_is_recorded_and_not_stored(w):
+    """work-item.not-a-verdict: a failed investigation is recorded, never stored as a verdict."""
     w.answers = [RuntimeError("the answer did not match the schema")]
     out, store = w.run([ITEM])
     assert out[0].status == "failed" and "cs-1" not in store

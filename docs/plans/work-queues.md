@@ -66,7 +66,7 @@ differently each time, and a bad ranking is silent (an important item just waits
 added later as a re-rank of the head of the list, if the fixed rule is seen to misrank (a real
 finding confirmed late).
 
-### 3. Budgets in dollars, turns as the safety
+### 3. Budgets in dollars, turns as the safety (built with a per-item budget too: see ADR-0040)
 
 - **Per item:** each Investigate reports its own cost (`cost_usd`, from the calls its hooks
   metered). A kind may set `max_usd`; reaching it is a third reason for the sub-agent's last

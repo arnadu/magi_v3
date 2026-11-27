@@ -125,6 +125,8 @@ export const TEAM_OPERATIONS = defineOperations([
 			"The sub-agent acts with the calling agent's identity, tools and budget, but none of its history",
 			"It reviews code in a read-only reference copy kept by a platform task",
 			"Its answer matches the caller's schema, or the call fails",
+			"It ends within its time, turn and money budget, answering from what it has and saying what it did not finish",
+			"It reports what it cost, also when it fails",
 			"Spend counts against the mission",
 		],
 	},

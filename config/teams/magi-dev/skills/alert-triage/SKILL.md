@@ -22,7 +22,8 @@ record the result in the findings register. The pipeline narrows; it does not de
   then by severity, with a bonus when the alert's file implements a trust boundary (the threat
   model's "Implementing Files by Boundary"); then the longest waiting. New and changed items come
   before re-checks of old verdicts.
-- A daily budget in dollars sets the pace: the job runs hourly and starts no investigation once
+- Two money limits, both the user's decision: a daily budget for all items, and a budget per
+  item (all its investigations together). The daily budget sets the pace: the job runs hourly and starts no investigation once
   the day's spend reaches it. A backlog is worked through over a day or two; after that, each day
   handles what is new or changed. Each investigation also has its own limits (time, turns,
   money); one that runs out answers from what it has and comes back `incomplete`.
@@ -40,6 +41,7 @@ Each item ends a run with one outcome:
 | `failed` | the investigation errored | count it (pipeline errors) |
 | `deferred` | a budget ran out: the run's calls or minutes, or the day's money (the ledger says which) | nothing; the next run takes it first |
 | `held` | you put it aside with `skip_until` (below) | nothing until the date |
+| `over-budget` | its own budget (all its investigations together) ran out before a verdict | decide: pin it (it is asked again with a fresh budget) if it is worth the money, or note it for the user; it is not asked again on its own until something it depends on changes |
 | `skipped` | unchanged since its last verdict | nothing |
 
 A `finding` is a lead whose citations exist, not a vulnerability. A `negative` is the
@@ -50,10 +52,10 @@ pipeline's best answer, not proof of safety.
 ```bash
 bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" --label alert-triage \
   --cron '0 * * * *' --script "$SHARED_DIR/skills/_team/alert-triage/scripts/run_triage.sh" \
-  --args "$SHARED_DIR $WORKDIR --notify $AGENT_ID --max-usd-per-day <budget>"
+  --args "$SHARED_DIR $WORKDIR --notify $AGENT_ID --max-usd-per-day <day> --max-usd-per-item <item>"
 ```
 
-The daily budget is the user's decision: use the figure the user gave you, and ask if there is
+Both budgets are the user's decision: use the figures the user gave you, and ask if there are
 none. There is no `--notify-agent`: the run mails you itself, only when there is work (below);
 a run that fails is reported to the mission copilot by the platform.
 
@@ -114,7 +116,8 @@ since the last one in your map.
    calibration", record `rejected`, `incomplete` or `failed` items that repeat (the same item in two runs,
    or more than five in one run), with item ids and the ledger's reasons. Do not investigate
    those alerts yourself instead: the skill or schema behind them gets fixed.
-6. **Update the KPIs** (`RecordKpi`): `K-sec4-untriaged` = this run's `deferred` + `incomplete` + `failed`;
+6. **Update the KPIs** (`RecordKpi`): `K-sec4-untriaged` = this run's `deferred` + `incomplete` + `failed`, plus the backlog's
+   `overBudget`;
    `K-sec2-held` = the share of findings you verified that held, over all your verifications
    (name the register counts it comes from).
 

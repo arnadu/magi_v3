@@ -3,7 +3,7 @@
 # agent completing it, with WORKDIR, SHARED_DIR and AGENT_ID set. Reads only; exit 0 = done.
 #
 #   check_triage.sh scheduled    the job is scheduled to notify this agent, and a run has finished
-#   check_triage.sh first-pass   the newest run left nothing deferred or incomplete, and every
+#   check_triage.sh first-pass   the newest run left nothing deferred, incomplete or over budget, and every
 #                                finding of every run is in the findings register (by its item id)
 set -euo pipefail
 MODE="${1:-}"
@@ -45,9 +45,10 @@ elif mode == "first-pass":
         fail(f"no run has finished yet in {runs_dir}")
     newest = summary(runs[-1])
     counts = newest.get("counts", {})
-    left = counts.get("deferred", 0) + counts.get("incomplete", 0)
+    over = newest.get("backlog", {}).get("overBudget", 0)
+    left = counts.get("deferred", 0) + counts.get("incomplete", 0) + over
     if left:
-        fail(f"newest run {runs[-1]} left {left} item(s) deferred or incomplete: "
+        fail(f"newest run {runs[-1]} left {left} item(s) deferred, incomplete or over budget: "
              "the backlog is not through yet")
     register = os.path.join(shared, "reports", "security", "register.md")
     text = open(register, encoding="utf-8").read() if os.path.isfile(register) else ""

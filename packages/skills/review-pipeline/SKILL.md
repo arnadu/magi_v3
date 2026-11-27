@@ -63,7 +63,7 @@ As a background job (see `run-background`), against a reference copy kept by a p
 python3 $SHARED_DIR/skills/_platform/review-pipeline/scripts/review.py \
   --items $WORKDIR/review/items.jsonl --kinds $WORKDIR/review/kinds \
   --state $WORKDIR/review/state --reference magi-v3 \
-  --max-usd-per-day 2 --max-minutes 12 --max-calls 40
+  --max-usd-per-day 2 --max-usd-per-item 1 --max-minutes 12 --max-calls 40
 ```
 
 Keep `--state` in your workdir: verdicts about security questions are private to you.
@@ -89,7 +89,9 @@ pace. To change the order with a reason, write `state/priorities.json`:
 
 Outcomes: `finding` (survived everything), `negative`, `unconfirmed` (one run of three),
 `refuted`, `rejected` (its evidence did not check out), `skipped` (unchanged), `deferred` (a
-budget ran out; the ledger says which), `held` (put aside by `skip_until`), `incomplete` (an
+budget ran out; the ledger says which), `held` (put aside by `skip_until`), `over-budget` (the item's own budget, `--max-usd-per-item`,
+ran out before a verdict: kept as a marker and not asked again until something it depends on
+changes or you pin it), `incomplete` (an
 investigation ran out of time, turns or money; asked again next run) and `failed` (the
 investigation errored).
 
@@ -97,4 +99,5 @@ investigation errored).
 
 - A finding is a lead with checked citations, not a certificate. Verify it before you file it.
 - Never edit `verdicts.json` to suppress an item; a verdict changes when what it depends on does.
-- The daily budget is the user's decision, not yours: run with the figure you were given.
+- The daily and per-item budgets are the user's decision, not yours: run with the figures you
+  were given.

@@ -64,6 +64,11 @@ const TEST_SOURCES = ROOTS.flatMap((r) => {
 	}
 });
 
+/** The skills' Python tests (pytest, run in CI): a test names an invariant at the start of its docstring. */
+const PYTHON_TEST_SOURCES = [...files(join(ROOT, "tests"))]
+	.filter((f) => f.endsWith(".py"))
+	.map((f) => readFileSync(join(ROOT, f), "utf8"));
+
 /**
  * What is wrong with a runtime enforcement's `where`: "<package path>: <what>",
  * several joined by "; " (a bare file name is in the previous one's folder).
@@ -90,13 +95,21 @@ function runtimeLocationProblems(where: string): string[] {
 		const text = readFileSync(path, "utf8");
 		const names = /^((?:[a-z]+[A-Z]\w*)(?:, [a-z]+[A-Z]\w*)*)/.exec(m[2]);
 		for (const name of names ? names[1].split(", ") : [])
-			if (!new RegExp(`\\b${name}\\b`).test(text))
-				problems.push(`no ${name} in packages/${file}`);
+			if (!hasWord(text, name)) problems.push(`no ${name} in packages/${file}`);
 		const route = /^(\/[\w/-]+)/.exec(m[2]);
 		if (route && !text.includes(`"${route[1]}"`))
 			problems.push(`no route "${route[1]}" in packages/${file}`);
 	}
 	return problems;
+}
+
+/** Whether `name` occurs in `text` as a whole word (not inside a longer identifier). */
+function hasWord(text: string, name: string): boolean {
+	const isWordChar = (c: string | undefined) => c !== undefined && /\w/.test(c);
+	for (let i = text.indexOf(name); i >= 0; i = text.indexOf(name, i + 1))
+		if (!isWordChar(text[i - 1]) && !isWordChar(text[i + name.length]))
+			return true;
+	return false;
 }
 
 /** What is missing for one way an invariant is enforced. */
@@ -106,7 +119,8 @@ function enforcementProblems(
 ): string[] {
 	switch (e.kind) {
 		case "test":
-			return TEST_SOURCES.some((t) => t.includes(`("${id}`))
+			return TEST_SOURCES.some((t) => t.includes(`("${id}`)) ||
+				PYTHON_TEST_SOURCES.some((t) => t.includes(`"""${id}`))
 				? []
 				: [`no test titled "${id} …"`];
 		case "scan":

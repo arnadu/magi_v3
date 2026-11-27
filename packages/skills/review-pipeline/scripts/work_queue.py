@@ -124,8 +124,9 @@ def order(due: list, overrides: dict, seen: dict, now: float) -> tuple[list, lis
     return sorted(work, key=key), held
 
 
-def backlog(left: list, seen: dict, now: float, spend: DaySpend) -> dict:
-    """How far behind the work is: `left` is the (item, why) still waiting after this run."""
+def backlog(left: list, seen: dict, now: float, spend: DaySpend, over_budget: int = 0) -> dict:
+    """How far behind the work is: `left` is the (item, why) still waiting after this run;
+    `over_budget` counts items set aside because their own budget ran out (no verdict)."""
     by_band: dict = {}
     for item, _ in left:
         band = str(item.get("band", "unbanded"))
@@ -138,4 +139,5 @@ def backlog(left: list, seen: dict, now: float, spend: DaySpend) -> dict:
         time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(oldest)),
         "spentTodayUsd": round(spend.spent(now), 4),
         "dayBudgetUsd": spend.budget_usd,
+        "overBudget": over_budget,
     }

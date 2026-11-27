@@ -26,11 +26,16 @@ and domain-neutral; the processing step is passed in.
    threat model, watched guards first), then new and changed before re-checks, then the longest
    waiting. The owning agent does not rank; it may **steer** with a reason
    (`priorities.json`: pin to the top, or hold until a date), which the queue applies and records.
-3. **The pace is a daily budget in dollars.** Each investigation reports its cost (`cost_usd`,
-   also on failure); the queue keeps the day's spend and starts no investigation once it reaches
-   `--max-usd-per-day`. Each investigation also has a money cap (`max_usd`, a third reason for
-   ADR-0039's last step), and turns and time stay as safeties. The job runs hourly; the budget,
-   not the schedule, sets the pace.
+3. **Money is limited at two levels, both the operator's decision.**
+   - **Per day** (`--max-usd-per-day`): each investigation reports its cost (`cost_usd`, also on
+     failure); the queue keeps the day's spend and starts no investigation once it reaches the
+     budget. The job runs hourly; the budget, not the schedule, sets the pace.
+   - **Per item** (`--max-usd-per-item`): all of an item's investigations together (the first,
+     two confirmations, the refuter). Each investigation's own cap (`max_usd`, a third reason for
+     ADR-0039's last step) is what is left of the item's budget, at most the kind's cap. An item
+     that cannot afford its next step is **over-budget**: a marker, not a verdict, not asked again
+     until something it depends on changes or the agent pins it (a pin says "worth more money").
+   Turns and time stay as safeties.
 4. **Each run reports how far behind the work is:** items left by band, the oldest waiting,
    today's spend against the budget.
 5. **The agent is woken only when there is work:** a finding to verify, an item that failed,
@@ -54,6 +59,10 @@ and domain-neutral; the processing step is passed in.
 
 - Alert triage clears its backlog in priority order within the user's budget, and appsec's weekly
   summary says how far behind it is.
-- The daily budget is the product owner's decision, set per mission in the job's arguments.
+- The budgets are the operator's decision, set per mission in the job's arguments. Today nothing
+  stops the owning agent from changing them; the catalog records this as an open question
+  (`work-item.within-budget`), with the mission config as the follow-up.
+- The catalog has the work item as an entity (states due, deferred, held, incomplete, failed,
+  over-budget, judged) and journey A-11 as "Work through a backlog of items within a budget".
 - The news digest (data factory) is the second candidate; adopting the queue there will show
   whether `work_queue.py` is generic, and is a separate slice.

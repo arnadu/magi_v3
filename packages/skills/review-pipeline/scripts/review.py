@@ -265,6 +265,8 @@ class Budget:
     day: "work_queue.DaySpend | None" = None
     spent_usd: float = 0.0
     stopped: str = ""  # which limit refused the last take: calls | time | daily budget
+    # What all of one item's investigations together may cost; None = no item limit.
+    item_usd: float | None = None
 
     def take(self, n: int = 1) -> bool:
         if self.used + n > self.max_calls:
@@ -287,7 +289,7 @@ class Budget:
 @dataclass
 class Outcome:
     item_id: str
-    status: str  # skipped | deferred | negative | finding | rejected | refuted | unconfirmed | incomplete | failed
+    status: str  # skipped | deferred | held | negative | finding | rejected | refuted | unconfirmed | incomplete | over-budget | failed
     reason: str = ""
     answer: dict | None = None
     problems: list = field(default_factory=list)
@@ -300,6 +302,16 @@ def is_positive(kind: Kind, answer: dict) -> bool:
 
 class Incomplete(Exception):
     """An investigation that ran out of time, turns or money: its answer is not a verdict."""
+
+
+class OverBudget(Exception):
+    """The item's budget cannot cover its next investigation: no verdict, until something changes."""
+
+
+# Investigate's own default cap; an item budget never gives one investigation more than this.
+INVESTIGATE_DEFAULT_USD = 0.5
+# Less than this left for an item is not enough to start an investigation worth having.
+MIN_INVESTIGATION_USD = 0.05
 
 
 COST_IN_ERROR = re.compile(r"\(cost_usd ([0-9.eE+-]+)\)\s*$")
@@ -321,6 +333,8 @@ def review_item(item, kind, ref, investigate, budget) -> tuple:
         outcome, answer = _review_item(item, kind, ref, investigate, budget)
     except Incomplete as e:  # never stored: the next run asks again
         outcome, answer = Outcome(item["id"], "incomplete", str(e)[:500]), None
+    except OverBudget as e:  # stored as a marker: not asked again until something changes
+        outcome, answer = Outcome(item["id"], "over-budget", str(e)[:500]), None
     outcome.cost_usd = round(budget.spent_usd - before, 6)
     return outcome, answer
 
@@ -342,11 +356,24 @@ def _review_item(item, kind, ref, investigate, budget) -> tuple:
     iid = item["id"]
     question = kind.question.format(**item.get("facts", {}))
     investigate = _charged(investigate, budget)
+    start = budget.spent_usd
+
+    def cap(stage):
+        """This investigation's money cap: the kind's, within what is left of the item's budget."""
+        own = kind.max_usd
+        if budget.item_usd is None:
+            return own
+        left = budget.item_usd - (budget.spent_usd - start)
+        if left < MIN_INVESTIGATION_USD:
+            raise OverBudget(f"the item's ${budget.item_usd} budget was spent before the {stage} "
+                             f"(${round(budget.spent_usd - start, 4)} so far)")
+        return round(min(own or INVESTIGATE_DEFAULT_USD, left), 4)
 
     def ask(skill, q, schema, briefing, stage="investigation"):
         extra = {"max_turns": kind.max_turns} if kind.max_turns else {}
-        if kind.max_usd:
-            extra["max_usd"] = kind.max_usd
+        usd = cap(stage)
+        if usd:
+            extra["max_usd"] = usd
         out = investigate(question=q, answer_schema=schema, skill_file=skill,
                           briefing=briefing, reference=ref.name, **extra)
         if out.get("incomplete"):
@@ -358,7 +385,7 @@ def _review_item(item, kind, ref, investigate, budget) -> tuple:
         return Outcome(iid, "deferred", f"budget: {budget.stopped}"), None
     try:
         first = ask(kind.skill, question, kind.schema, item.get("briefing", ""))
-    except Incomplete:
+    except (Incomplete, OverBudget):
         raise
     except Exception as e:  # an investigation that fails is recorded, never fatal to the run
         return Outcome(iid, "failed", str(e)[:300]), None
@@ -374,7 +401,7 @@ def _review_item(item, kind, ref, investigate, budget) -> tuple:
             try:
                 votes.append(ask(kind.skill, question, kind.schema, item.get("briefing", ""),
                                  stage="confirmation"))
-            except Incomplete:
+            except (Incomplete, OverBudget):
                 raise
             except Exception as e:
                 votes.append({"error": str(e)[:200]})
@@ -395,7 +422,7 @@ def _review_item(item, kind, ref, investigate, budget) -> tuple:
             verdict = ask(kind.refuter_skill,
                           f"Try to disprove this finding about {iid}. Is it wrong?",
                           REFUTER_SCHEMA, brief, stage="refuter")
-        except Incomplete:
+        except (Incomplete, OverBudget):
             raise
         except Exception as e:
             return Outcome(iid, "failed", f"refuter: {str(e)[:300]}", answer=first), None
@@ -426,7 +453,11 @@ def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=N
         if kind is None:
             outcomes.append(Outcome(item.get("id", "?"), "failed", f"unknown kind {item.get('kind')!r}"))
             continue
-        why = due(ref, kind, item, store.get(item["id"]), max_age_days, now)
+        stored = store.get(item["id"])
+        why = due(ref, kind, item, stored, max_age_days, now)
+        if why is None and stored and stored.get("status") == "over-budget" and \
+                (overrides or {}).get(item["id"], {}).get("pin") == "top":
+            why = "pinned after over-budget"
         if why is None:
             outcomes.append(Outcome(item["id"], "skipped", "unchanged"))
         else:
@@ -439,7 +470,15 @@ def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=N
         kind = kinds[item["kind"]]
         outcome, answer = review_item(item, kind, ref, investigate, budget)
         outcome.reason = outcome.reason or why
-        if answer is not None:
+        if outcome.status == "over-budget":
+            store[item["id"]] = {
+                "kind": kind.kind, "status": "over-budget", "answer": None,
+                "commit": ref.commit, "reviewedAt": now, "why": outcome.reason,
+                "deps": dependencies(ref, kind, item, []),
+            }
+            if save is not None:
+                save(store)
+        elif answer is not None:
             store[item["id"]] = {
                 "kind": kind.kind, "status": outcome.status, "answer": answer,
                 "commit": ref.commit, "reviewedAt": now, "why": why,
@@ -472,6 +511,8 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
                     help="start no investigation after this many minutes; the rest is deferred")
     ap.add_argument("--max-usd-per-day", type=float, default=None,
                     help="start no investigation once today's spend (UTC) reaches this; the rest is deferred")
+    ap.add_argument("--max-usd-per-item", type=float, default=None,
+                    help="what all of one item's investigations may cost; past it the item is over-budget")
     ap.add_argument("--max-age", action="append", default=[], help="risk=days")
     ap.add_argument("--reference-root", default=reference_root, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
@@ -498,7 +539,7 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
     now = time.time()
     deadline = None if a.max_minutes is None else time.monotonic() + 60 * a.max_minutes
     day = work_queue.DaySpend.load(a.state, a.max_usd_per_day)
-    budget = Budget(a.max_calls, deadline=deadline, day=day)
+    budget = Budget(a.max_calls, deadline=deadline, day=day, item_usd=a.max_usd_per_item)
     items = load_items(a.items)
     seen = work_queue.first_seen(a.state, items, now)
     overrides, override_notes = work_queue.load_overrides(a.state)
@@ -521,7 +562,8 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
     summary = {"commit": ref.commit, "items": len(outcomes), "calls": budget.used,
                "maxCalls": budget.max_calls, "counts": counts, "findings": len(findings),
                "costUsd": round(budget.spent_usd, 4),
-               "backlog": work_queue.backlog(left, seen, now, day),
+               "backlog": work_queue.backlog(left, seen, now, day, over_budget=sum(
+                   1 for i in items if store.get(i["id"], {}).get("status") == "over-budget")),
                **({"overrideNotes": override_notes} if override_notes else {})}
     _write_json(os.path.join(out_dir, "summary.json"), summary)
     with open(os.path.join(a.state, "ledger.jsonl"), "a", encoding="utf-8") as f:

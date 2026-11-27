@@ -1,5 +1,5 @@
 import { defineEntity } from "./define-entity.js";
-import { LLM_CALL, TURN } from "./entities-record.js";
+import { LLM_CALL, TURN, WORK_ITEM } from "./entities-record.js";
 import { RESOURCE_ENTITIES } from "./entities-resources.js";
 
 const mission = defineEntity({
@@ -573,6 +573,7 @@ export const ENTITIES = [
 	message,
 	TURN,
 	LLM_CALL,
+	WORK_ITEM,
 	...RESOURCE_ENTITIES,
 ] as const;
 

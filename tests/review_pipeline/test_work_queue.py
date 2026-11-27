@@ -9,7 +9,7 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "packages" / "skills" / "review-
 sys.path.insert(0, str(SCRIPTS))
 import review  # noqa: E402
 import work_queue  # noqa: E402
-from test_review import FP, ITEM, World  # noqa: E402
+from test_review import FP, ITEM, REAL, World  # noqa: E402
 
 NOW = 1_800_000_000.0  # 2027-01-15
 
@@ -23,6 +23,7 @@ def ids(entries):
 
 
 def test_order_by_priority_then_age_with_rechecks_last():
+    """work-item.ordered: new and changed before re-checks, then priority, then the longest waiting."""
     due = [(item(1, 10), "new"), (item(2, 40), "rotation"), (item(3, 40), "new"),
            (item(4, 10), "changed: src/a.ts")]
     seen = {"cs-1": NOW - 100, "cs-4": NOW - 900}
@@ -31,6 +32,7 @@ def test_order_by_priority_then_age_with_rechecks_last():
 
 
 def test_a_pin_goes_first_and_skip_until_holds_until_its_date():
+    """work-item.ordered: the agent steers only with a reason: a pin goes first, a hold waits."""
     due = [(item(1, 40), "new"), (item(2, 10), "new"), (item(3, 30), "new")]
     overrides = {"cs-2": {"pin": "top", "reason": "token handling"},
                  "cs-1": {"skip_until": "2099-01-01", "reason": "fix in review"},
@@ -67,6 +69,7 @@ def test_the_daily_spend_is_kept_per_utc_day_against_the_budget(tmp_path):
 
 
 def test_review_stops_starting_investigations_once_the_day_is_spent(tmp_path):
+    """work-item.within-budget: no investigation starts once the day's budget is spent."""
     w = World(tmp_path)
     items = [{**ITEM, "id": f"cs-{i}"} for i in range(4)]
 
@@ -85,6 +88,7 @@ def test_review_stops_starting_investigations_once_the_day_is_spent(tmp_path):
 
 
 def test_the_cost_of_a_failed_investigation_is_charged_too(tmp_path):
+    """work-item.within-budget: every investigation's cost is counted, a failed one's too."""
     w = World(tmp_path)
     w.answers = [RuntimeError("Investigate: the model call failed (error): x (cost_usd 0.042)")]
     budget = review.Budget(40)
@@ -114,3 +118,33 @@ def test_main_reports_the_backlog_and_each_items_cost(tmp_path, capsys):
     ledger = [json.loads(line) for line in (state / "ledger.jsonl").read_text().splitlines()]
     worked = [e for e in ledger if e["status"] != "deferred"]
     assert worked[0]["item"] == "cs-2" and worked[0]["costUsd"] == 0.1
+
+
+def test_an_items_budget_caps_each_investigation_and_sets_it_aside_when_spent(tmp_path):
+    """work-item.within-budget: an item's investigations together stay within its budget; each one
+    is capped by what is left; an item that cannot afford its next step is over-budget, kept as a
+    marker (not a verdict), skipped until something changes, and asked again when pinned."""
+    w = World(tmp_path)
+    caps = []
+
+    def investigate(**kw):
+        caps.append(kw.get("max_usd"))
+        return {**w.investigate(**kw), "cost_usd": 0.3}
+
+    ref = review.load_reference("repo", str(w.refroot))
+    kinds = review.load_kinds(str(w.kinds))
+    store = {}
+    w.answers = [REAL, REAL, REAL]
+    out = review.run([ITEM], kinds, ref, store, investigate, review.Budget(40, item_usd=0.5),
+                     review.DEFAULT_MAX_AGE_DAYS, time.time())
+    assert out[0].status == "over-budget" and "before the confirmation" in out[0].reason
+    assert caps == [0.5, 0.2] and out[0].cost_usd == 0.6
+    assert store["cs-1"]["status"] == "over-budget" and store["cs-1"]["answer"] is None
+    again = review.run([ITEM], kinds, ref, store, investigate, review.Budget(40, item_usd=0.5),
+                       review.DEFAULT_MAX_AGE_DAYS, time.time())
+    assert again[0].status == "skipped" and len(caps) == 2
+    pinned = {"cs-1": {"pin": "top", "reason": "worth more"}}
+    w.answers = [FP]
+    third = review.run([ITEM], kinds, ref, store, investigate, review.Budget(40, item_usd=0.5),
+                       review.DEFAULT_MAX_AGE_DAYS, time.time(), overrides=pinned)
+    assert third[0].status == "negative" and third[0].reason == "pinned after over-budget"

@@ -304,18 +304,21 @@ export const JOURNEYS = defineJourneys([
 	},
 	{
 		id: "A-11",
-		title: "Review a codebase item by item",
+		title: "Work through a backlog of items within a budget",
 		actors: ["AG", "JOB"],
 		operations: [
 			"mission.platform-task",
 			"security.read-alerts",
+			"schedule.create",
 			"job.submit",
 			"job.run",
 			"agent.investigate",
 			"file.write",
 			"message.send",
+			"task.update",
+			"kpi.record",
 		],
-		note: "The review pipeline is planned (security assurance plan, step 6b); its parts exist: a platform task keeps a read-only copy of the repository; the agent's job puts each item to a clean-context sub-agent and checks its answer; what survives is filed and the author told",
+		note: "Code review is the first case (MAGI DEV's alert triage, ADR-0040); the news digest is the next. A scheduled job gathers the items by code, ranks them, and puts each to a clean-context sub-agent within the day's and the item's budget; code checks the answers; the agent is mailed only when there is work, verifies what survived, files it and reports the backlog. The agent steers the order with a reason; the budgets are the operator's",
 	},
 ]);
 

@@ -4,9 +4,9 @@
     notify_triage.py <state-dir> <agent-id>
 
 Reads the newest run's summary in <state-dir>/runs/. Mails <agent-id> (through the Tool API, as
-the job's own agent) when the run has a finding to verify, or an item that failed, was rejected or
-came back incomplete; otherwise once a UTC day with the backlog line. Silent the rest of the time,
-so an hourly run does not wake the agent every hour. The mail holds counts and item ids, never an
+the job's own agent) when the run has a finding to verify, or an item that failed, was rejected,
+came back incomplete or went over its budget; otherwise once a UTC day with the backlog line.
+Silent the rest of the time, so an hourly run does not wake the agent every hour. The mail holds counts and item ids, never an
 alert's content (the alerts are private).
 """
 import json
@@ -14,7 +14,7 @@ import os
 import sys
 import time
 
-TROUBLE = ("failed", "rejected", "incomplete")
+TROUBLE = ("failed", "rejected", "incomplete", "over-budget")
 
 
 def newest_run(state_dir):

@@ -244,6 +244,44 @@ Invariants:
 - `llm-call.recorded`: Every model call made on a mission's behalf (by an agent, a copilot, a sub-agent, a tool or a job) is recorded with who made it, the model, tokens, cost and time, and its full input and output are kept for the retention period the operator sets. *(enforced by runtime check in agent-runtime-worker/src/llm-meter.ts: createLogOnlyMeter (loopModel required); agent-runtime-worker/src/tools/sub-agent-hooks.ts: SubAgentHooks, a test; decided in ADR-0017; **open decision:** The retention period and where the bodies are kept (MongoDB, the mission's volume, object storage); whether tool results are kept in full)*
 - `llm-call.cost-counted`: Every recorded call's cost counts against its mission's spend. A sub-agent's calls count as its calling agent's: in a turn, that turn's; in a background job, the job's agent's. *(enforced by runtime check in agent-runtime-worker/src/daemon-boot/monitor-tool-servers.ts: createJobSpend; agent-runtime-worker/src/tool-api-server.ts: jobSubAgentHooks, a test; decided in ADR-0017)*
 
+## Work item (one entry of a review's backlog) (`work-item`)
+
+Stored in: Files in the owning agent's workdir, written by its job through the review pipeline: `review/state/verdicts.json` (the verdict or marker), `ledger.jsonl` (every outcome), `seen.json`, `spend.json`; `priorities.json` is the agent's.
+
+The agent verifies a finding and files it in its own register; that step is the agent's work, not the item's state. Items no longer listed leave the backlog.
+
+| State | Meaning |
+|---|---|
+| `due` (not stored distinctly) | Listed and without a current verdict: new, a file it depends on changed, or its verdict reached its maximum age |
+| `deferred` (not stored distinctly) | Due, not reached: a run's calls or minutes, or the day's budget, ran out first |
+| `held` (not stored distinctly) | Due, put aside by the agent until a date, with a reason |
+| `incomplete` (not stored distinctly) | An investigation ran out of time, turns or money: no verdict, asked again next run |
+| `failed` (not stored distinctly) | An investigation errored: no verdict, asked again next run |
+| `over-budget` | Its own budget ran out before a verdict: a marker, not asked again until something it depends on changes or the agent pins it |
+| `judged` (not stored distinctly) | A verdict is stored: negative, unconfirmed, refuted, rejected, or a finding for the agent to verify |
+
+| From | Event | To | Who | Note |
+|---|---|---|---|---|
+| — | the producer lists it | `due` | JOB |  |
+| `due` | a run's or the day's budget runs out first | `deferred` | JOB |  |
+| `deferred` | the next run | `due` | JOB |  |
+| `due` | the agent holds it until a date, with a reason | `held` | AG |  |
+| `held` | the date passes | `due` | JOB |  |
+| `due` | investigated: a verdict | `judged` | JOB, SUB |  |
+| `due` | an investigation runs out of time, turns or money | `incomplete` | JOB, SUB |  |
+| `due` | an investigation errors | `failed` | JOB |  |
+| `due` | its own budget cannot cover the next investigation | `over-budget` | JOB |  |
+| `incomplete` | the next run | `due` | JOB |  |
+| `failed` | the next run | `due` | JOB |  |
+| `over-budget` | something it depends on changes, or the agent pins it | `due` | JOB, AG |  |
+| `judged` | something it depends on changes, or its verdict reaches its maximum age | `due` | JOB |  |
+
+Invariants:
+- `work-item.within-budget`: No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; every investigation's cost is counted, a failed one's too. *(enforced by a test; decided in ADR-0040; **open decision:** Who may set the budgets: today the job's arguments, which the owning agent writes; the skill says they are the operator's, but nothing enforces it. A place only the operator or the mission copilot can set (the mission config) is the follow-up)*
+- `work-item.ordered`: Due items are worked pinned first, then new and changed before re-checks, then by the producer's priority, then the longest waiting; the agent changes the order only with a recorded reason. *(enforced by a test; decided in ADR-0040)*
+- `work-item.not-a-verdict`: An incomplete, failed or over-budget outcome is recorded with its reason and never stored as a verdict. *(enforced by a test; decided in ADR-0040)*
+- `work-item.verdict-stands`: A verdict changes only when something it depends on changes or it reaches its maximum age; never by hand. *(enforced by a test)*
+
 ## Template (planned: editable templates, on the roadmap) (`template`)
 
 Stored in: Today: read-only files in `config/teams/` (ADR-0021). Planned: a database collection, with the preset templates loaded into it at install.
