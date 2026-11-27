@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "32450ad",
-  "time": "2026-11-27T16:45:16Z"
+  "commit": "dc0028f",
+  "time": "2026-11-27T17:11:00Z"
  },
  "findings": [
   {
@@ -3716,6 +3716,22 @@
    "text": "The catalog names nothing that enforces platform.failures-surface (its enforcedBy is empty).",
    "where": [],
    "new": false
+  },
+  {
+   "key": "12b32870ffc8",
+   "kind": "inv.unenforced",
+   "about": "platform.config-in-view",
+   "text": "The catalog names nothing that enforces platform.config-in-view (its enforcedBy is empty).",
+   "where": [],
+   "new": true
+  },
+  {
+   "key": "59fb1396f16e",
+   "kind": "inv.unenforced",
+   "about": "platform.spend-in-view",
+   "text": "The catalog names nothing that enforces platform.spend-in-view (its enforcedBy is empty).",
+   "where": [],
+   "new": true
   },
   {
    "key": "88d3d6708bbe",
