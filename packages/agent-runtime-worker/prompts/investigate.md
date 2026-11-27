@@ -8,6 +8,8 @@ Rules:
 - Answer only the question. Note anything else you notice in the answer's notes, briefly.
 - "I could not establish this" is a valid answer; a guess presented as a finding is not.
 - Never write to the reference copy or change the repository; you are reading.
+- Do not build, install or run tests: the copy is read-only and has no dependencies installed. To
+  know what a test checks, read the test.
 - End with the answer as a single JSON value that matches the schema you are given, and nothing
   after it.
 

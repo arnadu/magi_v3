@@ -92,7 +92,9 @@ Outcomes: `finding` (survived everything), `negative`, `unconfirmed` (one run of
 budget ran out; the ledger says which), `held` (put aside by `skip_until`), `over-budget` (the item's own budget, `--max-usd-per-item`,
 ran out before a verdict: kept as a marker and not asked again until something it depends on
 changes or you pin it), `incomplete` (an
-investigation ran out of time, turns or money; asked again next run) and `failed` (the
+investigation ran out of time, turns or money; asked once more on the next run), `set-aside`
+(incomplete twice in a row: kept as a marker and not asked again until something changes or you
+pin it) and `failed` (the
 investigation errored).
 
 ## Rules

@@ -148,3 +148,28 @@ def test_an_items_budget_caps_each_investigation_and_sets_it_aside_when_spent(tm
     third = review.run([ITEM], kinds, ref, store, investigate, review.Budget(40, item_usd=0.5),
                        review.DEFAULT_MAX_AGE_DAYS, time.time(), overrides=pinned)
     assert third[0].status == "negative" and third[0].reason == "pinned after over-budget"
+
+
+def test_an_item_incomplete_twice_in_a_row_is_set_aside_until_pinned(tmp_path):
+    """work-item.within-budget: an item that comes back incomplete is asked once more, then set
+    aside (no verdict) rather than paid for every run; a pin brings it back."""
+    w = World(tmp_path)
+    ref = review.load_reference("repo", str(w.refroot))
+    kinds = review.load_kinds(str(w.kinds))
+    store = {}
+    stuck = {**FP, "incomplete": {"reason": "turns", "note": "ran out"}}
+
+    def once(answers, overrides=None):
+        w.answers = answers
+        return review.run([ITEM], kinds, ref, store, w.investigate, review.Budget(40),
+                          review.DEFAULT_MAX_AGE_DAYS, time.time(), overrides=overrides)[0]
+
+    first = once([stuck])
+    assert first.status == "incomplete" and store["cs-1"]["attempts"] == 1
+    second = once([stuck])
+    assert second.status == "set-aside" and second.reason.startswith("incomplete 2 times")
+    assert store["cs-1"]["status"] == "set-aside" and store["cs-1"]["answer"] is None
+    calls = len(w.calls)
+    assert once([stuck]).status == "skipped" and len(w.calls) == calls
+    pinned = once([FP], {"cs-1": {"pin": "top", "reason": "worth another try"}})
+    assert pinned.status == "negative" and pinned.reason == "pinned after set-aside"

@@ -255,7 +255,8 @@ The agent verifies a finding and files it in its own register; that step is the 
 | `due` (not stored distinctly) | Listed and without a current verdict: new, a file it depends on changed, or its verdict reached its maximum age |
 | `deferred` (not stored distinctly) | Due, not reached: a run's calls or minutes, or the day's budget, ran out first |
 | `held` (not stored distinctly) | Due, put aside by the agent until a date, with a reason |
-| `incomplete` (not stored distinctly) | An investigation ran out of time, turns or money: no verdict, asked again next run |
+| `incomplete` | An investigation ran out of time, turns or money: no verdict; a marker counts the attempts, and the next run asks once more |
+| `set-aside` | Incomplete twice in a row: a marker, not asked again until something it depends on changes or the agent pins it |
 | `failed` (not stored distinctly) | An investigation errored: no verdict, asked again next run |
 | `over-budget` | Its own budget ran out before a verdict: a marker, not asked again until something it depends on changes or the agent pins it |
 | `judged` (not stored distinctly) | A verdict is stored: negative, unconfirmed, refuted, rejected, or a finding for the agent to verify |
@@ -271,15 +272,17 @@ The agent verifies a finding and files it in its own register; that step is the 
 | `due` | an investigation runs out of time, turns or money | `incomplete` | JOB, SUB |  |
 | `due` | an investigation errors | `failed` | JOB |  |
 | `due` | its own budget cannot cover the next investigation | `over-budget` | JOB |  |
-| `incomplete` | the next run | `due` | JOB |  |
+| `incomplete` | the next run, once | `due` | JOB |  |
+| `incomplete` | incomplete again | `set-aside` | JOB, SUB |  |
+| `set-aside` | something it depends on changes, or the agent pins it | `due` | JOB, AG |  |
 | `failed` | the next run | `due` | JOB |  |
 | `over-budget` | something it depends on changes, or the agent pins it | `due` | JOB, AG |  |
 | `judged` | something it depends on changes, or its verdict reaches its maximum age | `due` | JOB |  |
 
 Invariants:
-- `work-item.within-budget`: No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; every investigation's cost is counted, a failed one's too. *(enforced by a test; decided in ADR-0040; **open decision:** Who may set the budgets: today the job's arguments, which the owning agent writes; the skill says they are the operator's, but nothing enforces it. A place only the operator or the mission copilot can set (the mission config) is the follow-up)*
+- `work-item.within-budget`: No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; an item that comes back incomplete twice in a row is not paid for again until something changes or the agent pins it; every investigation's cost is counted, a failed one's too. *(enforced by a test; decided in ADR-0040; **open decision:** Who may set the budgets: today the job's arguments, which the owning agent writes; the skill says they are the operator's, but nothing enforces it. A place only the operator or the mission copilot can set (the mission config) is the follow-up)*
 - `work-item.ordered`: Due items are worked pinned first, then new and changed before re-checks, then by the producer's priority, then the longest waiting; the agent changes the order only with a recorded reason. *(enforced by a test; decided in ADR-0040)*
-- `work-item.not-a-verdict`: An incomplete, failed or over-budget outcome is recorded with its reason and never stored as a verdict. *(enforced by a test; decided in ADR-0040)*
+- `work-item.not-a-verdict`: An incomplete, set-aside, failed or over-budget outcome is recorded with its reason and never stored as a verdict. *(enforced by a test; decided in ADR-0040)*
 - `work-item.verdict-stands`: A verdict changes only when something it depends on changes or it reaches its maximum age; never by hand. *(enforced by a test)*
 
 ## Template (planned: editable templates, on the roadmap) (`template`)

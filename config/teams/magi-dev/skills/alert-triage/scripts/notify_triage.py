@@ -14,7 +14,7 @@ import os
 import sys
 import time
 
-TROUBLE = ("failed", "rejected", "incomplete", "over-budget")
+TROUBLE = ("failed", "rejected", "incomplete", "set-aside", "over-budget")
 
 
 def newest_run(state_dir):

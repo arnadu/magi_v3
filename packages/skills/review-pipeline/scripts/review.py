@@ -289,7 +289,7 @@ class Budget:
 @dataclass
 class Outcome:
     item_id: str
-    status: str  # skipped | deferred | held | negative | finding | rejected | refuted | unconfirmed | incomplete | over-budget | failed
+    status: str  # skipped | deferred | held | negative | finding | rejected | refuted | unconfirmed | incomplete | set-aside | over-budget | failed
     reason: str = ""
     answer: dict | None = None
     problems: list = field(default_factory=list)
@@ -441,6 +441,31 @@ def cited_files(kind: Kind, answer: dict | None) -> list:
 
 # Outcomes that leave an item on the to-do list for the next run.
 LEFT = ("deferred", "incomplete", "failed", "held")
+# Stored markers (no verdict) that keep an item out of the runs until something it depends on
+# changes or the agent pins it.
+SET_ASIDE = ("over-budget", "set-aside")
+# An item that comes back incomplete this many times in a row is set aside: asking again would
+# spend the same money for the same answer, and wake the agent every run.
+MAX_INCOMPLETE = 2
+
+
+def _why_again(stored, pinned: bool) -> str | None:
+    """Why an unchanged item with a marker is due anyway: a retry after one incomplete answer, or
+    a pin after it was set aside."""
+    status = (stored or {}).get("status")
+    if status == "incomplete" and stored.get("attempts", 1) < MAX_INCOMPLETE:
+        return "retry after incomplete"
+    if status in SET_ASIDE and pinned:
+        return f"pinned after {status}"
+    return None
+
+
+def _marker(ref, kind, item, now, status, why, attempts=None) -> dict:
+    m = {"kind": kind.kind, "status": status, "answer": None, "commit": ref.commit,
+         "reviewedAt": now, "why": why, "deps": dependencies(ref, kind, item, [])}
+    if attempts is not None:
+        m["attempts"] = attempts
+    return m
 
 
 def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=None,
@@ -455,9 +480,9 @@ def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=N
             continue
         stored = store.get(item["id"])
         why = due(ref, kind, item, stored, max_age_days, now)
-        if why is None and stored and stored.get("status") == "over-budget" and \
-                (overrides or {}).get(item["id"], {}).get("pin") == "top":
-            why = "pinned after over-budget"
+        if why is None:
+            pinned = (overrides or {}).get(item["id"], {}).get("pin") == "top"
+            why = _why_again(stored, pinned)
         if why is None:
             outcomes.append(Outcome(item["id"], "skipped", "unchanged"))
         else:
@@ -470,12 +495,18 @@ def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=N
         kind = kinds[item["kind"]]
         outcome, answer = review_item(item, kind, ref, investigate, budget)
         outcome.reason = outcome.reason or why
-        if outcome.status == "over-budget":
-            store[item["id"]] = {
-                "kind": kind.kind, "status": "over-budget", "answer": None,
-                "commit": ref.commit, "reviewedAt": now, "why": outcome.reason,
-                "deps": dependencies(ref, kind, item, []),
-            }
+        if outcome.status == "incomplete":
+            prior = store.get(item["id"]) or {}
+            attempts = prior.get("attempts", 1) + 1 if why == "retry after incomplete" else 1
+            if attempts >= MAX_INCOMPLETE:
+                outcome.status = "set-aside"
+                outcome.reason = f"incomplete {attempts} times in a row; {outcome.reason}"[:500]
+            store[item["id"]] = _marker(ref, kind, item, now, outcome.status, outcome.reason,
+                                        attempts)
+            if save is not None:
+                save(store)
+        elif outcome.status == "over-budget":
+            store[item["id"]] = _marker(ref, kind, item, now, "over-budget", outcome.reason)
             if save is not None:
                 save(store)
         elif answer is not None:
@@ -563,7 +594,9 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
                "maxCalls": budget.max_calls, "counts": counts, "findings": len(findings),
                "costUsd": round(budget.spent_usd, 4),
                "backlog": work_queue.backlog(left, seen, now, day, over_budget=sum(
-                   1 for i in items if store.get(i["id"], {}).get("status") == "over-budget")),
+                   1 for i in items if store.get(i["id"], {}).get("status") == "over-budget"),
+                   set_aside=sum(
+                   1 for i in items if store.get(i["id"], {}).get("status") == "set-aside")),
                **({"overrideNotes": override_notes} if override_notes else {})}
     _write_json(os.path.join(out_dir, "summary.json"), summary)
     with open(os.path.join(a.state, "ledger.jsonl"), "a", encoding="utf-8") as f:

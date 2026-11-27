@@ -37,7 +37,8 @@ Each item ends a run with one outcome:
 | `unconfirmed` | only one of the confirmation runs said real | nothing, unless the same item stays unconfirmed three runs running: note it |
 | `refuted` | the refuter showed why it is wrong | nothing, unless you read the refutation and it is wrong |
 | `rejected` | its citations did not check out | count it (pipeline errors) |
-| `incomplete` | an investigation ran out of time or turns; the ledger has what it did not finish | count it (pipeline errors); the next run asks again |
+| `incomplete` | an investigation ran out of time, turns or money; the ledger has what it did not finish | count it (pipeline errors); the next run asks once more |
+| `set-aside` | incomplete twice in a row | decide, as for `over-budget`: pin it with a reason if it is worth another try, or note it for the user under "Pipeline calibration" (its question or skill may be too broad) |
 | `failed` | the investigation errored | count it (pipeline errors) |
 | `deferred` | a budget ran out: the run's calls or minutes, or the day's money (the ledger says which) | nothing; the next run takes it first |
 | `held` | you put it aside with `skip_until` (below) | nothing until the date |
@@ -117,7 +118,7 @@ since the last one in your map.
    or more than five in one run), with item ids and the ledger's reasons. Do not investigate
    those alerts yourself instead: the skill or schema behind them gets fixed.
 6. **Update the KPIs** (`RecordKpi`): `K-sec4-untriaged` = this run's `deferred` + `incomplete` + `failed`, plus the backlog's
-   `overBudget`;
+   `overBudget` and `setAside`;
    `K-sec2-held` = the share of findings you verified that held, over all your verifications
    (name the register counts it comes from).
 

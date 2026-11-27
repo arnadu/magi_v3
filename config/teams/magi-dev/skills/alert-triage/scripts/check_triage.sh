@@ -45,10 +45,11 @@ elif mode == "first-pass":
         fail(f"no run has finished yet in {runs_dir}")
     newest = summary(runs[-1])
     counts = newest.get("counts", {})
-    over = newest.get("backlog", {}).get("overBudget", 0)
+    backlog = newest.get("backlog", {})
+    over = backlog.get("overBudget", 0) + backlog.get("setAside", 0)
     left = counts.get("deferred", 0) + counts.get("incomplete", 0) + over
     if left:
-        fail(f"newest run {runs[-1]} left {left} item(s) deferred, incomplete or over budget: "
+        fail(f"newest run {runs[-1]} left {left} item(s) deferred, incomplete or set aside: "
              "the backlog is not through yet")
     register = os.path.join(shared, "reports", "security", "register.md")
     text = open(register, encoding="utf-8").read() if os.path.isfile(register) else ""

@@ -121,8 +121,12 @@ export const WORK_ITEM = defineEntity({
 		{
 			id: "incomplete",
 			meaning:
-				"An investigation ran out of time, turns or money: no verdict, asked again next run",
-			stored: null,
+				"An investigation ran out of time, turns or money: no verdict; a marker counts the attempts, and the next run asks once more",
+		},
+		{
+			id: "set-aside",
+			meaning:
+				"Incomplete twice in a row: a marker, not asked again until something it depends on changes or the agent pins it",
 		},
 		{
 			id: "failed",
@@ -193,9 +197,21 @@ export const WORK_ITEM = defineEntity({
 		},
 		{
 			from: "incomplete",
-			event: "the next run",
+			event: "the next run, once",
 			to: "due",
 			actors: ["JOB"],
+		},
+		{
+			from: "incomplete",
+			event: "incomplete again",
+			to: "set-aside",
+			actors: ["JOB", "SUB"],
+		},
+		{
+			from: "set-aside",
+			event: "something it depends on changes, or the agent pins it",
+			to: "due",
+			actors: ["JOB", "AG"],
 		},
 		{ from: "failed", event: "the next run", to: "due", actors: ["JOB"] },
 		{
@@ -215,7 +231,7 @@ export const WORK_ITEM = defineEntity({
 	invariants: [
 		{
 			id: "work-item.within-budget",
-			text: "No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; every investigation's cost is counted, a failed one's too.",
+			text: "No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; an item that comes back incomplete twice in a row is not paid for again until something changes or the agent pins it; every investigation's cost is counted, a failed one's too.",
 			enforcedBy: [{ kind: "test" }],
 			decidedBy: "ADR-0040",
 			open: "Who may set the budgets: today the job's arguments, which the owning agent writes; the skill says they are the operator's, but nothing enforces it. A place only the operator or the mission copilot can set (the mission config) is the follow-up",
@@ -228,7 +244,7 @@ export const WORK_ITEM = defineEntity({
 		},
 		{
 			id: "work-item.not-a-verdict",
-			text: "An incomplete, failed or over-budget outcome is recorded with its reason and never stored as a verdict.",
+			text: "An incomplete, set-aside, failed or over-budget outcome is recorded with its reason and never stored as a verdict.",
 			enforcedBy: [{ kind: "test" }],
 			decidedBy: "ADR-0040",
 		},

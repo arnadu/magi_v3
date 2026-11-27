@@ -229,7 +229,8 @@ def test_an_incomplete_investigation_is_recorded_with_its_reason_and_not_stored(
     """work-item.not-a-verdict: an incomplete investigation is recorded, never stored as a verdict."""
     w.answers = [{**FP, "incomplete": {"reason": "time", "note": "could not read b.ts"}}]
     out, store = w.run([ITEM])
-    assert out[0].status == "incomplete" and "cs-1" not in store
+    assert out[0].status == "incomplete" and store["cs-1"]["answer"] is None
+    assert store["cs-1"]["status"] == "incomplete" and store["cs-1"]["attempts"] == 1
     assert "investigation ran out of time: could not read b.ts" in out[0].reason
 
 
@@ -237,7 +238,7 @@ def test_an_incomplete_confirmation_makes_the_item_incomplete(w):
     w.answers = [REAL, {**REAL, "incomplete": {"reason": "turns", "note": "unfinished"}}]
     out, store = w.run([ITEM])
     assert out[0].status == "incomplete" and "confirmation" in out[0].reason
-    assert "cs-1" not in store
+    assert store["cs-1"]["answer"] is None
 
 
 def test_a_failed_investigation_is_recorded_and_not_stored(w):

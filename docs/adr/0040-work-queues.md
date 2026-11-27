@@ -35,7 +35,9 @@ and domain-neutral; the processing step is passed in.
      ADR-0039's last step) is what is left of the item's budget, at most the kind's cap. An item
      that cannot afford its next step is **over-budget**: a marker, not a verdict, not asked again
      until something it depends on changes or the agent pins it (a pin says "worth more money").
-   Turns and time stay as safeties.
+   Turns and time stay as safeties. An item that comes back **incomplete** twice in a row is
+   **set aside** the same way as an over-budget one: asking again would buy the same answer, and
+   wake the agent every run.
 4. **Each run reports how far behind the work is:** items left by band, the oldest waiting,
    today's spend against the budget.
 5. **The agent is woken only when there is work:** a finding to verify, an item that failed,
@@ -62,7 +64,7 @@ and domain-neutral; the processing step is passed in.
 - The budgets are the operator's decision, set per mission in the job's arguments. Today nothing
   stops the owning agent from changing them; the catalog records this as an open question
   (`work-item.within-budget`), with the mission config as the follow-up.
-- The catalog has the work item as an entity (states due, deferred, held, incomplete, failed,
-  over-budget, judged) and journey A-11 as "Work through a backlog of items within a budget".
+- The catalog has the work item as an entity (states due, deferred, held, incomplete, set-aside,
+  failed, over-budget, judged) and journey A-11 as "Work through a backlog of items within a budget".
 - The news digest (data factory) is the second candidate; adopting the queue there will show
   whether `work_queue.py` is generic, and is a separate slice.
