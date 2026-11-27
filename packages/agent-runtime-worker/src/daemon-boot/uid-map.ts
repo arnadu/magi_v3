@@ -1,8 +1,11 @@
 import {
 	closeSync,
 	constants,
+	existsSync,
 	fsyncSync,
+	lstatSync,
 	openSync,
+	readdirSync,
 	readFileSync,
 	renameSync,
 	writeSync,
@@ -136,4 +139,80 @@ export function writeUidMap(agentWorkdir: string, map: UidMap): void {
 		closeSync(fd);
 	}
 	renameSync(tmp, path);
+}
+
+export interface VolumeSeed {
+	/** Each user's uid as its own workdir's files show it. */
+	seed: UidMap;
+	/** Every agent-range uid that owns a file at the top of any workdir. */
+	observed: Set<number>;
+}
+
+/**
+ * A volume written before uids were pinned has no map. Its users' uids are
+ * then read from their own files: the uid owning most entries at the top of
+ * `<homeBase>/<user>/missions/<id>/` (the daemon's own and the image's users
+ * fall outside the agent range and are ignored). A user without files gets
+ * none, and the caller allocates one that no file is owned by. A tie, or two
+ * users whose files name the same uid, is an error: a guess would hand one
+ * agent another's files, so the map must be written by hand.
+ */
+export function seedFromVolume(
+	homeBase: string,
+	users: readonly string[],
+	ownerOf: (path: string) => number = (p) => lstatSync(p).uid,
+): VolumeSeed {
+	const seed: UidMap = {};
+	const observed = new Set<number>();
+	const counts = new Map<string, Map<number, number>>();
+	for (const owner of listDir(homeBase)) {
+		const perUser = new Map<number, number>();
+		for (const mission of listDir(join(homeBase, owner, "missions"))) {
+			const dir = join(homeBase, owner, "missions", mission);
+			for (const entry of listDir(dir)) {
+				const uid = ownerOf(join(dir, entry));
+				if (uid < FIRST_AGENT_UID || uid > LAST_AGENT_UID) continue;
+				observed.add(uid);
+				perUser.set(uid, (perUser.get(uid) ?? 0) + 1);
+			}
+		}
+		counts.set(owner, perUser);
+	}
+	const claimedBy = new Map<number, string>();
+	for (const user of users) {
+		const ranked = [...(counts.get(user) ?? new Map()).entries()].sort(
+			(a, b) => b[1] - a[1],
+		);
+		if (ranked.length === 0) continue;
+		if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) {
+			throw new Error(
+				`Cannot tell ${user}'s uid from its files (${ranked
+					.map(([uid, n]) => `uid ${uid}: ${n}`)
+					.join(", ")}): write ${UID_MAP_FILE} by hand`,
+			);
+		}
+		const uid = ranked[0][0];
+		const other = claimedBy.get(uid);
+		if (other) {
+			throw new Error(
+				`${other}'s and ${user}'s files both belong to uid ${uid}: write ${UID_MAP_FILE} by hand`,
+			);
+		}
+		claimedBy.set(uid, user);
+		seed[user] = uid;
+	}
+	return { seed, observed };
+}
+
+function listDir(dir: string): string[] {
+	try {
+		return readdirSync(dir);
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw e;
+	}
+}
+
+export function uidMapExists(agentWorkdir: string): boolean {
+	return existsSync(join(agentWorkdir, UID_MAP_FILE));
 }

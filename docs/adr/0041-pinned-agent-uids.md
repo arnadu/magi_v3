@@ -21,7 +21,7 @@ report folder.
 The volume keeps a map from agent user to uid (`$AGENT_WORKDIR/.agent-uids.json`, owned by the
 daemon, mode 600; `daemon-boot/uid-map.ts`). At boot:
 
-1. Each user's uid comes from the map. A user not in it gets the next uid after the highest one
+1. Each user's uid comes from the map (seeded from the volume's files the first time, below). A user not in it gets the next uid after the highest one
    the map holds in the agent range (1001–59999) that no account holds. A user the image already
    created (`mission-copilot`) is recorded as it is.
 2. The map is written, atomically, before any user is created. A uid is never given to another
@@ -49,8 +49,11 @@ workspace's default ACLs the owning group gets nothing in a private workdir and 
 
 ## Consequences
 
-- A mission's first boot on this version pins whatever uids that boot assigns. A volume whose
-  uids have already drifted, like `magi-dev-1`, needs its map written by hand to the uids its
-  files are owned by before that boot, and the files written since the drift handed back
-  (one-off, by the operator).
+- A volume with no map yet (every mission written before this version) is seeded from its
+  files: each agent not created by the image gets the uid that owns most entries at the top of
+  its own workdir, and a newcomer gets a uid no file is owned by. A tie, or two agents whose files
+  name the same uid, stops the boot with a message to write the map by hand: a guess would hand
+  one agent another's files. On `magi-dev-1` this restores the uids from before the swap; the few
+  files written since the swap stay owned by the other uid but remain writable through `shared/`'s
+  inherited ACL, and are handed back by hand.
 - Local dev is unchanged: the pool users are fixed and the map is not used.

@@ -1,12 +1,20 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { hasMagiCreateUser, resolveLinuxUsers, uidOf } from "../linux-user.js";
 import {
 	injectMissionCopilot,
 	MISSION_COPILOT_AGENT_ID,
 } from "../mission-copilot.js";
 import type { BootContext } from "./context.js";
-import { planUids, readUidMap, writeUidMap } from "./uid-map.js";
+import {
+	planUids,
+	readUidMap,
+	seedFromVolume,
+	UID_MAP_FILE,
+	uidMapExists,
+	writeUidMap,
+} from "./uid-map.js";
 
 /**
  * Ensure every agent in the team config has a corresponding Linux OS user,
@@ -43,12 +51,22 @@ export function ensureAgentUsers(
 		}
 		return;
 	}
-	const plan = planUids(
-		readUidMap(agentWorkdir),
-		users,
-		existingUid,
-		isUidTaken,
-	);
+	let stored = readUidMap(agentWorkdir);
+	let taken = isUidTaken;
+	if (!uidMapExists(agentWorkdir)) {
+		// Users the image created keep their uid; only the rest are read from
+		// their files.
+		const { seed, observed } = seedFromVolume(
+			join(agentWorkdir, "home"),
+			users.filter((u) => existingUid(u) === undefined),
+		);
+		stored = seed;
+		taken = (uid) => observed.has(uid) || isUidTaken(uid);
+		console.log(
+			`[daemon] No ${UID_MAP_FILE} on this volume: uids read from the agents' files ${JSON.stringify(seed)}`,
+		);
+	}
+	const plan = planUids(stored, users, existingUid, taken);
 	if (plan.mismatched.length > 0) {
 		throw new Error(
 			`Agent OS users exist under another uid than the volume pins (${plan.mismatched

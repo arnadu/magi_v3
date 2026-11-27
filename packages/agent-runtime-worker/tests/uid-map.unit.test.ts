@@ -4,13 +4,14 @@
  * boots whatever the roster's order, and a workdir grants only its agent and
  * the daemon.
  */
-import { mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	planUids,
 	readUidMap,
+	seedFromVolume,
 	UID_MAP_FILE,
 	writeUidMap,
 } from "../src/daemon-boot/uid-map.js";
@@ -82,6 +83,56 @@ describe("readUidMap / writeUidMap", () => {
 		const dir = mkdtempSync(join(tmpdir(), "uid-map-"));
 		writeFileSync(join(dir, UID_MAP_FILE), JSON.stringify({ appsec: 0 }));
 		expect(() => readUidMap(dir)).toThrow(/invalid entry/);
+	});
+});
+
+/** A home tree whose top-level workdir entries are owned as `owners` says. */
+function volume(owners: Record<string, Record<string, number>>) {
+	const home = mkdtempSync(join(tmpdir(), "uid-seed-"));
+	const uidOf = new Map<string, number>();
+	for (const [user, entries] of Object.entries(owners)) {
+		const dir = join(home, user, "missions", "m1");
+		mkdirSync(dir, { recursive: true });
+		for (const [name, uid] of Object.entries(entries)) {
+			mkdirSync(join(dir, name));
+			uidOf.set(join(dir, name), uid);
+		}
+	}
+	return { home, ownerOf: (p: string) => uidOf.get(p) ?? 999 };
+}
+
+describe("seedFromVolume", () => {
+	it("reads each agent's uid from its own files, as on a volume whose uids had swapped", () => {
+		const { home, ownerOf } = volume({
+			documenter: { repos: 1003, "report-gate-tree": 1003, skills: 999 },
+			"qa-lead": { repos: 1004, skills: 999 },
+			appsec: { repos: 1001, review: 1001 },
+		});
+		const { seed, observed } = seedFromVolume(
+			home,
+			["appsec", "qa-lead", "documenter", "newcomer"],
+			ownerOf,
+		);
+		expect(seed).toEqual({ documenter: 1003, "qa-lead": 1004, appsec: 1001 });
+		expect([...observed].sort()).toEqual([1001, 1003, 1004]);
+	});
+
+	it("keeps a newcomer off every uid a file is owned by", () => {
+		const { home, ownerOf } = volume({ gone: { repos: 1001 } });
+		const { seed, observed } = seedFromVolume(home, ["newcomer"], ownerOf);
+		const plan = planUids(seed, ["newcomer"], none, (u) => observed.has(u));
+		expect(plan.create).toEqual([{ user: "newcomer", uid: 1002 }]);
+	});
+
+	it("refuses to guess on a tie or when two agents' files name one uid", () => {
+		const tie = volume({ a: { x: 1001, y: 1002 } });
+		expect(() => seedFromVolume(tie.home, ["a"], tie.ownerOf)).toThrow(
+			/Cannot tell a's uid/,
+		);
+		const shared = volume({ a: { x: 1001 }, b: { y: 1001 } });
+		expect(() =>
+			seedFromVolume(shared.home, ["a", "b"], shared.ownerOf),
+		).toThrow(/both belong to uid 1001/);
 	});
 });
 
