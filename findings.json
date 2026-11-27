@@ -1,7 +1,7 @@
 {
  "meta": {
-  "commit": "c956544",
-  "time": "2026-11-27T15:11:32Z"
+  "commit": "32450ad",
+  "time": "2026-11-27T16:45:16Z"
  },
  "findings": [
   {
@@ -3455,7 +3455,7 @@
    "where": [],
    "to": "mm-agent-loop",
    "imports": 19,
-   "new": true
+   "new": false
   },
   {
    "key": "a3e96df030e5",

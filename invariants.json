@@ -246,6 +246,58 @@
   "findings": 0
  },
  {
+  "id": "work-item.within-budget",
+  "scope": "work-item",
+  "text": "No investigation starts once the day's budget is spent, and an item's investigations together stay within the item's budget; every investigation's cost is counted, a failed one's too.",
+  "enforcedBy": [
+   {
+    "kind": "test"
+   }
+  ],
+  "decidedBy": "ADR-0040",
+  "open": "Who may set the budgets: today the job's arguments, which the owning agent writes; the skill says they are the operator's, but nothing enforces it. A place only the operator or the mission copilot can set (the mission config) is the follow-up",
+  "findings": 0
+ },
+ {
+  "id": "work-item.ordered",
+  "scope": "work-item",
+  "text": "Due items are worked pinned first, then new and changed before re-checks, then by the producer's priority, then the longest waiting; the agent changes the order only with a recorded reason.",
+  "enforcedBy": [
+   {
+    "kind": "test"
+   }
+  ],
+  "decidedBy": "ADR-0040",
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "work-item.not-a-verdict",
+  "scope": "work-item",
+  "text": "An incomplete, failed or over-budget outcome is recorded with its reason and never stored as a verdict.",
+  "enforcedBy": [
+   {
+    "kind": "test"
+   }
+  ],
+  "decidedBy": "ADR-0040",
+  "open": null,
+  "findings": 0
+ },
+ {
+  "id": "work-item.verdict-stands",
+  "scope": "work-item",
+  "text": "A verdict changes only when something it depends on changes or it reaches its maximum age; never by hand.",
+  "enforcedBy": [
+   {
+    "kind": "test"
+   }
+  ],
+  "decidedBy": null,
+  "open": null,
+  "findings": 0
+ },
+ {
   "id": "template.decoupled",
   "scope": "template",
   "text": "Once launched, a mission is independent of its template: a change to either never reaches the other.",
