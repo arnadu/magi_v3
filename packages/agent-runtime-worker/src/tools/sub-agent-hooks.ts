@@ -6,7 +6,7 @@
  */
 
 import type { Message } from "@mariozechner/pi-ai";
-import type { LlmCallMeter } from "../llm-meter.js";
+import type { LlmCallEvent, LlmCallMeter } from "../llm-meter.js";
 
 export interface SubAgentHooks {
 	/** Stores each step (the task, each answer, each tool result) before the next starts. */
@@ -15,4 +15,6 @@ export interface SubAgentHooks {
 	onLlmCall: LlmCallMeter;
 	/** Awaited before each model call: the mission's spend-cap pause. */
 	beforeLlmCall: () => Promise<void>;
+	/** What a call cost, priced as `onLlmCall` records it: a sub-agent keeps its own spend with it. */
+	costOf: (event: LlmCallEvent) => number;
 }

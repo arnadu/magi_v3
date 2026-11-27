@@ -101,8 +101,9 @@ export interface InnerLoopConfig {
 	 */
 	maxTurns?: number;
 	/**
-	 * A sub-agent's last step. When its turns (`maxTurns`) or its time
-	 * (`timeBudgetMs`, from the loop's start) run out, the next call is its last:
+	 * A sub-agent's last step. When its turns (`maxTurns`), its time
+	 * (`timeBudgetMs`, from the loop's start) or its money (`spentUsd()` reaching
+	 * `costBudgetUsd`) run out, the next call is its last:
 	 * the notice is stored as a user message, the call is offered no tools, and
 	 * the loop ends after it — so the sub-agent always answers, saying what it
 	 * did not finish. `LoopResult.windDown` says which budget ran out.
@@ -110,6 +111,9 @@ export interface InnerLoopConfig {
 	finalStep?: {
 		notice: (reason: WindDownReason) => string;
 		timeBudgetMs?: number;
+		costBudgetUsd?: number;
+		/** What the sub-agent has spent so far; read before each call. */
+		spentUsd?: () => number;
 	};
 	/**
 	 * Awaited before every LLM call; the mission's spend-cap pause parks a
@@ -186,7 +190,7 @@ export interface InnerLoopConfig {
 const MID_SESSION_PRUNE_THRESHOLD = 100_000;
 
 /** Which of a sub-agent's budgets ran out (see `InnerLoopConfig.finalStep`). */
-export type WindDownReason = "turns" | "time";
+export type WindDownReason = "turns" | "time" | "cost";
 
 export interface LoopResult {
 	messages: Message[];
@@ -204,8 +208,10 @@ export function windDownReason(
 	if (!config.finalStep) return undefined;
 	if (config.maxTurns !== undefined && turnCount >= config.maxTurns)
 		return "turns";
-	const budget = config.finalStep.timeBudgetMs;
-	if (budget !== undefined && elapsedMs >= budget) return "time";
+	const { timeBudgetMs, costBudgetUsd, spentUsd } = config.finalStep;
+	if (timeBudgetMs !== undefined && elapsedMs >= timeBudgetMs) return "time";
+	if (costBudgetUsd !== undefined && spentUsd && spentUsd() >= costBudgetUsd)
+		return "cost";
 	return undefined;
 }
 

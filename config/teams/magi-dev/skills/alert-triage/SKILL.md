@@ -1,6 +1,6 @@
 ---
 name: alert-triage
-description: Triage the repository's open security alerts (code scanning, Dependabot) and re-review the watched guards through the review pipeline, then verify what survived and record it. Covers scheduling the daily job, reading a run, verifying findings, and watching the pipeline's own errors. For the agents allowed to read security alerts.
+description: Triage the repository's open security alerts (code scanning, Dependabot) and re-review the watched guards through the review pipeline, then verify what survived and record it. Covers scheduling the hourly job, steering its order, reading a run, verifying findings, and watching the pipeline's own errors. For the agents allowed to read security alerts.
 ---
 
 # Alert triage
@@ -17,8 +17,15 @@ record the result in the findings register. The pipeline narrows; it does not de
 - A positive answer is confirmed by more runs, then another investigator tries to disprove it,
   then code checks that every cited line exists and says what is quoted.
 - Verdicts are kept: an item is examined again only when a file it depends on changes, or when
-  its verdict is older than its risk class allows. Once the backlog is through, daily runs are
-  short.
+  its verdict is older than its risk class allows.
+- The items not yet examined are a to-do list, worked highest priority first: watched guards,
+  then by severity, with a bonus when the alert's file implements a trust boundary (the threat
+  model's "Implementing Files by Boundary"); then the longest waiting. New and changed items come
+  before re-checks of old verdicts.
+- A daily budget in dollars sets the pace: the job runs hourly and starts no investigation once
+  the day's spend reaches it. A backlog is worked through over a day or two; after that, each day
+  handles what is new or changed. Each investigation also has its own limits (time, turns,
+  money); one that runs out answers from what it has and comes back `incomplete`.
 
 Each item ends a run with one outcome:
 
@@ -31,7 +38,8 @@ Each item ends a run with one outcome:
 | `rejected` | its citations did not check out | count it (pipeline errors) |
 | `incomplete` | an investigation ran out of time or turns; the ledger has what it did not finish | count it (pipeline errors); the next run asks again |
 | `failed` | the investigation errored | count it (pipeline errors) |
-| `deferred` | the run's budget ran out | nothing; the next run takes it first |
+| `deferred` | a budget ran out: the run's calls or minutes, or the day's money (the ledger says which) | nothing; the next run takes it first |
+| `held` | you put it aside with `skip_until` (below) | nothing until the date |
 | `skipped` | unchanged since its last verdict | nothing |
 
 A `finding` is a lead whose citations exist, not a vulnerability. A `negative` is the
@@ -41,29 +49,48 @@ pipeline's best answer, not proof of safety.
 
 ```bash
 bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" --label alert-triage \
-  --cron '0 6 * * *' --script "$SHARED_DIR/skills/_team/alert-triage/scripts/run_triage.sh" \
-  --args "$SHARED_DIR $WORKDIR 40" --notify-agent "$AGENT_ID" --notify-subject 'Alert triage run finished'
+  --cron '0 * * * *' --script "$SHARED_DIR/skills/_team/alert-triage/scripts/run_triage.sh" \
+  --args "$SHARED_DIR $WORKDIR --notify $AGENT_ID --max-usd-per-day <budget>"
 ```
 
+The daily budget is the user's decision: use the figure the user gave you, and ask if there is
+none. There is no `--notify-agent`: the run mails you itself, only when there is work (below);
+a run that fails is reported to the mission copilot by the platform.
+
 `run_triage.sh` runs `produce_items.py` into `$WORKDIR/review/items.jsonl`, then the pipeline
-over those items with this skill's kinds, its state in `$WORKDIR/review/state`; 40 is the most
-investigations one run may use, and none starts after 12 minutes, so the run ends before the
-job's 30-minute limit. What a run does not reach is deferred, and the next run takes it first:
-a large backlog takes several daily runs, by design. Do not lower these numbers or resubmit the
-job to get through faster. When a run fails, tell the user the last lines of its log and
-leave the next run to the schedule; do not resubmit it or change its arguments. To run it once now, start the same script as a background job
-(`run-background`). Everything under `$WORKDIR/review/` is private: never copy it into `shared/`.
+over those items with this skill's kinds, its state in `$WORKDIR/review/state`. No investigation
+starts after 12 minutes, so a run ends before the job's 30-minute limit; none starts once the
+day's budget is spent. Do not change these numbers, add arguments, or resubmit the job to get
+through faster: the budget is the pace the user chose. When a run fails, tell the user the last
+lines of its log and leave the next run to the schedule. Everything under `$WORKDIR/review/` is
+private: never copy it into `shared/`.
+
+## Steer the order (when you have a reason)
+
+The order is computed; you change it only with a reason you could defend to the user. Write
+`$WORKDIR/review/state/priorities.json`:
+
+```json
+{"cs-41": {"pin": "top", "reason": "touches the Tool API token check (TB-5)"},
+ "dep-12": {"skip_until": "2026-12-15", "reason": "upgrade already in review, #123"}}
+```
+
+`pin: top` puts an item first; `skip_until` holds it until that date (outcome `held`). Every
+override needs a reason; one without, or of another shape, is ignored and listed in the next
+run's summary (`overrideNotes`). Remove an entry once it has served.
 
 ## After a run
 
-You are woken by "Alert triage run finished". Each run has a folder
-`$WORKDIR/review/state/runs/<stamp>/`; take the newest.
+The run mails you ("Alert triage: …") when it has a finding to verify, when an item failed,
+was rejected or came back incomplete, and otherwise once a day with the backlog line. Runs in
+between are silent: the next mail covers them. Each run has a folder
+`$WORKDIR/review/state/runs/<stamp>/`; work from the newest, and read the findings of every run
+since the last one in your map.
 
-1. **Check the run.** Read its `summary.json` (commit, items, calls, counts per outcome). If
-   the job failed or there is no run newer than the last one in your map, tell the user what
-   the job's status says, and stop.
-2. **Record it.** In your mental map's "Triage state": the run stamp, commit, items, counts,
-   calls.
+1. **Check the run.** Read its `summary.json` (commit, items, calls, counts per outcome, cost,
+   and `backlog`: items left by band, the oldest waiting, today's spend against the budget).
+2. **Record it.** In your mental map's "Triage state": the run stamp, commit, counts, cost and
+   the backlog line. Replace the previous entry; do not keep one per run.
 3. **Queue the findings.** Add each entry of the run's `findings.json` to the "Verification
    queue" in your map: item id, kind, one line.
 4. **Verify, oldest first.** For each queued finding, read its verdict, reasoning, evidence and

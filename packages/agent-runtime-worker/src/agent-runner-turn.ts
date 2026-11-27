@@ -23,7 +23,11 @@ import {
 } from "./agent-runner-phases.js";
 import { workOrderEnv } from "./agent-runner-work-orders.js";
 import { tryCreateCreateImageTool } from "./images/create-image-tool.js";
-import type { LlmCallEvent, LlmCallMeter } from "./llm-meter.js";
+import {
+	eventCostUsd,
+	type LlmCallEvent,
+	type LlmCallMeter,
+} from "./llm-meter.js";
 import { type InnerLoopConfig, runInnerLoop } from "./loop.js";
 import { createMailboxTools } from "./mailbox.js";
 import { createMentalMapTools, initMentalMap } from "./mental-map.js";
@@ -370,6 +374,7 @@ export function buildTurnTools(
 		onLlmCall: hooks.meter,
 		// No budget gate without a spend cap (a local run): nothing to wait for.
 		beforeLlmCall: hooks.beforeLlmCall ?? (async () => {}),
+		costOf: (event) => eventCostUsd(event, ctx.model),
 	};
 
 	const createImageTool = createImageToolFor(

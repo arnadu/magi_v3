@@ -40,7 +40,7 @@ import {
 } from "node:http";
 import type { EntryTag, TeamConfig } from "@magi/agent-config";
 import type { Message, Model } from "@mariozechner/pi-ai";
-import type { LlmCallMeter } from "./llm-meter.js";
+import { eventCostUsd, type LlmCallMeter } from "./llm-meter.js";
 import type { MailboxRepository } from "./mailbox.js";
 import { createMailboxTools } from "./mailbox.js";
 import { checkToolArguments } from "./tool-args.js";
@@ -157,8 +157,10 @@ export function jobSubAgentHooks(
 	spend: ToolApiSpend,
 	agentId: string,
 	jobId: string,
+	loopModel: Model<string>,
 ): SubAgentHooks {
 	return {
+		costOf: (event) => eventCostUsd(event, loopModel),
 		onMessage: (toolUseId, msg) =>
 			spend.recordStep(agentId, jobId, toolUseId, msg),
 		onLlmCall: spend.meterFor(agentId),
@@ -317,7 +319,8 @@ export class ToolApiServer {
 			entry?.build(
 				ctx,
 				() => this.spend.meterFor(ctx.acl.agentId),
-				() => jobSubAgentHooks(this.spend, ctx.acl.agentId, ctx.jobId),
+				() =>
+					jobSubAgentHooks(this.spend, ctx.acl.agentId, ctx.jobId, this.model),
 			) ?? null;
 		if (!tool) {
 			res.writeHead(404, { "Content-Type": "application/json" });

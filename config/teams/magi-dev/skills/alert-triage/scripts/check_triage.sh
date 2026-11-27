@@ -2,7 +2,7 @@
 # Task checks for alert triage (ADR-0038): run by the platform when a task is completed, as the
 # agent completing it, with WORKDIR, SHARED_DIR and AGENT_ID set. Reads only; exit 0 = done.
 #
-#   check_triage.sh scheduled    the daily job is scheduled for this agent, and a run has finished
+#   check_triage.sh scheduled    the job is scheduled to notify this agent, and a run has finished
 #   check_triage.sh first-pass   the newest run left nothing deferred or incomplete, and every
 #                                finding of every run is in the findings register (by its item id)
 set -euo pipefail
@@ -31,8 +31,11 @@ if mode == "scheduled":
     job = spec.get("jobSpec", {})
     if not str(job.get("scriptPath", "")).endswith("/alert-triage/scripts/run_triage.sh"):
         fail(f"{spec_path} does not run alert-triage/scripts/run_triage.sh")
-    if job.get("notifyAgentId") != agent:
-        fail(f"{spec_path} does not notify {agent} when a run finishes")
+    args = [str(x) for x in job.get("args", [])]
+    notifies = job.get("notifyAgentId") == agent or any(
+        args[i] == "--notify" and args[i + 1] == agent for i in range(len(args) - 1))
+    if not notifies:
+        fail(f"{spec_path} does not notify {agent} (--notify {agent} in its args)")
     if not runs:
         fail(f"scheduled ({spec.get('cron')}), but no run has finished yet in {runs_dir}")
     print(f"scheduled: {spec.get('cron')} UTC, notifies {agent}; "

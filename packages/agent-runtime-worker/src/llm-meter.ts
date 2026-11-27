@@ -69,6 +69,15 @@ export function resolveEventCost(
 
 export type LlmCallMeter = (event: LlmCallEvent) => Promise<void>;
 
+/** A call's cost in dollars, as the meters record it; `loopModel` for an event that names none. */
+export function eventCostUsd(
+	event: LlmCallEvent,
+	loopModel: Model<string>,
+): number {
+	const model = event.model ?? loopModel;
+	return resolveEventCost(event, model).cost.totalCostUsd;
+}
+
 export type CompleteFn = (
 	model: Model<string>,
 	context: Context,

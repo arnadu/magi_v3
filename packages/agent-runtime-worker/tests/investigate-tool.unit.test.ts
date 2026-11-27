@@ -119,6 +119,7 @@ describe("Investigate", () => {
 			answer: { verdict: "false-positive", evidence: ["a.ts:3"] },
 			reference: { name: "magi-v3", commit: COMMIT },
 			turns: 1,
+			cost_usd: expect.any(Number),
 		});
 		const ctx = contexts[0];
 		expect(ctx.systemPrompt).toContain("Check whether the alert is real.");
@@ -225,6 +226,44 @@ describe("Investigate", () => {
 		expect(steps.map((s) => s.msg.role)).toEqual(["user", "assistant"]);
 		expect(steps.every((s) => s.toolUseId === "t9")).toBe(true);
 		expect(calls).toHaveLength(1);
+	});
+
+	it("turn.sub-agent-bounded: past its money budget, the next call is its last; every result reports its cost", async () => {
+		const toolCall = {
+			...reply(""),
+			content: [
+				{
+					type: "toolCall",
+					id: "c1",
+					name: "Bash",
+					arguments: { command: "ls" },
+				},
+			],
+			stopReason: "toolUse",
+		} as AssistantMessage;
+		const { tool, contexts } = setup([toolCall, `Spent.\n${ok}`]);
+		const r = await tool.execute("t1", {
+			question: "Q?",
+			answer_schema: SCHEMA,
+			max_usd: 0.000001,
+		});
+		const out = JSON.parse((r.content[0] as { text: string }).text);
+		expect(contexts).toHaveLength(2);
+		expect(contexts[1].tools).toEqual([]);
+		expect(out.incomplete.reason).toBe("cost");
+		expect(out.cost_usd).toBeGreaterThan(0);
+	});
+
+	it("reports the cost of a failed investigation in its error", async () => {
+		const { tool } = setup(["no json here", "still none"]);
+		const r = await tool.execute("t1", {
+			question: "Q?",
+			answer_schema: SCHEMA,
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(
+			/\(cost_usd [0-9.e-]+\)$/,
+		);
 	});
 
 	it("a finished investigation is not marked incomplete", async () => {

@@ -27,9 +27,12 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+
+import work_queue
 from dataclasses import dataclass, field
 
 PIPELINE_VERSION = "1"
@@ -97,6 +100,7 @@ class Kind:
     reproduction_field: str | None = None
     evidence_field: str = "evidence"
     max_turns: int | None = None  # the investigation's turn budget; Investigate's default if unset
+    max_usd: float | None = None  # what one investigation may spend; Investigate's default if unset
 
     @property
     def version(self) -> str:
@@ -131,6 +135,7 @@ def load_kinds(directory: str) -> dict:
             positive_values=pos["values"], refuter_skill=d.get("refuter_skill"),
             severity_field=d.get("severity_field"), reproduction_field=d.get("reproduction_field"),
             evidence_field=d.get("evidence_field", "evidence"), max_turns=d.get("max_turns"),
+            max_usd=d.get("max_usd"),
         )
     return kinds
 
@@ -256,14 +261,27 @@ class Budget:
     # time.monotonic() after which no investigation starts, so a run ends (and is recorded)
     # before the job's wall-clock limit kills it.
     deadline: float | None = None
+    # Money: the day's spend against its budget (work_queue.DaySpend), and this run's.
+    day: "work_queue.DaySpend | None" = None
+    spent_usd: float = 0.0
+    stopped: str = ""  # which limit refused the last take: calls | time | daily budget
 
     def take(self, n: int = 1) -> bool:
         if self.used + n > self.max_calls:
-            return False
-        if self.deadline is not None and time.monotonic() >= self.deadline:
-            return False
-        self.used += n
-        return True
+            self.stopped = "calls"
+        elif self.deadline is not None and time.monotonic() >= self.deadline:
+            self.stopped = "time"
+        elif self.day is not None and self.day.exhausted(time.time()):
+            self.stopped = "daily budget"
+        else:
+            self.used += n
+            return True
+        return False
+
+    def charge(self, usd: float) -> None:
+        self.spent_usd += usd
+        if self.day is not None:
+            self.day.add(usd, time.time())
 
 
 @dataclass
@@ -273,6 +291,7 @@ class Outcome:
     reason: str = ""
     answer: dict | None = None
     problems: list = field(default_factory=list)
+    cost_usd: float = 0.0
 
 
 def is_positive(kind: Kind, answer: dict) -> bool:
@@ -280,23 +299,54 @@ def is_positive(kind: Kind, answer: dict) -> bool:
 
 
 class Incomplete(Exception):
-    """An investigation that ran out of time or turns: its answer is not a verdict."""
+    """An investigation that ran out of time, turns or money: its answer is not a verdict."""
+
+
+COST_IN_ERROR = re.compile(r"\(cost_usd ([0-9.eE+-]+)\)\s*$")
+
+
+def cost_of_error(e: Exception) -> float:
+    """Investigate puts the cost of a failed investigation at the end of its error."""
+    m = COST_IN_ERROR.search(str(e))
+    try:
+        return float(m.group(1)) if m else 0.0
+    except ValueError:
+        return 0.0
 
 
 def review_item(item, kind, ref, investigate, budget) -> tuple:
-    """(Outcome, the answer to store or None)."""
+    """(Outcome, the answer to store or None); the outcome carries what its investigations cost."""
+    before = budget.spent_usd
     try:
-        return _review_item(item, kind, ref, investigate, budget)
+        outcome, answer = _review_item(item, kind, ref, investigate, budget)
     except Incomplete as e:  # never stored: the next run asks again
-        return Outcome(item["id"], "incomplete", str(e)[:500]), None
+        outcome, answer = Outcome(item["id"], "incomplete", str(e)[:500]), None
+    outcome.cost_usd = round(budget.spent_usd - before, 6)
+    return outcome, answer
+
+
+def _charged(investigate, budget):
+    """Investigate, with every call's cost charged to the budget, whether it answered or failed."""
+    def call(**kw):
+        try:
+            out = investigate(**kw)
+        except Exception as e:
+            budget.charge(cost_of_error(e))
+            raise
+        budget.charge(float(out.get("cost_usd", 0) or 0))
+        return out
+    return call
 
 
 def _review_item(item, kind, ref, investigate, budget) -> tuple:
     iid = item["id"]
     question = kind.question.format(**item.get("facts", {}))
+    investigate = _charged(investigate, budget)
 
     def ask(skill, q, schema, briefing, stage="investigation"):
         extra = {"max_turns": kind.max_turns} if kind.max_turns else {}
+        if kind.max_usd:
+            extra["max_usd"] = kind.max_usd
         out = investigate(question=q, answer_schema=schema, skill_file=skill,
                           briefing=briefing, reference=ref.name, **extra)
         if out.get("incomplete"):
@@ -305,7 +355,7 @@ def _review_item(item, kind, ref, investigate, budget) -> tuple:
         return out["answer"]
 
     if not budget.take():
-        return Outcome(iid, "deferred", "budget"), None
+        return Outcome(iid, "deferred", f"budget: {budget.stopped}"), None
     try:
         first = ask(kind.skill, question, kind.schema, item.get("briefing", ""))
     except Incomplete:
@@ -317,7 +367,8 @@ def _review_item(item, kind, ref, investigate, budget) -> tuple:
 
     if kind.mode == "triage":
         if not budget.take(2):
-            return Outcome(iid, "deferred", "budget (confirmation)", answer=first), None
+            return Outcome(iid, "deferred", f"budget: {budget.stopped} (confirmation)",
+                           answer=first), None
         votes = [first]
         for _ in range(2):
             try:
@@ -336,7 +387,8 @@ def _review_item(item, kind, ref, investigate, budget) -> tuple:
 
     if kind.refuter_skill:
         if not budget.take():
-            return Outcome(iid, "deferred", "budget (refuter)", answer=first), None
+            return Outcome(iid, "deferred", f"budget: {budget.stopped} (refuter)",
+                           answer=first), None
         brief = (f"{item.get('briefing', '')}\n\n## The finding to test\n\n"
                  f"```json\n{json.dumps(first, indent=2)}\n```")
         try:
@@ -360,9 +412,15 @@ def cited_files(kind: Kind, answer: dict | None) -> list:
             if isinstance(e, dict) and isinstance(e.get("file"), str)]
 
 
-def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=None) -> list:
-    """Reviews the items in order; `save(store)` after each new verdict, so a run cut short keeps them."""
-    outcomes = []
+# Outcomes that leave an item on the to-do list for the next run.
+LEFT = ("deferred", "incomplete", "failed", "held")
+
+
+def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=None,
+        overrides=None, seen=None) -> list:
+    """Reviews the due items in the queue's order (work_queue.order); `save(store)` after each
+    new verdict, so a run cut short keeps them."""
+    outcomes, due_items = [], []
     for item in items:
         kind = kinds.get(item.get("kind"))
         if kind is None:
@@ -371,7 +429,14 @@ def run(items, kinds, ref, store, investigate, budget, max_age_days, now, save=N
         why = due(ref, kind, item, store.get(item["id"]), max_age_days, now)
         if why is None:
             outcomes.append(Outcome(item["id"], "skipped", "unchanged"))
-            continue
+        else:
+            due_items.append((item, why))
+    overrides = overrides or {}
+    work, held = work_queue.order(due_items, overrides, seen or {}, now)
+    for item, why in held:
+        outcomes.append(Outcome(item["id"], "held", overrides[item["id"]]["reason"][:300]))
+    for item, why in work:
+        kind = kinds[item["kind"]]
         outcome, answer = review_item(item, kind, ref, investigate, budget)
         outcome.reason = outcome.reason or why
         if answer is not None:
@@ -405,6 +470,8 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
     ap.add_argument("--max-calls", type=int, default=40)
     ap.add_argument("--max-minutes", type=float, default=None,
                     help="start no investigation after this many minutes; the rest is deferred")
+    ap.add_argument("--max-usd-per-day", type=float, default=None,
+                    help="start no investigation once today's spend (UTC) reaches this; the rest is deferred")
     ap.add_argument("--max-age", action="append", default=[], help="risk=days")
     ap.add_argument("--reference-root", default=reference_root, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
@@ -430,10 +497,18 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
     ref = load_reference(a.reference, a.reference_root)
     now = time.time()
     deadline = None if a.max_minutes is None else time.monotonic() + 60 * a.max_minutes
-    budget = Budget(a.max_calls, deadline=deadline)
-    outcomes = run(load_items(a.items), load_kinds(a.kinds), ref, store, investigate,
-                   budget, max_age, now, save=lambda s: _write_json(store_path, s))
+    day = work_queue.DaySpend.load(a.state, a.max_usd_per_day)
+    budget = Budget(a.max_calls, deadline=deadline, day=day)
+    items = load_items(a.items)
+    seen = work_queue.first_seen(a.state, items, now)
+    overrides, override_notes = work_queue.load_overrides(a.state)
+    outcomes = run(items, load_kinds(a.kinds), ref, store, investigate,
+                   budget, max_age, now, save=lambda s: _write_json(store_path, s),
+                   overrides=overrides, seen=seen)
     _write_json(store_path, store)
+    by_id = {i["id"]: i for i in items}
+    left = [(by_id[o.item_id], o.status) for o in outcomes
+            if o.status in LEFT and o.item_id in by_id]
 
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now))
     out_dir = os.path.join(a.state, "runs", stamp)
@@ -444,13 +519,16 @@ def main(argv: list, investigate=None, reference_root: str = REFERENCE_ROOT) -> 
     for o in outcomes:
         counts[o.status] = counts.get(o.status, 0) + 1
     summary = {"commit": ref.commit, "items": len(outcomes), "calls": budget.used,
-               "maxCalls": budget.max_calls, "counts": counts, "findings": len(findings)}
+               "maxCalls": budget.max_calls, "counts": counts, "findings": len(findings),
+               "costUsd": round(budget.spent_usd, 4),
+               "backlog": work_queue.backlog(left, seen, now, day),
+               **({"overrideNotes": override_notes} if override_notes else {})}
     _write_json(os.path.join(out_dir, "summary.json"), summary)
     with open(os.path.join(a.state, "ledger.jsonl"), "a", encoding="utf-8") as f:
         for o in outcomes:
             f.write(json.dumps({"run": stamp, "commit": ref.commit, "item": o.item_id,
                                 "status": o.status, "reason": o.reason,
-                                "problems": o.problems}) + "\n")
+                                "problems": o.problems, "costUsd": o.cost_usd}) + "\n")
     print(json.dumps(summary))
     return 0
 

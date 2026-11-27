@@ -17,6 +17,7 @@ import { PLATFORM_TASK_NAME_RE, PLATFORM_TASK_ROOT } from "@magi/agent-config";
 import type { AssistantMessage, Message, Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
+import type { LlmCallMeter } from "../llm-meter.js";
 import { type CompleteFn, runInnerLoop, type WindDownReason } from "../loop.js";
 import { loadPrompt } from "../prompts.js";
 import { readInside } from "../safe-path.js";
@@ -35,6 +36,9 @@ export const INVESTIGATE_DEFAULT_TURNS = 15;
 export const INVESTIGATE_MAX_TURNS = 40;
 /** Time one investigation may take before its last step. */
 export const INVESTIGATE_TIME_BUDGET_MS = 5 * 60_000;
+/** Money one investigation may spend before its last step, unless the caller sets less or more. */
+export const INVESTIGATE_DEFAULT_MAX_USD = 0.5;
+export const INVESTIGATE_MAX_USD = 2;
 /** The Tool API's backstop: the budget, a tool call in flight, the last step and its repair. */
 const INVESTIGATE_MAX_RUNTIME_MS = 10 * 60_000;
 /** Longest explanation of what was not finished that is returned. */
@@ -80,6 +84,13 @@ const PARAMS = Type.Object({
 	max_turns: Type.Optional(
 		Type.Integer({ minimum: 1, maximum: INVESTIGATE_MAX_TURNS }),
 	),
+	max_usd: Type.Optional(
+		Type.Number({
+			exclusiveMinimum: 0,
+			maximum: INVESTIGATE_MAX_USD,
+			description: `What the investigation may spend before its last step (default $${INVESTIGATE_DEFAULT_MAX_USD}).`,
+		}),
+	),
 });
 
 type Args = {
@@ -90,6 +101,7 @@ type Args = {
 	briefing_file?: string;
 	reference?: string;
 	max_turns?: number;
+	max_usd?: number;
 };
 
 export interface InvestigateOptions {
@@ -172,6 +184,36 @@ function finalText(messages: Message[]): string {
 			.join("")
 			.trim() ?? ""
 	);
+}
+
+/** The caller's meter, plus a running total of what this investigation spent. */
+function spendCounter(hooks: SubAgentHooks): {
+	meter: LlmCallMeter;
+	total: () => number;
+} {
+	let total = 0;
+	return {
+		meter: async (event) => {
+			total += hooks.costOf(event);
+			await hooks.onLlmCall(event);
+		},
+		total: () => total,
+	};
+}
+
+function roundUsd(usd: number): number {
+	return Math.round(usd * 1e6) / 1e6;
+}
+
+/** The budget that ran out, as the last-step notice names it. */
+function budgetSpent(
+	reason: WindDownReason,
+	budget: { maxTurns: number; timeBudgetMs: number; maxUsd: number },
+): string {
+	if (reason === "turns") return `all ${budget.maxTurns} of your turns`;
+	if (reason === "time")
+		return `your ${Math.round(budget.timeBudgetMs / 60_000)} minutes`;
+	return `your $${budget.maxUsd} budget`;
 }
 
 /** What the sub-agent wrote before its JSON answer: its account of what it did not finish. */
@@ -312,7 +354,12 @@ async function investigate(
 	common: LoopCommon,
 	task: string,
 	shell: MagiTool,
-	budget: { maxTurns: number; timeBudgetMs: number },
+	budget: {
+		maxTurns: number;
+		timeBudgetMs: number;
+		maxUsd: number;
+		spentUsd: () => number;
+	},
 	validate: ValidateFunction,
 ): Promise<Outcome> {
 	const first = await runInnerLoop({
@@ -322,12 +369,11 @@ async function investigate(
 		maxTurns: budget.maxTurns,
 		finalStep: {
 			timeBudgetMs: budget.timeBudgetMs,
+			costBudgetUsd: budget.maxUsd,
+			spentUsd: budget.spentUsd,
 			notice: (reason) =>
 				loadPrompt("investigate-final-step.md", {
-					budget:
-						reason === "turns"
-							? `all ${budget.maxTurns} of your turns`
-							: `your ${Math.round(budget.timeBudgetMs / 60_000)} minutes`,
+					budget: budgetSpent(reason, budget),
 				}),
 		},
 	});
@@ -397,13 +443,14 @@ export function createInvestigateTool(
 				skill: p.skill ? `## Skill\n\n${p.skill}` : "",
 			});
 			const { hooks } = opts;
+			const spend = spendCounter(hooks);
 			const outcome = await investigate(
 				{
 					model,
 					getSystemPrompt: () => systemPrompt,
 					signal,
 					onMessage: async (msg: Message) => hooks.onMessage(id, msg),
-					onLlmCall: hooks.onLlmCall,
+					onLlmCall: spend.meter,
 					beforeLlmCall: hooks.beforeLlmCall,
 					completeFn: opts.completeFn,
 				},
@@ -412,15 +459,21 @@ export function createInvestigateTool(
 				{
 					maxTurns: args.max_turns ?? INVESTIGATE_DEFAULT_TURNS,
 					timeBudgetMs: opts.timeBudgetMs ?? INVESTIGATE_TIME_BUDGET_MS,
+					maxUsd: args.max_usd ?? INVESTIGATE_DEFAULT_MAX_USD,
+					spentUsd: spend.total,
 				},
 				p.validate,
 			);
-			if ("error" in outcome) return err(`Investigate: ${outcome.error}`);
+			const costUsd = roundUsd(spend.total());
+			// The cost travels with an error too: a caller keeping a budget counts it.
+			if ("error" in outcome)
+				return err(`Investigate: ${outcome.error} (cost_usd ${costUsd})`);
 			const ref = p.reference;
 			const result = {
 				answer: outcome.answer,
 				reference: ref ? { name: ref.name, commit: ref.commit } : null,
 				turns: outcome.turns,
+				cost_usd: costUsd,
 				...(outcome.incomplete ? { incomplete: outcome.incomplete } : {}),
 			};
 			return {

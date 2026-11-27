@@ -9,13 +9,24 @@ and the repository from the reference copy: the trace's entry points
 (docs/security/entry-points.json) and the watched guards (scripts/security/watched-guards.json),
 which go into each item's briefing. Run as a background job; the alerts are private, so keep
 --out in your workdir.
+
+Each item carries a `priority` (higher is worked first, review-pipeline/scripts/work_queue.py) and
+a `band` for the backlog line: the alert's severity, plus BOUNDARY_BONUS when its file implements
+a trust boundary (the threat model's "Implementing Files by Boundary"); a watched guard is GUARD.
 """
 import argparse
 import json
 import os
+import re
 import sys
 
 REFERENCE_ROOT = "/var/lib/magi/reference"
+
+SEVERITY = {"critical": 40, "high": 30, "error": 30, "medium": 20, "moderate": 20, "warning": 20,
+            "low": 10, "note": 10}
+BOUNDARY_BONUS = 15
+GUARD = 50
+BOUNDARY_SECTION = "## Implementing Files by Boundary"
 
 
 def load_json(path, default):
@@ -47,12 +58,38 @@ def describe_entries(entries):
     return "Entry points in this file:\n" + "\n".join(lines)
 
 
+def boundary_files(tree):
+    """Files and folders the threat model lists as implementing a trust boundary."""
+    try:
+        with open(os.path.join(tree, "docs", "security", "threat-model.md"), encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return []
+    start = text.find(BOUNDARY_SECTION)
+    if start < 0:
+        return []
+    end = text.find("\n## ", start + len(BOUNDARY_SECTION))
+    section = text[start:end if end > 0 else len(text)]
+    return sorted(set(re.findall(r"^- `([^`\s]+)`", section, flags=re.M)))
+
+
+def on_boundary(path, boundary):
+    return bool(path) and any(path == b or (b.endswith("/") and path.startswith(b)) for b in boundary)
+
+
+def score(severity, path=None, boundary=()):
+    sev = str(severity or "").lower()
+    priority = SEVERITY.get(sev, 10) + (BOUNDARY_BONUS if on_boundary(path, boundary) else 0)
+    return priority, sev or "unknown"
+
+
 def guard_for(guards, path):
     return next((g for g in guards if g["path"] == path), None)
 
 
-def code_scanning_item(a, entries, guards):
+def code_scanning_item(a, entries, guards, boundary=()):
     path = a.get("path", "")
+    priority, band = score(a.get("severity"), path, boundary)
     guard = guard_for(guards, path)
     briefing = [
         f"Alert {a['number']} from {a.get('tool')}: rule `{a.get('rule')}`, severity {a.get('severity')}.",
@@ -66,6 +103,8 @@ def code_scanning_item(a, entries, guards):
     return {
         "id": f"cs-{a['number']}",
         "kind": "code-scanning",
+        "priority": priority,
+        "band": band,
         "facts": {k: a.get(k) for k in ("number", "tool", "rule", "path", "line", "severity")},
         "briefing": "\n\n".join(briefing),
         "deps": {"files": [path] + (guard["tests"] if guard else [])},
@@ -84,6 +123,8 @@ def dependabot_item(a):
     return {
         "id": f"dep-{a['number']}",
         "kind": "dependabot",
+        "priority": score(a.get("severity"))[0],
+        "band": score(a.get("severity"))[1],
         "facts": {k: a.get(k) for k in ("number", "package", "advisory", "severity")},
         "briefing": "\n\n".join(briefing),
         "deps": {"files": [manifest]},
@@ -100,6 +141,8 @@ def guard_item(g, entries):
     return {
         "id": "guard-" + g["path"].replace("/", "-"),
         "kind": "guard",
+        "priority": GUARD,
+        "band": "guard",
         "facts": {"path": g["path"], "invariant": g["invariant"]},
         "briefing": "\n\n".join(briefing),
         "deps": {"files": [g["path"], *g["tests"]]},
@@ -110,10 +153,11 @@ def produce(alerts, tree, guards_file=None):
     entries = load_json(os.path.join(tree, "docs", "security", "entry-points.json"), [])
     guards_path = guards_file or os.path.join(tree, "scripts", "security", "watched-guards.json")
     guards = load_json(guards_path, {}).get("guards", [])
+    boundary = boundary_files(tree)
     items = [guard_item(g, entries) for g in guards]
     for a in alerts:
         if a.get("source") == "code-scanning":
-            items.append(code_scanning_item(a, entries, guards))
+            items.append(code_scanning_item(a, entries, guards, boundary))
         elif a.get("source") == "dependabot":
             items.append(dependabot_item(a))
     return items

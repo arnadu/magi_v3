@@ -113,17 +113,20 @@ def investigate(
     briefing: str | None = None,
     reference: str | None = None,
     max_turns: int | None = None,
+    max_usd: float | None = None,
 ) -> dict:
     """
     One question to a clean-context sub-agent (the Investigate tool); returns
-    {"answer": <JSON matching answer_schema>, "reference": {"name", "commit"} | None, "turns"},
-    plus "incomplete": {"reason": "time" | "turns", "note"} when it ran out before finishing:
-    its answer is then what it had, and the note says what it did not finish.
-    Raises ToolError when the answer does not match the schema after its repair turn.
+    {"answer": <JSON matching answer_schema>, "reference": {"name", "commit"} | None, "turns",
+    "cost_usd"}, plus "incomplete": {"reason": "time" | "turns" | "cost", "note"} when it ran out
+    before finishing: its answer is then what it had, and the note says what it did not finish.
+    Raises ToolError when the answer does not match the schema after its repair turn; the error
+    ends with "(cost_usd <n>)", what the failed investigation cost.
     """
     params: dict = {"question": question, "answer_schema": answer_schema}
     for key, value in (("skill_file", skill_file), ("briefing", briefing),
-                       ("reference", reference), ("max_turns", max_turns)):
+                       ("reference", reference), ("max_turns", max_turns),
+                       ("max_usd", max_usd)):
         if value is not None:
             params[key] = value
     # Investigate answers within 5 minutes; its maxRuntimeMs backstop is 10, honoured by the Tool API.

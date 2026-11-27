@@ -47,8 +47,10 @@ the hand-off block.
 ## The weekly summary
 
 `YYYY-MM-DD-weekly-summary.md`, then a short PostMessage to the user pointing to it:
-- what was examined: the week's triage runs (stamps, items, outcomes, calls) and anything else
-  reviewed (a commit range, a boundary studied in depth);
+- what was examined: the week's triage (outcomes, the week's spend against the daily budget)
+  and anything else reviewed (a commit range, a boundary studied in depth);
+- how far behind the triage is: the newest run's backlog line (items left by band, the oldest
+  waiting and since when), and any overrides you set in `priorities.json`, with their reasons;
 - findings verified and dismissed this week, with register ids; findings by severity and status;
 - what is still unverified (the verification queue) and what the pipeline got wrong (pipeline
   calibration);

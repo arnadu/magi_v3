@@ -92,10 +92,12 @@ describe("createJobSpend", () => {
 	it("turn.persisted-per-step: stores a job's sub-agent step under its agent and job, outside any turn", async () => {
 		const s = spendCtx({ spentUsd: 1, capUsd: 5 });
 		const msg = { role: "user", content: "task", timestamp: 1 } as const;
-		await jobSubAgentHooks(createJobSpend(s.ctx), "a1", "job-7").onMessage(
-			"call-3",
-			msg,
-		);
+		await jobSubAgentHooks(
+			createJobSpend(s.ctx),
+			"a1",
+			"job-7",
+			CLAUDE_SONNET,
+		).onMessage("call-3", msg);
 		expect(s.conversationAppend).toHaveBeenCalledWith("a1", "m1", [
 			{
 				turnNumber: 0,
@@ -110,10 +112,11 @@ describe("createJobSpend", () => {
 		const s = spendCtx({ spentUsd: 1, capUsd: 5 });
 		let paused = false;
 		const spend = { ...createJobSpend(s.ctx), isBudgetPaused: () => paused };
-		const hooks = jobSubAgentHooks(spend, "a1", "job-7");
+		const hooks = jobSubAgentHooks(spend, "a1", "job-7", CLAUDE_SONNET);
 		await hooks.beforeLlmCall();
 		const { model: _named, ...subLoopEvent } = event as { model: unknown };
 		await hooks.onLlmCall(subLoopEvent as never);
+		expect(hooks.costOf(subLoopEvent as never)).toBeGreaterThan(0);
 		expect(s.recordOutOfTurnCost).toHaveBeenCalledWith(
 			"m1",
 			"a1",
