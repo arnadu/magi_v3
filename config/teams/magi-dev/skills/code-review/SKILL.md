@@ -51,6 +51,9 @@ lens: note anything security-relevant under "For appsec" and leave the verdict t
    proposal.
 8. **Report**: `$SHARED_DIR/reports/code-review/YYYY-MM-DD-change-review.md`:
    - first line: blocking findings or none; scope (commit range); CI result per commit;
+   - a **Findings line**, exactly this form, read by code for the user's daily brief:
+     `**Findings:** CR-031 (issue, blocking) <one-line title>; CR-032 (suggestion) <title>`, or
+     `**Findings:** none`. Every finding of the report, its label and `blocking` when it is;
    - depth per commit (read fully / skimmed / skipped, and why);
    - findings `CR-NNN` (sequential across reports; last id in your mental map), each with label,
      blocking flag, criterion, `file:line`, failure scenario, refutation, suggested fix;

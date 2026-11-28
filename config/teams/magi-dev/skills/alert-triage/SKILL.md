@@ -68,7 +68,10 @@ through faster: the budget is the pace the user chose. When a run fails, tell th
 lines of its log and leave the next run to the schedule. Right after the machine restarts, the
 reference copy is still being rebuilt: the producer waits up to 5 minutes for it, then fails with
 "reference copy ... not ready" and produces nothing; that is not a fault to report. Everything under `$WORKDIR/review/` is
-private: never copy it into `shared/`.
+private: never copy it into `shared/`. The run itself publishes counts only (the backlog, and
+the findings whose item id the register does not yet name) to `$SHARED_DIR/status/alert-triage.json`
+for the user's daily brief: record each finding's item id in the register or its dismissed
+list, or the brief keeps counting it as waiting for you.
 
 ## Steer the order (when you have a reason)
 

@@ -173,3 +173,12 @@ def test_an_item_incomplete_twice_in_a_row_is_set_aside_until_pinned(tmp_path):
     assert once([stuck]).status == "skipped" and len(w.calls) == calls
     pinned = once([FP], {"cs-1": {"pin": "top", "reason": "worth another try"}})
     assert pinned.status == "negative" and pinned.reason == "pinned after set-aside"
+
+
+def test_the_backlog_gives_each_bands_oldest_waiting_item(tmp_path):
+    left = [({"id": "a", "band": "high"}, "deferred"), ({"id": "b", "band": "high"}, "deferred"),
+            ({"id": "c", "band": "low"}, "incomplete")]
+    seen = {"a": 1_764_300_000.0, "b": 1_764_200_000.0, "c": 1_764_100_000.0}
+    b = work_queue.backlog(left, seen, 1_764_400_000.0, work_queue.DaySpend(str(tmp_path / "s")))
+    assert b["oldestByBand"] == {"high": "2025-11-26T23:33:20Z", "low": "2025-11-25T19:46:40Z"}
+    assert b["oldestWaitingSince"] == "2025-11-25T19:46:40Z"

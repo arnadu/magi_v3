@@ -2092,6 +2092,30 @@ job's sub-agent calls neither logged nor charged (F-084, fixed in `ed12349`). No
 active then; once the code reviewer returns, this case scores whether it would catch a defect
 spread over two files (a meter that drops events without a model, and a loop that never sets one).
 
+### The sponsor's daily brief (2026-11-27)
+
+The sponsor asked for one message a day, in the cockpit inbox at 18:00 New York time: the major
+issues discovered, the issues verified resolved, and the operational backlog (items not yet
+verified, and their age, by priority). It is built by a script the mission copilot schedules
+(skill `daily-brief`), not written by an agent: both copilots have stated causes without
+evidence, and a daily message read without checking is where an invented line would do most
+harm. Everything it says is a count or a quotation of a record.
+
+- **Where each fact comes from.** Security issues and their resolution: the register's headings
+  (`### MD-NNN · SEVERITY · status — title`). Code-review and documentation issues: a
+  `**Findings:**` line the code-review and doc-consistency skills now require in every report
+  (`ID (label[, blocking]) title; ...`), because their reports had no fixed form for code to read.
+  The triage backlog and the leads waiting for appsec: `status/alert-triage.json`, counts and item
+  ids only, which each triage run publishes; appsec's review state stays private. Reviewer lag:
+  `review-cursor.json` against the reference copy. Each report's standing: the report gate.
+- **"Since the last brief"** is a comparison with what the last brief saw, not a date filter, so
+  an entry is reported new once, whatever date its author wrote.
+- **A gap shows as a gap.** A report without a Findings line, a triage status older than three
+  hours or not yet published, a cursor that has not moved: each is printed, never filled in.
+- **What it cannot say yet.** Code-review and documentation findings have no resolution record;
+  only security findings can be "verified resolved". Spend per agent needs the stats store, which
+  a job cannot read; it stays in the cockpit.
+
 ## Phasing
 
 | Phase | Scope | Needs |

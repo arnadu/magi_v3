@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One alert-triage run, as a background job: the items from the open alerts and the watched
 # guards, then the review pipeline over them, highest priority first, within today's budget. State
-# stays in the agent's own workdir (private).
+# stays in the agent's own workdir (private); its counts are published to
+# $SHARED_DIR/status/alert-triage.json (publish_status.py).
 #
 #   run_triage.sh <shared-dir> <workdir> [--notify <agent>] [--max-usd-per-day <usd>]
 #                 [--max-usd-per-item <usd>] [--max-calls <n>] [--max-minutes <n>]
@@ -48,6 +49,9 @@ python3 "$SHARED_DIR/skills/_platform/review-pipeline/scripts/review.py" \
   --items "$OUT/items.jsonl" --kinds "$SK/kinds" --state "$OUT/state" \
   --reference magi-v3 --max-calls "$MAX_CALLS" --max-minutes "$MAX_MINUTES" \
   --max-usd-per-day "$MAX_USD_PER_DAY" --max-usd-per-item "$MAX_USD_PER_ITEM"
+# Counts only, for the daily brief; the state itself stays private.
+python3 "$SK/scripts/publish_status.py" "$OUT/state" "$OUT/items.jsonl" \
+  "$SHARED_DIR/reports/security/register.md" "$SHARED_DIR/status/alert-triage.json"
 if [[ -n "$NOTIFY" ]]; then
   python3 "$SK/scripts/notify_triage.py" "$OUT/state" "$NOTIFY"
 fi

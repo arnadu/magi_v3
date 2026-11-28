@@ -122,12 +122,14 @@ owner in the aim.
 | **Report gate**<br>`report-gate.py, a scheduled job` | Reports citing files, lines, tests, commits or ids that do not exist | Rejects | MAGI DEV's invented evidence, 2026-11-22/23; Security assurance plan, step 1 | Claude Code (`check-citations.py`) | Claude Code reads only accepted reports, and verifies before acting → *rejections go back to the author* |
 | **Alert triage**<br>`run_triage.sh, an hourly job; review-pipeline` | Every open code-scanning and Dependabot alert and every watched guard, investigated one by one: real, or not, with citations that code checks | Reports | Security assurance plan, step 6; ADR-0040 | Claude Code (the kinds, skills and scores); the sponsor sets the daily and per-item budgets | Appsec verifies each finding by reading the code and records it in its register; a new HIGH or CRITICAL is mailed to the sponsor |
 | **Task checks**<br>`a work order's check script, ADR-0038` | A task marked done whose finish line is not met | Refuses the completion | Appsec's completion notes that claimed what nobody checked, 2026-11-23 | Whoever writes the task (the sponsor, the mission copilot) | The agent, at once; the sponsor or the copilot may override, with a reason |
+| **Daily brief**<br>`daily_brief.py, a job of the mission copilot at 18:00 New York` | What the sponsor should know each day: new register entries, blocking code-review findings and wrong documentation statements, fixes verified, and the backlog by priority with ages (open findings, leads waiting for appsec, alerts not yet triaged), reviewer cursors and gate verdicts | Reports | The sponsor's request, 2026-11-27 | Claude Code (`config/teams/magi-dev/skills/daily-brief/`); built by code, no model | The sponsor, in the cockpit inbox |
 | **Documenter's daily check** | Documentation that no longer matches the code | Reports | MAGI DEV phase 0 | Claude Code (skills in `config/teams/magi-dev/`) | Claude Code, at the start of a session → *the documenter's own pull request* |
 
 ## Gaps in ownership today
 
 - **The alert triage's budgets and backlog are not in the cockpit.** They are in the job's
-  arguments and appsec's workdir; the sponsor sees them only through appsec's mail
+  arguments and appsec's workdir; the sponsor sees them only through appsec's mail and the
+  daily brief
   (`platform.config-in-view`, `platform.spend-in-view`, roadmap catalog gaps).
 - **Dependabot's upgrades have no builder.** Appsec triages the alerts; five upgrades that each need
   a major version are waiting.

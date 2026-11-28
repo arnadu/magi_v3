@@ -93,6 +93,9 @@ section you propose to add.
 
 `$SHARED_DIR/reports/docs/YYYY-MM-DD-<mode>.md`:
 - scope and **coverage** (the counts above, per section);
+- a **Findings line**, exactly this form, read by code for the user's daily brief:
+  `**Findings:** DC-012 (wrong) <document>: <one-line claim>; DC-013 (unverifiable) <...>`, or
+  `**Findings:** none`. Every inconsistency of the report, with its verdict as the label;
 - one entry per inconsistency, id `DC-NNN` (sequential; last id in your mental map): the kind of
   claim, the document and line, what it says, what the code does (`file:line`), and the **exact
   edit** ("replace this / with this", or a unified diff);

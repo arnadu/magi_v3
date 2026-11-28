@@ -399,3 +399,17 @@ do SEC-T8 and SEC-T7 while the first triage run works; SEC-T6 when it finishes."
 
 Report to the user what you changed, with the task ids as created and what your comparison
 found.
+
+## Addendum 2026-11-27 — the user's daily brief
+
+Apply only this section. Schedule the brief (skill `daily-brief`), as yourself:
+
+```bash
+bash "$SHARED_DIR/skills/_platform/run-background/scripts/schedule-job.sh" --label daily-brief \
+  --cron '0 22,23 * * *' --script "$SHARED_DIR/skills/_team/daily-brief/scripts/daily_brief.py" \
+  --args "$SHARED_DIR $WORKDIR"
+```
+
+Then run `python3 "$SHARED_DIR/skills/_team/daily-brief/scripts/daily_brief.py" "$SHARED_DIR"
+"$WORKDIR" --dry-run` and PostMessage the user: the schedule's label and next run, and the dry
+run's output exactly as printed. Do not send a brief of your own.

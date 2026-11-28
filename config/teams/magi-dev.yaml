@@ -28,6 +28,7 @@ agents:
       - ux-review
       - qa-journeys
       - acceptance-scenarios
+      - daily-brief
       - quality-model
       - operations-inventory
       - rules-enforcement-audit
@@ -152,7 +153,7 @@ agents:
         file: analysis/findings-code-reviewer.md
         maxBytes: 4000
         staleAfterHours: 36
-    disabledSkills: [code-review, review-judgement, working-agreements, trace-scan]
+    disabledSkills: [code-review, review-judgement, working-agreements, trace-scan, daily-brief]
     systemPrompt: |
       You are the Code Reviewer for MAGI, a multi-agent platform whose source code is in a public
       GitHub repository.
@@ -255,7 +256,7 @@ agents:
     name: "Documenter"
     role: documenter
     supervisor: user
-    disabledSkills: [code-health]
+    disabledSkills: [code-health, daily-brief]
     managedRegions:
       - key: trace-findings
         title: Trace findings
@@ -348,7 +349,7 @@ agents:
     name: "QA Lead"
     role: qa-lead
     supervisor: user
-    disabledSkills: [code-health]
+    disabledSkills: [code-health, daily-brief]
     managedRegions:
       - key: trace-findings
         title: Trace findings

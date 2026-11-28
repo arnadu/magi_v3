@@ -1830,3 +1830,14 @@ first test run caught a bug in the draft: a pinned image user (`mission-copilot`
 new agents past the range. The working agreements gained rule 11: a platform fault is reported
 at once, never worked around in silence (the documenter had moved its reports to a new folder
 and told no one). Also: the alert-triage producer waits for the reference copy after a restart.
+
+**The sponsor's daily brief, 2026-11-27.** One message a day in the cockpit inbox at 18:00 New
+York time, built by code (skill `daily-brief`, a job of the mission copilot scheduled at 22:00 and
+23:00 UTC; the script sends at the first run at or after 18:00 local and once per local day): new
+register entries, blocking code-review findings and wrong documentation statements, fixes verified
+since the last brief, and the backlog by priority with the oldest's age. Each triage run now
+publishes counts only to `shared/status/alert-triage.json` (`publish_status.py`), including the
+findings whose item id the register does not yet name, and the pipeline's backlog gives each
+band's oldest item (`oldestByBand`). The code-review and doc-consistency skills require a
+`**Findings:**` line in each report so code can read it. Design notes:
+`docs/plans/magi-dev-requirements.md`, "The sponsor's daily brief".

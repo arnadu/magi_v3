@@ -124,21 +124,28 @@ def order(due: list, overrides: dict, seen: dict, now: float) -> tuple[list, lis
     return sorted(work, key=key), held
 
 
+def _iso(t: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+
 def backlog(left: list, seen: dict, now: float, spend: DaySpend, over_budget: int = 0,
             set_aside: int = 0) -> dict:
     """How far behind the work is: `left` is the (item, why) still waiting after this run;
     `over_budget` and `set_aside` count items put aside without a verdict, because their own
     budget ran out or they came back incomplete too often."""
     by_band: dict = {}
+    oldest_by_band: dict = {}
     for item, _ in left:
         band = str(item.get("band", "unbanded"))
         by_band[band] = by_band.get(band, 0) + 1
-    oldest = min((seen.get(item["id"], now) for item, _ in left), default=None)
+        first = seen.get(item["id"], now)
+        oldest_by_band[band] = min(first, oldest_by_band.get(band, first))
+    oldest = min(oldest_by_band.values(), default=None)
     return {
         "left": len(left),
         "byBand": by_band,
-        "oldestWaitingSince": None if oldest is None else
-        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(oldest)),
+        "oldestWaitingSince": None if oldest is None else _iso(oldest),
+        "oldestByBand": {band: _iso(t) for band, t in oldest_by_band.items()},
         "spentTodayUsd": round(spend.spent(now), 4),
         "dayBudgetUsd": spend.budget_usd,
         "overBudget": over_budget,
